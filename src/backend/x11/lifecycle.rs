@@ -42,7 +42,7 @@ use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 // focus() is used via focus_soft() in this module
 use crate::focus::focus;
 use crate::layouts::arrange;
-use crate::types::{BaseClientMode, Client, Rect, TagMask, WindowId};
+use crate::types::{Client, ClientPlacement, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -176,10 +176,10 @@ fn assign_initial_monitor_and_tags(
     {
         client.monitor_id = launch_context.monitor_id;
         client.set_tag_mask(launch_context.tags);
-        client.set_base_mode(if launch_context.is_floating {
-            BaseClientMode::Floating
+        client.set_placement(if launch_context.is_floating {
+            ClientPlacement::Floating
         } else {
-            BaseClientMode::Tiling
+            ClientPlacement::Tiling
         });
         return true;
     }
@@ -389,14 +389,14 @@ fn initialize_floating_state(
     has_transient_parent: bool,
 ) -> bool {
     if let Some(client) = model.client_mut(window) {
-        if client.base_mode() != BaseClientMode::Floating {
-            client.set_base_mode(if has_transient_parent || client.is_fixed_size {
-                BaseClientMode::Floating
+        if client.placement() != ClientPlacement::Floating {
+            client.set_placement(if has_transient_parent || client.is_fixed_size {
+                ClientPlacement::Floating
             } else {
-                BaseClientMode::Tiling
+                ClientPlacement::Tiling
             });
         }
-        client.base_mode() == BaseClientMode::Floating
+        client.placement() == ClientPlacement::Floating
     } else {
         false
     }
@@ -764,7 +764,7 @@ pub fn is_window_iconic(
 mod tests {
     use super::initialize_floating_state;
     use crate::model::WmModel;
-    use crate::types::{BaseClientMode, Client, ClientMode, WindowId};
+    use crate::types::{Client, ClientMode, ClientPlacement, WindowId};
 
     #[test]
     fn transient_policy_changes_fullscreen_restore_mode_without_exiting() {
@@ -778,7 +778,7 @@ mod tests {
 
         let client = model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
-        assert_eq!(client.base_mode(), BaseClientMode::Floating);
-        assert_eq!(client.mode().restored(), ClientMode::Floating);
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+        assert_eq!(client.mode().restored(), ClientMode::floating());
     }
 }

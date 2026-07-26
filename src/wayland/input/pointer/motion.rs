@@ -171,7 +171,7 @@ mod tests {
             win,
             monitor_id,
             tags,
-            mode: ClientMode::Floating,
+            mode: ClientMode::floating(),
             geo,
             ..Client::default()
         });

@@ -183,14 +183,14 @@ mod tests {
             win: moved,
             monitor_id,
             tags: tag1,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
         wm.core.model.insert_client(Client {
             win: destination_peer,
             monitor_id,
             tags: tag2,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
         let monitor = wm.core.model.monitor_mut(monitor_id).expect("monitor");

@@ -326,6 +326,28 @@ impl Monitor {
             .collect()
     }
 
+    /// Collect persistent tiling-tree members, including clients temporarily
+    /// presented as fullscreen or maximized.
+    pub fn collect_tiling_tree_members(
+        &self,
+        clients: &HashMap<WindowId, Client>,
+    ) -> Vec<TiledClientInfo> {
+        let selected_tags = self.selected_tags();
+        self.clients
+            .iter()
+            .filter_map(|&win| {
+                let client = clients.get(&win)?;
+                if !client.is_tiling_tree_member(selected_tags) {
+                    return None;
+                }
+                Some(TiledClientInfo {
+                    win,
+                    border_width: client.border_width,
+                })
+            })
+            .collect()
+    }
+
     /// Tiled clients in the stable order represented by the current manual
     /// tree. A newly managed client is appended defensively if reconciliation
     /// has not reached the tree yet.
@@ -637,15 +659,15 @@ impl Monitor {
         rect
     }
 
-    /// The currently maximized client on this monitor, if any.
+    /// The client currently using instantWM's protocol-independent zoom.
     ///
     /// Derived by scanning the monitor's clients for one in maximized mode, so
     /// it can never disagree with the actual client modes.
-    pub fn maximized_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
+    pub fn wm_maximized_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
         self.clients.iter().find_map(|&win| {
             clients
                 .get(&win)
-                .filter(|c| c.mode().is_maximized())
+                .filter(|c| c.mode().is_wm_maximized())
                 .map(|_| win)
         })
     }

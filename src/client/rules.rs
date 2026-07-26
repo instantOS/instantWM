@@ -4,7 +4,7 @@ use crate::client::LaunchContext;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
 use crate::types::{
-    BaseClientMode, ClientMode, MonitorRule, Rect, RuleFloat, SizeHints, SpecialNext, TagMask,
+    ClientMode, ClientPlacement, MonitorRule, Rect, RuleFloat, SizeHints, SpecialNext, TagMask,
     WindowId,
 };
 
@@ -121,12 +121,12 @@ fn apply_rules_impl(
 
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = state.model.client_mut(win) {
-        let base_mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
-            BaseClientMode::Floating
+        let placement = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
+            ClientPlacement::Floating
         } else {
-            BaseClientMode::Tiling
+            ClientPlacement::Tiling
         };
-        c.set_base_mode(base_mode);
+        c.set_placement(placement);
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
@@ -140,7 +140,7 @@ fn apply_rules_impl(
         if let SpecialNext::Float = special_next
             && let Some(c) = state.model.client_mut(win)
         {
-            c.set_base_mode(BaseClientMode::Floating);
+            c.set_placement(ClientPlacement::Floating);
         }
         state.behavior.specialnext = SpecialNext::None;
     } else {
@@ -219,7 +219,7 @@ fn apply_property_change(
             LaunchContext {
                 monitor_id: client.monitor_id,
                 tags: client.tags,
-                is_floating: client.base_mode() == BaseClientMode::Floating,
+                is_floating: client.placement() == ClientPlacement::Floating,
             },
         )
     };
@@ -269,10 +269,10 @@ fn apply_float_rule(
 
     match float_rule {
         RuleFloat::FloatCenter => {
-            client.set_base_mode(BaseClientMode::Floating);
+            client.set_placement(ClientPlacement::Floating);
         }
         RuleFloat::FloatFullscreen => {
-            client.set_base_mode(BaseClientMode::Floating);
+            client.set_placement(ClientPlacement::Floating);
             client.geo.w = monitor_rect.w;
             client.geo.h = work_rect.h;
             client.geo.x = monitor_rect.x;
@@ -281,16 +281,16 @@ fn apply_float_rule(
             }
         }
         RuleFloat::Scratchpad => {
-            client.set_base_mode(BaseClientMode::Floating);
+            client.set_placement(ClientPlacement::Floating);
         }
         RuleFloat::Float => {
-            client.set_base_mode(BaseClientMode::Floating);
+            client.set_placement(ClientPlacement::Floating);
             if show_bar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }
         RuleFloat::Tiled => {
-            client.set_base_mode(BaseClientMode::Tiling);
+            client.set_placement(ClientPlacement::Tiling);
         }
     }
 }
@@ -505,7 +505,7 @@ mod tests {
         wm.core.model.insert_client(Client {
             win,
             monitor_id: old_monitor,
-            mode: ClientMode::Floating,
+            mode: ClientMode::floating(),
             ..Default::default()
         });
         wm.work.layout.clear();
@@ -566,7 +566,7 @@ mod tests {
         let win = WindowId(42);
         let client = Client {
             win,
-            mode: ClientMode::Floating,
+            mode: ClientMode::floating(),
             ..Default::default()
         };
         state.model.insert_client(client);
@@ -590,7 +590,7 @@ mod tests {
         let win = WindowId(43);
         state.model.insert_client(Client {
             win,
-            mode: ClientMode::Floating.as_fullscreen(),
+            mode: ClientMode::floating().as_fullscreen(),
             ..Default::default()
         });
 
@@ -606,8 +606,8 @@ mod tests {
         let client = state.model.client(win).expect("client should still exist");
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(
-            client.mode().base_mode(),
-            crate::types::BaseClientMode::Floating
+            client.mode().placement(),
+            crate::types::ClientPlacement::Floating
         );
         assert_eq!(client.name, "YouTube — Full Screen");
     }
@@ -626,7 +626,7 @@ mod tests {
             win,
             monitor_id,
             tags,
-            mode: ClientMode::Tiling.as_fullscreen(),
+            mode: ClientMode::tiled().as_fullscreen(),
             ..Client::default()
         });
         assert!(state.model.attach_client(win));
@@ -698,7 +698,7 @@ mod tests {
         state.model.insert_client(Client {
             win,
             monitor_id: MonitorId::default(),
-            mode: ClientMode::Floating.as_fullscreen(),
+            mode: ClientMode::floating().as_fullscreen(),
             ..Default::default()
         });
 
@@ -713,8 +713,8 @@ mod tests {
 
         let mode = state.model.client(win).unwrap().mode();
         assert!(mode.is_true_fullscreen());
-        assert_eq!(mode.base_mode(), crate::types::BaseClientMode::Tiling);
-        assert_eq!(mode.restored(), ClientMode::Tiling);
+        assert_eq!(mode.placement(), crate::types::ClientPlacement::Tiling);
+        assert_eq!(mode.restored(), ClientMode::tiled());
     }
 
     #[test]
@@ -741,7 +741,7 @@ mod tests {
         let client = Client {
             win,
             monitor_id: MonitorId::default(),
-            mode: ClientMode::Floating,
+            mode: ClientMode::floating(),
             ..Default::default()
         };
         state.model.insert_client(client);
@@ -829,7 +829,7 @@ mod tests {
             win,
             monitor_id: MonitorId::default(),
             tags: selected_tags,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Default::default()
         });
 

@@ -113,13 +113,13 @@ impl WaylandState {
         &mut self,
         win: crate::types::WindowId,
         fullscreen: bool,
-    ) -> bool {
+    ) -> Option<crate::client::mode::FullscreenTransition> {
         // SAFETY: XDG handlers run synchronously inside calloop's Wayland
         // display-source dispatch. The event-loop body's `&mut Wm` borrow is
         // not active until dispatch returns; this is the same access window as
         // synchronous keyboard handling.
         let Some(wm_ptr) = (unsafe { self.wm_mut_ptr() }) else {
-            return false;
+            return None;
         };
         let wm = unsafe { &mut *wm_ptr };
         crate::backend::wayland::commands::apply_fullscreen_request(
@@ -128,6 +128,25 @@ impl WaylandState {
             &mut wm.bar,
             win,
             fullscreen,
+        )
+    }
+
+    fn commit_native_maximized_request(
+        &mut self,
+        win: crate::types::WindowId,
+        maximized: bool,
+    ) -> Option<crate::client::mode::MaximizedTransition> {
+        // SAFETY: see `commit_native_fullscreen_request`.
+        let Some(wm_ptr) = (unsafe { self.wm_mut_ptr() }) else {
+            return None;
+        };
+        let wm = unsafe { &mut *wm_ptr };
+        crate::backend::wayland::commands::apply_maximized_request(
+            &mut wm.core,
+            &mut wm.work,
+            &mut wm.bar,
+            win,
+            maximized,
         )
     }
 
@@ -564,13 +583,14 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
-        if !self.commit_native_fullscreen_request(win, true) {
+        let Some(transition) = self.commit_native_fullscreen_request(win, true) else {
             return;
-        }
+        };
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
         });
         surface.send_configure();
+        crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
         self.request_space_sync();
         self.request_render();
     }
@@ -579,41 +599,48 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
-        if !self.commit_native_fullscreen_request(win, false) {
+        let Some(transition) = self.commit_native_fullscreen_request(win, false) else {
             return;
-        }
+        };
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
         });
         surface.send_configure();
+        crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
         self.request_space_sync();
         self.request_render();
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.push_command(super::super::commands::WmCommand::SetMaximized {
-                win,
-                maximized: true,
-            });
-        }
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        let Some(transition) = self.commit_native_maximized_request(win, true) else {
+            return;
+        };
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
         });
         surface.send_configure();
+        crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+        self.request_space_sync();
+        self.request_render();
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.push_command(super::super::commands::WmCommand::SetMaximized {
-                win,
-                maximized: false,
-            });
-        }
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        let Some(transition) = self.commit_native_maximized_request(win, false) else {
+            return;
+        };
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
         });
         surface.send_configure();
+        crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+        self.request_space_sync();
+        self.request_render();
     }
 }
 
@@ -665,7 +692,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 .map(|client| crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
-                    is_floating: client.base_mode() == crate::types::BaseClientMode::Floating,
+                    is_floating: client.placement() == crate::types::ClientPlacement::Floating,
                 })
                 .unwrap_or_else(|| crate::client::current_launch_context(&state.model));
             let _ = token_data

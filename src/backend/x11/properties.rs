@@ -316,17 +316,26 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if state.contains(&atom_fullscreen) {
         set_fullscreen(&mut WmCtx::X11(ctx_x11.reborrow()), win, true);
     }
+    if state.contains(&ctx_x11.x11_runtime.netatom.wm_maximized_vert)
+        || state.contains(&ctx_x11.x11_runtime.netatom.wm_maximized_horz)
+    {
+        crate::client::fullscreen::set_client_maximized(
+            &mut WmCtx::X11(ctx_x11.reborrow()),
+            win,
+            true,
+        );
+    }
 
     if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.model_mut().client_mut(win)
     {
-        client.set_base_mode(
+        client.set_placement(
             if crate::backend::x11::policy::should_float_for_x11_type(Some(
                 smithay::xwayland::xwm::WmWindowType::Dialog,
             )) {
-                crate::types::BaseClientMode::Floating
+                crate::types::ClientPlacement::Floating
             } else {
-                crate::types::BaseClientMode::Tiling
+                crate::types::ClientPlacement::Tiling
             },
         );
     }

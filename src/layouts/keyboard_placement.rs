@@ -356,7 +356,7 @@ mod tests {
                 win,
                 monitor_id,
                 tags,
-                mode: ClientMode::Tiling,
+                mode: ClientMode::tiled(),
                 ..Client::default()
             });
         }
@@ -400,7 +400,7 @@ mod tests {
             win: source,
             monitor_id,
             tags,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
         let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
@@ -440,7 +440,7 @@ mod tests {
                 win,
                 monitor_id,
                 tags,
-                mode: ClientMode::Tiling,
+                mode: ClientMode::tiled(),
                 ..Client::default()
             };
             client.size_hints.min_width = 140;
@@ -484,7 +484,7 @@ mod tests {
             win: source,
             monitor_id,
             tags,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             border_width: 0,
             ..Client::default()
         };

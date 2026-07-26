@@ -552,7 +552,7 @@ mod tests {
         model.insert_client(Client {
             win,
             monitor_id: source,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
         assert!(model.attach_client(win));

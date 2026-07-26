@@ -115,12 +115,16 @@ fn format_window_protocol(protocol: WindowProtocol) -> &'static str {
 
 fn format_window_state(state: &instantwm::ipc_types::WindowState) -> String {
     let mut parts = Vec::new();
-    match state.mode {
-        instantwm::types::ClientMode::Tiling => parts.push("Tiling"),
-        instantwm::types::ClientMode::Floating => parts.push("Floating"),
-        instantwm::types::ClientMode::TrueFullscreen { .. } => parts.push("Fullscreen"),
-        instantwm::types::ClientMode::FakeFullscreen { .. } => parts.push("FakeFullscreen"),
-        instantwm::types::ClientMode::Maximized { .. } => parts.push("Maximized"),
+    if state.mode.is_true_fullscreen() {
+        parts.push("Fullscreen");
+    } else if state.mode.is_fake_fullscreen() {
+        parts.push("FakeFullscreen");
+    } else if state.mode.is_maximized() {
+        parts.push("Maximized");
+    } else if state.mode.is_floating() {
+        parts.push("Floating");
+    } else {
+        parts.push("Tiling");
     }
     if state.sticky {
         parts.push("sticky");
@@ -254,12 +258,14 @@ fn format_scratchpad_list(scratchpads: &[ScratchpadInfo], json: bool) {
                     "-".to_string()
                 };
             let mut flags = Vec::new();
-            match sp.mode {
-                instantwm::types::ClientMode::TrueFullscreen { .. }
-                | instantwm::types::ClientMode::FakeFullscreen { .. } => flags.push("fullscreen"),
-                instantwm::types::ClientMode::Floating => flags.push("floating"),
-                instantwm::types::ClientMode::Tiling => flags.push("tiled"),
-                instantwm::types::ClientMode::Maximized { .. } => flags.push("maximized"),
+            if sp.mode.is_fullscreen() {
+                flags.push("fullscreen");
+            } else if sp.mode.is_maximized() {
+                flags.push("maximized");
+            } else if sp.mode.is_floating() {
+                flags.push("floating");
+            } else {
+                flags.push("tiled");
             }
             println!(
                 "{:<12} {:<8} {:<8} {:<8} {:<20} {}",

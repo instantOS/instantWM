@@ -63,8 +63,17 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             apply_true_fullscreen_backend_effects(ctx, win, monitor_rect);
             sync_monitor_z_order(ctx, monitor_id);
         }
-        crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen { .. } => {
+        crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen {
+            monitor_rect,
+            ..
+        } => {
             apply_fullscreen_signal(ctx, win, true);
+            ctx.move_resize(
+                win,
+                monitor_rect,
+                MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
+            );
+            apply_true_fullscreen_backend_effects(ctx, win, monitor_rect);
             sync_monitor_z_order(ctx, monitor_id);
         }
         crate::client::mode::FullscreenTransition::ExitedToFloating { restore_rect, .. } => {
@@ -76,10 +85,48 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             apply_fullscreen_exit_backend_effects(ctx, win);
             arrange(ctx, Some(monitor_id));
         }
-        crate::client::mode::FullscreenTransition::ExitedFakeFullscreen { .. } => {
+        crate::client::mode::FullscreenTransition::ExitedToMaximized { work_rect, .. } => {
             apply_fullscreen_exit_backend_effects(ctx, win);
-            sync_monitor_z_order(ctx, monitor_id);
+            ctx.move_resize(win, work_rect, MoveResizeOptions::immediate());
+            arrange(ctx, Some(monitor_id));
         }
+    }
+}
+
+/// Apply a client-requested maximize transition and project it to the backend.
+pub(crate) fn set_client_maximized(ctx: &mut WmCtx<'_>, win: WindowId, maximized: bool) {
+    let Some(transition) = ctx
+        .core_mut()
+        .model_mut()
+        .set_client_maximized(win, maximized)
+    else {
+        return;
+    };
+    let monitor_id = transition.monitor_id();
+
+    if let WmCtx::X11(ctx_x11) = ctx {
+        crate::backend::x11::fullscreen::set_maximized_atoms(
+            &ctx_x11.x11,
+            ctx_x11.x11_runtime,
+            win,
+            maximized,
+        );
+    }
+
+    match transition {
+        crate::client::mode::MaximizedTransition::Entered { work_rect, .. } => {
+            ctx.move_resize(win, work_rect, MoveResizeOptions::immediate());
+            arrange(ctx, Some(monitor_id));
+        }
+        crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. } => {
+            ctx.move_resize(win, restore_rect, MoveResizeOptions::immediate());
+            arrange(ctx, Some(monitor_id));
+        }
+        crate::client::mode::MaximizedTransition::ExitedToTiling { .. } => {
+            arrange(ctx, Some(monitor_id));
+        }
+        crate::client::mode::MaximizedTransition::Unchanged { .. }
+        | crate::client::mode::MaximizedTransition::UpdatedFullscreenRestore { .. } => {}
     }
 }
 

@@ -123,11 +123,14 @@ fn apply_surface_policy(
 ) {
     state.push_command(super::super::commands::WmCommand::UpdateXWaylandPolicy {
         win,
-        hints: surface.hints(),
-        size_hints: surface.size_hints(),
-        is_fullscreen: surface.is_fullscreen(),
-        is_hidden: surface.is_hidden(),
-        is_above: surface.is_above(),
+        update: crate::backend::x11::policy::XWaylandPolicyUpdate {
+            hints: surface.hints(),
+            size_hints: surface.size_hints(),
+            is_fullscreen: surface.is_fullscreen(),
+            is_maximized: surface.is_maximized(),
+            is_hidden: surface.is_hidden(),
+            is_above: surface.is_above(),
+        },
     });
 }
 

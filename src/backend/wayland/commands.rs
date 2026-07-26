@@ -11,26 +11,91 @@ use crate::types::WindowId;
 
 /// Commit a fullscreen protocol request to authoritative WM state.
 ///
-/// Returning `true` means the window is managed and the compositor may
-/// acknowledge the requested state in an XDG/XWayland configure. Layout is
-/// urgent because delaying it behind an existing animation would leave the
-/// protocol state and fullscreen geometry out of sync.
+/// Returning a transition means the window is managed and the compositor may
+/// acknowledge the requested state in an XDG/XWayland configure. The caller
+/// must also project any synchronous geometry carried by that transition.
+/// Layout is urgent because delaying it behind an existing animation would
+/// leave protocol state and fullscreen geometry out of sync.
 pub(crate) fn apply_fullscreen_request(
     core: &mut crate::core_state::CoreState,
     work: &mut crate::core_state::PendingWork,
     bar: &mut crate::bar::BarState,
     win: WindowId,
     fullscreen: bool,
-) -> bool {
+) -> Option<crate::client::mode::FullscreenTransition> {
     let Some(transition) = core.model.set_fullscreen(win, fullscreen) else {
-        return false;
+        return None;
     };
 
     if transition.changed() {
         work.layout.mark_monitor_urgent(transition.monitor_id());
         bar.mark_dirty();
     }
-    true
+    Some(transition)
+}
+
+/// Commit a client maximize request to authoritative WM state.
+pub(crate) fn apply_maximized_request(
+    core: &mut crate::core_state::CoreState,
+    work: &mut crate::core_state::PendingWork,
+    bar: &mut crate::bar::BarState,
+    win: WindowId,
+    maximized: bool,
+) -> Option<crate::client::mode::MaximizedTransition> {
+    let transition = core.model.set_client_maximized(win, maximized)?;
+    if transition.changed() {
+        work.layout.mark_monitor_urgent(transition.monitor_id());
+        bar.mark_dirty();
+    }
+    Some(transition)
+}
+
+/// Immediately project geometry that must accompany a fullscreen state
+/// configure.
+///
+/// In particular, native clients must receive the restored floating size in
+/// the same dispatch as the unfullscreen state. Deferring that resize until
+/// layout would let a final fullscreen-sized commit look authoritative after
+/// the model had already returned to floating mode.
+pub(crate) fn apply_fullscreen_geometry(
+    state: &mut crate::backend::wayland::compositor::WaylandState,
+    win: WindowId,
+    transition: crate::client::mode::FullscreenTransition,
+) {
+    match transition {
+        crate::client::mode::FullscreenTransition::EnteredFromLayout { monitor_rect, .. }
+        | crate::client::mode::FullscreenTransition::EnteredFromFloating { monitor_rect, .. }
+        | crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen {
+            monitor_rect,
+            ..
+        } => {
+            state.configure_presentation_transition(win, monitor_rect);
+        }
+        crate::client::mode::FullscreenTransition::ExitedToFloating { restore_rect, .. } => {
+            state.configure_presentation_transition(win, restore_rect);
+        }
+        crate::client::mode::FullscreenTransition::ExitedToMaximized { work_rect, .. } => {
+            state.configure_presentation_transition(win, work_rect);
+        }
+        _ => {}
+    }
+}
+
+/// Project geometry carried by a synchronous maximize transition.
+pub(crate) fn apply_maximized_geometry(
+    state: &mut crate::backend::wayland::compositor::WaylandState,
+    win: WindowId,
+    transition: crate::client::mode::MaximizedTransition,
+) {
+    match transition {
+        crate::client::mode::MaximizedTransition::Entered { work_rect, .. } => {
+            state.configure_presentation_transition(win, work_rect);
+        }
+        crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. } => {
+            state.configure_presentation_transition(win, restore_rect);
+        }
+        _ => {}
+    }
 }
 
 /// Pointer motion data queued from backend input sources.
@@ -142,14 +207,10 @@ pub enum WmCommand {
         win: WindowId,
         parent: Option<WindowId>,
     },
-    /// Update XWayland-specific policy (hints, transient_for, etc.).
+    /// Reconcile one complete XWayland policy snapshot.
     UpdateXWaylandPolicy {
         win: WindowId,
-        hints: Option<x11rb::properties::WmHints>,
-        size_hints: Option<x11rb::properties::WmSizeHints>,
-        is_fullscreen: bool,
-        is_hidden: bool,
-        is_above: bool,
+        update: crate::backend::x11::policy::XWaylandPolicyUpdate,
     },
     /// Update a window's actual committed size from the compositor.
     UpdateWindowSize { win: WindowId, w: i32, h: i32 },
@@ -187,10 +248,10 @@ pub enum WmCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::apply_fullscreen_request;
+    use super::{apply_fullscreen_request, apply_maximized_request};
     use crate::bar::BarState;
     use crate::core_state::{CoreState, PendingWork};
-    use crate::types::{BaseClientMode, Client, Monitor, Rect, WindowId};
+    use crate::types::{Client, ClientPlacement, Monitor, Rect, WindowId};
 
     #[test]
     fn fullscreen_request_updates_authoritative_state_before_acknowledgement() {
@@ -206,9 +267,7 @@ mod tests {
         work.layout.clear();
         let mut bar = BarState::default();
 
-        assert!(apply_fullscreen_request(
-            &mut core, &mut work, &mut bar, win, true
-        ));
+        assert!(apply_fullscreen_request(&mut core, &mut work, &mut bar, win, true).is_some());
 
         assert!(core.model.client(win).unwrap().mode().is_true_fullscreen());
         assert!(work.layout.is_pending());
@@ -223,15 +282,35 @@ mod tests {
         work.layout.clear();
         let mut bar = BarState::default();
 
-        assert!(!apply_fullscreen_request(
-            &mut core,
-            &mut work,
-            &mut bar,
-            WindowId(404),
-            true
-        ));
+        assert!(
+            apply_fullscreen_request(&mut core, &mut work, &mut bar, WindowId(404), true).is_none()
+        );
         assert!(!work.layout.is_pending());
         assert!(!bar.needs_redraw());
+    }
+
+    #[test]
+    fn maximize_request_updates_model_and_schedules_projection_atomically() {
+        let mut core = CoreState::default();
+        let monitor_id = core.model.monitors.push(Monitor::default());
+        let win = WindowId(42);
+        core.model.insert_client(Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        });
+        let mut work = PendingWork::default();
+        work.layout.clear();
+        let mut bar = BarState::default();
+
+        assert!(apply_maximized_request(&mut core, &mut work, &mut bar, win, true).is_some());
+
+        let mode = core.model.client(win).unwrap().mode();
+        assert!(mode.is_maximized());
+        assert!(mode.is_protocol_maximized());
+        assert!(work.layout.is_pending());
+        assert!(work.layout.is_urgent());
+        assert!(bar.needs_redraw());
     }
 
     #[test]
@@ -254,18 +333,14 @@ mod tests {
             old_border_width: 2,
             ..Client::default()
         };
-        client.replace_mode_with_base(BaseClientMode::Floating);
+        client.reset_to_placement(ClientPlacement::Floating);
         core.model.insert_client(client);
         let mut work = PendingWork::default();
         let mut bar = BarState::default();
 
-        assert!(apply_fullscreen_request(
-            &mut core, &mut work, &mut bar, win, true
-        ));
+        assert!(apply_fullscreen_request(&mut core, &mut work, &mut bar, win, true).is_some());
         crate::client::sync_client_geometry(&mut core.model, win, fullscreen_rect);
-        assert!(apply_fullscreen_request(
-            &mut core, &mut work, &mut bar, win, false
-        ));
+        assert!(apply_fullscreen_request(&mut core, &mut work, &mut bar, win, false).is_some());
 
         let client = core.model.client(win).unwrap();
         assert!(client.mode().is_floating());

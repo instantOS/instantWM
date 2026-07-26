@@ -137,7 +137,7 @@ fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
 
     let mut fullscreen = Client {
         win: WindowId(1),
-        mode: crate::types::ClientMode::Tiling.as_fullscreen(),
+        mode: crate::types::ClientMode::tiled().as_fullscreen(),
         ..Client::default()
     };
     fullscreen.set_tag_mask(tags);
@@ -219,7 +219,7 @@ fn tiled_client_count_matches_collected_tiled_clients() {
 
     let mut floating = Client {
         win: WindowId(3),
-        mode: crate::types::ClientMode::Floating,
+        mode: crate::types::ClientMode::floating(),
         ..Client::default()
     };
     floating.set_tag_mask(TagMask::single(1).unwrap());
@@ -264,7 +264,7 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
                 ..Client::default()
             };
             if matches!(win, WindowId(2) | WindowId(4)) {
-                client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+                client.reset_to_placement(crate::types::ClientPlacement::Floating);
             }
             (win, client)
         })

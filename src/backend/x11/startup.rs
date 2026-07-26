@@ -143,6 +143,8 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
     let net_wm_state = intern_atom(conn, "_NET_WM_STATE", false);
     let net_wm_check = intern_atom(conn, "_NET_SUPPORTING_WM_CHECK", false);
     let net_wm_fullscreen = intern_atom(conn, "_NET_WM_STATE_FULLSCREEN", false);
+    let net_wm_maximized_vert = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_VERT", false);
+    let net_wm_maximized_horz = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_HORZ", false);
     let net_wm_window_type = intern_atom(conn, "_NET_WM_WINDOW_TYPE", false);
     let net_wm_window_type_dialog = intern_atom(conn, "_NET_WM_WINDOW_TYPE_DIALOG", false);
     let net_client_list = intern_atom(conn, "_NET_CLIENT_LIST", false);
@@ -178,6 +180,8 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         wm_state: net_wm_state,
         wm_check: net_wm_check,
         wm_fullscreen: net_wm_fullscreen,
+        wm_maximized_vert: net_wm_maximized_vert,
+        wm_maximized_horz: net_wm_maximized_horz,
         wm_window_type: net_wm_window_type,
         wm_window_type_dialog: net_wm_window_type_dialog,
         client_list: net_client_list,

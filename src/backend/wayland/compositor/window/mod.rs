@@ -17,6 +17,13 @@ pub mod x11;
 pub use classify::WindowType;
 pub(crate) use x11::is_unmanaged_x11_overlay;
 
+fn committed_size_is_stale(
+    pending_authoritative_size: Option<(i32, i32)>,
+    committed_size: (i32, i32),
+) -> bool {
+    pending_authoritative_size.is_some_and(|configured| configured != committed_size)
+}
+
 impl WaylandState {
     /// Check if a window exists in the index.
     pub fn window_exists(&self, window: WindowId) -> bool {
@@ -58,20 +65,6 @@ impl WaylandState {
         let new_w = committed.size.w.max(1);
         let new_h = committed.size.h.max(1);
 
-        // A client can commit a buffer for an older configure after a newer
-        // tiled size has already been requested (this is common during
-        // Firefox startup).  Do not let the configure de-duplication cache
-        // make that stale buffer permanent: the next space sync must resend
-        // the still-authoritative WM size.
-        if self
-            .last_configured_size
-            .get(&window)
-            .is_some_and(|&size| size != (new_w, new_h))
-        {
-            self.last_configured_size.remove(&window);
-            self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
-        }
-
         self.push_command(
             crate::backend::wayland::commands::WmCommand::UpdateWindowSize {
                 win: window,
@@ -79,6 +72,44 @@ impl WaylandState {
                 h: new_h,
             },
         );
+    }
+
+    /// Decide whether committed client size may update logical floating
+    /// geometry, and maintain configure retry state for rejected/stale sizes.
+    pub(crate) fn committed_size_may_update_model(
+        &mut self,
+        window: WindowId,
+        new_w: i32,
+        new_h: i32,
+    ) -> bool {
+        // A fullscreen client can commit its old buffer after the compositor
+        // has restored floating mode. While that one-shot restore configure is
+        // outstanding, only its size may feed back into logical geometry.
+        let pending_authoritative_size = self.pending_authoritative_sizes.get(&window).copied();
+        let stale_for_authoritative_size =
+            committed_size_is_stale(pending_authoritative_size, (new_w, new_h));
+        if stale_for_authoritative_size {
+            self.last_configured_size.remove(&window);
+            self.request_space_sync();
+            return false;
+        }
+        if pending_authoritative_size.is_some() {
+            self.pending_authoritative_sizes.remove(&window);
+        }
+
+        // Outside an authoritative transition, floating clients may legally
+        // commit a size different from the request. Invalidate configure
+        // de-duplication so layout-owned modes can resend their target, while
+        // still forwarding the actual size for floating-mode reconciliation.
+        if self
+            .last_configured_size
+            .get(&window)
+            .is_some_and(|&size| size != (new_w, new_h))
+        {
+            self.last_configured_size.remove(&window);
+            self.request_space_sync();
+        }
+        true
     }
 
     /// Request the compositor to warp the pointer to `(x, y)` in logical
@@ -147,5 +178,17 @@ impl WaylandState {
                 Some((w.clone(), render_origin))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::committed_size_is_stale;
+
+    #[test]
+    fn committed_size_must_match_an_authoritative_transition() {
+        assert!(!committed_size_is_stale(None, (800, 600)));
+        assert!(!committed_size_is_stale(Some((800, 600)), (800, 600)));
+        assert!(committed_size_is_stale(Some((800, 600)), (1920, 1080)));
     }
 }

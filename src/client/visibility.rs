@@ -183,7 +183,7 @@ mod tests {
             monitor_id: mon,
             is_hidden: hidden,
             is_sticky: sticky,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             geo: Rect {
                 x: 0,
                 y: 0,
@@ -306,7 +306,7 @@ mod tests {
         let mut client = make_client(win, tag, MonitorId::from_raw(0), false, false);
         client.geo = rect;
         client.border_width = 2;
-        client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        client.reset_to_placement(crate::types::ClientPlacement::Floating);
 
         let clients = vec![client];
         let mon = make_monitor(0, tag, vec![win]);
@@ -316,7 +316,7 @@ mod tests {
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].rect, rect);
         assert_eq!(plan[0].border_width, 2);
-        assert_eq!(plan[0].mode, ClientMode::Floating);
+        assert_eq!(plan[0].mode, ClientMode::floating());
         assert!(plan[0].visible);
     }
 }

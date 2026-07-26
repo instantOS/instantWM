@@ -657,27 +657,33 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
     let data = e.data.as_data32();
-    let fullscreen_atom = ctx.x11_runtime.netatom.wm_fullscreen;
     let action = data[0];
-    let touches_fullscreen = data[1] == fullscreen_atom || data[2] == fullscreen_atom;
+    let requested = |current: bool| match action {
+        0 => Some(false),
+        1 => Some(true),
+        2 => Some(!current),
+        _ => None,
+    };
+    let atoms = [data[1], data[2]];
+    let netatom = ctx.x11_runtime.netatom;
+    let mode = ctx.core.state.model.client(win).map(|client| client.mode());
 
-    if !touches_fullscreen {
-        return;
+    if atoms.contains(&netatom.wm_maximized_vert) || atoms.contains(&netatom.wm_maximized_horz) {
+        let current = mode.is_some_and(|mode| mode.is_protocol_maximized());
+        if let Some(maximized) = requested(current) {
+            crate::client::fullscreen::set_client_maximized(
+                &mut WmCtx::X11(ctx.reborrow()),
+                win,
+                maximized,
+            );
+        }
     }
 
-    let is_fullscreen = ctx
-        .core
-        .state
-        .model
-        .client(win)
-        .map(|c| c.mode().is_fullscreen())
-        .unwrap_or(false);
-
-    match action {
-        0 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, false),
-        1 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, true),
-        2 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, !is_fullscreen),
-        _ => {}
+    if atoms.contains(&netatom.wm_fullscreen) {
+        let current = mode.is_some_and(|mode| mode.is_fullscreen());
+        if let Some(fullscreen) = requested(current) {
+            crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, fullscreen);
+        }
     }
 }
 

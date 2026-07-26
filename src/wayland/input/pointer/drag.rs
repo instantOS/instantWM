@@ -245,7 +245,7 @@ mod tests {
                 win,
                 monitor_id,
                 tags,
-                mode: ClientMode::Tiling,
+                mode: ClientMode::tiled(),
                 ..Client::default()
             });
         }

@@ -5,7 +5,7 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{ClientMode, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -27,6 +27,32 @@ pub fn set_fullscreen_atoms(
         }
     } else {
         state.retain(|&a| a != fullscreen_atom);
+    }
+    write_net_wm_state_atoms(x11.conn, x11_win, wm_state, &state);
+}
+
+/// Add or remove both EWMH maximized atoms for `win`.
+pub fn set_maximized_atoms(
+    x11: &X11BackendRef<'_>,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+    maximized: bool,
+) {
+    let x11_win: Window = win.into();
+    let wm_state = x11_runtime.netatom.wm_state;
+    let atoms = [
+        x11_runtime.netatom.wm_maximized_vert,
+        x11_runtime.netatom.wm_maximized_horz,
+    ];
+    let mut state = get_atom_props(x11.conn, x11_win, wm_state);
+    if maximized {
+        for atom in atoms {
+            if !state.contains(&atom) {
+                state.push(atom);
+            }
+        }
+    } else {
+        state.retain(|atom| !atoms.contains(atom));
     }
     write_net_wm_state_atoms(x11.conn, x11_win, wm_state, &state);
 }
@@ -102,10 +128,10 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
     if let Some(client) = ctx_x11.core.model_mut().client_mut(win) {
-        match client.mode() {
-            ClientMode::FakeFullscreen { .. } => client.enter_fullscreen(),
-            ClientMode::TrueFullscreen { .. } => client.enter_fake_fullscreen(),
-            _ => client.enter_fake_fullscreen(),
+        if client.mode().is_fake_fullscreen() {
+            client.enter_fullscreen();
+        } else {
+            client.enter_fake_fullscreen();
         }
         client.border_width = if client.mode().is_true_fullscreen() {
             0
@@ -113,4 +139,5 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
             old_border_width
         };
     }
+    set_fullscreen_atoms(&ctx_x11.x11, ctx_x11.x11_runtime, win, true);
 }

@@ -470,7 +470,7 @@ mod tests {
         client.win = WindowId::from(1_u32);
         client.monitor_id = MonitorId::default();
         client.set_tag_mask(TagMask::single(1).unwrap());
-        client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        client.reset_to_placement(crate::types::ClientPlacement::Floating);
         client.border_width = border_width;
         client.geo = rect;
         client.save_floating_placement(rect, work_rect);
@@ -593,7 +593,7 @@ mod tests {
         model
             .client_mut(win)
             .unwrap()
-            .replace_mode_with_base(crate::types::BaseClientMode::Floating);
+            .reset_to_placement(crate::types::ClientPlacement::Floating);
         let floating = Rect::new(100, 100, 700, 500);
         sync_client_geometry(&mut model, win, floating);
         let saved = model
@@ -631,7 +631,7 @@ mod tests {
             old_geo: fullscreen,
             ..Client::default()
         };
-        client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        client.reset_to_placement(crate::types::ClientPlacement::Floating);
         model.insert_client(client);
 
         sync_client_geometry(&mut model, win, restored);

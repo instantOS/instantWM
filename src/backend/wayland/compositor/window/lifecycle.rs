@@ -152,6 +152,7 @@ impl WaylandState {
         self.space.unmap_elem(&element);
         self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
+        self.pending_authoritative_sizes.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.request_space_sync();
     }
@@ -174,6 +175,7 @@ impl WaylandState {
         self.active_resizes.remove(&window);
         self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
+        self.pending_authoritative_sizes.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
         self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);

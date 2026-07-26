@@ -200,18 +200,15 @@ impl WaylandState {
                 .user_data()
                 .get::<WindowIdMarker>()
                 .is_some_and(|marker| self.active_resizes.contains(&marker.id));
-            let is_fullscreen = window
+            let mode = window
                 .user_data()
                 .get::<WindowIdMarker>()
                 .and_then(|marker| {
-                    self.globals().and_then(|state| {
-                        state
-                            .model
-                            .client(marker.id)
-                            .map(|c| c.mode().is_fullscreen())
-                    })
-                })
-                .unwrap_or(false);
+                    self.globals()
+                        .and_then(|state| state.model.client(marker.id).map(|c| c.mode()))
+                });
+            let is_fullscreen = mode.is_some_and(|mode| mode.is_fullscreen());
+            let is_maximized = mode.is_some_and(|mode| mode.is_protocol_maximized());
             toplevel.with_pending_state(|state| {
                 if let Some(size) = size {
                     state.size = Some(size);
@@ -225,6 +222,11 @@ impl WaylandState {
                     state.states.set(ToplevelState::Fullscreen);
                 } else {
                     state.states.unset(ToplevelState::Fullscreen);
+                }
+                if is_maximized {
+                    state.states.set(ToplevelState::Maximized);
+                } else {
+                    state.states.unset(ToplevelState::Maximized);
                 }
             });
             toplevel.send_pending_configure();

@@ -25,6 +25,9 @@ impl WaylandState {
 
     /// Resize a window to the given rectangle.
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
+        if let Some(pending) = self.pending_authoritative_sizes.get_mut(&window) {
+            *pending = (rect.w.max(1), rect.h.max(1));
+        }
         if let Some(element) = self.find_window(window).cloned()
             && let Some(surface) = element.x11_surface()
         {
@@ -36,6 +39,16 @@ impl WaylandState {
         }
         let mode = self.default_window_move_mode();
         self.set_window_target_rect(window, rect, mode);
+    }
+
+    /// Apply an authoritative presentation-transition rectangle.
+    ///
+    /// Until the client commits this size, buffers from the previous
+    /// presentation must not feed back into logical model geometry.
+    pub(crate) fn configure_presentation_transition(&mut self, window: WindowId, rect: Rect) {
+        self.pending_authoritative_sizes
+            .insert(window, (rect.w.max(1), rect.h.max(1)));
+        self.resize_window(window, rect);
     }
 
     /// Raise a window to the top of the stack.

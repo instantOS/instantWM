@@ -6,7 +6,7 @@ use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
 use crate::types::{
-    AltCursor, BaseClientMode, Client, ClientMode, Monitor, Point, Rect, ResizeDirection, Size,
+    AltCursor, Client, ClientMode, ClientPlacement, Monitor, Point, Rect, ResizeDirection, Size,
     TagMask, WindowId,
 };
 use std::collections::HashMap;
@@ -52,7 +52,7 @@ fn arrange_invalidates_pointer_placement_candidates() {
             win,
             monitor_id,
             tags,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
     }
@@ -91,7 +91,7 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
             win,
             monitor_id,
             tags,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
     }
@@ -266,7 +266,7 @@ fn pointer_tree_resize_remains_active_when_client_minimums_are_impossible() {
             win,
             monitor_id,
             tags,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         };
         client.size_hints.min_width = 200;
@@ -342,7 +342,7 @@ fn floating_focus_does_not_raise_within_the_floating_layer() {
         .into_iter()
         .map(|win| {
             let mut client = visible_client(win);
-            client.replace_mode_with_base(BaseClientMode::Floating);
+            client.reset_to_placement(ClientPlacement::Floating);
             (win, client)
         })
         .collect::<HashMap<_, _>>();
@@ -365,7 +365,7 @@ fn transient_dialogs_stay_above_ordinary_windows_and_nested_children() {
         .into_iter()
         .map(|win| {
             let mut client = visible_client(win);
-            client.replace_mode_with_base(BaseClientMode::Floating);
+            client.reset_to_placement(ClientPlacement::Floating);
             (win, client)
         })
         .collect::<HashMap<_, _>>();
@@ -627,9 +627,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
             win,
             tags,
             geo: original,
-            mode: ClientMode::TrueFullscreen {
-                restore: BaseClientMode::Tiling,
-            },
+            mode: ClientMode::tiled().as_fullscreen(),
             ..Client::default()
         },
     )]);
@@ -639,6 +637,62 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
     assert_eq!(plan.client_moves.len(), 1);
     assert!(plan.fullscreen_moves.is_empty());
     assert_eq!(plan.z_order, Some(vec![win]));
+}
+
+#[test]
+fn fullscreen_preserves_a_tiled_clients_tree_slot() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let fullscreen_win = windows[1];
+    let mut monitor = monitor_with_order(&windows, fullscreen_win);
+    monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
+    monitor.available_rect = monitor.monitor_rect;
+    monitor.clients = windows.to_vec();
+    let mut clients = windows
+        .into_iter()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &windows, 1);
+
+    let before = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let before_rect = before
+        .client_moves
+        .iter()
+        .find(|output| output.win == fullscreen_win)
+        .unwrap()
+        .rect;
+    let leaves_before = monitor.per_tag_state().layout_tree.leaves();
+
+    clients.get_mut(&fullscreen_win).unwrap().enter_fullscreen();
+    let fullscreen = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+
+    assert_eq!(monitor.per_tag_state().layout_tree.leaves(), leaves_before);
+    assert!(
+        fullscreen
+            .client_moves
+            .iter()
+            .all(|output| output.win != fullscreen_win)
+    );
+    assert!(
+        fullscreen
+            .fullscreen_moves
+            .iter()
+            .any(|output| output.win == fullscreen_win)
+    );
+
+    clients.get_mut(&fullscreen_win).unwrap().restore_mode();
+    let restored = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let restored_rect = restored
+        .client_moves
+        .iter()
+        .find(|output| output.win == fullscreen_win)
+        .unwrap()
+        .rect;
+
+    assert_eq!(restored_rect, before_rect);
+    assert_eq!(monitor.per_tag_state().layout_tree.leaves(), leaves_before);
 }
 
 #[test]
@@ -733,7 +787,7 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     clients
         .get_mut(&WindowId(3))
         .unwrap()
-        .replace_mode_with_base(BaseClientMode::Floating);
+        .reset_to_placement(ClientPlacement::Floating);
     monitor
         .per_tag_state()
         .layout_tree
@@ -755,11 +809,11 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     );
     assert_eq!(
         clients.get(&WindowId(1)).unwrap().mode(),
-        ClientMode::Tiling
+        ClientMode::tiled()
     );
     assert_eq!(
         clients.get(&WindowId(3)).unwrap().mode(),
-        ClientMode::Floating
+        ClientMode::floating()
     );
 
     monitor.per_tag_state().presentation = PresentationMode::Tiled;
@@ -802,7 +856,7 @@ fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() 
     clients
         .get_mut(&WindowId(3))
         .unwrap()
-        .replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        .reset_to_placement(crate::types::ClientPlacement::Floating);
     let fullscreen = clients.get_mut(&WindowId(4)).unwrap();
     fullscreen.enter_fullscreen();
 
@@ -833,7 +887,7 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
     clients
         .get_mut(&WindowId(2))
         .unwrap()
-        .replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        .reset_to_placement(crate::types::ClientPlacement::Floating);
 
     let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
 

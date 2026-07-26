@@ -6,10 +6,12 @@ use crate::model::WmModel;
 use crate::types::{Client, ClientMode, MonitorId, SizeHints, WindowId};
 
 /// Complete XWayland policy snapshot delivered by the backend.
-pub(crate) struct XWaylandPolicyUpdate {
+#[derive(Debug)]
+pub struct XWaylandPolicyUpdate {
     pub hints: Option<WmHints>,
     pub size_hints: Option<WmSizeHints>,
     pub is_fullscreen: bool,
+    pub is_maximized: bool,
     pub is_hidden: bool,
     pub is_above: bool,
 }
@@ -81,6 +83,8 @@ pub(crate) fn apply_xwayland_policy(
     // mutating the client-local mode directly.
     let fullscreen_transition = model.set_fullscreen(win, update.is_fullscreen)?;
     debug_assert_eq!(fullscreen_transition.monitor_id(), monitor_id);
+    let maximized_transition = model.set_client_maximized(win, update.is_maximized)?;
+    debug_assert_eq!(maximized_transition.monitor_id(), monitor_id);
 
     {
         let client = model.client_mut(win)?;
@@ -88,9 +92,9 @@ pub(crate) fn apply_xwayland_policy(
         apply_size_hints_to_client(client, update.size_hints);
         client.is_hidden = update.is_hidden;
 
-        if update.is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
+        if update.is_above && client.placement() != crate::types::ClientPlacement::Floating {
             client.save_floating_placement(client.geo, work_area);
-            client.set_base_mode(crate::types::BaseClientMode::Floating);
+            client.set_placement(crate::types::ClientPlacement::Floating);
         }
     }
 
@@ -180,7 +184,7 @@ pub fn should_float_for_x11_type(window_type: Option<WmWindowType>) -> bool {
 mod tests {
     use super::{XWaylandPolicyUpdate, apply_xwayland_policy};
     use crate::model::WmModel;
-    use crate::types::{BaseClientMode, Client, Monitor, Rect, WindowId};
+    use crate::types::{Client, ClientPlacement, Monitor, Rect, WindowId};
 
     #[test]
     fn xwayland_policy_uses_authoritative_fullscreen_geometry_restore() {
@@ -202,13 +206,14 @@ mod tests {
             old_border_width: 2,
             ..Client::default()
         };
-        client.replace_mode_with_base(BaseClientMode::Floating);
+        client.reset_to_placement(ClientPlacement::Floating);
         model.insert_client(client);
 
         let update = |is_fullscreen| XWaylandPolicyUpdate {
             hints: None,
             size_hints: None,
             is_fullscreen,
+            is_maximized: false,
             is_hidden: false,
             is_above: false,
         };

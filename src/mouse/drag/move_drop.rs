@@ -497,7 +497,7 @@ fn finish_tiling_edge_drop(client: &mut Client) {
     // The drag has already moved `geo` to the edge. Unlike the ordinary
     // tiled-mode command, snapshotting it here would destroy the position
     // restored by a later float toggle.
-    client.replace_mode_with_base(BaseClientMode::Tiling);
+    client.reset_to_placement(ClientPlacement::Tiling);
 }
 
 /// Shared post-release drop handling for move-like drags.
@@ -587,7 +587,7 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::client::geometry::FloatingPlacementIntent;
     use crate::layouts::PresentationMode;
-    use crate::types::{BaseClientMode, Client, ClientMode, Monitor, Rect, TagMask, WindowId};
+    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     #[test]
@@ -598,16 +598,16 @@ mod tests {
             ..Client::default()
         };
         client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
-        client.replace_mode_with_base(BaseClientMode::Floating);
+        client.reset_to_placement(ClientPlacement::Floating);
 
         finish_tiling_edge_drop(&mut client);
 
-        assert_eq!(client.mode(), ClientMode::Tiling);
+        assert_eq!(client.mode(), ClientMode::tiled());
         assert_eq!(client.saved_floating_rect(), Some(saved));
     }
 
     #[test]
-    fn floating_presentation_drag_does_not_change_tiled_base_mode() {
+    fn floating_presentation_drag_does_not_change_tiled_placement() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1200, 800),
@@ -627,7 +627,7 @@ mod tests {
             win,
             monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             geo: Rect::new(100, 100, 400, 300),
             ..Client::default()
         });
@@ -641,7 +641,7 @@ mod tests {
         assert_eq!(result, Some((Rect::new(100, 100, 400, 300), false)));
         assert_eq!(
             wm.core.model.client(win).unwrap().mode(),
-            ClientMode::Tiling
+            ClientMode::tiled()
         );
     }
 }

@@ -186,14 +186,14 @@ mod tests {
 
     #[test]
     fn planner_returns_none_when_only_one_monitor() {
-        let model = model_with_selected_client(ClientMode::Tiling, 1);
+        let model = model_with_selected_client(ClientMode::tiled(), 1);
 
         assert_eq!(plan_send_to_monitor(&model, MonitorDirection::NEXT), None);
     }
 
     #[test]
     fn planner_uses_floating_strategy_for_floating_clients() {
-        let model = model_with_selected_client(ClientMode::Floating, 2);
+        let model = model_with_selected_client(ClientMode::floating(), 2);
         let selected_id = model.selected_monitor_id();
         let target_id = model
             .monitors
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn planner_uses_direct_transfer_for_tiled_clients() {
-        let model = model_with_selected_client(ClientMode::Tiling, 2);
+        let model = model_with_selected_client(ClientMode::tiled(), 2);
         let selected_id = model.selected_monitor_id();
         let target_id = model
             .monitors

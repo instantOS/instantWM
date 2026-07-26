@@ -335,26 +335,15 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::UpdateTransientFor { win, parent } => {
                 handle_update_transient_for(wm, win, parent);
             }
-            WmCommand::UpdateXWaylandPolicy {
-                win,
-                hints,
-                size_hints,
-                is_fullscreen,
-                is_hidden,
-                is_above,
-            } => handle_update_xwayland_policy(
-                wm,
-                win,
-                hints,
-                size_hints,
-                is_fullscreen,
-                is_hidden,
-                is_above,
-            ),
-            WmCommand::UpdateWindowSize { win, w, h } => {
-                handle_update_window_size(wm, win, w, h);
+            WmCommand::UpdateXWaylandPolicy { win, update } => {
+                handle_update_xwayland_policy(wm, win, update);
             }
-            WmCommand::SetMaximized { win, maximized } => handle_set_maximized(wm, win, maximized),
+            WmCommand::UpdateWindowSize { win, w, h } => {
+                handle_update_window_size(wm, state, win, w, h);
+            }
+            WmCommand::SetMaximized { win, maximized } => {
+                handle_set_maximized(wm, state, win, maximized);
+            }
             WmCommand::SetFullscreen { win, fullscreen } => {
                 handle_set_fullscreen(wm, state, win, fullscreen);
             }
@@ -471,7 +460,20 @@ fn handle_update_transient_for(
     crate::layouts::sync_monitor_z_order(&mut ctx, monitor_id);
 }
 
-fn handle_update_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32, h: i32) {
+fn handle_update_window_size(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    w: i32,
+    h: i32,
+) {
+    if !state.committed_size_may_update_model(win, w, h) {
+        return;
+    }
+    apply_committed_window_size(wm, win, w, h);
+}
+
+fn apply_committed_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32, h: i32) {
     let mut ctx = wm.ctx();
     let state = ctx.core_mut().state_mut();
     if let Some(client) = state.model.client(win)
@@ -499,15 +501,16 @@ fn handle_set_fullscreen(
     win: crate::types::WindowId,
     fullscreen: bool,
 ) {
-    if !crate::backend::wayland::commands::apply_fullscreen_request(
+    let Some(transition) = crate::backend::wayland::commands::apply_fullscreen_request(
         &mut wm.core,
         &mut wm.work,
         &mut wm.bar,
         win,
         fullscreen,
-    ) {
+    ) else {
         return;
-    }
+    };
+    crate::backend::wayland::commands::apply_fullscreen_geometry(state, win, transition);
     state.request_space_sync();
     state.request_render();
 }
@@ -612,7 +615,7 @@ fn handle_map_window(
         client.monitor_id = lc.monitor_id;
         client.set_tag_mask(lc.tags);
         if lc.is_floating {
-            client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+            client.reset_to_placement(crate::types::ClientPlacement::Floating);
         }
     } else {
         let Some(selected_monitor) = state.model.selected_monitor() else {
@@ -687,9 +690,9 @@ fn handle_map_window(
 
     if should_float {
         if let Some(c) = state.model.client_mut(win)
-            && c.base_mode() != crate::types::BaseClientMode::Floating
+            && c.placement() != crate::types::ClientPlacement::Floating
         {
-            c.set_base_mode(crate::types::BaseClientMode::Floating);
+            c.set_placement(crate::types::ClientPlacement::Floating);
         }
         state.raise_client_in_z_order(win);
     }
@@ -833,24 +836,11 @@ fn handle_begin_resize(
 fn handle_update_xwayland_policy(
     wm: &mut Wm,
     win: crate::types::WindowId,
-    hints: Option<x11rb::properties::WmHints>,
-    size_hints: Option<x11rb::properties::WmSizeHints>,
-    is_fullscreen: bool,
-    is_hidden: bool,
-    is_above: bool,
+    update: crate::backend::x11::policy::XWaylandPolicyUpdate,
 ) {
     let mut ctx = wm.ctx();
-    let outcome = crate::backend::x11::policy::apply_xwayland_policy(
-        ctx.core_mut().model_mut(),
-        win,
-        crate::backend::x11::policy::XWaylandPolicyUpdate {
-            hints,
-            size_hints,
-            is_fullscreen,
-            is_hidden,
-            is_above,
-        },
-    );
+    let outcome =
+        crate::backend::x11::policy::apply_xwayland_policy(ctx.core_mut().model_mut(), win, update);
     if let Some(outcome) = outcome {
         if outcome.layout_changed() {
             ctx.core_mut()
@@ -862,26 +852,24 @@ fn handle_update_xwayland_policy(
     }
 }
 
-fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: bool) {
-    let mut ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
-        let outcome = ctx_wayland.core.model_mut().set_maximized(win, maximized);
-        if let Some(transition) = outcome {
-            if transition.entered() {
-                crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
-                    win,
-                    transition.work_rect(),
-                    crate::geometry::MoveResizeOptions::hinted_immediate(false),
-                );
-            } else if transition.exited() {
-                crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
-                    win,
-                    transition.restore_rect(),
-                    crate::geometry::MoveResizeOptions::hinted_immediate(false),
-                );
-            }
-        }
-    }
+fn handle_set_maximized(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    maximized: bool,
+) {
+    let Some(transition) = crate::backend::wayland::commands::apply_maximized_request(
+        &mut wm.core,
+        &mut wm.work,
+        &mut wm.bar,
+        win,
+        maximized,
+    ) else {
+        return;
+    };
+    crate::backend::wayland::commands::apply_maximized_geometry(state, win, transition);
+    state.request_space_sync();
+    state.request_render();
 }
 
 /// Run compositor-space sync and animation progression in one place, then
@@ -907,11 +895,11 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        handle_update_window_size, handle_update_xwayland_policy, should_update_active_drag,
+        apply_committed_window_size, handle_update_xwayland_policy, should_update_active_drag,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{BaseClientMode, Client, ClientMode, Monitor, Rect, WindowId};
+    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
     use crate::wm::Wm;
 
     #[test]
@@ -932,25 +920,33 @@ mod tests {
             win,
             monitor_id,
             geo,
-            mode: ClientMode::Tiling,
+            mode: ClientMode::tiled(),
             ..Client::default()
         });
         wm.work.layout.clear();
         let bar_seq = wm.bar.update_seq();
 
-        handle_update_xwayland_policy(&mut wm, win, None, None, true, false, true);
+        let update = || crate::backend::x11::policy::XWaylandPolicyUpdate {
+            hints: None,
+            size_hints: None,
+            is_fullscreen: true,
+            is_maximized: false,
+            is_hidden: false,
+            is_above: true,
+        };
+        handle_update_xwayland_policy(&mut wm, win, update());
 
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
-        assert_eq!(client.base_mode(), BaseClientMode::Floating);
-        assert_eq!(client.mode().restored(), ClientMode::Floating);
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+        assert_eq!(client.mode().restored(), ClientMode::floating());
         assert_eq!(client.saved_floating_rect(), Some(geo));
         assert!(wm.work.layout.is_pending());
         assert_ne!(wm.bar.update_seq(), bar_seq);
 
         wm.work.layout.clear();
         let bar_seq = wm.bar.update_seq();
-        handle_update_xwayland_policy(&mut wm, win, None, None, true, false, true);
+        handle_update_xwayland_policy(&mut wm, win, update());
         assert!(!wm.work.layout.is_pending());
         assert_eq!(wm.bar.update_seq(), bar_seq);
     }
@@ -965,7 +961,7 @@ mod tests {
             win,
             monitor_id,
             geo,
-            mode: ClientMode::Floating,
+            mode: ClientMode::floating(),
             ..Client::default()
         };
         client.apply_scratchpad_state(
@@ -977,7 +973,7 @@ mod tests {
         );
         wm.core.model.insert_client(client);
 
-        handle_update_window_size(&mut wm, win, 1920, 1080);
+        apply_committed_window_size(&mut wm, win, 1920, 1080);
 
         assert_eq!(wm.core.model.client(win).unwrap().geo, geo);
     }

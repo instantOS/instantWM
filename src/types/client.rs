@@ -10,7 +10,7 @@ use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, Size, SizeHints};
 use crate::types::input::{EdgeDirection, SnapPosition};
 
-/// Base mode to restore after temporary modes such as fullscreen or maximized.
+/// Persistent placement policy, independent of temporary presentation.
 #[derive(
     Debug,
     Clone,
@@ -23,13 +23,50 @@ use crate::types::input::{EdgeDirection, SnapPosition};
     serde::Serialize,
     serde::Deserialize,
 )]
-pub enum BaseClientMode {
+pub enum ClientPlacement {
     #[default]
     Tiling,
     Floating,
 }
 
-/// Mutually exclusive client placement mode.
+/// Why a client is maximized.
+///
+/// Client-requested maximization is projected to XDG/EWMH state. `Wm` is the
+/// instantWM-only zoom operation and deliberately has no protocol meaning.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum MaximizedOrigin {
+    Client,
+    Wm,
+}
+
+/// Whether fullscreen changes geometry or only the protocol-visible state.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum FullscreenKind {
+    True,
+    Fake,
+}
+
+/// Presentation to restore when fullscreen ends.
 #[derive(
     Debug,
     Clone,
@@ -42,79 +79,171 @@ pub enum BaseClientMode {
     serde::Serialize,
     serde::Deserialize,
 )]
-pub enum ClientMode {
+pub enum RestoredPresentation {
     #[default]
-    Tiling,
-    Floating,
-    TrueFullscreen {
-        restore: BaseClientMode,
+    Normal,
+    Maximized(MaximizedOrigin),
+}
+
+/// Temporary presentation, independent of tiled/floating placement.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum ClientPresentation {
+    #[default]
+    Normal,
+    Maximized(MaximizedOrigin),
+    Fullscreen {
+        kind: FullscreenKind,
+        restore: RestoredPresentation,
     },
-    FakeFullscreen {
-        restore: BaseClientMode,
-    },
-    Maximized {
-        restore: BaseClientMode,
-    },
+}
+
+/// Complete window mode with orthogonal placement and presentation axes.
+///
+/// Keeping these values in one immutable value makes snapshots and IPC simple,
+/// while preventing a presentation transition from overwriting placement.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub struct ClientMode {
+    placement: ClientPlacement,
+    presentation: ClientPresentation,
+}
+
+impl Default for ClientMode {
+    fn default() -> Self {
+        Self::tiled()
+    }
 }
 
 impl ClientMode {
     #[inline]
+    pub(crate) const fn tiled() -> Self {
+        Self::normal(ClientPlacement::Tiling)
+    }
+
+    #[inline]
+    pub(crate) const fn floating() -> Self {
+        Self::normal(ClientPlacement::Floating)
+    }
+
+    #[inline]
+    pub(crate) const fn normal(placement: ClientPlacement) -> Self {
+        Self {
+            placement,
+            presentation: ClientPresentation::Normal,
+        }
+    }
+
+    #[inline]
+    #[cfg(test)]
+    pub(crate) const fn maximized(placement: ClientPlacement, origin: MaximizedOrigin) -> Self {
+        Self {
+            placement,
+            presentation: ClientPresentation::Maximized(origin),
+        }
+    }
+
+    #[inline]
+    pub const fn presentation(self) -> ClientPresentation {
+        self.presentation
+    }
+
+    #[inline]
     pub fn is_fullscreen(self) -> bool {
-        matches!(
-            self,
-            Self::TrueFullscreen { .. } | Self::FakeFullscreen { .. }
-        )
+        matches!(self.presentation, ClientPresentation::Fullscreen { .. })
     }
 
     #[inline]
     pub fn is_true_fullscreen(self) -> bool {
-        matches!(self, Self::TrueFullscreen { .. })
+        matches!(
+            self.presentation,
+            ClientPresentation::Fullscreen {
+                kind: FullscreenKind::True,
+                ..
+            }
+        )
     }
 
     #[inline]
     pub fn is_fake_fullscreen(self) -> bool {
-        matches!(self, Self::FakeFullscreen { .. })
+        matches!(
+            self.presentation,
+            ClientPresentation::Fullscreen {
+                kind: FullscreenKind::Fake,
+                ..
+            }
+        )
+    }
+
+    /// Whether maximized geometry is the current presentation.
+    #[inline]
+    pub fn is_maximized(self) -> bool {
+        matches!(self.presentation, ClientPresentation::Maximized(_))
     }
 
     #[inline]
-    pub fn is_maximized(self) -> bool {
-        matches!(self, Self::Maximized { .. })
+    pub fn is_wm_maximized(self) -> bool {
+        matches!(
+            self.presentation,
+            ClientPresentation::Maximized(MaximizedOrigin::Wm)
+        )
+    }
+
+    /// Whether the client should see the protocol Maximized state.
+    ///
+    /// A fullscreen window may still retain client-requested maximization as
+    /// the presentation to restore.
+    #[inline]
+    pub fn is_protocol_maximized(self) -> bool {
+        matches!(
+            self.presentation,
+            ClientPresentation::Maximized(MaximizedOrigin::Client)
+                | ClientPresentation::Fullscreen {
+                    restore: RestoredPresentation::Maximized(MaximizedOrigin::Client),
+                    ..
+                }
+        )
     }
 
     #[inline]
     pub fn is_floating(self) -> bool {
-        matches!(self, Self::Floating)
+        self.placement == ClientPlacement::Floating
+            && matches!(self.presentation, ClientPresentation::Normal)
     }
 
     #[inline]
     pub fn is_tiling(self) -> bool {
-        matches!(self, Self::Tiling)
+        self.placement == ClientPlacement::Tiling
+            && matches!(self.presentation, ClientPresentation::Normal)
     }
 
     #[inline]
     pub fn is_free_positioned(self) -> bool {
-        matches!(self, Self::Floating | Self::Maximized { .. })
+        self.is_floating() || self.is_maximized()
     }
 
     #[inline]
-    pub fn restore_mode(self) -> Option<BaseClientMode> {
-        match self {
-            Self::Tiling | Self::Floating => None,
-            Self::TrueFullscreen { restore }
-            | Self::FakeFullscreen { restore }
-            | Self::Maximized { restore } => Some(restore),
-        }
-    }
-
-    #[inline]
-    pub fn base_mode(self) -> BaseClientMode {
-        match self {
-            Self::Tiling => BaseClientMode::Tiling,
-            Self::Floating => BaseClientMode::Floating,
-            Self::TrueFullscreen { restore }
-            | Self::FakeFullscreen { restore }
-            | Self::Maximized { restore } => restore,
-        }
+    pub const fn placement(self) -> ClientPlacement {
+        self.placement
     }
 
     /// Replace the persistent placement mode without discarding a temporary
@@ -123,45 +252,95 @@ impl ClientMode {
     /// Rules and policy refreshes may change whether a client should restore
     /// to tiling or floating, but they do not own fullscreen/maximized state.
     #[inline]
-    pub fn with_base_mode(self, base: BaseClientMode) -> Self {
-        match self {
-            Self::TrueFullscreen { .. } => Self::TrueFullscreen { restore: base },
-            Self::FakeFullscreen { .. } => Self::FakeFullscreen { restore: base },
-            Self::Maximized { .. } => Self::Maximized { restore: base },
-            Self::Tiling | Self::Floating => match base {
-                BaseClientMode::Tiling => Self::Tiling,
-                BaseClientMode::Floating => Self::Floating,
+    pub(crate) fn with_placement(self, placement: ClientPlacement) -> Self {
+        Self { placement, ..self }
+    }
+
+    #[inline]
+    pub(crate) fn as_fullscreen(self) -> Self {
+        let restore = match self.presentation {
+            ClientPresentation::Maximized(origin) => RestoredPresentation::Maximized(origin),
+            ClientPresentation::Fullscreen { restore, .. } => restore,
+            ClientPresentation::Normal => RestoredPresentation::Normal,
+        };
+        Self {
+            presentation: ClientPresentation::Fullscreen {
+                kind: FullscreenKind::True,
+                restore,
             },
+            ..self
         }
     }
 
     #[inline]
-    pub fn as_fullscreen(self) -> Self {
-        Self::TrueFullscreen {
-            restore: self.base_mode(),
+    pub(crate) fn as_fake_fullscreen(self) -> Self {
+        let restore = match self.presentation {
+            ClientPresentation::Maximized(origin) => RestoredPresentation::Maximized(origin),
+            ClientPresentation::Fullscreen { restore, .. } => restore,
+            ClientPresentation::Normal => RestoredPresentation::Normal,
+        };
+        Self {
+            presentation: ClientPresentation::Fullscreen {
+                kind: FullscreenKind::Fake,
+                restore,
+            },
+            ..self
         }
     }
 
     #[inline]
-    pub fn as_fake_fullscreen(self) -> Self {
-        Self::FakeFullscreen {
-            restore: self.base_mode(),
+    pub(crate) fn with_maximized(self, maximized: bool, origin: MaximizedOrigin) -> Self {
+        let presentation = match (self.presentation, maximized) {
+            (ClientPresentation::Fullscreen { kind, .. }, true) => ClientPresentation::Fullscreen {
+                kind,
+                restore: RestoredPresentation::Maximized(origin),
+            },
+            (
+                ClientPresentation::Fullscreen {
+                    kind,
+                    restore: RestoredPresentation::Maximized(current),
+                },
+                false,
+            ) if current == origin => ClientPresentation::Fullscreen {
+                kind,
+                restore: RestoredPresentation::Normal,
+            },
+            (fullscreen @ ClientPresentation::Fullscreen { .. }, false) => fullscreen,
+            (_, true) => ClientPresentation::Maximized(origin),
+            (ClientPresentation::Maximized(current), false) if current == origin => {
+                ClientPresentation::Normal
+            }
+            (presentation, false) => presentation,
+        };
+        Self {
+            presentation,
+            ..self
         }
     }
 
     #[inline]
-    pub fn as_maximized(self) -> Self {
-        Self::Maximized {
-            restore: self.base_mode(),
-        }
+    #[cfg(test)]
+    pub(crate) fn as_maximized(self) -> Self {
+        self.with_maximized(true, MaximizedOrigin::Client)
     }
 
     #[inline]
-    pub fn restored(self) -> Self {
-        match self.restore_mode() {
-            Some(BaseClientMode::Tiling) => Self::Tiling,
-            Some(BaseClientMode::Floating) => Self::Floating,
-            None => self,
+    pub(crate) fn restored(self) -> Self {
+        let presentation = match self.presentation {
+            ClientPresentation::Fullscreen {
+                restore: RestoredPresentation::Normal,
+                ..
+            }
+            | ClientPresentation::Maximized(_) => ClientPresentation::Normal,
+            ClientPresentation::Fullscreen {
+                restore: RestoredPresentation::Maximized(origin),
+                ..
+            } => ClientPresentation::Maximized(origin),
+            ClientPresentation::Normal => ClientPresentation::Normal,
+        };
+        Self {
+            presentation,
+            ..self
         }
     }
 }
@@ -314,54 +493,54 @@ impl Client {
 
     /// Persistent placement policy, independent of temporary presentation.
     #[inline]
-    pub fn base_mode(&self) -> BaseClientMode {
-        self.mode.base_mode()
+    pub fn placement(&self) -> ClientPlacement {
+        self.mode.placement()
     }
 
     /// Change the persistent tiled/floating policy while preserving any
     /// temporary fullscreen or maximized presentation.
     ///
-    /// Use [`Self::replace_mode_with_base`] only when an explicit user action
+    /// Use [`Self::reset_to_placement`] only when an explicit user action
     /// should also leave the current presentation mode.
     #[inline]
-    pub fn set_base_mode(&mut self, base: BaseClientMode) {
-        self.mode = self.mode.with_base_mode(base);
+    pub(crate) fn set_placement(&mut self, placement: ClientPlacement) {
+        self.mode = self.mode.with_placement(placement);
     }
 
     /// Replace the complete mode with a base tiled/floating mode.
     ///
     /// This deliberately exits fullscreen/maximized presentation and does not
     /// modify saved floating geometry. Policy refreshes should normally use
-    /// [`Self::set_base_mode`] instead.
+    /// [`Self::set_placement`] instead.
     #[inline]
-    pub fn replace_mode_with_base(&mut self, base: BaseClientMode) {
-        self.mode = match base {
-            BaseClientMode::Tiling => ClientMode::Tiling,
-            BaseClientMode::Floating => ClientMode::Floating,
+    pub(crate) fn reset_to_placement(&mut self, placement: ClientPlacement) {
+        self.mode = match placement {
+            ClientPlacement::Tiling => ClientMode::tiled(),
+            ClientPlacement::Floating => ClientMode::floating(),
         };
     }
 
     /// Enter true fullscreen while remembering the current base placement.
     #[inline]
-    pub fn enter_fullscreen(&mut self) {
+    pub(crate) fn enter_fullscreen(&mut self) {
         self.mode = self.mode().as_fullscreen();
     }
 
     /// Enter fake fullscreen while remembering the current base placement.
     #[inline]
-    pub fn enter_fake_fullscreen(&mut self) {
+    pub(crate) fn enter_fake_fullscreen(&mut self) {
         self.mode = self.mode().as_fake_fullscreen();
     }
 
-    /// Enter maximized presentation while remembering the current base placement.
+    /// Set maximized presentation without changing persistent placement.
     #[inline]
-    pub fn enter_maximized(&mut self) {
-        self.mode = self.mode().as_maximized();
+    pub(crate) fn set_maximized_presentation(&mut self, maximized: bool, origin: MaximizedOrigin) {
+        self.mode = self.mode().with_maximized(maximized, origin);
     }
 
     /// Leave a temporary presentation mode and restore its base placement.
     #[inline]
-    pub fn restore_mode(&mut self) {
+    pub(crate) fn restore_mode(&mut self) {
         self.mode = self.mode().restored();
     }
 
@@ -512,6 +691,16 @@ impl Client {
         self.mode().is_tiling() && self.is_visible(selected_tags)
     }
 
+    /// Whether this client owns a persistent leaf in the manual tiling tree.
+    ///
+    /// Temporary presentation modes must not remove a tiled client's leaf:
+    /// doing so collapses the topology and reinserts the client elsewhere when
+    /// fullscreen or maximized presentation ends.
+    #[inline]
+    pub fn is_tiling_tree_member(&self, selected_tags: TagMask) -> bool {
+        self.placement() == ClientPlacement::Tiling && self.is_visible(selected_tags)
+    }
+
     /// Clear the urgency flag for this client.
     pub fn clear_urgency(&mut self) {
         self.is_urgent = false;
@@ -604,7 +793,7 @@ impl Client {
         self.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
         self.is_sticky = false;
         if !self.mode().is_floating() {
-            self.mode = ClientMode::Floating;
+            self.reset_to_placement(ClientPlacement::Floating);
         }
         if let Some(dir) = direction {
             if dir.is_vertical() {
@@ -636,7 +825,7 @@ impl Client {
     /// for edge-anchored scratchpads, and updates the tag mask to the current tags.
     pub fn show_as_scratchpad(&mut self, tags: TagMask, direction: Option<EdgeDirection>) {
         self.is_sticky = true;
-        self.mode = ClientMode::Floating;
+        self.reset_to_placement(ClientPlacement::Floating);
         if direction.is_some() {
             self.border_width = 0;
         }
@@ -677,7 +866,7 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::{BaseClientMode, Client, ClientMode, ScratchpadData};
+    use super::{Client, ClientMode, ClientPlacement, MaximizedOrigin, ScratchpadData};
     use crate::types::{Rect, SCRATCHPAD_MASK, TagMask};
 
     #[test]
@@ -709,48 +898,45 @@ mod tests {
         assert!(!client.mode().is_tiling());
 
         client.restore_mode();
-        assert_eq!(client.mode(), ClientMode::Tiling);
+        assert_eq!(client.mode(), ClientMode::tiled());
     }
 
     #[test]
     fn fullscreen_restores_previous_floating_mode() {
         let mut client = Client::default();
-        client.replace_mode_with_base(BaseClientMode::Floating);
+        client.reset_to_placement(ClientPlacement::Floating);
 
         client.enter_fullscreen();
         assert!(client.mode().is_true_fullscreen());
         assert!(!client.mode().is_floating());
 
         client.restore_mode();
-        assert_eq!(client.mode(), ClientMode::Floating);
+        assert_eq!(client.mode(), ClientMode::floating());
     }
 
     #[test]
     fn maximized_restores_previous_regular_mode() {
         let mut client = Client::default();
-        client.replace_mode_with_base(BaseClientMode::Floating);
+        client.reset_to_placement(ClientPlacement::Floating);
 
-        client.enter_maximized();
+        client.set_maximized_presentation(true, MaximizedOrigin::Client);
         assert!(client.mode().is_maximized());
         assert!(!client.mode().is_floating());
 
         client.restore_mode();
-        assert_eq!(client.mode(), ClientMode::Floating);
+        assert_eq!(client.mode(), ClientMode::floating());
     }
 
     #[test]
-    fn changing_base_mode_preserves_temporary_presentation() {
+    fn changing_placement_preserves_temporary_presentation() {
         for mode in [
-            ClientMode::Tiling.as_fullscreen(),
-            ClientMode::Tiling.as_fake_fullscreen(),
-            ClientMode::Tiling.as_maximized(),
+            ClientMode::tiled().as_fullscreen(),
+            ClientMode::tiled().as_fake_fullscreen(),
+            ClientMode::tiled().as_maximized(),
         ] {
-            let changed = mode.with_base_mode(BaseClientMode::Floating);
-            assert_eq!(
-                std::mem::discriminant(&changed),
-                std::mem::discriminant(&mode)
-            );
-            assert_eq!(changed.restored(), ClientMode::Floating);
+            let changed = mode.with_placement(ClientPlacement::Floating);
+            assert_eq!(changed.presentation(), mode.presentation());
+            assert_eq!(changed.restored(), ClientMode::floating());
         }
     }
 
@@ -763,9 +949,9 @@ mod tests {
         };
         client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
 
-        client.replace_mode_with_base(BaseClientMode::Tiling);
+        client.reset_to_placement(ClientPlacement::Tiling);
 
-        assert_eq!(client.mode(), ClientMode::Tiling);
+        assert_eq!(client.mode(), ClientMode::tiled());
         assert_eq!(client.saved_floating_rect(), Some(saved));
     }
 

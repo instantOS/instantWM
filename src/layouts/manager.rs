@@ -8,9 +8,7 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, PresentationMode};
-use crate::types::{
-    Client, ClientMode, Monitor, MonitorId, Rect, Size, TagMask, TiledClientInfo, WindowId,
-};
+use crate::types::{Client, Monitor, MonitorId, Rect, Size, TagMask, TiledClientInfo, WindowId};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -211,7 +209,7 @@ fn reconcile_manual_tree(
     resize_hints: bool,
     bar_height: i32,
 ) {
-    let tiled = monitor.collect_tiled(clients);
+    let tiled = monitor.collect_tiling_tree_members(clients);
     let windows = tiled.iter().map(|client| client.win).collect::<Vec<_>>();
     let placement = LayoutPlacement::new(
         layout_cfg,
@@ -235,7 +233,7 @@ fn compute_manual_tree(
     resize_hints: bool,
     bar_height: i32,
 ) -> Vec<LayoutOutput> {
-    let tiled = monitor.collect_tiled(clients);
+    let tiled = monitor.collect_tiling_tree_members(clients);
     let windows: Vec<_> = tiled.iter().map(|client| client.win).collect();
     let placement = LayoutPlacement::new(
         layout_cfg,
@@ -258,6 +256,12 @@ fn compute_manual_tree(
     tiled
         .into_iter()
         .filter_map(|client| {
+            if !clients
+                .get(&client.win)
+                .is_some_and(|client| client.mode().is_tiling())
+            {
+                return None;
+            }
             let slot = slots.get(&client.win).copied()?;
             Some(LayoutOutput {
                 win: client.win,
@@ -444,14 +448,17 @@ pub(crate) fn compute_monitor_z_order(
                 transient_stack.push((depth, win));
                 continue;
             }
-            match c.mode() {
-                ClientMode::TrueFullscreen { .. } => fullscreen_stack.push(win),
-                ClientMode::Floating | ClientMode::Maximized { .. } => {
-                    floating_stack.push(win);
-                }
-                ClientMode::Tiling if layout.is_tiling() => tiled_stack.push(win),
-                ClientMode::Tiling => floating_stack.push(win),
-                ClientMode::FakeFullscreen { .. } => {}
+            let mode = c.mode();
+            if mode.is_true_fullscreen() {
+                fullscreen_stack.push(win);
+            } else if mode.is_fake_fullscreen() {
+                // Fake fullscreen keeps its existing layout layer.
+            } else if mode.is_floating() || mode.is_maximized() {
+                floating_stack.push(win);
+            } else if layout.is_tiling() {
+                tiled_stack.push(win);
+            } else {
+                floating_stack.push(win);
             }
         }
     }

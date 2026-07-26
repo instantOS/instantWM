@@ -892,7 +892,7 @@ mod tests {
                 ..Client::default()
             };
             if floating {
-                client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+                client.reset_to_placement(crate::types::ClientPlacement::Floating);
                 client.transient_for = Some(previously_focused);
             }
             assert!(state.model.insert_client(client));
@@ -949,7 +949,7 @@ mod tests {
                     ..Client::default()
                 };
                 if win == WindowId(2) {
-                    client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+                    client.reset_to_placement(crate::types::ClientPlacement::Floating);
                 }
                 (win, client)
             })

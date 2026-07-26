@@ -383,7 +383,7 @@ mod tests {
                 win,
                 monitor_id,
                 tags: tag1,
-                mode: ClientMode::Tiling,
+                mode: ClientMode::tiled(),
                 ..Client::default()
             });
         }
@@ -436,7 +436,7 @@ mod tests {
                 win,
                 monitor_id,
                 tags: tag,
-                mode: ClientMode::Tiling,
+                mode: ClientMode::tiled(),
                 ..Client::default()
             });
         }
