@@ -30,7 +30,6 @@ pub struct TickResult {
     pub ipc_handled: bool,
     pub monitor_config_applied: bool,
     pub layout_applied: bool,
-    pub layout_deferred_for_animation: bool,
 }
 
 /// Shared per-tick housekeeping with backend-specific scheduler options.
@@ -54,7 +53,6 @@ pub fn event_loop_tick_with_options(
         ipc_handled: ipc_handled || status_handled,
         monitor_config_applied: work.monitor_config_applied,
         layout_applied: work.layout_applied,
-        layout_deferred_for_animation: work.layout_deferred_for_animation,
     }
 }
 
