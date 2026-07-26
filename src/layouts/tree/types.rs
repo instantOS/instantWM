@@ -23,7 +23,7 @@ impl Default for CommandConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Axis {
     /// Divide a rectangle into left-to-right children.
     Vertical,

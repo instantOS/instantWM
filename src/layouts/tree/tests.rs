@@ -345,6 +345,51 @@ fn same_axis_insertions_form_one_n_ary_run() {
 }
 
 #[test]
+fn adjacent_same_axis_splits_are_flattened_without_losing_weights() {
+    let mut next_id = 1;
+    let mut allocate = || {
+        let id = SplitId(next_id);
+        next_id += 1;
+        id
+    };
+    let left = equal_run(&[WindowId(1), WindowId(2)], Axis::Vertical, &mut allocate).unwrap();
+    let right = equal_run(&[WindowId(3), WindowId(4)], Axis::Vertical, &mut allocate).unwrap();
+    let root = make_split(
+        allocate(),
+        Axis::Vertical,
+        vec![
+            WeightedNode {
+                node: left,
+                weight: 0.4,
+            },
+            WeightedNode {
+                node: right,
+                weight: 0.6,
+            },
+        ],
+    )
+    .unwrap();
+
+    let Node::Split(root) = root else {
+        panic!("four leaves must remain a split");
+    };
+    assert_eq!(root.children.len(), 4);
+    assert!(
+        root.children
+            .iter()
+            .all(|child| matches!(child.node, Node::Window(_)))
+    );
+    let weights = root
+        .children
+        .iter()
+        .map(|child| child.weight)
+        .collect::<Vec<_>>();
+    for (actual, expected) in weights.into_iter().zip([0.2, 0.2, 0.3, 0.3]) {
+        assert!((actual - expected).abs() < EPSILON);
+    }
+}
+
+#[test]
 fn grid_is_a_persistent_tree_transformation() {
     let mut tree = LayoutTree::default();
     let wins = windows(4);
@@ -780,29 +825,33 @@ fn keyboard_navigation_skips_duplicate_three_row_previews() {
 }
 
 #[test]
-fn optimized_placement_normalization_matches_the_reference_algorithm() {
+fn placement_normalization_matches_topology_then_visual_reference() {
     let rect = Rect::new(0, 0, 1600, 900);
     for preset in [Preset::Grid, Preset::MasterStack, Preset::BottomStack] {
         let mut tree = LayoutTree::default();
         tree.apply_preset(preset, &windows(8), 2);
 
-        let mut reference = Vec::<(PlacementTarget, PlacementOutcome)>::new();
-        for target in tree.raw_placement_targets(WindowId(1), rect, 0.34) {
-            let Some(outcome) = tree.placement_outcome(WindowId(1), target) else {
-                continue;
-            };
-            if reference
-                .iter()
-                .any(|(_, existing)| existing.approximately_eq(&outcome))
+        let candidates = tree
+            .raw_resolved_placement_targets(WindowId(1), rect, 0.34)
+            .into_iter()
+            .filter_map(|resolved| {
+                let preview = resolved
+                    .candidate
+                    .float_bounds()
+                    .get(&WindowId(1))
+                    .copied()?;
+                Some((resolved, preview, ()))
+            })
+            .collect();
+        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
+        let mut reference = Vec::new();
+        for (resolved, preview, ()) in placement::topology_representatives(candidates) {
+            if !candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
             {
                 continue;
             }
-            reference.push((target, outcome));
+            reference.push(resolved.target);
         }
-        let reference = reference
-            .into_iter()
-            .map(|(target, _)| target)
-            .collect::<Vec<_>>();
 
         assert_eq!(tree.placement_targets(WindowId(1), rect, 0.34), reference);
     }
@@ -819,21 +868,22 @@ fn constrained_normalization_preserves_every_distinct_viable_outcome() {
         let mut tree = LayoutTree::default();
         tree.apply_preset(preset, &windows(20), 2);
 
+        let candidates = tree
+            .raw_resolved_placement_targets(WindowId(1), rect, 0.34)
+            .into_iter()
+            .filter_map(|resolved| {
+                let slot = resolved
+                    .candidate
+                    .constrained_bounds(rect, &minimums)
+                    .and_then(|bounds| bounds.get(&WindowId(1)).copied())?;
+                Some((resolved, FRect::from_rect(slot), slot))
+            })
+            .collect();
         let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
         let mut reference = Vec::new();
-        for resolved in tree.raw_resolved_placement_targets(WindowId(1), rect, 0.34) {
-            let Some(slot) = resolved
-                .candidate
-                .constrained_bounds(rect, &minimums)
-                .and_then(|bounds| bounds.get(&WindowId(1)).copied())
-            else {
-                continue;
-            };
-            if candidate_is_visually_distinct(
-                &mut previews_by_order,
-                &resolved.candidate,
-                FRect::from_rect(slot),
-            ) {
+        for (resolved, preview, _) in placement::topology_representatives(candidates) {
+            if candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
+            {
                 reference.push(resolved.target);
             }
         }
@@ -1010,6 +1060,125 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
         cache.edge_slots[&(target, side)].len(),
         normalized.len(),
         "only normalized outcomes may consume pointer hitbox width"
+    );
+}
+
+#[test]
+fn twenty_window_pointer_candidates_collapse_weight_only_variants() {
+    let source = WindowId(1);
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::Grid, &windows(20), 1);
+    let rect = Rect::new(0, 0, 2000, 1000);
+    let mut found_weight_only_duplicates = false;
+    for target in tree.leaves().into_iter().filter(|window| *window != source) {
+        for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
+            let raw = tree.resolved_edge_candidates(source, target, side);
+            let viable = raw
+                .into_iter()
+                .enumerate()
+                .filter_map(|(candidate_index, (_, candidate))| {
+                    let slot = candidate
+                        .constrained_bounds(rect, &HashMap::new())?
+                        .get(&source)
+                        .copied()?;
+                    Some((
+                        ResolvedPlacementTarget {
+                            target: PlacementTarget {
+                                target,
+                                side: Some(side),
+                                candidate_index,
+                                position: Point::new(0, 0),
+                            },
+                            candidate,
+                        },
+                        FRect::from_rect(slot),
+                        slot,
+                    ))
+                })
+                .collect::<Vec<_>>();
+            let topology_count = viable
+                .iter()
+                .filter_map(|(resolved, _, _)| {
+                    resolved
+                        .candidate
+                        .root
+                        .as_ref()
+                        .map(placement::placement_topology)
+                })
+                .collect::<HashSet<_>>()
+                .len();
+            found_weight_only_duplicates |= viable.len() > topology_count;
+
+            let representatives = placement::topology_representatives(viable.clone());
+            assert_eq!(
+                representatives.len(),
+                topology_count,
+                "each unweighted canonical topology must have exactly one representative"
+            );
+            let mut groups =
+                HashMap::<placement::PlacementTopology, Vec<(PlacementTarget, FRect)>>::new();
+            for (resolved, preview, _) in &viable {
+                let topology =
+                    placement::placement_topology(resolved.candidate.root.as_ref().unwrap());
+                groups
+                    .entry(topology)
+                    .or_default()
+                    .push((resolved.target, *preview));
+            }
+            for (topology, group) in groups {
+                let count = group.len() as f64;
+                let average = group.iter().fold(
+                    FRect {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 0.0,
+                        h: 0.0,
+                    },
+                    |mut average, (_, preview)| {
+                        average.x += preview.x / count;
+                        average.y += preview.y / count;
+                        average.w += preview.w / count;
+                        average.h += preview.h / count;
+                        average
+                    },
+                );
+                let expected = group
+                    .iter()
+                    .min_by(|left, right| {
+                        placement::preview_distance_squared(left.1, average)
+                            .total_cmp(&placement::preview_distance_squared(right.1, average))
+                    })
+                    .unwrap()
+                    .0;
+                let actual = representatives
+                    .iter()
+                    .find(|(resolved, _, _)| {
+                        placement::placement_topology(resolved.candidate.root.as_ref().unwrap())
+                            == topology
+                    })
+                    .unwrap()
+                    .0
+                    .target;
+                assert_eq!(
+                    actual, expected,
+                    "the retained semantic target must be nearest the group's average preview"
+                );
+            }
+            let normalized = LayoutTree::normalized_constrained_candidates(
+                source,
+                rect,
+                &HashMap::new(),
+                viable.into_iter().map(|(resolved, _, _)| resolved),
+            );
+            assert!(
+                normalized.len() <= topology_count,
+                "visual normalization may merge topologies but must never restore weight variants"
+            );
+        }
+    }
+    assert!(
+        found_weight_only_duplicates,
+        "the 20-window grid must reproduce the weight-only candidate duplication"
     );
 }
 

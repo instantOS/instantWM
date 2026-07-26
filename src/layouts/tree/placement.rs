@@ -1,5 +1,85 @@
 use super::*;
 
+/// Canonical tree structure with split identities and weights erased.
+///
+/// Candidates with the same topology differ only in how much space their
+/// equivalent splits inherited. They should be one placement choice, not
+/// several adjacent pointer bands.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(super) enum PlacementTopology {
+    Window(WindowId),
+    Split(Axis, Vec<PlacementTopology>),
+}
+
+pub(super) fn placement_topology(node: &Node) -> PlacementTopology {
+    match node {
+        Node::Window(window) => PlacementTopology::Window(*window),
+        Node::Split(split) => PlacementTopology::Split(
+            split.axis,
+            split
+                .children
+                .iter()
+                .map(|child| placement_topology(&child.node))
+                .collect(),
+        ),
+    }
+}
+
+pub(super) fn preview_distance_squared(first: FRect, second: FRect) -> f64 {
+    (first.x - second.x).powi(2)
+        + (first.y - second.y).powi(2)
+        + (first.w - second.w).powi(2)
+        + (first.h - second.h).powi(2)
+}
+
+/// Collapse candidates whose canonical tree structure is identical when split
+/// weights and allocation-only split IDs are ignored. Select an actual
+/// candidate nearest the group's average preview, preserving semantic
+/// preview/drop identity without inventing a new combination of weights.
+pub(super) fn topology_representatives<T>(
+    candidates: Vec<(ResolvedPlacementTarget, FRect, T)>,
+) -> Vec<(ResolvedPlacementTarget, FRect, T)> {
+    let mut group_indices = HashMap::<PlacementTopology, usize>::new();
+    let mut groups = Vec::<Vec<(ResolvedPlacementTarget, FRect, T)>>::new();
+    for candidate in candidates {
+        let Some(root) = candidate.0.candidate.root.as_ref() else {
+            continue;
+        };
+        let topology = placement_topology(root);
+        let group_index = *group_indices.entry(topology).or_insert_with(|| {
+            groups.push(Vec::new());
+            groups.len() - 1
+        });
+        groups[group_index].push(candidate);
+    }
+
+    groups
+        .into_iter()
+        .filter_map(|group| {
+            let count = group.len() as f64;
+            let average = group.iter().fold(
+                FRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0,
+                },
+                |mut average, (_, preview, _)| {
+                    average.x += preview.x / count;
+                    average.y += preview.y / count;
+                    average.w += preview.w / count;
+                    average.h += preview.h / count;
+                    average
+                },
+            );
+            group.into_iter().min_by(|left, right| {
+                preview_distance_squared(left.1, average)
+                    .total_cmp(&preview_distance_squared(right.1, average))
+            })
+        })
+        .collect()
+}
+
 impl LayoutTree {
     /// Move `source` beside `target`. The requested side selects the split axis;
     /// canonicalisation automatically inserts into an existing matching run.
@@ -275,21 +355,24 @@ impl LayoutTree {
         // representative can suppress an equivalent candidate that actually
         // satisfies minimum sizes. Compare the constrained source slots because
         // those are what both keyboard and pointer previews expose.
+        let viable = candidates
+            .into_iter()
+            .filter_map(|resolved| {
+                let Some(slot) = resolved
+                    .candidate
+                    .constrained_bounds(layout_rect, minimums)
+                    .and_then(|bounds| bounds.get(&source).copied())
+                else {
+                    return None;
+                };
+                Some((resolved, FRect::from_rect(slot), slot))
+            })
+            .collect();
         let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
         let mut distinct = Vec::new();
-        for resolved in candidates {
-            let Some(slot) = resolved
-                .candidate
-                .constrained_bounds(layout_rect, minimums)
-                .and_then(|bounds| bounds.get(&source).copied())
-            else {
-                continue;
-            };
-            if !candidate_is_visually_distinct(
-                &mut previews_by_order,
-                &resolved.candidate,
-                FRect::from_rect(slot),
-            ) {
+        for (resolved, preview, slot) in topology_representatives(viable) {
+            if !candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
+            {
                 continue;
             }
             distinct.push(PointerPlacementResolution {
@@ -306,17 +389,22 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<(PlacementTarget, LayoutTree)> {
+        let candidates = self
+            .raw_resolved_placement_targets(source, layout_rect, edge_fraction)
+            .into_iter()
+            .filter_map(|resolved| {
+                let preview = resolved.candidate.float_bounds().get(&source).copied()?;
+                Some((resolved, preview, ()))
+            })
+            .collect();
         let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
         let mut distinct = Vec::new();
-        for resolved in self.raw_resolved_placement_targets(source, layout_rect, edge_fraction) {
-            let candidate = resolved.candidate;
-            let Some(preview) = candidate.float_bounds().get(&source).copied() else {
-                continue;
-            };
-            if !candidate_is_visually_distinct(&mut previews_by_order, &candidate, preview) {
+        for (resolved, preview, ()) in topology_representatives(candidates) {
+            if !candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
+            {
                 continue;
             }
-            distinct.push((resolved.target, candidate));
+            distinct.push((resolved.target, resolved.candidate));
         }
         distinct
     }
