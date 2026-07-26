@@ -46,8 +46,12 @@ impl MotionEvent {
         output_width: i32,
         output_height: i32,
     ) -> Point<f64, smithay::utils::Logical> {
-        let max_x = output_width.max(0) as f64;
-        let max_y = output_height.max(0) as f64;
+        // Output and window rectangles use exclusive right/bottom bounds.
+        // Keeping the pointer at exactly width/height puts it outside the
+        // pixels that are actually visible and can make hit testing select a
+        // covered window at the screen edge.
+        let max_x = output_width.saturating_sub(1).max(0) as f64;
+        let max_y = output_height.saturating_sub(1).max(0) as f64;
         match self {
             MotionEvent::Absolute { x, y, .. } => {
                 Point::from((x.clamp(0.0, max_x), y.clamp(0.0, max_y)))
@@ -76,7 +80,7 @@ mod tests {
     use smithay::utils::Point;
 
     #[test]
-    fn relative_motion_reaches_output_right_and_bottom_edges() {
+    fn relative_motion_stays_inside_output_right_and_bottom_edges() {
         let event = MotionEvent::Relative {
             dx: 100.0,
             dy: 100.0,
@@ -88,12 +92,12 @@ mod tests {
 
         assert_eq!(
             event.compute_location(Point::from((1910.0, 1070.0)), 1920, 1080),
-            Point::from((1920.0, 1080.0))
+            Point::from((1919.0, 1079.0))
         );
     }
 
     #[test]
-    fn absolute_motion_reaches_output_right_and_bottom_edges() {
+    fn absolute_motion_stays_inside_output_right_and_bottom_edges() {
         let event = MotionEvent::Absolute {
             x: 1920.0,
             y: 1080.0,
@@ -102,7 +106,21 @@ mod tests {
 
         assert_eq!(
             event.compute_location(Point::from((0.0, 0.0)), 1920, 1080),
-            Point::from((1920.0, 1080.0))
+            Point::from((1919.0, 1079.0))
+        );
+    }
+
+    #[test]
+    fn motion_on_an_empty_output_stays_at_origin() {
+        let event = MotionEvent::Absolute {
+            x: 10.0,
+            y: 10.0,
+            time_msec: 0,
+        };
+
+        assert_eq!(
+            event.compute_location(Point::from((0.0, 0.0)), 0, 0),
+            Point::from((0.0, 0.0))
         );
     }
 
