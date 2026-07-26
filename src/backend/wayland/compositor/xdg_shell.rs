@@ -135,7 +135,7 @@ impl WaylandState {
         &mut self,
         win: crate::types::WindowId,
         maximized: bool,
-    ) -> Option<crate::client::mode::MaximizedTransition> {
+    ) -> Option<crate::client::mode::ClientMaximizeIntentTransition> {
         // SAFETY: see `commit_native_fullscreen_request`.
         let Some(wm_ptr) = (unsafe { self.wm_mut_ptr() }) else {
             return None;
@@ -613,6 +613,9 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+        if transition.entered_floating_presentation() {
+            self.raise_window_visual_only(win);
+        }
         self.sync_window_presentation(win);
         self.request_space_sync();
         self.request_render();
@@ -626,6 +629,9 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+        if transition.entered_floating_presentation() {
+            self.raise_window_visual_only(win);
+        }
         self.sync_window_presentation(win);
         self.request_space_sync();
         self.request_render();

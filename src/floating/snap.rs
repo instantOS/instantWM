@@ -30,6 +30,7 @@ use crate::types::*;
 /// If the window is not currently snapped, its current geometry is saved first
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
+    crate::client::fullscreen::leave_maximized(ctx, win);
     let work_area = ctx
         .core()
         .model()

@@ -319,7 +319,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if state.contains(&ctx_x11.x11_runtime.netatom.wm_maximized_vert)
         || state.contains(&ctx_x11.x11_runtime.netatom.wm_maximized_horz)
     {
-        crate::client::fullscreen::set_client_maximized(
+        crate::client::fullscreen::apply_client_maximize_intent(
             &mut WmCtx::X11(ctx_x11.reborrow()),
             win,
             true,

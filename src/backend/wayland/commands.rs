@@ -41,8 +41,8 @@ pub(crate) fn apply_maximized_request(
     bar: &mut crate::bar::BarState,
     win: WindowId,
     maximized: bool,
-) -> Option<crate::client::mode::MaximizedTransition> {
-    let transition = core.model.set_client_maximized(win, maximized)?;
+) -> Option<crate::client::mode::ClientMaximizeIntentTransition> {
+    let transition = core.model.apply_client_maximize_intent(win, maximized)?;
     if transition.changed() {
         work.layout.mark_monitor_urgent(transition.monitor_id());
         bar.mark_dirty();
@@ -85,15 +85,31 @@ pub(crate) fn apply_fullscreen_geometry(
 pub(crate) fn apply_maximized_geometry(
     state: &mut crate::backend::wayland::compositor::WaylandState,
     win: WindowId,
-    transition: crate::client::mode::MaximizedTransition,
+    transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
     match transition {
-        crate::client::mode::MaximizedTransition::Entered { work_rect, .. } => {
+        crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
+            crate::client::mode::MaximizedTransition::Entered { work_rect, .. },
+        ) => {
             state.configure_presentation_transition(win, work_rect);
         }
-        crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. } => {
+        crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
+            crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. },
+        ) => {
             state.configure_presentation_transition(win, restore_rect);
         }
+        crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
+            crate::client::mode::MaximizedTransition::ExitedToFloatingPresentation {
+                restore_rect,
+                ..
+            },
+        ) => {
+            state.configure_presentation_transition(win, restore_rect);
+        }
+        crate::client::mode::ClientMaximizeIntentTransition::Placement {
+            visible_restore_rect: Some(restore_rect),
+            ..
+        } => state.configure_presentation_transition(win, restore_rect),
         _ => {}
     }
 }
@@ -294,11 +310,13 @@ mod tests {
         let mut core = CoreState::default();
         let monitor_id = core.model.monitors.push(Monitor::default());
         let win = WindowId(42);
-        core.model.insert_client(Client {
+        let mut client = Client {
             win,
             monitor_id,
             ..Client::default()
-        });
+        };
+        client.set_placement(ClientPlacement::Floating);
+        core.model.insert_client(client);
         let mut work = PendingWork::default();
         work.layout.clear();
         let mut bar = BarState::default();
@@ -306,8 +324,8 @@ mod tests {
         assert!(apply_maximized_request(&mut core, &mut work, &mut bar, win, true).is_some());
 
         let mode = core.model.client(win).unwrap().mode();
-        assert!(mode.is_maximized());
-        assert!(mode.is_protocol_maximized());
+        assert!(mode.is_normal_tiling());
+        assert_eq!(core.model.client_protocol_maximized(win), Some(true));
         assert!(work.layout.is_pending());
         assert!(work.layout.is_urgent());
         assert!(bar.needs_redraw());

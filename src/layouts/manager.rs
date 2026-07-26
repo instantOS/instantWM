@@ -1214,7 +1214,32 @@ pub fn toggle_floating_presentation(ctx: &mut WmCtx<'_>) {
 
 pub(super) fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
+    let is_floating = ctx
+        .core()
+        .model()
+        .monitor(selected_monitor_id)
+        .is_some_and(|monitor| monitor.current_layout() == PresentationMode::Floating);
+    if !is_floating {
+        ctx.core_mut()
+            .model_mut()
+            .reconcile_client_maximization_for_tiling(selected_monitor_id);
+    }
     arrange(ctx, Some(selected_monitor_id));
+
+    // The meaning exposed through the application maximize button changes
+    // when the global presentation crosses the tiled/floating boundary, even
+    // if a window's geometry does not. Always project the new state.
+    let windows = ctx
+        .core()
+        .model()
+        .clients
+        .values()
+        .filter(|client| client.monitor_id == selected_monitor_id)
+        .map(|client| client.win)
+        .collect::<Vec<_>>();
+    for win in windows {
+        crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
+    }
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {

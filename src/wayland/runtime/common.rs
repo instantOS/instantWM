@@ -746,6 +746,7 @@ fn handle_map_window(
     if should_focus {
         wl_state.request_window_focus(win);
     }
+    wl_state.sync_window_presentation(win);
     wl_state.request_space_sync();
 }
 
@@ -806,6 +807,7 @@ fn handle_begin_resize(
     dir: crate::types::ResizeDirection,
 ) {
     let mut ctx = wm.ctx();
+    crate::client::fullscreen::leave_maximized(&mut ctx, win);
     if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
         let point = state.runtime.pointer_location;
         let start = crate::types::Point::from_f64_round(point.x, point.y);
@@ -841,6 +843,13 @@ fn handle_update_xwayland_policy(
     let outcome =
         crate::backend::x11::policy::apply_xwayland_policy(ctx.core_mut().model_mut(), win, update);
     if let Some(outcome) = outcome {
+        if let Some(rect) = outcome.presentation_rect() {
+            ctx.move_resize(win, rect, crate::geometry::MoveResizeOptions::immediate());
+        }
+        if outcome.should_raise() {
+            ctx.raise_client(win);
+        }
+        crate::client::fullscreen::sync_client_maximized_signal(&mut ctx, win);
         if outcome.layout_changed() {
             ctx.core_mut()
                 .queue_layout_for_monitor(outcome.monitor_id());
@@ -867,6 +876,9 @@ fn handle_set_maximized(
         return;
     };
     crate::backend::wayland::commands::apply_maximized_geometry(state, win, transition);
+    if transition.entered_floating_presentation() {
+        state.raise_window_visual_only(win);
+    }
     state.sync_window_presentation(win);
     state.request_space_sync();
     state.request_render();

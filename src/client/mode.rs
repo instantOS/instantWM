@@ -107,6 +107,10 @@ pub(crate) enum MaximizedTransition {
         monitor_id: MonitorId,
         restore_rect: Rect,
     },
+    ExitedToFloatingPresentation {
+        monitor_id: MonitorId,
+        restore_rect: Rect,
+    },
     UpdatedFullscreenRestore {
         monitor_id: MonitorId,
     },
@@ -117,6 +121,59 @@ pub(crate) enum MaximizedTransition {
 pub(crate) struct LeaveMaximizedTransition {
     pub(crate) origin: MaximizedOrigin,
     pub(crate) transition: MaximizedTransition,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "client maximize intent requires geometry, layout, and protocol projection"]
+pub(crate) enum ClientMaximizeIntentTransition {
+    Placement {
+        monitor_id: MonitorId,
+        placement: ClientPlacement,
+        changed: bool,
+        visible_restore_rect: Option<Rect>,
+    },
+    FloatingPresentation(MaximizedTransition),
+    Rejected {
+        monitor_id: MonitorId,
+    },
+}
+
+impl ClientMaximizeIntentTransition {
+    pub(crate) fn monitor_id(self) -> MonitorId {
+        match self {
+            Self::Placement { monitor_id, .. }
+            | Self::Rejected { monitor_id }
+            | Self::FloatingPresentation(MaximizedTransition::Unchanged { monitor_id })
+            | Self::FloatingPresentation(MaximizedTransition::Entered { monitor_id, .. })
+            | Self::FloatingPresentation(MaximizedTransition::ExitedToTiling { monitor_id })
+            | Self::FloatingPresentation(MaximizedTransition::ExitedToFloating {
+                monitor_id,
+                ..
+            })
+            | Self::FloatingPresentation(MaximizedTransition::ExitedToFloatingPresentation {
+                monitor_id,
+                ..
+            })
+            | Self::FloatingPresentation(MaximizedTransition::UpdatedFullscreenRestore {
+                monitor_id,
+            }) => monitor_id,
+        }
+    }
+
+    pub(crate) fn changed(self) -> bool {
+        match self {
+            Self::Placement { changed, .. } => changed,
+            Self::FloatingPresentation(transition) => transition.changed(),
+            Self::Rejected { .. } => false,
+        }
+    }
+
+    pub(crate) fn entered_floating_presentation(self) -> bool {
+        matches!(
+            self,
+            Self::FloatingPresentation(MaximizedTransition::Entered { .. })
+        )
+    }
 }
 
 impl MaximizedTransition {
@@ -137,12 +194,29 @@ impl MaximizedTransition {
             | Self::Entered { monitor_id, .. }
             | Self::ExitedToTiling { monitor_id }
             | Self::ExitedToFloating { monitor_id, .. }
+            | Self::ExitedToFloatingPresentation { monitor_id, .. }
             | Self::UpdatedFullscreenRestore { monitor_id } => monitor_id,
         }
     }
 }
 
 impl WmModel {
+    /// Whether the application should perceive its window as maximized.
+    ///
+    /// Tiling presentations deliberately expose tiled placement through the
+    /// application's maximize/restore control. In a global floating
+    /// presentation, maximization retains its literal full-work-area meaning.
+    pub(crate) fn client_protocol_maximized(&self, win: WindowId) -> Option<bool> {
+        let view = self.client_view(win)?;
+        Some(
+            if view.monitor.current_layout() == crate::layouts::PresentationMode::Floating {
+                view.client.mode().has_client_maximized_presentation()
+            } else {
+                view.client.placement() == ClientPlacement::Tiling
+            },
+        )
+    }
+
     /// Set real-fullscreen presentation and return the complete backend plan.
     ///
     /// Fake fullscreen is deliberately considered distinct from real
@@ -255,13 +329,157 @@ impl WmModel {
         Some(MaximizedTransition::ExitedToTiling { monitor_id })
     }
 
-    /// Apply a client protocol maximize request.
-    pub(crate) fn set_client_maximized(
+    /// Interpret an application's maximize/restore control.
+    ///
+    /// In tiling presentations it controls tiled/floating placement. In the
+    /// global floating presentation it controls a literal work-area maximize.
+    pub(crate) fn apply_client_maximize_intent(
         &mut self,
         win: WindowId,
         maximized: bool,
-    ) -> Option<MaximizedTransition> {
-        self.set_maximized_with_origin(win, maximized, MaximizedOrigin::Client)
+    ) -> Option<ClientMaximizeIntentTransition> {
+        let monitor_id = self.client(win)?.monitor_id;
+        let floating_presentation = self.monitor(monitor_id)?.current_layout()
+            == crate::layouts::PresentationMode::Floating;
+
+        let client = self.client(win)?;
+        if maximized
+            && (client.is_fixed_size || client.transient_for.is_some() || client.is_scratchpad())
+        {
+            return Some(ClientMaximizeIntentTransition::Rejected { monitor_id });
+        }
+
+        if floating_presentation {
+            let work_rect = self.monitor(monitor_id)?.work_rect();
+            let was_client_maximized = self.client(win)?.mode().has_client_maximized_presentation();
+            if maximized
+                && self
+                    .client(win)
+                    .is_some_and(|client| !client.mode().is_fullscreen())
+                && let Some(client) = self.client_mut(win)
+            {
+                // Global floating presentation makes even persistently tiled
+                // clients free-positioned, so literal maximization must save
+                // their current visible rectangle too.
+                client.save_floating_placement(client.geo, work_rect);
+            }
+            let mut transition =
+                self.set_maximized_with_origin(win, maximized, MaximizedOrigin::Client)?;
+            if matches!(transition, MaximizedTransition::Entered { .. }) {
+                self.raise_client_in_z_order(win);
+            }
+            if !maximized
+                && was_client_maximized
+                && self
+                    .client(win)
+                    .is_some_and(|client| !client.mode().is_fullscreen())
+                && matches!(transition, MaximizedTransition::ExitedToTiling { .. })
+            {
+                let client = self.client_mut(win)?;
+                let restore_rect = crate::client::geometry::resolve_floating_transition(
+                    client,
+                    work_rect,
+                    crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                );
+                client.update_geometry(restore_rect);
+                transition = MaximizedTransition::ExitedToFloatingPresentation {
+                    monitor_id,
+                    restore_rect,
+                };
+            }
+            return Some(ClientMaximizeIntentTransition::FloatingPresentation(
+                transition,
+            ));
+        }
+
+        let work_rect = self.monitor(monitor_id)?.work_rect();
+        let target = if maximized {
+            ClientPlacement::Tiling
+        } else {
+            ClientPlacement::Floating
+        };
+        let client = self.client_mut(win)?;
+        let before_mode = client.mode();
+        let before_geo = client.geo;
+        let before_border = client.border_width;
+
+        // A client-maximized presentation can survive a layout-presentation
+        // switch. Once tiling is available, collapse it into placement before
+        // applying the new intent.
+        if before_mode.has_client_maximized_presentation() {
+            client.set_maximized_presentation(false, MaximizedOrigin::Client);
+        }
+
+        let mut visible_restore_rect = None;
+        match target {
+            ClientPlacement::Tiling => {
+                if client.placement() == ClientPlacement::Floating {
+                    if client.mode().is_normal_floating() {
+                        client.save_floating_placement(client.geo, work_rect);
+                    }
+                    client.set_placement(ClientPlacement::Tiling);
+                }
+            }
+            ClientPlacement::Floating => {
+                if client.placement() != ClientPlacement::Floating {
+                    let mut placement_client = client.clone();
+                    placement_client.restore_border_width();
+                    let restored = crate::client::geometry::resolve_floating_transition(
+                        &placement_client,
+                        work_rect,
+                        crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                    );
+                    client.set_placement(ClientPlacement::Floating);
+                    client.save_floating_placement(restored, work_rect);
+                    if client.mode().is_normal_floating() {
+                        client.restore_border_width();
+                        client.update_geometry(restored);
+                        visible_restore_rect = Some(restored);
+                    }
+                } else if client.mode().is_normal_floating() {
+                    visible_restore_rect = Some(client.geo);
+                }
+            }
+        }
+
+        Some(ClientMaximizeIntentTransition::Placement {
+            monitor_id,
+            placement: target,
+            changed: client.mode() != before_mode
+                || client.geo != before_geo
+                || client.border_width != before_border,
+            visible_restore_rect,
+        })
+    }
+
+    /// Collapse literal client maximization into tiled placement when a
+    /// monitor leaves the global floating presentation.
+    pub(crate) fn reconcile_client_maximization_for_tiling(
+        &mut self,
+        monitor_id: MonitorId,
+    ) -> Vec<WindowId> {
+        let windows = self
+            .clients
+            .values()
+            .filter(|client| client.monitor_id == monitor_id)
+            .map(|client| client.win)
+            .collect::<Vec<_>>();
+        let mut changed = Vec::new();
+
+        for win in windows {
+            let has_client_maximize = self
+                .client(win)
+                .is_some_and(|client| client.mode().has_client_maximized_presentation());
+            if !has_client_maximize {
+                continue;
+            }
+            let _ = self.set_maximized_with_origin(win, false, MaximizedOrigin::Client);
+            if let Some(client) = self.client_mut(win) {
+                client.set_placement(ClientPlacement::Tiling);
+            }
+            changed.push(win);
+        }
+        changed
     }
 
     /// Apply instantWM's protocol-independent per-window zoom.
@@ -280,7 +498,17 @@ impl WmModel {
     /// determines which backend state must be cleared.
     pub(crate) fn leave_maximized(&mut self, win: WindowId) -> Option<LeaveMaximizedTransition> {
         let origin = self.client(win)?.mode().maximized_origin()?;
-        let transition = self.set_maximized_with_origin(win, false, origin)?;
+        let transition = if origin == MaximizedOrigin::Client
+            && self.client_view(win).is_some_and(|view| {
+                view.monitor.current_layout() == crate::layouts::PresentationMode::Floating
+            }) {
+            match self.apply_client_maximize_intent(win, false)? {
+                ClientMaximizeIntentTransition::FloatingPresentation(transition) => transition,
+                _ => unreachable!("floating presentation must use literal client maximization"),
+            }
+        } else {
+            self.set_maximized_with_origin(win, false, origin)?
+        };
         Some(LeaveMaximizedTransition { origin, transition })
     }
 }
@@ -419,126 +647,195 @@ mod tests {
     }
 
     #[test]
-    fn maximize_transaction_returns_work_and_restore_geometry() {
-        let (mut model, win, monitor_id) = model_with_client(ClientMode::tiled());
+    fn tiled_placement_is_projected_as_client_maximized() {
+        let (model, win, _) = model_with_client(ClientMode::tiled());
 
-        let transition = model.set_client_maximized(win, true).unwrap();
-
-        assert!(transition.entered());
-        assert_eq!(transition.monitor_id(), monitor_id);
-        assert!(model.client(win).unwrap().mode().is_maximized());
+        assert_eq!(model.client_protocol_maximized(win), Some(true));
     }
 
     #[test]
-    fn unrelated_presentation_is_not_destroyed_by_unmaximize() {
-        let (mut model, win, _) = model_with_client(ClientMode::tiled().as_fullscreen());
-
-        let transition = model.set_client_maximized(win, false).unwrap();
-
-        assert_eq!(
-            transition,
-            MaximizedTransition::Unchanged {
-                monitor_id: model.client(win).unwrap().monitor_id
-            }
-        );
-        assert!(model.client(win).unwrap().mode().is_true_fullscreen());
-        assert!(!model.client(win).unwrap().mode().is_protocol_maximized());
-    }
-
-    #[test]
-    fn fullscreen_restores_client_requested_maximization() {
-        let (mut model, win, monitor_id) = model_with_client(ClientMode::tiled());
-        assert!(model.set_client_maximized(win, true).unwrap().changed());
-
-        let entered = model.set_fullscreen(win, true).unwrap();
-        assert_eq!(
-            entered,
-            FullscreenTransition::EnteredFromLayout {
-                monitor_id,
-                monitor_rect: Rect::new(0, 0, 1920, 1080),
-            }
-        );
-        let fullscreen = model.client(win).unwrap();
-        assert!(fullscreen.mode().is_true_fullscreen());
-        assert!(fullscreen.mode().is_protocol_maximized());
-
-        let exited = model.set_fullscreen(win, false).unwrap();
-        assert_eq!(
-            exited,
-            FullscreenTransition::ExitedToMaximized {
-                monitor_id,
-                work_rect: Rect::new(0, 0, 1920, 1080),
-            }
-        );
-        let restored = model.client(win).unwrap();
-        assert!(restored.mode().is_maximized());
-        assert!(restored.mode().is_protocol_maximized());
-    }
-
-    #[test]
-    fn maximize_request_during_fullscreen_updates_the_restore_presentation() {
+    fn client_maximize_tiles_in_a_tiling_presentation() {
         let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
-        let _ = model.set_fullscreen(win, true).unwrap();
 
         assert_eq!(
-            model.set_client_maximized(win, true).unwrap(),
-            MaximizedTransition::UpdatedFullscreenRestore { monitor_id }
-        );
-        assert!(model.client(win).unwrap().mode().is_true_fullscreen());
-
-        assert_eq!(
-            model.set_fullscreen(win, false).unwrap(),
-            FullscreenTransition::ExitedToMaximized {
+            model.apply_client_maximize_intent(win, true).unwrap(),
+            ClientMaximizeIntentTransition::Placement {
                 monitor_id,
-                work_rect: Rect::new(0, 0, 1920, 1080),
+                placement: ClientPlacement::Tiling,
+                changed: true,
+                visible_restore_rect: None,
             }
         );
-        let restored = model.client(win).unwrap();
-        assert!(restored.mode().is_maximized());
-        assert_eq!(restored.placement(), ClientPlacement::Floating);
+        assert!(model.client(win).unwrap().mode().is_normal_tiling());
+        assert_eq!(model.client_protocol_maximized(win), Some(true));
     }
 
     #[test]
-    fn tiled_unmaximize_requires_layout_instead_of_restoring_maximized_rect() {
-        let (mut model, win, monitor_id) = model_with_client(ClientMode::tiled());
-        let _ = model.set_client_maximized(win, true).unwrap();
+    fn client_restore_floats_and_restores_geometry_in_a_tiling_presentation() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        let floating = model.client(win).unwrap().geo;
+        let _ = model.apply_client_maximize_intent(win, true).unwrap();
         model
             .client_mut(win)
             .unwrap()
             .update_geometry(Rect::new(0, 0, 1920, 1080));
 
         assert_eq!(
-            model.set_client_maximized(win, false).unwrap(),
-            MaximizedTransition::ExitedToTiling { monitor_id }
+            model.apply_client_maximize_intent(win, false).unwrap(),
+            ClientMaximizeIntentTransition::Placement {
+                monitor_id,
+                placement: ClientPlacement::Floating,
+                changed: true,
+                visible_restore_rect: Some(floating),
+            }
         );
-        assert!(model.client(win).unwrap().mode().is_normal_tiling());
+        assert!(model.client(win).unwrap().mode().is_normal_floating());
+        assert_eq!(model.client(win).unwrap().geo, floating);
+        assert_eq!(model.client_protocol_maximized(win), Some(false));
     }
 
     #[test]
-    fn wm_zoom_is_not_projected_as_client_maximization() {
-        let (mut model, win, _) = model_with_client(ClientMode::tiled());
+    fn client_maximize_is_literal_in_the_global_floating_presentation() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Floating;
+
+        assert_eq!(
+            model.apply_client_maximize_intent(win, true).unwrap(),
+            ClientMaximizeIntentTransition::FloatingPresentation(MaximizedTransition::Entered {
+                monitor_id,
+                work_rect: Rect::new(0, 0, 1920, 1080),
+            })
+        );
+        assert!(model.client(win).unwrap().mode().is_maximized());
+        assert_eq!(model.client_protocol_maximized(win), Some(true));
+    }
+
+    #[test]
+    fn global_floating_restore_preserves_tiled_placement_and_visible_geometry() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::tiled());
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Floating;
+        let floating_rect = model.client(win).unwrap().geo;
+        let _ = model.apply_client_maximize_intent(win, true).unwrap();
+        model
+            .client_mut(win)
+            .unwrap()
+            .update_geometry(Rect::new(0, 0, 1920, 1080));
+
+        assert_eq!(
+            model.apply_client_maximize_intent(win, false).unwrap(),
+            ClientMaximizeIntentTransition::FloatingPresentation(
+                MaximizedTransition::ExitedToFloatingPresentation {
+                    monitor_id,
+                    restore_rect: floating_rect,
+                }
+            )
+        );
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_normal_tiling());
+        assert_eq!(client.geo, floating_rect);
+        assert_eq!(model.client_protocol_maximized(win), Some(false));
+    }
+
+    #[test]
+    fn fixed_size_client_rejects_tiling_maximize_intent() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        model.client_mut(win).unwrap().is_fixed_size = true;
+
+        assert_eq!(
+            model.apply_client_maximize_intent(win, true).unwrap(),
+            ClientMaximizeIntentTransition::Rejected { monitor_id }
+        );
+        assert!(model.client(win).unwrap().mode().is_normal_floating());
+        assert_eq!(model.client_protocol_maximized(win), Some(false));
+    }
+
+    #[test]
+    fn leaving_global_floating_collapses_client_maximize_into_tiling() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Floating;
+        let _ = model.apply_client_maximize_intent(win, true).unwrap();
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Tiled;
+
+        assert_eq!(
+            model.reconcile_client_maximization_for_tiling(monitor_id),
+            vec![win]
+        );
+        assert!(model.client(win).unwrap().mode().is_normal_tiling());
+        assert_eq!(model.client_protocol_maximized(win), Some(true));
+    }
+
+    #[test]
+    fn maximize_during_fullscreen_changes_the_tiling_restore_placement() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        let _ = model.set_fullscreen(win, true).unwrap();
+
+        let transition = model.apply_client_maximize_intent(win, true).unwrap();
+
+        assert_eq!(
+            transition,
+            ClientMaximizeIntentTransition::Placement {
+                monitor_id,
+                placement: ClientPlacement::Tiling,
+                changed: true,
+                visible_restore_rect: None,
+            }
+        );
+        assert!(model.client(win).unwrap().mode().is_true_fullscreen());
+        assert_eq!(
+            model.set_fullscreen(win, false).unwrap(),
+            FullscreenTransition::ExitedToTiling { monitor_id }
+        );
+    }
+
+    #[test]
+    fn wm_zoom_remains_distinct_in_the_global_floating_presentation() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Floating;
 
         let _ = model.set_wm_maximized(win, true).unwrap();
 
-        let mode = model.client(win).unwrap().mode();
-        assert!(mode.is_wm_maximized());
-        assert!(!mode.is_protocol_maximized());
+        assert!(model.client(win).unwrap().mode().is_wm_maximized());
+        assert_eq!(model.client_protocol_maximized(win), Some(false));
     }
 
     #[test]
-    fn leave_maximized_reports_the_owner_and_restores_placement() {
+    fn leave_literal_client_maximize_reports_owner_and_restores_geometry() {
         let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
-        let _ = model.set_client_maximized(win, true).unwrap();
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Floating;
+        let _ = model.apply_client_maximize_intent(win, true).unwrap();
 
         let left = model.leave_maximized(win).unwrap();
 
         assert_eq!(left.origin, MaximizedOrigin::Client);
-        assert_eq!(left.transition.monitor_id(), monitor_id);
         assert!(matches!(
             left.transition,
             MaximizedTransition::ExitedToFloating { .. }
         ));
         assert!(model.client(win).unwrap().mode().is_normal_floating());
-        assert!(model.leave_maximized(win).is_none());
+        assert_eq!(model.client_protocol_maximized(win), Some(false));
     }
 }

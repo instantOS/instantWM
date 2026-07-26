@@ -93,29 +93,19 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
     }
 }
 
-/// Apply a client-requested maximize transition and project it to the backend.
-pub(crate) fn set_client_maximized(ctx: &mut WmCtx<'_>, win: WindowId, maximized: bool) {
+/// Interpret and project an application's maximize/restore intent.
+pub(crate) fn apply_client_maximize_intent(ctx: &mut WmCtx<'_>, win: WindowId, maximized: bool) {
     let Some(transition) = ctx
         .core_mut()
         .model_mut()
-        .set_client_maximized(win, maximized)
+        .apply_client_maximize_intent(win, maximized)
     else {
         return;
     };
-    apply_maximized_transition(ctx, win, transition);
-
-    match ctx {
-        WmCtx::X11(ctx_x11) => {
-            crate::backend::x11::fullscreen::set_maximized_atoms(
-                &ctx_x11.x11,
-                ctx_x11.x11_runtime,
-                win,
-                maximized,
-            );
-        }
-        WmCtx::Wayland(ctx_wayland) => {
-            ctx_wayland.wayland.sync_window_presentation(win);
-        }
+    apply_client_maximize_intent_transition(ctx, win, transition);
+    sync_client_maximized_signal(ctx, win);
+    if transition.entered_floating_presentation() {
+        ctx.raise_client(win);
     }
 }
 
@@ -135,21 +125,73 @@ pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
     apply_maximized_transition(ctx, win, left.transition);
 
     match ctx {
-        WmCtx::X11(ctx_x11) if left.origin == MaximizedOrigin::Client => {
-            crate::backend::x11::fullscreen::set_maximized_atoms(
-                &ctx_x11.x11,
-                ctx_x11.x11_runtime,
-                win,
-                false,
-            );
+        WmCtx::X11(_) if left.origin == MaximizedOrigin::Client => {
+            sync_client_maximized_signal(ctx, win);
         }
-        WmCtx::Wayland(ctx_wayland) => {
-            ctx_wayland.wayland.sync_window_presentation(win);
+        WmCtx::Wayland(_) => {
+            sync_client_maximized_signal(ctx, win);
         }
         WmCtx::X11(_) => {}
     }
 
     true
+}
+
+pub(crate) fn sync_client_maximized_signal(ctx: &mut WmCtx<'_>, win: WindowId) {
+    let Some(maximized) = ctx.core().model().client_protocol_maximized(win) else {
+        return;
+    };
+    match ctx {
+        WmCtx::X11(ctx_x11) => {
+            crate::backend::x11::fullscreen::set_maximized_atoms(
+                &ctx_x11.x11,
+                ctx_x11.x11_runtime,
+                win,
+                maximized,
+            );
+        }
+        WmCtx::Wayland(ctx_wayland) => {
+            ctx_wayland.wayland.sync_window_presentation(win);
+        }
+    }
+}
+
+fn apply_client_maximize_intent_transition(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    transition: crate::client::mode::ClientMaximizeIntentTransition,
+) {
+    use crate::client::mode::ClientMaximizeIntentTransition;
+
+    let monitor_id = transition.monitor_id();
+    match transition {
+        ClientMaximizeIntentTransition::FloatingPresentation(transition) => {
+            apply_maximized_transition(ctx, win, transition);
+        }
+        ClientMaximizeIntentTransition::Placement {
+            placement,
+            visible_restore_rect,
+            ..
+        } => {
+            if placement == crate::types::ClientPlacement::Floating {
+                if let WmCtx::X11(x11) = ctx
+                    && let Some(client) = x11.core.model().client(win)
+                {
+                    x11.x11.set_border_width(win, client.border_width);
+                    crate::backend::x11::floating::apply_floating_borderscheme(
+                        &x11.x11,
+                        win,
+                        x11.x11_runtime,
+                    );
+                }
+                if let Some(rect) = visible_restore_rect {
+                    ctx.move_resize(win, rect, MoveResizeOptions::for_floating_transition());
+                }
+            }
+            arrange(ctx, Some(monitor_id));
+        }
+        ClientMaximizeIntentTransition::Rejected { .. } => {}
+    }
 }
 
 fn apply_maximized_transition(
@@ -164,6 +206,13 @@ fn apply_maximized_transition(
             arrange(ctx, Some(monitor_id));
         }
         crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. } => {
+            ctx.move_resize(win, restore_rect, MoveResizeOptions::immediate());
+            arrange(ctx, Some(monitor_id));
+        }
+        crate::client::mode::MaximizedTransition::ExitedToFloatingPresentation {
+            restore_rect,
+            ..
+        } => {
             ctx.move_resize(win, restore_rect, MoveResizeOptions::immediate());
             arrange(ctx, Some(monitor_id));
         }

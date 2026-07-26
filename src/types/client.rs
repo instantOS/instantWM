@@ -217,12 +217,13 @@ impl ClientMode {
         }
     }
 
-    /// Whether the client should see the protocol Maximized state.
+    /// Whether literal client-owned maximization is the current presentation
+    /// or the presentation restored after fullscreen.
     ///
-    /// A fullscreen window may still retain client-requested maximization as
-    /// the presentation to restore.
+    /// This is intentionally not the protocol projection for tiled windows;
+    /// that also depends on the monitor's layout presentation.
     #[inline]
-    pub fn is_protocol_maximized(self) -> bool {
+    pub fn has_client_maximized_presentation(self) -> bool {
         matches!(
             self.presentation,
             ClientPresentation::Maximized(MaximizedOrigin::Client)

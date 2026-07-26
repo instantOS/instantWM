@@ -124,6 +124,7 @@ fn resize_window(
     }
 
     let mut ctx = wm.ctx();
+    crate::client::fullscreen::leave_maximized(&mut ctx, win);
 
     if !is_floating {
         let _ = crate::floating::set_window_mode(

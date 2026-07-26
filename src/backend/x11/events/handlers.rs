@@ -665,12 +665,15 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
     };
     let atoms = [data[1], data[2]];
     let netatom = ctx.x11_runtime.netatom;
-    let mode = ctx.core.state.model.client(win).map(|client| client.mode());
-
     if atoms.contains(&netatom.wm_maximized_vert) || atoms.contains(&netatom.wm_maximized_horz) {
-        let current = mode.is_some_and(|mode| mode.is_protocol_maximized());
+        let current = ctx
+            .core
+            .state
+            .model
+            .client_protocol_maximized(win)
+            .unwrap_or(false);
         if let Some(maximized) = requested(current) {
-            crate::client::fullscreen::set_client_maximized(
+            crate::client::fullscreen::apply_client_maximize_intent(
                 &mut WmCtx::X11(ctx.reborrow()),
                 win,
                 maximized,
@@ -679,6 +682,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
     }
 
     if atoms.contains(&netatom.wm_fullscreen) {
+        let mode = ctx.core.state.model.client(win).map(|client| client.mode());
         let current = mode.is_some_and(|mode| mode.is_fullscreen());
         if let Some(fullscreen) = requested(current) {
             crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, fullscreen);

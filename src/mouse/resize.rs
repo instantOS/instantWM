@@ -64,6 +64,7 @@ pub(crate) fn compute_axis_resize(
 /// arming performs the same eligibility check: Wayland can change window mode
 /// between the button press and the later drag-threshold event.
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
+    crate::client::fullscreen::leave_maximized(ctx, win);
     let Some((geo, is_floating)) = ctx.core().model().client(win).and_then(|client| {
         (!client.mode().is_true_fullscreen())
             .then_some((client.geo, client.mode().is_normal_floating()))

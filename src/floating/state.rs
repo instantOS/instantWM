@@ -57,7 +57,9 @@ pub fn set_window_mode(
         crate::client::fullscreen::leave_maximized(ctx, win);
     }
 
-    set_window_placement_from_policy(ctx, win, request)
+    let change = set_window_placement_from_policy(ctx, win, request);
+    crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
+    change
 }
 
 /// Change persistent placement without taking ownership of presentation.
@@ -226,6 +228,16 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
                 MoveResizeOptions::hinted_immediate(false),
             );
         }
+        crate::client::mode::MaximizedTransition::ExitedToFloatingPresentation {
+            restore_rect,
+            ..
+        } => {
+            ctx.move_resize(
+                win,
+                restore_rect,
+                MoveResizeOptions::hinted_immediate(false),
+            );
+        }
         _ => {}
     }
 
@@ -319,6 +331,28 @@ mod tests {
         let restored = wm.core.model.client(win).unwrap();
         assert!(restored.mode().is_normal_floating());
         assert_eq!(restored.geo, floating);
+    }
+
+    #[test]
+    fn user_toggle_and_application_maximize_state_stay_bidirectional() {
+        let floating = Rect::new(180, 140, 700, 500);
+        let (mut wm, win) = wm_with_client(ClientMode::floating(), floating);
+
+        toggle_floating(&mut wm.ctx());
+        assert!(wm.core.model.client(win).unwrap().mode().is_normal_tiling());
+        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(true));
+
+        toggle_floating(&mut wm.ctx());
+        assert!(
+            wm.core
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_normal_floating()
+        );
+        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
+        assert_eq!(wm.core.model.client(win).unwrap().geo, floating);
     }
 
     #[test]
@@ -416,6 +450,6 @@ mod tests {
         assert_eq!(change, WindowModeChange::ChangedToTiling);
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_normal_tiling());
-        assert!(!client.mode().is_protocol_maximized());
+        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(true));
     }
 }

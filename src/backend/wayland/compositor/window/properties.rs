@@ -200,15 +200,24 @@ impl WaylandState {
                 .user_data()
                 .get::<WindowIdMarker>()
                 .is_some_and(|marker| self.active_resizes.contains(&marker.id));
-            let mode = window
+            let presentation = window
                 .user_data()
                 .get::<WindowIdMarker>()
                 .and_then(|marker| {
-                    self.globals()
-                        .and_then(|state| state.model.client(marker.id).map(|c| c.mode()))
+                    self.globals().and_then(|state| {
+                        state.model.client(marker.id).map(|client| {
+                            (
+                                client.mode().is_fullscreen(),
+                                state
+                                    .model
+                                    .client_protocol_maximized(marker.id)
+                                    .unwrap_or(false),
+                            )
+                        })
+                    })
                 });
-            let is_fullscreen = mode.is_some_and(|mode| mode.is_fullscreen());
-            let is_maximized = mode.is_some_and(|mode| mode.is_protocol_maximized());
+            let is_fullscreen = presentation.is_some_and(|state| state.0);
+            let is_maximized = presentation.is_some_and(|state| state.1);
             toplevel.with_pending_state(|state| {
                 if let Some(size) = size {
                     state.size = Some(size);
@@ -242,15 +251,19 @@ impl WaylandState {
         let Some(window) = self.find_window(win) else {
             return;
         };
-        let Some(mode) = self
-            .globals()
-            .and_then(|state| state.model.client(win).map(|client| client.mode()))
-        else {
+        let Some((mode, maximized)) = self.globals().and_then(|state| {
+            state.model.client(win).map(|client| {
+                (
+                    client.mode(),
+                    state.model.client_protocol_maximized(win).unwrap_or(false),
+                )
+            })
+        }) else {
             return;
         };
 
         if let Some(surface) = window.x11_surface() {
-            let _ = surface.set_maximized(mode.is_protocol_maximized());
+            let _ = surface.set_maximized(maximized);
             let _ = surface.set_fullscreen(mode.is_fullscreen());
         } else {
             self.send_toplevel_configure(window, None);

@@ -10,6 +10,7 @@ use crate::types::*;
 /// Returns whether its geometry changed. A `false` horizontal result lets the
 /// key dispatcher continue the same movement onto an adjacent tag.
 pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
+    crate::client::fullscreen::leave_maximized(ctx, win);
     let Some(view) = ctx.core().model().client_view(win) else {
         return false;
     };
@@ -57,6 +58,7 @@ pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+    crate::client::fullscreen::leave_maximized(ctx, win);
     let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
@@ -91,6 +93,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
+    crate::client::fullscreen::leave_maximized(ctx, win);
     let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
@@ -126,4 +129,54 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         },
         MoveResizeOptions::hinted_immediate(true),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_move;
+    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::layouts::PresentationMode;
+    use crate::types::{
+        Client, ClientMode, ClientPlacement, Direction, MaximizedOrigin, Monitor, Rect, TagMask,
+        WindowId,
+    };
+    use crate::wm::Wm;
+
+    #[test]
+    fn moving_literal_floating_presentation_maximize_restores_and_clears_protocol_state() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let work_rect = Rect::new(0, 30, 1200, 770);
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: work_rect,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = PresentationMode::Floating;
+        let win = WindowId(71);
+        let saved = Rect::new(200, 150, 600, 450);
+        let mut client = Client {
+            win,
+            monitor_id,
+            tags: TagMask::single(1).unwrap(),
+            mode: ClientMode::maximized(ClientPlacement::Floating, MaximizedOrigin::Client),
+            geo: work_rect,
+            ..Client::default()
+        };
+        client.save_floating_placement(saved, work_rect);
+        wm.core.model.insert_client(client);
+        assert!(wm.core.model.attach_client(win));
+
+        assert!(key_move(&mut wm.ctx(), win, Direction::Right));
+
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.mode().is_normal_floating());
+        assert_eq!(client.geo, Rect::new(240, 150, 600, 450));
+        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
+    }
 }

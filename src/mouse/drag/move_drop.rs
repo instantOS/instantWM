@@ -545,6 +545,12 @@ pub fn promote_to_floating(
     win: WindowId,
     intent: FloatingPlacementIntent,
 ) -> Option<(Rect, bool)> {
+    // Literal maximization in the global floating presentation restores its
+    // free geometry first. Re-evaluating placement afterwards preserves a
+    // tiled client's manual-tree membership while still allowing it to move
+    // freely in that presentation.
+    crate::client::fullscreen::leave_maximized(ctx, win);
+
     let (is_floating, geo, monitor_id) = ctx
         .core()
         .state()
@@ -678,10 +684,10 @@ mod tests {
             FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(600, 200)),
         );
 
-        assert_eq!(result, Some((saved, true)));
+        assert_eq!(result, Some((saved, false)));
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_normal_floating());
-        assert!(!client.mode().is_protocol_maximized());
+        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
         assert_eq!(client.geo, saved);
     }
 }

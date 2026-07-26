@@ -19,7 +19,6 @@
 //! ```
 
 use crate::contexts::WmCtx;
-use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
@@ -79,17 +78,13 @@ pub fn is_valid_window_size(model: &crate::model::WmModel, rect: &Rect, c_win: W
 /// This is the single point where all external "place this window here"
 /// requests should funnel.
 pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    let is_floating = ctx
-        .core()
-        .state()
-        .model
-        .client(c_win)
-        .map(|c| c.mode().is_normal_floating())
-        .unwrap_or(false);
-
-    if !is_floating {
-        toggle_floating(ctx);
-    }
+    let _ = crate::floating::set_window_mode(
+        ctx,
+        c_win,
+        crate::floating::WindowModeRequest::Floating(
+            crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+        ),
+    );
 
     ctx.move_resize(c_win, *rect, MoveResizeOptions::hinted_immediate(true));
 }

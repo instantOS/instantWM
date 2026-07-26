@@ -128,6 +128,10 @@ pub fn manage(
 
     let attached = ctx.core.model_mut().attach_client(window);
     debug_assert!(attached, "managed X11 client must have a valid monitor");
+    crate::client::fullscreen::sync_client_maximized_signal(
+        &mut WmCtx::X11(ctx.reborrow()),
+        window,
+    );
 
     register_client_root(&ctx.x11, ctx.x11_runtime, window);
 
