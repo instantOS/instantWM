@@ -4,12 +4,13 @@
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
 use crate::backend::BackendEvent;
+use crate::backend::x11::mouse::resize_mouse_directional;
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
 use crate::mouse::drag::move_drop::promote_to_floating;
-use crate::mouse::resize::{resize_mouse_directional, resize_mouse_from_cursor};
+use crate::mouse::resize::resize_mouse_from_cursor;
 use crate::mouse::warp;
 use crate::types::geometry::Point;
 use crate::types::*;

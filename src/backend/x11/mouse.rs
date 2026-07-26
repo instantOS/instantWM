@@ -1,10 +1,14 @@
 //! X11 mouse backend helpers.
 
-use crate::backend::BackendEvent;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
-use crate::contexts::WmCtxX11;
+use crate::backend::{BackendEvent, PointerOps};
+use crate::contexts::{WmCtx, WmCtxX11};
+use crate::floating::toggle_floating;
+use crate::geometry::MoveResizeOptions;
+use crate::mouse::drag::lifecycle::{ResizeDragParams, begin_resize};
 use crate::mouse::drag::{MoveState, on_motion, prepare_drag_target};
-use crate::types::{AltCursor, MouseButton, Rect, WindowId};
+use crate::mouse::resize::compute_axis_resize;
+use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
 
@@ -186,6 +190,312 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         None,
         release_modifiers,
     );
+}
+
+fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
+    let mut ctx = WmCtx::X11(ctx_x11.reborrow());
+    f(&mut ctx)
+}
+
+pub(crate) fn resize_tree_mouse_x11(
+    ctx: &mut WmCtxX11<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    start: Point,
+    geo: Rect,
+    resize: crate::layouts::manager::PointerTreeResizeStart,
+) {
+    if ctx
+        .core
+        .drag_state_mut()
+        .begin_tree_resize(
+            win,
+            btn,
+            resize.direction,
+            start,
+            geo,
+            resize.origin.clone(),
+        )
+        .is_err()
+    {
+        return;
+    }
+    crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::Resize(resize.direction),
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                ctx.core.drag_state_mut().record_interactive_motion(*root);
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                let _ = crate::layouts::manager::update_pointer_tree_resize(
+                    &mut wm_ctx,
+                    win,
+                    &resize.origin,
+                    resize.direction,
+                    start,
+                    *root,
+                );
+            }
+            true
+        },
+    );
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 tree resize must finish using its grab button");
+    crate::mouse::drag::finish_drag_resize(&mut WmCtx::X11(ctx.reborrow()), win);
+}
+
+/// Directional resize: supports all 8 directions (corners and edges).
+///
+/// When `direction` is `None`, behaves like a bottom-right corner resize.
+/// Otherwise, resizes from the specified edge or corner.
+pub fn resize_mouse_directional(
+    ctx: &mut WmCtxX11,
+    direction: Option<ResizeDirection>,
+    btn: MouseButton,
+) {
+    let Some(win) = ctx.core.model().selected_win() else {
+        return;
+    };
+    let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) =
+        match ctx.core.model().client(win) {
+            Some(c) => (
+                c.mode().is_true_fullscreen(),
+                c.geo.x,
+                c.geo.y,
+                c.geo.right(),
+                c.geo.bottom(),
+                c.border_width,
+            ),
+            None => return,
+        };
+    if is_blocked {
+        return;
+    }
+
+    let dir = direction.unwrap_or(ResizeDirection::BottomRight);
+    let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
+
+    with_wm_ctx_x11(ctx, |ctx| {
+        ctx.raise_client(win);
+        let selmon_id = ctx.core().model().selected_monitor_id();
+        crate::layouts::sync_monitor_z_order(ctx, selmon_id);
+    });
+
+    let Some(start) = ctx.x11.pointer_location() else {
+        return;
+    };
+    let Some(geo) = ctx.core.client_geo(win) else {
+        return;
+    };
+    if begin_resize(
+        ctx.core.drag_state_mut(),
+        &ctx.x11,
+        ResizeDragParams {
+            win,
+            button: btn,
+            direction: dir,
+            start,
+            geometry: geo,
+        },
+    )
+    .is_err()
+    {
+        return;
+    }
+
+    crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::Resize(dir),
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                let pointer_x = root.x;
+                let pointer_y = root.y;
+
+                let (new_x, new_w) = compute_axis_resize(
+                    pointer_x,
+                    orig_left,
+                    orig_right,
+                    border_width,
+                    affects_left,
+                    affects_right,
+                );
+
+                let (new_y, new_h) = compute_axis_resize(
+                    pointer_y,
+                    orig_top,
+                    orig_bottom,
+                    border_width,
+                    affects_top,
+                    affects_bottom,
+                );
+
+                let snap = ctx.core.config().window.snap_threshold;
+
+                let should_toggle = if let Some(client) = ctx.core.model().client(win) {
+                    let has_tiling = ctx
+                        .core
+                        .model()
+                        .expect_selected_monitor()
+                        .is_tiling_layout();
+
+                    !client.mode().is_floating()
+                        && has_tiling
+                        && ((new_w - client.geo.w).abs() > snap
+                            || (new_h - client.geo.h).abs() > snap)
+                } else {
+                    false
+                };
+
+                if should_toggle {
+                    with_wm_ctx_x11(ctx, toggle_floating);
+                } else {
+                    let is_floating = match ctx.core.model().client(win) {
+                        Some(c) => c.mode().is_floating(),
+                        None => return false,
+                    };
+                    let has_tiling = ctx
+                        .core
+                        .model()
+                        .expect_selected_monitor()
+                        .is_tiling_layout();
+
+                    if !has_tiling || is_floating {
+                        with_wm_ctx_x11(ctx, |ctx| {
+                            ctx.move_resize(
+                                win,
+                                Rect {
+                                    x: new_x,
+                                    y: new_y,
+                                    w: new_w,
+                                    h: new_h,
+                                },
+                                MoveResizeOptions::hinted_immediate(true),
+                            );
+                        });
+                    }
+                }
+            }
+            true
+        },
+    );
+
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
+}
+
+/// Interactive resize that respects the window's declared aspect-ratio hints.
+///
+/// Reads `client.min_aspect`, `client.max_aspect`, and `client.size_hints` to clamp the
+/// new dimensions so the window's aspect ratio stays within the range it
+/// advertised via `WM_NORMAL_HINTS`.
+pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
+    let (is_fullscreen, orig_geo) = match ctx.core.model().client(win) {
+        Some(c) => (c.mode().is_fullscreen(), c.geo),
+        None => return,
+    };
+    if is_fullscreen {
+        return;
+    }
+
+    {
+        let mut tmp = WmCtx::X11(ctx.reborrow());
+        let selmon_id = tmp.core().model().selected_monitor_id();
+        crate::layouts::sync_monitor_z_order(&mut tmp, selmon_id);
+    }
+
+    let Some(start) = ctx.x11.pointer_location() else {
+        return;
+    };
+    let Some(geo) = ctx.core.client_geo(win) else {
+        return;
+    };
+    if begin_resize(
+        ctx.core.drag_state_mut(),
+        &ctx.x11,
+        ResizeDragParams {
+            win,
+            button: btn,
+            direction: ResizeDirection::BottomRight,
+            start,
+            geometry: geo,
+        },
+    )
+    .is_err()
+    {
+        return;
+    }
+
+    crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::Resize(ResizeDirection::BottomRight),
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                let (_, raw_nw) =
+                    compute_axis_resize(root.x, orig_geo.x, orig_geo.right(), 0, false, true);
+                let (_, raw_nh) =
+                    compute_axis_resize(root.y, orig_geo.y, orig_geo.bottom(), 0, false, true);
+
+                if let Some((client_geo, sh, min_aspect, max_aspect)) = ctx
+                    .core
+                    .state()
+                    .model
+                    .client(win)
+                    .map(|c| (c.geo, c.size_hints, c.min_aspect, c.max_aspect))
+                {
+                    let mut nw = raw_nw;
+                    let mut nh = raw_nh;
+
+                    if sh.minw > 0 {
+                        nw = nw.max(sh.minw);
+                    }
+                    if sh.minh > 0 {
+                        nh = nh.max(sh.minh);
+                    }
+                    if sh.maxw > 0 {
+                        nw = nw.min(sh.maxw);
+                    }
+                    if sh.maxh > 0 {
+                        nh = nh.min(sh.maxh);
+                    }
+
+                    if min_aspect > 0.0 && max_aspect > 0.0 {
+                        if max_aspect < nw as f32 / nh as f32 {
+                            nw = (nh as f32 * max_aspect) as i32;
+                        } else if min_aspect < nh as f32 / nw as f32 {
+                            nh = (nw as f32 * min_aspect) as i32;
+                        }
+                    }
+
+                    with_wm_ctx_x11(ctx, |ctx| {
+                        ctx.move_resize(
+                            win,
+                            Rect {
+                                x: client_geo.x,
+                                y: client_geo.y,
+                                w: nw,
+                                h: nh,
+                            },
+                            MoveResizeOptions::hinted_immediate(true),
+                        );
+                    });
+                }
+            }
+            true
+        },
+    );
+
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }
 
 pub fn cursor_client_win(

@@ -21,7 +21,7 @@ use crate::model::WmModel;
 use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
-use super::resize::resize_mouse_directional;
+use crate::backend::x11::mouse::resize_mouse_directional;
 
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
