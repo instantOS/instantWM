@@ -190,7 +190,7 @@ mod tests {
     use super::apply_fullscreen_request;
     use crate::bar::BarState;
     use crate::core_state::{CoreState, PendingWork};
-    use crate::types::{Client, Monitor, WindowId};
+    use crate::types::{BaseClientMode, Client, Monitor, Rect, WindowId};
 
     #[test]
     fn fullscreen_request_updates_authoritative_state_before_acknowledgement() {
@@ -232,5 +232,44 @@ mod tests {
         ));
         assert!(!work.layout.is_pending());
         assert!(!bar.needs_redraw());
+    }
+
+    #[test]
+    fn unfullscreen_request_restores_floating_geometry_before_layout() {
+        let mut core = CoreState::default();
+        let monitor_id = core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        let win = WindowId(41);
+        let floating_rect = Rect::new(200, 150, 960, 540);
+        let fullscreen_rect = Rect::new(0, 0, 1920, 1080);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo: floating_rect,
+            old_geo: floating_rect,
+            border_width: 2,
+            old_border_width: 2,
+            ..Client::default()
+        };
+        client.replace_mode_with_base(BaseClientMode::Floating);
+        core.model.insert_client(client);
+        let mut work = PendingWork::default();
+        let mut bar = BarState::default();
+
+        assert!(apply_fullscreen_request(
+            &mut core, &mut work, &mut bar, win, true
+        ));
+        crate::client::sync_client_geometry(&mut core.model, win, fullscreen_rect);
+        assert!(apply_fullscreen_request(
+            &mut core, &mut work, &mut bar, win, false
+        ));
+
+        let client = core.model.client(win).unwrap();
+        assert!(client.mode().is_floating());
+        assert_eq!(client.geo, floating_rect);
+        assert_eq!(client.saved_floating_rect(), Some(floating_rect));
     }
 }

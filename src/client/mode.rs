@@ -13,7 +13,7 @@ use crate::types::{BaseClientMode, Client, ClientMode, MonitorId, Rect, WindowId
 /// reuse it while already holding the sole mutable client borrow. Keeping the
 /// state-machine operation here prevents those transactions from duplicating
 /// fullscreen semantics or looking the client up again.
-pub(crate) fn set_client_fullscreen(client: &mut Client, fullscreen: bool) -> (ClientMode, bool) {
+fn set_client_fullscreen(client: &mut Client, fullscreen: bool) -> (ClientMode, bool) {
     let previous_mode = client.mode();
     let changed = if fullscreen {
         !previous_mode.is_true_fullscreen()
@@ -36,62 +36,59 @@ pub(crate) fn set_client_fullscreen(client: &mut Client, fullscreen: bool) -> (C
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TransitionKind {
-    Entered,
-    Exited,
-    Unchanged,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "the transition contains required backend and scheduling work"]
-pub(crate) struct FullscreenTransition {
-    monitor_id: MonitorId,
-    monitor_rect: Rect,
-    previous_mode: ClientMode,
-    old_geo: Rect,
-    kind: TransitionKind,
+pub(crate) enum FullscreenTransition {
+    Unchanged {
+        monitor_id: MonitorId,
+    },
+    EnteredFromLayout {
+        monitor_id: MonitorId,
+        monitor_rect: Rect,
+    },
+    EnteredFromFloating {
+        monitor_id: MonitorId,
+        monitor_rect: Rect,
+    },
+    EnteredFromFakeFullscreen {
+        monitor_id: MonitorId,
+    },
+    ExitedToTiling {
+        monitor_id: MonitorId,
+    },
+    ExitedToFloating {
+        monitor_id: MonitorId,
+        restore_rect: Rect,
+    },
+    ExitedFakeFullscreen {
+        monitor_id: MonitorId,
+    },
 }
 
 impl FullscreenTransition {
     #[inline]
     pub(crate) fn changed(self) -> bool {
-        self.kind != TransitionKind::Unchanged
-    }
-
-    #[inline]
-    pub(crate) fn entered(self) -> bool {
-        self.kind == TransitionKind::Entered
-    }
-
-    #[inline]
-    pub(crate) fn exited(self) -> bool {
-        self.kind == TransitionKind::Exited
+        !matches!(self, Self::Unchanged { .. })
     }
 
     #[inline]
     pub(crate) fn monitor_id(self) -> MonitorId {
-        self.monitor_id
+        match self {
+            Self::Unchanged { monitor_id }
+            | Self::EnteredFromLayout { monitor_id, .. }
+            | Self::EnteredFromFloating { monitor_id, .. }
+            | Self::EnteredFromFakeFullscreen { monitor_id }
+            | Self::ExitedToTiling { monitor_id }
+            | Self::ExitedToFloating { monitor_id, .. }
+            | Self::ExitedFakeFullscreen { monitor_id } => monitor_id,
+        }
     }
+}
 
-    #[inline]
-    pub(crate) fn monitor_rect(self) -> Rect {
-        self.monitor_rect
-    }
-
-    #[inline]
-    pub(crate) fn old_geo(self) -> Rect {
-        self.old_geo
-    }
-
-    #[inline]
-    pub(crate) fn was_fake_fullscreen(self) -> bool {
-        self.previous_mode.is_fake_fullscreen()
-    }
-
-    #[inline]
-    pub(crate) fn was_floating(self) -> bool {
-        self.previous_mode.is_floating()
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransitionKind {
+    Entered,
+    Exited,
+    Unchanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,19 +149,60 @@ impl WmModel {
         let client = clients.get_mut(&win)?;
         let monitor = monitors.get(client.monitor_id)?;
 
-        let (previous_mode, changed) = set_client_fullscreen(client, fullscreen);
+        let previous_mode = client.mode();
+        if fullscreen && previous_mode.is_floating() {
+            client.save_floating_placement(client.geo, monitor.work_rect());
+        }
+        let (_, changed) = set_client_fullscreen(client, fullscreen);
+        let monitor_id = client.monitor_id;
 
-        let kind = match (changed, fullscreen) {
-            (true, true) => TransitionKind::Entered,
-            (true, false) => TransitionKind::Exited,
-            (false, _) => TransitionKind::Unchanged,
-        };
-        Some(FullscreenTransition {
-            monitor_id: client.monitor_id,
-            monitor_rect: monitor.monitor_rect,
-            previous_mode,
-            old_geo: client.old_geo,
-            kind,
+        if !changed {
+            return Some(FullscreenTransition::Unchanged { monitor_id });
+        }
+
+        if fullscreen {
+            return Some(match previous_mode {
+                ClientMode::Floating => FullscreenTransition::EnteredFromFloating {
+                    monitor_id,
+                    monitor_rect: monitor.monitor_rect,
+                },
+                ClientMode::FakeFullscreen { .. } => {
+                    FullscreenTransition::EnteredFromFakeFullscreen { monitor_id }
+                }
+                ClientMode::Tiling | ClientMode::Maximized { .. } => {
+                    FullscreenTransition::EnteredFromLayout {
+                        monitor_id,
+                        monitor_rect: monitor.monitor_rect,
+                    }
+                }
+                ClientMode::TrueFullscreen { .. } => unreachable!("unchanged transition returned"),
+            });
+        }
+
+        Some(match previous_mode {
+            ClientMode::TrueFullscreen {
+                restore: BaseClientMode::Floating,
+            } => {
+                let restore_rect = crate::client::geometry::resolve_floating_transition(
+                    client,
+                    monitor.work_rect(),
+                    crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                );
+                client.update_geometry(restore_rect);
+                FullscreenTransition::ExitedToFloating {
+                    monitor_id,
+                    restore_rect,
+                }
+            }
+            ClientMode::TrueFullscreen {
+                restore: BaseClientMode::Tiling,
+            } => FullscreenTransition::ExitedToTiling { monitor_id },
+            ClientMode::FakeFullscreen { .. } => {
+                FullscreenTransition::ExitedFakeFullscreen { monitor_id }
+            }
+            ClientMode::Tiling | ClientMode::Floating | ClientMode::Maximized { .. } => {
+                unreachable!("unchanged transition returned")
+            }
         })
     }
 
@@ -221,6 +259,7 @@ mod tests {
         let mut model = WmModel::default();
         let monitor_id = model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
             ..Monitor::default()
         });
         let win = WindowId(1);
@@ -244,10 +283,13 @@ mod tests {
 
         let transition = model.set_fullscreen(win, true).unwrap();
 
-        assert!(transition.entered());
-        assert_eq!(transition.monitor_id(), monitor_id);
-        assert_eq!(transition.monitor_rect(), Rect::new(0, 0, 1920, 1080));
-        assert_eq!(transition.old_geo(), Rect::new(30, 40, 640, 480));
+        assert_eq!(
+            transition,
+            FullscreenTransition::EnteredFromLayout {
+                monitor_id,
+                monitor_rect: Rect::new(0, 0, 1920, 1080),
+            }
+        );
         let client = model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(client.border_width, 0);
@@ -263,25 +305,66 @@ mod tests {
 
     #[test]
     fn unfullscreen_transaction_restores_base_mode_and_border() {
-        let (mut model, win, _) = model_with_client(ClientMode::Tiling);
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::Tiling);
         let _ = model.set_fullscreen(win, true).unwrap();
 
         let transition = model.set_fullscreen(win, false).unwrap();
 
-        assert!(transition.exited());
+        assert_eq!(
+            transition,
+            FullscreenTransition::ExitedToTiling { monitor_id }
+        );
         let client = model.client(win).unwrap();
         assert!(client.mode().is_tiling());
         assert_eq!(client.border_width, 2);
     }
 
     #[test]
+    fn unfullscreen_atomically_restores_saved_floating_geometry() {
+        let floating_rect = Rect::new(10, 20, 800, 600);
+        let fullscreen_rect = Rect::new(0, 0, 1920, 1080);
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::Floating);
+
+        let entered = model.set_fullscreen(win, true).unwrap();
+        assert_eq!(
+            entered,
+            FullscreenTransition::EnteredFromFloating {
+                monitor_id,
+                monitor_rect: fullscreen_rect,
+            }
+        );
+        model
+            .client_mut(win)
+            .unwrap()
+            .update_geometry(fullscreen_rect);
+
+        let exited = model.set_fullscreen(win, false).unwrap();
+
+        assert_eq!(
+            exited,
+            FullscreenTransition::ExitedToFloating {
+                monitor_id,
+                restore_rect: floating_rect,
+            }
+        );
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_floating());
+        assert_eq!(client.geo, floating_rect);
+        assert_eq!(client.old_geo, fullscreen_rect);
+        assert_eq!(client.saved_floating_rect(), Some(floating_rect));
+    }
+
+    #[test]
     fn real_fullscreen_request_promotes_fake_fullscreen() {
-        let (mut model, win, _) = model_with_client(ClientMode::Tiling.as_fake_fullscreen());
+        let (mut model, win, monitor_id) =
+            model_with_client(ClientMode::Tiling.as_fake_fullscreen());
 
         let transition = model.set_fullscreen(win, true).unwrap();
 
-        assert!(transition.changed());
-        assert!(transition.was_fake_fullscreen());
+        assert_eq!(
+            transition,
+            FullscreenTransition::EnteredFromFakeFullscreen { monitor_id }
+        );
         assert!(model.client(win).unwrap().mode().is_true_fullscreen());
     }
 

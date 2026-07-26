@@ -74,20 +74,27 @@ pub(crate) fn apply_xwayland_policy(
 ) -> Option<XWaylandPolicyOutcome> {
     let monitor_id = model.client(win)?.monitor_id;
     let work_area = model.monitor(monitor_id)?.work_rect();
-    let client = model.client_mut(win)?;
-    let before = PolicyState::capture(client);
+    let before = PolicyState::capture(model.client(win)?);
 
-    apply_wm_hints_to_client(client, update.hints);
-    apply_size_hints_to_client(client, update.size_hints);
-    crate::client::mode::set_client_fullscreen(client, update.is_fullscreen);
-    client.is_hidden = update.is_hidden;
+    // Fullscreen owns mode, border, and floating-restore geometry as one model
+    // transaction. Policy reconciliation must not bypass that boundary by
+    // mutating the client-local mode directly.
+    let fullscreen_transition = model.set_fullscreen(win, update.is_fullscreen)?;
+    debug_assert_eq!(fullscreen_transition.monitor_id(), monitor_id);
 
-    if update.is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
-        client.save_floating_placement(client.geo, work_area);
-        client.set_base_mode(crate::types::BaseClientMode::Floating);
+    {
+        let client = model.client_mut(win)?;
+        apply_wm_hints_to_client(client, update.hints);
+        apply_size_hints_to_client(client, update.size_hints);
+        client.is_hidden = update.is_hidden;
+
+        if update.is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
+            client.save_floating_placement(client.geo, work_area);
+            client.set_base_mode(crate::types::BaseClientMode::Floating);
+        }
     }
 
-    let after = PolicyState::capture(client);
+    let after = PolicyState::capture(model.client(win)?);
     let layout_changed = before.mode != after.mode
         || before.hidden != after.hidden
         || before.fixed_size != after.fixed_size
@@ -167,4 +174,53 @@ pub fn should_float_for_x11_type(window_type: Option<WmWindowType>) -> bool {
                 | WmWindowType::Splash
         )
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{XWaylandPolicyUpdate, apply_xwayland_policy};
+    use crate::model::WmModel;
+    use crate::types::{BaseClientMode, Client, Monitor, Rect, WindowId};
+
+    #[test]
+    fn xwayland_policy_uses_authoritative_fullscreen_geometry_restore() {
+        let mut model = WmModel::default();
+        let output_rect = Rect::new(0, 0, 1920, 1080);
+        let monitor_id = model.monitors.push(Monitor {
+            monitor_rect: output_rect,
+            available_rect: output_rect,
+            ..Monitor::default()
+        });
+        let win = WindowId(90);
+        let floating_rect = Rect::new(300, 200, 900, 600);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo: floating_rect,
+            old_geo: floating_rect,
+            border_width: 2,
+            old_border_width: 2,
+            ..Client::default()
+        };
+        client.replace_mode_with_base(BaseClientMode::Floating);
+        model.insert_client(client);
+
+        let update = |is_fullscreen| XWaylandPolicyUpdate {
+            hints: None,
+            size_hints: None,
+            is_fullscreen,
+            is_hidden: false,
+            is_above: false,
+        };
+        let entered = apply_xwayland_policy(&mut model, win, update(true)).unwrap();
+        assert!(entered.layout_changed());
+        crate::client::sync_client_geometry(&mut model, win, output_rect);
+        let exited = apply_xwayland_policy(&mut model, win, update(false)).unwrap();
+        assert!(exited.layout_changed());
+
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_floating());
+        assert_eq!(client.geo, floating_rect);
+        assert_eq!(client.saved_floating_rect(), Some(floating_rect));
+    }
 }
