@@ -93,13 +93,20 @@ pub fn handle_touch_down(
 
     state.runtime.cursor_hidden_by_touch = true;
 
-    let serial = SERIAL_COUNTER.next_serial();
     let hit = focus_at(state, location);
+    let pointer = state.pointer.clone();
+    crate::wayland::input::pointer::clear_focus_for_touch(
+        &pointer,
+        state,
+        state.runtime.pointer_location,
+        event.time_msec,
+    );
 
     if !state.is_locked() {
         if hit.is_layer {
             if let Some((PointerFocusTarget::WlSurface(surface), _)) = hit.focus.as_ref() {
-                state.focus_layer_keyboard(surface, serial, LayerFocusRequest::UserInteraction);
+                let kbd_serial = SERIAL_COUNTER.next_serial();
+                state.focus_layer_keyboard(surface, kbd_serial, LayerFocusRequest::UserInteraction);
             }
         } else if !state.is_pointer_over_overlay(location) {
             let root = root_point(location);
@@ -133,17 +140,17 @@ pub fn handle_touch_down(
         .is_some_and(|(target, _)| !supports_native_touch(state, target));
     let touch_was_grabbed = state.touch.is_grabbed();
 
+    let touch_serial = SERIAL_COUNTER.next_serial();
     state.touch.clone().down(
         state,
         hit.focus.clone(),
         &DownEvent {
             slot: event.slot,
             location,
-            serial,
+            serial: touch_serial,
             time: event.time_msec,
         },
     );
-
     if should_emulate_pointer(
         emulate_pointer,
         state.runtime.pointer_touch_slot.is_some(),
@@ -152,22 +159,23 @@ pub fn handle_touch_down(
         state.runtime.pointer_touch_slot = Some(event.slot);
         state.runtime.pointer_location = location;
 
-        let pointer = state.pointer.clone();
+        let motion_serial = SERIAL_COUNTER.next_serial();
         pointer.motion(
             state,
             hit.focus,
             &smithay::input::pointer::MotionEvent {
                 location,
-                serial,
+                serial: motion_serial,
                 time: event.time_msec,
             },
         );
+        let btn_serial = SERIAL_COUNTER.next_serial();
         pointer.button(
             state,
             &smithay::input::pointer::ButtonEvent {
                 button: TOUCH_BUTTON_CODE,
                 state: smithay::backend::input::ButtonState::Pressed,
-                serial,
+                serial: btn_serial,
                 time: event.time_msec,
             },
         );

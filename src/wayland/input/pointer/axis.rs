@@ -43,6 +43,7 @@ pub(crate) fn handle_pointer_axis(
     keyboard: &KeyboardHandle<WaylandState>,
     input: PointerAxisInput,
 ) {
+    super::restore_focus_after_touch(pointer, state, input.location, input.event.time_msec);
     let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
 
     let root = RootPoint::from_f64_round(input.location.x, input.location.y);
