@@ -53,8 +53,14 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     };
     match cmd.spawn() {
         Ok(child) => {
-            crate::util::record_spawned_child(&mut wm.core.pending_launches, &child, metadata);
-            Response::Message(format!("pid={}", child.id()))
+            let reap_child = wm.backend.kind() == crate::backend::BackendKind::Wayland;
+            let pid = crate::util::record_spawned_child(
+                &mut wm.core.pending_launches,
+                child,
+                metadata,
+                reap_child,
+            );
+            Response::Message(format!("pid={pid}"))
         }
         Err(err) => Response::err(format!("spawn failed: {}", err)),
     }

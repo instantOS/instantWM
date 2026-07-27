@@ -4,6 +4,8 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::xdg_activation::XdgActivationTokenData;
 use std::collections::VecDeque;
 use std::process::{Child, Command, Stdio};
+use std::sync::{OnceLock, mpsc};
+use std::time::Duration;
 
 pub(crate) struct SpawnLaunchMetadata {
     pub(crate) context: crate::client::LaunchContext,
@@ -28,10 +30,16 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
     let mut command = Command::new(primary_cmd);
     command.args(argv.iter().skip(1).map(|s| s.as_ref()));
     let metadata = prepare_spawn_command(ctx, &mut command);
+    let reap_child = matches!(ctx, WmCtx::Wayland(_));
 
     match command.spawn() {
         Ok(child) => {
-            record_spawned_child(ctx.core_mut().pending_launches_mut(), &child, metadata);
+            record_spawned_child(
+                ctx.core_mut().pending_launches_mut(),
+                child,
+                metadata,
+                reap_child,
+            );
         }
         Err(e) => {
             if e.kind() == std::io::ErrorKind::NotFound && is_lockscreen_cmd(primary_cmd) {
@@ -52,8 +60,9 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
                         Ok(child) => {
                             record_spawned_child(
                                 ctx.core_mut().pending_launches_mut(),
-                                &child,
+                                child,
                                 fallback_meta,
+                                reap_child,
                             );
                             return;
                         }
@@ -127,15 +136,66 @@ pub(crate) fn prepare_spawn_command(ctx: &WmCtx, command: &mut Command) -> Spawn
 
 pub(crate) fn record_spawned_child(
     pending_launches: &mut VecDeque<PendingLaunch>,
-    child: &Child,
+    child: Child,
     metadata: SpawnLaunchMetadata,
-) {
+    reap_child: bool,
+) -> u32 {
+    let pid = child.id();
     record_pending_launch(
         pending_launches,
-        Some(child.id()),
+        Some(pid),
         Some(metadata.startup_id),
         metadata.context,
     );
+
+    // These commands are deliberately fire-and-forget, but dropping `Child`
+    // does not reap it. Wait off the compositor thread so short-lived scripts
+    // cannot accumulate as zombies and long-lived applications cannot block
+    // the event loop.
+    if reap_child {
+        reap_child_async(child);
+    }
+    pid
+}
+
+fn reap_child_async(child: Child) {
+    static CHILD_REAPER: OnceLock<mpsc::Sender<Child>> = OnceLock::new();
+
+    let sender = CHILD_REAPER.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel::<Child>();
+        std::thread::Builder::new()
+            .name("instantwm-child-reaper".to_owned())
+            .spawn(move || {
+                let mut children = Vec::<Child>::new();
+                loop {
+                    match receiver.recv_timeout(Duration::from_millis(250)) {
+                        Ok(child) => children.push(child),
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                    children.extend(receiver.try_iter());
+                    children.retain_mut(|child| match child.try_wait() {
+                        Ok(Some(_)) => false,
+                        Ok(None) => true,
+                        Err(err) => {
+                            log::warn!("instantwm: failed to reap child {}: {err}", child.id());
+                            false
+                        }
+                    });
+                }
+            })
+            .expect("failed to start child reaper");
+        sender
+    });
+
+    if let Err(err) = sender.send(child) {
+        let mut child = err.0;
+        let pid = child.id();
+        log::warn!("instantwm: child reaper stopped before accepting child {pid}");
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {

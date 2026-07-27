@@ -159,7 +159,10 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
     ) {
         let _ = window.set_mapped(true);
-        let geo = window.geometry();
+        // `geometry()` is surface-local in current Smithay and therefore has
+        // a `(0, 0)` location. `last_configure()` retains the X11 root
+        // coordinates requested by clients such as centered dmenu forks.
+        let geo = window.last_configure();
 
         if is_unmanaged_x11_overlay(&window) {
             let window_id = window.window_id();
@@ -248,7 +251,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let geo = window.geometry();
+        let geo = window.last_configure();
         let element = smithay::desktop::Window::new_x11_window(window);
         self.space.map_element(element.clone(), geo.loc, false);
         self.space.raise_element(&element, false);
@@ -351,7 +354,7 @@ impl XwmHandler for WaylandState {
         h: Option<u32>,
         _reorder: Option<smithay::xwayland::xwm::Reorder>,
     ) {
-        let mut geo = window.geometry();
+        let mut geo = window.last_configure();
         if let Some(x) = x {
             geo.loc.x = x;
         }
