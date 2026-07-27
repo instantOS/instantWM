@@ -30,12 +30,12 @@ pub(crate) fn handle_pointer_button(
     keyboard: &KeyboardHandle<WaylandState>,
     input: PointerButtonInput,
 ) {
-    super::restore_focus_after_touch(pointer, state, input.location, input.event.time_msec);
-
+    let serial = SERIAL_COUNTER.next_serial();
     let root = RootPoint::from_f64_round(input.location.x, input.location.y);
     let wm_button = MouseButton::from_wayland_code(input.event.code);
 
     let button = ButtonPress {
+        serial,
         time: input.event.time_msec,
         button_code: input.event.code,
         state: input.event.state,
@@ -67,6 +67,7 @@ pub(crate) fn handle_pointer_button(
 
 #[derive(Clone, Copy)]
 struct ButtonPress {
+    serial: smithay::utils::Serial,
     time: u32,
     button_code: u32,
     state: ButtonState,
@@ -80,11 +81,10 @@ fn forward_button(
     pointer_handle: &PointerHandle<WaylandState>,
     button: ButtonPress,
 ) {
-    let serial = SERIAL_COUNTER.next_serial();
     pointer_handle.button(
         state,
         &ButtonEvent {
-            serial,
+            serial: button.serial,
             time: button.time,
             button: button.button_code,
             state: button.state,
@@ -208,20 +208,18 @@ fn focus_layer_button_target(
     layer_surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     location: Point<i32, smithay::utils::Logical>,
 ) {
-    let kbd_serial = SERIAL_COUNTER.next_serial();
     state.focus_layer_keyboard(
         &layer_surface,
-        kbd_serial,
+        button.serial,
         LayerFocusRequest::UserInteraction,
     );
     let focus = Some((
         PointerFocusTarget::WlSurface(layer_surface),
         location.to_f64(),
     ));
-    let motion_serial = SERIAL_COUNTER.next_serial();
     let motion = MotionEvent {
         location: button.pointer_location,
-        serial: motion_serial,
+        serial: button.serial,
         time: button.time,
     };
     pointer_handle.motion(state, focus, &motion);

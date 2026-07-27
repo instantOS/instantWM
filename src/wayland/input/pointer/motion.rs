@@ -340,9 +340,7 @@ fn handle_pointer_motion(
     cache: Option<PointerMotionCache>,
     update_active_drag: bool,
 ) -> PointerMotionCache {
-    if source == PointerMotionSource::Device {
-        state.runtime.cursor_hidden_by_touch = false;
-    }
+    state.runtime.cursor_hidden_by_touch = false;
 
     let output_width = wm.core.config.derived.display.width;
     let output_height = wm.core.config.derived.display.height;
@@ -570,14 +568,12 @@ fn dispatch_pointer_motion(
     let focus =
         pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
 
+    let serial = SERIAL_COUNTER.next_serial();
     let motion = smithay::input::pointer::MotionEvent {
         location: pointer_location,
-        serial: SERIAL_COUNTER.next_serial(),
+        serial,
         time: time_msec,
     };
-    if hover_focus_trigger == crate::types::HoverFocusTrigger::PointerMotion && focus.is_some() {
-        state.runtime.pointer_focus_cleared_by_touch = false;
-    }
     pointer_handle.motion(state, focus, &motion);
     pointer_handle.frame(state);
 }
