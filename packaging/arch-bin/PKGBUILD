@@ -42,6 +42,7 @@ depends=(
     'libwacom'
     'dbus'
     'systemd'
+    'xdg-desktop-portal-wlr'
 )
 source=(
     "$_pkgname-$pkgver.tar.gz"
