@@ -799,7 +799,7 @@ fn handle_wm_drag_motion(
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
     if ctx.core().drag_state().armed_interaction().is_some() {
-        crate::mouse::title_drag_motion(&mut ctx, root);
+        crate::mouse::title_drag_motion(&mut ctx, crate::mouse::DragInput::Pointer(root));
     }
     if ctx.core().drag_state().sidebar_volume_active() {
         crate::mouse::update_sidebar_gesture(&mut ctx, root.y);

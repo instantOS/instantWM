@@ -209,8 +209,6 @@ pub enum WmCommand {
     RequestSpaceSync,
     /// Request a bar redraw.
     RequestBarRedraw,
-    /// Record a pending launch (to match future windows to pids).
-    RecordPendingLaunch { pid: Option<u32> },
     /// Request to restore focus (e.g. after an overlay closed).
     RestoreFocus,
     /// Re-read layer-shell exclusive zones for every output and refresh each

@@ -15,6 +15,24 @@ use crate::mouse::warp;
 use crate::types::geometry::Point;
 use crate::types::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragInput {
+    Pointer(Point),
+    Absolute(Point),
+}
+
+impl DragInput {
+    fn position(self) -> Point {
+        match self {
+            Self::Pointer(point) | Self::Absolute(point) => point,
+        }
+    }
+
+    fn may_warp_pointer(self) -> bool {
+        matches!(self, Self::Pointer(_))
+    }
+}
+
 /// Initialise a title-bar click/drag interaction.
 ///
 /// Returns `true` if the state machine was started.  On X11 the caller
@@ -83,17 +101,21 @@ pub fn title_drag_begin(
 fn begin_move_drag(
     ctx: &mut WmCtx,
     win: WindowId,
-    root: Point,
+    input: DragInput,
     start_point: Point,
 ) -> Option<(Rect, Point)> {
+    let position = input.position();
     if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
         let geo = ctx.client_geo(win)?;
         Some((geo, start_point))
     } else {
-        let intent = FloatingPlacementIntent::PreservePointerAnchor(root);
+        let intent = FloatingPlacementIntent::PreservePointerAnchor(position);
         let (geo, _) = promote_to_floating(ctx, win, intent)?;
-        let start = warp::clamp_into(root, geo);
-        if start != root {
+        if !input.may_warp_pointer() {
+            return Some((geo, position));
+        }
+        let start = warp::clamp_into(position, geo);
+        if start != position {
             ctx.pointer_backend().warp_to_point(start);
         }
         Some((geo, start))
@@ -101,7 +123,7 @@ fn begin_move_drag(
 }
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
-fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, _direct_position: bool) -> bool {
+fn title_drag_start_wayland(ctx: &mut WmCtx, input: DragInput) -> bool {
     let (win, btn, start_point, suppress_click_action) = {
         let Some(drag) = ctx.core().drag_state().armed_interaction() else {
             return false;
@@ -169,7 +191,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, _direct_position: bool
     // A tiled left-drag is a manual-tree placement gesture. Floating windows
     // continue to move directly. Keeping the tiled source in its original slot
     // also makes cancellation lossless.
-    let Some((current_geo, start)) = begin_move_drag(ctx, win, root, start_point) else {
+    let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point) else {
         return false;
     };
 
@@ -185,21 +207,14 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, _direct_position: bool
     true
 }
 
-/// Process a pointer motion event during an active title drag.
+/// Process motion during an active title drag.
 ///
 /// Returns `true` if the drag threshold was exceeded and the drag action
 /// (move/resize) was initiated — the caller should consider the interaction
-/// consumed.
-pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
-    title_drag_motion_at(ctx, root, false)
-}
-
-/// Process motion from an absolute interaction that is independent of the
-/// compositor pointer, such as a touchscreen sequence captured by the bar.
-///
-/// Unlike pointer motion this preserves the contact point as the window
-/// anchor and does not warp or consult the unrelated mouse cursor.
-pub(crate) fn title_drag_motion_at(ctx: &mut WmCtx, root: Point, direct_position: bool) -> bool {
+/// consumed. [`DragInput::Absolute`] preserves the contact point as the window
+/// anchor and never warps or consults the compositor pointer.
+pub fn title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
+    let root = input.position();
     let Some(armed) = ctx.core().drag_state().armed_interaction() else {
         return false;
     };
@@ -225,7 +240,7 @@ pub(crate) fn title_drag_motion_at(ctx: &mut WmCtx, root: Point, direct_position
     ctx.raise_client(win);
 
     if ctx.is_wayland() {
-        return title_drag_start_wayland(ctx, root, direct_position);
+        return title_drag_start_wayland(ctx, input);
     }
 
     // X11 uses a nested synchronous grab loop. Consume the armed click
@@ -266,7 +281,7 @@ pub(crate) fn title_drag_motion_at(ctx: &mut WmCtx, root: Point, direct_position
         }
     } else {
         let float_restore_geo = armed.drop_restore_geo();
-        let Some((_current_geo, start)) = begin_move_drag(ctx, win, root, armed.start_point())
+        let Some((_current_geo, start)) = begin_move_drag(ctx, win, input, armed.start_point())
         else {
             return false;
         };
@@ -360,7 +375,7 @@ pub fn thresholded_client_drag(
                 |ctx, event| {
                     if let BackendEvent::Motion { root, .. } = event {
                         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                        if title_drag_motion(&mut wm_ctx, *root) {
+                        if title_drag_motion(&mut wm_ctx, DragInput::Pointer(*root)) {
                             return false;
                         }
                     }

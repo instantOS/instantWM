@@ -364,9 +364,6 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::RequestBarRedraw => {
                 wm.bar.mark_dirty();
             }
-            WmCommand::RecordPendingLaunch { pid } => {
-                handle_record_pending_launch(wm, pid);
-            }
             WmCommand::RestoreFocus => {
                 handle_focus_window(wm, None);
             }
@@ -521,17 +518,6 @@ fn handle_set_minimized(wm: &mut Wm, win: crate::types::WindowId, minimized: boo
     } else {
         crate::client::show_window(&mut ctx, win);
     }
-}
-
-fn handle_record_pending_launch(wm: &mut Wm, pid: Option<u32>) {
-    let mut ctx = wm.ctx();
-    let launch_context = crate::client::current_launch_context(ctx.core().model());
-    crate::client::lifecycle::record_pending_launch(
-        ctx.core_mut().pending_launches_mut(),
-        pid,
-        None,
-        launch_context,
-    );
 }
 
 fn handle_select_tag(wm: &mut Wm, monitor_name: &str, tag_index: usize) {

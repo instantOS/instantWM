@@ -321,7 +321,7 @@ fn handle_bar_touch_motion(wm: &mut Wm, state: &mut WaylandState, root: crate::t
         crate::mouse::drag_tag_finish(&mut ctx, clean_modifier_state(state));
     }
     if ctx.core().drag_state().armed_interaction().is_some() {
-        crate::mouse::drag::title::title_drag_motion_at(&mut ctx, root, true);
+        crate::mouse::title_drag_motion(&mut ctx, crate::mouse::DragInput::Absolute(root));
     }
     if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx
         && wayland.core.drag_state().active_interaction().is_some()

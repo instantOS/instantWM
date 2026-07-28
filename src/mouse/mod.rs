@@ -54,8 +54,9 @@ pub mod warp;
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    drag_tag, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture, sidebar_gesture_begin,
-    title_drag_finish, title_drag_motion, update_sidebar_gesture, window_title_mouse_handler,
+    DragInput, drag_tag, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture,
+    sidebar_gesture_begin, title_drag_finish, title_drag_motion, update_sidebar_gesture,
+    window_title_mouse_handler,
 };
 
 // ── hover ─────────────────────────────────────────────────────────────────────

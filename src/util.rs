@@ -1,4 +1,7 @@
-use crate::client::{PendingLaunch, current_launch_context, new_startup_id, record_pending_launch};
+use crate::client::{
+    LaunchProcessGroupId, PendingLaunch, current_launch_context, new_startup_id,
+    record_pending_launch,
+};
 use crate::contexts::WmCtx;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::xdg_activation::XdgActivationTokenData;
@@ -143,7 +146,7 @@ pub(crate) fn record_spawned_child(
     let pid = child.id();
     record_pending_launch(
         pending_launches,
-        Some(pid),
+        Some(LaunchProcessGroupId::from_spawned_pid(pid)),
         Some(metadata.startup_id),
         metadata.context,
     );
