@@ -41,32 +41,16 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusT
     let selected = mon.selected_tags();
     let current_sel = mon.selected;
 
-    // Use the requested window if it's visible, otherwise walk the stack
-    // to find the first visible non-hidden client.
+    // Use the requested window if it is visible. Otherwise restore the newest
+    // eligible focus-history entry, then fall back to persistent z-order.
     let mut target = win.filter(|&w| is_focusable_on_monitor(model, sel_mon_id, selected, w));
 
     if target.is_none() {
         // Try focus history first.
-        if let Some(&hist_win) = mon.tag_focus_history.get(&selected)
-            && is_focusable_on_monitor(model, sel_mon_id, selected, hist_win)
-        {
+        if let Some(hist_win) = mon.most_recent_focus(selected, |win| {
+            is_focusable_on_monitor(model, sel_mon_id, selected, win)
+        }) {
             target = Some(hist_win);
-        }
-
-        // Maximized presentation projects the last focused tiled client
-        // directly beneath floating windows without mutating persistent
-        // z-order. If that floating window disappears, restore the client
-        // which was actually visible beneath it before falling back to the
-        // persistent stack.
-        if target.is_none()
-            && mon.current_layout().is_maximized()
-            && let Some(&tiled_win) = mon.tag_tiled_focus_history.get(&selected)
-            && model.client(tiled_win).is_some_and(|client| {
-                client.mode().is_normal_tiling()
-                    && is_focusable_on_monitor(model, sel_mon_id, selected, tiled_win)
-            })
-        {
-            target = Some(tiled_win);
         }
 
         // Fallback to top of stack.
@@ -88,17 +72,10 @@ fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<
         target, sel_mon_id, ..
     } = result;
 
-    let target_is_tiled = target
-        .and_then(|win| model.client(win))
-        .is_some_and(|client| client.placement() == ClientPlacement::Tiling);
-
     if let Some(mon) = model.monitor_mut(sel_mon_id) {
         mon.selected = target;
         if let Some(t) = target {
-            mon.tag_focus_history.insert(mon.selected_tags(), t);
-            if target_is_tiled {
-                mon.tag_tiled_focus_history.insert(mon.selected_tags(), t);
-            }
+            mon.record_focus(mon.selected_tags(), t);
         }
     }
 
@@ -725,13 +702,8 @@ fn get_stack_focus_target(
         .filter(|win| stack.contains(win))
         .or_else(|| {
             mon.is_maximized_layout()
-                .then(|| {
-                    mon.tag_tiled_focus_history
-                        .get(&mon.selected_tags())
-                        .copied()
-                })
+                .then(|| mon.most_recent_focus(mon.selected_tags(), |win| stack.contains(&win)))
                 .flatten()
-                .filter(|win| stack.contains(win))
         });
     stack_focus_target(&stack, selected_window, direction, wrap)
 }
@@ -902,10 +874,7 @@ mod tests {
         let monitor = state.model.monitor_mut(monitor_id).unwrap();
         monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
         monitor.selected = Some(previously_focused);
-        monitor.tag_focus_history.insert(tag, previously_focused);
-        monitor
-            .tag_tiled_focus_history
-            .insert(tag, previously_focused);
+        monitor.record_focus(tag, previously_focused);
 
         let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
         let mut backend = RecordingBackend::default();
@@ -991,6 +960,69 @@ mod tests {
             Some(previously_focused),
             "closing a short-lived tiled window should reveal the maximized window that preceded it"
         );
+    }
+
+    #[test]
+    fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
+        let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+        let monitor_id = state.model.selected_monitor_id();
+        let tag = TagMask::single(1).unwrap();
+        let previously_focused = WindowId(1);
+        let other_group_window = WindowId(2);
+        let terminals = [WindowId(3), WindowId(4), WindowId(5)];
+        state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .clients
+            .push(previously_focused);
+
+        for win in std::iter::once(other_group_window).chain(terminals) {
+            assert!(state.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag,
+                ..Client::default()
+            }));
+            assert!(state.model.attach_client(win));
+        }
+
+        let monitor = state.model.monitor_mut(monitor_id).unwrap();
+        monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
+        monitor.selected = Some(previously_focused);
+
+        let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let mut backend = RecordingBackend::default();
+        focus_generic(
+            &mut core,
+            Some(previously_focused),
+            &mut backend,
+            BackendRefresh::IfNeeded,
+        )
+        .unwrap();
+        for terminal in terminals {
+            focus_generic(
+                &mut core,
+                Some(terminal),
+                &mut backend,
+                BackendRefresh::IfNeeded,
+            )
+            .unwrap();
+        }
+
+        for (closed, expected) in [
+            (WindowId(5), WindowId(4)),
+            (WindowId(4), WindowId(3)),
+            (WindowId(3), previously_focused),
+        ] {
+            core.model_mut().remove_client(closed).unwrap();
+            focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+            assert_eq!(
+                core.model().selected_win(),
+                Some(expected),
+                "closing {closed:?} should restore the preceding MRU client"
+            );
+        }
     }
 
     #[test]

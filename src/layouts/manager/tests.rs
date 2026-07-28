@@ -877,9 +877,7 @@ fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() 
 #[test]
 fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
     let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
-    monitor
-        .tag_tiled_focus_history
-        .insert(monitor.selected_tags(), WindowId(1));
+    monitor.record_focus(monitor.selected_tags(), WindowId(1));
     let mut clients = [WindowId(1), WindowId(2), WindowId(3)]
         .into_iter()
         .map(|win| (win, visible_client(win)))

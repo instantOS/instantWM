@@ -1,4 +1,33 @@
 use super::*;
+
+#[test]
+fn focus_history_is_deduplicated_mru_and_supports_filtered_recovery() {
+    let tags = TagMask::single(1).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut monitor = Monitor::default();
+
+    monitor.record_focus(tags, first);
+    monitor.record_focus(tags, second);
+    monitor.record_focus(tags, first);
+
+    assert_eq!(monitor.most_recent_focus(tags, |_| true), Some(first));
+    assert_eq!(
+        monitor.most_recent_focus(tags, |win| win != first),
+        Some(second)
+    );
+    assert_eq!(
+        monitor.focus_history_windows().collect::<Vec<_>>(),
+        vec![second, first]
+    );
+
+    monitor.forget_focus(first);
+    assert_eq!(monitor.most_recent_focus(tags, |_| true), Some(second));
+    monitor.forget_focus(second);
+    assert_eq!(monitor.most_recent_focus(tags, |_| true), None);
+    assert!(monitor.focus_history_windows().next().is_none());
+}
+
 #[test]
 fn first_visible_client_prefers_topmost_visible_stack_entry() {
     let mut monitor = Monitor::default();

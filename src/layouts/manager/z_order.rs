@@ -51,15 +51,11 @@ pub(super) fn compute_monitor_z_order(
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
     let layout = monitor.current_layout();
-    let tiled_focus = monitor
-        .tag_tiled_focus_history
-        .get(&selected_tags)
-        .copied()
-        .filter(|win| {
-            clients
-                .get(win)
-                .is_some_and(|c| c.mode().is_normal_tiling() && c.is_visible(selected_tags))
-        });
+    let tiled_focus = monitor.most_recent_focus(selected_tags, |win| {
+        clients
+            .get(&win)
+            .is_some_and(|c| c.mode().is_normal_tiling() && c.is_visible(selected_tags))
+    });
 
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();

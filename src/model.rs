@@ -87,12 +87,7 @@ impl WmModel {
                 was_selected = true;
                 monitor.selected = None;
             }
-            monitor
-                .tag_focus_history
-                .retain(|_, candidate| *candidate != win);
-            monitor
-                .tag_tiled_focus_history
-                .retain(|_, candidate| *candidate != win);
+            monitor.forget_focus(win);
         }
         was_selected
     }
@@ -320,22 +315,11 @@ impl WmModel {
                 );
             }
 
-            for (source, win) in std::iter::once(("selection", monitor.selected))
-                .chain(
-                    monitor
-                        .tag_focus_history
-                        .values()
-                        .copied()
-                        .map(|win| ("focus history", Some(win))),
-                )
-                .chain(
-                    monitor
-                        .tag_tiled_focus_history
-                        .values()
-                        .copied()
-                        .map(|win| ("tiled focus history", Some(win))),
-                )
-            {
+            for (source, win) in std::iter::once(("selection", monitor.selected)).chain(
+                monitor
+                    .focus_history_windows()
+                    .map(|win| ("focus history", Some(win))),
+            ) {
                 let Some(win) = win else { continue };
                 let client = self.client(win).unwrap_or_else(|| {
                     panic!("monitor {monitor_id:?} {source} references missing {win:?}")
@@ -612,8 +596,7 @@ mod tests {
         monitor.z_order.attach_top(other);
         monitor.z_order.attach_top(win);
         monitor.selected = Some(win);
-        monitor.tag_focus_history.insert(tags, win);
-        monitor.tag_tiled_focus_history.insert(tags, win);
+        monitor.record_focus(tags, win);
 
         let removed = model.remove_client(win);
 
@@ -625,15 +608,8 @@ mod tests {
         assert_eq!(monitor.selected, None);
         assert!(
             !monitor
-                .tag_focus_history
-                .values()
-                .any(|candidate| *candidate == win)
-        );
-        assert!(
-            !monitor
-                .tag_tiled_focus_history
-                .values()
-                .any(|candidate| *candidate == win)
+                .focus_history_windows()
+                .any(|candidate| candidate == win)
         );
     }
 
@@ -696,8 +672,7 @@ mod tests {
         assert!(model.attach_client(win));
         let source_monitor = model.monitor_mut(source).unwrap();
         source_monitor.selected = Some(win);
-        source_monitor.tag_focus_history.insert(tags, win);
-        source_monitor.tag_tiled_focus_history.insert(tags, win);
+        source_monitor.record_focus(tags, win);
 
         assert!(model.reassign_client_monitor(win, target));
 
@@ -705,8 +680,7 @@ mod tests {
         assert!(source_monitor.clients.is_empty());
         assert!(source_monitor.z_order.as_slice().is_empty());
         assert_eq!(source_monitor.selected, None);
-        assert!(source_monitor.tag_focus_history.is_empty());
-        assert!(source_monitor.tag_tiled_focus_history.is_empty());
+        assert!(source_monitor.focus_history_windows().next().is_none());
         let target_monitor = model.monitor(target).unwrap();
         assert_eq!(target_monitor.clients, vec![win]);
         assert_eq!(target_monitor.z_order.as_slice(), &[win]);

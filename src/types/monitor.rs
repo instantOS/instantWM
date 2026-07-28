@@ -69,14 +69,12 @@ pub struct Monitor {
     pub clients: Vec<WindowId>,
     /// Currently selected client.
     pub selected: Option<WindowId>,
-    /// Focus history per tag mask.
-    pub tag_focus_history: HashMap<TagMask, WindowId>,
-    /// Last tiled focus per tag mask.
+    /// Most-recently-used focus order per tag mask, oldest to newest.
     ///
-    /// This is distinct from `sel`: a floating dialog can hold keyboard focus
-    /// while maximized presentation keeps the previously focused tiled client
-    /// visible below it.
-    pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
+    /// Keeping the complete order lets a run of short-lived windows unwind
+    /// predictably when closed. Tiled focus is derived from this history rather
+    /// than maintained as a second cache that can lose its predecessor.
+    pub(crate) focus_history: HashMap<TagMask, Vec<WindowId>>,
     /// Per-tag runtime presentation, tree, preset cursor, and bar state.
     pub per_tag: HashMap<TagMask, PerTagState>,
     /// Overview mode state.
@@ -111,8 +109,7 @@ impl Default for Monitor {
             tags: Vec::new(),
             clients: Vec::new(),
             selected: None,
-            tag_focus_history: HashMap::new(),
-            tag_tiled_focus_history: HashMap::new(),
+            focus_history: HashMap::new(),
             per_tag: HashMap::new(),
             overview_state: None,
             z_order: ClientZOrder::default(),
@@ -122,6 +119,41 @@ impl Default for Monitor {
 }
 
 impl Monitor {
+    /// Record `win` as the most recently focused client on `tags`.
+    pub(crate) fn record_focus(&mut self, tags: TagMask, win: WindowId) {
+        let history = self.focus_history.entry(tags).or_default();
+        history.retain(|candidate| *candidate != win);
+        history.push(win);
+    }
+
+    /// Return the most recently focused client on `tags` accepted by `eligible`.
+    pub(crate) fn most_recent_focus(
+        &self,
+        tags: TagMask,
+        mut eligible: impl FnMut(WindowId) -> bool,
+    ) -> Option<WindowId> {
+        self.focus_history
+            .get(&tags)?
+            .iter()
+            .rev()
+            .copied()
+            .find(|win| eligible(*win))
+    }
+
+    /// Forget every focus-history occurrence of a removed or transferred client.
+    pub(crate) fn forget_focus(&mut self, win: WindowId) {
+        self.focus_history.retain(|_, history| {
+            history.retain(|candidate| *candidate != win);
+            !history.is_empty()
+        });
+    }
+
+    pub(crate) fn focus_history_windows(&self) -> impl Iterator<Item = WindowId> + '_ {
+        self.focus_history
+            .values()
+            .flat_map(|history| history.iter().copied())
+    }
+
     /// Check whether a root-space y-coordinate falls within the bar's vertical span.
     /// Does not check bar visibility — caller must do that separately.
     pub fn y_in_bar(&self, root_y: i32) -> bool {
