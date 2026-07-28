@@ -66,8 +66,42 @@ pub fn title_drag_begin(
         .is_ok()
 }
 
+/// Shared move-start policy for title-bar / Super+client left-click drags.
+///
+/// Promotes a tiled window to floating using [`PreservePointerAnchor`] so the
+/// window appears under the cursor instead of jumping to the center of the
+/// work area. Already-floating windows are left untouched.
+///
+/// Containment clamping can still leave the cursor outside the window (e.g.
+/// when the cursor is near a screen edge). In that case the cursor is warped
+/// to the nearest edge of the window — the cursor jumps rather than the
+/// window — and that warped position is returned as the drag anchor so the
+/// drag math stays consistent.
+///
+/// A manual-tree placement gesture skips promotion and keeps the tiled source
+/// in its original slot so cancellation is lossless.
+fn begin_move_drag(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    root: Point,
+    start_point: Point,
+) -> Option<(Rect, Point)> {
+    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
+        let geo = ctx.client_geo(win)?;
+        Some((geo, start_point))
+    } else {
+        let intent = FloatingPlacementIntent::PreservePointerAnchor(root);
+        let (geo, _) = promote_to_floating(ctx, win, intent)?;
+        let start = warp::clamp_into(root, geo);
+        if start != root {
+            ctx.pointer_backend().warp_to_point(start);
+        }
+        Some((geo, start))
+    }
+}
+
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
-fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, direct_position: bool) -> bool {
+fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, _direct_position: bool) -> bool {
     let (win, btn, start_point, suppress_click_action) = {
         let Some(drag) = ctx.core().drag_state().armed_interaction() else {
             return false;
@@ -135,39 +169,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, direct_position: bool)
     // A tiled left-drag is a manual-tree placement gesture. Floating windows
     // continue to move directly. Keeping the tiled source in its original slot
     // also makes cancellation lossless.
-    let uses_tree = crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win);
-    let (current_geo, anchor_rebased) = if uses_tree {
-        let Some(geo) = ctx.client_geo(win) else {
-            return false;
-        };
-        (geo, false)
-    } else {
-        let intent = if suppress_click_action || direct_position {
-            FloatingPlacementIntent::PreservePointerAnchor(root)
-        } else {
-            FloatingPlacementIntent::RestoreOrCenter
-        };
-        let Some(result) = promote_to_floating(ctx, win, intent) else {
-            return false;
-        };
-        result
-    };
-
-    let start = if uses_tree {
-        start_point
-    } else if anchor_rebased || direct_position {
-        root
-    } else {
-        warp::warp_into(ctx, win);
-        let ptr = ctx.pointer_backend().pointer_location().unwrap_or(root);
-        let pad = warp::WARP_INTO_PADDING;
-        let clamped_x = ptr
-            .x
-            .clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
-        let clamped_y = ptr
-            .y
-            .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
-        Point::new(clamped_x, clamped_y)
+    let Some((current_geo, start)) = begin_move_drag(ctx, win, root, start_point) else {
+        return false;
     };
 
     if ctx
@@ -263,25 +266,12 @@ pub(crate) fn title_drag_motion_at(ctx: &mut WmCtx, root: Point, direct_position
         }
     } else {
         let float_restore_geo = armed.drop_restore_geo();
-        if !crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win)
-            && promote_to_floating(
-                ctx,
-                win,
-                if armed.suppress_click_action() {
-                    FloatingPlacementIntent::PreservePointerAnchor(root)
-                } else {
-                    FloatingPlacementIntent::RestoreOrCenter
-                },
-            )
-            .is_none()
-        {
+        let Some((_current_geo, start)) = begin_move_drag(ctx, win, root, armed.start_point())
+        else {
             return false;
-        }
-        // Pass saved floating dimensions to preserve them when dropping on the bar
+        };
         if let WmCtx::X11(x11) = ctx {
-            let mut wmctx = WmCtx::X11(x11.reborrow());
-            warp::warp_into(&mut wmctx, win);
-            crate::backend::x11::mouse::move_mouse(x11, btn, Some(float_restore_geo));
+            crate::backend::x11::mouse::move_mouse(x11, btn, start, Some(float_restore_geo));
         }
     }
     true

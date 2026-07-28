@@ -3,9 +3,9 @@
 //! # Overview
 //!
 //! | Function                           | When to use                                            |
-//! |------------------------------------|--------------------------------------------------------|
+//!|------------------------------------|--------------------------------------------------------|
 //! | [`WmCtx::warp_cursor_to_client`]   | Warp to a client only if the cursor is outside it      |
-//! | [`warp_into`]                      | Clamp cursor into window bounds (before a drag/resize) |
+//! | [`clamp_into`]                     | Clamp a point into window bounds (before a drag/resize)|
 //! | [`warp_to_focus`]                  | Keybinding handler – warp to the selected window       |
 //! | [`warp_to_resize_corner`]          | Warp to the edge/corner for a resize direction         |
 //! | [`WmCtx::set_cursor_style`]        | Restore the normal (arrow) root cursor                 |
@@ -21,37 +21,23 @@ pub(crate) const WARP_INTO_PADDING: i32 = 10;
 
 // ── Public backend-agnostic API ───────────────────────────────────────────────
 
-/// Warp the cursor into `win`'s geometry if the cursor is currently outside.
+/// Clamp `point` into `geo` (with a small inset) if it lies outside.
 ///
-/// The cursor is clamped to the window rect with a small inset so subsequent
-/// drags/resizes start from inside the client.  On Wayland the warp is
-/// deferred; the current pointer position is used to decide the target.
-pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
-    if win == WindowId::default() {
-        return;
+/// Returns the original point when it is already inside the rect.
+pub fn clamp_into(point: Point, geo: Rect) -> Point {
+    let pad = WARP_INTO_PADDING;
+    let mut target = point;
+    if target.x < geo.x {
+        target.x = geo.x + pad;
+    } else if target.x > geo.right() {
+        target.x = geo.right() - pad;
     }
-
-    let Some(c) = ctx.core().model().client(win).cloned() else {
-        return;
-    };
-
-    let mut target = ctx
-        .pointer_backend()
-        .pointer_location()
-        .unwrap_or_else(|| c.geo.center());
-
-    if target.x < c.geo.x {
-        target.x = c.geo.x + WARP_INTO_PADDING;
-    } else if target.x > c.geo.right() {
-        target.x = c.geo.right() - WARP_INTO_PADDING;
+    if target.y < geo.y {
+        target.y = geo.y + pad;
+    } else if target.y > geo.bottom() {
+        target.y = geo.bottom() - pad;
     }
-    if target.y < c.geo.y {
-        target.y = c.geo.y + WARP_INTO_PADDING;
-    } else if target.y > c.geo.bottom() {
-        target.y = c.geo.bottom() - WARP_INTO_PADDING;
-    }
-
-    ctx.pointer_backend().warp_to_point(target);
+    target
 }
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.

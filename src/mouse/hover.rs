@@ -96,7 +96,17 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
     };
 
     if btn == MouseButton::Right || move_from_top_middle {
-        crate::backend::x11::mouse::move_mouse(ctx, btn, None);
+        let start = {
+            let wm_ctx = WmCtx::X11(ctx.reborrow());
+            wm_ctx
+                .pointer_backend()
+                .pointer_location()
+                .unwrap_or_else(|| {
+                    let c = wm_ctx.core().model().client(win);
+                    c.map(|c| c.geo.center()).unwrap_or_default()
+                })
+        };
+        crate::backend::x11::mouse::move_mouse(ctx, btn, start, None);
     } else {
         resize_mouse_directional(ctx, Some(dir), btn);
     }

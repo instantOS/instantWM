@@ -128,16 +128,20 @@ impl crate::backend::CursorOps for WmCtxX11<'_> {
 /// Grab → event loop → release handling. This is deliberately reachable only
 /// from pointer-driven actions; keyboard tree placement is a separate modal
 /// interaction shared by both backends.
-pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Option<Rect>) {
+///
+/// `start` is the drag anchor point, decided by the shared move policy and
+/// already applied to the pointer if necessary — it is not re-read here so the
+/// caller controls the cursor/window relationship at drag start.
+pub fn move_mouse(
+    ctx: &mut WmCtxX11,
+    btn: MouseButton,
+    start: Point,
+    float_restore_geo: Option<Rect>,
+) {
     let Some(win) = ({
         let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
         prepare_drag_target(&mut wm_ctx)
     }) else {
-        return;
-    };
-
-    let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let Some(start) = wm_ctx.pointer_backend().pointer_location() else {
         return;
     };
 
