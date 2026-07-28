@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/instantOS/instantWM/compare/v0.1.17...v0.1.18) - 2026-07-27
+
+### Changed
+
+- struct for readability
+
+### Other
+
+- fix layer shell focus and z order shenanigans
+- refactor focus logic on wayland
+- fix focus regressions
+- more sensible scratchpad sizing
+- fix xwayland regression and ghost window
+- fix cursor compositor gap
+- add instantWM graphical session target
+- add ins clip
+- bump smithay
+- fix weird race thing
+- remove unneeded hack
+- fix focus being wack after file selection popup over maximized windows
+- no double negation
+- rename
+- on screen keyboard support
+- fix umlaut issue
+- fix odd hover state
+- remove dead code
+- fix frozen animated cursor
+- Merge branch 'main' into dev ```
+- optimize candidate collection
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- pointer movement memoization
+- move some x11 stuff
+- some renames
+- share tiling normalization logic
+- refactor tree
+- better tree normalization
+- remove size from normalization
+- model fullscreen transition better
+- fix crash when too many windows with min sizes
+- fix double update thingy
+- better model all fulscreen transitions
+- notify clients of their max/floating state
+- rework maximize sync thingy
+- trim unused transitions
+- clippy fixes
+
 ## [0.1.17](https://github.com/instantOS/instantWM/compare/v0.1.16...v0.1.17) - 2026-07-25
 
 ### Other
