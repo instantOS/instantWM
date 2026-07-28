@@ -66,8 +66,8 @@ pub fn manage(
     client.old_border_width = border_px;
     client.transient_for = transient_for;
     let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, window);
-    if !assign_initial_monitor_and_tags(
-        ctx.core.state_mut(),
+    if !crate::client::lifecycle::assign_initial_monitor_and_tags(
+        ctx.core.model(),
         &mut client,
         transient_for,
         launch_context,
@@ -105,11 +105,7 @@ pub fn manage(
     );
 
     let hinted_position_is_explicit = apply_manage_hints(ctx, window);
-    let position_is_explicit = match rule_placement {
-        crate::client::InitialRulePlacement::Default => hinted_position_is_explicit,
-        crate::client::InitialRulePlacement::Center => false,
-        crate::client::InitialRulePlacement::Preserve => true,
-    };
+    let position_is_explicit = rule_placement.position_is_explicit(hinted_position_is_explicit);
     subscribe_manage_events(&ctx.x11, window);
     grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, window, false);
 
@@ -162,37 +158,6 @@ fn build_initial_client(
     client.set_preferred_floating_size(initial_geometry.size());
     client.name = crate::backend::x11::properties::read_window_title(x11, x11_runtime, window);
     client
-}
-
-fn assign_initial_monitor_and_tags(
-    state: &mut crate::core_state::CoreState,
-    client: &mut Client,
-    transient_for: Option<WindowId>,
-    launch_context: Option<crate::client::LaunchContext>,
-) -> bool {
-    if let Some(view) = transient_for.and_then(|window| state.model.client_view(window)) {
-        client.monitor_id = view.monitor.id();
-        client.set_tag_mask(view.client.tags);
-        return true;
-    }
-    if let Some(launch_context) = launch_context
-        && state.model.monitor(launch_context.monitor_id).is_some()
-    {
-        client.monitor_id = launch_context.monitor_id;
-        client.set_tag_mask(launch_context.tags);
-        client.set_placement(if launch_context.is_floating {
-            ClientPlacement::Floating
-        } else {
-            ClientPlacement::Tiling
-        });
-        return true;
-    }
-    let Some(selected_monitor) = state.model.selected_monitor() else {
-        return false;
-    };
-    client.monitor_id = selected_monitor.id();
-    client.set_tag_mask(selected_monitor.selected_tags());
-    true
 }
 
 fn insert_client_and_apply_rules(

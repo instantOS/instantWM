@@ -31,6 +31,18 @@ pub enum InitialRulePlacement {
     Preserve,
 }
 
+impl InitialRulePlacement {
+    /// Merge a rule's placement instruction with the position information
+    /// supplied by the backend.
+    pub(crate) fn position_is_explicit(self, backend_position_is_explicit: bool) -> bool {
+        match self {
+            Self::Default => backend_position_is_explicit,
+            Self::Center => false,
+            Self::Preserve => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct InitialRuleOutcome {
     pub changed: bool,

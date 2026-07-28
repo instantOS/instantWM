@@ -12,7 +12,7 @@
 //! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
 //! | `fullscreen`    | Real and fake fullscreen transitions                        |
 //! | `kill`          | Graceful and forceful window termination                    |
-//! | `lifecycle`     | internal X11 lifecycle implementation details                  |
+//! | `lifecycle`     | shared client creation/removal and launch-context policy       |
 //! | `layout_ops`    | zoom (promote to master)                                    |
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 //! Backend-specific manage/unmanage logic lives under backend modules.
 
 use crate::model::WmModel;
-use crate::types::{MonitorId, TagMask, WindowId};
+use crate::types::{Client, ClientPlacement, MonitorId, TagMask, WindowId};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -70,6 +70,45 @@ pub fn current_launch_context(model: &WmModel) -> LaunchContext {
         tags: model.expect_selected_monitor().selected_tags(),
         is_floating: false,
     }
+}
+
+/// Assign a new client to the same backend-neutral destination policy used by
+/// every window-system frontend.
+///
+/// Transients follow a managed parent. Otherwise a still-valid launch context
+/// wins, followed by the currently selected monitor. Launch contexts may
+/// outlive an output, so stale monitor IDs deliberately fall through.
+pub(crate) fn assign_initial_monitor_and_tags(
+    model: &WmModel,
+    client: &mut Client,
+    transient_for: Option<WindowId>,
+    launch_context: Option<LaunchContext>,
+) -> bool {
+    if let Some(view) = transient_for.and_then(|window| model.client_view(window)) {
+        client.monitor_id = view.monitor.id();
+        client.set_tag_mask(view.client.tags);
+        return true;
+    }
+
+    if let Some(launch_context) = launch_context
+        && model.monitor(launch_context.monitor_id).is_some()
+    {
+        client.monitor_id = launch_context.monitor_id;
+        client.set_tag_mask(launch_context.tags);
+        client.set_placement(if launch_context.is_floating {
+            ClientPlacement::Floating
+        } else {
+            ClientPlacement::Tiling
+        });
+        return true;
+    }
+
+    let Some(selected_monitor) = model.selected_monitor() else {
+        return false;
+    };
+    client.monitor_id = selected_monitor.id();
+    client.set_tag_mask(selected_monitor.selected_tags());
+    true
 }
 
 pub fn new_startup_id() -> String {
@@ -170,6 +209,7 @@ fn prune_pending_launches(pending_launches: &mut VecDeque<PendingLaunch>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{Client, ClientPlacement, Monitor, MonitorId, TagMask, WindowId};
 
     fn pending(pid: u32) -> PendingLaunch {
         PendingLaunch {
@@ -208,5 +248,69 @@ mod tests {
             find_pending_launch_by_pid(&launches, 100, |_| panic!("unexpected proc lookup")),
             Some(0)
         );
+    }
+
+    #[test]
+    fn transient_destination_takes_priority_over_launch_context() {
+        let mut model = WmModel::new();
+        let selected_id = model.monitors.push(Monitor {
+            tag_set: [TagMask::single(1).unwrap(); 2],
+            ..Monitor::default()
+        });
+        let parent_monitor_id = model.monitors.push(Monitor {
+            tag_set: [TagMask::single(2).unwrap(); 2],
+            ..Monitor::default()
+        });
+        model.set_selected_monitor(selected_id);
+
+        let parent = WindowId(10);
+        let parent_tags = TagMask::single(3).unwrap();
+        model.insert_client(Client {
+            win: parent,
+            monitor_id: parent_monitor_id,
+            tags: parent_tags,
+            ..Client::default()
+        });
+
+        let mut client = Client::new(WindowId(11));
+        assert!(assign_initial_monitor_and_tags(
+            &model,
+            &mut client,
+            Some(parent),
+            Some(LaunchContext {
+                monitor_id: selected_id,
+                tags: TagMask::single(4).unwrap(),
+                is_floating: true,
+            }),
+        ));
+        assert_eq!(client.monitor_id, parent_monitor_id);
+        assert_eq!(client.tags, parent_tags);
+        assert_eq!(client.placement(), ClientPlacement::Tiling);
+    }
+
+    #[test]
+    fn stale_launch_destination_falls_back_to_selected_monitor() {
+        let mut model = WmModel::new();
+        let selected_tags = TagMask::single(2).unwrap();
+        let selected_id = model.monitors.push(Monitor {
+            tag_set: [selected_tags; 2],
+            ..Monitor::default()
+        });
+        model.set_selected_monitor(selected_id);
+
+        let mut client = Client::new(WindowId(20));
+        assert!(assign_initial_monitor_and_tags(
+            &model,
+            &mut client,
+            None,
+            Some(LaunchContext {
+                monitor_id: MonitorId::from_raw(999),
+                tags: TagMask::single(4).unwrap(),
+                is_floating: true,
+            }),
+        ));
+        assert_eq!(client.monitor_id, selected_id);
+        assert_eq!(client.tags, selected_tags);
+        assert_eq!(client.placement(), ClientPlacement::Tiling);
     }
 }

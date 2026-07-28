@@ -553,7 +553,7 @@ fn handle_map_window(
         win,
         properties,
         initial_geo,
-        mut initial_position_is_explicit,
+        initial_position_is_explicit,
         launch_pid,
         launch_startup_id,
         x11_hints,
@@ -569,14 +569,67 @@ fn handle_map_window(
     }
 
     let element = wl_state.find_window(win).cloned();
-
-    let launch_context = crate::client::lifecycle::take_pending_launch(
-        &mut state.pending_launches,
+    let launch_context = take_wayland_launch_context(
+        state,
+        element.as_ref(),
         launch_pid,
         launch_startup_id.as_deref(),
+    );
+    let Some(client) = build_initial_wayland_client(
+        state,
+        win,
+        &properties,
+        initial_geo,
+        parent,
+        launch_context,
+        (x11_hints, x11_size_hints),
+    ) else {
+        return;
+    };
+
+    if !state.model.insert_client(client) {
+        return;
+    }
+    let rule_outcome = crate::client::apply_initial_rules(state, win, &properties, launch_context);
+    let position_is_explicit = rule_outcome
+        .placement
+        .position_is_explicit(initial_position_is_explicit);
+
+    apply_wayland_surface_policy(state, wl_state, element.as_ref(), win, parent);
+    position_new_wayland_floating_window(
+        state,
+        wl_state,
+        element.as_ref(),
+        win,
+        parent,
+        position_is_explicit,
+    );
+
+    let Some((monitor_id, should_focus)) = finalize_wayland_client(state, win) else {
+        return;
+    };
+    ctx.core_mut().queue_layout_for_monitor(monitor_id);
+
+    if should_focus {
+        wl_state.request_window_focus(win);
+    }
+    wl_state.sync_window_presentation(win);
+    wl_state.request_space_sync();
+}
+
+fn take_wayland_launch_context(
+    state: &mut crate::core_state::CoreState,
+    element: Option<&smithay::desktop::Window>,
+    launch_pid: Option<u32>,
+    launch_startup_id: Option<&str>,
+) -> Option<crate::client::LaunchContext> {
+    crate::client::lifecycle::take_pending_launch(
+        &mut state.pending_launches,
+        launch_pid,
+        launch_startup_id,
     )
     .or_else(|| {
-        element.as_ref()?.wl_surface().and_then(|wl_surface| {
+        element?.wl_surface().and_then(|wl_surface| {
             smithay::wayland::compositor::with_states(&wl_surface, |states| {
                 states
                     .data_map
@@ -584,8 +637,21 @@ fn handle_map_window(
                     .map(|marker| marker.context)
             })
         })
-    });
+    })
+}
 
+fn build_initial_wayland_client(
+    state: &crate::core_state::CoreState,
+    win: crate::types::WindowId,
+    properties: &crate::client::WindowProperties,
+    initial_geo: Option<crate::types::Rect>,
+    parent: Option<crate::types::WindowId>,
+    launch_context: Option<crate::client::LaunchContext>,
+    x11_policy_hints: (
+        Option<x11rb::properties::WmHints>,
+        Option<x11rb::properties::WmSizeHints>,
+    ),
+) -> Option<crate::types::Client> {
     let mut client = crate::types::Client::new(win);
     client.name = properties.title.clone();
     client.transient_for = parent;
@@ -596,44 +662,23 @@ fn handle_map_window(
     client.border_width = state.config.window.border_width_px;
     client.old_border_width = state.config.window.border_width_px;
 
-    if let Some(lc) = launch_context {
-        client.monitor_id = lc.monitor_id;
-        client.set_tag_mask(lc.tags);
-        if lc.is_floating {
-            client.set_placement(crate::types::ClientPlacement::Floating);
-        }
-    } else {
-        let Some(selected_monitor) = state.model.selected_monitor() else {
-            return;
-        };
-        client.monitor_id = selected_monitor.id();
-        client.set_tag_mask(selected_monitor.selected_tags());
+    if !crate::client::lifecycle::assign_initial_monitor_and_tags(
+        &state.model,
+        &mut client,
+        parent,
+        launch_context,
+    ) {
+        return None;
     }
 
-    // Pending launch contexts can outlive an output. Normalize that stale
-    // relationship once, before any geometry or visibility policy uses it.
-    if state.monitor(client.monitor_id).is_none() {
-        let Some(selected_monitor) = state.model.selected_monitor() else {
-            return;
-        };
-        client.monitor_id = selected_monitor.id();
-        client.set_tag_mask(selected_monitor.selected_tags());
-    }
-
-    if let Some(hints) = x11_hints {
-        crate::backend::x11::policy::apply_wm_hints_to_client(&mut client, Some(hints));
-    }
-    if let Some(shints) = x11_size_hints {
-        crate::backend::x11::policy::apply_size_hints_to_client(&mut client, Some(shints));
-    }
+    crate::backend::x11::policy::apply_wm_hints_to_client(&mut client, x11_policy_hints.0);
+    crate::backend::x11::policy::apply_size_hints_to_client(&mut client, x11_policy_hints.1);
 
     if let Some(geo) = initial_geo {
         client.geo = geo;
         client.set_preferred_floating_size(geo.size());
     } else {
-        let Some(monitor_rect) = state.monitor(client.monitor_id).map(|m| m.work_rect()) else {
-            return;
-        };
+        let monitor_rect = state.model.monitor(client.monitor_id)?.work_rect();
         client.geo = crate::types::Rect::new(
             monitor_rect.x,
             monitor_rect.y,
@@ -641,32 +686,33 @@ fn handle_map_window(
             monitor_rect.h.max(100),
         );
     }
+    Some(client)
+}
 
-    if !state.model.insert_client(client) {
-        return;
-    }
-    let rule_outcome = crate::client::apply_initial_rules(state, win, &properties, launch_context);
-    initial_position_is_explicit = match rule_outcome.placement {
-        crate::client::InitialRulePlacement::Default => initial_position_is_explicit,
-        crate::client::InitialRulePlacement::Center => false,
-        crate::client::InitialRulePlacement::Preserve => true,
-    };
-
-    if let Some(toplevel) = element.as_ref().and_then(|e| e.toplevel())
+fn apply_wayland_surface_policy(
+    state: &mut crate::core_state::CoreState,
+    wl_state: &mut WaylandState,
+    element: Option<&smithay::desktop::Window>,
+    win: crate::types::WindowId,
+    parent: Option<crate::types::WindowId>,
+) {
+    if let Some(toplevel) = element.and_then(|element| element.toplevel())
         && wl_state.xdg_toplevel_has_fixed_size_constraints(toplevel)
         && let Some(client) = state.model.client_mut(win)
     {
         client.is_fixed_size = true;
     }
 
-    // Determine if the window should float based on compositor policy.
-    let should_float = element.as_ref().is_some_and(|e| {
-        if let Some(toplevel) = e.toplevel() {
+    let should_float = element.is_some_and(|element| {
+        if let Some(toplevel) = element.toplevel() {
             wl_state.xdg_toplevel_wants_floating(toplevel)
-        } else if let Some(x11) = e.x11_surface() {
+        } else if let Some(x11) = element.x11_surface() {
             parent.is_some()
                 || x11.is_above()
-                || state.model.client(win).is_some_and(|c| c.is_fixed_size)
+                || state
+                    .model
+                    .client(win)
+                    .is_some_and(|client| client.is_fixed_size)
                 || crate::backend::x11::policy::should_float_for_x11_type(x11.window_type())
         } else {
             false
@@ -674,66 +720,68 @@ fn handle_map_window(
     });
 
     if should_float {
-        if let Some(c) = state.model.client_mut(win)
-            && c.placement() != crate::types::ClientPlacement::Floating
-        {
-            c.set_placement(crate::types::ClientPlacement::Floating);
+        if let Some(client) = state.model.client_mut(win) {
+            client.set_placement(crate::types::ClientPlacement::Floating);
         }
         state.raise_client_in_z_order(win);
     }
 
-    if let Some(toplevel) = element.as_ref().and_then(|e| e.toplevel()) {
-        wl_state.apply_floating_policy(&toplevel.clone());
+    if let Some(toplevel) = element.and_then(|element| element.toplevel()) {
+        wl_state.apply_floating_policy(toplevel);
     }
+}
 
-    if let Some(rect) = crate::client::sane_floating_spawn_rect(
-        &state.model,
-        win,
-        parent,
-        initial_position_is_explicit,
-    ) {
-        crate::client::sync_client_geometry(&mut state.model, win, rect);
-        if let Some(e) = element.as_ref() {
-            if e.toplevel().is_some() {
-                let size = smithay::utils::Size::from((rect.w, rect.h));
-                wl_state.send_toplevel_configure(e, Some(size));
-            } else if let Some(x11) = e.x11_surface() {
-                let _ = x11.configure(Some(smithay::utils::Rectangle::new(
-                    (rect.x, rect.y).into(),
-                    (rect.w.max(1), rect.h.max(1)).into(),
-                )));
-            }
-        }
+fn position_new_wayland_floating_window(
+    state: &mut crate::core_state::CoreState,
+    wl_state: &mut WaylandState,
+    element: Option<&smithay::desktop::Window>,
+    win: crate::types::WindowId,
+    parent: Option<crate::types::WindowId>,
+    position_is_explicit: bool,
+) {
+    let Some(rect) =
+        crate::client::sane_floating_spawn_rect(&state.model, win, parent, position_is_explicit)
+    else {
+        return;
+    };
+    crate::client::sync_client_geometry(&mut state.model, win, rect);
+
+    let Some(element) = element else {
+        return;
+    };
+    if element.toplevel().is_some() {
+        wl_state
+            .send_toplevel_configure(element, Some(smithay::utils::Size::from((rect.w, rect.h))));
+    } else if let Some(x11) = element.x11_surface() {
+        let _ = x11.configure(Some(smithay::utils::Rectangle::new(
+            (rect.x, rect.y).into(),
+            (rect.w.max(1), rect.h.max(1)).into(),
+        )));
     }
+}
 
+fn finalize_wayland_client(
+    state: &mut crate::core_state::CoreState,
+    win: crate::types::WindowId,
+) -> Option<(crate::types::MonitorId, bool)> {
     let attached = state.model.attach_client(win);
     debug_assert!(attached, "managed Wayland client must have a valid monitor");
+
     if state
         .model
         .client(win)
         .is_some_and(|client| client.mode().is_normal_floating())
+        && let Some(current) = state.model.client(win).map(|client| client.geo)
     {
-        let current = state.model.client(win).map(|client| client.geo);
-        if let Some(current) = current {
-            crate::client::sync_client_geometry(&mut state.model, win, current);
-        }
+        crate::client::sync_client_geometry(&mut state.model, win, current);
     }
 
-    let Some((monitor_id, should_focus)) = state.model.client_view(win).map(|view| {
+    state.model.client_view(win).map(|view| {
         (
             view.client.monitor_id,
             view.client.is_visible(view.monitor.selected_tags()),
         )
-    }) else {
-        return;
-    };
-    ctx.core_mut().queue_layout_for_monitor(monitor_id);
-
-    if should_focus {
-        wl_state.request_window_focus(win);
-    }
-    wl_state.sync_window_presentation(win);
-    wl_state.request_space_sync();
+    })
 }
 
 fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
