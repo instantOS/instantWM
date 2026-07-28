@@ -98,7 +98,7 @@ impl CompositorHandler for WaylandState {
                         properties,
                         initial_geo,
                         initial_position_is_explicit: false,
-                        launch_pid: None,
+                        launch_pid: client_pid,
                         launch_startup_id: None,
                         x11_hints: None,
                         x11_size_hints: None,

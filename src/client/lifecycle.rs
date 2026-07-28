@@ -97,14 +97,48 @@ pub fn take_pending_launch(
             .iter()
             .position(|launch| launch.startup_id.as_deref() == Some(id))
     });
-    let pid_match = pid.and_then(|target_pid| {
-        pending_launches
-            .iter()
-            .position(|launch| launch.pid == Some(target_pid))
+
+    // Walk the process tree: the surface's PID may belong to a child of the
+    // process we spawned (e.g. fuzzel launched thunderbird). Walk ancestors
+    // via /proc until we find a recorded pending launch or reach init.
+    let pid_match = pid.and_then(|mut current_pid| {
+        loop {
+            if let Some(idx) = pending_launches
+                .iter()
+                .position(|launch| launch.pid == Some(current_pid))
+            {
+                return Some(idx);
+            }
+            current_pid = get_parent_pid(current_pid)?;
+        }
     });
+
     let idx = startup_match.or(pid_match)?;
 
     pending_launches.remove(idx).map(|launch| launch.context)
+}
+
+/// Read the parent PID of `pid` from `/proc/{pid}/stat`.
+///
+/// Returns `None` when the process has exited, the proc filesystem is
+/// unavailable, or the parent would be init (pid <= 1).
+fn get_parent_pid(pid: u32) -> Option<u32> {
+    if pid <= 1 {
+        return None;
+    }
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // /proc/PID/stat: "pid (comm) state ppid ..."
+    // comm may contain spaces and parentheses, so parse from the last ')'.
+    let after_comm = stat.rfind(')')?;
+    let rest = stat[after_comm + 1..].trim_start();
+    let mut fields = rest.split_whitespace();
+    // field 3: state (single char), field 4: ppid
+    fields.next()?; // state
+    let ppid: u32 = fields.next()?.parse().ok()?;
+    if ppid <= 1 {
+        return None;
+    }
+    Some(ppid)
 }
 
 fn prune_pending_launches(pending_launches: &mut VecDeque<PendingLaunch>) {
