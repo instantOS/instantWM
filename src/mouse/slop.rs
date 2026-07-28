@@ -67,7 +67,14 @@ pub fn is_valid_window_size(model: &crate::model::WmModel, rect: &Rect, c_win: W
         return false;
     };
 
-    c.accepts_distinct_rect(*rect, MIN_WINDOW_SIZE, SLOP_MARGIN, 20)
+    rect.w > MIN_WINDOW_SIZE
+        && rect.h > MIN_WINDOW_SIZE
+        && rect.x > -SLOP_MARGIN
+        && rect.y > -SLOP_MARGIN
+        && ((c.geo.w - rect.w).abs() > 20
+            || (c.geo.h - rect.h).abs() > 20
+            || (c.geo.x - rect.x).abs() > 20
+            || (c.geo.y - rect.y).abs() > 20)
 }
 
 // ── Window resize helpers ─────────────────────────────────────────────────────

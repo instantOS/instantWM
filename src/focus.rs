@@ -512,7 +512,7 @@ fn get_directional_candidates(
     let mut out_client: Option<WindowId> = None;
     let mut min_score: i32 = 0;
 
-    for (c_win, c) in crate::types::ClientListIter::new(clients, globals_map) {
+    for (c_win, c) in crate::types::OrderedClients::new(clients, globals_map) {
         if !c.is_visible(selected_tags) {
             continue;
         }

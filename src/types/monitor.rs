@@ -8,7 +8,7 @@ use crate::layouts::PresentationMode;
 use crate::types::MonitorId;
 use crate::types::TagMask;
 use crate::types::WindowId;
-use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
+use crate::types::client::{Client, OrderedClients, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
 use crate::types::input::{EdgeDirection, StackDirection};
 
@@ -249,14 +249,14 @@ impl Monitor {
     pub fn iter_clients<'a>(
         &'a self,
         clients: &'a HashMap<WindowId, Client>,
-    ) -> ClientListIter<'a> {
-        ClientListIter::new(&self.clients, clients)
+    ) -> OrderedClients<'a> {
+        OrderedClients::new(&self.clients, clients)
     }
 
     /// Iterate the monitor's persistent z-order.
     #[inline]
-    pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<WindowId, Client>) -> ClientStackIter<'a> {
-        ClientStackIter::new(self.z_order.as_slice(), clients)
+    pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<WindowId, Client>) -> OrderedClients<'a> {
+        OrderedClients::new(self.z_order.as_slice(), clients)
     }
 
     /// Check if a point is within this monitor's work area.
@@ -311,19 +311,7 @@ impl Monitor {
     /// This replaces the per-layout boilerplate of filtering + snapshotting.
     pub fn collect_tiled(&self, clients: &HashMap<WindowId, Client>) -> Vec<TiledClientInfo> {
         let selected_tags = self.selected_tags();
-        self.clients
-            .iter()
-            .filter_map(|&win| {
-                let c = clients.get(&win)?;
-                if !c.is_tiled(selected_tags) {
-                    return None;
-                }
-                Some(TiledClientInfo {
-                    win,
-                    border_width: c.border_width,
-                })
-            })
-            .collect()
+        self.collect_client_info(clients, |client| client.is_tiled(selected_tags))
     }
 
     /// Collect persistent tiling-tree members, including clients temporarily
@@ -333,17 +321,21 @@ impl Monitor {
         clients: &HashMap<WindowId, Client>,
     ) -> Vec<TiledClientInfo> {
         let selected_tags = self.selected_tags();
-        self.clients
-            .iter()
-            .filter_map(|&win| {
-                let client = clients.get(&win)?;
-                if !client.is_tiling_tree_member(selected_tags) {
-                    return None;
-                }
-                Some(TiledClientInfo {
-                    win,
-                    border_width: client.border_width,
-                })
+        self.collect_client_info(clients, |client| {
+            client.is_tiling_tree_member(selected_tags)
+        })
+    }
+
+    fn collect_client_info(
+        &self,
+        clients: &HashMap<WindowId, Client>,
+        include: impl Fn(&Client) -> bool,
+    ) -> Vec<TiledClientInfo> {
+        self.iter_clients(clients)
+            .filter(|(_, client)| include(client))
+            .map(|(win, client)| TiledClientInfo {
+                win,
+                border_width: client.border_width,
             })
             .collect()
     }
