@@ -1,8 +1,26 @@
 use crate::contexts::WmCtx;
 use crate::layouts::{LayoutCommand, PresentationMode};
-use crate::types::WindowId;
+use crate::types::{StackDirection, WindowId};
 
 use super::arrange::arrange;
+
+/// Result of trying to reorder the selected maximized-stack entry.
+///
+/// Keeping the boundary distinct from an inapplicable command lets keyboard
+/// policy carry a window to an adjacent tag only after reaching the end of the
+/// visible title strip. Floating clients and non-maximized layouts continue to
+/// use their ordinary movement behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaximizedStackReorder {
+    /// The current presentation or selected client uses another movement model.
+    NotApplicable,
+    /// Two adjacent title/tree entries were exchanged.
+    Reordered,
+    /// The selected entry is already at the requested end of the title strip.
+    Boundary,
+    /// A newly managed client is visible but not yet present in the tree.
+    ReconcileRequired,
+}
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
     let Some(preset) = layout.tree_preset() else {
@@ -86,6 +104,60 @@ pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side)
         finish_layout_change(ctx);
     }
     changed
+}
+
+/// Move the selected tiled client by one entry in maximized title/focus order.
+///
+/// Maximized presentation deliberately hides the manual tree's geometry. Its
+/// exposed spatial model is instead the linear title strip, whose tiled prefix
+/// is [`crate::types::Monitor::tiled_tree_order`]. Swap the corresponding leaf
+/// occupants so title order, focus traversal, and the tiling restored when
+/// leaving maximized presentation all observe the same persistent mutation.
+pub fn reorder_maximized_stack(
+    ctx: &mut WmCtx<'_>,
+    direction: StackDirection,
+) -> MaximizedStackReorder {
+    let pair = {
+        let model = ctx.core().model();
+        let monitor = model.expect_selected_monitor();
+        if !monitor.is_maximized_layout() {
+            return MaximizedStackReorder::NotApplicable;
+        }
+        let Some(selected) = monitor.selected else {
+            return MaximizedStackReorder::NotApplicable;
+        };
+        let order = monitor.tiled_tree_order(&model.clients);
+        let Some(index) = order.iter().position(|&win| win == selected) else {
+            return MaximizedStackReorder::NotApplicable;
+        };
+        let neighbor_index = match direction {
+            StackDirection::Previous => index.checked_sub(1),
+            StackDirection::Next => (index + 1 < order.len()).then_some(index + 1),
+        };
+        let Some(neighbor) = neighbor_index.and_then(|index| order.get(index).copied()) else {
+            return MaximizedStackReorder::Boundary;
+        };
+        (selected, neighbor)
+    };
+
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .expect_selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree
+        .swap_windows(pair.0, pair.1);
+    if !changed {
+        // `tiled_tree_order` deliberately exposes newly managed tiled clients
+        // before the next authoritative arrange has inserted their leaves.
+        // Do not reinterpret that transient state as a movement boundary.
+        let monitor_id = ctx.core().model().selected_monitor_id();
+        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+        return MaximizedStackReorder::ReconcileRequired;
+    }
+
+    finish_layout_change(ctx);
+    MaximizedStackReorder::Reordered
 }
 
 pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {

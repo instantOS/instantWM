@@ -12,9 +12,9 @@ pub(crate) use commands::finish_layout_change;
 #[cfg(test)]
 use commands::shifted_master_count;
 pub use commands::{
-    apply_tree_preset, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by,
-    promote_tree, resize_tree, resize_tree_smart, set_layout, swap_tree_neighbor,
-    toggle_floating_presentation, toggle_tiling_maximized,
+    MaximizedStackReorder, apply_tree_preset, cycle_layout_direction, focus_tree_neighbor,
+    inc_master_count_by, promote_tree, reorder_maximized_stack, resize_tree, resize_tree_smart,
+    set_layout, swap_tree_neighbor, toggle_floating_presentation, toggle_tiling_maximized,
 };
 pub(crate) use pointer::{
     PointerPlacementPreviewCache, PointerTreeResizeStart, apply_tree_target,

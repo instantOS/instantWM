@@ -269,10 +269,10 @@ pub use keyboard_placement::{
     step_keyboard_tree_placement, swap_keyboard_tree_placement,
 };
 pub use manager::{
-    apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by,
-    place_tree_at_point, preview_tree_at_point, promote_tree, resize_tree, resize_tree_smart,
-    set_layout, swap_tree_neighbor, sync_monitor_z_order, toggle_floating_presentation,
-    toggle_tiling_maximized,
+    MaximizedStackReorder, apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor,
+    inc_master_count_by, place_tree_at_point, preview_tree_at_point, promote_tree,
+    reorder_maximized_stack, resize_tree, resize_tree_smart, set_layout, swap_tree_neighbor,
+    sync_monitor_z_order, toggle_floating_presentation, toggle_tiling_maximized,
 };
 
 #[cfg(test)]

@@ -145,6 +145,12 @@ pub fn execute_button_action(
         }
         ButtonAction::SidebarGestureBegin => sidebar_gesture_begin(ctx, arg.btn),
         ButtonAction::ReorderSelected { direction } => {
+            if !matches!(
+                crate::layouts::reorder_maximized_stack(ctx, *direction),
+                crate::layouts::MaximizedStackReorder::NotApplicable
+            ) {
+                return;
+            }
             if let Some(win) = ctx.core().model().selected_win()
                 && ctx
                     .core_mut()

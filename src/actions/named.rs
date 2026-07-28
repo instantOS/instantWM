@@ -12,11 +12,12 @@ use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::tree::Side;
 use crate::layouts::{
-    LayoutCommand, begin_tree_placement, center_keyboard_tree_placement,
+    LayoutCommand, MaximizedStackReorder, begin_tree_placement, center_keyboard_tree_placement,
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
-    focus_tree_neighbor, inc_master_count_by, resize_keyboard_tree_placement, resize_tree,
-    resize_tree_smart, set_layout, step_keyboard_tree_placement, swap_keyboard_tree_placement,
-    swap_tree_neighbor, toggle_floating_presentation, toggle_tiling_maximized,
+    focus_tree_neighbor, inc_master_count_by, reorder_maximized_stack,
+    resize_keyboard_tree_placement, resize_tree, resize_tree_smart, set_layout,
+    step_keyboard_tree_placement, swap_keyboard_tree_placement, swap_tree_neighbor,
+    toggle_floating_presentation, toggle_tiling_maximized,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
@@ -135,6 +136,19 @@ fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
 }
 
 fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    let stack_direction = match direction {
+        HorizontalDirection::Left => StackDirection::Previous,
+        HorizontalDirection::Right => StackDirection::Next,
+    };
+    match reorder_maximized_stack(ctx, stack_direction) {
+        MaximizedStackReorder::Reordered | MaximizedStackReorder::ReconcileRequired => return,
+        MaximizedStackReorder::Boundary => {
+            let _ = move_client_follow_view(ctx, direction);
+            return;
+        }
+        MaximizedStackReorder::NotApplicable => {}
+    }
+
     let side = match direction {
         HorizontalDirection::Left => Side::Left,
         HorizontalDirection::Right => Side::Right,
@@ -147,6 +161,29 @@ fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
     };
     if !key_move(ctx, win, direction.into()) {
         let _ = move_client_follow_view(ctx, direction);
+    }
+}
+
+fn move_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
+    let stack_direction = match direction {
+        VerticalDirection::Up => StackDirection::Previous,
+        VerticalDirection::Down => StackDirection::Next,
+    };
+    if !matches!(
+        reorder_maximized_stack(ctx, stack_direction),
+        MaximizedStackReorder::NotApplicable
+    ) {
+        return;
+    }
+
+    let side = match direction {
+        VerticalDirection::Up => Side::Top,
+        VerticalDirection::Down => Side::Bottom,
+    };
+    if !swap_tree_neighbor(ctx, side)
+        && let Some(win) = ctx.core().model().selected_win()
+    {
+        key_move(ctx, win, direction.into());
     }
 }
 
@@ -183,10 +220,10 @@ define_named_actions!(
     KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "shrink a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
     KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "shrink a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Left) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
     KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "grow a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
-    KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "swap a tiled window upward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_move(ctx, win, VerticalDirection::Up.into()); } } },
-    KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "swap a tiled window downward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { key_move(ctx, win, VerticalDirection::Down.into()); } } },
-    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move a window left, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Left); } },
-    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move a window right, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Right); } },
+    KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "move toward the previous maximized title, swap a tiled window upward, or move a floating window", run: |ctx, _args| { move_vertical(ctx, VerticalDirection::Up); } },
+    KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "move toward the next maximized title, swap a tiled window downward, or move a floating window", run: |ctx, _args| { move_vertical(ctx, VerticalDirection::Down); } },
+    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move toward the previous maximized title or move left, carrying the window to the adjacent tag at the boundary", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Left); } },
+    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move toward the next maximized title or move right, carrying the window to the adjacent tag at the boundary", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Right); } },
     TreeGrow => { name: "tree_grow", arg_example: None, doc: "grow the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, true); } },
     TreeShrink => { name: "tree_shrink", arg_example: None, doc: "shrink the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, false); } },
     PushUp => { name: "push_up", arg_example: None, doc: "swap a tiled window upward (legacy action)", run: |ctx, _args| { swap_tree_neighbor(ctx, Side::Top); } },
@@ -282,16 +319,47 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{NamedAction, focus_vertical, move_horizontal, parse_named_action};
+    use super::{NamedAction, focus_vertical, move_horizontal, move_vertical, parse_named_action};
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::layouts::LayoutCommand;
     use crate::layouts::tree::Preset;
+    use crate::layouts::{LayoutCommand, PresentationMode};
     use crate::types::{
         Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,
         VerticalDirection, WindowId,
     };
     use crate::wm::Wm;
+
+    fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 3;
+        let tag = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        for &win in windows {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tag);
+        monitor.clients = windows.to_vec();
+        monitor.selected = Some(selected);
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::Grid, windows, 1);
+        monitor.per_tag_state().presentation = PresentationMode::Maximized;
+        wm
+    }
 
     #[test]
     fn layout_command_from_name_accepts_only_canonical_names() {
@@ -415,6 +483,124 @@ mod tests {
             tag2
         );
         assert_eq!(wm.core.model.selected_win(), Some(left));
+    }
+
+    #[test]
+    fn maximized_window_move_reorders_adjacent_titles_not_hidden_visual_neighbors() {
+        let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+        let selected = WindowId(4);
+        let mut wm = maximized_tiled_wm(&windows, selected);
+
+        // In this grid, window 4's hidden visual neighbour to the left is
+        // window 2. The exposed maximized order instead places window 3
+        // immediately before it.
+        assert_eq!(
+            wm.core
+                .model
+                .expect_selected_monitor()
+                .per_tag()
+                .unwrap()
+                .layout_tree
+                .visual_neighbor(selected, crate::layouts::tree::Side::Left),
+            Some(WindowId(2))
+        );
+
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+
+        let monitor = wm.core.model.expect_selected_monitor();
+        assert_eq!(
+            monitor.per_tag().unwrap().layout_tree.leaves(),
+            vec![WindowId(1), WindowId(2), WindowId(4), WindowId(3)]
+        );
+        assert_eq!(
+            monitor.bar_client_order(&wm.core.model.clients),
+            vec![WindowId(1), WindowId(2), WindowId(4), WindowId(3)]
+        );
+        assert_eq!(monitor.selected, Some(selected));
+    }
+
+    #[test]
+    fn maximized_horizontal_move_crosses_tags_at_title_strip_boundary() {
+        let windows = [WindowId(1), WindowId(2), WindowId(3)];
+        let selected = WindowId(3);
+        let mut wm = maximized_tiled_wm(&windows, selected);
+        let tag2 = TagMask::single(2).unwrap();
+
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+
+        assert_eq!(wm.core.model.client(selected).unwrap().tags, tag2);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag2
+        );
+        assert_eq!(wm.core.model.selected_win(), Some(selected));
+    }
+
+    #[test]
+    fn maximized_vertical_move_stops_at_title_strip_boundary() {
+        let windows = [WindowId(1), WindowId(2), WindowId(3)];
+        let selected = WindowId(3);
+        let mut wm = maximized_tiled_wm(&windows, selected);
+        let tag1 = TagMask::single(1).unwrap();
+
+        move_vertical(&mut wm.ctx(), VerticalDirection::Up);
+        assert_eq!(
+            wm.core
+                .model
+                .expect_selected_monitor()
+                .per_tag()
+                .unwrap()
+                .layout_tree
+                .leaves(),
+            vec![WindowId(1), WindowId(3), WindowId(2)]
+        );
+
+        move_vertical(&mut wm.ctx(), VerticalDirection::Down);
+        assert_eq!(
+            wm.core
+                .model
+                .expect_selected_monitor()
+                .per_tag()
+                .unwrap()
+                .layout_tree
+                .leaves(),
+            windows
+        );
+
+        move_vertical(&mut wm.ctx(), VerticalDirection::Down);
+
+        let monitor = wm.core.model.expect_selected_monitor();
+        assert_eq!(monitor.per_tag().unwrap().layout_tree.leaves(), windows);
+        assert_eq!(monitor.selected_tags(), tag1);
+        assert_eq!(monitor.selected, Some(selected));
+    }
+
+    #[test]
+    fn maximized_move_does_not_treat_pending_tree_reconciliation_as_a_boundary() {
+        let windows = [WindowId(1), WindowId(2), WindowId(3)];
+        let selected = WindowId(3);
+        let mut wm = maximized_tiled_wm(&windows, selected);
+        let tag1 = TagMask::single(1).unwrap();
+        assert!(
+            wm.core
+                .model
+                .expect_selected_monitor_mut()
+                .per_tag_state()
+                .layout_tree
+                .remove(selected)
+        );
+
+        // Title order defensively appends a newly managed tiled client before
+        // the next arrange reconciles its leaf. Moving left during that window
+        // must not fall through to an adjacent-tag transfer.
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+
+        assert_eq!(wm.core.model.client(selected).unwrap().tags, tag1);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag1
+        );
+        assert_eq!(wm.core.model.selected_win(), Some(selected));
     }
 
     #[test]

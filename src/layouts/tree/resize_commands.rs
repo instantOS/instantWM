@@ -4,10 +4,7 @@ impl LayoutTree {
     /// Swap the focused leaf with the topology-first visual neighbour.
     pub fn swap_with_neighbor(&mut self, source: WindowId, side: Side) -> Option<WindowId> {
         let neighbor = self.visual_neighbor(source, side)?;
-        let root = self.root.take()?;
-        self.root = Some(swap_windows(root, source, neighbor));
-        self.invalidate_force_provenance();
-        Some(neighbor)
+        self.swap_windows(source, neighbor).then_some(neighbor)
     }
 
     pub fn visual_neighbor(&self, source: WindowId, side: Side) -> Option<WindowId> {
