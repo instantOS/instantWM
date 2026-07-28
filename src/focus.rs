@@ -929,6 +929,71 @@ mod tests {
     }
 
     #[test]
+    fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_focus() {
+        let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+        let monitor_id = state.model.selected_monitor_id();
+        let tag = TagMask::single(1).unwrap();
+        let previously_focused = WindowId(1);
+        let other_group_window = WindowId(2);
+        let temporary_terminal = WindowId(3);
+        state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .clients
+            .push(previously_focused);
+
+        for win in [other_group_window, temporary_terminal] {
+            assert!(state.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag,
+                ..Client::default()
+            }));
+            assert!(state.model.attach_client(win));
+        }
+
+        let monitor = state.model.monitor_mut(monitor_id).unwrap();
+        monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
+        monitor.per_tag_state().layout_tree.apply_preset(
+            crate::layouts::tree::Preset::MasterStack,
+            &[previously_focused, other_group_window, temporary_terminal],
+            1,
+        );
+        monitor.selected = Some(previously_focused);
+
+        let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let mut backend = RecordingBackend::default();
+
+        // Establish A as the maximized window visible immediately before the
+        // short-lived terminal takes focus.
+        focus_generic(
+            &mut core,
+            Some(previously_focused),
+            &mut backend,
+            BackendRefresh::IfNeeded,
+        )
+        .unwrap();
+        focus_generic(
+            &mut core,
+            Some(temporary_terminal),
+            &mut backend,
+            BackendRefresh::IfNeeded,
+        )
+        .unwrap();
+        assert_eq!(core.model().selected_win(), Some(temporary_terminal));
+
+        core.model_mut().remove_client(temporary_terminal).unwrap();
+        focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+
+        assert_eq!(
+            core.model().selected_win(),
+            Some(previously_focused),
+            "closing a short-lived tiled window should reveal the maximized window that preceded it"
+        );
+    }
+
+    #[test]
     fn maximized_stack_uses_tree_order_and_excludes_floating_clients() {
         let tag = TagMask::single(1).unwrap();
         let mut monitor = Monitor::default();
