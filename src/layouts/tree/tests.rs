@@ -1307,13 +1307,7 @@ fn dense_equal_pointer_runs_have_a_valid_resize_interval() {
         let mut leading = trailing.clone();
 
         assert!(trailing.resize_edge_by_pixels(WindowId(1), Side::Right, 20, layout, 0.15,));
-        assert!(leading.resize_edge_by_pixels(
-            WindowId(count as u32),
-            Side::Left,
-            -20,
-            layout,
-            0.15,
-        ));
+        assert!(leading.resize_edge_by_pixels(WindowId(count), Side::Left, -20, layout, 0.15,));
         assert_canonical(&trailing);
         assert_canonical(&leading);
     }

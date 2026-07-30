@@ -272,71 +272,6 @@ pub fn resolve_bar_position_at_root(
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{BarHoverState, BarState, MonitorHitCache};
-    use crate::bar::status::{StatusClickTarget, StatusItem};
-    use crate::types::{Gesture, MonitorId, Point, Rect};
-
-    #[test]
-    fn prepared_status_is_parsed_on_first_cache_read() {
-        let text = r#"[{"full_text":"cpu","name":"cpu"}]"#;
-        let mut bar = BarState::default();
-
-        bar.prepare_status_for_render(text);
-
-        let parsed = bar.parsed_status_for_text(text);
-        assert!(parsed.i3bar.is_some());
-        assert!(matches!(parsed.items.first(), Some(StatusItem::I3Block(_))));
-    }
-
-    #[test]
-    fn hover_is_only_visible_on_its_own_monitor() {
-        let first = MonitorId::from_raw(1);
-        let second = MonitorId::from_raw(2);
-        let mut hover = BarHoverState::default();
-
-        assert!(hover.set(first, Gesture::Tag(3), true));
-        assert_eq!(hover.gesture_on(first), Gesture::Tag(3));
-        assert_eq!(hover.gesture_on(second), Gesture::None);
-        assert!(hover.drag_active);
-
-        assert!(hover.clear());
-        assert_eq!(hover, BarHoverState::default());
-        assert!(!hover.clear());
-    }
-
-    #[test]
-    fn status_hover_requires_click_events_and_uses_rendered_block_bounds() {
-        let monitor_id = MonitorId::from_raw(1);
-        let mut bar = BarState::default();
-        bar.replace_hit_cache(
-            monitor_id,
-            MonitorHitCache {
-                status_click_targets: vec![StatusClickTarget {
-                    bounds: Rect::new(80, 0, 40, 24),
-                    block_index: 3,
-                }],
-                ..MonitorHitCache::default()
-            },
-        );
-
-        assert_eq!(
-            bar.status_hover_gesture(monitor_id, Point::new(90, 10)),
-            Gesture::None
-        );
-        bar.runtime.status_click_events = true;
-        assert_eq!(
-            bar.status_hover_gesture(monitor_id, Point::new(90, 10)),
-            Gesture::StatusBlock(3)
-        );
-        assert_eq!(
-            bar.status_hover_gesture(monitor_id, Point::new(120, 10)),
-            Gesture::None
-        );
-    }
-}
-
 pub fn update_hover(
     ctx: &mut WmCtx,
     root: Point,
@@ -426,4 +361,69 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         button_code,
         clean_state,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BarHoverState, BarState, MonitorHitCache};
+    use crate::bar::status::{StatusClickTarget, StatusItem};
+    use crate::types::{Gesture, MonitorId, Point, Rect};
+
+    #[test]
+    fn prepared_status_is_parsed_on_first_cache_read() {
+        let text = r#"[{"full_text":"cpu","name":"cpu"}]"#;
+        let mut bar = BarState::default();
+
+        bar.prepare_status_for_render(text);
+
+        let parsed = bar.parsed_status_for_text(text);
+        assert!(parsed.i3bar.is_some());
+        assert!(matches!(parsed.items.first(), Some(StatusItem::I3Block(_))));
+    }
+
+    #[test]
+    fn hover_is_only_visible_on_its_own_monitor() {
+        let first = MonitorId::from_raw(1);
+        let second = MonitorId::from_raw(2);
+        let mut hover = BarHoverState::default();
+
+        assert!(hover.set(first, Gesture::Tag(3), true));
+        assert_eq!(hover.gesture_on(first), Gesture::Tag(3));
+        assert_eq!(hover.gesture_on(second), Gesture::None);
+        assert!(hover.drag_active);
+
+        assert!(hover.clear());
+        assert_eq!(hover, BarHoverState::default());
+        assert!(!hover.clear());
+    }
+
+    #[test]
+    fn status_hover_requires_click_events_and_uses_rendered_block_bounds() {
+        let monitor_id = MonitorId::from_raw(1);
+        let mut bar = BarState::default();
+        bar.replace_hit_cache(
+            monitor_id,
+            MonitorHitCache {
+                status_click_targets: vec![StatusClickTarget {
+                    bounds: Rect::new(80, 0, 40, 24),
+                    block_index: 3,
+                }],
+                ..MonitorHitCache::default()
+            },
+        );
+
+        assert_eq!(
+            bar.status_hover_gesture(monitor_id, Point::new(90, 10)),
+            Gesture::None
+        );
+        bar.runtime.status_click_events = true;
+        assert_eq!(
+            bar.status_hover_gesture(monitor_id, Point::new(90, 10)),
+            Gesture::StatusBlock(3)
+        );
+        assert_eq!(
+            bar.status_hover_gesture(monitor_id, Point::new(120, 10)),
+            Gesture::None
+        );
+    }
 }

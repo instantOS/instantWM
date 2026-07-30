@@ -72,51 +72,6 @@ pub fn set_x11_cursor(
     }
 }
 
-#[cfg(test)]
-mod cursor_tests {
-    use super::{CursorUpdateTargets, cursor_update_targets};
-    use crate::backend::x11::ActivePointerGrab;
-    use crate::types::AltCursor;
-    use x11rb::protocol::xproto::EventMask;
-
-    fn active(cursor: AltCursor) -> ActivePointerGrab {
-        ActivePointerGrab {
-            event_mask: EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            cursor,
-        }
-    }
-
-    #[test]
-    fn active_grab_cursor_updates_even_when_root_already_matches() {
-        assert_eq!(
-            cursor_update_targets(
-                Some(AltCursor::Move),
-                Some(active(AltCursor::Default)),
-                AltCursor::Move,
-            ),
-            CursorUpdateTargets {
-                root: false,
-                active_grab: true,
-            }
-        );
-    }
-
-    #[test]
-    fn matching_root_and_grab_suppress_redundant_native_updates() {
-        assert_eq!(
-            cursor_update_targets(
-                Some(AltCursor::Move),
-                Some(active(AltCursor::Move)),
-                AltCursor::Move,
-            ),
-            CursorUpdateTargets {
-                root: false,
-                active_grab: false,
-            }
-        );
-    }
-}
-
 impl crate::backend::CursorOps for WmCtxX11<'_> {
     fn apply_cursor_style(&mut self, style: AltCursor) {
         set_x11_cursor(&self.x11, self.x11_runtime, style);
@@ -518,5 +473,50 @@ pub fn cursor_client_win(
         Some(win)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::{CursorUpdateTargets, cursor_update_targets};
+    use crate::backend::x11::ActivePointerGrab;
+    use crate::types::AltCursor;
+    use x11rb::protocol::xproto::EventMask;
+
+    fn active(cursor: AltCursor) -> ActivePointerGrab {
+        ActivePointerGrab {
+            event_mask: EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+            cursor,
+        }
+    }
+
+    #[test]
+    fn active_grab_cursor_updates_even_when_root_already_matches() {
+        assert_eq!(
+            cursor_update_targets(
+                Some(AltCursor::Move),
+                Some(active(AltCursor::Default)),
+                AltCursor::Move,
+            ),
+            CursorUpdateTargets {
+                root: false,
+                active_grab: true,
+            }
+        );
+    }
+
+    #[test]
+    fn matching_root_and_grab_suppress_redundant_native_updates() {
+        assert_eq!(
+            cursor_update_targets(
+                Some(AltCursor::Move),
+                Some(active(AltCursor::Move)),
+                AltCursor::Move,
+            ),
+            CursorUpdateTargets {
+                root: false,
+                active_grab: false,
+            }
+        );
     }
 }

@@ -82,7 +82,7 @@ fn card_field_preserves_sizes_and_uses_both_axes() {
 #[test]
 fn active_card_gets_the_largest_grid_territory() {
     let work = Rect::new(0, 0, 1200, 800);
-    let sizes = vec![Size::new(800, 600); 12];
+    let sizes = [Size::new(800, 600); 12];
     let grid = CardGrid::for_work_rect(work, sizes.len());
     let active = 6;
     let (active_row, active_column) = grid.position(active);

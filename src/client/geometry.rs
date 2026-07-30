@@ -435,6 +435,29 @@ fn calculate_scaled_geometry(
     }
 }
 
+/// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
+///
+/// `scale` is an integer percentage (e.g. `75` means 75 %).
+pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
+    let target = {
+        let core = ctx.core();
+        let c = match core.model().client(win) {
+            Some(c) => c,
+            None => return,
+        };
+        calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
+            core.state()
+                .model
+                .monitors
+                .get(mid)
+                .map(|m| m.monitor_rect)
+                .unwrap_or(c.geo)
+        })
+    };
+
+    ctx.move_resize(win, target, MoveResizeOptions::hinted_immediate(false));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -766,27 +789,4 @@ mod tests {
             sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
         assert_eq!(rect, Rect::new(1920, 32, 2000, 1200));
     }
-}
-
-/// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
-///
-/// `scale` is an integer percentage (e.g. `75` means 75 %).
-pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
-    let target = {
-        let core = ctx.core();
-        let c = match core.model().client(win) {
-            Some(c) => c,
-            None => return,
-        };
-        calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-            core.state()
-                .model
-                .monitors
-                .get(mid)
-                .map(|m| m.monitor_rect)
-                .unwrap_or(c.geo)
-        })
-    };
-
-    ctx.move_resize(win, target, MoveResizeOptions::hinted_immediate(false));
 }

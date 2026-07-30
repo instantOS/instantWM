@@ -183,24 +183,6 @@ impl WaylandState {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::xdg_toplevel_policy_wants_floating;
-
-    #[test]
-    fn standalone_resizable_toplevel_is_tiled() {
-        // Whether the client created an xdg_dialog_v1 object is deliberately
-        // not an input: without a parent the protocol says it has no effect.
-        assert!(!xdg_toplevel_policy_wants_floating(false, false));
-    }
-
-    #[test]
-    fn transient_or_fixed_size_toplevel_is_floating() {
-        assert!(xdg_toplevel_policy_wants_floating(true, false));
-        assert!(xdg_toplevel_policy_wants_floating(false, true));
-    }
-}
-
 impl SeatHandler for WaylandState {
     type KeyboardFocus = KeyboardFocusTarget;
     type PointerFocus = super::focus::PointerFocusTarget;
@@ -737,5 +719,23 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 token_data.app_id
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xdg_toplevel_policy_wants_floating;
+
+    #[test]
+    fn standalone_resizable_toplevel_is_tiled() {
+        // Whether the client created an xdg_dialog_v1 object is deliberately
+        // not an input: without a parent the protocol says it has no effect.
+        assert!(!xdg_toplevel_policy_wants_floating(false, false));
+    }
+
+    #[test]
+    fn transient_or_fixed_size_toplevel_is_floating() {
+        assert!(xdg_toplevel_policy_wants_floating(true, false));
+        assert!(xdg_toplevel_policy_wants_floating(false, true));
     }
 }

@@ -310,18 +310,6 @@ fn cursor_size(size: u32) -> u8 {
     size.clamp(1, u8::MAX as u32) as u8
 }
 
-#[cfg(test)]
-mod cursor_config_tests {
-    use super::cursor_size;
-
-    #[test]
-    fn cursor_size_stays_in_xcursor_range() {
-        assert_eq!(cursor_size(0), 1);
-        assert_eq!(cursor_size(24), 24);
-        assert_eq!(cursor_size(512), u8::MAX);
-    }
-}
-
 /// Compute total screen dimensions from output surfaces.
 fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::types::Size {
     let total_width = output_surfaces
@@ -947,4 +935,16 @@ fn render_outputs(
         }
     }
     loop_state.taken_render_flags = render_flags;
+}
+
+#[cfg(test)]
+mod cursor_config_tests {
+    use super::cursor_size;
+
+    #[test]
+    fn cursor_size_stays_in_xcursor_range() {
+        assert_eq!(cursor_size(0), 1);
+        assert_eq!(cursor_size(24), 24);
+        assert_eq!(cursor_size(512), u8::MAX);
+    }
 }

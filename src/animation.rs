@@ -118,59 +118,6 @@ impl WindowAnimation {
     }
 }
 
-#[cfg(test)]
-mod layout_preview_tests {
-    use super::*;
-
-    #[test]
-    fn preview_retargets_from_its_current_visual_rectangle() {
-        let start = Instant::now();
-        let duration = Duration::from_millis(100);
-        let mut preview = LayoutPreviewAnimation::default();
-        let first = Rect::new(0, 0, 100, 100);
-        let second = Rect::new(100, 0, 100, 100);
-        let third = Rect::new(200, 0, 100, 100);
-
-        assert_eq!(
-            preview.set_target(Some(first), true, duration, start),
-            Some(first)
-        );
-        preview.set_target(Some(second), true, duration, start);
-        assert_eq!(
-            preview.tick(start + Duration::from_millis(50)).unwrap().x,
-            88
-        );
-
-        let displayed = preview.displayed().unwrap();
-        assert_eq!(
-            preview.set_target(
-                Some(third),
-                true,
-                duration,
-                start + Duration::from_millis(50),
-            ),
-            Some(displayed),
-        );
-        assert!(preview.is_active());
-    }
-
-    #[test]
-    fn hiding_preview_cancels_its_transition() {
-        let now = Instant::now();
-        let mut preview = LayoutPreviewAnimation::default();
-        preview.set_target(Some(Rect::new(0, 0, 100, 100)), false, Duration::ZERO, now);
-        preview.set_target(
-            Some(Rect::new(100, 0, 100, 100)),
-            true,
-            Duration::from_millis(100),
-            now,
-        );
-
-        assert_eq!(preview.set_target(None, true, Duration::ZERO, now), None);
-        assert!(!preview.is_active());
-    }
-}
-
 /// Cancel an in-flight X11 animation by snapping directly to its target.
 pub fn cancel_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: WindowId) {
     if let Some(anim) = ctx.x11_runtime.take_window_animation(win) {
@@ -267,5 +214,58 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
             target,
             MoveResizeOptions::animate_from(start, DEFAULT_FRAME_COUNT),
         );
+    }
+}
+
+#[cfg(test)]
+mod layout_preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_retargets_from_its_current_visual_rectangle() {
+        let start = Instant::now();
+        let duration = Duration::from_millis(100);
+        let mut preview = LayoutPreviewAnimation::default();
+        let first = Rect::new(0, 0, 100, 100);
+        let second = Rect::new(100, 0, 100, 100);
+        let third = Rect::new(200, 0, 100, 100);
+
+        assert_eq!(
+            preview.set_target(Some(first), true, duration, start),
+            Some(first)
+        );
+        preview.set_target(Some(second), true, duration, start);
+        assert_eq!(
+            preview.tick(start + Duration::from_millis(50)).unwrap().x,
+            88
+        );
+
+        let displayed = preview.displayed().unwrap();
+        assert_eq!(
+            preview.set_target(
+                Some(third),
+                true,
+                duration,
+                start + Duration::from_millis(50),
+            ),
+            Some(displayed),
+        );
+        assert!(preview.is_active());
+    }
+
+    #[test]
+    fn hiding_preview_cancels_its_transition() {
+        let now = Instant::now();
+        let mut preview = LayoutPreviewAnimation::default();
+        preview.set_target(Some(Rect::new(0, 0, 100, 100)), false, Duration::ZERO, now);
+        preview.set_target(
+            Some(Rect::new(100, 0, 100, 100)),
+            true,
+            Duration::from_millis(100),
+            now,
+        );
+
+        assert_eq!(preview.set_target(None, true, Duration::ZERO, now), None);
+        assert!(!preview.is_active());
     }
 }
