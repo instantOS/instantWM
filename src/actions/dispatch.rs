@@ -31,6 +31,11 @@ fn button_target_client(
 
 pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
     match action {
+        KeyAction::Sequence(actions) => {
+            for action in actions {
+                execute_key_action(ctx, action);
+            }
+        }
         KeyAction::Named { action, args } => execute_named_action(ctx, *action, args),
         KeyAction::ViewTag { tag_idx } => {
             if let Some(mask) = TagMask::from_index(*tag_idx) {
@@ -181,5 +186,42 @@ pub fn execute_button_action(
                 crate::mouse::drag::thresholded_client_drag(ctx, win, arg.btn, arg.root, true);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::actions::NamedAction;
+    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::core_state::ActiveWmMode;
+    use crate::wm::Wm;
+
+    #[test]
+    fn key_action_sequences_execute_every_action_in_order() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let action = KeyAction::Sequence(vec![
+            KeyAction::Named {
+                action: NamedAction::SetMode,
+                args: vec!["first".to_string()],
+            },
+            KeyAction::Sequence(vec![
+                KeyAction::Named {
+                    action: NamedAction::SetMode,
+                    args: vec!["second".to_string()],
+                },
+                KeyAction::Named {
+                    action: NamedAction::SetMode,
+                    args: vec!["final".to_string()],
+                },
+            ]),
+        ]);
+
+        execute_key_action(&mut wm.ctx(), &action);
+
+        assert_eq!(
+            wm.core.behavior.current_mode,
+            ActiveWmMode::Named("final".to_string())
+        );
     }
 }

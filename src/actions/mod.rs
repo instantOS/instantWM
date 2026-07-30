@@ -13,6 +13,8 @@ pub struct ActionMeta {
 
 #[derive(Debug, Clone)]
 pub enum KeyAction {
+    /// Execute multiple key actions in order.
+    Sequence(Vec<KeyAction>),
     Named {
         action: NamedAction,
         args: Vec<String>,

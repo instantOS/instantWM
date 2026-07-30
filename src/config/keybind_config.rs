@@ -32,6 +32,8 @@ pub enum ActionSpec {
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StructuredAction {
+    /// Execute each action in order.
+    Sequence(Vec<ActionSpec>),
     Spawn(Vec<String>),
     Unbind(bool),
     None,
@@ -229,6 +231,17 @@ fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
     match spec {
         ActionSpec::Structured(StructuredAction::Unbind(_)) => None,
         ActionSpec::Structured(StructuredAction::None) => None,
+        ActionSpec::Structured(StructuredAction::Sequence(specs)) => {
+            let actions = specs
+                .iter()
+                .map(compile_action)
+                .collect::<Option<Vec<_>>>()?;
+            if actions.is_empty() {
+                None
+            } else {
+                Some(KeyAction::Sequence(actions))
+            }
+        }
         ActionSpec::Structured(StructuredAction::Spawn(argv)) => Some(KeyAction::Named {
             action: NamedAction::Spawn,
             args: argv.clone(),
@@ -318,6 +331,15 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
 mod tests {
     use super::*;
 
+    fn parse_keybind(source: &str) -> KeybindSpec {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            keybind: KeybindSpec,
+        }
+
+        toml::from_str::<Wrapper>(source).unwrap().keybind
+    }
+
     #[test]
     fn test_merge_keybinds_none_action_removes_default() {
         let defaults = vec![Key {
@@ -388,5 +410,91 @@ mod tests {
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].keysym, XK_P);
         assert_eq!(merged[1].keysym, XK_O);
+    }
+
+    #[test]
+    fn sequence_action_parses_and_compiles_in_order() {
+        let spec = parse_keybind(
+            r#"
+            [keybind]
+            modifiers = []
+            key = "f"
+            action = { sequence = [
+                { set_mode = "default" },
+                { spawn = ["ins", "assist", "run", "sf"] },
+            ] }
+            "#,
+        );
+
+        let merged = merge_keybinds(Vec::new(), &[spec]);
+        let [key] = merged.as_slice() else {
+            panic!("expected one compiled keybinding");
+        };
+        let KeyAction::Sequence(actions) = &key.action else {
+            panic!("expected a sequence action");
+        };
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(
+            &actions[0],
+            KeyAction::Named { action: NamedAction::SetMode, args }
+                if args == &["default".to_string()]
+        ));
+        assert!(matches!(
+            &actions[1],
+            KeyAction::Named { action: NamedAction::Spawn, args }
+                if args == &[
+                    "ins".to_string(),
+                    "assist".to_string(),
+                    "run".to_string(),
+                    "sf".to_string(),
+                ]
+        ));
+    }
+
+    #[test]
+    fn sequence_action_rejects_empty_or_non_executable_members() {
+        let empty = parse_keybind(
+            r#"
+            [keybind]
+            modifiers = []
+            key = "f"
+            action = { sequence = [] }
+            "#,
+        );
+        let containing_none = parse_keybind(
+            r#"
+            [keybind]
+            modifiers = []
+            key = "f"
+            action = { sequence = [{ set_mode = "default" }, { unbind = true }] }
+            "#,
+        );
+
+        assert!(merge_keybinds(Vec::new(), &[empty]).is_empty());
+        assert!(merge_keybinds(Vec::new(), &[containing_none]).is_empty());
+    }
+
+    #[test]
+    fn nested_sequences_are_supported() {
+        let spec = parse_keybind(
+            r#"
+            [keybind]
+            modifiers = []
+            key = "f"
+            action = { sequence = [
+                { set_mode = "default" },
+                { sequence = [
+                    { spawn = ["first"] },
+                    { spawn = ["second"] },
+                ] },
+            ] }
+            "#,
+        );
+
+        let merged = merge_keybinds(Vec::new(), &[spec]);
+        let KeyAction::Sequence(actions) = &merged[0].action else {
+            panic!("expected a sequence action");
+        };
+        assert!(matches!(actions.get(1), Some(KeyAction::Sequence(inner)) if inner.len() == 2));
     }
 }
