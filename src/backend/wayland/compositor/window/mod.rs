@@ -74,16 +74,11 @@ impl WaylandState {
     /// This deliberately reads Smithay space rather than `client.geo`:
     /// animations commit their logical destination immediately while the
     /// space element advances through intermediate displayed positions.
-    pub(crate) fn displayed_window_rect(
-        &self,
-        window: WindowId,
-        border_width: i32,
-    ) -> Option<Rect> {
-        let element = self.find_window(window)?;
-        let location = self.space.element_location(element)?;
+    pub(crate) fn displayed_window_rect(&self, window: &Window, border_width: i32) -> Option<Rect> {
+        let location = self.space.element_location(window)?;
         Some(displayed_rect_from_space_geometry(
             location,
-            element.geometry().size,
+            window.geometry().size,
             border_width,
         ))
     }

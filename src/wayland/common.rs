@@ -578,8 +578,9 @@ pub fn build_shared_scene_elements(
     let bar_seq = wm.bar.update_seq();
     let border_scene = crate::wayland::render::borders::BorderScene::capture(&wm.core.model, state);
     let borders_hash = border_scene.cache_key(&wm.core.config.colors.border);
+    let bar_dirty = wm.bar.needs_redraw();
 
-    if !wm.bar.needs_redraw()
+    if !bar_dirty
         && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.shared_scene_cache
         && cached_bar == bar_seq
         && cached_borders == borders_hash
@@ -588,7 +589,6 @@ pub fn build_shared_scene_elements(
         return elements.clone();
     }
 
-    let bar_dirty = wm.bar.needs_redraw();
     let cached_bar_buffers = state
         .runtime
         .shared_scene_cache

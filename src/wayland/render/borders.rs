@@ -136,7 +136,7 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
         };
         let c = view.client;
 
-        let Some(displayed_rect) = state.displayed_window_rect(marker.id, c.border_width) else {
+        let Some(displayed_rect) = state.displayed_window_rect(window, c.border_width) else {
             continue;
         };
 
@@ -250,6 +250,37 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
     occluders
 }
 
+/// Return the visible border pieces for one window after applying all
+/// higher-z-order window and popup occluders.
+fn visible_border_parts(
+    scene: &BorderScene,
+    window_index: usize,
+    scratch: &mut Vec<Rect>,
+) -> Vec<Rect> {
+    let Some(window) = scene
+        .windows
+        .get(window_index)
+        .filter(|window| window.has_borders())
+    else {
+        return Vec::new();
+    };
+
+    let border_parts = generate_border_rectangles(window.bounding_rect(), window.border_width);
+    if border_parts.is_empty() {
+        return border_parts;
+    }
+
+    let higher_occluders = scene.windows[window_index + 1..]
+        .iter()
+        .filter_map(WindowBorderInfo::occluder);
+    let visible_parts = apply_occluders(border_parts, higher_occluders, scratch);
+    apply_occluders(
+        visible_parts,
+        scene.popup_occluders.iter().copied(),
+        scratch,
+    )
+}
+
 /// Render border elements from a previously captured displayed scene.
 fn render_border_scene(
     scene: &BorderScene,
@@ -261,30 +292,7 @@ fn render_border_scene(
     let mut scratch = Vec::with_capacity(32);
 
     for (idx, window) in windows.iter().enumerate() {
-        if !window.has_borders() {
-            continue;
-        }
-
-        let border_width = window.border_width;
-
-        // Generate the four border sides
-        let border_parts = generate_border_rectangles(window.bounding_rect(), border_width);
-        if border_parts.is_empty() {
-            continue;
-        }
-
-        // Subtract occluders from higher windows (windows in front)
-        let higher_occluders = windows[idx + 1..]
-            .iter()
-            .filter_map(WindowBorderInfo::occluder);
-        let visible_parts = apply_occluders(border_parts, higher_occluders, &mut scratch);
-        // Subtract popup areas so right-click menus and similar overlays
-        // are not covered by borders.
-        let visible_parts = apply_occluders(
-            visible_parts,
-            scene.popup_occluders.iter().copied(),
-            &mut scratch,
-        );
+        let visible_parts = visible_border_parts(scene, idx, &mut scratch);
 
         // Get color based on focus state
         let is_focused = Some(window.id) == scene.selected_win;
@@ -397,5 +405,30 @@ mod tests {
         hidden.is_hidden = true;
 
         assert_eq!(hidden.occluder(), None);
+    }
+
+    #[test]
+    fn invisible_lower_window_does_not_shift_higher_occluder_index() {
+        let mut invisible_lower = window_at(Rect::new(100, 100, 10, 10));
+        invisible_lower.id = WindowId(1);
+        invisible_lower.is_visible = false;
+
+        let mut target = window_at(Rect::new(0, 0, 20, 20));
+        target.id = WindowId(2);
+
+        let mut higher = window_at(Rect::new(10, 0, 10, 10));
+        higher.id = WindowId(3);
+
+        let scene = BorderScene {
+            windows: vec![invisible_lower, target, higher],
+            popup_occluders: Vec::new(),
+            selected_win: None,
+        };
+        let mut scratch = Vec::new();
+
+        let parts = visible_border_parts(&scene, 1, &mut scratch);
+
+        assert!(parts.contains(&Rect::new(0, 0, 10, 3)));
+        assert!(!parts.contains(&Rect::new(0, 0, 26, 3)));
     }
 }
