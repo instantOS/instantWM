@@ -26,7 +26,7 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
-    CursorPresentation, build_fixed_scene_elements, poll_systray, resolve_cursor_presentation,
+    CursorPresentation, build_shared_scene_elements, poll_systray, resolve_cursor_presentation,
 };
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
@@ -862,9 +862,9 @@ fn render_outputs(
         let needs_any_render = output_surfaces
             .iter()
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
-        let fixed_scene = if needs_any_render && !state.is_locked() {
+        let shared_scene = if needs_any_render && !state.is_locked() {
             poll_systray(wm);
-            Some(build_fixed_scene_elements(wm, state))
+            Some(build_shared_scene_elements(wm, state))
         } else {
             None
         };
@@ -891,7 +891,7 @@ fn render_outputs(
                 cursor_manager,
                 pointer_location,
                 start_time,
-                fixed_scene.clone(),
+                shared_scene.clone(),
                 suppress_upper_layers,
             );
 

@@ -1,9 +1,9 @@
 use smithay::desktop::Window;
 use smithay::output::Output;
-use smithay::utils::{Logical, Point};
+use smithay::utils::{Logical, Point, Size};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::types::WindowId;
+use crate::types::{Rect, WindowId};
 
 pub mod animations;
 pub mod classify;
@@ -16,6 +16,27 @@ pub mod x11;
 
 pub use classify::WindowType;
 pub(crate) use x11::is_unmanaged_x11_overlay;
+
+/// Convert Smithay's currently displayed inner-surface geometry to the WM's
+/// outer-origin/content-size rectangle convention.
+///
+/// `client.geo` uses the same convention, but represents the logical target.
+/// Keeping this conversion separate prevents render code from accidentally
+/// drawing a target geometry while the compositor is presenting an animation
+/// frame somewhere else.
+fn displayed_rect_from_space_geometry(
+    location: Point<i32, Logical>,
+    size: Size<i32, Logical>,
+    border_width: i32,
+) -> Rect {
+    let border_width = border_width.max(0);
+    Rect::new(
+        location.x - border_width,
+        location.y - border_width,
+        size.w.max(1),
+        size.h.max(1),
+    )
+}
 
 fn committed_size_is_stale(
     pending_authoritative_size: Option<(i32, i32)>,
@@ -45,6 +66,26 @@ impl WaylandState {
     /// Find a window by ID.
     pub(crate) fn find_window(&self, window: WindowId) -> Option<&Window> {
         self.window_index.get(&window)
+    }
+
+    /// Return the rectangle currently presented on screen for a managed
+    /// window, in the core model's outer-origin/content-size convention.
+    ///
+    /// This deliberately reads Smithay space rather than `client.geo`:
+    /// animations commit their logical destination immediately while the
+    /// space element advances through intermediate displayed positions.
+    pub(crate) fn displayed_window_rect(
+        &self,
+        window: WindowId,
+        border_width: i32,
+    ) -> Option<Rect> {
+        let element = self.find_window(window)?;
+        let location = self.space.element_location(element)?;
+        Some(displayed_rect_from_space_geometry(
+            location,
+            element.geometry().size,
+            border_width,
+        ))
     }
 
     /// Sync client size from the compositor's committed window state.
@@ -183,12 +224,21 @@ impl WaylandState {
 
 #[cfg(test)]
 mod tests {
-    use super::committed_size_is_stale;
+    use super::{committed_size_is_stale, displayed_rect_from_space_geometry};
+    use smithay::utils::{Point, Size};
 
     #[test]
     fn committed_size_must_match_an_authoritative_transition() {
         assert!(!committed_size_is_stale(None, (800, 600)));
         assert!(!committed_size_is_stale(Some((800, 600)), (800, 600)));
         assert!(committed_size_is_stale(Some((800, 600)), (1920, 1080)));
+    }
+
+    #[test]
+    fn displayed_geometry_converts_inner_space_location_to_core_coordinates() {
+        let displayed =
+            displayed_rect_from_space_geometry(Point::from((103, 204)), Size::from((800, 600)), 3);
+
+        assert_eq!(displayed, crate::types::Rect::new(100, 201, 800, 600));
     }
 }

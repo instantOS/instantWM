@@ -307,10 +307,10 @@ pub struct WaylandRuntimeState {
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
     pub intercepted_key_releases: HashSet<Keycode>,
-    pub fixed_scene_cache: Option<(
+    pub shared_scene_cache: Option<(
         u64,
         u64,
-        std::rc::Rc<crate::wayland::common::FixedSceneElements>,
+        std::rc::Rc<crate::wayland::common::SharedSceneElements>,
     )>,
 }
 
@@ -341,7 +341,7 @@ impl Default for WaylandRuntimeState {
             winit_close_requested: false,
             output_enabled: HashMap::new(),
             intercepted_key_releases: HashSet::new(),
-            fixed_scene_cache: None,
+            shared_scene_cache: None,
         }
     }
 }

@@ -559,40 +559,53 @@ pub fn poll_systray(wm: &mut Wm) {
     }
 }
 
-/// Shared render elements that are not output-local and can be reused across
-/// multiple output renders in the same frame.
+/// Shared render elements captured once and reused across output renders in
+/// the same frame. Bar buffers retain independent shared ownership because
+/// they are expensive and remain stable while borders advance each animation
+/// frame; borders belong directly to this displayed-scene snapshot.
 #[derive(Clone)]
-pub struct FixedSceneElements {
-    pub bar_buffers: Vec<(MemoryRenderBuffer, crate::types::Point)>,
+pub struct SharedSceneElements {
+    pub bar_buffers: Rc<Vec<(MemoryRenderBuffer, crate::types::Point)>>,
     pub borders: Vec<SolidColorRenderElement>,
     pub layout_preview_color: crate::bar::color::Rgba,
 }
 
-/// Build the shared scene pieces that do not depend on the target output.
-pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<FixedSceneElements> {
+/// Capture shared scene pieces that do not depend on the target output.
+pub fn build_shared_scene_elements(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+) -> Rc<SharedSceneElements> {
     let bar_seq = wm.bar.update_seq();
-    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
+    let border_scene = crate::wayland::render::borders::BorderScene::capture(&wm.core.model, state);
+    let borders_hash = border_scene.cache_key(&wm.core.config.colors.border);
 
     if !wm.bar.needs_redraw()
-        && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
+        && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.shared_scene_cache
         && cached_bar == bar_seq
         && cached_borders == borders_hash
+        && elements.layout_preview_color == wm.core.config.colors.border.snap
     {
         return elements.clone();
     }
 
-    let elements = Rc::new(FixedSceneElements {
-        bar_buffers: build_bar_buffers(wm, state),
-        borders: crate::wayland::render::borders::render_border_elements(
-            &wm.core.model,
-            &wm.core.config.colors.border,
-            state,
-        ),
+    let bar_dirty = wm.bar.needs_redraw();
+    let cached_bar_buffers = state
+        .runtime
+        .shared_scene_cache
+        .as_ref()
+        .filter(|(cached_bar, _, _)| *cached_bar == bar_seq && !bar_dirty)
+        .map(|(_, _, elements)| elements.bar_buffers.clone());
+    let bar_buffers = cached_bar_buffers.unwrap_or_else(|| Rc::new(build_bar_buffers(wm, state)));
+    let borders = border_scene.render(&wm.core.config.colors.border);
+
+    let elements = Rc::new(SharedSceneElements {
+        bar_buffers,
+        borders,
         layout_preview_color: wm.core.config.colors.border.snap,
     });
 
     if !wm.bar.needs_redraw() {
-        state.runtime.fixed_scene_cache = Some((bar_seq, borders_hash, elements.clone()));
+        state.runtime.shared_scene_cache = Some((bar_seq, borders_hash, elements.clone()));
     }
     elements
 }
@@ -611,16 +624,16 @@ pub fn build_common_scene_elements(
     renderer: &mut GlesRenderer,
     output: &Output,
 ) -> CommonSceneElements {
-    let fixed = build_fixed_scene_elements(wm, state);
-    build_common_scene_elements_from_fixed(state, renderer, output, &fixed)
+    let shared = build_shared_scene_elements(wm, state);
+    build_common_scene_elements_from_shared(state, renderer, output, &shared)
 }
 
 /// Build the full scene for one output from reusable shared pieces.
-pub fn build_common_scene_elements_from_fixed(
+pub fn build_common_scene_elements_from_shared(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
     output: &Output,
-    fixed: &FixedSceneElements,
+    shared: &SharedSceneElements,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
@@ -641,7 +654,7 @@ pub fn build_common_scene_elements_from_fixed(
     append_native_popup_elements(state, renderer, output, output_scale, &mut overlays);
 
     let mut bar = Vec::new();
-    for (buffer, position) in &fixed.bar_buffers {
+    for (buffer, position) in shared.bar_buffers.iter() {
         match MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             (position.x as f64, position.y as f64),
@@ -656,11 +669,11 @@ pub fn build_common_scene_elements_from_fixed(
         }
     }
 
-    let mut borders = fixed.borders.clone();
+    let mut borders = shared.borders.clone();
     crate::wayland::render::borders::append_layout_preview(
         &mut borders,
         state.layout_preview_rect(),
-        fixed.layout_preview_color,
+        shared.layout_preview_color,
     );
 
     CommonSceneElements {

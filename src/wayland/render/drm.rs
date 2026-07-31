@@ -36,7 +36,7 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::image_capture::PendingImageCapture;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
-    CursorPresentation, FixedSceneElements, build_common_scene_elements_from_fixed,
+    CursorPresentation, SharedSceneElements, build_common_scene_elements_from_shared,
     count_upper_layer_render_elements, get_render_element_counts,
     remove_duplicate_overlay_elements, resolve_cursor_presentation, send_frame_callbacks,
     update_primary_scanout_output, window_overlaps_output,
@@ -330,7 +330,7 @@ pub fn render_drm_output(
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: Instant,
-    fixed_scene: Option<Rc<FixedSceneElements>>,
+    shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> RenderOutcome {
     let cursor_elements = build_drm_cursor_elements(
@@ -350,7 +350,7 @@ pub fn render_drm_output(
         renderer,
         entry,
         cursor_elements,
-        fixed_scene,
+        shared_scene,
         suppress_upper_layers,
     );
     let capture_requests = take_drm_capture_requests(state, &entry.output);
@@ -441,7 +441,7 @@ fn build_drm_render_elements(
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
     cursor_elements: Vec<DrmExtras>,
-    fixed_scene: Option<Rc<FixedSceneElements>>,
+    shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
     if state.is_locked() {
@@ -452,7 +452,7 @@ fn build_drm_render_elements(
             renderer,
             entry,
             cursor_elements,
-            fixed_scene,
+            shared_scene,
             suppress_upper_layers,
         )
     }
@@ -489,14 +489,14 @@ fn build_unlocked_drm_render_elements(
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
     cursor_elements: Vec<DrmExtras>,
-    fixed_scene: Option<Rc<FixedSceneElements>>,
+    shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
-    let scene = build_common_scene_elements_from_fixed(
+    let scene = build_common_scene_elements_from_shared(
         state,
         renderer,
         &entry.output,
-        &fixed_scene.expect("fixed scene elements"),
+        &shared_scene.expect("shared scene elements"),
     );
     let mut space_render_elements = smithay::desktop::space::space_render_elements(
         renderer,

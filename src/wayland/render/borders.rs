@@ -15,7 +15,9 @@ use crate::types::{BorderColorConfig, Rect, WindowId};
 #[derive(Debug, Clone, Copy)]
 struct WindowBorderInfo {
     id: WindowId,
-    content_rect: Rect,
+    /// Currently presented rectangle in the core convention: outer origin,
+    /// content size. This is intentionally not the logical target rectangle.
+    displayed_rect: Rect,
     border_width: i32,
     is_visible: bool,
     is_hidden: bool,
@@ -26,12 +28,16 @@ struct WindowBorderInfo {
 impl WindowBorderInfo {
     /// Bounding rectangle including borders.
     fn bounding_rect(&self) -> Rect {
-        self.content_rect.with_borders(self.border_width)
+        self.displayed_rect.with_borders(self.border_width)
     }
 
     /// Checks if this window should render borders.
     fn has_borders(&self) -> bool {
         self.is_visible && !self.is_hidden && self.border_width > 0
+    }
+
+    fn occluder(&self) -> Option<Rect> {
+        (self.is_visible && !self.is_hidden).then(|| self.bounding_rect())
     }
 
     /// Returns the border color based on focus state.
@@ -52,7 +58,72 @@ impl WindowBorderInfo {
     }
 }
 
-/// Collects window information from the compositor state.
+/// A coherent snapshot of all compositor state needed to draw borders.
+///
+/// Capturing displayed rectangles and popup occluders together ensures cache
+/// identity and rendering use the same animation frame. Logical model state is
+/// retained only for non-geometric policy such as visibility and border color.
+pub struct BorderScene {
+    windows: Vec<WindowBorderInfo>,
+    popup_occluders: Vec<Rect>,
+    selected_win: Option<WindowId>,
+}
+
+impl BorderScene {
+    pub fn capture(model: &WmModel, state: &WaylandState) -> Self {
+        Self {
+            windows: collect_window_info(model, state),
+            popup_occluders: build_popup_occluders(state),
+            selected_win: model.selected_win(),
+        }
+    }
+
+    /// Hash exactly the captured inputs which affect generated border
+    /// elements. A displayed animation step therefore invalidates borders,
+    /// while unrelated logical model changes do not.
+    pub fn cache_key(&self, colors: &BorderColorConfig) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        fn hash_rect(rect: Rect, hasher: &mut impl Hasher) {
+            rect.x.hash(hasher);
+            rect.y.hash(hasher);
+            rect.w.hash(hasher);
+            rect.h.hash(hasher);
+        }
+
+        fn hash_color(color: crate::bar::color::Rgba, hasher: &mut impl Hasher) {
+            for component in color.into_array() {
+                component.to_bits().hash(hasher);
+            }
+        }
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.selected_win.hash(&mut hasher);
+        for window in &self.windows {
+            window.id.hash(&mut hasher);
+            hash_rect(window.displayed_rect, &mut hasher);
+            window.border_width.hash(&mut hasher);
+            window.is_visible.hash(&mut hasher);
+            window.is_hidden.hash(&mut hasher);
+            window.is_floating.hash(&mut hasher);
+            window.is_tiling_layout.hash(&mut hasher);
+        }
+        for popup in &self.popup_occluders {
+            hash_rect(*popup, &mut hasher);
+        }
+        hash_color(colors.normal, &mut hasher);
+        hash_color(colors.tile_focus, &mut hasher);
+        hash_color(colors.float_focus, &mut hasher);
+        hasher.finish()
+    }
+
+    pub fn render(&self, colors: &BorderColorConfig) -> Vec<SolidColorRenderElement> {
+        render_border_scene(self, colors)
+    }
+}
+
+/// Collect window policy from the model and displayed geometry from the
+/// compositor. Never substitute `client.geo` here: it is the logical target.
 fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorderInfo> {
     let mut windows = Vec::new();
 
@@ -65,15 +136,16 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
         };
         let c = view.client;
 
-        let size = window.geometry().size;
-        let content_rect = Rect::new(c.geo.x, c.geo.y, size.w.max(1), size.h.max(1));
+        let Some(displayed_rect) = state.displayed_window_rect(marker.id, c.border_width) else {
+            continue;
+        };
 
         let is_visible = c.is_visible(view.monitor.selected_tags());
         let is_tiling_layout = view.monitor.is_tiling_layout();
 
         windows.push(WindowBorderInfo {
             id: marker.id,
-            content_rect,
+            displayed_rect,
             border_width: c.border_width.max(0),
             is_visible,
             is_hidden: c.is_hidden,
@@ -124,7 +196,7 @@ fn generate_border_rectangles(outer_rect: Rect, border_width: i32) -> Vec<Rect> 
 /// Reuses the scratch vector's capacity to avoid heap allocations.
 fn apply_occluders(
     border_parts: Vec<Rect>,
-    occluders: &[Rect],
+    occluders: impl IntoIterator<Item = Rect>,
     scratch: &mut Vec<Rect>,
 ) -> Vec<Rect> {
     let mut remaining = border_parts;
@@ -135,22 +207,13 @@ fn apply_occluders(
             break;
         }
         for part in remaining.drain(..) {
-            scratch.extend(part.subtract(occluder));
+            scratch.extend(part.subtract(&occluder));
         }
         std::mem::swap(&mut remaining, scratch);
         scratch.clear();
     }
 
     remaining
-}
-
-/// Builds occluder rectangles from windows (windows block borders behind them).
-fn build_occluders(windows: &[WindowBorderInfo]) -> Vec<Rect> {
-    windows
-        .iter()
-        .filter(|w| w.is_visible)
-        .map(|w| w.bounding_rect())
-        .collect()
 }
 
 /// Collects bounding rectangles of all currently-mapped xdg popups in
@@ -187,77 +250,13 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
     occluders
 }
 
-/// Compute a zero-allocation u64 hash representing the current compositor state
-/// that affects borders (geometries, focus, tag masks, and popups).
-pub fn get_borders_hash(model: &WmModel, state: &WaylandState) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-
-    // 1. Selected window
-    model.selected_win().hash(&mut hasher);
-
-    // 2. Monitor layout / selected tags
-    for mon in model.monitors.iter_all() {
-        mon.id().hash(&mut hasher);
-        mon.monitor_rect.x.hash(&mut hasher);
-        mon.monitor_rect.y.hash(&mut hasher);
-        mon.monitor_rect.w.hash(&mut hasher);
-        mon.monitor_rect.h.hash(&mut hasher);
-        mon.selected_tags().hash(&mut hasher);
-        mon.is_tiling_layout().hash(&mut hasher);
-    }
-
-    // 3. Window and Popup properties
-    for window in state.space.elements() {
-        if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
-            marker.id.hash(&mut hasher);
-            if let Some(c) = model.client(marker.id) {
-                c.geo.x.hash(&mut hasher);
-                c.geo.y.hash(&mut hasher);
-                c.border_width.hash(&mut hasher);
-                c.is_hidden.hash(&mut hasher);
-                c.mode().is_normal_floating().hash(&mut hasher);
-            }
-            let size = window.geometry().size;
-            size.w.hash(&mut hasher);
-            size.h.hash(&mut hasher);
-        }
-
-        if let Some(toplevel) = window.toplevel()
-            && let Some(space_loc) = state.space.element_location(window)
-        {
-            let window_geometry = window.geometry();
-            for (popup, popup_offset) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-                let popup_geometry = popup.geometry();
-                space_loc.x.hash(&mut hasher);
-                space_loc.y.hash(&mut hasher);
-                window_geometry.loc.x.hash(&mut hasher);
-                window_geometry.loc.y.hash(&mut hasher);
-                popup_offset.x.hash(&mut hasher);
-                popup_offset.y.hash(&mut hasher);
-                popup_geometry.size.w.hash(&mut hasher);
-                popup_geometry.size.h.hash(&mut hasher);
-            }
-        }
-    }
-
-    hasher.finish()
-}
-
-/// Renders border elements for all visible windows.
-pub fn render_border_elements(
-    model: &WmModel,
+/// Render border elements from a previously captured displayed scene.
+fn render_border_scene(
+    scene: &BorderScene,
     colors: &BorderColorConfig,
-    state: &WaylandState,
 ) -> Vec<SolidColorRenderElement> {
-    let windows = collect_window_info(model, state);
-    let selected_win = model.selected_win();
+    let windows = &scene.windows;
     let mut elements = Vec::new();
-
-    // Build occluders list (each window can occlude borders behind it)
-    let occluders: Vec<Rect> = build_occluders(&windows);
-    // Popups always render above borders, so they occlude every border.
-    let popup_occluders: Vec<Rect> = build_popup_occluders(state);
 
     let mut scratch = Vec::with_capacity(32);
 
@@ -275,14 +274,20 @@ pub fn render_border_elements(
         }
 
         // Subtract occluders from higher windows (windows in front)
-        let higher_occluders = &occluders[idx + 1..];
+        let higher_occluders = windows[idx + 1..]
+            .iter()
+            .filter_map(WindowBorderInfo::occluder);
         let visible_parts = apply_occluders(border_parts, higher_occluders, &mut scratch);
         // Subtract popup areas so right-click menus and similar overlays
         // are not covered by borders.
-        let visible_parts = apply_occluders(visible_parts, &popup_occluders, &mut scratch);
+        let visible_parts = apply_occluders(
+            visible_parts,
+            scene.popup_occluders.iter().copied(),
+            &mut scratch,
+        );
 
         // Get color based on focus state
-        let is_focused = Some(window.id) == selected_win;
+        let is_focused = Some(window.id) == scene.selected_win;
         let color = window.border_color(is_focused, colors);
 
         // Create render elements for visible border parts
@@ -295,8 +300,8 @@ pub fn render_border_elements(
 }
 
 /// Append the four inexpensive solid elements forming the animated placement
-/// preview. Keeping these out of the fixed-scene cache avoids rebuilding bars
-/// and every client border on each animation frame.
+/// preview. Keeping these out of the shared-scene cache avoids rebuilding
+/// every client border on each animation frame.
 pub fn append_layout_preview(
     out: &mut Vec<SolidColorRenderElement>,
     preview: Option<Rect>,
@@ -325,4 +330,72 @@ fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::
         1.0,
         Kind::Unspecified,
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bar::color::Rgba;
+
+    fn window_at(displayed_rect: Rect) -> WindowBorderInfo {
+        WindowBorderInfo {
+            id: WindowId(1),
+            displayed_rect,
+            border_width: 3,
+            is_visible: true,
+            is_hidden: false,
+            is_floating: true,
+            is_tiling_layout: true,
+        }
+    }
+
+    fn scene_at(displayed_rect: Rect) -> BorderScene {
+        BorderScene {
+            windows: vec![window_at(displayed_rect)],
+            popup_occluders: Vec::new(),
+            selected_win: Some(WindowId(1)),
+        }
+    }
+
+    #[test]
+    fn border_geometry_surrounds_the_displayed_content_rect() {
+        let window = window_at(Rect::new(100, 200, 800, 600));
+
+        assert_eq!(
+            generate_border_rectangles(window.bounding_rect(), window.border_width),
+            vec![
+                Rect::new(100, 200, 806, 3),
+                Rect::new(100, 803, 806, 3),
+                Rect::new(100, 203, 3, 600),
+                Rect::new(903, 203, 3, 600),
+            ]
+        );
+    }
+
+    #[test]
+    fn displayed_animation_step_changes_border_cache_identity() {
+        let colors = BorderColorConfig::default();
+        let first = scene_at(Rect::new(100, 200, 800, 600));
+        let next = scene_at(Rect::new(108, 200, 800, 600));
+
+        assert_ne!(first.cache_key(&colors), next.cache_key(&colors));
+    }
+
+    #[test]
+    fn border_color_changes_cache_identity() {
+        let scene = scene_at(Rect::new(100, 200, 800, 600));
+        let first = BorderColorConfig::default();
+        let mut next = first;
+        next.float_focus = Rgba::rgb(0.25, 0.5, 0.75);
+
+        assert_ne!(scene.cache_key(&first), scene.cache_key(&next));
+    }
+
+    #[test]
+    fn hidden_windows_do_not_occlude_visible_borders() {
+        let mut hidden = window_at(Rect::new(100, 200, 800, 600));
+        hidden.is_hidden = true;
+
+        assert_eq!(hidden.occluder(), None);
+    }
 }
