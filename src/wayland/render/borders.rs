@@ -206,6 +206,14 @@ fn apply_occluders(
         if remaining.is_empty() {
             break;
         }
+        // Skip occluders that touch no remaining part: subtract is a no-op
+        // there (returns the part unchanged) but would still allocate per part.
+        if !remaining
+            .iter()
+            .any(|part| part.intersects_other(&occluder))
+        {
+            continue;
+        }
         for part in remaining.drain(..) {
             scratch.extend(part.subtract(&occluder));
         }
