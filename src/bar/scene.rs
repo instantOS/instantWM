@@ -683,8 +683,11 @@ fn render_monitor_snapshot_base(
         crate::bar::status::draw_status_items(
             Rect::new(x, 0, (status_right - x).max(0), bar_height),
             content.items.as_slice(),
-            snapshot.status_scheme.clone(),
-            hover,
+            crate::bar::status::StatusRenderOptions {
+                base_scheme: snapshot.status_scheme.clone(),
+                hover,
+                edge_padding: snapshot.horizontal_padding / 2,
+            },
             painter,
         )
     } else {

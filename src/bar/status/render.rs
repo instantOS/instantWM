@@ -14,6 +14,12 @@ pub(crate) struct StatusBlockHover {
     pub color: Rgba,
 }
 
+pub(crate) struct StatusRenderOptions {
+    pub base_scheme: BarScheme,
+    pub hover: Option<StatusBlockHover>,
+    pub edge_padding: i32,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct StatusRenderOutput {
     /// Visible status area in bar-local coordinates.
@@ -350,6 +356,7 @@ fn choose_short_texts(
 fn measure_layout(
     available_bounds: Rect,
     items: &[StatusItem],
+    edge_padding: i32,
     painter: &mut dyn BarPainter,
 ) -> StatusLayout {
     let available_bounds = Rect::new(
@@ -358,14 +365,22 @@ fn measure_layout(
         available_bounds.w.max(0),
         available_bounds.h.max(0),
     );
+    let edge_padding = edge_padding.max(0);
     let measured = measure_items(items, painter);
-    let choices = choose_short_texts(items, &measured, (available_bounds.w - 2).max(0));
+    let choices = choose_short_texts(
+        items,
+        &measured,
+        available_bounds
+            .w
+            .saturating_sub(edge_padding.saturating_mul(2))
+            .max(0),
+    );
     let total_width = measured_width(&measured, &choices);
     if total_width <= 0 || available_bounds.w <= 0 || available_bounds.h <= 0 {
         return StatusLayout::default();
     }
 
-    let background_width = total_width.saturating_add(2);
+    let background_width = total_width.saturating_add(edge_padding.saturating_mul(2));
     let right = available_bounds.x.saturating_add(available_bounds.w);
     let background_bounds = Rect::new(
         right.saturating_sub(background_width),
@@ -377,7 +392,7 @@ fn measure_layout(
         .intersection(&available_bounds)
         .unwrap_or_default();
     let mut laid_out = Vec::with_capacity(items.len());
-    let mut x = background_bounds.x.saturating_add(1);
+    let mut x = background_bounds.x.saturating_add(edge_padding);
     let mut block_index = 0usize;
     let last_visible_item = measured
         .iter()
@@ -462,11 +477,15 @@ fn measure_layout(
 pub(crate) fn draw_status_items(
     available_bounds: Rect,
     items: &[StatusItem],
-    base_scheme: BarScheme,
-    hover: Option<StatusBlockHover>,
+    options: StatusRenderOptions,
     painter: &mut dyn BarPainter,
 ) -> StatusRenderOutput {
-    let layout = measure_layout(available_bounds, items, painter);
+    let StatusRenderOptions {
+        base_scheme,
+        hover,
+        edge_padding,
+    } = options;
+    let layout = measure_layout(available_bounds, items, edge_padding, painter);
     if layout.clip_bounds.w <= 0 || layout.clip_bounds.h <= 0 {
         return StatusRenderOutput::default();
     }
@@ -657,6 +676,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingPainter {
         texts: Vec<String>,
+        text_bounds: Vec<Rect>,
         measurement_calls: usize,
         scheme: Option<BarScheme>,
         rectangles: Vec<(Rect, Rgba)>,
@@ -690,6 +710,7 @@ mod tests {
             _detail_height: i32,
         ) -> i32 {
             self.texts.push(text.to_string());
+            self.text_bounds.push(bounds);
             bounds.x + bounds.w
         }
     }
@@ -700,6 +721,14 @@ mod tests {
             foreground: Rgba::new(1.0, 1.0, 1.0, 1.0),
             background: Rgba::rgb(0.0, 0.0, 0.0),
             detail: Rgba::new(0.5, 0.5, 0.5, 0.5),
+        }
+    }
+
+    fn render_options() -> StatusRenderOptions {
+        StatusRenderOptions {
+            base_scheme: scheme(),
+            hover: None,
+            edge_padding: 1,
         }
     }
 
@@ -729,12 +758,41 @@ mod tests {
         let items = vec![StatusItem::I3Block(item)];
 
         let mut wide = RecordingPainter::default();
-        draw_status_items(Rect::new(0, 0, 200, 20), &items, scheme(), None, &mut wide);
+        draw_status_items(
+            Rect::new(0, 0, 200, 20),
+            &items,
+            render_options(),
+            &mut wide,
+        );
         assert_eq!(wide.texts, ["processor"]);
 
         let mut narrow = RecordingPainter::default();
-        draw_status_items(Rect::new(0, 0, 50, 20), &items, scheme(), None, &mut narrow);
+        draw_status_items(
+            Rect::new(0, 0, 50, 20),
+            &items,
+            render_options(),
+            &mut narrow,
+        );
         assert_eq!(narrow.texts, ["cpu"]);
+    }
+
+    #[test]
+    fn plain_status_reserves_edge_padding_on_both_sides() {
+        let items = vec![StatusItem::Text("cpu".to_string())];
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(
+            Rect::new(0, 0, 100, 20),
+            &items,
+            StatusRenderOptions {
+                edge_padding: 8,
+                ..render_options()
+            },
+            &mut painter,
+        );
+
+        assert_eq!(output.bounds, Rect::new(54, 0, 46, 20));
+        assert_eq!(painter.text_bounds, [Rect::new(62, 0, 30, 20)]);
     }
 
     #[test]
@@ -747,8 +805,7 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 100, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
         assert_eq!(output.click_targets.len(), 2);
@@ -776,11 +833,13 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 200, 20),
             &items,
-            scheme(),
-            Some(StatusBlockHover {
-                block_index: 1,
-                color: hover_color,
-            }),
+            StatusRenderOptions {
+                hover: Some(StatusBlockHover {
+                    block_index: 1,
+                    color: hover_color,
+                }),
+                ..render_options()
+            },
             &mut painter,
         );
         let hovered = output.click_targets[1].bounds;
@@ -835,8 +894,7 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 100, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
 
@@ -855,8 +913,7 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 100, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
 
@@ -872,8 +929,7 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 100, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
         let block_width = output.click_targets[0].bounds.w;
@@ -892,8 +948,7 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 120, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
 
@@ -917,8 +972,7 @@ mod tests {
         draw_status_items(
             Rect::new(0, 0, 20, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
 
@@ -936,8 +990,7 @@ mod tests {
         let output = draw_status_items(
             Rect::new(0, 0, 20, 20),
             &items,
-            scheme(),
-            None,
+            render_options(),
             &mut painter,
         );
 
