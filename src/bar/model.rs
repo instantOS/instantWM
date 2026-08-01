@@ -41,6 +41,29 @@ impl ClientBarStats {
     }
 }
 
+/// Split `total` into `n` cell widths that differ by at most one pixel.
+///
+/// The remainder of `total / n` is distributed one pixel at a time over the
+/// leading cells, keeping every boundary on whole pixels. Returns an empty
+/// iterator when `n` is not positive.
+pub(crate) fn distribute_cells(total: i32, n: i32) -> Vec<i32> {
+    if n <= 0 {
+        return Vec::new();
+    }
+    let each = total / n;
+    let mut remainder = total % n;
+    (0..n)
+        .map(|_| {
+            if remainder > 0 {
+                remainder -= 1;
+                each + 1
+            } else {
+                each
+            }
+        })
+        .collect()
+}
+
 /// Walk a `MonitorHitCache` to resolve a local-x coordinate into a `BarPosition`.
 /// This is the single source of truth for hit-testing; both the cached and the
 /// fallback paths go through here.
@@ -152,26 +175,21 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Window title ranges ───────────────────────────────────────────────
     let title_clients = mon.bar_client_order(&core.model().clients);
+    let n = title_clients.len() as i32;
 
     let mut title_ranges: Vec<TitleHitRange> = Vec::new();
-    if !title_clients.is_empty() {
+    if n > 0 {
         let title_area_start = layout_end;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
             (mon.work_rect().w - title_area_start).max(0)
         };
-        let n = title_clients.len() as i32;
-        let each_width = total_width / n;
-        let mut remainder = total_width % n;
         let mut cell_start = title_area_start;
-        for win in title_clients {
-            let this_width = if remainder > 0 {
-                remainder -= 1;
-                each_width + 1
-            } else {
-                each_width
-            };
+        for (win, this_width) in title_clients
+            .into_iter()
+            .zip(distribute_cells(total_width, n))
+        {
             title_ranges.push(TitleHitRange {
                 start: cell_start,
                 end: cell_start + this_width,

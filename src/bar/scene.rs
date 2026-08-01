@@ -584,7 +584,210 @@ fn draw_close_button_snapshot(
     );
 }
 
-fn render_monitor_snapshot_base(
+fn draw_tags_section(
+    painter: &mut dyn BarPainter,
+    snapshot: &MonitorBarSnapshot,
+    mut x: i32,
+    bar_height: i32,
+    hit: &mut crate::bar::MonitorHitCache,
+) -> i32 {
+    for tag in &snapshot.tags {
+        let text_w = painter.text_width(&tag.label);
+        let width = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
+        painter.set_scheme(tag.scheme.clone());
+        let detail_height = if snapshot.gesture == Gesture::Tag(tag.slot) {
+            TAG_DETAIL_BAR_HEIGHT_HOVER
+        } else {
+            TAG_DETAIL_BAR_HEIGHT_NORMAL
+        };
+        let lpad = (snapshot.horizontal_padding / 2).max(0);
+        x = painter.text(
+            Rect::new(x, 0, width, bar_height),
+            lpad,
+            &tag.label,
+            false,
+            detail_height,
+        );
+        hit.tag_ranges.push(crate::bar::TagHitRange {
+            start: x - width,
+            end: x,
+            tag_index: tag.tag_index,
+        });
+    }
+    x
+}
+
+fn draw_layout_symbol_section(
+    painter: &mut dyn BarPainter,
+    snapshot: &MonitorBarSnapshot,
+    x: i32,
+    bar_height: i32,
+    hit: &mut crate::bar::MonitorHitCache,
+) -> i32 {
+    let text_w = painter.text_width(&snapshot.layout_symbol);
+    let layout_w = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
+    let lpad = ((layout_w - text_w) / 2).max(0);
+    painter.set_scheme(snapshot.status_scheme.clone());
+    let layout_start = x;
+    let x = painter.text(
+        Rect::new(x, 0, layout_w, bar_height),
+        lpad,
+        &snapshot.layout_symbol,
+        false,
+        0,
+    );
+    hit.layout_start = layout_start;
+    hit.layout_end = x;
+    x
+}
+
+fn draw_shutdown_section(
+    painter: &mut dyn BarPainter,
+    snapshot: &MonitorBarSnapshot,
+    mut x: i32,
+    bar_height: i32,
+    hit: &mut crate::bar::MonitorHitCache,
+) -> i32 {
+    if snapshot.show_shutdown {
+        x = draw_shutdown_button_snapshot(painter, &snapshot.status_scheme, x, bar_height);
+    }
+    hit.shutdown_end = x;
+    x
+}
+
+fn draw_status_section(
+    painter: &mut dyn BarPainter,
+    snapshot: &MonitorBarSnapshot,
+    x: i32,
+    systray_width: i32,
+    bar_height: i32,
+    hit: &mut crate::bar::MonitorHitCache,
+) -> Rect {
+    let status_output = if snapshot.is_selected_monitor {
+        let Some(content) = snapshot
+            .presentation
+            .status
+            .content()
+            .filter(|content| !content.items.is_empty())
+        else {
+            return crate::bar::status::StatusRenderOutput::default().bounds;
+        };
+        let hover = if content.click_events {
+            match snapshot.gesture {
+                Gesture::StatusBlock(block_index) => Some(crate::bar::status::StatusBlockHover {
+                    block_index,
+                    color: snapshot.status_hover_color,
+                }),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let status_right = snapshot.rect.w - systray_width;
+        crate::bar::status::draw_status_items(
+            Rect::new(x, 0, (status_right - x).max(0), bar_height),
+            content.items.as_slice(),
+            crate::bar::status::StatusRenderOptions {
+                base_scheme: snapshot.status_scheme.clone(),
+                hover,
+                edge_padding: snapshot.horizontal_padding / 2,
+            },
+            painter,
+        )
+    } else {
+        crate::bar::status::StatusRenderOutput::default()
+    };
+    hit.status_click_targets = status_output.click_targets;
+    status_output.bounds
+}
+
+fn draw_titles_section(
+    painter: &mut dyn BarPainter,
+    snapshot: &MonitorBarSnapshot,
+    x: i32,
+    title_width: i32,
+    bar_height: i32,
+    hit: &mut crate::bar::MonitorHitCache,
+) -> u32 {
+    let mut activeoffset = 0u32;
+    if snapshot.titles.is_empty() {
+        painter.set_scheme(snapshot.status_scheme.clone());
+        painter.rect(Rect::new(x, 0, title_width, bar_height), true, true);
+        return activeoffset;
+    }
+
+    let total_width = title_width + 1;
+    let mut title_x = x;
+    for (title, this_width) in snapshot
+        .titles
+        .iter()
+        .zip(crate::bar::model::distribute_cells(
+            total_width,
+            snapshot.titles.len() as i32,
+        ))
+    {
+        let text_w = painter.text_width(&title.name);
+        painter.set_scheme(title.scheme.clone());
+        let lpad = if text_w < this_width - 64 {
+            ((this_width - text_w) as f32 * 0.5) as i32
+        } else {
+            snapshot.horizontal_padding / 2 + if this_width >= 32 { 20 } else { 0 }
+        };
+        painter.text(
+            Rect::new(title_x, 0, this_width, bar_height),
+            lpad,
+            &title.name,
+            false,
+            4,
+        );
+        if let Some(close_scheme) = &title.close_scheme {
+            if this_width >= 32 {
+                draw_close_button_snapshot(
+                    painter,
+                    close_scheme,
+                    snapshot.gesture == Gesture::CloseButton,
+                    title_x,
+                    bar_height,
+                );
+            }
+            activeoffset = (snapshot.monitor_rect_x + title_x) as u32;
+        }
+        hit.title_ranges.push(crate::bar::TitleHitRange {
+            start: title_x,
+            end: title_x + this_width,
+            win: title.win,
+        });
+        title_x += this_width;
+    }
+    activeoffset
+}
+
+fn record_systray_hits(
+    snapshot: &MonitorBarSnapshot,
+    tray_layout: &Option<crate::systray::TrayLayout>,
+    hit: &mut crate::bar::MonitorHitCache,
+) {
+    if let (Some(_systray), Some(layout)) = (&snapshot.systray, tray_layout) {
+        hit.systray_slots = layout
+            .cells
+            .iter()
+            .map(|cell| crate::bar::SystrayHitSlot {
+                idx: cell.idx,
+                start: cell.hit_start,
+                end: cell.hit_end,
+            })
+            .collect();
+        if layout.menu.width > 0 {
+            hit.overlay = Some(crate::bar::BarOverlayHit::TrayMenu {
+                start: layout.menu.start_x,
+                end: layout.menu.start_x + layout.menu.width,
+                slots: layout.menu.cells.clone(),
+            });
+        }
+    }
+}
+
+pub(crate) fn render_monitor_snapshot(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
@@ -616,179 +819,28 @@ fn render_monitor_snapshot_base(
     );
 
     let mut x = snapshot.startmenu_size;
-    for tag in &snapshot.tags {
-        let text_w = painter.text_width(&tag.label);
-        let width = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
-        painter.set_scheme(tag.scheme.clone());
-        let detail_height = if snapshot.gesture == Gesture::Tag(tag.slot) {
-            TAG_DETAIL_BAR_HEIGHT_HOVER
-        } else {
-            TAG_DETAIL_BAR_HEIGHT_NORMAL
-        };
-        let lpad = (snapshot.horizontal_padding / 2).max(0);
-        x = painter.text(
-            Rect::new(x, 0, width, bar_height),
-            lpad,
-            &tag.label,
-            false,
-            detail_height,
-        );
-        hit.tag_ranges.push(crate::bar::TagHitRange {
-            start: x - width,
-            end: x,
-            tag_index: tag.tag_index,
-        });
-    }
+    x = draw_tags_section(painter, snapshot, x, bar_height, &mut hit);
+    x = draw_layout_symbol_section(painter, snapshot, x, bar_height, &mut hit);
+    x = draw_shutdown_section(painter, snapshot, x, bar_height, &mut hit);
 
-    let text_w = painter.text_width(&snapshot.layout_symbol);
-    let layout_w = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
-    let lpad = ((layout_w - text_w) / 2).max(0);
-    painter.set_scheme(snapshot.status_scheme.clone());
-    let layout_start = x;
-    x = painter.text(
-        Rect::new(x, 0, layout_w, bar_height),
-        lpad,
-        &snapshot.layout_symbol,
-        false,
-        0,
-    );
-    hit.layout_start = layout_start;
-    hit.layout_end = x;
-
-    if snapshot.show_shutdown {
-        x = draw_shutdown_button_snapshot(painter, &snapshot.status_scheme, x, bar_height);
-    }
-    hit.shutdown_end = x;
-
-    let status_output = if snapshot.is_selected_monitor
-        && snapshot
-            .presentation
-            .status
-            .content()
-            .is_some_and(|content| !content.items.is_empty())
-    {
-        let content = snapshot.presentation.status.content().unwrap();
-        let hover = if content.click_events {
-            match snapshot.gesture {
-                Gesture::StatusBlock(block_index) => Some(crate::bar::status::StatusBlockHover {
-                    block_index,
-                    color: snapshot.status_hover_color,
-                }),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        let status_right = snapshot.rect.w - systray_width;
-        crate::bar::status::draw_status_items(
-            Rect::new(x, 0, (status_right - x).max(0), bar_height),
-            content.items.as_slice(),
-            crate::bar::status::StatusRenderOptions {
-                base_scheme: snapshot.status_scheme.clone(),
-                hover,
-                edge_padding: snapshot.horizontal_padding / 2,
-            },
-            painter,
-        )
-    } else {
-        crate::bar::status::StatusRenderOutput::default()
-    };
-    hit.status_click_targets = status_output.click_targets;
-
-    let title_end_x = if status_output.bounds.w > 0 {
-        status_output.bounds.x
+    let status_bounds =
+        draw_status_section(painter, snapshot, x, systray_width, bar_height, &mut hit);
+    let title_end_x = if status_bounds.w > 0 {
+        status_bounds.x
     } else {
         snapshot.rect.w - systray_width
     };
+    hit.status_hit_x = title_end_x;
     let title_width = (title_end_x - x).max(0);
-    hit.status_hit_x = if status_output.bounds.w > 0 {
-        status_output.bounds.x
-    } else {
-        snapshot.rect.w - systray_width
-    };
 
-    let mut activeoffset = 0u32;
-    if !snapshot.titles.is_empty() {
-        let total_width = title_width + 1;
-        let each_width = total_width / snapshot.titles.len() as i32;
-        let mut remainder = total_width % snapshot.titles.len() as i32;
-        let mut title_x = x;
-        for title in &snapshot.titles {
-            let this_width = if remainder > 0 {
-                remainder -= 1;
-                each_width + 1
-            } else {
-                each_width
-            };
-            let text_w = painter.text_width(&title.name);
-            painter.set_scheme(title.scheme.clone());
-            let lpad = if text_w < this_width - 64 {
-                ((this_width - text_w) as f32 * 0.5) as i32
-            } else {
-                snapshot.horizontal_padding / 2 + if this_width >= 32 { 20 } else { 0 }
-            };
-            painter.text(
-                Rect::new(title_x, 0, this_width, bar_height),
-                lpad,
-                &title.name,
-                false,
-                4,
-            );
-            if let Some(close_scheme) = &title.close_scheme {
-                if this_width >= 32 {
-                    draw_close_button_snapshot(
-                        painter,
-                        close_scheme,
-                        snapshot.gesture == Gesture::CloseButton,
-                        title_x,
-                        bar_height,
-                    );
-                }
-                activeoffset = (snapshot.monitor_rect_x + title_x) as u32;
-            }
-            hit.title_ranges.push(crate::bar::TitleHitRange {
-                start: title_x,
-                end: title_x + this_width,
-                win: title.win,
-            });
-            title_x += this_width;
-        }
-    } else {
-        painter.set_scheme(snapshot.status_scheme.clone());
-        painter.rect(Rect::new(x, 0, title_width, bar_height), true, true);
-    }
-
-    if let (Some(_systray), Some(layout)) = (&snapshot.systray, &tray_layout) {
-        hit.systray_slots = layout
-            .cells
-            .iter()
-            .map(|cell| crate::bar::SystrayHitSlot {
-                idx: cell.idx,
-                start: cell.hit_start,
-                end: cell.hit_end,
-            })
-            .collect();
-        if layout.menu.width > 0 {
-            hit.overlay = Some(crate::bar::BarOverlayHit::TrayMenu {
-                start: layout.menu.start_x,
-                end: layout.menu.start_x + layout.menu.width,
-                slots: layout.menu.cells.clone(),
-            });
-        }
-    }
+    let activeoffset = draw_titles_section(painter, snapshot, x, title_width, bar_height, &mut hit);
+    record_systray_hits(snapshot, &tray_layout, &mut hit);
 
     MonitorRenderOutput {
         hit_cache: hit,
         bar_clients_width: title_width,
         activeoffset,
     }
-}
-
-pub(crate) fn render_monitor_snapshot(
-    snapshot: &MonitorBarSnapshot,
-    painter: &mut dyn BarPainter,
-) -> MonitorRenderOutput {
-    render_monitor_snapshot_base(snapshot, painter)
 }
 
 #[cfg(test)]
