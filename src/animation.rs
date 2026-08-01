@@ -16,13 +16,6 @@ pub struct WindowAnimation {
 
 pub type WindowAnimations = HashMap<WindowId, WindowAnimation>;
 
-/// A tag switch is a decorative cue, not a second layout pass. Keep its cost
-/// bounded and leave one incoming window at its arranged position so the
-/// transition can never expose a completely empty output.
-const MAX_TAG_SLIDE_ANIMATIONS: usize = 6;
-
-type TagSlideTarget = (WindowId, Rect, i32);
-
 /// Backend-local visual state for the manual-layout preview.
 ///
 /// The core owns the authoritative target rectangle. Backends own this small
@@ -153,29 +146,6 @@ pub(crate) fn take_current_animation_rect(
     }
 }
 
-fn select_tag_slide_targets(
-    mut targets: Vec<TagSlideTarget>,
-    monitor_rect: Rect,
-) -> Vec<TagSlideTarget> {
-    // The largest on-output window is the visual anchor. In particular, a
-    // one-window tag switches immediately instead of moving its only content
-    // completely off-screen for the first animation frame.
-    let anchor = targets
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, (_, rect, _))| {
-            rect.intersection(&monitor_rect)
-                .map_or(0_i64, |visible| i64::from(visible.w) * i64::from(visible.h))
-        })
-        .map(|(index, _)| index);
-    if let Some(anchor) = anchor {
-        targets.remove(anchor);
-    }
-
-    targets.truncate(MAX_TAG_SLIDE_ANIMATIONS);
-    targets
-}
-
 /// Slide a newly managed window down into its arranged position.
 ///
 /// The caller must run the window's authoritative arrange first. This helper
@@ -216,6 +186,14 @@ fn spawn_animation_start(target: Rect) -> Rect {
     }
 }
 
+fn tag_slide_start(target: Rect, dir: HorizontalDirection) -> Rect {
+    let x = match dir {
+        HorizontalDirection::Left => target.x - TAG_SLIDE_DISTANCE,
+        HorizontalDirection::Right => target.x + TAG_SLIDE_DISTANCE,
+    };
+    Rect { x, ..target }
+}
+
 #[cfg(test)]
 mod spawn_animation_tests {
     use super::*;
@@ -248,15 +226,11 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
     crate::layouts::arrange(ctx, Some(selmon_id));
 
-    let (monitor_rect, selected_tags, clients) = {
+    let (selected_tags, clients) = {
         let Some(monitor) = ctx.core().model().monitor(selmon_id) else {
             return;
         };
-        (
-            monitor.monitor_rect,
-            monitor.selected_tags(),
-            monitor.clients.clone(),
-        )
+        (monitor.selected_tags(), monitor.clients.clone())
     };
 
     let mut animation_targets = Vec::new();
@@ -271,24 +245,14 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
         {
             continue;
         }
-        animation_targets.push((win, client.geo, client.border_width));
+        animation_targets.push((win, client.geo));
     }
 
-    for (win, target, border_width) in select_tag_slide_targets(animation_targets, monitor_rect) {
-        let start_x = match dir {
-            HorizontalDirection::Left => monitor_rect.x - target.w - border_width * 2,
-            HorizontalDirection::Right => monitor_rect.x + monitor_rect.w + border_width * 2,
-        };
-        let start = Rect {
-            x: start_x,
-            y: target.y,
-            w: target.w,
-            h: target.h,
-        };
+    for (win, target) in animation_targets {
         ctx.move_resize(
             win,
             target,
-            MoveResizeOptions::animate_from(start, DEFAULT_ANIMATION_MILLIS),
+            MoveResizeOptions::animate_from(tag_slide_start(target, dir), DEFAULT_ANIMATION_MILLIS),
         );
     }
 }
@@ -350,43 +314,29 @@ mod layout_preview_tests {
 mod tag_slide_tests {
     use super::*;
 
-    fn target(id: u32, rect: Rect) -> TagSlideTarget {
-        (WindowId(id), rect, 2)
-    }
-
     #[test]
-    fn single_incoming_window_remains_visible() {
-        let monitor = Rect::new(0, 0, 1920, 1080);
-        let targets = vec![target(1, monitor)];
+    fn tag_slide_starts_a_fixed_distance_from_the_arranged_position() {
+        let target = Rect::new(-1200, 40, 1200, 760);
 
-        assert!(select_tag_slide_targets(targets, monitor).is_empty());
-    }
-
-    #[test]
-    fn largest_visible_window_anchors_the_transition() {
-        let monitor = Rect::new(0, 0, 1000, 800);
-        let targets = vec![
-            target(1, Rect::new(0, 0, 700, 800)),
-            target(2, Rect::new(700, 0, 300, 400)),
-            target(3, Rect::new(700, 400, 300, 400)),
-        ];
-
-        let animated = select_tag_slide_targets(targets, monitor);
         assert_eq!(
-            animated.iter().map(|(win, _, _)| *win).collect::<Vec<_>>(),
-            vec![WindowId(2), WindowId(3)]
+            tag_slide_start(target, HorizontalDirection::Left),
+            Rect::new(-1200 - TAG_SLIDE_DISTANCE, 40, 1200, 760)
+        );
+        assert_eq!(
+            tag_slide_start(target, HorizontalDirection::Right),
+            Rect::new(-1200 + TAG_SLIDE_DISTANCE, 40, 1200, 760)
         );
     }
 
     #[test]
-    fn tag_slide_animation_work_is_bounded() {
-        let monitor = Rect::new(0, 0, 1000, 800);
-        let targets = (0..20)
-            .map(|id| target(id, Rect::new(id as i32, 0, 1000 - id as i32, 800)))
-            .collect();
+    fn full_monitor_window_stays_mostly_visible_at_animation_start() {
+        let monitor = Rect::new(1920, 0, 1920, 1080);
 
-        let animated = select_tag_slide_targets(targets, monitor);
-        assert_eq!(animated.len(), MAX_TAG_SLIDE_ANIMATIONS);
-        assert!(!animated.iter().any(|(win, _, _)| *win == WindowId(0)));
+        for dir in [HorizontalDirection::Left, HorizontalDirection::Right] {
+            let start = tag_slide_start(monitor, dir);
+            let visible = start.intersection(&monitor).unwrap();
+            assert_eq!(visible.w, monitor.w - TAG_SLIDE_DISTANCE);
+            assert_eq!(visible.h, monitor.h);
+        }
     }
 }
