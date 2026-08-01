@@ -9,14 +9,6 @@ pub struct BarScheme {
 }
 
 impl BarScheme {
-    pub fn swap_fg_bg(&self) -> Self {
-        Self {
-            foreground: self.background,
-            background: self.foreground,
-            detail: self.detail,
-        }
-    }
-
     /// Rectangle fill color parity with X11 drw semantics:
     /// invert=true => background, invert=false => foreground.
     pub fn rect_color(&self, invert: bool) -> Rgba {

@@ -29,8 +29,8 @@ impl WaylandState {
     /// 2. Activates the new window
     /// 3. Sets Smithay keyboard focus
     ///
-    /// It does **not** update `mon.sel`. The WM layer (`focus_generic` /
-    /// `focus_soft`) is the single authority for `mon.sel`.
+    /// It does **not** update `mon.sel`. The WM layer (`focus_generic`) is
+    /// the single authority for `mon.sel`.
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();

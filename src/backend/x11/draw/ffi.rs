@@ -14,7 +14,6 @@ use x11rb::protocol::xproto::{Drawable, Point, Window};
 pub type XlibGc = *mut libc::c_void;
 
 pub type FcBool = c_int;
-pub type FcResult = c_int;
 pub type XftResult = c_int;
 
 /// `XRenderColor` — 16-bit premultiplied RGBA.
@@ -99,65 +98,6 @@ pub const FC_SCALABLE: &[u8] = b"scalable\0";
 
 pub const FC_MATCH_PATTERN: c_int = 1;
 pub const FC_TRUE: FcBool = 1;
-
-// ── `XWindowAttributes` ───────────────────────────────────────────────────────
-
-/// Mirrors the C `XWindowAttributes` struct (used in `XGetWindowAttributes`).
-#[repr(C)]
-pub struct XWindowAttributes {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-    pub border_width: u32,
-    pub depth: u32,
-    pub visual: *mut libc::c_void,
-    pub root: Window,
-    pub c_class: u8,
-    pub bit_gravity: u8,
-    pub win_gravity: u8,
-    pub backing_store: i32,
-    pub backing_planes: u64,
-    pub backing_pixel: u64,
-    pub save_under: u8,
-    pub colormap: u64,
-    pub map_installed: u8,
-    pub map_state: u8,
-    pub all_event_masks: i64,
-    pub your_event_mask: i64,
-    pub do_not_propagate_mask: u16,
-    pub override_redirect: u8,
-    pub screen: *mut libc::c_void,
-}
-
-// ── `XSetWindowAttributes` ────────────────────────────────────────────────────
-
-/// Mirrors the C `XSetWindowAttributes` struct.
-#[repr(C)]
-pub struct XSetWindowAttributes {
-    pub background_pixmap: u64,
-    pub background_pixel: u64,
-    pub border_pixmap: u64,
-    pub border_pixel: u64,
-    pub bit_gravity: u32,
-    pub win_gravity: u32,
-    pub backing_store: u32,
-    pub backing_planes: u64,
-    pub backing_pixel: u64,
-    pub save_under: u32,
-    pub event_mask: u64,
-    pub do_not_propagate_mask: u32,
-    pub override_redirect: u32,
-    pub colormap: u64,
-    pub cursor: u64,
-}
-
-impl Default for XSetWindowAttributes {
-    fn default() -> Self {
-        // SAFETY: all-zero is a valid initialisation for this POD C struct.
-        unsafe { std::mem::zeroed() }
-    }
-}
 
 // ── X11 (`libX11`) ────────────────────────────────────────────────────────────
 
@@ -257,7 +197,6 @@ unsafe extern "C" {
 
     pub fn XSync(display: *mut libc::c_void, discard: c_int);
     pub fn XFlush(display: *mut libc::c_void);
-    pub fn XEventsQueued(display: *mut libc::c_void, mode: c_int) -> c_int;
 
     pub fn XSetLineAttributes(
         display: *mut libc::c_void,
@@ -271,58 +210,6 @@ unsafe extern "C" {
     pub fn XCreateFontCursor(display: *mut libc::c_void, shape: u32) -> c_ulong;
     pub fn XFreeCursor(display: *mut libc::c_void, cursor: c_ulong);
 
-    pub fn XGetXCBConnection(display: *mut libc::c_void) -> *mut libc::c_void;
-
-    pub fn XCreateWindow(
-        display: *mut libc::c_void,
-        parent: Window,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-        border_width: u32,
-        depth: i32,
-        class: u32,
-        visual: *mut libc::c_void,
-        valuemask: u64,
-        attributes: *mut libc::c_void,
-    ) -> Window;
-
-    pub fn XMapWindow(display: *mut libc::c_void, window: Window);
-
-    pub fn XConfigureWindow(
-        display: *mut libc::c_void,
-        w: Window,
-        changes: u32,
-        values: *mut libc::c_void,
-    );
-
-    pub fn XSelectInput(display: *mut libc::c_void, w: Window, event_mask: i64);
-
-    pub fn XGetWindowAttributes(
-        display: *mut libc::c_void,
-        w: Window,
-        attrs: *mut XWindowAttributes,
-    ) -> i32;
-
-    pub fn XCreateSimpleWindow(
-        display: *mut libc::c_void,
-        parent: Window,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-        border_width: u32,
-        border: u32,
-        background: u32,
-    ) -> Window;
-
-    pub fn XChangeWindowAttributes(
-        display: *mut libc::c_void,
-        w: Window,
-        valuemask: u64,
-        attributes: *mut libc::c_void,
-    );
 }
 
 // ── Xft (`libXft`) ────────────────────────────────────────────────────────────

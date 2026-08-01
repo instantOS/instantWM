@@ -5,13 +5,12 @@ use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager};
 use smithay::output::Output;
-use smithay::reexports::drm::control::{connector, crtc};
+use smithay::reexports::drm::control::crtc;
 
 use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::VrrMode;
 pub const DEFAULT_SCREEN_WIDTH: i32 = 1280;
 pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
-pub const CURSOR_SIZE: u32 = 24;
 
 pub type DrmAllocator = GbmAllocator<DrmDeviceFd>;
 pub type DrmFramebufferExporter = GbmFramebufferExporter<DrmDeviceFd>;
@@ -29,7 +28,6 @@ pub struct OutputHitRegion {
 
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
-    pub connector: connector::Handle,
     pub surface:
         DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>,
     pub output: Output,

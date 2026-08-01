@@ -49,10 +49,7 @@ pub(crate) struct I3StatusLine {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct I3BarHeader {
-    pub version: Option<i32>,
     pub click_events: bool,
-    pub stop_signal: Option<i32>,
-    pub cont_signal: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

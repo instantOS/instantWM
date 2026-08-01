@@ -49,10 +49,6 @@ pub struct Monitor {
     pub sel_tags: bool,
     /// Tag sets (two sets for switching).
     pub tag_set: [TagMask; 2],
-    /// Active offset for bar display.
-    pub activeoffset: u32,
-    /// Title offset for bar display.
-    pub titleoffset: u32,
     /// Whether to show the bar.
     pub show_bar: bool,
     /// Position of the status bar on this monitor.
@@ -99,8 +95,6 @@ impl Default for Monitor {
             available_rect: Rect::default(),
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
-            activeoffset: 0,
-            titleoffset: 0,
             show_bar: true,
             bar_position: EdgeDirection::Top,
             bar_win: WindowId::default(),

@@ -219,7 +219,6 @@ fn initialize_drm_output_surface(
 
     OutputSurfaceEntry {
         crtc: spec.crtc,
-        connector: spec.connector,
         surface,
         output: output.clone(),
         rect: crate::types::Rect::from_position_and_size(

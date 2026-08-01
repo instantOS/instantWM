@@ -563,14 +563,6 @@ pub struct SizeHints {
     pub min_width: i32,
     /// Minimum allowed height.
     pub min_height: i32,
-    /// Minimum aspect ratio numerator.
-    pub min_aspect_num: i32,
-    /// Minimum aspect ratio denominator.
-    pub min_aspect_denom: i32,
-    /// Maximum aspect ratio numerator.
-    pub max_aspect_num: i32,
-    /// Maximum aspect ratio denominator.
-    pub max_aspect_denom: i32,
 }
 
 impl SizeHints {

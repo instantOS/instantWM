@@ -70,9 +70,13 @@ mod tests {
         let header =
             parse_i3bar_header(r#"{"version":1,"click_events":true,"stop_signal":19}"#).unwrap();
 
-        assert_eq!(header.version, Some(1));
         assert!(header.click_events);
-        assert_eq!(header.stop_signal, Some(19));
+    }
+
+    #[test]
+    fn rejects_missing_or_unsupported_i3bar_versions() {
+        assert!(parse_i3bar_header(r#"{"click_events":true}"#).is_none());
+        assert!(parse_i3bar_header(r#"{"version":2,"click_events":true}"#).is_none());
     }
 
     #[test]

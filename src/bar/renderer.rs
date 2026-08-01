@@ -15,6 +15,5 @@ pub(crate) fn draw_bar_snapshot(
 
     if let Some(mon) = core.model_mut().monitor_mut(mon_idx) {
         mon.bar_clients_width = output.bar_clients_width;
-        mon.activeoffset = output.activeoffset;
     }
 }

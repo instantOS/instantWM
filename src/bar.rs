@@ -141,18 +141,6 @@ impl BarState {
         self.last_drawn_seq = self.bar_update_seq;
     }
 
-    pub fn begin_monitor_hit_cache(&mut self, monitor_id: crate::types::MonitorId) {
-        self.hit_cache
-            .insert(monitor_id, MonitorHitCache::default());
-    }
-
-    pub fn monitor_hit_cache_mut(
-        &mut self,
-        monitor_id: crate::types::MonitorId,
-    ) -> Option<&mut MonitorHitCache> {
-        self.hit_cache.get_mut(&monitor_id)
-    }
-
     pub fn monitor_hit_cache(
         &self,
         monitor_id: crate::types::MonitorId,

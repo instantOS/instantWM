@@ -298,7 +298,7 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
 
 /// Backend-agnostic hover-focus entry point.
 ///
-/// Checks focus-follows-mouse guards, then delegates to `focus_soft` which
+/// Checks focus-follows-mouse guards, then delegates to [`focus`] which
 /// handles `mon.selected`, backend seat focus, and z-order sync in one place.
 pub fn apply_hover_focus(
     ctx: &mut crate::contexts::WmCtx,

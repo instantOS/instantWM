@@ -357,25 +357,6 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 }
 
-/// X11-only focus helper for call sites that hold disaggregated X11 types
-/// rather than a full `WmCtx`.
-pub fn focus_soft(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
-    win: Option<WindowId>,
-) {
-    let mut backend = X11FocusBackend { x11, x11_runtime };
-    if let Err(e) = crate::focus::focus_generic(
-        core,
-        win,
-        &mut backend,
-        crate::focus::BackendRefresh::IfNeeded,
-    ) {
-        log::warn!("focus_soft({:?}) failed: {}", win, e);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

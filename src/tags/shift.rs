@@ -1,7 +1,6 @@
 //! Moving clients between tags.
 
 use crate::contexts::WmCtx;
-// focus() is used via focus_soft() in this module
 
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;

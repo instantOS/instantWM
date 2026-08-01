@@ -136,8 +136,6 @@ pub struct Config {
     /// Desired breathing room around tray icons, kept inside contiguous input
     /// cells so padding never creates dead click regions.
     pub systray_spacing: i32,
-    /// If systray pinning fails, place it on the first monitor.
-    pub systray_pinning_fail_first: bool,
     /// Whether to show the systray.
     pub show_systray: bool,
     /// Whether to show the bar by default.
@@ -317,7 +315,6 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         startmenu_size: 30,
         systray_pinning: 0,
         systray_spacing: 0,
-        systray_pinning_fail_first: true,
         show_systray: true,
         show_bar: true,
         bar_position: EdgeDirection::Top,

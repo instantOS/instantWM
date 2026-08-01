@@ -6,8 +6,8 @@ use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
 use crate::types::{
-    AltCursor, Client, ClientMode, ClientPlacement, Monitor, Point, Rect, ResizeDirection, Size,
-    TagMask, WindowId,
+    Client, ClientMode, ClientPlacement, Monitor, Point, Rect, ResizeDirection, Size, TagMask,
+    WindowId,
 };
 use std::collections::HashMap;
 
@@ -18,19 +18,6 @@ fn visible_client(win: WindowId) -> Client {
     };
     client.set_tag_mask(TagMask::single(1).unwrap());
     client
-}
-
-#[test]
-fn arrange_preserves_the_interactive_cursor() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
-    let cursor = AltCursor::Resize(ResizeDirection::BottomRight);
-    wm.ctx().set_cursor_style(cursor);
-
-    super::arrange(&mut wm.ctx(), None);
-
-    assert_eq!(wm.core.behavior.requested_cursor, cursor);
 }
 
 #[test]

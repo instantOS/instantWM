@@ -609,13 +609,6 @@ pub struct WmBehavior {
     pub animated: bool,
     pub focus_follows_mouse: FocusFollowsMouseMode,
     pub focus_follows_float_mouse: bool,
-    /// Last WM-owned cursor presentation requested through `set_cursor_style`.
-    ///
-    /// This is not interaction state. Hover-resize, move/resize drags, and
-    /// other input modes must use their explicit state fields as the source of
-    /// truth; this field only lets cursor application/reset code avoid treating
-    /// the backend cursor as an implicit mode flag.
-    pub requested_cursor: AltCursor,
     pub specialnext: SpecialNext,
     /// Current active mode (sway-like modes).
     pub current_mode: ActiveWmMode,
@@ -627,7 +620,6 @@ impl Default for WmBehavior {
             animated: true,
             focus_follows_mouse: FocusFollowsMouseMode::Normal,
             focus_follows_float_mouse: true,
-            requested_cursor: AltCursor::Default,
             specialnext: SpecialNext::None,
             current_mode: ActiveWmMode::Default,
         }

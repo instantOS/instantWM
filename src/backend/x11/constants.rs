@@ -41,30 +41,8 @@ pub const MWM_DECOR_TITLE: u32 = 1 << 3;
 // WM_HINTS flag bits (ICCCM §4.1.2.4)
 // ---------------------------------------------------------------------------
 
-/// WM_HINTS flag: the `input` field is present and meaningful.
-pub const WM_HINTS_INPUT_HINT: u32 = 1;
-
 /// WM_HINTS flag: the window has an urgency / attention request pending.
 pub const WM_HINTS_URGENCY_HINT: u32 = 256;
-
-// ---------------------------------------------------------------------------
-// WM_NORMAL_HINTS / XSizeHints flag bits (ICCCM §4.1.2.3)
-// ---------------------------------------------------------------------------
-
-/// XSizeHints flag: `base_width` / `base_height` fields are present.
-pub const SIZE_HINTS_P_BASE_SIZE: u32 = 8;
-
-/// XSizeHints flag: `min_width` / `min_height` fields are present.
-pub const SIZE_HINTS_P_MIN_SIZE: u32 = 16;
-
-/// XSizeHints flag: `max_width` / `max_height` fields are present.
-pub const SIZE_HINTS_P_MAX_SIZE: u32 = 32;
-
-/// XSizeHints flag: `width_inc` / `height_inc` resize-increment fields are present.
-pub const SIZE_HINTS_P_RESIZE_INC: u32 = 64;
-
-/// XSizeHints flag: `min_aspect` / `max_aspect` fields are present.
-pub const SIZE_HINTS_P_ASPECT: u32 = 128;
 
 // ---------------------------------------------------------------------------
 // Misc

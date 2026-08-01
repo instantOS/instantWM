@@ -37,7 +37,6 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     hash_gesture(hasher, snapshot.gesture);
     snapshot.layout_symbol.hash(hasher);
     snapshot.show_shutdown.hash(hasher);
-    snapshot.monitor_rect_x.hash(hasher);
     hash_presentation(hasher, &snapshot.presentation);
 
     snapshot.tags.len().hash(hasher);

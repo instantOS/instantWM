@@ -241,10 +241,9 @@ impl<'a> WmCtx<'a> {
         self.core().client_geo(win)
     }
 
-    /// Record the requested cursor and project it through the active backend.
+    /// Project a cursor style through the active backend.
     /// Backend implementations suppress redundant native updates.
     pub fn set_cursor_style(&mut self, style: crate::types::AltCursor) {
-        self.core_mut().behavior_mut().requested_cursor = style;
         use crate::backend::CursorOps;
         match self {
             WmCtx::X11(ctx) => ctx.apply_cursor_style(style),

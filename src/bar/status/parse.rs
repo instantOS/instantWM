@@ -99,23 +99,14 @@ pub(crate) fn parse_status_fallback(text: &str) -> ParsedStatus {
 pub(crate) fn parse_i3bar_header(line: &str) -> Option<I3BarHeader> {
     let value: Value = serde_json::from_str(line.trim()).ok()?;
     let obj = value.as_object()?;
+    if obj.get("version").and_then(Value::as_i64) != Some(1) {
+        return None;
+    }
 
     Some(I3BarHeader {
-        version: obj
-            .get("version")
-            .and_then(Value::as_i64)
-            .map(|v| v.clamp(i32::MIN as i64, i32::MAX as i64) as i32),
         click_events: obj
             .get("click_events")
             .and_then(Value::as_bool)
             .unwrap_or(false),
-        stop_signal: obj
-            .get("stop_signal")
-            .and_then(Value::as_i64)
-            .map(|v| v.clamp(i32::MIN as i64, i32::MAX as i64) as i32),
-        cont_signal: obj
-            .get("cont_signal")
-            .and_then(Value::as_i64)
-            .map(|v| v.clamp(i32::MIN as i64, i32::MAX as i64) as i32),
     })
 }

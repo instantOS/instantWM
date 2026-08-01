@@ -120,9 +120,10 @@ impl WaylandState {
                 self.space.map_element(element.clone(), loc, false);
                 self.request_visible_window_render(&element);
 
-                // If this window was the pending focus target (set by focus_soft
-                // before arrange/show_hide ran), re-apply keyboard focus now that
-                // the window is actually in the space and reachable by set_focus.
+                // If this window was the pending focus target (selected by the
+                // focus path before arrange/show_hide ran), re-apply keyboard
+                // focus now that the window is actually in the space and
+                // reachable by set_focus.
                 if self.focused_window() == Some(window) {
                     self.set_focus(window);
                 }

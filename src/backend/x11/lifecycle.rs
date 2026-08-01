@@ -39,7 +39,6 @@ use crate::backend::x11::{
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
-// focus() is used via focus_soft() in this module
 use crate::focus::focus;
 use crate::layouts::arrange;
 use crate::types::{Client, ClientPlacement, Rect, TagMask, WindowId};

@@ -64,10 +64,6 @@ impl XCursor {
     pub fn is_animated(&self) -> bool {
         self.images.len() > 1
     }
-
-    pub fn hotspot(image: &Image) -> Point<i32, Physical> {
-        (image.xhot as i32, image.yhot as i32).into()
-    }
 }
 
 type XCursorCache = HashMap<(CursorIcon, i32), Option<Rc<XCursor>>>;

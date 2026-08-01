@@ -243,7 +243,6 @@ pub(crate) struct MonitorBarSnapshot {
     pub tags: Vec<TagCellSnapshot>,
     pub show_shutdown: bool,
     pub titles: Vec<TitleCellSnapshot>,
-    pub monitor_rect_x: i32,
     pub presentation: BarPresentation,
     pub systray: Option<SystraySnapshot>,
     /// Right-edge width occupied by content rendered outside this scene.
@@ -255,7 +254,6 @@ pub(crate) struct MonitorBarSnapshot {
 pub(crate) struct MonitorRenderOutput {
     pub hit_cache: crate::bar::MonitorHitCache,
     pub bar_clients_width: i32,
-    pub activeoffset: u32,
 }
 
 pub(crate) struct MonitorRenderOutputWithId {
@@ -462,7 +460,6 @@ pub(crate) fn build_monitor_snapshots(
             tags,
             show_shutdown: mon.selected.is_none(),
             titles,
-            monitor_rect_x: mon.monitor_rect.x,
             presentation,
             systray,
             external_right_width: if show_systray && is_selected_monitor {
@@ -712,12 +709,11 @@ fn draw_titles_section(
     title_width: i32,
     bar_height: i32,
     hit: &mut crate::bar::MonitorHitCache,
-) -> u32 {
-    let mut activeoffset = 0u32;
+) {
     if snapshot.titles.is_empty() {
         painter.set_scheme(snapshot.status_scheme.clone());
         painter.rect(Rect::new(x, 0, title_width, bar_height), true, true);
-        return activeoffset;
+        return;
     }
 
     let total_width = title_width + 1;
@@ -744,17 +740,16 @@ fn draw_titles_section(
             false,
             4,
         );
-        if let Some(close_scheme) = &title.close_scheme {
-            if this_width >= 32 {
-                draw_close_button_snapshot(
-                    painter,
-                    close_scheme,
-                    snapshot.gesture == Gesture::CloseButton,
-                    title_x,
-                    bar_height,
-                );
-            }
-            activeoffset = (snapshot.monitor_rect_x + title_x) as u32;
+        if let Some(close_scheme) = &title.close_scheme
+            && this_width >= 32
+        {
+            draw_close_button_snapshot(
+                painter,
+                close_scheme,
+                snapshot.gesture == Gesture::CloseButton,
+                title_x,
+                bar_height,
+            );
         }
         hit.title_ranges.push(crate::bar::TitleHitRange {
             start: title_x,
@@ -763,7 +758,6 @@ fn draw_titles_section(
         });
         title_x += this_width;
     }
-    activeoffset
 }
 
 fn record_systray_hits(snapshot: &MonitorBarSnapshot, hit: &mut crate::bar::MonitorHitCache) {
@@ -829,13 +823,12 @@ pub(crate) fn render_monitor_snapshot(
     hit.status_hit_x = title_end_x;
     let title_width = (title_end_x - x).max(0);
 
-    let activeoffset = draw_titles_section(painter, snapshot, x, title_width, bar_height, &mut hit);
+    draw_titles_section(painter, snapshot, x, title_width, bar_height, &mut hit);
     record_systray_hits(snapshot, &mut hit);
 
     MonitorRenderOutput {
         hit_cache: hit,
         bar_clients_width: title_width,
-        activeoffset,
     }
 }
 

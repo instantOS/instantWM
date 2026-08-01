@@ -60,7 +60,6 @@ pub fn event_loop_tick_with_options(
 pub struct PendingWorkResult {
     pub monitor_config_applied: bool,
     pub layout_applied: bool,
-    pub layout_deferred_for_animation: bool,
 }
 
 /// Apply all pending work in deterministic order.
@@ -82,7 +81,6 @@ pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkRes
         && options.animations_active
         && !wm.work.layout.is_urgent()
     {
-        result.layout_deferred_for_animation = true;
         return result;
     }
 
@@ -267,7 +265,7 @@ mod tests {
         wm.work.layout.clear();
         wm.work.layout.mark_monitor(MonitorId::default());
 
-        let result = process_pending_work(
+        process_pending_work(
             &mut wm,
             TickOptions {
                 defer_layout_while_animations_active: true,
@@ -275,7 +273,6 @@ mod tests {
             },
         );
 
-        assert!(result.layout_deferred_for_animation);
         assert!(wm.work.layout.is_pending());
     }
 
@@ -285,7 +282,7 @@ mod tests {
         wm.work.layout.clear();
         wm.work.layout.mark_monitor_urgent(MonitorId::default());
 
-        let result = process_pending_work(
+        process_pending_work(
             &mut wm,
             TickOptions {
                 defer_layout_while_animations_active: true,
@@ -293,7 +290,6 @@ mod tests {
             },
         );
 
-        assert!(!result.layout_deferred_for_animation);
         assert!(!wm.work.layout.is_pending());
     }
 }
