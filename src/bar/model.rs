@@ -7,29 +7,16 @@ use crate::types::*;
 pub(crate) struct ClientBarStats {
     pub occupied_tags: TagMask,
     pub urgent_tags: TagMask,
-    pub visible_clients: i32,
 }
 
 impl ClientBarStats {
     /// Collect bar statistics for the given monitor.
     pub(crate) fn collect(monitor: &Monitor, model: &WmModel) -> Self {
         let mut stats = Self::default();
-        let selected = monitor.selected_tags();
 
-        // ── Pass 1: clients with title entries in the bar ─────────────────
-        for (_win, client) in monitor.iter_clients(&model.clients) {
-            if client.shows_in_bar(selected) {
-                stats.visible_clients += 1;
-            }
-        }
-
-        // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
-        let monitor_id = monitor.id();
+        // Occupied / urgent tag bits from all clients on this monitor.
         let mut occupied = TagMask::EMPTY;
-        for client in model.clients.values() {
-            if client.monitor_id != monitor_id {
-                continue;
-            }
+        for (_win, client) in monitor.iter_clients(&model.clients) {
             occupied = occupied | client.tags;
             if client.is_urgent {
                 stats.urgent_tags = stats.urgent_tags | client.tags;
@@ -140,15 +127,19 @@ pub(crate) fn hit_test(
 /// Build a `MonitorHitCache` from scratch using the same utility functions that
 /// the renderer uses, for when the render-time cache is not yet available.
 pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
-    use crate::bar::get_layout_symbol_width;
-
     let is_selmon = core.model().expect_selected_monitor().num == mon.num;
-    let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
+    let layout_symbol = if core.model().is_overview_active_on(mon) {
+        "OVR"
+    } else {
+        mon.presentation_for_mask(mon.selected_tags()).symbol()
+    };
+    let bar_layout_symbol_width =
+        layout_symbol.len() as i32 * 8 + core.config().derived.bar_horizontal_padding;
     let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
     let occupied = mon.occupied_tags(&core.model().clients);
-    let visible = crate::tags::bar::visible_tags(core.state(), core.bar, mon, occupied);
+    let visible = crate::tags::bar::visible_tags(core.state(), mon, occupied);
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
     let mut acc = mon.startmenu_size;
     for tag in &visible {

@@ -1,14 +1,8 @@
 //! Tag bar rendering helpers.
 //!
-//! These functions answer two questions the bar needs on every redraw:
-//!
-//! * [`visible_tags_ctx`] – which tags should be drawn, and with what label/width?
-//! * [`get_tag_width`] – how many pixels wide is the entire tag strip?
-//!
-//! Both share a single iteration through [`visible_tags_ctx`], which resolves
-//! tag-index remapping, skip logic, display names, and widths in one place.
+//! This module resolves which tags should be drawn, including tag-index
+//! remapping, skip logic, display names, and estimated fallback widths.
 
-use crate::contexts::CoreCtx;
 use crate::types::{Monitor, TagMask};
 
 /// Maximum number of tag slots rendered in the bar.
@@ -28,7 +22,6 @@ pub(crate) struct VisibleTag<'a> {
 
 pub(crate) fn visible_tags<'a>(
     globals: &crate::core_state::CoreState,
-    bar: &crate::bar::BarState,
     monitor: &'a Monitor,
     occupied: TagMask,
 ) -> Vec<VisibleTag<'a>> {
@@ -52,12 +45,8 @@ pub(crate) fn visible_tags<'a>(
         } else {
             tag.name.as_str()
         };
-        let cached = bar.get_tag_width(slot);
-        let width = if cached > 0 {
-            cached
-        } else {
-            ((label.chars().count() as i32) * 8 + horizontal_padding).max(horizontal_padding)
-        };
+        let width =
+            ((label.chars().count() as i32) * 8 + horizontal_padding).max(horizontal_padding);
 
         out.push(VisibleTag {
             slot,
@@ -68,24 +57,4 @@ pub(crate) fn visible_tags<'a>(
     }
 
     out
-}
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/// Return the total pixel width of the tag strip (including the start-menu
-/// button at the left edge).
-pub fn get_tag_width(core: &CoreCtx) -> i32 {
-    let m = core.model().expect_selected_monitor();
-    if m.tags.is_empty() {
-        return core.config().bar.startmenu_size;
-    }
-
-    let occupied = m.occupied_tags(&core.model().clients);
-    let tags_width: i32 = visible_tags(core.state(), core.bar, m, occupied)
-        .iter()
-        .map(|t| t.width)
-        .sum();
-    core.config().bar.startmenu_size + tags_width
 }

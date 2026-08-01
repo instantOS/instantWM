@@ -1,6 +1,5 @@
 use crate::contexts::WmCtx;
 use crate::core_state::ActiveWmMode;
-use crate::tags::get_tag_width;
 use crate::types::*;
 
 fn toggled_bool(current: bool, action: ToggleAction) -> bool {
@@ -22,8 +21,6 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
 
     ctx.core_mut().model_mut().tags.show_alternative_names = new_value;
 
-    let tagwidth = get_tag_width(ctx.core());
-    ctx.core_mut().model_mut().tags.width = tagwidth;
     ctx.request_bar_update();
 }
 
@@ -61,9 +58,6 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
         .model_mut()
         .expect_selected_monitor_mut()
         .showtags = new_showtags;
-
-    let tagwidth = get_tag_width(ctx.core());
-    ctx.core_mut().model_mut().tags.width = tagwidth;
 
     ctx.request_bar_update();
 }

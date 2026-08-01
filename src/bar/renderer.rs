@@ -9,7 +9,6 @@ pub(crate) fn draw_bar_snapshot(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
 ) {
-    core.bar.clear_cached_widths();
     let output = crate::bar::scene::render_monitor_snapshot(snapshot, painter);
     core.bar
         .replace_hit_cache(snapshot.monitor_id, output.hit_cache);

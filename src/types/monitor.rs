@@ -2,7 +2,7 @@
 //!
 //! Types for managing multiple monitors/screens.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::layouts::PresentationMode;
 use crate::types::MonitorId;
@@ -388,12 +388,13 @@ impl Monitor {
                     .is_some_and(|client| client.is_tiled(selected))
             })
             .collect::<Vec<_>>();
+        let mut seen: HashSet<WindowId> = ordered.iter().copied().collect();
 
         for &win in &self.clients {
-            if !ordered.contains(&win)
-                && clients
-                    .get(&win)
-                    .is_some_and(|client| client.is_tiled(selected))
+            if clients
+                .get(&win)
+                .is_some_and(|client| client.is_tiled(selected))
+                && seen.insert(win)
             {
                 ordered.push(win);
             }
@@ -413,12 +414,13 @@ impl Monitor {
         } else {
             Vec::new()
         };
+        let mut seen: HashSet<WindowId> = ordered.iter().copied().collect();
 
         for &win in &self.clients {
-            if !ordered.contains(&win)
-                && clients
-                    .get(&win)
-                    .is_some_and(|client| client.shows_in_bar(selected))
+            if clients
+                .get(&win)
+                .is_some_and(|client| client.shows_in_bar(selected))
+                && seen.insert(win)
             {
                 ordered.push(win);
             }

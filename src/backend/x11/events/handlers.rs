@@ -404,9 +404,6 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
         return;
     };
 
-    // Cache tag-strip width only when we are actually in the bar hot path.
-    ctx.core.model_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
-
     let pos = crate::bar::update_hover(&mut WmCtx::X11(ctx.reborrow()), root, false, false);
     if matches!(pos, Some(BarPosition::Root) | None) && current_gesture != Gesture::None {
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));

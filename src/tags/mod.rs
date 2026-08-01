@@ -15,8 +15,6 @@ mod tag_mon_impl;
 /// types, offering better type safety and clearer semantics than raw `u32` bitmasks.
 pub mod tag_ops;
 
-pub use bar::get_tag_width;
-
 pub use naming::{name_tag, reset_name_tag};
 
 pub use view::{follow_view, last_view, shift_view, win_view};

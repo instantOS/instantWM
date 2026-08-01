@@ -28,8 +28,6 @@ pub struct TagSet {
     pub num_tags: usize,
     pub colors: TagColorConfigs,
     pub show_alternative_names: bool,
-    /// Cached width of the complete tag list in the bar.
-    pub width: i32,
 }
 
 impl TagSet {

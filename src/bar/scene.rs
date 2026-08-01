@@ -354,13 +354,12 @@ pub(crate) fn build_monitor_snapshots(
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
 
-        let mut stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
+        let stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = bar_hover.gesture_on(monitor_id);
         let mut tags = Vec::new();
-        for tag in crate::tags::bar::visible_tags(core.state(), core.bar, mon, stats.occupied_tags)
-        {
+        for tag in crate::tags::bar::visible_tags(core.state(), mon, stats.occupied_tags) {
             let is_hover = gesture == Gesture::Tag(tag.slot);
             let mut scheme = tag_scheme(
                 core.model(),
@@ -387,7 +386,6 @@ pub(crate) fn build_monitor_snapshots(
             let Some(c) = core.model().client(win) else {
                 continue;
             };
-            stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
             let scheme = window_scheme(core.model(), &core.config().colors.window, c, is_hover);
             let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {

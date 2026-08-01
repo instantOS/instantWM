@@ -25,12 +25,6 @@ pub struct BarRuntime {
 pub struct BarState {
     bar_update_seq: u64,
     last_drawn_seq: u64,
-    /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
-    pub tag_widths: Vec<i32>,
-    /// Total width of the tag strip (including start menu)
-    pub tag_strip_width: i32,
-    /// Layout symbol width
-    pub layout_symbol_width: i32,
     /// Per-monitor hit-test geometry built during bar rendering.
     hit_cache: HashMap<MonitorId, MonitorHitCache>,
     status_cache_text: String,
@@ -147,26 +141,6 @@ impl BarState {
         self.last_drawn_seq = self.bar_update_seq;
     }
 
-    /// Clear cached widths. Called at the start of each bar render.
-    pub fn clear_cached_widths(&mut self) {
-        self.tag_widths.clear();
-        self.tag_strip_width = 0;
-        self.layout_symbol_width = 0;
-    }
-
-    /// Cache a tag width at the given slot index.
-    pub fn cache_tag_width(&mut self, slot: usize, width: i32) {
-        if self.tag_widths.len() <= slot {
-            self.tag_widths.resize(slot + 1, 0);
-        }
-        self.tag_widths[slot] = width;
-    }
-
-    /// Get cached width for a tag slot.
-    pub fn get_tag_width(&self, slot: usize) -> i32 {
-        self.tag_widths.get(slot).copied().unwrap_or(0)
-    }
-
     pub fn begin_monitor_hit_cache(&mut self, monitor_id: crate::types::MonitorId) {
         self.hit_cache
             .insert(monitor_id, MonitorHitCache::default());
@@ -226,22 +200,6 @@ impl BarState {
             })
             .map_or(Gesture::None, Gesture::StatusBlock)
     }
-}
-
-pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
-    // Use cached width if available
-    let width = if core.bar.layout_symbol_width > 0 {
-        core.bar.layout_symbol_width
-    } else {
-        // Fallback: estimate based on typical character width
-        let symbol = if core.model().is_overview_active_on(m) {
-            "OVR"
-        } else {
-            m.presentation_for_mask(m.selected_tags()).symbol()
-        };
-        symbol.len() as i32 * 8 // rough estimate: 8px per char
-    };
-    width + core.config().derived.bar_horizontal_padding
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
