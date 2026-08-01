@@ -732,6 +732,9 @@ pub struct PendingWork {
     pub cursor_config: bool,
     /// Pending layout work.
     pub layout: PendingLayoutWork,
+    /// Newly managed windows waiting for their first authoritative arrange
+    /// before the one-time spawn transition can be started.
+    pub(crate) spawn_animations: BTreeSet<WindowId>,
 }
 
 impl Default for PendingWork {
@@ -743,6 +746,7 @@ impl Default for PendingWork {
             monitor_config: false,
             cursor_config: false,
             layout,
+            spawn_animations: BTreeSet::new(),
         }
     }
 }

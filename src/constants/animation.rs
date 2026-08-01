@@ -3,6 +3,9 @@
 /// Default animation duration in milliseconds.
 pub const DEFAULT_ANIMATION_MILLIS: u64 = 167;
 
+/// Fixed vertical travel for a newly managed window's entrance transition.
+pub const SPAWN_SLIDE_DISTANCE: i32 = 70;
+
 /// Duration in milliseconds for small keyboard-driven floating moves.
 pub const FLOAT_MOVE_ANIMATION_MILLIS: u64 = 117;
 

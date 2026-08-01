@@ -3,7 +3,7 @@ use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::{ArrangePlan, LayoutOutput, PresentationMode};
 use crate::types::{Client, Monitor, MonitorId, Size, TiledClientInfo, WindowId};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     // Any authoritative arrange may reconcile the tree, constraints, gaps, or
@@ -36,8 +36,43 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
         }
     }
 
+    flush_pending_spawn_animations(ctx, monitor_id);
+
     ctx.request_space_sync();
     ctx.window_backend().flush();
+}
+
+/// Start pending spawn transitions whose assigned monitors were arranged by
+/// this pass. Windows on other monitors remain queued until their own layout
+/// runs; stale window IDs are discarded.
+fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<MonitorId>) {
+    // Drain before running presentation effects so callbacks cannot observe a
+    // half-consumed queue. Unrelated monitors are restored before any effect.
+    let pending = std::mem::take(&mut ctx.core_mut().pending_work_mut().spawn_animations);
+    if pending.is_empty() {
+        return;
+    }
+
+    let mut ready = Vec::new();
+    let mut deferred = BTreeSet::new();
+    for win in pending {
+        let Some(view) = ctx.core().model().client_view(win) else {
+            continue;
+        };
+        if arranged_monitor.is_none_or(|monitor_id| view.client.monitor_id == monitor_id) {
+            ready.push(win);
+        } else {
+            deferred.insert(win);
+        }
+    }
+    ctx.core_mut()
+        .pending_work_mut()
+        .spawn_animations
+        .extend(deferred);
+
+    for win in ready {
+        crate::animation::run_spawn_animation(ctx, win);
+    }
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {

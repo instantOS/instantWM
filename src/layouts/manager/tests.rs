@@ -20,6 +20,103 @@ fn visible_client(win: WindowId) -> Client {
     client
 }
 
+fn add_tiled_monitor(
+    wm: &mut crate::wm::Wm,
+    win: WindowId,
+    monitor_rect: Rect,
+) -> crate::types::MonitorId {
+    let tags = TagMask::single(1).unwrap();
+    let monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect,
+        available_rect: monitor_rect,
+        show_bar: false,
+        ..Monitor::default()
+    });
+    assert!(wm.core.model.insert_client(Client {
+        win,
+        monitor_id,
+        tags,
+        mode: ClientMode::tiled(),
+        ..Client::default()
+    }));
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.set_selected_tags(tags);
+    monitor.clients.push(win);
+    monitor.selected = Some(win);
+    monitor_id
+}
+
+#[test]
+fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let first_monitor = add_tiled_monitor(&mut wm, first, Rect::new(0, 0, 800, 600));
+    let second_monitor = add_tiled_monitor(&mut wm, second, Rect::new(800, 0, 800, 600));
+    wm.work.layout.clear();
+    {
+        let mut ctx = wm.ctx();
+        ctx.core_mut()
+            .queue_initial_window_layout(first, first_monitor);
+        ctx.core_mut()
+            .queue_initial_window_layout(second, second_monitor);
+    }
+    assert!(wm.work.layout.is_urgent());
+
+    super::arrange(&mut wm.ctx(), Some(first_monitor));
+
+    assert_eq!(
+        wm.work.spawn_animations.iter().copied().collect::<Vec<_>>(),
+        vec![second]
+    );
+
+    super::arrange(&mut wm.ctx(), Some(second_monitor));
+    assert!(wm.work.spawn_animations.is_empty());
+}
+
+#[test]
+fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let live = WindowId(1);
+    let destroyed = WindowId(2);
+    let unrelated_monitor = add_tiled_monitor(&mut wm, live, Rect::new(800, 0, 800, 600));
+    let arranged_monitor = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(0, 0, 800, 600),
+        available_rect: Rect::new(0, 0, 800, 600),
+        show_bar: false,
+        ..Monitor::default()
+    });
+    wm.work.spawn_animations.extend([live, destroyed]);
+
+    super::arrange(&mut wm.ctx(), Some(arranged_monitor));
+
+    assert_eq!(
+        wm.work.spawn_animations.iter().copied().collect::<Vec<_>>(),
+        vec![live]
+    );
+    super::arrange(&mut wm.ctx(), Some(unrelated_monitor));
+    assert!(wm.work.spawn_animations.is_empty());
+}
+
+#[test]
+fn disabled_animation_is_still_consumed_after_first_layout() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let win = WindowId(1);
+    let monitor_id = add_tiled_monitor(&mut wm, win, Rect::new(0, 0, 800, 600));
+    wm.core.behavior.animated = false;
+    wm.work.spawn_animations.insert(win);
+
+    super::arrange(&mut wm.ctx(), Some(monitor_id));
+
+    assert!(wm.work.spawn_animations.is_empty());
+}
+
 #[test]
 fn arrange_invalidates_pointer_placement_candidates() {
     let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(

@@ -68,6 +68,13 @@ impl WaylandState {
     }
 
     /// Register a toplevel in compositor space without assigning desktop policy.
+    ///
+    /// The element is intentionally left unmapped here. Mapping into Smithay
+    /// space is a WM visibility decision. The following arrange transaction
+    /// maps it at the current logical geometry, assigns its layout target, and
+    /// replaces that provisional placement with the explicit spawn transition
+    /// before rendering. Registering it at a hard-coded (0,0) leaks backend
+    /// placeholder geometry into that transition.
     fn register_toplevel(&mut self, surface: ToplevelSurface, is_overlay: bool) -> WindowId {
         let window = Window::new_wayland_window(surface);
         let window_id = self.alloc_window_id();
@@ -78,8 +85,6 @@ impl WaylandState {
                 is_overlay,
             });
 
-        // Map at (0,0) initially. The WM will move it during the layout pass.
-        self.space.map_element(window.clone(), (0, 0), false);
         self.window_index.insert(window_id, window.clone());
 
         // Refresh the Window's internal geometry cache.

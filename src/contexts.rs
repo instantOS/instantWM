@@ -128,6 +128,16 @@ impl<'a> CoreCtx<'a> {
         }
     }
 
+    /// Queue the first authoritative layout for a newly managed window and
+    /// its post-layout entrance transition as one lifecycle operation.
+    ///
+    /// First layout is urgent because the Wayland surface remains intentionally
+    /// unmapped until this work has assigned usable geometry.
+    pub fn queue_initial_window_layout(&mut self, win: WindowId, monitor_id: MonitorId) {
+        self.work.layout.mark_monitor_urgent(monitor_id);
+        self.work.spawn_animations.insert(win);
+    }
+
     pub fn queue_monitor_config_apply(&mut self) {
         self.work.queue_monitor_config_apply();
     }

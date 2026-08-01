@@ -608,7 +608,7 @@ fn handle_map_window(
     let Some((monitor_id, should_focus)) = finalize_wayland_client(state, win) else {
         return;
     };
-    ctx.core_mut().queue_layout_for_monitor(monitor_id);
+    ctx.core_mut().queue_initial_window_layout(win, monitor_id);
 
     if should_focus {
         wl_state.request_window_focus(win);

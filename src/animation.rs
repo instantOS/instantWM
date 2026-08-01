@@ -176,6 +176,70 @@ fn select_tag_slide_targets(
     targets
 }
 
+/// Slide a newly managed window down into its arranged position.
+///
+/// The caller must run the window's authoritative arrange first. This helper
+/// owns presentation only: it does not initiate layout or mutate window
+/// policy. Fullscreen windows skip the decorative transition.
+pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
+    if !ctx.core().behavior().animated {
+        return;
+    }
+
+    let Some((target, is_tiling)) = ctx.core().model().client_view(window).and_then(|view| {
+        if view.client.mode().is_fullscreen() {
+            return None;
+        }
+        Some((view.client.geo, view.monitor.is_tiling_layout()))
+    }) else {
+        return;
+    };
+
+    ctx.move_resize(
+        window,
+        target,
+        MoveResizeOptions::animate_from(spawn_animation_start(target), DEFAULT_ANIMATION_MILLIS),
+    );
+
+    if !is_tiling {
+        ctx.window_backend().raise_window_visual_only(window);
+        ctx.window_backend().flush();
+    }
+}
+
+fn spawn_animation_start(target: Rect) -> Rect {
+    Rect {
+        x: target.x,
+        y: target.y - SPAWN_SLIDE_DISTANCE,
+        w: target.w,
+        h: target.h,
+    }
+}
+
+#[cfg(test)]
+mod spawn_animation_tests {
+    use super::*;
+
+    #[test]
+    fn every_spawn_moves_the_same_fixed_distance() {
+        let target = Rect::new(-1200, 500, 700, 400);
+        let lower_target = Rect::new(-1200, 900, 700, 400);
+
+        assert_eq!(
+            spawn_animation_start(target),
+            Rect::new(-1200, 430, 700, 400)
+        );
+        assert_eq!(
+            target.y - spawn_animation_start(target).y,
+            SPAWN_SLIDE_DISTANCE
+        );
+        assert_eq!(
+            lower_target.y - spawn_animation_start(lower_target).y,
+            SPAWN_SLIDE_DISTANCE
+        );
+    }
+}
+
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
     let old_selected_tags = ctx.core().model().expect_selected_monitor().selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {

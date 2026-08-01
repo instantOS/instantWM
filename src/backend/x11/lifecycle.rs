@@ -36,10 +36,9 @@ use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_motif_hints,
     update_window_type, update_wm_hints,
 };
-use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::focus::focus;
-use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
+use crate::geometry::GeometryApplyMode;
 use crate::layouts::arrange;
 use crate::types::{Client, ClientPlacement, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
@@ -132,17 +131,8 @@ pub fn manage(
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), window);
     let initially_hidden = prepare_visibility(&mut WmCtx::X11(ctx.reborrow()), window);
-    let animated = ctx.core.behavior().animated;
-    let client =
-        arrange_map_focus_and_snapshot(&mut WmCtx::X11(ctx.reborrow()), window, initially_hidden);
-
-    run_manage_animation(
-        &mut WmCtx::X11(ctx.reborrow()),
-        window,
-        &client,
-        monitor_rect,
-        animated,
-    );
+    arrange_map_and_focus(&mut WmCtx::X11(ctx.reborrow()), window, initially_hidden);
+    crate::animation::run_spawn_animation(&mut WmCtx::X11(ctx.reborrow()), window);
 }
 
 fn build_initial_client(
@@ -425,19 +415,13 @@ fn prepare_visibility(ctx: &mut WmCtx, window: WindowId) -> bool {
     initially_hidden
 }
 
-fn arrange_map_focus_and_snapshot(
-    ctx: &mut WmCtx,
-    window: WindowId,
-    initially_hidden: bool,
-) -> Client {
-    let mut client = ctx
+fn arrange_map_and_focus(ctx: &mut WmCtx, window: WindowId, initially_hidden: bool) {
+    let monitor_id = ctx
         .core()
-        .state()
-        .model
+        .model()
         .client(window)
-        .cloned()
+        .map(|client| client.monitor_id)
         .expect("managed client must exist before arrange");
-    let monitor_id = client.monitor_id;
     arrange(ctx, Some(monitor_id));
     if !initially_hidden {
         ctx.window_backend().map_window(window);
@@ -448,53 +432,6 @@ fn arrange_map_focus_and_snapshot(
     // persistent z-order are updated together. Hidden windows are rejected by
     // focus target resolution and fall back to the previous visible target.
     focus(ctx, Some(window));
-    client = ctx
-        .core()
-        .state()
-        .model
-        .client(window)
-        .cloned()
-        .expect("managed client must exist after arrange");
-    client
-}
-
-fn run_manage_animation(
-    ctx: &mut WmCtx,
-    window: WindowId,
-    client: &Client,
-    monitor_rect: Rect,
-    animated: bool,
-) {
-    if !animated || client.mode().is_fullscreen() {
-        return;
-    }
-
-    ctx.move_resize(
-        window,
-        client.geo,
-        MoveResizeOptions::animate_from(
-            Rect {
-                x: client.geo.x,
-                y: monitor_rect.y - client.geo.h - client.border_width * 2,
-                w: client.geo.w,
-                h: client.geo.h,
-            },
-            DEFAULT_ANIMATION_MILLIS,
-        ),
-    );
-
-    let is_tiling = ctx
-        .core()
-        .model()
-        .client_view(window)
-        .is_some_and(|view| view.monitor.is_tiling_layout());
-
-    if !is_tiling {
-        ctx.window_backend().raise_window_visual_only(window);
-        ctx.window_backend().flush();
-    } else if client.geo.w > monitor_rect.w - 30 || client.geo.h > monitor_rect.h - 30 {
-        arrange(ctx, Some(client.monitor_id));
-    }
 }
 
 // ---------------------------------------------------------------------------
