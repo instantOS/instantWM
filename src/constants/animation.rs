@@ -1,16 +1,16 @@
-//! Animation timing and frame count constants.
+//! Animation timing constants.
 
-/// Default animation frame count for smooth animations.
-pub const DEFAULT_FRAME_COUNT: i32 = 7;
+/// Default animation duration in milliseconds.
+pub const DEFAULT_ANIMATION_MILLIS: u64 = 167;
 
-/// Frame count for small keyboard-driven floating moves.
-pub const FLOAT_MOVE_FRAME_COUNT: i32 = 5;
+/// Duration in milliseconds for small keyboard-driven floating moves.
+pub const FLOAT_MOVE_ANIMATION_MILLIS: u64 = 117;
 
-/// Frame count for hide/minimize and fullscreen expansion transitions.
-pub const EMPHASIZED_FRAME_COUNT: i32 = 10;
+/// Duration in milliseconds for hide/minimize and fullscreen expansion transitions.
+pub const EMPHASIZED_ANIMATION_MILLIS: u64 = 233;
 
-/// Frame count for decorative show/unhide slide-ins.
-pub const DECORATIVE_SHOW_FRAME_COUNT: i32 = 14;
+/// Duration in milliseconds for decorative show/unhide slide-ins.
+pub const DECORATIVE_SHOW_ANIMATION_MILLIS: u64 = 333;
 
 /// Border width multiplier for calculating total window dimensions.
 pub const BORDER_MULTIPLIER: i32 = 2;
@@ -18,8 +18,5 @@ pub const BORDER_MULTIPLIER: i32 = 2;
 /// Minimum distance threshold for animation to be considered moving.
 pub const DISTANCE_THRESHOLD: i32 = 5;
 
-/// Frame sleep duration in microseconds.
-pub const FRAME_SLEEP_MICROS: u64 = 16667;
-
 /// Default Wayland animation duration in milliseconds.
-pub const WAYLAND_DEFAULT_ANIMATION_MILLIS: u64 = 90;
+pub const WAYLAND_DEFAULT_ANIMATION_MILLIS: u64 = 129;

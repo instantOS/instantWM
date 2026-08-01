@@ -431,7 +431,7 @@ pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> Ov
             win,
             rect,
             options: MoveResizeOptions::animate_to(
-                crate::constants::animation::DEFAULT_FRAME_COUNT,
+                crate::constants::animation::DEFAULT_ANIMATION_MILLIS,
             ),
         })
         .collect();

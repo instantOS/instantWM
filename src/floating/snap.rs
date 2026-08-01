@@ -17,7 +17,7 @@
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::constants::animation::DEFAULT_FRAME_COUNT;
+use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 
@@ -119,7 +119,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
     WmCtx::X11(ctx.reborrow()).move_resize(
         win,
         *rect,
-        MoveResizeOptions::animate_to(DEFAULT_FRAME_COUNT),
+        MoveResizeOptions::animate_to(DEFAULT_ANIMATION_MILLIS),
     );
 }
 

@@ -586,7 +586,10 @@ fn dense_manual_layout_uses_one_animation_duration_for_every_window() {
     assert_eq!(plan.client_moves.len(), windows.len());
     assert!(plan.client_moves.iter().all(|output| {
         output.options.mode == crate::geometry::MoveResizeMode::AnimateTo
-            && output.options.frames == crate::constants::animation::DEFAULT_FRAME_COUNT
+            && output.options.duration
+                == std::time::Duration::from_millis(
+                    crate::constants::animation::DEFAULT_ANIMATION_MILLIS,
+                )
     }));
 }
 

@@ -147,7 +147,10 @@ fn every_card_uses_one_duration_even_in_a_dense_overview() {
     assert_eq!(layout.moves.len(), windows.len());
     assert!(layout.moves.iter().all(|output| {
         output.options.mode == crate::geometry::MoveResizeMode::AnimateTo
-            && output.options.frames == crate::constants::animation::DEFAULT_FRAME_COUNT
+            && output.options.duration
+                == std::time::Duration::from_millis(
+                    crate::constants::animation::DEFAULT_ANIMATION_MILLIS,
+                )
     }));
 }
 

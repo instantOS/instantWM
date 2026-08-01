@@ -218,11 +218,11 @@ fn compute_manual_tree(
                 win: client.win,
                 rect: placement.client_rect(slot, client.border_width),
                 options: if resize_hints && constraints_fit {
-                    MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_FRAME_COUNT)
+                    MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_ANIMATION_MILLIS)
                         .with_size_hints()
                         .with_layout_bounds()
                 } else {
-                    MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_FRAME_COUNT)
+                    MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_ANIMATION_MILLIS)
                 },
             })
         })

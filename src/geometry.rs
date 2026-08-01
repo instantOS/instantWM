@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::animation::WindowAnimation;
-use crate::constants::animation::{DISTANCE_THRESHOLD, FRAME_SLEEP_MICROS};
+use crate::constants::animation::DISTANCE_THRESHOLD;
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
 
@@ -35,7 +35,7 @@ pub enum BoundsPolicy {
 #[derive(Clone, Copy, Debug)]
 pub struct MoveResizeOptions {
     pub mode: MoveResizeMode,
-    pub frames: i32,
+    pub duration: Duration,
     pub size_hints: SizeHintPolicy,
     pub bounds: BoundsPolicy,
 }
@@ -44,25 +44,25 @@ impl MoveResizeOptions {
     pub fn immediate() -> Self {
         Self {
             mode: MoveResizeMode::Immediate,
-            frames: 0,
+            duration: Duration::ZERO,
             size_hints: SizeHintPolicy::Ignore,
             bounds: BoundsPolicy::Unchanged,
         }
     }
 
-    pub fn animate_to(frames: i32) -> Self {
+    pub fn animate_to(millis: u64) -> Self {
         Self {
             mode: MoveResizeMode::AnimateTo,
-            frames,
+            duration: Duration::from_millis(millis),
             size_hints: SizeHintPolicy::Ignore,
             bounds: BoundsPolicy::Unchanged,
         }
     }
 
-    pub fn animate_from(from: Rect, frames: i32) -> Self {
+    pub fn animate_from(from: Rect, millis: u64) -> Self {
         Self {
             mode: MoveResizeMode::AnimateFrom(from),
-            frames,
+            duration: Duration::from_millis(millis),
             size_hints: SizeHintPolicy::Ignore,
             bounds: BoundsPolicy::Unchanged,
         }
@@ -135,17 +135,21 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
     })
 }
 
-fn animation_duration(ctx: &WmCtx<'_>, frames: i32) -> Duration {
+fn animation_duration(ctx: &WmCtx<'_>, duration: Duration) -> Duration {
     ctx.core()
         .config()
         .animations
-        .scale_duration(Duration::from_micros(
-            FRAME_SLEEP_MICROS * frames.max(0) as u64,
-        ))
+        .scale_duration(duration)
 }
 
-fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: Rect, frames: i32) {
-    let duration = animation_duration(ctx, frames);
+fn enqueue_window_animation(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    from: Rect,
+    to: Rect,
+    duration: Duration,
+) {
+    let duration = animation_duration(ctx, duration);
     match ctx {
         WmCtx::X11(x11) => {
             let mut wmctx = crate::contexts::WmCtx::X11(x11.reborrow());
@@ -317,7 +321,7 @@ pub(crate) fn move_resize(
 
             let animated = ctx.core().behavior().animated;
 
-            if !animated || options.frames <= 0 {
+            if !animated || options.duration.is_zero() {
                 ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 return;
             }
@@ -335,7 +339,7 @@ pub(crate) fn move_resize(
                 crate::client::sync_client_geometry(ctx.core_mut().model_mut(), win, final_rect);
             }
 
-            enqueue_window_animation(ctx, win, from, final_rect, options.frames);
+            enqueue_window_animation(ctx, win, from, final_rect, options.duration);
         }
     }
 }

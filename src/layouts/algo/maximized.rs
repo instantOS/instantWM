@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use crate::config::config_toml::LayoutConfig;
-use crate::constants::animation::DEFAULT_FRAME_COUNT;
+use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::{LayoutOutput, PresentationMode};
@@ -40,15 +40,15 @@ pub fn maximized(
             if !client.is_tiled(selected_tags) {
                 return None;
             }
-            let frames = if animated && Some(win) == selected_window {
-                DEFAULT_FRAME_COUNT
+            let duration_millis = if animated && Some(win) == selected_window {
+                DEFAULT_ANIMATION_MILLIS
             } else {
                 0
             };
             Some(LayoutOutput {
                 win,
                 rect: placement.client_rect(work_rect, client.border_width),
-                options: MoveResizeOptions::animate_to(frames),
+                options: MoveResizeOptions::animate_to(duration_millis),
             })
         })
         .collect()

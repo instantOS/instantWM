@@ -1,4 +1,4 @@
-use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
+use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -461,7 +461,7 @@ pub(crate) fn scratchpad_show_name_with_options(
         ctx.move_resize(
             found,
             slide.shown,
-            MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
+            MoveResizeOptions::animate_to(EMPHASIZED_ANIMATION_MILLIS),
         );
     } else {
         let was_hidden = reveal_scratchpad_window(ctx, found);
@@ -576,7 +576,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         ctx.move_resize(
             found,
             slide.hidden,
-            MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
+            MoveResizeOptions::animate_to(EMPHASIZED_ANIMATION_MILLIS),
         );
     }
 

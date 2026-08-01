@@ -3,7 +3,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::backend::x11::properties::set_client_state;
-use crate::constants::animation::DECORATIVE_SHOW_FRAME_COUNT;
+use crate::constants::animation::DECORATIVE_SHOW_ANIMATION_MILLIS;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Rect, WindowId};
@@ -122,7 +122,7 @@ pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     WmCtx::X11(ctx.reborrow()).move_resize(
         win,
         Rect { x, y, w, h },
-        MoveResizeOptions::animate_from(Rect { x, y: -50, w, h }, DECORATIVE_SHOW_FRAME_COUNT),
+        MoveResizeOptions::animate_from(Rect { x, y: -50, w, h }, DECORATIVE_SHOW_ANIMATION_MILLIS),
     );
 }
 

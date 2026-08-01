@@ -25,7 +25,7 @@ use crate::backend::WindowOps;
 use crate::client::mode::{
     ClientMaximizeIntentOutcome, FullscreenChange, FullscreenEntryProjection, MaximizedChange,
 };
-use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
+use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{arrange, sync_monitor_z_order};
@@ -60,7 +60,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
                 ctx.move_resize(
                     win,
                     monitor_rect,
-                    MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
+                    MoveResizeOptions::animate_to(EMPHASIZED_ANIMATION_MILLIS),
                 );
             }
             apply_true_fullscreen_backend_effects(ctx, win, monitor_rect);

@@ -2,7 +2,7 @@
 
 use crate::contexts::WmCtx;
 
-use crate::constants::animation::DEFAULT_FRAME_COUNT;
+use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};
 
@@ -145,7 +145,7 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
                 w: geo.w.max(1),
                 h: geo.h.max(1),
             },
-            DEFAULT_FRAME_COUNT,
+            DEFAULT_ANIMATION_MILLIS,
         ),
     );
 }

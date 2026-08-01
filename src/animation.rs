@@ -194,7 +194,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
         ctx.move_resize(
             win,
             target,
-            MoveResizeOptions::animate_from(start, DEFAULT_FRAME_COUNT),
+            MoveResizeOptions::animate_from(start, DEFAULT_ANIMATION_MILLIS),
         );
     }
 }

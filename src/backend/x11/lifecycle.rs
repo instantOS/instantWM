@@ -36,7 +36,7 @@ use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_motif_hints,
     update_window_type, update_wm_hints,
 };
-use crate::constants::animation::DEFAULT_FRAME_COUNT;
+use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::focus::focus;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
@@ -479,7 +479,7 @@ fn run_manage_animation(
                 w: client.geo.w,
                 h: client.geo.h,
             },
-            DEFAULT_FRAME_COUNT,
+            DEFAULT_ANIMATION_MILLIS,
         ),
     );
 
