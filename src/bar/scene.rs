@@ -491,7 +491,7 @@ fn status_content(
     }
 }
 
-fn draw_startmenu_icon_snapshot(
+fn draw_startmenu_icon(
     painter: &mut dyn BarPainter,
     scheme: &BarScheme,
     startmenu_size: i32,
@@ -533,7 +533,7 @@ fn draw_startmenu_icon_snapshot(
     );
 }
 
-fn draw_shutdown_button_snapshot(
+fn draw_shutdown_button(
     painter: &mut dyn BarPainter,
     scheme: &BarScheme,
     x: i32,
@@ -555,7 +555,7 @@ fn draw_shutdown_button_snapshot(
     x + bar_height
 }
 
-fn draw_close_button_snapshot(
+fn draw_close_button(
     painter: &mut dyn BarPainter,
     scheme: &BarScheme,
     is_hover: bool,
@@ -650,7 +650,7 @@ fn draw_shutdown_section(
     hit: &mut crate::bar::MonitorHitCache,
 ) -> i32 {
     if snapshot.show_shutdown {
-        x = draw_shutdown_button_snapshot(painter, &snapshot.status_scheme, x, bar_height);
+        x = draw_shutdown_button(painter, &snapshot.status_scheme, x, bar_height);
     }
     hit.shutdown_end = x;
     x
@@ -743,7 +743,7 @@ fn draw_titles_section(
         if let Some(close_scheme) = &title.close_scheme
             && this_width >= 32
         {
-            draw_close_button_snapshot(
+            draw_close_button(
                 painter,
                 close_scheme,
                 snapshot.gesture == Gesture::CloseButton,
@@ -800,7 +800,7 @@ pub(crate) fn render_monitor_snapshot(
 
     let mut hit = crate::bar::MonitorHitCache::default();
 
-    draw_startmenu_icon_snapshot(
+    draw_startmenu_icon(
         painter,
         &snapshot.status_scheme,
         snapshot.startmenu_size,
