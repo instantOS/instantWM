@@ -10,8 +10,8 @@ pub(crate) use command::{
     is_i3status_rs_available, reload_status_command, spawn_default_status, spawn_status_command,
 };
 pub(crate) use model::{
-    I3Align, I3BarHeader, I3Block, I3ClickEvent, I3MinWidth, I3StatusLine, ParsedStatus,
-    StatusClickTarget, StatusItem, TEXT_PADDING,
+    I3Align, I3BarHeader, I3BarSignals, I3Block, I3ClickEvent, I3MinWidth, I3StatusLine,
+    ParsedStatus, StatusClickTarget, StatusItem, TEXT_PADDING,
 };
 pub(crate) use parse::{parse_i3bar_header, parse_status, parse_status_fallback};
 pub(crate) use render::{
@@ -19,9 +19,12 @@ pub(crate) use render::{
     draw_status_items, emit_i3bar_status_click, hit_test_i3_click_target,
 };
 pub(crate) use runtime::{
-    apply_status_update, drain_internal_status_updates, flush_i3bar_click_events,
-    set_internal_status_ping,
+    apply_status_update, drain_internal_status_updates, set_internal_status_ping,
 };
+
+pub(crate) fn sync_visibility(wm: &crate::wm::Wm) {
+    command::sync_visibility(wm);
+}
 
 #[cfg(test)]
 mod tests {
@@ -71,6 +74,62 @@ mod tests {
             parse_i3bar_header(r#"{"version":1,"click_events":true,"stop_signal":19}"#).unwrap();
 
         assert!(header.click_events);
+        assert_eq!(
+            header.suspension,
+            Some(super::I3BarSignals {
+                stop: 19,
+                resume: libc::SIGCONT,
+            })
+        );
+    }
+
+    #[test]
+    fn i3bar_header_uses_default_suspension_signals() {
+        let header = parse_i3bar_header(r#"{"version":1}"#).unwrap();
+
+        assert_eq!(
+            header.suspension,
+            Some(super::I3BarSignals {
+                stop: libc::SIGSTOP,
+                resume: libc::SIGCONT,
+            })
+        );
+    }
+
+    #[test]
+    fn i3bar_header_can_disable_suspension() {
+        let header =
+            parse_i3bar_header(r#"{"version":1,"stop_signal":0,"cont_signal":12}"#).unwrap();
+
+        assert_eq!(header.suspension, None);
+    }
+
+    #[test]
+    fn i3bar_header_accepts_custom_suspension_signals() {
+        let header =
+            parse_i3bar_header(r#"{"version":1,"stop_signal":10,"cont_signal":12}"#).unwrap();
+
+        assert_eq!(
+            header.suspension,
+            Some(super::I3BarSignals {
+                stop: 10,
+                resume: 12,
+            })
+        );
+    }
+
+    #[test]
+    fn i3bar_header_falls_back_from_invalid_signal_values() {
+        let header =
+            parse_i3bar_header(r#"{"version":1,"stop_signal":-1,"cont_signal":0}"#).unwrap();
+
+        assert_eq!(
+            header.suspension,
+            Some(super::I3BarSignals {
+                stop: libc::SIGSTOP,
+                resume: libc::SIGCONT,
+            })
+        );
     }
 
     #[test]

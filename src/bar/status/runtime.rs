@@ -1,13 +1,7 @@
 use super::I3ClickEvent;
 use std::io;
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
-
-#[derive(Debug)]
-struct I3ClickRuntime {
-    sender: Sender<I3ClickEvent>,
-    receiver: Mutex<Receiver<I3ClickEvent>>,
-}
 
 #[derive(Debug)]
 struct InternalStatusRuntime {
@@ -18,22 +12,12 @@ struct InternalStatusRuntime {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StatusUpdate {
+    source_id: u64,
     text: String,
     click_events: bool,
 }
 
-static I3BAR_CLICK_RUNTIME: OnceLock<I3ClickRuntime> = OnceLock::new();
 static INTERNAL_STATUS_RUNTIME: OnceLock<InternalStatusRuntime> = OnceLock::new();
-
-fn i3bar_click_runtime() -> &'static I3ClickRuntime {
-    I3BAR_CLICK_RUNTIME.get_or_init(|| {
-        let (sender, receiver) = mpsc::channel();
-        I3ClickRuntime {
-            sender,
-            receiver: Mutex::new(receiver),
-        }
-    })
-}
 
 fn internal_status_runtime() -> &'static InternalStatusRuntime {
     INTERNAL_STATUS_RUNTIME.get_or_init(|| {
@@ -53,9 +37,10 @@ pub(crate) fn set_internal_status_ping(ping: calloop::ping::Ping) {
     }
 }
 
-pub(super) fn send_status_update(text: &str, click_events: bool) {
+pub(super) fn send_status_update(source_id: u64, text: &str, click_events: bool) {
     let runtime = internal_status_runtime();
     let _ = runtime.sender.send(StatusUpdate {
+        source_id,
         text: text.to_string(),
         click_events,
     });
@@ -74,6 +59,7 @@ pub(crate) fn apply_status_update(wm: &mut crate::wm::Wm, text: String) {
     apply_status_update_with_capabilities(
         wm,
         StatusUpdate {
+            source_id: 0,
             text,
             click_events: false,
         },
@@ -107,10 +93,7 @@ pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
         return false;
     };
 
-    let mut latest = None;
-    while let Ok(update) = receiver.try_recv() {
-        latest = Some(update);
-    }
+    let latest = latest_status_update(&receiver, super::command::active_source_id());
 
     let Some(update) = latest else {
         return false;
@@ -120,16 +103,21 @@ pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
     true
 }
 
-pub(super) fn enqueue_i3bar_click_event(event: I3ClickEvent) {
-    let _ = i3bar_click_runtime().sender.send(event);
+fn latest_status_update(
+    receiver: &Receiver<StatusUpdate>,
+    active_source_id: Option<u64>,
+) -> Option<StatusUpdate> {
+    let mut latest = None;
+    while let Ok(update) = receiver.try_recv() {
+        if Some(update.source_id) == active_source_id {
+            latest = Some(update);
+        }
+    }
+    latest
 }
 
-fn try_recv_i3bar_click_event() -> Option<I3ClickEvent> {
-    let receiver = i3bar_click_runtime().receiver.lock().ok()?;
-    match receiver.try_recv() {
-        Ok(event) => Some(event),
-        Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
-    }
+pub(super) fn enqueue_i3bar_click_event(event: I3ClickEvent) {
+    super::command::enqueue_i3bar_click_event(event);
 }
 
 pub(crate) fn write_i3bar_click_event<W: io::Write>(
@@ -146,16 +134,6 @@ pub(crate) fn write_i3bar_click_event<W: io::Write>(
 
     serde_json::to_writer(&mut writer, event).map_err(io::Error::other)?;
     writer.write_all(b"\n")
-}
-
-pub(crate) fn flush_i3bar_click_events<W: io::Write>(
-    writer: &mut W,
-    first_event: &mut bool,
-) -> io::Result<()> {
-    while let Some(event) = try_recv_i3bar_click_event() {
-        write_i3bar_click_event(&mut *writer, &event, first_event)?;
-    }
-    writer.flush()
 }
 
 #[cfg(test)]
@@ -211,6 +189,7 @@ mod tests {
         assert!(update_bar_status(
             &mut bar,
             StatusUpdate {
+                source_id: 0,
                 text: text.clone(),
                 click_events: true,
             },
@@ -221,11 +200,42 @@ mod tests {
         assert!(update_bar_status(
             &mut bar,
             StatusUpdate {
+                source_id: 0,
                 text,
                 click_events: false,
             },
         ));
         assert!(!bar.runtime.status_click_events);
         assert_ne!(bar.update_seq(), first_seq);
+    }
+
+    #[test]
+    fn stale_source_updates_cannot_replace_the_active_source() {
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(StatusUpdate {
+                source_id: 1,
+                text: "old-before".to_string(),
+                click_events: false,
+            })
+            .unwrap();
+        sender
+            .send(StatusUpdate {
+                source_id: 2,
+                text: "current".to_string(),
+                click_events: true,
+            })
+            .unwrap();
+        sender
+            .send(StatusUpdate {
+                source_id: 1,
+                text: "old-after".to_string(),
+                click_events: false,
+            })
+            .unwrap();
+
+        let latest = latest_status_update(&receiver, Some(2)).unwrap();
+        assert_eq!(latest.text, "current");
+        assert!(latest.click_events);
     }
 }

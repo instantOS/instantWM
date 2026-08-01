@@ -50,6 +50,13 @@ pub(crate) struct I3StatusLine {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct I3BarHeader {
     pub click_events: bool,
+    pub suspension: Option<I3BarSignals>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct I3BarSignals {
+    pub stop: i32,
+    pub resume: i32,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

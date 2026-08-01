@@ -38,8 +38,8 @@ use crate::backend::x11::{
 };
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::focus::focus;
+use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::layouts::arrange;
 use crate::types::{Client, ClientPlacement, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;

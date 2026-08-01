@@ -47,6 +47,7 @@ pub fn event_loop_tick_with_options(
     let status_handled = crate::bar::status::drain_internal_status_updates(wm);
     let ipc_handled = process_ipc_commands(ipc_server, wm);
     let work = process_pending_work(wm, options);
+    crate::bar::status::sync_visibility(wm);
 
     draw_x11_bars_if_dirty(wm);
     TickResult {
@@ -148,6 +149,7 @@ pub fn init_keyboard_layout(wm: &mut Wm) {
 /// `i3status-rs`, or the built-in default (in that order of
 /// precedence).
 pub fn spawn_status_bar(wm: &Wm) {
+    crate::bar::status::sync_visibility(wm);
     if let Some(ref cmd) = wm.core.config.status_command {
         crate::bar::status::spawn_status_command(cmd);
     } else if crate::bar::status::is_i3status_rs_available() {

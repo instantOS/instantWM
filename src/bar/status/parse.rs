@@ -1,5 +1,7 @@
 use super::model::{DEFAULT_SEPARATOR_BLOCK_WIDTH, RawI3Block};
-use super::{I3Align, I3BarHeader, I3Block, I3MinWidth, I3StatusLine, ParsedStatus, StatusItem};
+use super::{
+    I3Align, I3BarHeader, I3BarSignals, I3Block, I3MinWidth, I3StatusLine, ParsedStatus, StatusItem,
+};
 use crate::types::Insets;
 use serde_json::Value;
 
@@ -103,10 +105,25 @@ pub(crate) fn parse_i3bar_header(line: &str) -> Option<I3BarHeader> {
         return None;
     }
 
+    let stop_signal = protocol_signal(obj.get("stop_signal"), libc::SIGSTOP, true);
+    let suspension = (stop_signal != 0).then(|| I3BarSignals {
+        stop: stop_signal,
+        resume: protocol_signal(obj.get("cont_signal"), libc::SIGCONT, false),
+    });
+
     Some(I3BarHeader {
         click_events: obj
             .get("click_events")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        suspension,
     })
+}
+
+fn protocol_signal(value: Option<&Value>, default: i32, allow_zero: bool) -> i32 {
+    value
+        .and_then(Value::as_i64)
+        .and_then(|signal| i32::try_from(signal).ok())
+        .filter(|&signal| signal > 0 || allow_zero && signal == 0)
+        .unwrap_or(default)
 }
