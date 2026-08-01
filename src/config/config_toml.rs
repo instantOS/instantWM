@@ -103,15 +103,16 @@ impl Default for ThemeConfig {
 
 /// Validated animation speed multiplier.
 ///
-/// `1.0` is the designed speed, `0.5` doubles durations, and `2.0` halves
-/// them. Keeping the invariant in this type means animation code never has to
-/// handle zero, non-finite, or absurd duration divisors.
+/// `1.0` is the neutral/default speed, `0.5` doubles durations, and `2.0`
+/// halves them. Keeping the invariant in this type means animation code never
+/// has to handle zero, non-finite, or absurd duration divisors.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AnimationSpeed(f64);
 
 impl AnimationSpeed {
     pub const MIN: f64 = 0.01;
     pub const MAX: f64 = 100.0;
+    pub const DEFAULT: f64 = 1.0;
 
     pub const fn get(self) -> f64 {
         self.0
@@ -127,7 +128,7 @@ impl AnimationSpeed {
 
 impl Default for AnimationSpeed {
     fn default() -> Self {
-        Self(1.0)
+        Self(Self::DEFAULT)
     }
 }
 
@@ -709,13 +710,16 @@ mod theme_tests {
     }
 
     #[test]
-    fn animation_speed_has_intuitive_multiplier_semantics() {
-        let normal = parse("").animations;
+    fn animation_speed_defaults_to_the_neutral_multiplier() {
+        let default = parse("").animations;
+        let neutral = parse("[animations]\nspeed = 1.0").animations;
         let slow = parse("[animations]\nspeed = 0.25").animations;
         let fast = parse("[animations]\nspeed = 2.0").animations;
         let base = std::time::Duration::from_millis(100);
 
-        assert_eq!(normal.scale_duration(base), base);
+        assert_eq!(default.speed.get(), AnimationSpeed::DEFAULT);
+        assert_eq!(default.scale_duration(base), base);
+        assert_eq!(neutral.scale_duration(base), base);
         assert_eq!(
             slow.scale_duration(base),
             std::time::Duration::from_millis(400)

@@ -11,6 +11,10 @@ use std::thread;
 use std::time::Duration;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const DEFAULT_SUSPENSION_SIGNALS: I3BarSignals = I3BarSignals {
+    stop: libc::SIGSTOP,
+    resume: libc::SIGCONT,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StatusSourceKind {
@@ -30,10 +34,18 @@ impl RunningStatusSource {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum SuspensionPolicy {
+    #[default]
+    Undecided,
+    Disabled,
+    Signals(I3BarSignals),
+}
+
 #[derive(Debug, Default)]
 struct StatusProcessState {
     pid: Option<i32>,
-    signals: Option<I3BarSignals>,
+    suspension: SuspensionPolicy,
     visible: bool,
     suspended: bool,
     click_sender: Option<Sender<I3ClickEvent>>,
@@ -88,8 +100,20 @@ impl StatusProcess {
         if self.is_stopped() {
             return false;
         }
-        state.signals = header.suspension;
+        state.suspension = header
+            .suspension
+            .map_or(SuspensionPolicy::Disabled, SuspensionPolicy::Signals);
         state.click_sender = click_sender;
+        reconcile_suspension(&mut state);
+        true
+    }
+
+    fn configure_plain_text(&self) -> bool {
+        let mut state = self.state();
+        if self.is_stopped() {
+            return false;
+        }
+        state.suspension = SuspensionPolicy::Signals(DEFAULT_SUSPENSION_SIGNALS);
         reconcile_suspension(&mut state);
         true
     }
@@ -128,7 +152,7 @@ impl StatusProcess {
         let mut state = self.state();
         if state.pid == Some(pid) {
             state.pid = None;
-            state.signals = None;
+            state.suspension = SuspensionPolicy::Undecided;
             state.suspended = false;
             state.click_sender = None;
         }
@@ -137,7 +161,9 @@ impl StatusProcess {
 
 fn pending_suspension_signal(state: &StatusProcessState) -> Option<(i32, bool)> {
     state.pid?;
-    let signals = state.signals?;
+    let SuspensionPolicy::Signals(signals) = state.suspension else {
+        return None;
+    };
     match (state.visible, state.suspended) {
         (false, false) => Some((signals.stop, true)),
         (true, true) => Some((signals.resume, false)),
@@ -153,7 +179,10 @@ fn reconcile_suspension(state: &mut StatusProcessState) {
         return;
     };
 
-    let target = signal_target(pid, state.signals);
+    let SuspensionPolicy::Signals(signals) = state.suspension else {
+        return;
+    };
+    let target = signal_target(pid, signals);
     if unsafe { libc::kill(target, signal) } == 0 {
         state.suspended = suspended;
         return;
@@ -169,17 +198,12 @@ fn reconcile_suspension(state: &mut StatusProcessState) {
     }
 }
 
-fn signal_target(pid: i32, signals: Option<I3BarSignals>) -> i32 {
+fn signal_target(pid: i32, signals: I3BarSignals) -> i32 {
     // SIGSTOP/SIGCONT are safe to broadcast to the isolated command group and
     // must reach subprocesses doing the actual work behind `sh -c`. Custom
     // signals retain i3bar's single-process semantics because helpers may not
     // share the status program's custom signal handlers.
-    if signals
-        == Some(I3BarSignals {
-            stop: libc::SIGSTOP,
-            resume: libc::SIGCONT,
-        })
-    {
+    if signals == DEFAULT_SUSPENSION_SIGNALS {
         -pid
     } else {
         pid
@@ -346,8 +370,14 @@ pub(crate) fn spawn_status_command(cmd: &str) {
         let stdout = child.stdout.take();
         let mut child_stdin = child.stdin.take();
 
-        let mut i3bar_mode = false;
-        let mut click_events = false;
+        #[derive(Clone, Copy)]
+        enum CommandProtocol {
+            Undecided,
+            PlainText,
+            I3Bar { click_events: bool },
+        }
+
+        let mut protocol = CommandProtocol::Undecided;
 
         if let Some(stdout) = stdout {
             let reader = BufReader::new(stdout);
@@ -361,32 +391,46 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                 };
 
                 let text = line.trim();
-                if text.is_empty() || text == "[" {
+                if text.is_empty() {
                     continue;
                 }
 
-                if !i3bar_mode && let Some(header) = parse_i3bar_header(text) {
-                    i3bar_mode = true;
-                    click_events = header.click_events;
-                    let click_channel = header.click_events.then(mpsc::channel::<I3ClickEvent>);
-                    let click_sender = click_channel.as_ref().map(|(sender, _)| sender.clone());
-                    if process.configure_i3bar(&header, click_sender)
-                        && let (Some(mut stdin), Some((_, receiver))) =
-                            (child_stdin.take(), click_channel)
-                    {
-                        thread::spawn(move || write_click_events(&mut stdin, receiver));
+                if matches!(protocol, CommandProtocol::Undecided) {
+                    if let Some(header) = parse_i3bar_header(text) {
+                        protocol = CommandProtocol::I3Bar {
+                            click_events: header.click_events,
+                        };
+                        let click_channel = header.click_events.then(mpsc::channel::<I3ClickEvent>);
+                        let click_sender = click_channel.as_ref().map(|(sender, _)| sender.clone());
+                        if process.configure_i3bar(&header, click_sender)
+                            && let (Some(mut stdin), Some((_, receiver))) =
+                                (child_stdin.take(), click_channel)
+                        {
+                            thread::spawn(move || write_click_events(&mut stdin, receiver));
+                        }
+                        continue;
                     }
-                    continue;
+
+                    protocol = CommandProtocol::PlainText;
+                    if !process.configure_plain_text() {
+                        break;
+                    }
                 }
 
-                if i3bar_mode {
-                    if parse_i3bar_json(text.as_bytes()).is_some() {
+                match protocol {
+                    CommandProtocol::I3Bar { .. } if text == "[" => {}
+                    CommandProtocol::I3Bar { click_events }
+                        if parse_i3bar_json(text.as_bytes()).is_some() =>
+                    {
                         super::runtime::send_status_update(process.id, text, click_events);
-                    } else {
+                    }
+                    CommandProtocol::I3Bar { .. } => {
                         log::debug!("dropping malformed i3bar status frame: {text}");
                     }
-                } else {
-                    super::runtime::send_status_update(process.id, text, false);
+                    CommandProtocol::PlainText => {
+                        super::runtime::send_status_update(process.id, text, false);
+                    }
+                    CommandProtocol::Undecided => unreachable!("protocol was classified above"),
                 }
             }
         }
@@ -482,7 +526,7 @@ mod tests {
     fn suspension_transition_only_occurs_when_state_changes() {
         let mut state = StatusProcessState {
             pid: Some(42),
-            signals: Some(signals()),
+            suspension: SuspensionPolicy::Signals(signals()),
             visible: false,
             ..StatusProcessState::default()
         };
@@ -504,29 +548,57 @@ mod tests {
     }
 
     #[test]
-    fn suspension_requires_a_live_pid_and_protocol_support() {
+    fn suspension_requires_a_live_pid_and_completed_protocol_negotiation() {
         let mut state = StatusProcessState {
             visible: false,
-            signals: Some(signals()),
+            suspension: SuspensionPolicy::Signals(signals()),
             ..StatusProcessState::default()
         };
         assert_eq!(pending_suspension_signal(&state), None);
 
         state.pid = Some(42);
-        state.signals = None;
+        state.suspension = SuspensionPolicy::Undecided;
+        assert_eq!(pending_suspension_signal(&state), None);
+        state.suspension = SuspensionPolicy::Disabled;
+        assert_eq!(pending_suspension_signal(&state), None);
+    }
+
+    #[test]
+    fn plain_text_enables_defaults_only_after_the_first_line_classifies_it() {
+        let process = StatusProcess::new(1, false);
+        assert_eq!(process.state().suspension, SuspensionPolicy::Undecided);
+
+        assert!(process.configure_plain_text());
+        assert_eq!(
+            process.state().suspension,
+            SuspensionPolicy::Signals(DEFAULT_SUSPENSION_SIGNALS)
+        );
+    }
+
+    #[test]
+    fn i3bar_opt_out_remains_active_when_the_bar_starts_hidden() {
+        let process = StatusProcess::new(1, false);
+        let header = I3BarHeader {
+            click_events: false,
+            suspension: None,
+        };
+
+        assert!(process.configure_i3bar(&header, None));
+        let state = process.state();
+        assert_eq!(state.suspension, SuspensionPolicy::Disabled);
         assert_eq!(pending_suspension_signal(&state), None);
     }
 
     #[test]
     fn default_suspension_targets_the_status_process_group() {
-        assert_eq!(signal_target(42, Some(signals())), -42);
+        assert_eq!(signal_target(42, signals()), -42);
         assert_eq!(
             signal_target(
                 42,
-                Some(I3BarSignals {
+                I3BarSignals {
                     stop: libc::SIGUSR1,
                     resume: libc::SIGUSR2,
-                })
+                }
             ),
             42
         );

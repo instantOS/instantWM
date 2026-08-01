@@ -136,10 +136,7 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
 }
 
 fn animation_duration(ctx: &WmCtx<'_>, duration: Duration) -> Duration {
-    ctx.core()
-        .config()
-        .animations
-        .scale_duration(duration)
+    ctx.core().config().animations.scale_duration(duration)
 }
 
 fn enqueue_window_animation(

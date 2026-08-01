@@ -5,16 +5,30 @@ use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug)]
 struct InternalStatusRuntime {
-    sender: Sender<StatusUpdate>,
-    receiver: Mutex<Receiver<StatusUpdate>>,
+    sender: Sender<CommandStatusUpdate>,
+    receiver: Mutex<Receiver<CommandStatusUpdate>>,
     ping: Mutex<Option<calloop::ping::Ping>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StatusUpdate {
-    source_id: u64,
     text: String,
     click_events: bool,
+}
+
+impl StatusUpdate {
+    fn plain(text: String) -> Self {
+        Self {
+            text,
+            click_events: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CommandStatusUpdate {
+    source_id: u64,
+    update: StatusUpdate,
 }
 
 static INTERNAL_STATUS_RUNTIME: OnceLock<InternalStatusRuntime> = OnceLock::new();
@@ -39,10 +53,12 @@ pub(crate) fn set_internal_status_ping(ping: calloop::ping::Ping) {
 
 pub(super) fn send_status_update(source_id: u64, text: &str, click_events: bool) {
     let runtime = internal_status_runtime();
-    let _ = runtime.sender.send(StatusUpdate {
+    let _ = runtime.sender.send(CommandStatusUpdate {
         source_id,
-        text: text.to_string(),
-        click_events,
+        update: StatusUpdate {
+            text: text.to_string(),
+            click_events,
+        },
     });
     if let Ok(guard) = runtime.ping.lock()
         && let Some(ping) = guard.as_ref()
@@ -56,14 +72,7 @@ fn stop_default_source() {
 }
 
 pub(crate) fn apply_status_update(wm: &mut crate::wm::Wm, text: String) {
-    apply_status_update_with_capabilities(
-        wm,
-        StatusUpdate {
-            source_id: 0,
-            text,
-            click_events: false,
-        },
-    );
+    apply_status_update_with_capabilities(wm, StatusUpdate::plain(text));
 }
 
 fn apply_status_update_with_capabilities(wm: &mut crate::wm::Wm, update: StatusUpdate) {
@@ -99,14 +108,14 @@ pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
         return false;
     };
 
-    apply_status_update_with_capabilities(wm, update);
+    apply_status_update_with_capabilities(wm, update.update);
     true
 }
 
 fn latest_status_update(
-    receiver: &Receiver<StatusUpdate>,
+    receiver: &Receiver<CommandStatusUpdate>,
     active_source_id: Option<u64>,
-) -> Option<StatusUpdate> {
+) -> Option<CommandStatusUpdate> {
     let mut latest = None;
     while let Ok(update) = receiver.try_recv() {
         if Some(update.source_id) == active_source_id {
@@ -189,7 +198,6 @@ mod tests {
         assert!(update_bar_status(
             &mut bar,
             StatusUpdate {
-                source_id: 0,
                 text: text.clone(),
                 click_events: true,
             },
@@ -200,7 +208,6 @@ mod tests {
         assert!(update_bar_status(
             &mut bar,
             StatusUpdate {
-                source_id: 0,
                 text,
                 click_events: false,
             },
@@ -213,29 +220,29 @@ mod tests {
     fn stale_source_updates_cannot_replace_the_active_source() {
         let (sender, receiver) = mpsc::channel();
         sender
-            .send(StatusUpdate {
+            .send(CommandStatusUpdate {
                 source_id: 1,
-                text: "old-before".to_string(),
-                click_events: false,
+                update: StatusUpdate::plain("old-before".to_string()),
             })
             .unwrap();
         sender
-            .send(StatusUpdate {
+            .send(CommandStatusUpdate {
                 source_id: 2,
-                text: "current".to_string(),
-                click_events: true,
+                update: StatusUpdate {
+                    text: "current".to_string(),
+                    click_events: true,
+                },
             })
             .unwrap();
         sender
-            .send(StatusUpdate {
+            .send(CommandStatusUpdate {
                 source_id: 1,
-                text: "old-after".to_string(),
-                click_events: false,
+                update: StatusUpdate::plain("old-after".to_string()),
             })
             .unwrap();
 
         let latest = latest_status_update(&receiver, Some(2)).unwrap();
-        assert_eq!(latest.text, "current");
-        assert!(latest.click_events);
+        assert_eq!(latest.update.text, "current");
+        assert!(latest.update.click_events);
     }
 }
