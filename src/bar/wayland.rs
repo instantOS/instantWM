@@ -227,18 +227,12 @@ pub fn render_bar_buffers(
     let snapshots =
         scene::build_monitor_snapshots(core, Some(status_notifier_tray), tray_menu, false, 0);
     // Cache the systray width so status bar layout can account for it.
-    core.bar.runtime.systray_width = if core.config().systray.show {
-        crate::systray::layout(
-            status_notifier_tray,
-            None,
-            core.model().expect_selected_monitor().work_rect().w,
-            core.model().expect_selected_monitor().bar_height,
-            core.config().systray.spacing,
-        )
-        .total_width
-    } else {
-        0
-    };
+    core.bar.runtime.systray_width = snapshots
+        .iter()
+        .find(|snapshot| snapshot.is_selected_monitor)
+        .and_then(|snapshot| snapshot.systray.as_ref())
+        .map(|systray| systray.layout.total_width)
+        .unwrap_or(0);
     let _ = scale;
 
     let key = hash::render_key(

@@ -60,8 +60,8 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
 
     snapshot.systray.is_some().hash(hasher);
     if let Some(systray) = &snapshot.systray {
-        systray.visual_padding.hash(hasher);
         hash_scheme(hasher, &systray.base_scheme);
+        hash_tray_layout(hasher, &systray.layout);
         systray.items.items.len().hash(hasher);
         for item in &systray.items.items {
             item.service.hash(hasher);
@@ -70,6 +70,29 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
             item.icon_size.h.hash(hasher);
             hash_arc_identity(hasher, &item.icon_rgba);
         }
+    }
+}
+
+fn hash_tray_layout(hasher: &mut DefaultHasher, layout: &crate::systray::TrayLayout) {
+    layout.start_x.hash(hasher);
+    layout.total_width.hash(hasher);
+    layout.cells.len().hash(hasher);
+    for cell in &layout.cells {
+        cell.idx.hash(hasher);
+        cell.hit_start.hash(hasher);
+        cell.hit_end.hash(hasher);
+        cell.icon.x.hash(hasher);
+        cell.icon.y.hash(hasher);
+        cell.icon.w.hash(hasher);
+        cell.icon.h.hash(hasher);
+    }
+    layout.menu.start_x.hash(hasher);
+    layout.menu.width.hash(hasher);
+    layout.menu.cells.len().hash(hasher);
+    for slot in &layout.menu.cells {
+        slot.idx.hash(hasher);
+        slot.start.hash(hasher);
+        slot.end.hash(hasher);
     }
 }
 

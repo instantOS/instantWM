@@ -134,11 +134,7 @@ pub fn ungrab(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
 
 fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     if ctx.core.bar.needs_redraw() {
-        crate::backend::x11::bar::draw_bars(
-            &mut ctx.core,
-            ctx.x11_runtime,
-            ctx.xembed_tray.as_ref(),
-        );
+        crate::backend::x11::bar::draw_bars(&mut ctx.core, ctx.x11_runtime);
     }
 }
 

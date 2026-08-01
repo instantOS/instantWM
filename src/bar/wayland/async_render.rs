@@ -171,16 +171,12 @@ fn render_snapshot(
         painter.begin(Scale::from(1.0), mon.rect);
         let output = scene::render_monitor_snapshot(&mon, painter);
         let bar_height = mon.rect.h;
-        let tray_layout = mon.systray.as_ref().map(|s| {
-            let menu = mon.presentation.tray_menu().map(|menu| &menu.view);
-            crate::systray::layout(&s.items, menu, mon.rect.w, bar_height, s.visual_padding)
-        });
-        if let (Some(systray), Some(layout)) = (&mon.systray, &tray_layout) {
+        if let Some(systray) = &mon.systray {
             systray::draw_snapshot(
                 painter,
                 systray,
                 mon.presentation.tray_menu(),
-                layout,
+                &systray.layout,
                 bar_height,
             );
         }

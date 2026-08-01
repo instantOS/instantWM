@@ -110,10 +110,10 @@ fn layout_xembed_icons(
 }
 
 pub fn get_systray_width(
-    globals: &crate::core_state::CoreState,
+    config: &crate::core_state::RuntimeConfig,
     systray: Option<&XEmbedTray>,
 ) -> u32 {
-    if !globals.config.systray.show {
+    if !config.systray.show {
         return 0;
     }
 
@@ -124,8 +124,8 @@ pub fn get_systray_width(
                 .filter(|icon| icon.mapped)
                 .map(|icon| icon.size.w)
         }),
-        globals.config.derived.bar_height,
-        globals.config.systray.spacing,
+        config.derived.bar_height,
+        config.systray.spacing,
     )
     .width
 }

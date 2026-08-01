@@ -158,8 +158,8 @@ pub(crate) struct TitleCellSnapshot {
 #[derive(Clone)]
 pub(crate) struct SystraySnapshot {
     pub items: crate::systray::StatusNotifierTray,
-    pub visual_padding: i32,
     pub base_scheme: BarScheme,
+    pub layout: crate::systray::TrayLayout,
 }
 
 #[derive(Clone)]
@@ -425,8 +425,14 @@ pub(crate) fn build_monitor_snapshots(
         let systray = if show_systray && is_selected_monitor {
             status_notifier_tray.map(|items| SystraySnapshot {
                 items: items.clone(),
-                visual_padding: systray_spacing,
                 base_scheme: status_scheme(&core.config().colors.status_bar),
+                layout: crate::systray::layout(
+                    items,
+                    tray_menu.map(|menu| &menu.view),
+                    mon.work_rect().w,
+                    mon.bar_height,
+                    systray_spacing,
+                ),
             })
         } else {
             None
@@ -762,12 +768,9 @@ fn draw_titles_section(
     activeoffset
 }
 
-fn record_systray_hits(
-    snapshot: &MonitorBarSnapshot,
-    tray_layout: &Option<crate::systray::TrayLayout>,
-    hit: &mut crate::bar::MonitorHitCache,
-) {
-    if let (Some(_systray), Some(layout)) = (&snapshot.systray, tray_layout) {
+fn record_systray_hits(snapshot: &MonitorBarSnapshot, hit: &mut crate::bar::MonitorHitCache) {
+    if let Some(systray) = &snapshot.systray {
+        let layout = &systray.layout;
         hit.systray_slots = layout
             .cells
             .iter()
@@ -792,18 +795,13 @@ pub(crate) fn render_monitor_snapshot(
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
     let bar_height = snapshot.rect.h;
-    let tray_layout = snapshot.systray.as_ref().map(|s| {
-        let menu = snapshot.presentation.tray_menu().map(|menu| &menu.view);
-        crate::systray::layout(
-            &s.items,
-            menu,
-            snapshot.rect.w,
-            bar_height,
-            s.visual_padding,
-        )
-    });
     let systray_width = if snapshot.is_selected_monitor {
-        tray_layout.as_ref().map(|l| l.total_width).unwrap_or(0) + snapshot.external_right_width
+        snapshot
+            .systray
+            .as_ref()
+            .map(|s| s.layout.total_width)
+            .unwrap_or(0)
+            + snapshot.external_right_width
     } else {
         0
     };
@@ -834,7 +832,7 @@ pub(crate) fn render_monitor_snapshot(
     let title_width = (title_end_x - x).max(0);
 
     let activeoffset = draw_titles_section(painter, snapshot, x, title_width, bar_height, &mut hit);
-    record_systray_hits(snapshot, &tray_layout, &mut hit);
+    record_systray_hits(snapshot, &mut hit);
 
     MonitorRenderOutput {
         hit_cache: hit,

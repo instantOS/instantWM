@@ -16,15 +16,10 @@ pub fn update_status(
     let selmon_idx = core.model().selected_monitor_id();
 
     crate::backend::x11::systray::update_systray(core, x11, x11_runtime, systray);
-    draw_bar(core, x11_runtime, systray.as_ref(), selmon_idx);
+    draw_bar(core, x11_runtime, selmon_idx);
 }
 
-pub fn draw_bar(
-    core: &mut CoreCtx,
-    x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&XEmbedTray>,
-    mon_idx: MonitorId,
-) {
+pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx: MonitorId) {
     let Some(monitor) = core.model().monitor(mon_idx).cloned() else {
         return;
     };
@@ -36,11 +31,6 @@ pub fn draw_bar(
     let bar_height = core.config().derived.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
-    }
-
-    if core.config().systray.show {
-        core.bar.runtime.systray_width =
-            crate::backend::x11::systray::get_systray_width(core.state(), systray) as i32;
     }
 
     let drw = {
@@ -73,17 +63,8 @@ pub fn draw_bar(
     painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
 }
 
-pub fn draw_bars(
-    core: &mut CoreCtx,
-    x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&XEmbedTray>,
-) {
+pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
-    core.bar.runtime.systray_width = if core.config().systray.show {
-        crate::backend::x11::systray::get_systray_width(core.state(), systray) as i32
-    } else {
-        0
-    };
     let snapshots = crate::bar::scene::build_monitor_snapshots(
         core,
         None,
@@ -153,7 +134,8 @@ pub fn resize_bar_win(
     let mut w = m.work_rect().w as u32;
     if showsystray && is_selmon {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
-            globals, systray,
+            &globals.config,
+            systray,
         ));
     }
 
@@ -188,7 +170,7 @@ pub fn update_bars(
         if showsystray {
             systray_widths.insert(
                 selected_monitor_id,
-                crate::backend::x11::systray::get_systray_width(globals, systray),
+                crate::backend::x11::systray::get_systray_width(&globals.config, systray),
             );
         }
 
