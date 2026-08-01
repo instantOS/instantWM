@@ -45,7 +45,10 @@ impl ClientBarStats {
 ///
 /// The remainder of `total / n` is distributed one pixel at a time over the
 /// leading cells, keeping every boundary on whole pixels. Returns an empty
-/// iterator when `n` is not positive.
+/// `Vec` when `n` is not positive.
+///
+/// `total` must be non-negative; with a negative `total` the truncated
+/// division leaves the cells no longer summing back to it.
 pub(crate) fn distribute_cells(total: i32, n: i32) -> Vec<i32> {
     if n <= 0 {
         return Vec::new();
@@ -253,5 +256,33 @@ mod tests {
             BarPosition::SystrayMenuItem(2),
             "an already-open overlay remains authoritative while configuration changes"
         );
+    }
+
+    #[test]
+    fn distribute_cells_sums_back_to_total_with_one_pixel_spread() {
+        // The leading cells absorb the remainder, so every cell is within
+        // one pixel of the others and they sum back to `total`.
+        for (total, n) in [(10, 3), (100, 7), (7, 7), (1, 4), (256, 1)] {
+            let cells = distribute_cells(total, n);
+            assert_eq!(cells.len(), n as usize, "n = {n}");
+            assert_eq!(cells.iter().sum::<i32>(), total, "total = {total}, n = {n}");
+            assert!(
+                cells.iter().max().unwrap() - cells.iter().min().unwrap() <= 1,
+                "cells {cells:?} differ by more than one pixel"
+            );
+        }
+    }
+
+    #[test]
+    fn distribute_cells_distributes_remainder_over_leading_cells() {
+        // 2 pixels across 5 cells: first two get the single-pixel surplus.
+        assert_eq!(distribute_cells(2, 5), vec![1, 1, 0, 0, 0]);
+    }
+
+    #[test]
+    fn distribute_cells_handles_zero_total_and_non_positive_n() {
+        assert_eq!(distribute_cells(0, 4), vec![0, 0, 0, 0]);
+        assert!(distribute_cells(10, 0).is_empty());
+        assert!(distribute_cells(10, -1).is_empty());
     }
 }
