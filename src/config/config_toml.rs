@@ -54,6 +54,8 @@ pub struct ThemeConfig {
     pub cursor: CursorConfig,
     /// Layout geometry configuration.
     pub layout: LayoutConfig,
+    /// Animation timing configuration.
+    pub animations: AnimationConfig,
     /// Raise a floating window when its client area is left-clicked.
     ///
     /// Disabled by default so focus-follows-mouse and click-to-focus do not
@@ -89,12 +91,97 @@ impl Default for ThemeConfig {
             modes: HashMap::new(),
             cursor: CursorConfig::default(),
             layout: LayoutConfig::default(),
+            animations: AnimationConfig::default(),
             raise_floating_on_click: false,
             rules: Vec::new(),
             bar_height: 0,
             exec_once: Vec::new(),
             exec: Vec::new(),
         }
+    }
+}
+
+/// Validated animation speed multiplier.
+///
+/// `1.0` is the designed speed, `0.5` doubles durations, and `2.0` halves
+/// them. Keeping the invariant in this type means animation code never has to
+/// handle zero, non-finite, or absurd duration divisors.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnimationSpeed(f64);
+
+impl AnimationSpeed {
+    pub const MIN: f64 = 0.01;
+    pub const MAX: f64 = 100.0;
+
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    pub fn scale_duration(self, duration: std::time::Duration) -> std::time::Duration {
+        if duration.is_zero() {
+            return duration;
+        }
+        std::time::Duration::from_secs_f64(duration.as_secs_f64() / self.0)
+    }
+}
+
+impl Default for AnimationSpeed {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+impl TryFrom<f64> for AnimationSpeed {
+    type Error = String;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if !value.is_finite() || !(Self::MIN..=Self::MAX).contains(&value) {
+            return Err(format!(
+                "animation speed must be finite and between {} and {}",
+                Self::MIN,
+                Self::MAX
+            ));
+        }
+        Ok(Self(value))
+    }
+}
+
+impl Serialize for AnimationSpeed {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for AnimationSpeed {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::try_from(value).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Animation timing configuration.
+///
+/// ```toml
+/// [animations]
+/// # 0.5 = half speed; 2.0 = twice as fast
+/// speed = 1.0
+/// ```
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Serialize)]
+#[serde(default)]
+#[derive(Default)]
+pub struct AnimationConfig {
+    pub speed: AnimationSpeed,
+}
+
+impl AnimationConfig {
+    pub fn scale_duration(self, duration: std::time::Duration) -> std::time::Duration {
+        self.speed.scale_duration(duration)
     }
 }
 
@@ -619,6 +706,37 @@ mod theme_tests {
     fn floating_click_raise_is_an_explicit_opt_in() {
         assert!(!parse("").raise_floating_on_click);
         assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
+    }
+
+    #[test]
+    fn animation_speed_has_intuitive_multiplier_semantics() {
+        let normal = parse("").animations;
+        let slow = parse("[animations]\nspeed = 0.25").animations;
+        let fast = parse("[animations]\nspeed = 2.0").animations;
+        let base = std::time::Duration::from_millis(100);
+
+        assert_eq!(normal.scale_duration(base), base);
+        assert_eq!(
+            slow.scale_duration(base),
+            std::time::Duration::from_millis(400)
+        );
+        assert_eq!(
+            fast.scale_duration(base),
+            std::time::Duration::from_millis(50)
+        );
+    }
+
+    #[test]
+    fn invalid_animation_speeds_are_rejected() {
+        for speed in ["0.0", "-1.0", "0.001", "101.0", "nan", "inf"] {
+            let source = format!("[animations]\nspeed = {speed}");
+            let value = toml::from_str(&source).unwrap();
+            let resolved = resolve_theme_colors(value).unwrap();
+            assert!(
+                resolved.try_into::<ThemeConfig>().is_err(),
+                "accepted {speed}"
+            );
+        }
     }
 
     #[test]

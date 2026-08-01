@@ -1,4 +1,4 @@
-use smithay::utils::{Logical, Point};
+use smithay::utils::{Logical, Point, Size};
 use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -12,14 +12,142 @@ pub(crate) enum WindowMoveMode {
     AnimateFrom { from: Rect, duration: Duration },
 }
 
+/// Send the single expensive client resize around the spatial midpoint of the
+/// ease-out transition. `ease_out_cubic(0.2)` is approximately `0.49`; using
+/// linear progress `0.5` would wait until 87.5% of the visual motion was over.
+/// The frame and cheap compositor motion continue for the full duration.
+const RESIZE_CONFIGURE_PHASE: f64 = 0.2;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResizeConfigure {
+    Unchanged,
+    Pending(Size<i32, Logical>),
+    Sent(Size<i32, Logical>),
+}
+
+impl ResizeConfigure {
+    fn toward(committed_size: Size<i32, Logical>, to: Rect) -> Self {
+        if committed_size.w == to.w && committed_size.h == to.h {
+            Self::Unchanged
+        } else {
+            Self::Pending(Size::from((to.w.max(1), to.h.max(1))))
+        }
+    }
+
+    fn advance(&mut self, progress: f64) -> Option<Size<i32, Logical>> {
+        let Self::Pending(size) = *self else {
+            return None;
+        };
+        if progress < RESIZE_CONFIGURE_PHASE {
+            return None;
+        }
+        *self = Self::Sent(size);
+        Some(size)
+    }
+
+    fn target(self) -> Option<Size<i32, Logical>> {
+        match self {
+            Self::Unchanged => None,
+            Self::Pending(size) | Self::Sent(size) => Some(size),
+        }
+    }
+}
+
+/// Wayland presentation state for one logical geometry transition.
+///
+/// The intended frame interpolates every edge. The client surface keeps its
+/// currently committed size and is centered inside that frame, so one-sided
+/// growth/shrink creates cheap motion on both sides of the single real resize.
+/// Only `ResizeConfigure::Pending` can emit a configure, making repeated
+/// client relayout during an animation unrepresentable.
+#[derive(Clone, Debug)]
+pub(crate) struct WaylandWindowAnimation {
+    frame: crate::animation::WindowAnimation,
+    displayed_frame: Rect,
+    resize: ResizeConfigure,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaylandAnimationTick {
+    previous_frame: Rect,
+    frame: Rect,
+    surface_location: Point<i32, Logical>,
+    configure_size: Option<Size<i32, Logical>>,
+    done: bool,
+}
+
+impl WaylandWindowAnimation {
+    fn new(
+        from: Rect,
+        to: Rect,
+        committed_size: Size<i32, Logical>,
+        duration: Duration,
+        now: Instant,
+    ) -> Self {
+        Self {
+            frame: crate::animation::WindowAnimation {
+                from,
+                to,
+                started_at: now,
+                duration,
+            },
+            displayed_frame: from,
+            resize: ResizeConfigure::toward(committed_size, to),
+        }
+    }
+
+    fn target(&self) -> Rect {
+        self.frame.to
+    }
+
+    fn displayed_frame(&self) -> Rect {
+        self.displayed_frame
+    }
+
+    fn resize_target(&self) -> Option<Size<i32, Logical>> {
+        self.resize.target()
+    }
+
+    fn tick(
+        &mut self,
+        now: Instant,
+        committed_size: Size<i32, Logical>,
+        border_width: i32,
+    ) -> WaylandAnimationTick {
+        let previous_frame = self.displayed_frame;
+        let tick = self.frame.tick(now);
+        self.displayed_frame = tick.rect;
+        WaylandAnimationTick {
+            previous_frame,
+            frame: tick.rect,
+            surface_location: centered_surface_location(tick.rect, committed_size, border_width),
+            configure_size: self.resize.advance(tick.progress),
+            done: tick.done,
+        }
+    }
+}
+
+fn centered_surface_location(
+    frame: Rect,
+    committed_size: Size<i32, Logical>,
+    border_width: i32,
+) -> Point<i32, Logical> {
+    let border_width = border_width.max(0);
+    Point::from((
+        frame.x + border_width + (frame.w - committed_size.w) / 2,
+        frame.y + border_width + (frame.h - committed_size.h) / 2,
+    ))
+}
+
 impl WaylandState {
-    pub(crate) fn set_layout_preview_target(&mut self, target: Option<Rect>, animate: bool) {
-        self.layout_preview_animation.set_target(
-            target,
-            animate,
-            Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
-            Instant::now(),
-        );
+    pub(crate) fn set_layout_preview_target(
+        &mut self,
+        target: Option<Rect>,
+        animate: bool,
+        duration: Duration,
+    ) {
+        self.layout_preview_animation
+            .set_target(target, animate, duration, Instant::now());
         self.request_render();
     }
 
@@ -36,16 +164,12 @@ impl WaylandState {
         window_id: WindowId,
         from: Rect,
         to: Rect,
+        committed_size: Size<i32, Logical>,
         duration: Duration,
     ) {
         self.window_animations.insert(
             window_id,
-            crate::animation::WindowAnimation {
-                from,
-                to,
-                started_at: Instant::now(),
-                duration,
-            },
+            WaylandWindowAnimation::new(from, to, committed_size, duration, Instant::now()),
         );
     }
 
@@ -57,6 +181,12 @@ impl WaylandState {
         self.globals()
             .map(|state| state.behavior.animated)
             .unwrap_or(false)
+    }
+
+    fn configured_animation_duration(&self, duration: Duration) -> Duration {
+        self.globals()
+            .map(|core| core.config.animations.scale_duration(duration))
+            .unwrap_or(duration)
     }
 
     pub(crate) fn interactive_motion_active(&self) -> bool {
@@ -89,13 +219,39 @@ impl WaylandState {
         self.remap_element_preserving_z_order(element, target_loc, false);
     }
 
+    fn configure_window_geometry_if_needed(
+        &mut self,
+        window_id: WindowId,
+        element: &smithay::desktop::Window,
+        target: Rect,
+    ) {
+        let configured = (target.w.max(1), target.h.max(1));
+        if self
+            .last_configured_size
+            .get(&window_id)
+            .is_some_and(|&size| size == configured)
+        {
+            return;
+        }
+
+        if element.toplevel().is_some() {
+            self.send_toplevel_configure(element, Some(Size::from(configured)));
+        } else if let Some(surface) = element.x11_surface() {
+            let geometry =
+                smithay::utils::Rectangle::new((target.x, target.y).into(), configured.into());
+            let _ = surface.configure(Some(geometry));
+        }
+        self.last_configured_size.insert(window_id, configured);
+    }
+
     /// Place a window at `target` (in outer/WM coordinates) using the given
     /// movement mode.
     ///
-    /// This is a **visual placement** function.  It converts the outer WM
-    /// rect to inner/surface coordinates (adding `border_width`), sends a
-    /// configure if the size changed, and either snaps or animates the
-    /// element to the target location.
+    /// This is a **visual placement** function. It converts the outer WM rect
+    /// to inner/surface coordinates (adding `border_width`) and either snaps
+    /// or animates the element to the target. Animated resizes send exactly
+    /// one configure partway through the transition; snapped changes send it
+    /// immediately.
     ///
     /// It does **not** write to `client.geo`.  The WM layer owns logical
     /// position and always sets `client.geo` before calling this function
@@ -119,13 +275,6 @@ impl WaylandState {
         // Convert outer WM rect → inner surface rect.
         let target_loc: Point<i32, Logical> =
             Point::from((target.x + border_width, target.y + border_width));
-        let target_inner = Rect {
-            x: target_loc.x,
-            y: target_loc.y,
-            w: target.w,
-            h: target.h,
-        };
-
         let actual_loc = self.space.element_location(&element);
 
         // Keep an in-flight animation when callers repeatedly request the
@@ -135,7 +284,7 @@ impl WaylandState {
             && self
                 .window_animations
                 .get(&window_id)
-                .is_some_and(|anim| anim.to == target_inner)
+                .is_some_and(|anim| anim.target() == target)
         {
             return;
         }
@@ -154,71 +303,46 @@ impl WaylandState {
             return;
         }
 
-        // Send a configure if the size changed.
-        if element.toplevel().is_some() {
-            let configured = (target.w.max(1), target.h.max(1));
-            let unchanged = self
-                .last_configured_size
-                .get(&window_id)
-                .is_some_and(|&size| size == configured);
-            if !unchanged {
-                let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                    configured.0,
-                    configured.1,
-                );
-                self.send_toplevel_configure(&element, Some(size));
-                self.last_configured_size.insert(window_id, configured);
-            }
-        }
-
-        // Resolve the animation start position.
-        let (from_inner, animation_duration) = match mode {
-            WindowMoveMode::AnimateFrom { from, duration } => (
-                Rect {
-                    x: from.x + border_width,
-                    y: from.y + border_width,
-                    w: from.w,
-                    h: from.h,
-                },
-                duration,
-            ),
+        // Resolve the displayed outer frame at animation start. The actual
+        // committed surface size deliberately remains independent.
+        let actual_size = element.geometry().size;
+        let (from, animation_duration) = match mode {
+            WindowMoveMode::AnimateFrom { from, duration } => (from, duration),
             WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
                 let loc = actual_loc.unwrap_or(target_loc);
                 (
                     Rect {
-                        x: loc.x,
-                        y: loc.y,
-                        w: target.w,
-                        h: target.h,
+                        x: loc.x - border_width,
+                        y: loc.y - border_width,
+                        w: actual_size.w.max(1),
+                        h: actual_size.h.max(1),
                     },
-                    Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
+                    self.configured_animation_duration(Duration::from_millis(
+                        WAYLAND_DEFAULT_ANIMATION_MILLIS,
+                    )),
                 )
             }
         };
 
-        let should_snap = !self.animations_enabled()
-            || mode == WindowMoveMode::Immediate
-            || (from_inner.x == target_loc.x && from_inner.y == target_loc.y);
+        let should_snap =
+            !self.animations_enabled() || mode == WindowMoveMode::Immediate || from == target;
 
         if should_snap {
+            self.configure_window_geometry_if_needed(window_id, &element, target);
             self.remap_window_immediately(window_id, &element, target_loc);
             return;
         }
 
-        // For decorative slide-ins, place element at the start position so
-        // the first rendered frame is correct.
-        if matches!(mode, WindowMoveMode::AnimateFrom { .. }) {
-            self.remap_element_preserving_z_order(
-                &element,
-                Point::from((from_inner.x, from_inner.y)),
-                false,
-            );
+        let start_loc = centered_surface_location(from, actual_size, border_width);
+        if actual_loc != Some(start_loc) {
+            self.remap_element_preserving_z_order(&element, start_loc, false);
         }
 
         self.insert_or_replace_window_animation(
             window_id,
-            from_inner,
-            target_inner,
+            from,
+            target,
+            actual_size,
             animation_duration,
         );
     }
@@ -235,30 +359,35 @@ impl WaylandState {
         if let Some(element) = self.find_window(win).cloned()
             && self.space.element_location(&element).is_some()
         {
-            let loc = Point::from((anim.to.x, anim.to.y));
+            let target = anim.target();
+            let border_width = self
+                .globals()
+                .and_then(|core| core.model.client(win).map(|client| client.border_width))
+                .unwrap_or(0);
+            self.request_visual_rect_render(anim.displayed_frame().with_borders(border_width));
+            self.request_visible_window_render(&element);
+            if anim.resize_target().is_some() {
+                // A cancellation before the staging point still has to
+                // deliver the final resize. A resize already sent during the
+                // animation is suppressed by the configured-size cache.
+                self.configure_window_geometry_if_needed(win, &element, target);
+            }
+            let loc = Point::from((target.x + border_width, target.y + border_width));
             self.remap_element_preserving_z_order(&element, loc, false);
+            self.request_visible_window_render(&element);
+            self.request_visual_rect_render(target.with_borders(border_width));
         }
     }
 
-    /// Remove an in-flight animation at its currently displayed position and
-    /// convert that position back to the WM's outer-coordinate convention.
+    /// Remove an in-flight animation and return its currently displayed frame
+    /// in the WM's outer-coordinate convention.
     pub(crate) fn take_current_window_animation_rect(
         &mut self,
         win: WindowId,
         now: Instant,
     ) -> Option<Rect> {
         let animation = self.window_animations.remove(&win)?;
-        let rect = animation.tick(now).rect;
-        let border_width = self
-            .globals()
-            .and_then(|globals| globals.model.client(win).map(|client| client.border_width))
-            .unwrap_or(0);
-        Some(Rect {
-            x: rect.x - border_width,
-            y: rect.y - border_width,
-            w: rect.w,
-            h: rect.h,
-        })
+        Some(animation.frame.tick(now).rect)
     }
 
     /// Tick all active window animations.
@@ -272,21 +401,51 @@ impl WaylandState {
             self.layout_preview_animation.tick(now);
             self.request_render();
         }
-        let mut updates: Vec<(WindowId, Point<i32, Logical>, bool)> = Vec::new();
-        for (win, anim) in &self.window_animations {
-            let tick = anim.tick(now);
-            updates.push((*win, Point::from((tick.rect.x, tick.rect.y)), tick.done));
+        let animation_inputs: Vec<_> = self
+            .window_animations
+            .keys()
+            .filter_map(|&win| {
+                let element = self.find_window(win)?;
+                let border_width = self
+                    .globals()
+                    .and_then(|core| core.model.client(win).map(|client| client.border_width))
+                    .unwrap_or(0);
+                Some((win, element.geometry().size, border_width))
+            })
+            .collect();
+        let mut updates = Vec::with_capacity(animation_inputs.len());
+        for (win, committed_size, border_width) in animation_inputs {
+            if let Some(animation) = self.window_animations.get_mut(&win) {
+                let tick = animation.tick(now, committed_size, border_width);
+                let configure_target = tick.configure_size.map(|_| animation.target());
+                updates.push((
+                    win,
+                    tick.surface_location,
+                    configure_target,
+                    tick.previous_frame,
+                    tick.frame,
+                    border_width,
+                    tick.done,
+                ));
+            }
         }
 
         let mut finished: Vec<WindowId> = Vec::new();
-        for (win, loc, done) in updates {
+        for (win, loc, configure_target, previous_frame, frame, border_width, done) in updates {
             if let Some(element) = self.find_window(win).cloned() {
-                if self.space.element_location(&element) != Some(loc) {
-                    // Preserve damage on both sides of a cross-output move.
-                    self.request_visible_window_render(&element);
-                    self.remap_element_preserving_z_order(&element, loc, false);
-                    self.request_visible_window_render(&element);
+                self.request_visual_rect_render(previous_frame.with_borders(border_width));
+                self.request_visible_window_render(&element);
+                if let Some(target) = configure_target {
+                    self.configure_window_geometry_if_needed(win, &element, target);
                 }
+                if self.space.element_location(&element) != Some(loc) {
+                    self.remap_element_preserving_z_order(&element, loc, false);
+                }
+                // Preserve damage on both sides of a cross-output move and
+                // redraw animated borders even when a symmetric resize keeps
+                // the surface center stationary.
+                self.request_visible_window_render(&element);
+                self.request_visual_rect_render(frame.with_borders(border_width));
             } else {
                 finished.push(win);
                 continue;
@@ -323,21 +482,160 @@ impl WaylandState {
     /// (in WM/outer coordinates).  The border-width conversion is handled
     /// internally so callers don't need to know about the inner coordinate space.
     pub(crate) fn animation_targets_outer_rect(&self, win: WindowId, outer_target: Rect) -> bool {
-        let Some(anim) = self.window_animations.get(&win) else {
-            return false;
-        };
-        let Some(border_width) = self
-            .globals()
-            .and_then(|state| state.model.client(win).map(|c| c.border_width))
-        else {
-            return false;
-        };
-        let inner_target = Rect {
-            x: outer_target.x + border_width,
-            y: outer_target.y + border_width,
-            w: outer_target.w,
-            h: outer_target.h,
-        };
-        anim.to == inner_target
+        self.window_animations
+            .get(&win)
+            .is_some_and(|animation| animation.target() == outer_target)
+    }
+
+    pub(crate) fn displayed_animation_frame(&self, win: WindowId) -> Option<Rect> {
+        self.window_animations
+            .get(&win)
+            .map(WaylandWindowAnimation::displayed_frame)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resize_schedule_emits_exactly_one_configure() {
+        let start = Instant::now();
+        let mut animation = WaylandWindowAnimation::new(
+            Rect::new(0, 0, 100, 80),
+            Rect::new(0, 0, 140, 60),
+            Size::from((100, 80)),
+            Duration::from_millis(100),
+            start,
+        );
+        let committed = Size::from((100, 80));
+
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(19), committed, 3)
+                .configure_size,
+            None
+        );
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(21), committed, 3)
+                .configure_size,
+            Some(Size::from((140, 60)))
+        );
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(80), committed, 3)
+                .configure_size,
+            None
+        );
+        assert!(matches!(animation.resize, ResizeConfigure::Sent(_)));
+    }
+
+    #[test]
+    fn movement_only_transition_never_schedules_a_resize() {
+        let start = Instant::now();
+        let mut animation = WaylandWindowAnimation::new(
+            Rect::new(0, 0, 100, 80),
+            Rect::new(50, 20, 100, 80),
+            Size::from((100, 80)),
+            Duration::from_millis(100),
+            start,
+        );
+
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(100), Size::from((100, 80)), 0,)
+                .configure_size,
+            None
+        );
+        assert_eq!(animation.resize, ResizeConfigure::Unchanged);
+    }
+
+    #[test]
+    fn resize_schedule_compares_target_with_committed_not_visual_size() {
+        let start = Instant::now();
+        let needs_resize = WaylandWindowAnimation::new(
+            Rect::new(0, 0, 120, 80),
+            Rect::new(10, 0, 120, 80),
+            Size::from((140, 80)),
+            Duration::from_millis(100),
+            start,
+        );
+        let visual_size_differs_but_client_is_ready = WaylandWindowAnimation::new(
+            Rect::new(0, 0, 120, 80),
+            Rect::new(10, 0, 140, 80),
+            Size::from((140, 80)),
+            Duration::from_millis(100),
+            start,
+        );
+
+        assert!(matches!(needs_resize.resize, ResizeConfigure::Pending(_)));
+        assert_eq!(
+            visual_size_differs_but_client_is_ready.resize,
+            ResizeConfigure::Unchanged
+        );
+    }
+
+    #[test]
+    fn one_sided_growth_moves_before_and_after_the_size_switch() {
+        let halfway_frame = Rect::new(0, 0, 120, 80);
+
+        let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
+        let after_resize = centered_surface_location(halfway_frame, Size::from((140, 80)), 0);
+
+        assert_eq!(before_resize, Point::from((10, 0)));
+        assert_eq!(after_resize, Point::from((-10, 0)));
+        assert_eq!(
+            centered_surface_location(Rect::new(0, 0, 140, 80), Size::from((140, 80)), 0),
+            Point::from((0, 0))
+        );
+    }
+
+    #[test]
+    fn one_sided_shrink_moves_before_and_after_the_size_switch() {
+        let halfway_frame = Rect::new(0, 0, 80, 80);
+
+        let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
+        let after_resize = centered_surface_location(halfway_frame, Size::from((60, 80)), 0);
+
+        assert_eq!(before_resize, Point::from((-10, 0)));
+        assert_eq!(after_resize, Point::from((10, 0)));
+        assert_eq!(
+            centered_surface_location(Rect::new(0, 0, 60, 80), Size::from((60, 80)), 0),
+            Point::from((0, 0))
+        );
+    }
+
+    #[test]
+    fn every_edge_combination_keeps_the_surface_centered_in_the_visual_frame() {
+        let border = 4;
+        let committed_sizes = [Size::from((100, 80)), Size::from((140, 120))];
+
+        for left_delta in [-20, 0, 20] {
+            for right_delta in [-20, 0, 20] {
+                for top_delta in [-20, 0, 20] {
+                    for bottom_delta in [-20, 0, 20] {
+                        let left = left_delta / 2;
+                        let right = 100 + right_delta / 2;
+                        let top = top_delta / 2;
+                        let bottom = 80 + bottom_delta / 2;
+                        let frame = Rect::new(left, top, right - left, bottom - top);
+                        assert!(frame.is_valid());
+
+                        for committed in committed_sizes {
+                            let location = centered_surface_location(frame, committed, border);
+                            assert_eq!(
+                                2 * location.x + committed.w,
+                                2 * (frame.x + border) + frame.w
+                            );
+                            assert_eq!(
+                                2 * location.y + committed.h,
+                                2 * (frame.y + border) + frame.h
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 }

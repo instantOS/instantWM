@@ -368,10 +368,15 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
 
     fn end_modal_keyboard(&mut self) {}
 
-    fn layout_preview_changed(&mut self, rect: Option<Rect>, animate: bool) {
+    fn layout_preview_changed(
+        &mut self,
+        rect: Option<Rect>,
+        animate: bool,
+        duration: std::time::Duration,
+    ) {
         let _ = self
             .wayland
-            .with_state(|state| state.set_layout_preview_target(rect, animate));
+            .with_state(|state| state.set_layout_preview_target(rect, animate, duration));
     }
 }
 

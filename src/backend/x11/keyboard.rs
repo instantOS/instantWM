@@ -114,13 +114,12 @@ pub fn update_layout_preview(
     x11_runtime: &mut X11RuntimeConfig,
     rect: Option<crate::types::Rect>,
     animate: bool,
+    duration: std::time::Duration,
 ) {
     let displayed = x11_runtime.layout_preview_animation.set_target(
         rect,
         animate,
-        std::time::Duration::from_millis(
-            crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
-        ),
+        duration,
         std::time::Instant::now(),
     );
     render_layout_preview(x11, x11_runtime, displayed);
@@ -222,8 +221,13 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
         ungrab_modal_keyboard(&self.x11);
     }
 
-    fn layout_preview_changed(&mut self, rect: Option<crate::types::Rect>, animate: bool) {
-        update_layout_preview(&self.x11, self.x11_runtime, rect, animate);
+    fn layout_preview_changed(
+        &mut self,
+        rect: Option<crate::types::Rect>,
+        animate: bool,
+        duration: std::time::Duration,
+    ) {
+        update_layout_preview(&self.x11, self.x11_runtime, rect, animate, duration);
     }
 }
 

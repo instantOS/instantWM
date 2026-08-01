@@ -135,12 +135,17 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
     })
 }
 
-fn animation_duration(frames: i32) -> Duration {
-    Duration::from_micros(FRAME_SLEEP_MICROS * frames.max(0) as u64)
+fn animation_duration(ctx: &WmCtx<'_>, frames: i32) -> Duration {
+    ctx.core()
+        .config()
+        .animations
+        .scale_duration(Duration::from_micros(
+            FRAME_SLEEP_MICROS * frames.max(0) as u64,
+        ))
 }
 
 fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: Rect, frames: i32) {
-    let duration = animation_duration(frames);
+    let duration = animation_duration(ctx, frames);
     match ctx {
         WmCtx::X11(x11) => {
             let mut wmctx = crate::contexts::WmCtx::X11(x11.reborrow());
@@ -157,15 +162,6 @@ fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: 
         }
         WmCtx::Wayland(wl) => {
             let _ = wl.wayland.with_state(|state| {
-                if let Some(element) = state.find_window(win).cloned()
-                    && let Some(surface) = element.x11_surface()
-                {
-                    let geometry = smithay::utils::Rectangle::new(
-                        (to.x, to.y).into(),
-                        (to.w.max(1), to.h.max(1)).into(),
-                    );
-                    let _ = surface.configure(Some(geometry));
-                }
                 state.set_window_target_rect(
                     win,
                     to,
@@ -282,7 +278,10 @@ pub(crate) fn move_resize(
     match options.mode {
         MoveResizeMode::Immediate => {
             if !should_preserve_inflight_animation(ctx, win, final_rect) {
-                crate::animation::cancel_animation(ctx, win);
+                // The new immediate geometry supersedes the old target. Drop
+                // its presentation state without configuring the obsolete
+                // size first; set_geometry_impl applies the new target below.
+                let _ = crate::animation::take_current_animation_rect(ctx, win, Instant::now());
             }
             ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
         }
@@ -294,7 +293,9 @@ pub(crate) fn move_resize(
                 }
                 MoveResizeMode::Immediate => unreachable!(),
                 MoveResizeMode::AnimateFrom(from) => {
-                    crate::animation::cancel_animation(ctx, win);
+                    // The explicit starting frame supersedes any previous
+                    // transition, so its target must not be committed first.
+                    let _ = crate::animation::take_current_animation_rect(ctx, win, Instant::now());
                     from
                 }
             };

@@ -2,7 +2,7 @@ use smithay::desktop::Window;
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Size};
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::types::{Rect, WindowId};
 
 pub mod animations;
@@ -75,6 +75,11 @@ impl WaylandState {
     /// animations commit their logical destination immediately while the
     /// space element advances through intermediate displayed positions.
     pub(crate) fn displayed_window_rect(&self, window: &Window, border_width: i32) -> Option<Rect> {
+        if let Some(marker) = window.user_data().get::<WindowIdMarker>()
+            && let Some(frame) = self.displayed_animation_frame(marker.id)
+        {
+            return Some(frame);
+        }
         let location = self.space.element_location(window)?;
         Some(displayed_rect_from_space_geometry(
             location,

@@ -249,6 +249,7 @@ pub struct RuntimeConfig {
     pub bar: BarConfig,
     pub systray: SystrayConfig,
     pub layout: crate::config::config_toml::LayoutConfig,
+    pub animations: crate::config::config_toml::AnimationConfig,
     pub colors: ColorConfig,
     /// Active built-in colour theme (the base `colors` was derived from).
     pub theme: crate::config::config_toml::ColorTheme,
@@ -273,6 +274,7 @@ impl Default for RuntimeConfig {
             bar: BarConfig::default(),
             systray: SystrayConfig::default(),
             layout: crate::config::config_toml::LayoutConfig::default(),
+            animations: crate::config::config_toml::AnimationConfig::default(),
             colors: ColorConfig::default(),
             theme: crate::config::config_toml::ColorTheme::default(),
             bindings: BindingConfig::default(),
@@ -584,6 +586,7 @@ impl Clone for RuntimeConfig {
             bar: self.bar.clone(),
             systray: self.systray.clone(),
             layout: self.layout,
+            animations: self.animations,
             colors: self.colors.clone(),
             theme: self.theme,
             bindings: self.bindings.clone(),
@@ -812,6 +815,7 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
         pointer_edge_fraction: finite_clamp(cfg.layout.pointer_edge_fraction, 0.05, 0.49, 0.34),
         new_window_placement: cfg.layout.new_window_placement,
     };
+    next.animations = cfg.animations;
 
     next.colors.window = cfg.window_colors.clone();
     next.colors.close_button = cfg.closebuttoncolors.clone();

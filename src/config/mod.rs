@@ -156,6 +156,8 @@ pub struct Config {
     pub raise_floating_on_click: bool,
     /// Tiled layout gap configuration.
     pub layout: config_toml::LayoutConfig,
+    /// Animation timing configuration.
+    pub animations: config_toml::AnimationConfig,
 
     // --- Tags ---
     pub tag_names: Vec<String>,
@@ -326,6 +328,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         decor_hints: true,
         raise_floating_on_click: theme.raise_floating_on_click,
         layout: theme.layout,
+        animations: theme.animations,
 
         // --- Tags ---
         tag_names: get_tags(),

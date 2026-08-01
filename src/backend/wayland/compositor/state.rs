@@ -195,7 +195,8 @@ pub struct WaylandState {
     pub(super) active_resizes: HashSet<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
-    pub(super) window_animations: crate::animation::WindowAnimations,
+    pub(super) window_animations:
+        HashMap<WindowId, super::window::animations::WaylandWindowAnimation>,
     pub(super) layout_preview_animation: crate::animation::LayoutPreviewAnimation,
     /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
@@ -551,7 +552,7 @@ impl WaylandState {
             native_size_hints: HashMap::new(),
             active_resizes: HashSet::new(),
             window_index: HashMap::new(),
-            window_animations: crate::animation::WindowAnimations::new(),
+            window_animations: HashMap::new(),
             layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
@@ -777,6 +778,27 @@ impl WaylandState {
         self.request_outputs_render(outputs);
     }
 
+    /// Redraw outputs intersected by compositor-owned visual geometry such as
+    /// an animated border frame. This geometry may temporarily be larger than
+    /// the client surface and therefore cannot be inferred from `Window`.
+    pub(crate) fn request_visual_rect_render(&mut self, rect: Rect) {
+        let rect = smithay::utils::Rectangle::<i32, Logical>::new(
+            (rect.x, rect.y).into(),
+            (rect.w.max(1), rect.h.max(1)).into(),
+        );
+        let outputs = self
+            .space
+            .outputs()
+            .filter(|output| {
+                self.space
+                    .output_geometry(output)
+                    .is_some_and(|output_rect| output_rect.overlaps(rect))
+            })
+            .cloned()
+            .collect();
+        self.request_outputs_render(outputs);
+    }
+
     fn request_outputs_render(&mut self, outputs: Vec<smithay::output::Output>) {
         for output in outputs {
             self.request_output_render(&output);
@@ -803,9 +825,31 @@ impl WaylandState {
     }
 
     pub fn has_window_animations_on_output(&self, output: &smithay::output::Output) -> bool {
+        let output_rect = self.space.output_geometry(output);
         self.window_animations.keys().any(|window_id| {
-            self.find_window(*window_id)
-                .is_some_and(|window| self.outputs_for_window_geometry(window).contains(output))
+            let surface_overlaps = self
+                .find_window(*window_id)
+                .is_some_and(|window| self.outputs_for_window_geometry(window).contains(output));
+            let frame_overlaps = output_rect.is_some_and(|output_rect| {
+                let border_width = self
+                    .globals()
+                    .and_then(|core| {
+                        core.model
+                            .client(*window_id)
+                            .map(|client| client.border_width)
+                    })
+                    .unwrap_or(0);
+                self.displayed_animation_frame(*window_id)
+                    .map(|frame| frame.with_borders(border_width))
+                    .is_some_and(|frame| {
+                        let frame = smithay::utils::Rectangle::<i32, Logical>::new(
+                            (frame.x, frame.y).into(),
+                            (frame.w.max(1), frame.h.max(1)).into(),
+                        );
+                        output_rect.overlaps(frame)
+                    })
+            });
+            surface_overlaps || frame_overlaps
         })
     }
 

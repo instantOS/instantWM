@@ -29,6 +29,7 @@ pub enum RuntimeConfigSection {
     Bar,
     Systray,
     Layout,
+    Animations,
     Colors,
     Cursor,
     Fonts,
@@ -38,11 +39,12 @@ pub enum RuntimeConfigSection {
 }
 
 impl RuntimeConfigSection {
-    pub const EXPOSED: [Self; 9] = [
+    pub const EXPOSED: [Self; 10] = [
         Self::Window,
         Self::Bar,
         Self::Systray,
         Self::Layout,
+        Self::Animations,
         Self::Colors,
         Self::Cursor,
         Self::Fonts,
@@ -56,6 +58,7 @@ impl RuntimeConfigSection {
             Self::Bar => "bar",
             Self::Systray => "systray",
             Self::Layout => "layout",
+            Self::Animations => "animations",
             Self::Colors => "colors",
             Self::Cursor => "cursor",
             Self::Fonts => "fonts",
@@ -115,6 +118,7 @@ fn get(wm: &Wm, key: &str) -> Response {
         RuntimeConfigSection::Bar => field_get(&state.config.bar, rest),
         RuntimeConfigSection::Systray => field_get(&state.config.systray, rest),
         RuntimeConfigSection::Layout => field_get(&state.config.layout, rest),
+        RuntimeConfigSection::Animations => field_get(&state.config.animations, rest),
         RuntimeConfigSection::Colors => field_get(&state.config.colors, rest),
         RuntimeConfigSection::Cursor => field_get(&state.config.cursor, rest),
         RuntimeConfigSection::Fonts => field_get(&state.config.fonts, rest),
@@ -148,6 +152,9 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         RuntimeConfigSection::Bar => parse_then_set(&mut state.config.bar, rest, value),
         RuntimeConfigSection::Systray => parse_then_set(&mut state.config.systray, rest, value),
         RuntimeConfigSection::Layout => parse_then_set(&mut state.config.layout, rest, value),
+        RuntimeConfigSection::Animations => {
+            parse_then_set(&mut state.config.animations, rest, value)
+        }
         RuntimeConfigSection::Colors => parse_then_set(&mut state.config.colors, rest, value),
         RuntimeConfigSection::Cursor => parse_then_set(&mut state.config.cursor, rest, value),
         RuntimeConfigSection::Fonts => parse_then_set(&mut state.config.fonts, rest, value),
@@ -197,6 +204,7 @@ fn collect_section(
         RuntimeConfigSection::Bar => collect(&core.config.bar, prefix, entries),
         RuntimeConfigSection::Systray => collect(&core.config.systray, prefix, entries),
         RuntimeConfigSection::Layout => collect(&core.config.layout, prefix, entries),
+        RuntimeConfigSection::Animations => collect(&core.config.animations, prefix, entries),
         RuntimeConfigSection::Colors => collect(&core.config.colors, prefix, entries),
         RuntimeConfigSection::Cursor => collect(&core.config.cursor, prefix, entries),
         RuntimeConfigSection::Fonts => collect(&core.config.fonts, prefix, entries),
@@ -355,6 +363,7 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
             crate::layouts::manager::arrange(&mut ctx, None);
         }
         RuntimeConfigSection::Colors | RuntimeConfigSection::Fonts => recolor(wm),
+        RuntimeConfigSection::Animations => {}
         RuntimeConfigSection::Cursor => {
             wm.work.queue_cursor_config_apply();
             wm.bar.mark_dirty();
@@ -488,6 +497,28 @@ mod tests {
             do_set(&mut wm, "layout.new_window_placement", "not-a-policy"),
             Response::Err(_)
         ));
+    }
+
+    #[test]
+    fn animation_speed_roundtrips_and_preserves_valid_runtime_state() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "animations.speed", "0.1"),
+            Response::Ok
+        ));
+        assert_eq!(wm.core.config.animations.speed.get(), 0.1);
+        assert!(matches!(
+            do_get(&mut wm, "animations.speed"),
+            Response::ConfigValue(value) if value == "0.1"
+        ));
+
+        for invalid in ["0", "-1", "101", r#""slow""#] {
+            assert!(matches!(
+                do_set(&mut wm, "animations.speed", invalid),
+                Response::Err(_)
+            ));
+            assert_eq!(wm.core.config.animations.speed.get(), 0.1);
+        }
     }
 
     #[test]

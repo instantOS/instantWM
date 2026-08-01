@@ -318,10 +318,17 @@ impl<'a> WmCtx<'a> {
             && self.core().behavior().animated
             && self.current_mode().tree_placement().is_some();
         self.core_mut().state_mut().layout_preview = rect;
+        let duration =
+            self.core()
+                .config()
+                .animations
+                .scale_duration(std::time::Duration::from_millis(
+                    crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
+                ));
         use crate::backend::LayoutInteractionOps;
         match self {
-            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, animate),
-            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect, animate),
+            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, animate, duration),
+            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect, animate, duration),
         }
     }
 

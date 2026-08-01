@@ -1,7 +1,7 @@
 use crate::backend::x11::X11RuntimeConfig;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
-use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -88,6 +88,8 @@ pub fn ease_out_cubic(t: f64) -> f64 {
 #[derive(Clone, Copy, Debug)]
 pub struct AnimationTick {
     pub rect: Rect,
+    /// Linear progress before easing, in the inclusive range `0.0..=1.0`.
+    pub progress: f64,
     pub done: bool,
 }
 
@@ -113,35 +115,15 @@ impl WindowAnimation {
                 w: w.round() as i32,
                 h: h.round() as i32,
             },
+            progress: raw_t,
             done: raw_t >= 1.0,
         }
-    }
-}
-
-/// Cancel an in-flight X11 animation by snapping directly to its target.
-pub fn cancel_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: WindowId) {
-    if let Some(anim) = ctx.x11_runtime.take_window_animation(win) {
-        let mut wmctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-        wmctx.set_geometry_impl(win, anim.to, GeometryApplyMode::Logical);
     }
 }
 
 /// Drop an in-flight X11 animation without applying its final target.
 pub fn drop_x11_animation(x11_runtime: &mut X11RuntimeConfig, win: WindowId) {
     let _ = x11_runtime.take_window_animation(win);
-}
-
-pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
-    match ctx {
-        WmCtx::X11(x11) => {
-            cancel_x11_animation(x11, win);
-        }
-        WmCtx::Wayland(wl) => {
-            let _ = wl
-                .wayland
-                .with_state(|state| state.cancel_window_animation(win));
-        }
-    }
 }
 
 /// Take an in-flight animation and return its rectangle at `now` without
