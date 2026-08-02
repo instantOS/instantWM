@@ -142,7 +142,7 @@ impl WaylandWindowAnimation {
         self.resize.target()
     }
 
-    fn tick(&mut self, now: Instant, committed_size: Size<i32, Logical>) -> WaylandAnimationTick {
+    fn tick(&mut self, now: Instant) -> WaylandAnimationTick {
         let previous_frame = self.displayed_frame;
         let tick = self.frame.tick(now);
         let eased = ease_out_cubic(tick.progress);
@@ -151,22 +151,14 @@ impl WaylandWindowAnimation {
         WaylandAnimationTick {
             previous_frame,
             frame: tick.rect,
-            surface_location: centered_surface_location(
-                tick.rect,
-                committed_size,
-                self.displayed_border,
-            ),
+            surface_location: inner_surface_location(tick.rect, self.displayed_border),
             configure_size: self.resize.advance(tick.progress),
             done: tick.done,
         }
     }
 }
 
-fn centered_surface_location(
-    frame: Rect,
-    _committed_size: Size<i32, Logical>,
-    border_width: i32,
-) -> Point<i32, Logical> {
+fn inner_surface_location(frame: Rect, border_width: i32) -> Point<i32, Logical> {
     let border_width = border_width.max(0);
     Point::from((frame.x + border_width, frame.y + border_width))
 }
@@ -375,7 +367,7 @@ impl WaylandState {
             return;
         }
 
-        let start_loc = centered_surface_location(from, actual_size, from_border);
+        let start_loc = inner_surface_location(from, from_border);
         if actual_loc != Some(start_loc) {
             self.remap_element_preserving_z_order(&element, start_loc, false);
         }
@@ -447,18 +439,11 @@ impl WaylandState {
             self.layout_preview_animation.tick(now);
             self.request_render();
         }
-        let animation_inputs: Vec<_> = self
-            .window_animations
-            .keys()
-            .filter_map(|&win| {
-                let element = self.find_window(win)?;
-                Some((win, element.geometry().size))
-            })
-            .collect();
-        let mut updates = Vec::with_capacity(animation_inputs.len());
-        for (win, committed_size) in animation_inputs {
+        let active_windows: Vec<WindowId> = self.window_animations.keys().copied().collect();
+        let mut updates = Vec::with_capacity(active_windows.len());
+        for win in active_windows {
             if let Some(animation) = self.window_animations.get_mut(&win) {
-                let tick = animation.tick(now, committed_size);
+                let tick = animation.tick(now);
                 let border_width = animation.displayed_border_width();
                 let configure_target = tick.configure_size.map(|_| animation.target());
                 updates.push((
@@ -567,23 +552,22 @@ mod tests {
             2,
             4,
         );
-        let committed = Size::from((100, 80));
 
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(19), committed)
+                .tick(start + Duration::from_millis(19))
                 .configure_size,
             None
         );
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(21), committed)
+                .tick(start + Duration::from_millis(21))
                 .configure_size,
             Some(Size::from((140, 60)))
         );
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(80), committed)
+                .tick(start + Duration::from_millis(80))
                 .configure_size,
             None
         );
@@ -605,7 +589,7 @@ mod tests {
 
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(100), Size::from((100, 80)))
+                .tick(start + Duration::from_millis(100))
                 .configure_size,
             None
         );
@@ -658,13 +642,13 @@ mod tests {
         assert_eq!(animation.displayed_border_width(), 0);
 
         // Early in the eased transition the width has not reached the target.
-        animation.tick(start + Duration::from_millis(10), Size::from((1200, 740)));
+        animation.tick(start + Duration::from_millis(10));
         let early = animation.displayed_border_width();
         assert!(early > 0 && early < 2);
 
         // The transition ends fully bordered, landed exactly on the target
         // inner rectangle: content origin offset by the final border width.
-        let tick = animation.tick(start + Duration::from_millis(100), Size::from((896, 573)));
+        let tick = animation.tick(start + Duration::from_millis(100));
         assert_eq!(tick.surface_location, Point::from((152, 128)));
         assert_eq!(animation.displayed_border_width(), 2);
         assert_eq!(animation.target_border_width(), 2);
@@ -674,13 +658,13 @@ mod tests {
     fn one_sided_growth_moves_before_and_after_the_size_switch() {
         let halfway_frame = Rect::new(0, 0, 120, 80);
 
-        let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
-        let after_resize = centered_surface_location(halfway_frame, Size::from((140, 80)), 0);
+        let before_resize = inner_surface_location(halfway_frame, 0);
+        let after_resize = inner_surface_location(halfway_frame, 0);
 
         assert_eq!(before_resize, Point::from((0, 0)));
         assert_eq!(after_resize, Point::from((0, 0)));
         assert_eq!(
-            centered_surface_location(Rect::new(0, 0, 140, 80), Size::from((140, 80)), 0),
+            inner_surface_location(Rect::new(0, 0, 140, 80), 0),
             Point::from((0, 0))
         );
     }
@@ -689,13 +673,13 @@ mod tests {
     fn one_sided_shrink_moves_before_and_after_the_size_switch() {
         let halfway_frame = Rect::new(0, 0, 80, 80);
 
-        let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
-        let after_resize = centered_surface_location(halfway_frame, Size::from((60, 80)), 0);
+        let before_resize = inner_surface_location(halfway_frame, 0);
+        let after_resize = inner_surface_location(halfway_frame, 0);
 
         assert_eq!(before_resize, Point::from((0, 0)));
         assert_eq!(after_resize, Point::from((0, 0)));
         assert_eq!(
-            centered_surface_location(Rect::new(0, 0, 60, 80), Size::from((60, 80)), 0),
+            inner_surface_location(Rect::new(0, 0, 60, 80), 0),
             Point::from((0, 0))
         );
     }
@@ -703,7 +687,6 @@ mod tests {
     #[test]
     fn every_edge_combination_keeps_the_surface_centered_in_the_visual_frame() {
         let border = 4;
-        let committed_sizes = [Size::from((100, 80)), Size::from((140, 120))];
 
         for left_delta in [-20, 0, 20] {
             for right_delta in [-20, 0, 20] {
@@ -716,11 +699,9 @@ mod tests {
                         let frame = Rect::new(left, top, right - left, bottom - top);
                         assert!(frame.is_valid());
 
-                        for committed in committed_sizes {
-                            let location = centered_surface_location(frame, committed, border);
-                            assert_eq!(location.x, frame.x + border);
-                            assert_eq!(location.y, frame.y + border);
-                        }
+                        let location = inner_surface_location(frame, border);
+                        assert_eq!(location.x, frame.x + border);
+                        assert_eq!(location.y, frame.y + border);
                     }
                 }
             }
