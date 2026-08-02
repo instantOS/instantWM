@@ -23,12 +23,6 @@ use crate::contexts::WmCtx;
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    if ctx.core().model().is_overview_active() {
-        crate::overview::exit_overview(ctx, crate::overview::ExitMode::ToSelectedWindow);
-        ctx.request_bar_update();
-        return;
-    }
-
     let Some(win) = ctx.core().model().selected_win() else {
         return;
     };

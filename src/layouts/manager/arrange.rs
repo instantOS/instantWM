@@ -305,7 +305,7 @@ fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Ve
     let is_tiling = monitor.current_layout().is_tiling();
     let is_maximized = monitor.current_layout().is_maximized();
     let client_count = monitor.tiled_client_count(clients) as u32;
-    let selected_tags = monitor.selected_tags();
+    let selected_tags = monitor.visible_tags();
 
     monitor
         .clients

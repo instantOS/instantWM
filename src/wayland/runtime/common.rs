@@ -533,6 +533,7 @@ fn handle_select_tag(wm: &mut Wm, monitor_name: &str, tag_index: usize) {
         return;
     };
 
+    crate::overview::exit_overview(&mut ctx, crate::overview::ExitMode::RestorePrevious);
     crate::focus::select_monitor(&mut ctx, monitor_id);
 
     // ext-workspace-v1 uses zero-based indices; TagMask performs the conversion
@@ -779,7 +780,7 @@ fn finalize_wayland_client(
     state.model.client_view(win).map(|view| {
         (
             view.client.monitor_id,
-            view.client.is_visible(view.monitor.selected_tags()),
+            view.client.is_visible(view.monitor.visible_tags()),
         )
     })
 }
@@ -825,7 +826,7 @@ fn handle_activate_window(wm: &mut Wm, win: crate::types::WindowId) {
         .core()
         .model()
         .client_view(win)
-        .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
+        .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()));
 
     if is_currently_visible {
         crate::focus::activate_client(&mut ctx, win);

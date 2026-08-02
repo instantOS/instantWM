@@ -43,14 +43,14 @@ fn tag_scheme(
             && selected_client_has_tag
         {
             SchemeTag::Focus
-        } else if monitor.selected_tags().contains(tag_num) {
+        } else if monitor.visible_tags().contains(tag_num) {
             SchemeTag::NoFocus
         } else if !monitor.showtags {
             SchemeTag::Filled
         } else {
             SchemeTag::Inactive
         }
-    } else if monitor.selected_tags().contains(tag_num) {
+    } else if monitor.visible_tags().contains(tag_num) {
         SchemeTag::Empty
     } else {
         SchemeTag::Inactive
@@ -378,7 +378,7 @@ pub(crate) fn build_monitor_snapshots(
             });
         }
 
-        let selected_tags = mon.selected_tags();
+        let selected_tags = mon.visible_tags();
         let mut titles = Vec::new();
         for win in mon.bar_client_order(&core.model().clients) {
             let Some(c) = core.model().client(win) else {

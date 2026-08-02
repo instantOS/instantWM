@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::actions::{ButtonAction, KeyAction, NamedAction};
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutOutput;
@@ -14,9 +15,101 @@ pub enum ExitMode {
     ToSelectedWindow,
 }
 
+#[derive(Clone, Copy)]
+enum ActionTransition {
+    Preserve,
+    Confirm,
+    Cancel,
+}
+
+fn prepare_action(ctx: &mut WmCtx<'_>, transition: ActionTransition) {
+    if !ctx.core().model().is_overview_active() {
+        return;
+    }
+    match transition {
+        ActionTransition::Preserve => {}
+        ActionTransition::Confirm => exit_overview(ctx, ExitMode::ToSelectedWindow),
+        ActionTransition::Cancel => exit_overview(ctx, ExitMode::RestorePrevious),
+    }
+}
+
+/// Let overview consume its own navigation, cancel before explicit workspace
+/// navigation, and confirm before every other action. The confirm default is
+/// intentional: a newly added mutating action cannot operate on a projection.
+pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
+    use ActionTransition::{Cancel, Confirm, Preserve};
+
+    let transition = match action {
+        NamedAction::None
+        | NamedAction::FocusNext
+        | NamedAction::FocusPrev
+        | NamedAction::FocusUp
+        | NamedAction::FocusDown
+        | NamedAction::FocusLeft
+        | NamedAction::FocusRight
+        | NamedAction::DownKey
+        | NamedAction::UpKey
+        | NamedAction::ToggleOverview
+        | NamedAction::CancelOverview
+        | NamedAction::EdgeScratchpadToggle
+        | NamedAction::EdgeScratchpadShow
+        | NamedAction::EdgeScratchpadHide
+        | NamedAction::EdgeScratchpadDirectionUp
+        | NamedAction::EdgeScratchpadDirectionDown
+        | NamedAction::EdgeScratchpadDirectionLeft
+        | NamedAction::EdgeScratchpadDirectionRight
+        | NamedAction::ToggleBar
+        | NamedAction::ToggleAltTag
+        | NamedAction::ToggleAnimated
+        | NamedAction::ToggleShowTags
+        | NamedAction::NextKeyboardLayout
+        | NamedAction::PrevKeyboardLayout
+        | NamedAction::KeyboardLayout
+        | NamedAction::Spawn
+        | NamedAction::FocusStack => Preserve,
+
+        NamedAction::FocusLast
+        | NamedAction::LastView
+        | NamedAction::ScrollLeft
+        | NamedAction::ScrollRight
+        | NamedAction::ShiftViewLeft
+        | NamedAction::ShiftViewRight
+        | NamedAction::ViewAll
+        | NamedAction::FocusMonPrev
+        | NamedAction::FocusMonNext => Cancel,
+
+        _ => Confirm,
+    };
+    prepare_action(ctx, transition);
+}
+
+pub(crate) fn prepare_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
+    let transition = match action {
+        KeyAction::Sequence(_) | KeyAction::Named { .. } => ActionTransition::Preserve,
+        KeyAction::ViewTag { .. }
+        | KeyAction::ToggleViewTag { .. }
+        | KeyAction::SwapTags { .. } => ActionTransition::Cancel,
+        _ => ActionTransition::Confirm,
+    };
+    prepare_action(ctx, transition);
+}
+
+pub(crate) fn prepare_button_action(ctx: &mut WmCtx<'_>, action: &ButtonAction) {
+    let transition = match action {
+        ButtonAction::Named { .. }
+        | ButtonAction::CloseClickedTitleWindow
+        | ButtonAction::SidebarGestureBegin
+        | ButtonAction::HideEdgeScratchpad
+        | ButtonAction::ShowEdgeScratchpad => ActionTransition::Preserve,
+        ButtonAction::ToggleClickedViewTag => ActionTransition::Cancel,
+        _ => ActionTransition::Confirm,
+    };
+    prepare_action(ctx, transition);
+}
+
 #[derive(Debug, Clone)]
 pub struct OverviewState {
-    restore_tags: TagMask,
+    projected_tags: TagMask,
     /// Stable bottom-to-top card order captured on entry. Focus changes update
     /// the normal model stack, but must not reshuffle or obscure overview cards.
     window_order: Vec<WindowId>,
@@ -36,13 +129,13 @@ pub struct OverviewState {
 
 impl OverviewState {
     pub(crate) fn new(
-        restore_tags: TagMask,
+        projected_tags: TagMask,
         window_order: Vec<WindowId>,
         restore_geometry: HashMap<WindowId, Rect>,
         active_window: Option<WindowId>,
     ) -> Self {
         Self {
-            restore_tags,
+            projected_tags,
             window_order,
             restore_geometry,
             active_window,
@@ -87,6 +180,10 @@ impl OverviewState {
             self.active_window = ordered_windows.first().copied();
         }
     }
+
+    pub(crate) fn projected_tags(&self) -> TagMask {
+        self.projected_tags
+    }
 }
 
 pub(crate) fn handle_mode_transition(
@@ -106,6 +203,9 @@ pub(crate) fn handle_mode_transition(
 /// Exit overview mode with a specific [`ExitMode`].
 ///
 pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
+    if !ctx.core().model().is_overview_active() {
+        return;
+    }
     ctx.transition_current_mode(crate::core_state::ActiveWmMode::Default, mode);
 }
 
@@ -136,13 +236,8 @@ fn enter(ctx: &mut WmCtx<'_>) {
         if mon.overview_state.is_some() {
             return;
         }
-        let restore_tags = mon.selected_tags();
-        // The all-tags view is a temporary projection, not user navigation.
-        // Updating tag history here makes Super+Tab point back to the tag
-        // overview will restore, producing a same-tag history entry on exit.
-        mon.set_selected_tags(all_tags);
         mon.overview_state = Some(OverviewState::new(
-            restore_tags,
+            all_tags,
             window_order,
             restore_geometry,
             active_window,
@@ -166,14 +261,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 
     match mode {
         ExitMode::RestorePrevious => {
-            let restore_mask = state.restore_tags;
             restore_window_geometry(ctx, selected_monitor_id, &state.restore_geometry);
-
-            if !restore_mask.is_empty() {
-                let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-                restore_overview_tags(mon, restore_mask, restore_mask);
-            }
-
             crate::focus::focus(ctx, None);
         }
         ExitMode::ToSelectedWindow => {
@@ -198,16 +286,15 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
                     .map(|c| c.tags.without_scratchpad())
                     .filter(|tags| !tags.is_empty())
             });
-            let restore_mask = state.restore_tags;
-
             restore_window_geometry(ctx, selected_monitor_id, &state.restore_geometry);
 
+            let restore_mask = ctx.core().model().expect_selected_monitor().selected_tags();
             let target_mask = selected_tags.or(Some(restore_mask));
             if let Some(mask) = target_mask
                 && !mask.is_empty()
             {
                 let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-                restore_overview_tags(mon, restore_mask, mask);
+                commit_overview_tags(mon, mask);
             }
 
             if let Some(win) = selected_window {
@@ -226,9 +313,8 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 /// projection as tag history. When selection chooses another tag, replay the
 /// transition from the pre-overview mask so ordinary Super+Tab semantics are
 /// retained.
-fn restore_overview_tags(monitor: &mut Monitor, restore_mask: TagMask, target_mask: TagMask) {
-    monitor.set_selected_tags(restore_mask);
-    if target_mask != restore_mask {
+fn commit_overview_tags(monitor: &mut Monitor, target_mask: TagMask) {
+    if target_mask != monitor.selected_tags() {
         let _ = monitor.set_selected_tags_with_history(target_mask);
     }
 }
@@ -285,7 +371,7 @@ pub fn hover_window(
         let model = ctx.core().model();
         let monitor = model.expect_selected_monitor();
         model.client(*win).is_some_and(|client| {
-            client.monitor_id == monitor_id && overview_eligible(client, monitor.selected_tags())
+            client.monitor_id == monitor_id && overview_eligible(client, monitor.visible_tags())
         })
     });
 
@@ -352,7 +438,7 @@ pub fn focus_direction(ctx: &mut WmCtx<'_>, direction: Direction) -> bool {
 /// in the same direction as z-order, every card retains an exposed, clickable
 /// strip even when later cards overlap it.
 pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> OverviewLayout {
-    let selected_tags = monitor.selected_tags();
+    let selected_tags = monitor.visible_tags();
     let newly_visible = monitor
         .clients
         .iter()
@@ -472,6 +558,14 @@ fn overview_eligible(client: &Client, selected_tags: TagMask) -> bool {
     client.is_visible(selected_tags) && !client.is_edge_scratchpad()
 }
 
+pub(crate) fn has_cards(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> bool {
+    monitor.clients.iter().any(|win| {
+        clients
+            .get(win)
+            .is_some_and(|client| overview_eligible(client, monitor.visible_tags()))
+    })
+}
+
 fn initial_window_order(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
@@ -510,7 +604,7 @@ fn eligible_order(
         .filter(|win| {
             clients
                 .get(win)
-                .is_some_and(|client| overview_eligible(client, monitor.selected_tags()))
+                .is_some_and(|client| overview_eligible(client, monitor.visible_tags()))
         })
         .collect()
 }

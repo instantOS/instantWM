@@ -129,6 +129,14 @@ fn handle_button_press(
         return false;
     }
 
+    if let Some(monitor_id) = wm
+        .core
+        .model
+        .monitors
+        .id_intersecting_rect(crate::mouse::pointer::point_rect(button.root))
+    {
+        crate::focus::select_monitor(&mut wm.ctx(), monitor_id);
+    }
     let pointer_region = {
         let mut ctx = wm.ctx();
         crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root, clicked_win)

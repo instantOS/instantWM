@@ -237,6 +237,9 @@ fn send_response(stream: &mut UnixStream, response: &Response) -> io::Result<()>
 }
 
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
+    if let Some(exit_mode) = ipc_overview_exit(&cmd) {
+        crate::overview::exit_overview(&mut wm.ctx(), exit_mode);
+    }
     match cmd {
         IpcCommand::Status => general::get_status(wm),
         IpcCommand::Reload => match reload_config(wm) {
@@ -270,6 +273,61 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
             wm.quit();
             Response::ok()
         }
+    }
+}
+
+fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
+    use crate::ipc_types::{MonitorCommand, ScratchpadCommand, WindowCommand};
+    use crate::overview::ExitMode::{RestorePrevious, ToSelectedWindow};
+
+    match cmd {
+        IpcCommand::TagMon(_) | IpcCommand::FollowMon(_) | IpcCommand::Border(_) => {
+            Some(ToSelectedWindow)
+        }
+        IpcCommand::Monitor(
+            MonitorCommand::Switch { .. }
+            | MonitorCommand::Next { .. }
+            | MonitorCommand::Prev { .. }
+            | MonitorCommand::Set { .. },
+        ) => Some(RestorePrevious),
+        IpcCommand::Window(WindowCommand::Resize { .. } | WindowCommand::Close(None))
+        | IpcCommand::Scratchpad(ScratchpadCommand::Create { .. }) => Some(ToSelectedWindow),
+
+        IpcCommand::Status
+        | IpcCommand::Reload
+        | IpcCommand::RunAction { .. }
+        | IpcCommand::Spawn(_)
+        | IpcCommand::WarpFocus
+        | IpcCommand::Layout(_)
+        | IpcCommand::SpecialNext(_)
+        | IpcCommand::UpdateStatus(_)
+        | IpcCommand::Monitor(MonitorCommand::List | MonitorCommand::Modes { .. })
+        | IpcCommand::Scratchpad(
+            ScratchpadCommand::List
+            | ScratchpadCommand::Toggle(_)
+            | ScratchpadCommand::Show(_)
+            | ScratchpadCommand::ShowAll
+            | ScratchpadCommand::Hide(_)
+            | ScratchpadCommand::HideAll
+            | ScratchpadCommand::Status(_)
+            | ScratchpadCommand::Resize { .. }
+            | ScratchpadCommand::Delete { .. },
+        )
+        | IpcCommand::Keyboard(_)
+        | IpcCommand::Tag(_)
+        | IpcCommand::Window(
+            WindowCommand::Info(_) | WindowCommand::Close(Some(_)) | WindowCommand::List(_),
+        )
+        | IpcCommand::Toggle(_)
+        | IpcCommand::Wallpaper(_)
+        | IpcCommand::Input(_)
+        | IpcCommand::Mode(_)
+        | IpcCommand::Config(_)
+        | IpcCommand::Test(_)
+        | IpcCommand::GetTheme
+        | IpcCommand::SetTheme(_)
+        | IpcCommand::ListThemes
+        | IpcCommand::Quit => None,
     }
 }
 

@@ -199,9 +199,7 @@ fn returning_from_overview_does_not_create_same_tag_history() {
         ..Monitor::default()
     };
     monitor.set_selected_tags(tag2);
-    monitor.set_selected_tags(TagMask::all(9));
-
-    restore_overview_tags(&mut monitor, tag2, tag2);
+    commit_overview_tags(&mut monitor, tag2);
 
     assert_eq!(monitor.selected_tags(), tag2);
     assert_eq!(monitor.prev_tag, Some(1));
@@ -219,9 +217,7 @@ fn selecting_another_overview_card_records_the_origin_tag() {
         ..Monitor::default()
     };
     monitor.set_selected_tags(tag2);
-    monitor.set_selected_tags(TagMask::all(9));
-
-    restore_overview_tags(&mut monitor, tag2, tag3);
+    commit_overview_tags(&mut monitor, tag3);
 
     assert_eq!(monitor.selected_tags(), tag3);
     assert_eq!(monitor.prev_tag, Some(2));
@@ -308,6 +304,14 @@ fn hovered_card_is_committed_on_overview_confirmation() {
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
     toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert_eq!(
+        wm.core.model.expect_selected_monitor().selected_tags(),
+        tag1
+    );
+    assert_eq!(
+        wm.core.model.expect_selected_monitor().visible_tags(),
+        TagMask::all(2)
+    );
     assert!(hover_window(
         &mut wm.ctx(),
         Some(second),
@@ -346,4 +350,126 @@ fn keyboard_navigation_continues_from_the_hovered_card() {
         .unwrap();
     assert_eq!(state.active_window, Some(first));
     assert_eq!(wm.core.model.selected_win(), Some(first));
+}
+
+#[test]
+fn layout_action_commits_hovered_card_before_changing_its_tag_layout() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    hover_window(&mut wm.ctx(), Some(second), Some(Point::new(900, 300)));
+    crate::actions::execute_key_action(
+        &mut wm.ctx(),
+        &crate::actions::KeyAction::named(crate::actions::NamedAction::ToggleTilingMaximized),
+    );
+
+    let monitor = wm.core.model.expect_selected_monitor();
+    assert!(monitor.overview_state.is_none());
+    assert_eq!(monitor.selected_tags(), tag2);
+    assert_eq!(monitor.selected, Some(second));
+    assert_eq!(
+        monitor.current_layout(),
+        crate::layouts::PresentationMode::Maximized
+    );
+    assert!(!monitor.per_tag.contains_key(&TagMask::all(2)));
+}
+
+#[test]
+fn explicit_tag_navigation_cancels_the_overview_projection() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1), (WindowId(2), tag2)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    crate::actions::execute_key_action(
+        &mut wm.ctx(),
+        &crate::actions::KeyAction::ViewTag { tag_idx: 1 },
+    );
+
+    let monitor = wm.core.model.expect_selected_monitor();
+    assert!(monitor.overview_state.is_none());
+    assert_eq!(monitor.selected_tags(), tag2);
+}
+
+#[test]
+fn visibility_uses_the_projection_while_workspace_state_stays_authoritative() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1), (WindowId(2), tag2)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+
+    let monitor = wm.core.model.expect_selected_monitor();
+    assert_eq!(monitor.selected_tags(), tag1);
+    assert_eq!(monitor.visible_tags(), TagMask::all(2));
+    assert!(
+        crate::client::visibility::visibility_plan(&wm.core.model)
+            .into_iter()
+            .all(|entry| entry.visible)
+    );
+}
+
+#[test]
+fn changing_monitors_cancels_the_session_on_its_owner() {
+    let tag1 = TagMask::single(1).unwrap();
+    let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1)]);
+    let first_monitor_id = wm.core.model.selected_monitor_id();
+    let second_monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(1200, 0, 1200, 700),
+        available_rect: Rect::new(1200, 0, 1200, 700),
+        tag_set: [tag1; 2],
+        ..Monitor::default()
+    });
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert!(crate::focus::select_monitor(
+        &mut wm.ctx(),
+        second_monitor_id
+    ));
+
+    assert_eq!(wm.core.model.selected_monitor_id(), second_monitor_id);
+    assert!(
+        wm.core
+            .model
+            .monitor(first_monitor_id)
+            .unwrap()
+            .overview_state
+            .is_none()
+    );
+    assert_eq!(
+        wm.core.behavior.current_mode,
+        crate::core_state::ActiveWmMode::Default
+    );
+}
+
+#[test]
+fn removing_the_last_card_leaves_overview() {
+    let tags = TagMask::single(1).unwrap();
+    let win = WindowId(1);
+    let mut wm = wm_with_overview_clients(tags, &[(win, tags)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert!(crate::client::lifecycle::remove_managed_client(&mut wm.ctx(), win).is_some());
+
+    assert!(!wm.core.model.is_overview_active());
+    assert_eq!(
+        wm.core.behavior.current_mode,
+        crate::core_state::ActiveWmMode::Default
+    );
+}
+
+#[test]
+fn overview_exit_is_a_noop_for_other_modes() {
+    let tags = TagMask::single(1).unwrap();
+    let mut wm = wm_with_overview_clients(tags, &[(WindowId(1), tags)]);
+    let resize_mode = crate::core_state::ActiveWmMode::Named("resize".to_string());
+    wm.core.behavior.current_mode = resize_mode.clone();
+
+    exit_overview(&mut wm.ctx(), ExitMode::RestorePrevious);
+
+    assert_eq!(wm.core.behavior.current_mode, resize_mode);
 }

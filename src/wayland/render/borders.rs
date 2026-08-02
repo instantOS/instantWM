@@ -140,7 +140,7 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
             continue;
         };
 
-        let is_visible = c.is_visible(view.monitor.selected_tags());
+        let is_visible = c.is_visible(view.monitor.visible_tags());
         let is_tiling_layout = view.monitor.is_tiling_layout();
 
         windows.push(WindowBorderInfo {

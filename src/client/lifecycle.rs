@@ -22,6 +22,19 @@ pub(crate) fn remove_managed_client(
     let removed = ctx.core_mut().model_mut().remove_client(win)?;
     let monitor_id = removed.monitor_id;
 
+    let overview_became_empty = ctx
+        .core()
+        .model()
+        .monitor(monitor_id)
+        .is_some_and(|monitor| {
+            monitor_id == ctx.core().model().selected_monitor_id()
+                && monitor.overview_state.is_some()
+                && !crate::overview::has_cards(monitor, &ctx.core().model().clients)
+        });
+    if overview_became_empty {
+        crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
+    }
+
     crate::focus::refresh_focus(ctx, None);
     crate::layouts::arrange(ctx, Some(monitor_id));
     ctx.request_bar_update();
@@ -312,5 +325,38 @@ mod tests {
         assert_eq!(client.monitor_id, selected_id);
         assert_eq!(client.tags, selected_tags);
         assert_eq!(client.placement(), ClientPlacement::Tiling);
+    }
+
+    #[test]
+    fn overview_projection_is_not_used_as_a_launch_destination() {
+        let mut model = WmModel::new();
+        model.tags.num_tags = 4;
+        let real_tags = TagMask::single(2).unwrap();
+        let monitor_id = model.monitors.push(Monitor {
+            tag_set: [real_tags; 2],
+            overview_state: Some(crate::overview::OverviewState::new(
+                TagMask::all(4),
+                Vec::new(),
+                std::collections::HashMap::new(),
+                None,
+            )),
+            ..Monitor::default()
+        });
+        model.set_selected_monitor(monitor_id);
+
+        assert_eq!(
+            model.expect_selected_monitor().visible_tags(),
+            TagMask::all(4)
+        );
+        assert_eq!(current_launch_context(&model).tags, real_tags);
+
+        let mut client = Client::new(WindowId(30));
+        assert!(assign_initial_monitor_and_tags(
+            &model,
+            &mut client,
+            None,
+            None,
+        ));
+        assert_eq!(client.tags, real_tags);
     }
 }

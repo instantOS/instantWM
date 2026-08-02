@@ -41,6 +41,15 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         .contains_key(&event_win)
         .then_some(event_win);
 
+    if e.detail == MouseButton::Left.to_x11_detail() {
+        let exit_mode = if target_window.is_some() {
+            crate::overview::ExitMode::ToSelectedWindow
+        } else {
+            crate::overview::ExitMode::RestorePrevious
+        };
+        crate::overview::exit_overview(&mut WmCtx::X11(ctx.reborrow()), exit_mode);
+    }
+
     // Click-to-focus is independent of focus-follows-mouse. Passive grabs on
     // unfocused clients let the WM focus first, then replay the click to the
     // application below.
@@ -52,6 +61,14 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     }
 
     let root = Point::new(e.root_x as i32, e.root_y as i32);
+    if let Some(monitor_id) = ctx
+        .core
+        .model()
+        .monitors
+        .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
+    {
+        crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+    }
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
     let button_target = region.to_button_target();
 
@@ -698,6 +715,10 @@ fn handle_current_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
+    crate::overview::exit_overview(
+        &mut WmCtx::X11(ctx.reborrow()),
+        crate::overview::ExitMode::RestorePrevious,
+    );
     crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     crate::tags::view::view_tags(&mut WmCtx::X11(ctx.reborrow()), mask);
 }

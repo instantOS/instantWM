@@ -30,6 +30,7 @@ fn button_target_client(
 }
 
 pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
+    crate::overview::prepare_key_action(ctx, action);
     match action {
         KeyAction::Sequence(actions) => {
             for action in actions {
@@ -81,6 +82,7 @@ pub fn execute_button_action(
     action: &ButtonAction,
     arg: crate::types::ButtonArg,
 ) {
+    crate::overview::prepare_button_action(ctx, action);
     match action {
         ButtonAction::Named { action, args } => execute_named_action(ctx, *action, args),
         ButtonAction::WindowTitleMouseHandler => {

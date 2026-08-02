@@ -121,7 +121,7 @@ fn resize_target_for_window(
 ) -> Option<HoverResizeTarget> {
     let c = model.client(win)?;
     let mon = model.expect_selected_monitor();
-    let selected_tags = mon.selected_tags();
+    let selected_tags = mon.visible_tags();
     let has_tiling = mon.is_tiling_layout();
 
     if !c.is_visible(selected_tags) {
@@ -174,7 +174,7 @@ pub fn selected_hover_resize_target_at(
 fn has_visible_tiled_client(model: &WmModel) -> bool {
     let has_tiling = model.expect_selected_monitor().is_tiling_layout();
     let mon = model.expect_selected_monitor();
-    let selected = mon.selected_tags();
+    let selected = mon.visible_tags();
     has_tiling
         && mon
             .iter_clients(&model.clients)

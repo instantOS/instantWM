@@ -62,6 +62,7 @@ macro_rules! define_named_actions {
         }
 
         pub fn execute_named_action(ctx: &mut WmCtx<'_>, action: NamedAction, args: &[String]) {
+            crate::overview::prepare_named_action(ctx, action);
             match action {
                 $(NamedAction::$variant => {
                     let $ctx = ctx;
@@ -323,6 +324,7 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
+
     use crate::layouts::{LayoutCommand, PresentationMode};
     use crate::types::{
         Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,

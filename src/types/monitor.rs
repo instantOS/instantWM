@@ -169,7 +169,7 @@ impl Monitor {
 
     /// Check whether the monitor has a client in true fullscreen mode.
     pub fn has_real_fullscreen(&self, clients: &HashMap<WindowId, Client>) -> bool {
-        let selected_tags = self.selected_tags();
+        let selected_tags = self.visible_tags();
         self.iter_clients(clients).any(|(_, client)| {
             client.mode().is_true_fullscreen() && client.is_visible(selected_tags)
         })
@@ -211,6 +211,20 @@ impl Monitor {
     #[inline]
     pub fn selected_tags(&self) -> TagMask {
         self.tag_set[self.sel_tags as usize]
+    }
+
+    /// Tags currently projected on screen.
+    ///
+    /// Overview is a presentation of every tag, not a workspace selection.
+    /// Keeping this separate from [`Self::selected_tags`] prevents temporary
+    /// overview state from leaking into launch placement, tag history, IPC,
+    /// and per-tag layout storage.
+    #[inline]
+    pub fn visible_tags(&self) -> TagMask {
+        self.overview_state.as_ref().map_or_else(
+            || self.selected_tags(),
+            crate::overview::OverviewState::projected_tags,
+        )
     }
 
     /// Set the currently selected tags for this monitor.
@@ -310,7 +324,7 @@ impl Monitor {
 
     /// Count the number of visible clients on this monitor.
     pub fn client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
-        let selected = self.selected_tags();
+        let selected = self.visible_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
             if c.is_visible(selected) {
@@ -322,7 +336,7 @@ impl Monitor {
 
     /// Count the number of tiled clients on this monitor.
     pub fn tiled_client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
-        let selected = self.selected_tags();
+        let selected = self.visible_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
             if c.is_tiled(selected) {
@@ -336,7 +350,7 @@ impl Monitor {
     ///
     /// This replaces the per-layout boilerplate of filtering + snapshotting.
     pub fn collect_tiled(&self, clients: &HashMap<WindowId, Client>) -> Vec<TiledClientInfo> {
-        let selected_tags = self.selected_tags();
+        let selected_tags = self.visible_tags();
         self.collect_client_info(clients, |client| client.is_tiled(selected_tags))
     }
 
@@ -346,7 +360,7 @@ impl Monitor {
         &self,
         clients: &HashMap<WindowId, Client>,
     ) -> Vec<TiledClientInfo> {
-        let selected_tags = self.selected_tags();
+        let selected_tags = self.visible_tags();
         self.collect_client_info(clients, |client| {
             client.is_tiling_tree_member(selected_tags)
         })
@@ -370,7 +384,7 @@ impl Monitor {
     /// tree. A newly managed client is appended defensively if reconciliation
     /// has not reached the tree yet.
     pub fn tiled_tree_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
-        let selected = self.selected_tags();
+        let selected = self.visible_tags();
         let mut ordered = self
             .per_tag()
             .map(|state| state.layout_tree.leaves())
@@ -402,7 +416,7 @@ impl Monitor {
     /// stack and therefore use the same tree order as keyboard focus cycling.
     /// Floating overlays follow that sequence in ordinary monitor client order.
     pub fn bar_client_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
-        let selected = self.selected_tags();
+        let selected = self.visible_tags();
         let mut ordered = if self.is_maximized_layout() {
             self.tiled_tree_order(clients)
         } else {
@@ -492,7 +506,7 @@ impl Monitor {
     /// `z_order` is bottom-to-top. Focus recovery walks it from the top so
     /// closing an overlapping window selects the window immediately below it.
     pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
-        let tags = self.selected_tags();
+        let tags = self.visible_tags();
         self.z_order
             .iter_top_to_bottom()
             .find_map(|w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
@@ -514,7 +528,7 @@ impl Monitor {
         clients: &HashMap<WindowId, Client>,
         start_win: Option<WindowId>,
     ) -> Option<WindowId> {
-        let selected = self.selected_tags();
+        let selected = self.visible_tags();
 
         let start_idx = if let Some(win) = start_win {
             self.clients.iter().position(|&w| w == win)
@@ -769,7 +783,7 @@ impl Monitor {
             return false;
         }
         let tag_num = tag_index + 1;
-        !occupied.contains(tag_num) && !self.selected_tags().contains(tag_num)
+        !occupied.contains(tag_num) && !self.visible_tags().contains(tag_num)
     }
 
     /// Map a bar slot (0..8) to the actual tag index.

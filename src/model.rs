@@ -143,7 +143,7 @@ impl WmModel {
     /// selected view as one model query.
     pub fn client_is_visible_on_selected_monitor(&self, win: WindowId) -> bool {
         let selected_monitor_id = self.selected_monitor_id();
-        let selected_tags = self.expect_selected_monitor().selected_tags();
+        let selected_tags = self.expect_selected_monitor().visible_tags();
         self.client_view(win).is_some_and(|view| {
             view.monitor.id() == selected_monitor_id && view.client.is_visible(selected_tags)
         })
@@ -156,7 +156,8 @@ impl WmModel {
 
     /// Return `true` if overview mode is active on the selected monitor.
     pub fn is_overview_active(&self) -> bool {
-        self.expect_selected_monitor().overview_state.is_some()
+        self.selected_monitor()
+            .is_some_and(|monitor| monitor.overview_state.is_some())
     }
 
     /// Return `true` if overview mode is active on the given monitor.

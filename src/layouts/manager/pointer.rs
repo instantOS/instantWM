@@ -219,7 +219,7 @@ pub(crate) fn update_pointer_tree_resize(
             Some(view)
                 if view.monitor.current_layout() == PresentationMode::Tiled
                     && view.client.mode().is_normal_tiling()
-                    && view.client.is_visible(view.monitor.selected_tags()) =>
+                    && view.client.is_visible(view.monitor.visible_tags()) =>
             {
                 view
             }

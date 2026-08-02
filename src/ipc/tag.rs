@@ -1,6 +1,5 @@
 use crate::ipc_types::{Response, TagCommand};
 use crate::tags::{name_tag, reset_name_tag};
-use crate::types::TagMask;
 use crate::wm::Wm;
 
 pub fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> Response {
@@ -13,8 +12,11 @@ pub fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> Response {
 
 fn view_tag(wm: &mut Wm, tag_num: u32) -> Response {
     let tag = if tag_num == 0 { 2 } else { tag_num };
-    if let Some(mask) = TagMask::single(tag as usize) {
-        crate::tags::view::view_tags(&mut wm.ctx(), mask);
+    if let Some(tag_idx) = usize::try_from(tag).ok().and_then(|tag| tag.checked_sub(1)) {
+        crate::actions::execute_key_action(
+            &mut wm.ctx(),
+            &crate::actions::KeyAction::ViewTag { tag_idx },
+        );
     }
     Response::ok()
 }

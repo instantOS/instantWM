@@ -38,7 +38,7 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusT
 
     let sel_mon_id = model.selected_monitor_id();
     let mon = model.expect_selected_monitor();
-    let selected = mon.selected_tags();
+    let selected = mon.visible_tags();
     let current_sel = mon.selected;
 
     // Use the requested window if it is visible. Otherwise restore the newest
@@ -74,7 +74,9 @@ fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<
 
     if let Some(mon) = model.monitor_mut(sel_mon_id) {
         mon.selected = target;
-        if let Some(t) = target {
+        if let Some(t) = target
+            && mon.overview_state.is_none()
+        {
             mon.record_focus(mon.selected_tags(), t);
         }
     }
@@ -410,6 +412,10 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
         return false;
     }
 
+    if ctx.core().model().is_overview_active() {
+        crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
+    }
+
     if let Some(win) = ctx.core().model().selected_win() {
         unfocus_win(ctx, win, false);
     }
@@ -452,7 +458,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
     select_monitor(ctx, monitor_id);
 
     let target_tags = client_tags.without_scratchpad();
-    let visible_tags = ctx.core().model().expect_selected_monitor().selected_tags();
+    let visible_tags = ctx.core().model().expect_selected_monitor().visible_tags();
     if !target_tags.is_empty() && !target_tags.intersects(visible_tags) {
         crate::tags::view::view_tags(ctx, target_tags);
     }
@@ -566,7 +572,7 @@ fn get_direction_focus_candidate(
     let source_client = model.client(source_win)?;
     let source_center = source_client.geo.center();
 
-    let selected = mon.selected_tags();
+    let selected = mon.visible_tags();
 
     get_directional_candidates(
         &mon.clients,
@@ -629,7 +635,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
 }
 
 fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
-    let selected = mon.selected_tags();
+    let selected = mon.visible_tags();
 
     if mon.is_maximized_layout() {
         // The persistent tree is a stable, user-controlled order. Unlike

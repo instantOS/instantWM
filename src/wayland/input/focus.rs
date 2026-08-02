@@ -10,6 +10,14 @@ pub(crate) fn focus_managed_target(
     button: Option<MouseButton>,
 ) {
     let mut ctx = wm.ctx();
+    if button == Some(MouseButton::Left) {
+        let exit_mode = if target.is_some() {
+            crate::overview::ExitMode::ToSelectedWindow
+        } else {
+            crate::overview::ExitMode::RestorePrevious
+        };
+        crate::overview::exit_overview(&mut ctx, exit_mode);
+    }
     let Some(window) = target else {
         crate::focus::focus(&mut ctx, None);
         return;

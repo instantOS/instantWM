@@ -688,7 +688,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             let is_currently_visible = self
                 .globals()
                 .and_then(|state| state.model.client_view(win))
-                .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
+                .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()));
 
             self.push_command(super::super::commands::WmCommand::ActivateWindow(win));
             self.request_bar_redraw();

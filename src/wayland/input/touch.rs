@@ -103,9 +103,17 @@ pub fn handle_touch_down(
             }
         } else if !state.is_pointer_over_overlay(location) {
             let root = root_point(location);
+            if let Some(monitor_id) = wm
+                .core
+                .model
+                .monitors
+                .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
+            {
+                crate::focus::select_monitor(&mut wm.ctx(), monitor_id);
+            }
             let bar_position = {
                 let mut ctx = wm.ctx();
-                crate::bar::resolve_bar_position_at_root(ctx.core_mut(), root, true)
+                crate::bar::resolve_bar_position_at_root(ctx.core_mut(), root)
                     .map(|(_, position)| position)
             };
             if state.runtime.bar_touch_slot.is_none()

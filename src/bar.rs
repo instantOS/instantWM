@@ -199,13 +199,9 @@ pub fn clear_hover(ctx: &mut WmCtx) {
 pub fn resolve_bar_position_at_root(
     core: &mut CoreCtx,
     root: Point,
-    sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
     let rect = crate::mouse::pointer::point_rect(root);
     let monitor_id = core.model().monitors.id_intersecting_rect(rect)?;
-    if sync_selected_monitor && monitor_id != core.model().selected_monitor_id() {
-        core.model_mut().set_selected_monitor(monitor_id);
-    }
 
     let mon = core.model().monitor(monitor_id)?;
     if !mon.bar_contains_y(&core.model().clients, root.y) {
@@ -224,9 +220,16 @@ pub fn update_hover(
     reset_start_menu: bool,
     sync_selected_monitor: bool,
 ) -> Option<BarPosition> {
-    let Some((monitor_id, pos)) =
-        resolve_bar_position_at_root(ctx.core_mut(), root, sync_selected_monitor)
-    else {
+    if sync_selected_monitor
+        && let Some(monitor_id) = ctx
+            .core()
+            .model()
+            .monitors
+            .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
+    {
+        crate::focus::select_monitor(ctx, monitor_id);
+    }
+    let Some((monitor_id, pos)) = resolve_bar_position_at_root(ctx.core_mut(), root) else {
         clear_hover(ctx);
         return None;
     };

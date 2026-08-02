@@ -48,7 +48,7 @@ pub(super) fn compute_monitor_z_order(
     clients: &HashMap<WindowId, Client>,
 ) -> Option<Vec<WindowId>> {
     let selected_window = monitor.selected;
-    let selected_tags = monitor.selected_tags();
+    let selected_tags = monitor.visible_tags();
     let bar_win = monitor.bar_win;
     let layout = monitor.current_layout();
     let tiled_focus = monitor.most_recent_focus(selected_tags, |win| {

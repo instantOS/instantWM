@@ -71,7 +71,7 @@ pub fn button_region_at(
     root: Point,
     clicked_win: Option<WindowId>,
 ) -> PointerRegion {
-    if let Some((monitor_id, pos)) = crate::bar::resolve_bar_position_at_root(core, root, true) {
+    if let Some((monitor_id, pos)) = crate::bar::resolve_bar_position_at_root(core, root) {
         return PointerRegion::Bar { monitor_id, pos };
     }
 
@@ -80,9 +80,6 @@ pub fn button_region_at(
     }
 
     if let Some(target) = sidebar_target_at(core.model(), root) {
-        if target.monitor_id != core.model().selected_monitor_id() {
-            core.model_mut().set_selected_monitor(target.monitor_id);
-        }
         return PointerRegion::Sidebar(target);
     }
 
@@ -91,9 +88,6 @@ pub fn button_region_at(
         .monitors
         .id_intersecting_rect(point_rect(root))
         .unwrap_or_else(|| core.model().selected_monitor_id());
-    if monitor_id != core.model().selected_monitor_id() {
-        core.model_mut().set_selected_monitor(monitor_id);
-    }
     PointerRegion::Root { monitor_id }
 }
 

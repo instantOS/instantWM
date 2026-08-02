@@ -18,7 +18,7 @@ pub(crate) struct VisibilityEntry {
 pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
     let mut plan = Vec::new();
     for mon in model.monitors_iter_all() {
-        let selected_tags = mon.selected_tags();
+        let selected_tags = mon.visible_tags();
         for (win, client) in mon.iter_clients(&model.clients) {
             plan.push(VisibilityEntry {
                 win,

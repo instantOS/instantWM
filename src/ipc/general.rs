@@ -1,5 +1,5 @@
 use crate::ipc_types::Response;
-use crate::layouts::{LayoutCommand, set_layout as layouts_set_layout};
+use crate::layouts::LayoutCommand;
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 
@@ -82,7 +82,11 @@ pub fn follow_mon(wm: &mut Wm, direction: MonitorDirection) -> Response {
 }
 
 pub fn set_layout(wm: &mut Wm, layout: LayoutCommand) -> Response {
-    layouts_set_layout(&mut wm.ctx(), layout);
+    let action = crate::actions::KeyAction::named_args(
+        crate::actions::NamedAction::SetLayout,
+        &[layout.name()],
+    );
+    crate::actions::execute_key_action(&mut wm.ctx(), &action);
     Response::ok()
 }
 
