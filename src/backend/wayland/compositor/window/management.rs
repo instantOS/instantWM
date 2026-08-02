@@ -1,6 +1,7 @@
 use smithay::utils::{Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::window::animations::WindowMoveMode;
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -23,7 +24,13 @@ impl WaylandState {
         }
     }
 
-    /// Resize a window to the given rectangle.
+    /// Apply authoritative geometry from the WM layer.
+    ///
+    /// The WM already decided whether a move animates and routes animated
+    /// transitions through [`set_window_target_rect`] with an explicit
+    /// animation mode. Anything reaching this entry point is geometry the WM
+    /// wants applied now, so it always snaps rather than re-deriving an
+    /// animation mode from the active-drag heuristic.
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(pending) = self.pending_authoritative_sizes.get_mut(&window) {
             *pending = (rect.w.max(1), rect.h.max(1));
@@ -37,7 +44,7 @@ impl WaylandState {
             );
             let _ = surface.configure(Some(geometry));
         }
-        let mode = self.default_window_move_mode();
+        let mode = WindowMoveMode::Immediate;
         self.set_window_target_rect(window, rect, mode);
     }
 

@@ -1,6 +1,7 @@
 use smithay::utils::{Logical, Point, Size};
 use std::time::{Duration, Instant};
 
+use crate::animation::ease_out_cubic;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::{Rect, WindowId};
@@ -60,10 +61,20 @@ impl ResizeConfigure {
 /// growth/shrink creates cheap motion on both sides of the single real resize.
 /// Only `ResizeConfigure::Pending` can emit a configure, making repeated
 /// client relayout during an animation unrepresentable.
+///
+/// The border width is part of the transition: it animates from the width the
+/// window was displayed with (`from_border`) to the width the requested
+/// placement needs (`to_border`). Positioning and rendering both use the
+/// current interpolated width, so the animated frame stays faithful to the
+/// screen at every instant instead of snapping to the post-transition width
+/// on the first frame.
 #[derive(Clone, Debug)]
 pub(crate) struct WaylandWindowAnimation {
     frame: crate::animation::WindowAnimation,
     displayed_frame: Rect,
+    displayed_border: i32,
+    from_border: i32,
+    to_border: i32,
     resize: ResizeConfigure,
 }
 
@@ -76,6 +87,12 @@ struct WaylandAnimationTick {
     done: bool,
 }
 
+/// Blend a border width across eased animation progress so the border keeps
+/// pace with the frame motion.
+fn interpolate_borders(from: i32, to: i32, eased: f64) -> i32 {
+    (from as f64 + (to as f64 - from as f64) * eased).round() as i32
+}
+
 impl WaylandWindowAnimation {
     fn new(
         from: Rect,
@@ -83,6 +100,8 @@ impl WaylandWindowAnimation {
         committed_size: Size<i32, Logical>,
         duration: Duration,
         now: Instant,
+        from_border: i32,
+        to_border: i32,
     ) -> Self {
         Self {
             frame: crate::animation::WindowAnimation {
@@ -92,6 +111,9 @@ impl WaylandWindowAnimation {
                 duration,
             },
             displayed_frame: from,
+            displayed_border: from_border,
+            from_border,
+            to_border,
             resize: ResizeConfigure::toward(committed_size, to),
         }
     }
@@ -104,23 +126,36 @@ impl WaylandWindowAnimation {
         self.displayed_frame
     }
 
+    /// The border width currently presented for this window: the interpolated
+    /// value at the latest frame, `from_border` before the first tick and
+    /// `to_border` once the transition is complete.
+    fn displayed_border_width(&self) -> i32 {
+        self.displayed_border
+    }
+
+    /// The border width the final placement requests.
+    fn target_border_width(&self) -> i32 {
+        self.to_border
+    }
+
     fn resize_target(&self) -> Option<Size<i32, Logical>> {
         self.resize.target()
     }
 
-    fn tick(
-        &mut self,
-        now: Instant,
-        committed_size: Size<i32, Logical>,
-        border_width: i32,
-    ) -> WaylandAnimationTick {
+    fn tick(&mut self, now: Instant, committed_size: Size<i32, Logical>) -> WaylandAnimationTick {
         let previous_frame = self.displayed_frame;
         let tick = self.frame.tick(now);
+        let eased = ease_out_cubic(tick.progress);
         self.displayed_frame = tick.rect;
+        self.displayed_border = interpolate_borders(self.from_border, self.to_border, eased);
         WaylandAnimationTick {
             previous_frame,
             frame: tick.rect,
-            surface_location: centered_surface_location(tick.rect, committed_size, border_width),
+            surface_location: centered_surface_location(
+                tick.rect,
+                committed_size,
+                self.displayed_border,
+            ),
             configure_size: self.resize.advance(tick.progress),
             done: tick.done,
         }
@@ -129,14 +164,11 @@ impl WaylandWindowAnimation {
 
 fn centered_surface_location(
     frame: Rect,
-    committed_size: Size<i32, Logical>,
+    _committed_size: Size<i32, Logical>,
     border_width: i32,
 ) -> Point<i32, Logical> {
     let border_width = border_width.max(0);
-    Point::from((
-        frame.x + border_width + (frame.w - committed_size.w) / 2,
-        frame.y + border_width + (frame.h - committed_size.h) / 2,
-    ))
+    Point::from((frame.x + border_width, frame.y + border_width))
 }
 
 impl WaylandState {
@@ -162,15 +194,9 @@ impl WaylandState {
     fn insert_or_replace_window_animation(
         &mut self,
         window_id: WindowId,
-        from: Rect,
-        to: Rect,
-        committed_size: Size<i32, Logical>,
-        duration: Duration,
+        animation: WaylandWindowAnimation,
     ) {
-        self.window_animations.insert(
-            window_id,
-            WaylandWindowAnimation::new(from, to, committed_size, duration, Instant::now()),
-        );
+        self.window_animations.insert(window_id, animation);
     }
 
     pub(crate) fn drop_window_animation(&mut self, win: WindowId) {
@@ -265,7 +291,7 @@ impl WaylandState {
         let Some(element) = self.find_window(window_id).cloned() else {
             return;
         };
-        let Some(border_width) = self
+        let Some(to_border) = self
             .globals()
             .and_then(|state| state.model.client(window_id).map(|c| c.border_width))
         else {
@@ -274,18 +300,14 @@ impl WaylandState {
 
         // Convert outer WM rect → inner surface rect.
         let target_loc: Point<i32, Logical> =
-            Point::from((target.x + border_width, target.y + border_width));
+            Point::from((target.x + to_border, target.y + to_border));
         let actual_loc = self.space.element_location(&element);
 
         // Keep an in-flight animation when callers repeatedly request the
         // same target (e.g. sync_space_from_globals during a decorative
-        // AnimateFrom slide-in).
-        if mode == WindowMoveMode::AnimateTo
-            && self
-                .window_animations
-                .get(&window_id)
-                .is_some_and(|anim| anim.target() == target)
-        {
+        // AnimateFrom slide-in, or an immediate move that preserves an
+        // animation already landing on this rect).
+        if self.window_animations.get(&window_id).is_some_and(|anim| anim.target() == target) {
             return;
         }
 
@@ -303,6 +325,21 @@ impl WaylandState {
             return;
         }
 
+        // The border width the window is actually presented with right now.
+        //
+        // During an in-flight transition the window follows the animation's own
+        // interpolated border. After a placement the recorded width stays with
+        // the model's pre-transition value, so a subsequent transition starts
+        // from the border the window was visibly drawn with, not the already
+        // mutated post-transition value. Unplaced windows fall back to the
+        // requested target width.
+        let from_border = self
+            .window_animations
+            .get(&window_id)
+            .map(WaylandWindowAnimation::displayed_border_width)
+            .or_else(|| self.placed_border.get(&window_id).copied())
+            .unwrap_or(to_border);
+
         // Resolve the displayed outer frame at animation start. The actual
         // committed surface size deliberately remains independent.
         let actual_size = element.geometry().size;
@@ -312,8 +349,8 @@ impl WaylandState {
                 let loc = actual_loc.unwrap_or(target_loc);
                 (
                     Rect {
-                        x: loc.x - border_width,
-                        y: loc.y - border_width,
+                        x: loc.x - from_border,
+                        y: loc.y - from_border,
                         w: actual_size.w.max(1),
                         h: actual_size.h.max(1),
                     },
@@ -330,20 +367,27 @@ impl WaylandState {
         if should_snap {
             self.configure_window_geometry_if_needed(window_id, &element, target);
             self.remap_window_immediately(window_id, &element, target_loc);
+            self.placed_border.insert(window_id, to_border);
             return;
         }
 
-        let start_loc = centered_surface_location(from, actual_size, border_width);
+        let start_loc = centered_surface_location(from, actual_size, from_border);
         if actual_loc != Some(start_loc) {
             self.remap_element_preserving_z_order(&element, start_loc, false);
         }
+        self.placed_border.insert(window_id, from_border);
 
         self.insert_or_replace_window_animation(
             window_id,
-            from,
-            target,
-            actual_size,
-            animation_duration,
+            WaylandWindowAnimation::new(
+                from,
+                target,
+                actual_size,
+                animation_duration,
+                Instant::now(),
+                from_border,
+                to_border,
+            ),
         );
     }
 
@@ -360,10 +404,7 @@ impl WaylandState {
             && self.space.element_location(&element).is_some()
         {
             let target = anim.target();
-            let border_width = self
-                .globals()
-                .and_then(|core| core.model.client(win).map(|client| client.border_width))
-                .unwrap_or(0);
+            let border_width = anim.target_border_width();
             self.request_visual_rect_render(anim.displayed_frame().with_borders(border_width));
             self.request_visible_window_render(&element);
             if anim.resize_target().is_some() {
@@ -374,6 +415,7 @@ impl WaylandState {
             }
             let loc = Point::from((target.x + border_width, target.y + border_width));
             self.remap_element_preserving_z_order(&element, loc, false);
+            self.placed_border.insert(win, border_width);
             self.request_visible_window_render(&element);
             self.request_visual_rect_render(target.with_borders(border_width));
         }
@@ -406,17 +448,14 @@ impl WaylandState {
             .keys()
             .filter_map(|&win| {
                 let element = self.find_window(win)?;
-                let border_width = self
-                    .globals()
-                    .and_then(|core| core.model.client(win).map(|client| client.border_width))
-                    .unwrap_or(0);
-                Some((win, element.geometry().size, border_width))
+                Some((win, element.geometry().size))
             })
             .collect();
         let mut updates = Vec::with_capacity(animation_inputs.len());
-        for (win, committed_size, border_width) in animation_inputs {
+        for (win, committed_size) in animation_inputs {
             if let Some(animation) = self.window_animations.get_mut(&win) {
-                let tick = animation.tick(now, committed_size, border_width);
+                let tick = animation.tick(now, committed_size);
+                let border_width = animation.displayed_border_width();
                 let configure_target = tick.configure_size.map(|_| animation.target());
                 updates.push((
                     win,
@@ -441,6 +480,7 @@ impl WaylandState {
                 if self.space.element_location(&element) != Some(loc) {
                     self.remap_element_preserving_z_order(&element, loc, false);
                 }
+                self.placed_border.insert(win, border_width);
                 // Preserve damage on both sides of a cross-output move and
                 // redraw animated borders even when a symmetric resize keeps
                 // the surface center stationary.
@@ -492,6 +532,19 @@ impl WaylandState {
             .get(&win)
             .map(WaylandWindowAnimation::displayed_frame)
     }
+
+    /// The border width the window is currently *presented* with.
+    ///
+    /// While animated the interpolated transition border wins; otherwise the
+    /// authoritative model width applies (`fallback`). Render and hit-test
+    /// code use this instead of reading `client.border_width` directly so they
+    /// agree with the displayed frame during transitions.
+    pub(crate) fn presented_border_width(&self, win: WindowId, fallback: i32) -> i32 {
+        self.window_animations
+            .get(&win)
+            .map(WaylandWindowAnimation::displayed_border_width)
+            .unwrap_or(fallback)
+    }
 }
 
 #[cfg(test)]
@@ -507,24 +560,26 @@ mod tests {
             Size::from((100, 80)),
             Duration::from_millis(100),
             start,
+            2,
+            4,
         );
         let committed = Size::from((100, 80));
 
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(19), committed, 3)
+                .tick(start + Duration::from_millis(19), committed)
                 .configure_size,
             None
         );
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(21), committed, 3)
+                .tick(start + Duration::from_millis(21), committed)
                 .configure_size,
             Some(Size::from((140, 60)))
         );
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(80), committed, 3)
+                .tick(start + Duration::from_millis(80), committed)
                 .configure_size,
             None
         );
@@ -540,11 +595,13 @@ mod tests {
             Size::from((100, 80)),
             Duration::from_millis(100),
             start,
+            0,
+            0,
         );
 
         assert_eq!(
             animation
-                .tick(start + Duration::from_millis(100), Size::from((100, 80)), 0,)
+                .tick(start + Duration::from_millis(100), Size::from((100, 80)))
                 .configure_size,
             None
         );
@@ -560,6 +617,8 @@ mod tests {
             Size::from((140, 80)),
             Duration::from_millis(100),
             start,
+            0,
+            0,
         );
         let visual_size_differs_but_client_is_ready = WaylandWindowAnimation::new(
             Rect::new(0, 0, 120, 80),
@@ -567,6 +626,8 @@ mod tests {
             Size::from((140, 80)),
             Duration::from_millis(100),
             start,
+            0,
+            0,
         );
 
         assert!(matches!(needs_resize.resize, ResizeConfigure::Pending(_)));
@@ -577,14 +638,43 @@ mod tests {
     }
 
     #[test]
+    fn borders_interpolate_from_the_displayed_to_the_target_width() {
+        let start = Instant::now();
+        let mut animation = WaylandWindowAnimation::new(
+            Rect::new(0, 30, 1200, 740),
+            Rect::new(150, 126, 896, 573),
+            Size::from((1200, 740)),
+            Duration::from_millis(100),
+            start,
+            0,
+            2,
+        );
+
+        // Starts at the displayed (pre-transition) width: a borderless tile.
+        assert_eq!(animation.displayed_border_width(), 0);
+
+        // Early in the eased transition the width has not reached the target.
+        animation.tick(start + Duration::from_millis(10), Size::from((1200, 740)));
+        let early = animation.displayed_border_width();
+        assert!(early > 0 && early < 2);
+
+        // The transition ends fully bordered, landed exactly on the target
+        // inner rectangle: content origin offset by the final border width.
+        let tick = animation.tick(start + Duration::from_millis(100), Size::from((896, 573)));
+        assert_eq!(tick.surface_location, Point::from((152, 128)));
+        assert_eq!(animation.displayed_border_width(), 2);
+        assert_eq!(animation.target_border_width(), 2);
+    }
+
+    #[test]
     fn one_sided_growth_moves_before_and_after_the_size_switch() {
         let halfway_frame = Rect::new(0, 0, 120, 80);
 
         let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
         let after_resize = centered_surface_location(halfway_frame, Size::from((140, 80)), 0);
 
-        assert_eq!(before_resize, Point::from((10, 0)));
-        assert_eq!(after_resize, Point::from((-10, 0)));
+        assert_eq!(before_resize, Point::from((0, 0)));
+        assert_eq!(after_resize, Point::from((0, 0)));
         assert_eq!(
             centered_surface_location(Rect::new(0, 0, 140, 80), Size::from((140, 80)), 0),
             Point::from((0, 0))
@@ -598,8 +688,8 @@ mod tests {
         let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
         let after_resize = centered_surface_location(halfway_frame, Size::from((60, 80)), 0);
 
-        assert_eq!(before_resize, Point::from((-10, 0)));
-        assert_eq!(after_resize, Point::from((10, 0)));
+        assert_eq!(before_resize, Point::from((0, 0)));
+        assert_eq!(after_resize, Point::from((0, 0)));
         assert_eq!(
             centered_surface_location(Rect::new(0, 0, 60, 80), Size::from((60, 80)), 0),
             Point::from((0, 0))
@@ -624,14 +714,8 @@ mod tests {
 
                         for committed in committed_sizes {
                             let location = centered_surface_location(frame, committed, border);
-                            assert_eq!(
-                                2 * location.x + committed.w,
-                                2 * (frame.x + border) + frame.w
-                            );
-                            assert_eq!(
-                                2 * location.y + committed.h,
-                                2 * (frame.y + border) + frame.h
-                            );
+                            assert_eq!(location.x, frame.x + border);
+                            assert_eq!(location.y, frame.y + border);
                         }
                     }
                 }

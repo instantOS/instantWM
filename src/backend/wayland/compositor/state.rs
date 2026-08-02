@@ -188,6 +188,10 @@ pub struct WaylandState {
     /// Mutations must go through the command_queue.
     wm: Option<NonNull<Wm>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    /// The border width the window was last visually placed under. Model
+    /// `border_width` flips before transitions, so animation/runtime code
+    /// reads this record to start from the width the window actually showed.
+    pub(super) placed_border: HashMap<WindowId, i32>,
     /// One-shot compositor-owned sizes that must be committed before client
     /// size feedback becomes authoritative again.
     pub(super) pending_authoritative_sizes: HashMap<WindowId, (i32, i32)>,
@@ -548,6 +552,7 @@ impl WaylandState {
             next_window_id: 1,
             wm: None,
             last_configured_size: HashMap::new(),
+            placed_border: HashMap::new(),
             pending_authoritative_sizes: HashMap::new(),
             native_size_hints: HashMap::new(),
             active_resizes: HashSet::new(),
@@ -831,14 +836,7 @@ impl WaylandState {
                 .find_window(*window_id)
                 .is_some_and(|window| self.outputs_for_window_geometry(window).contains(output));
             let frame_overlaps = output_rect.is_some_and(|output_rect| {
-                let border_width = self
-                    .globals()
-                    .and_then(|core| {
-                        core.model
-                            .client(*window_id)
-                            .map(|client| client.border_width)
-                    })
-                    .unwrap_or(0);
+                let border_width = self.presented_border_width(*window_id, 0);
                 self.displayed_animation_frame(*window_id)
                     .map(|frame| frame.with_borders(border_width))
                     .is_some_and(|frame| {

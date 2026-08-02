@@ -135,8 +135,9 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
             continue;
         };
         let c = view.client;
+        let border_width = state.presented_border_width(marker.id, c.border_width);
 
-        let Some(displayed_rect) = state.displayed_window_rect(window, c.border_width) else {
+        let Some(displayed_rect) = state.displayed_window_rect(window, border_width) else {
             continue;
         };
 
@@ -146,7 +147,7 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
         windows.push(WindowBorderInfo {
             id: marker.id,
             displayed_rect,
-            border_width: c.border_width.max(0),
+            border_width: border_width.max(0),
             is_visible,
             is_hidden: c.is_hidden,
             is_floating: c.mode().is_normal_floating(),

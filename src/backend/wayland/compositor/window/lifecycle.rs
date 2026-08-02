@@ -114,13 +114,19 @@ impl WaylandState {
         if let Some(element) = self.window_index.get(&window).cloned() {
             let is_mapped = self.space.elements().any(|w| w == &element);
             if !is_mapped {
-                let Some(loc): Option<Point<i32, Logical>> = self
+                let Some((loc, border_width)): Option<(Point<i32, Logical>, i32)> = self
                     .globals()
                     .and_then(|state| state.model.client(window))
-                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+                    .map(|c| {
+                        (
+                            Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)),
+                            c.border_width,
+                        )
+                    })
                 else {
                     return;
                 };
+                self.placed_border.insert(window, border_width);
                 self.drop_window_animation(window);
                 self.space.map_element(element.clone(), loc, false);
                 self.request_visible_window_render(&element);
@@ -157,6 +163,7 @@ impl WaylandState {
         self.request_visible_window_render(&element);
         self.space.unmap_elem(&element);
         self.drop_window_animation(window);
+        self.placed_border.remove(&window);
         self.last_configured_size.remove(&window);
         self.pending_authoritative_sizes.remove(&window);
         self.clear_seat_focus_if_focused(window);
@@ -180,6 +187,7 @@ impl WaylandState {
         self.native_size_hints.remove(&window);
         self.active_resizes.remove(&window);
         self.drop_window_animation(window);
+        self.placed_border.remove(&window);
         self.last_configured_size.remove(&window);
         self.pending_authoritative_sizes.remove(&window);
         self.clear_seat_focus_if_focused(window);
