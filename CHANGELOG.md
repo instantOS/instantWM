@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/instantOS/instantWM/compare/v0.1.18...v0.1.19) - 2026-08-02
+
+### Changed
+
+- rename misnomers
+- remodel scratchpad
+
+### Other
+
+- fix deps
+- Merge branch 'main' of github.com:instantOS/instantWM
+- refactor very long function
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- refactor huge file
+- refactor huge client file
+- better maximized reordering
+- add failing UX test to repro issue
+- introduce focus history
+- bump stuff
+- Merge branch 'main' into dev
+- add keybind action sequence support
+- clippy fix
+- add bar padding
+- fix border rendering using the wrong geometry
+- fix double lookup
+- add early guard
+- make animation speed configurable, fix jumpy animations
+- refactor huge monolith function
+- avoid bar layout recomputation
+- test new distribute_cells
+- remove dead fields
+- remove dead code
+- implement status command suspension
+- fix animation duration types, decrease default speed
+- more explicit status suspend semantics
+- fix animation sliding flashing the wallpaper
+- unify window spawn animation
+- fix tag slide animation
+- fix overview UX papercuts
+
 ## [0.1.18](https://github.com/instantOS/instantWM/compare/v0.1.17...v0.1.18) - 2026-07-27
 
 ### Changed
