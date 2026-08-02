@@ -11,7 +11,7 @@ use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
 use crate::geometry::GeometryApplyMode;
 use crate::ipc::IpcServer;
-use crate::runtime::AnimationTimerGuard;
+use crate::runtime::{AnimationTimerGuard, animation_frame_interval};
 use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -57,6 +57,10 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     // ── Animation timer (on-demand, not persistent) ─────────────────────
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
+    let animation_interval = wm.backend.x11_data().and_then(|data| {
+        crate::backend::x11::randr::max_active_refresh_millihertz(&data.conn, data.x11_runtime.root)
+    });
+    let animation_interval = animation_frame_interval(animation_interval);
 
     let loop_signal: LoopSignal = event_loop.get_signal();
 
@@ -70,10 +74,15 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
 
             // ── 3. Arm animation timer if needed ────────────────────────
             let has_animations = has_x11_animations(wm);
-            anim_guard.ensure_armed(has_animations, &loop_handle_for_timer, |wm| {
-                tick_x11_animations(wm);
-                has_x11_animations(wm)
-            });
+            anim_guard.ensure_armed_with_interval(
+                has_animations,
+                animation_interval,
+                &loop_handle_for_timer,
+                |wm| {
+                    tick_x11_animations(wm);
+                    has_x11_animations(wm)
+                },
+            );
 
             // ── 4. Flush X11 connection ─────────────────────────────────
             crate::backend::WindowOps::flush(&wm.backend);

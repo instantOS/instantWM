@@ -57,7 +57,13 @@ pub fn run() -> ! {
     // Store initial window size for the calloop source callback.
     state.runtime.winit_window_size = output_size;
 
-    let output = state.create_output("winit", initial_size);
+    let host_refresh_millihertz = backend
+        .window()
+        .current_monitor()
+        .and_then(|monitor| monitor.current_video_mode())
+        .and_then(|mode| mode.refresh_rate_millihertz())
+        .map(std::num::NonZeroU32::get);
+    let output = state.create_output("winit", initial_size, host_refresh_millihertz);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
     let mut damage_tracker =
         smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
@@ -111,6 +117,7 @@ pub fn run() -> ! {
 
     // ── Animation timer (on-demand) ─────────────────────────────────────
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
+    let animation_interval = crate::runtime::animation_frame_interval(host_refresh_millihertz);
     let loop_handle_for_timer = event_loop.handle();
     let frame_callback_timers = super::common::FrameCallbackTimerGuard::<()>::default();
 
@@ -144,8 +151,9 @@ pub fn run() -> ! {
             }
 
             // ── 3. Arm animation timer if needed ────────────────────────
-            anim_guard.ensure_armed(
+            anim_guard.ensure_armed_with_interval(
                 state.has_active_animations(),
+                animation_interval,
                 &loop_handle_for_timer,
                 |_state| {
                     // Timer wakes the loop; animation ticking + render

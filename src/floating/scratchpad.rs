@@ -782,10 +782,10 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
         (mon.work_rect().w, mon.work_rect().h)
     };
 
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-        if let Some(sp) = client.scratchpad_mut() {
-            sp.set_direction(direction);
-        }
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win)
+        && let Some(sp) = client.scratchpad_mut()
+    {
+        sp.set_direction(direction);
         client.border_width = 0;
         client.is_locked = true;
         if direction.is_vertical() {
@@ -829,7 +829,7 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 mod tests {
     use super::{
         EdgeSlideRects, name_from_window_identity, regular_scratchpad_rect,
-        scratchpad_restore_window,
+        scratchpad_restore_window, set_scratchpad_direction,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -912,6 +912,33 @@ mod tests {
             assert!(slide.shown.w > 0);
             assert!(slide.shown.h > 0);
         }
+    }
+
+    #[test]
+    fn setting_scratchpad_direction_does_not_mutate_an_ordinary_window() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        let win = WindowId(76);
+        let original_geo = Rect::new(100, 120, 800, 600);
+        assert!(wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            geo: original_geo,
+            border_width: 3,
+            is_locked: false,
+            ..Client::default()
+        }));
+
+        set_scratchpad_direction(&mut wm.ctx(), win, EdgeDirection::Left);
+
+        let client = wm.core.model.client(win).unwrap();
+        assert_eq!(client.geo, original_geo);
+        assert_eq!(client.border_width, 3);
+        assert!(!client.is_locked);
     }
 
     #[test]

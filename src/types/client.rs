@@ -11,8 +11,7 @@ mod scratchpad;
 pub use geometry::{FloatingGeometryState, SavedFloatingPlacement};
 pub use iter::{OrderedClients, TiledClientInfo};
 pub use mode::{
-    ClientMode, ClientPlacement, ClientPresentation, FullscreenKind, MaximizedOrigin,
-    RestoredPresentation,
+    ClientMode, ClientPlacement, ClientPresentation, FullscreenKind, RestoredPresentation,
 };
 pub use scratchpad::ScratchpadData;
 
@@ -173,7 +172,7 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::{Client, ClientMode, ClientPlacement, MaximizedOrigin};
+    use super::{Client, ClientMode, ClientPlacement};
     use crate::types::{EdgeDirection, MonitorId, Rect, TagMask};
 
     #[test]
@@ -206,7 +205,7 @@ mod tests {
         let mut client = Client::default();
         client.set_placement(ClientPlacement::Floating);
 
-        client.set_maximized_presentation(true, MaximizedOrigin::Client);
+        client.set_maximized_presentation(true);
         assert!(client.mode().is_maximized());
         assert!(!client.mode().is_normal_floating());
 

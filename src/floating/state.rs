@@ -266,10 +266,8 @@ mod tests {
     #[test]
     fn policy_placement_change_does_not_cancel_maximized_presentation() {
         let maximized = Rect::new(0, 30, 1200, 770);
-        let (mut wm, win) = wm_with_client(
-            ClientMode::maximized(ClientPlacement::Tiling, crate::types::MaximizedOrigin::Wm),
-            maximized,
-        );
+        let (mut wm, win) =
+            wm_with_client(ClientMode::maximized(ClientPlacement::Tiling), maximized);
         wm.core.model.client_mut(win).unwrap().border_width = 0;
 
         let change = set_window_placement_from_policy(
@@ -282,7 +280,7 @@ mod tests {
         assert!(matches!(change, WindowModeChange::ChangedToFloating { .. }));
         assert_eq!(
             client.mode(),
-            ClientMode::maximized(ClientPlacement::Floating, crate::types::MaximizedOrigin::Wm,)
+            ClientMode::maximized(ClientPlacement::Floating)
         );
         assert_eq!(client.geo, maximized);
         assert_eq!(client.border_width, 0);
@@ -292,10 +290,8 @@ mod tests {
     #[test]
     fn policy_tiling_change_only_changes_maximized_restore_placement() {
         let maximized = Rect::new(0, 30, 1200, 770);
-        let (mut wm, win) = wm_with_client(
-            ClientMode::maximized(ClientPlacement::Floating, crate::types::MaximizedOrigin::Wm),
-            maximized,
-        );
+        let (mut wm, win) =
+            wm_with_client(ClientMode::maximized(ClientPlacement::Floating), maximized);
         let saved = Rect::new(200, 160, 700, 500);
         wm.core
             .model
@@ -310,7 +306,7 @@ mod tests {
         let client = wm.core.model.client(win).unwrap();
         assert_eq!(
             client.mode(),
-            ClientMode::maximized(ClientPlacement::Tiling, crate::types::MaximizedOrigin::Wm)
+            ClientMode::maximized(ClientPlacement::Tiling)
         );
         assert_eq!(client.geo, maximized);
         assert_eq!(client.saved_floating_rect(), Some(saved));
@@ -319,10 +315,8 @@ mod tests {
     #[test]
     fn explicit_toggle_from_maximized_floating_becomes_visibly_tiled() {
         let maximized = Rect::new(0, 30, 1200, 770);
-        let (mut wm, win) = wm_with_client(
-            ClientMode::maximized(ClientPlacement::Floating, crate::types::MaximizedOrigin::Wm),
-            maximized,
-        );
+        let (mut wm, win) =
+            wm_with_client(ClientMode::maximized(ClientPlacement::Floating), maximized);
         let saved = Rect::new(200, 160, 700, 500);
         wm.core
             .model
@@ -340,13 +334,8 @@ mod tests {
     #[test]
     fn explicit_tiling_clears_client_owned_maximization() {
         let maximized = Rect::new(0, 30, 1200, 770);
-        let (mut wm, win) = wm_with_client(
-            ClientMode::maximized(
-                ClientPlacement::Floating,
-                crate::types::MaximizedOrigin::Client,
-            ),
-            maximized,
-        );
+        let (mut wm, win) =
+            wm_with_client(ClientMode::maximized(ClientPlacement::Floating), maximized);
         wm.core
             .model
             .client_mut(win)

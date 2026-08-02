@@ -5,9 +5,7 @@
 //! backend I/O, layout scheduling, and animation after the model borrow ends.
 
 use crate::model::WmModel;
-use crate::types::{
-    Client, ClientMode, ClientPlacement, MaximizedOrigin, MonitorId, Rect, WindowId,
-};
+use crate::types::{Client, ClientMode, ClientPlacement, MonitorId, Rect, WindowId};
 
 /// Commit only the client-local portion of a fullscreen transition.
 ///
@@ -139,7 +137,6 @@ pub(crate) enum MaximizedChange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "leaving maximization requires backend state and geometry projection"]
 pub(crate) struct LeaveMaximizedTransition {
-    pub(crate) origin: MaximizedOrigin,
     pub(crate) transition: MaximizedTransition,
 }
 
@@ -278,7 +275,7 @@ impl WmModel {
         let view = self.client_view(win)?;
         Some(
             if view.monitor.current_layout() == crate::layouts::PresentationMode::Floating {
-                view.client.mode().has_client_maximized_presentation()
+                view.client.mode().has_maximized_presentation()
             } else {
                 view.client.placement() == ClientPlacement::Tiling
             },
@@ -340,12 +337,7 @@ impl WmModel {
         Some(FullscreenTransition::exited(monitor_id, restore_rect))
     }
 
-    fn set_maximized_with_origin(
-        &mut self,
-        win: WindowId,
-        maximized: bool,
-        origin: MaximizedOrigin,
-    ) -> Option<MaximizedTransition> {
+    fn set_maximized(&mut self, win: WindowId, maximized: bool) -> Option<MaximizedTransition> {
         let clients = &mut self.clients;
         let monitors = &self.monitors;
         let client = clients.get_mut(&win)?;
@@ -355,7 +347,7 @@ impl WmModel {
         if maximized && previous_mode.is_normal_floating() {
             client.save_floating_placement(client.geo, monitor.work_rect());
         }
-        client.set_maximized_presentation(maximized, origin);
+        client.set_maximized_presentation(maximized);
         let current_mode = client.mode();
         let monitor_id = client.monitor_id;
 
@@ -421,7 +413,7 @@ impl WmModel {
 
         if floating_presentation {
             let work_rect = self.monitor(monitor_id)?.work_rect();
-            let was_client_maximized = self.client(win)?.mode().has_client_maximized_presentation();
+            let was_client_maximized = self.client(win)?.mode().has_maximized_presentation();
             if maximized
                 && self
                     .client(win)
@@ -433,8 +425,7 @@ impl WmModel {
                 // their current visible rectangle too.
                 client.save_floating_placement(client.geo, work_rect);
             }
-            let mut transition =
-                self.set_maximized_with_origin(win, maximized, MaximizedOrigin::Client)?;
+            let mut transition = self.set_maximized(win, maximized)?;
             if transition.entered() {
                 self.raise_client_in_z_order(win);
             }
@@ -481,8 +472,8 @@ impl WmModel {
         // A client-maximized presentation can survive a layout-presentation
         // switch. Once tiling is available, collapse it into placement before
         // applying the new intent.
-        if before_mode.has_client_maximized_presentation() {
-            client.set_maximized_presentation(false, MaximizedOrigin::Client);
+        if before_mode.has_maximized_presentation() {
+            client.set_maximized_presentation(false);
         }
 
         let mut visible_restore_rect = None;
@@ -544,11 +535,11 @@ impl WmModel {
         for win in windows {
             let has_client_maximize = self
                 .client(win)
-                .is_some_and(|client| client.mode().has_client_maximized_presentation());
+                .is_some_and(|client| client.mode().has_maximized_presentation());
             if !has_client_maximize {
                 continue;
             }
-            let _ = self.set_maximized_with_origin(win, false, MaximizedOrigin::Client);
+            let _ = self.set_maximized(win, false);
             if let Some(client) = self.client_mut(win) {
                 client.set_placement(ClientPlacement::Tiling);
             }
@@ -557,27 +548,14 @@ impl WmModel {
         changed
     }
 
-    /// Apply instantWM's protocol-independent per-window zoom.
-    #[cfg(test)]
-    pub(crate) fn set_wm_maximized(
-        &mut self,
-        win: WindowId,
-        maximized: bool,
-    ) -> Option<MaximizedTransition> {
-        self.set_maximized_with_origin(win, maximized, MaximizedOrigin::Wm)
-    }
-
-    /// Leave whichever maximized presentation currently owns the window.
-    ///
-    /// Interactive WM actions must not guess whether maximization came from
-    /// the client protocol or instantWM's own zoom command: the origin
-    /// determines which backend state must be cleared.
+    /// Leave the client's maximized presentation.
     pub(crate) fn leave_maximized(&mut self, win: WindowId) -> Option<LeaveMaximizedTransition> {
-        let origin = self.client(win)?.mode().maximized_origin()?;
-        let transition = if origin == MaximizedOrigin::Client
-            && self.client_view(win).is_some_and(|view| {
-                view.monitor.current_layout() == crate::layouts::PresentationMode::Floating
-            }) {
+        if !self.client(win)?.mode().is_maximized() {
+            return None;
+        }
+        let transition = if self.client_view(win).is_some_and(|view| {
+            view.monitor.current_layout() == crate::layouts::PresentationMode::Floating
+        }) {
             let intent = self.apply_client_maximize_intent(win, false)?;
             match intent.outcome() {
                 ClientMaximizeIntentOutcome::FloatingPresentation(change) => {
@@ -586,9 +564,9 @@ impl WmModel {
                 _ => unreachable!("floating presentation must use literal client maximization"),
             }
         } else {
-            self.set_maximized_with_origin(win, false, origin)?
+            self.set_maximized(win, false)?
         };
-        Some(LeaveMaximizedTransition { origin, transition })
+        Some(LeaveMaximizedTransition { transition })
     }
 }
 
@@ -901,22 +879,7 @@ mod tests {
     }
 
     #[test]
-    fn wm_zoom_remains_distinct_in_the_global_floating_presentation() {
-        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
-        model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .per_tag_state()
-            .presentation = crate::layouts::PresentationMode::Floating;
-
-        let _ = model.set_wm_maximized(win, true).unwrap();
-
-        assert!(model.client(win).unwrap().mode().is_wm_maximized());
-        assert_eq!(model.client_protocol_maximized(win), Some(false));
-    }
-
-    #[test]
-    fn leave_literal_client_maximize_reports_owner_and_restores_geometry() {
+    fn leave_literal_client_maximize_restores_geometry() {
         let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
         model
             .monitor_mut(monitor_id)
@@ -927,7 +890,6 @@ mod tests {
 
         let left = model.leave_maximized(win).unwrap();
 
-        assert_eq!(left.origin, MaximizedOrigin::Client);
         assert!(matches!(
             left.transition.change(),
             MaximizedChange::Exited {

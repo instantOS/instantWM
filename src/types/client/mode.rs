@@ -21,26 +21,6 @@ pub enum ClientPlacement {
     Floating,
 }
 
-/// Why a client is maximized.
-///
-/// Client-requested maximization is projected to XDG/EWMH state. `Wm` is the
-/// instantWM-only zoom operation and deliberately has no protocol meaning.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    bincode::Encode,
-    bincode::Decode,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-pub enum MaximizedOrigin {
-    Client,
-    Wm,
-}
-
 /// Whether fullscreen changes geometry or only the protocol-visible state.
 #[derive(
     Debug,
@@ -74,7 +54,7 @@ pub enum FullscreenKind {
 pub enum RestoredPresentation {
     #[default]
     Normal,
-    Maximized(MaximizedOrigin),
+    Maximized,
 }
 
 /// Temporary presentation, independent of tiled/floating placement.
@@ -93,7 +73,7 @@ pub enum RestoredPresentation {
 pub enum ClientPresentation {
     #[default]
     Normal,
-    Maximized(MaximizedOrigin),
+    Maximized,
     Fullscreen {
         kind: FullscreenKind,
         restore: RestoredPresentation,
@@ -148,10 +128,10 @@ impl ClientMode {
 
     #[inline]
     #[cfg(test)]
-    pub(crate) const fn maximized(placement: ClientPlacement, origin: MaximizedOrigin) -> Self {
+    pub(crate) const fn maximized(placement: ClientPlacement) -> Self {
         Self {
             placement,
-            presentation: ClientPresentation::Maximized(origin),
+            presentation: ClientPresentation::Maximized,
         }
     }
 
@@ -190,23 +170,7 @@ impl ClientMode {
     /// Whether maximized geometry is the current presentation.
     #[inline]
     pub fn is_maximized(self) -> bool {
-        matches!(self.presentation, ClientPresentation::Maximized(_))
-    }
-
-    #[inline]
-    pub fn is_wm_maximized(self) -> bool {
-        matches!(
-            self.presentation,
-            ClientPresentation::Maximized(MaximizedOrigin::Wm)
-        )
-    }
-
-    #[inline]
-    pub const fn maximized_origin(self) -> Option<MaximizedOrigin> {
-        match self.presentation {
-            ClientPresentation::Maximized(origin) => Some(origin),
-            _ => None,
-        }
+        matches!(self.presentation, ClientPresentation::Maximized)
     }
 
     /// Whether literal client-owned maximization is the current presentation
@@ -215,12 +179,12 @@ impl ClientMode {
     /// This is intentionally not the protocol projection for tiled windows;
     /// that also depends on the monitor's layout presentation.
     #[inline]
-    pub fn has_client_maximized_presentation(self) -> bool {
+    pub fn has_maximized_presentation(self) -> bool {
         matches!(
             self.presentation,
-            ClientPresentation::Maximized(MaximizedOrigin::Client)
+            ClientPresentation::Maximized
                 | ClientPresentation::Fullscreen {
-                    restore: RestoredPresentation::Maximized(MaximizedOrigin::Client),
+                    restore: RestoredPresentation::Maximized,
                     ..
                 }
         )
@@ -270,7 +234,7 @@ impl ClientMode {
 
     fn with_fullscreen_kind(self, kind: FullscreenKind) -> Self {
         let restore = match self.presentation {
-            ClientPresentation::Maximized(origin) => RestoredPresentation::Maximized(origin),
+            ClientPresentation::Maximized => RestoredPresentation::Maximized,
             ClientPresentation::Fullscreen { restore, .. } => restore,
             ClientPresentation::Normal => RestoredPresentation::Normal,
         };
@@ -281,27 +245,25 @@ impl ClientMode {
     }
 
     #[inline]
-    pub(crate) fn with_maximized(self, maximized: bool, origin: MaximizedOrigin) -> Self {
+    pub(crate) fn with_maximized(self, maximized: bool) -> Self {
         let presentation = match (self.presentation, maximized) {
             (ClientPresentation::Fullscreen { kind, .. }, true) => ClientPresentation::Fullscreen {
                 kind,
-                restore: RestoredPresentation::Maximized(origin),
+                restore: RestoredPresentation::Maximized,
             },
             (
                 ClientPresentation::Fullscreen {
                     kind,
-                    restore: RestoredPresentation::Maximized(current),
+                    restore: RestoredPresentation::Maximized,
                 },
                 false,
-            ) if current == origin => ClientPresentation::Fullscreen {
+            ) => ClientPresentation::Fullscreen {
                 kind,
                 restore: RestoredPresentation::Normal,
             },
             (fullscreen @ ClientPresentation::Fullscreen { .. }, false) => fullscreen,
-            (_, true) => ClientPresentation::Maximized(origin),
-            (ClientPresentation::Maximized(current), false) if current == origin => {
-                ClientPresentation::Normal
-            }
+            (_, true) => ClientPresentation::Maximized,
+            (ClientPresentation::Maximized, false) => ClientPresentation::Normal,
             (presentation, false) => presentation,
         };
         Self {
@@ -313,7 +275,7 @@ impl ClientMode {
     #[inline]
     #[cfg(test)]
     pub(crate) fn as_maximized(self) -> Self {
-        self.with_maximized(true, MaximizedOrigin::Client)
+        self.with_maximized(true)
     }
 
     #[inline]
@@ -323,11 +285,11 @@ impl ClientMode {
                 restore: RestoredPresentation::Normal,
                 ..
             }
-            | ClientPresentation::Maximized(_) => ClientPresentation::Normal,
+            | ClientPresentation::Maximized => ClientPresentation::Normal,
             ClientPresentation::Fullscreen {
-                restore: RestoredPresentation::Maximized(origin),
+                restore: RestoredPresentation::Maximized,
                 ..
-            } => ClientPresentation::Maximized(origin),
+            } => ClientPresentation::Maximized,
             ClientPresentation::Normal => ClientPresentation::Normal,
         };
         Self {
@@ -371,8 +333,8 @@ impl Client {
 
     /// Set maximized presentation without changing persistent placement.
     #[inline]
-    pub(crate) fn set_maximized_presentation(&mut self, maximized: bool, origin: MaximizedOrigin) {
-        self.mode = self.mode.with_maximized(maximized, origin);
+    pub(crate) fn set_maximized_presentation(&mut self, maximized: bool) {
+        self.mode = self.mode.with_maximized(maximized);
     }
 
     /// Leave a temporary presentation mode and restore its base placement.

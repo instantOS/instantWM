@@ -29,7 +29,7 @@ use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{arrange, sync_monitor_z_order};
-use crate::types::{MaximizedOrigin, WindowId};
+use crate::types::WindowId;
 
 // ---------------------------------------------------------------------------
 // Real fullscreen
@@ -107,15 +107,7 @@ pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
     // briefly advertising an unmaximized, maximized-sized window.
     apply_maximized_transition(ctx, win, left.transition);
 
-    match ctx {
-        WmCtx::X11(_) if left.origin == MaximizedOrigin::Client => {
-            sync_client_maximized_signal(ctx, win);
-        }
-        WmCtx::Wayland(_) => {
-            sync_client_maximized_signal(ctx, win);
-        }
-        WmCtx::X11(_) => {}
-    }
+    sync_client_maximized_signal(ctx, win);
 
     true
 }

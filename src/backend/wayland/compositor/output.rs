@@ -28,11 +28,19 @@ fn parse_transform(transform_str: &str) -> Option<Transform> {
 
 impl WaylandState {
     /// Create and register a default output.
-    pub fn create_output(&mut self, name: &str, size: Size) -> Output {
+    pub fn create_output(
+        &mut self,
+        name: &str,
+        size: Size,
+        refresh_millihertz: Option<u32>,
+    ) -> Output {
         let safe_size = Size::new(size.w.max(Self::MIN_WL_DIM), size.h.max(Self::MIN_WL_DIM));
         let mode = OutputMode {
             size: (safe_size.w, safe_size.h).into(),
-            refresh: 60_000,
+            refresh: refresh_millihertz
+                .and_then(|refresh| i32::try_from(refresh).ok())
+                .filter(|refresh| *refresh > 0)
+                .unwrap_or(60_000),
         };
         let output = self.create_output_global(
             name.to_string(),

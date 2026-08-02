@@ -8,6 +8,64 @@ use x11rb::protocol::randr::{self, ConnectionExt as RandrExt};
 use x11rb::protocol::xproto::Window;
 use x11rb::rust_connection::RustConnection;
 
+/// Return the fastest active RandR output refresh rate in millihertz.
+///
+/// X11 has one geometry-update stream for all outputs, so pacing it for the
+/// fastest active output avoids undersampling animations on mixed-refresh
+/// desktops. Slower outputs simply present the latest available geometry.
+pub fn max_active_refresh_millihertz(conn: &RustConnection, root: Window) -> Option<u32> {
+    let resources = conn
+        .randr_get_screen_resources_current(root)
+        .ok()?
+        .reply()
+        .ok()?;
+
+    resources
+        .crtcs
+        .iter()
+        .filter_map(|crtc| {
+            let crtc = conn
+                .randr_get_crtc_info(*crtc, resources.config_timestamp)
+                .ok()?
+                .reply()
+                .ok()?;
+            let mode = resources.modes.iter().find(|mode| mode.id == crtc.mode)?;
+            mode_refresh_millihertz(mode.dot_clock, mode.htotal, mode.vtotal)
+        })
+        .max()
+}
+
+fn mode_refresh_millihertz(dot_clock: u32, htotal: u16, vtotal: u16) -> Option<u32> {
+    let divisor = u64::from(htotal).checked_mul(u64::from(vtotal))?;
+    if dot_clock == 0 || divisor == 0 {
+        return None;
+    }
+    u32::try_from(u64::from(dot_clock).saturating_mul(1000) / divisor).ok()
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::mode_refresh_millihertz;
+
+    #[test]
+    fn calculates_standard_and_high_refresh_modes() {
+        assert_eq!(
+            mode_refresh_millihertz(148_500_000, 2200, 1125),
+            Some(60_000)
+        );
+        assert_eq!(
+            mode_refresh_millihertz(585_953_280, 2720, 1496),
+            Some(144_000)
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_mode_timings() {
+        assert_eq!(mode_refresh_millihertz(0, 2200, 1125), None);
+        assert_eq!(mode_refresh_millihertz(148_500_000, 0, 1125), None);
+    }
+}
+
 /// Get outputs using XRandR.
 ///
 /// Returns a list of connected outputs with their names and geometries.

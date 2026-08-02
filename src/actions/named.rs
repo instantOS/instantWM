@@ -249,7 +249,7 @@ define_named_actions!(
     FollowMonPrev => { name: "follow_mon_prev", arg_example: None, doc: "move client to prev monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::PREV); } },
     FollowMonNext => { name: "follow_mon_next", arg_example: None, doc: "move client to next monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::NEXT); } },
     EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", arg_example: None, doc: "toggle the default edge scratchpad", run: |ctx, _args| { scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME)); } },
-    EdgeScratchpadCreate => { name: "edge_scratchpad_create", arg_example: None, doc: "toggle the focused window's default edge-scratchpad role", run: |ctx, _args| { edge_scratchpad_create(ctx); } },
+    EdgeScratchpadCreate => { name: "edge_scratchpad_create", arg_example: None, doc: "toggle the default edge scratchpad (create from the focused window, or restore if it exists)", run: |ctx, _args| { edge_scratchpad_create(ctx); } },
     EdgeScratchpadShow => { name: "edge_scratchpad_show", arg_example: None, doc: "show the default edge scratchpad", run: |ctx, _args| { let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
     EdgeScratchpadHide => { name: "edge_scratchpad_hide", arg_example: None, doc: "hide the default edge scratchpad", run: |ctx, _args| { scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
     EdgeScratchpadDirectionUp => { name: "edge_scratchpad_direction_up", arg_example: None, doc: "set default edge scratchpad direction to top", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Top); } },

@@ -667,10 +667,7 @@ mod tests {
             win,
             monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::maximized(
-                ClientPlacement::Floating,
-                crate::types::MaximizedOrigin::Client,
-            ),
+            mode: ClientMode::maximized(ClientPlacement::Floating),
             geo: work_rect,
             ..Client::default()
         };

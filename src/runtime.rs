@@ -207,9 +207,10 @@ pub fn register_ipc_source<'loop_handle, T: 'static>(
 
 /// On-demand animation timer guard shared by all backends.
 ///
-/// Tracks whether a 16 ms animation timer is currently armed.  When the
-/// timer fires and no animations remain it auto-drops; this flag is then
-/// cleared so a new timer can be armed on the next animation start.
+/// Tracks whether an animation timer is currently armed. When the timer fires
+/// and no animations remain it auto-drops; this flag is then cleared so a new
+/// timer can be armed on the next animation start. Backends may select a frame
+/// interval, while the default API retains the 16 ms fallback used by DRM.
 #[derive(Clone)]
 pub struct AnimationTimerGuard {
     active: Rc<Cell<bool>>,
@@ -234,32 +235,73 @@ impl AnimationTimerGuard {
         handle: &calloop::LoopHandle<'loop_handle, T>,
         on_tick: impl Fn(&mut T) -> bool + 'static,
     ) {
+        self.ensure_armed_with_interval(has_animations, Duration::from_millis(16), handle, on_tick);
+    }
+
+    /// Arm the timer at a backend-selected frame interval.
+    ///
+    /// X11 and nested winit use this to follow their active display's refresh
+    /// rate. Native DRM intentionally keeps [`Self::ensure_armed`] as a
+    /// fallback because page flips already drive its normal frame cadence.
+    pub fn ensure_armed_with_interval<'loop_handle, T: 'static>(
+        &self,
+        has_animations: bool,
+        interval: Duration,
+        handle: &calloop::LoopHandle<'loop_handle, T>,
+        on_tick: impl Fn(&mut T) -> bool + 'static,
+    ) {
         if !has_animations || self.active.get() {
             return;
         }
         self.active.set(true);
         let flag = Rc::clone(&self.active);
-        let _ = handle.insert_source(
-            Timer::from_duration(Duration::from_millis(16)),
-            move |_, _, data| {
-                let still_active = on_tick(data);
-                if still_active {
-                    TimeoutAction::ToDuration(Duration::from_millis(16))
-                } else {
-                    flag.set(false);
-                    TimeoutAction::Drop
-                }
-            },
-        );
+        let _ = handle.insert_source(Timer::from_duration(interval), move |_, _, data| {
+            let still_active = on_tick(data);
+            if still_active {
+                TimeoutAction::ToDuration(interval)
+            } else {
+                flag.set(false);
+                TimeoutAction::Drop
+            }
+        });
     }
+}
+
+/// Convert a refresh rate expressed in millihertz to a timer interval.
+/// Invalid or unavailable rates retain the historical 16 ms fallback.
+pub fn animation_frame_interval(refresh_millihertz: Option<u32>) -> Duration {
+    refresh_millihertz
+        .filter(|rate| *rate > 0)
+        .map(|rate| Duration::from_nanos(1_000_000_000_000u64 / u64::from(rate)))
+        .filter(|interval| !interval.is_zero())
+        .unwrap_or_else(|| Duration::from_millis(16))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{TickOptions, process_pending_work};
+    use super::{TickOptions, animation_frame_interval, process_pending_work};
     use crate::backend::{Backend as WmBackend, wayland::WaylandBackend};
     use crate::types::MonitorId;
     use crate::wm::Wm;
+    use std::time::Duration;
+
+    #[test]
+    fn animation_interval_tracks_refresh_rate() {
+        assert_eq!(
+            animation_frame_interval(Some(60_000)),
+            Duration::from_nanos(16_666_666)
+        );
+        assert_eq!(
+            animation_frame_interval(Some(144_000)),
+            Duration::from_nanos(6_944_444)
+        );
+    }
+
+    #[test]
+    fn animation_interval_falls_back_for_unknown_refresh_rate() {
+        assert_eq!(animation_frame_interval(None), Duration::from_millis(16));
+        assert_eq!(animation_frame_interval(Some(0)), Duration::from_millis(16));
+    }
 
     #[test]
     fn non_urgent_layout_can_be_deferred_for_animations() {

@@ -137,8 +137,7 @@ mod tests {
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::PresentationMode;
     use crate::types::{
-        Client, ClientMode, ClientPlacement, Direction, MaximizedOrigin, Monitor, Rect, TagMask,
-        WindowId,
+        Client, ClientMode, ClientPlacement, Direction, Monitor, Rect, TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -164,7 +163,7 @@ mod tests {
             win,
             monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::maximized(ClientPlacement::Floating, MaximizedOrigin::Client),
+            mode: ClientMode::maximized(ClientPlacement::Floating),
             geo: work_rect,
             ..Client::default()
         };

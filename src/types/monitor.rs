@@ -693,19 +693,6 @@ impl Monitor {
         rect
     }
 
-    /// The client currently using instantWM's protocol-independent zoom.
-    ///
-    /// Derived by scanning the monitor's clients for one in maximized mode, so
-    /// it can never disagree with the actual client modes.
-    pub fn wm_maximized_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
-        self.clients.iter().find_map(|&win| {
-            clients
-                .get(&win)
-                .filter(|c| c.mode().is_wm_maximized())
-                .map(|_| win)
-        })
-    }
-
     /// Set the rectangle that is not consumed by exclusive layer-shell
     /// surfaces. The work area and bar position are derived automatically from
     /// this rectangle whenever they are accessed.
