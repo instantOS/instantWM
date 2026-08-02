@@ -47,20 +47,20 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     ctx.request_bar_update();
 }
 
-pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
-    let (_selmon_id, new_showtags) = {
+pub fn toggle_hide_tags(ctx: &mut WmCtx, action: ToggleAction) {
+    let (_selmon_id, new_hide_tags) = {
         let selmon_id = ctx.core().model().selected_monitor_id();
 
-        let showtags = ctx.core().model().expect_selected_monitor().showtags;
-        let new_showtags = toggled_bool(showtags, action);
+        let hide_tags = ctx.core().model().expect_selected_monitor().hide_tags;
+        let new_hide_tags = toggled_bool(hide_tags, action);
 
-        (selmon_id, new_showtags)
+        (selmon_id, new_hide_tags)
     };
 
     ctx.core_mut()
         .model_mut()
         .expect_selected_monitor_mut()
-        .showtags = new_showtags;
+        .hide_tags = new_hide_tags;
 
     ctx.request_bar_update();
 }

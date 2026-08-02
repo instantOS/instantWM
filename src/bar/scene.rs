@@ -45,7 +45,7 @@ fn tag_scheme(
             SchemeTag::Focus
         } else if monitor.visible_tags().contains(tag_num) {
             SchemeTag::NoFocus
-        } else if !monitor.showtags {
+        } else if !monitor.hide_tags {
             SchemeTag::Filled
         } else {
             SchemeTag::Inactive

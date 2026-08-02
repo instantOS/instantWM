@@ -102,7 +102,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleSticky)),
         key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAltTag)),
         key!(MODKEY | SHIFT | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAnimated)),
-        key!(MODKEY | SHIFT | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleShowTags)),
+        key!(MODKEY | SHIFT | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleHideTags)),
         key!(MODKEY | MOD1, XK_SPACE => KeyAction::named(NamedAction::NextKeyboardLayout)),
         key!(MODKEY | SHIFT | CONTROL | MOD1, XK_TAB => KeyAction::named_args(NamedAction::ModeToggle, &["desktop"])),
         key!(MODKEY | CONTROL, XK_H => KeyAction::named(NamedAction::Hide)),

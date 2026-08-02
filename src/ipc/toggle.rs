@@ -1,5 +1,5 @@
 use crate::ipc_types::{Response, ToggleCommand};
-use crate::toggles::{toggle_alt_tag, toggle_show_tags};
+use crate::toggles::{toggle_alt_tag, toggle_hide_tags};
 use crate::wm::Wm;
 
 pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> Response {
@@ -18,7 +18,7 @@ pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> Response {
             toggle_alt_tag(&mut ctx, action);
         }
         ToggleCommand::HideTags(action) => {
-            toggle_show_tags(&mut ctx, action);
+            toggle_hide_tags(&mut ctx, action);
         }
     }
     Response::ok()

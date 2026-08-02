@@ -61,7 +61,7 @@ pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
         | NamedAction::ToggleBar
         | NamedAction::ToggleAltTag
         | NamedAction::ToggleAnimated
-        | NamedAction::ToggleShowTags
+        | NamedAction::ToggleHideTags
         | NamedAction::NextKeyboardLayout
         | NamedAction::PrevKeyboardLayout
         | NamedAction::KeyboardLayout
