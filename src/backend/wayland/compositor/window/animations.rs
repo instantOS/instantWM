@@ -307,7 +307,11 @@ impl WaylandState {
         // same target (e.g. sync_space_from_globals during a decorative
         // AnimateFrom slide-in, or an immediate move that preserves an
         // animation already landing on this rect).
-        if self.window_animations.get(&window_id).is_some_and(|anim| anim.target() == target) {
+        if self
+            .window_animations
+            .get(&window_id)
+            .is_some_and(|anim| anim.target() == target)
+        {
             return;
         }
 

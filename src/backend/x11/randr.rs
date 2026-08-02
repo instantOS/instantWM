@@ -43,29 +43,6 @@ fn mode_refresh_millihertz(dot_clock: u32, htotal: u16, vtotal: u16) -> Option<u
     u32::try_from(u64::from(dot_clock).saturating_mul(1000) / divisor).ok()
 }
 
-#[cfg(test)]
-mod refresh_tests {
-    use super::mode_refresh_millihertz;
-
-    #[test]
-    fn calculates_standard_and_high_refresh_modes() {
-        assert_eq!(
-            mode_refresh_millihertz(148_500_000, 2200, 1125),
-            Some(60_000)
-        );
-        assert_eq!(
-            mode_refresh_millihertz(585_953_280, 2720, 1496),
-            Some(144_000)
-        );
-    }
-
-    #[test]
-    fn rejects_incomplete_mode_timings() {
-        assert_eq!(mode_refresh_millihertz(0, 2200, 1125), None);
-        assert_eq!(mode_refresh_millihertz(148_500_000, 0, 1125), None);
-    }
-}
-
 /// Get outputs using XRandR.
 ///
 /// Returns a list of connected outputs with their names and geometries.
@@ -680,4 +657,27 @@ fn find_available_crtc_fallback(
     }
 
     0
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::mode_refresh_millihertz;
+
+    #[test]
+    fn calculates_standard_and_high_refresh_modes() {
+        assert_eq!(
+            mode_refresh_millihertz(148_500_000, 2200, 1125),
+            Some(60_000)
+        );
+        assert_eq!(
+            mode_refresh_millihertz(585_953_280, 2720, 1496),
+            Some(144_000)
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_mode_timings() {
+        assert_eq!(mode_refresh_millihertz(0, 2200, 1125), None);
+        assert_eq!(mode_refresh_millihertz(148_500_000, 0, 1125), None);
+    }
 }
