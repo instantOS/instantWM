@@ -43,20 +43,21 @@ impl From<KeyboardLayoutArg> for KeyboardLayout {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum MonitorAction {
-    List {
-        window_id: Option<u32>,
-    },
-    Switch {
-        index: u32,
-    },
+    /// List connected monitors and their current configuration.
+    List { window_id: Option<u32> },
+    /// Switch to a monitor by index.
+    Switch { index: u32 },
+    /// Focus the next monitor.
     Next {
         #[arg(default_value = "1")]
         count: u32,
     },
+    /// Focus the previous monitor.
     Prev {
         #[arg(default_value = "1")]
         count: u32,
     },
+    /// Configure a monitor's mode, position, scale, transform, VRR, or power state.
     Set {
         #[arg(default_value = "focused")]
         identifier: String,
@@ -77,34 +78,38 @@ pub enum MonitorAction {
         #[arg(long, conflicts_with = "enable")]
         disable: bool,
     },
+    /// List the available modes for a monitor.
     Modes {
         #[arg(default_value = "focused")]
         identifier: String,
     },
-    Dpms {
-        state: String,
-    },
+    /// Turn display power on or off for the focused monitor.
+    Dpms { state: String },
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum KeyboardAction {
+    /// List configured keyboard layouts.
     List {
         #[arg(long)]
         all: bool,
     },
+    /// Show the active keyboard layout.
     Status,
+    /// Select the next keyboard layout.
     Next,
+    /// Select the previous keyboard layout.
     Prev,
+    /// Set the keyboard layouts.
     Set {
         #[arg(num_args = 1..)]
         layouts: Vec<String>,
     },
-    Add {
-        name: String,
-    },
-    Remove {
-        layout: String,
-    },
+    /// Add a keyboard layout.
+    Add { name: String },
+    /// Remove a keyboard layout.
+    Remove { layout: String },
+    /// Enable or disable swapping Escape and Caps Lock.
     SwapEscape {
         #[arg(long, action = ArgAction::Set)]
         enabled: bool,
@@ -113,25 +118,25 @@ pub enum KeyboardAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ScratchpadAction {
-    List {
-        window_id: Option<u32>,
-    },
-    Status {
-        name: Option<String>,
-    },
+    /// List scratchpads.
+    List { window_id: Option<u32> },
+    /// Show the status of a scratchpad.
+    Status { name: Option<String> },
+    /// Show a scratchpad.
     Show {
         name: Option<String>,
         #[arg(short, long)]
         all: bool,
     },
+    /// Hide a scratchpad.
     Hide {
         name: Option<String>,
         #[arg(short, long)]
         all: bool,
     },
-    Toggle {
-        name: Option<String>,
-    },
+    /// Toggle a scratchpad's visibility.
+    Toggle { name: Option<String> },
+    /// Resize a scratchpad as a percentage of its monitor.
     Resize {
         #[arg(default_value = "instantwm_scratchpad")]
         name: String,
@@ -140,6 +145,7 @@ pub enum ScratchpadAction {
         #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
         height: u32,
     },
+    /// Create or mark a window as a scratchpad.
     #[command(alias = "make")]
     Create {
         #[arg(default_value = "instantwm_scratchpad")]
@@ -165,12 +171,11 @@ pub enum ScratchpadAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum WindowAction {
-    List {
-        window_id: Option<u32>,
-    },
-    Info {
-        window_id: Option<u32>,
-    },
+    /// List managed windows.
+    List { window_id: Option<u32> },
+    /// Show information about a managed window.
+    Info { window_id: Option<u32> },
+    /// Resize and optionally move a managed window.
     Resize {
         window_id: Option<u32>,
         #[arg(long)]
@@ -184,9 +189,8 @@ pub enum WindowAction {
         #[arg(long)]
         height: i32,
     },
-    Close {
-        window_id: Option<u32>,
-    },
+    /// Close a managed window.
+    Close { window_id: Option<u32> },
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -249,14 +253,17 @@ pub enum TestWaitAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TestAction {
+    /// Inject pointer movement for automated tests.
     Pointer {
         #[command(subcommand)]
         action: TestPointerAction,
     },
+    /// Manipulate windows by stable IDs for automated tests.
     Window {
         #[command(subcommand)]
         action: TestWindowAction,
     },
+    /// Wait for compositor state in automated tests.
     Wait {
         #[command(subcommand)]
         action: TestWaitAction,
@@ -294,43 +301,52 @@ pub enum ToggleCliAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TagAction {
+    /// View a tag by number.
     View { number: Option<u32> },
+    /// Set a tag's name.
     Name { name: String },
+    /// Reset all tag names.
     Reset,
 }
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum InputAction {
-    List {
-        identifier: Option<String>,
-    },
+    /// List input devices or settings for one device.
+    List { identifier: Option<String> },
+    /// List input devices.
     Devices,
+    /// Set pointer acceleration speed.
     #[command(alias = "pointer-accel")]
     Speed {
         value: f64,
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    /// Set the pointer acceleration profile.
     AccelProfile {
         profile: String,
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    /// Enable or disable tap-to-click.
     Tap {
         state: String,
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    /// Enable or disable natural scrolling.
     NaturalScroll {
         state: String,
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    /// Set the scroll factor.
     ScrollFactor {
         value: f64,
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    /// Enable or disable left-handed pointer mode.
     LeftHanded {
         state: String,
         #[arg(short, long)]
@@ -340,8 +356,11 @@ pub enum InputAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ModeAction {
+    /// List available window modes.
     List,
+    /// Set the current window mode.
     Set { name: String },
+    /// Toggle a window mode.
     Toggle { name: String },
 }
 
@@ -365,45 +384,53 @@ pub enum ConfigAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum CommandKind {
+    /// Run a named compositor action, or list available actions.
     Action {
         name: Option<String>,
         args: Vec<String>,
         #[arg(long, short = 'l')]
         list: bool,
     },
+    /// Show compositor status.
     Status,
+    /// Reload the compositor configuration.
     Reload,
+    /// List, switch, and configure monitors.
     Monitor {
         #[command(subcommand)]
         action: MonitorAction,
     },
+    /// Inspect, resize, or close windows.
     Window {
         #[command(subcommand)]
         action: WindowAction,
     },
+    /// View and name tags.
     Tag {
         #[command(subcommand)]
         action: TagAction,
     },
+    /// Toggle compositor features.
     Toggle {
         #[command(subcommand)]
         action: ToggleCliAction,
     },
-    Spawn {
-        command: Vec<String>,
-    },
+    /// Launch a command through the compositor.
+    Spawn { command: Vec<String> },
+    /// Warp the pointer to the focused window.
     WarpFocus,
+    /// Move the focused tag view to another monitor.
     TagMon {
         #[arg(default_value = "next")]
         direction: MonitorDirection,
     },
+    /// Follow focus to a neighboring monitor.
     FollowMon {
         #[arg(default_value = "next")]
         direction: MonitorDirection,
     },
-    Layout {
-        name: Option<String>,
-    },
+    /// Set or list the current layout.
+    Layout { name: Option<String> },
     /// Get or set the colour theme. With no argument, prints the current theme.
     /// Pass a theme name (e.g. `nord`) to switch, or `--list`/`-l` to list them.
     Theme {
@@ -411,40 +438,42 @@ pub enum CommandKind {
         #[arg(long, short = 'l')]
         list: bool,
     },
-    Border {
-        width: Option<u32>,
-    },
-    SpecialNext {
-        mode: SpecialNext,
-    },
+    /// Set the border width for windows.
+    Border { width: Option<u32> },
+    /// Select the next special window behavior.
+    SpecialNext { mode: SpecialNext },
+    /// Manage keyboard layouts and input settings.
     Keyboard {
         #[command(subcommand)]
         action: KeyboardAction,
     },
+    /// Manage scratchpad windows.
     Scratchpad {
         #[command(subcommand)]
         action: ScratchpadAction,
     },
+    /// Manage pointer and input-device settings.
     #[command(alias = "input")]
     Mouse {
         #[command(subcommand)]
         action: InputAction,
     },
+    /// Manage named window modes.
     Mode {
         #[command(subcommand)]
         action: ModeAction,
     },
-    UpdateStatus {
-        text: String,
-    },
-    Wallpaper {
-        path: String,
-    },
+    /// Set the status-bar text.
+    UpdateStatus { text: String },
+    /// Set the wallpaper image path.
+    Wallpaper { path: String },
+    /// Turn display power on or off.
     Dpms {
         #[arg(default_value = "focused")]
         identifier: String,
         state: String,
     },
+    /// Read or update runtime configuration values.
     Config {
         #[command(subcommand)]
         action: ConfigAction,
@@ -454,6 +483,7 @@ pub enum CommandKind {
         #[command(subcommand)]
         action: TestAction,
     },
+    /// Exit the compositor.
     Quit,
 }
 
