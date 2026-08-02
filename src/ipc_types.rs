@@ -173,7 +173,8 @@ pub enum ScratchpadCommand {
         status: ScratchpadInitialStatus,
         direction: Option<String>,
     },
-    Delete {
+    Restore {
+        name: Option<String>,
         window_id: Option<u32>,
     },
 }

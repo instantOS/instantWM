@@ -713,11 +713,11 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     let Some(client) = ctx.core().model().client(win) else {
         return;
     };
-    if !client.is_scratchpad() || client.is_sticky {
+    if !client.is_scratchpad() || client.is_scratchpad_visible() {
         return;
     }
 
-    let sp_name = client.scratchpad.as_ref().unwrap().name.clone();
+    let sp_name = client.scratchpad().unwrap().name().to_string();
     let current_mon = ctx.core_mut().model_mut().monitors.selected();
 
     if let Some(selected_window) = ctx

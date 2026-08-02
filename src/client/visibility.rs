@@ -89,11 +89,10 @@ pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
     let scratchpad_name = ctx.core().model().client(win).and_then(|c| {
         if c.is_scratchpad() {
             Some(
-                c.scratchpad
-                    .as_ref()
+                c.scratchpad()
                     .expect("is_scratchpad() implies scratchpad data is present")
-                    .name
-                    .clone(),
+                    .name()
+                    .to_string(),
             )
         } else {
             None

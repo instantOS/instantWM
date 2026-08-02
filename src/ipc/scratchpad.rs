@@ -1,7 +1,7 @@
 use crate::floating::scratchpad::{
-    collect_scratchpad_info, scratchpad_hide_all, scratchpad_hide_name, scratchpad_make,
-    scratchpad_resize_name, scratchpad_show_all, scratchpad_show_name, scratchpad_toggle,
-    scratchpad_unmake,
+    collect_scratchpad_info, scratchpad_create, scratchpad_hide_all, scratchpad_hide_name,
+    scratchpad_resize_name, scratchpad_restore, scratchpad_show_all, scratchpad_show_name,
+    scratchpad_toggle,
 };
 use crate::ipc_types::{Response, ScratchpadCommand};
 use crate::types::WindowId;
@@ -65,19 +65,36 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             status,
             direction,
         } => {
-            let dir = direction.as_deref().and_then(EdgeDirection::from_str_loose);
-            scratchpad_make(
+            let dir = match direction {
+                Some(direction) => match EdgeDirection::from_str_loose(&direction) {
+                    Some(direction) => Some(direction),
+                    None => {
+                        return Response::err(format!(
+                            "invalid scratchpad direction '{}'; expected top, bottom, left, or right",
+                            direction
+                        ));
+                    }
+                },
+                None => None,
+            };
+            match scratchpad_create(
                 &mut wm.ctx(),
                 &name,
                 window_id.map(WindowId::from),
                 dir,
                 status,
-            );
-            Response::ok()
+            ) {
+                Ok(message) => Response::Message(message),
+                Err(error) => Response::err(error),
+            }
         }
-        ScratchpadCommand::Delete { window_id } => {
-            scratchpad_unmake(&mut wm.ctx(), window_id.map(WindowId::from));
-            Response::ok()
-        }
+        ScratchpadCommand::Restore { name, window_id } => match scratchpad_restore(
+            &mut wm.ctx(),
+            name.as_deref(),
+            window_id.map(WindowId::from),
+        ) {
+            Ok(message) => Response::Message(message),
+            Err(error) => Response::err(error),
+        },
     }
 }

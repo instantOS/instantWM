@@ -182,76 +182,11 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     arrange(ctx, Some(selmon_id));
 }
 
-/// Toggle the "maximized" state of the selected window.
-///
-/// This is a WM-level zoom: the window expands to fill the work area without
-/// removing its border or setting `_NET_WM_STATE_FULLSCREEN`.  It is distinct
-/// from both real fullscreen and fake fullscreen.
-///
-/// `wm_maximized_client` derives which window (if any) is currently zoomed
-/// this way from the clients' modes.  Toggling on saves the window's floating
-/// geometry so it can be restored on toggle-off.
-///
-/// Works on both X11 and Wayland.  The X11-specific `apply_size` nudge is
-/// only applied on X11, since Wayland geometry is driven by the compositor
-/// render loop and needs no such hint.
-pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
-    let maximized_win = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .wm_maximized_client(&ctx.core().model().clients);
-    let selected_window = ctx.core().model().selected_win();
-    let animated = ctx.core().behavior().animated;
-
-    let enter = maximized_win.is_none();
-    let win = if enter {
-        selected_window
-    } else {
-        maximized_win
-    };
-    let Some(win) = win else { return };
-
-    let Some(transition) = ctx.core_mut().model_mut().set_wm_maximized(win, enter) else {
-        return;
-    };
-    let entered = transition.entered();
-
-    match transition.change() {
-        crate::client::mode::MaximizedChange::Entered { work_rect } => {
-            ctx.move_resize(win, work_rect, MoveResizeOptions::hinted_immediate(false));
-        }
-        crate::client::mode::MaximizedChange::Exited { restore_rect } => {
-            if let Some(rect) = restore_rect {
-                ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
-            }
-        }
-        crate::client::mode::MaximizedChange::Unchanged
-        | crate::client::mode::MaximizedChange::UpdatedFullscreenRestore => {}
-    }
-
-    // Run the layout pass.  Disable animations temporarily so the
-    // maximize/restore is instantaneous rather than sliding.
-    let monitor_id = transition.monitor_id();
-    if animated {
-        ctx.core_mut().behavior_mut().animated = false;
-        arrange(ctx, Some(monitor_id));
-        ctx.core_mut().behavior_mut().animated = true;
-    } else {
-        arrange(ctx, Some(monitor_id));
-    }
-
-    // Raise the newly maximized window above everything else.
-    if entered {
-        ctx.raise_client(win);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         WindowModeChange, WindowModeRequest, set_window_mode, set_window_placement_from_policy,
-        toggle_client_maximized, toggle_floating,
+        toggle_floating,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -304,22 +239,6 @@ mod tests {
         assert_eq!(client.mode(), ClientMode::floating());
         assert_eq!(client.geo, expected);
         assert_eq!(client.saved_floating_rect(), Some(expected));
-    }
-
-    #[test]
-    fn wm_maximize_applies_work_area_and_restores_floating_geometry() {
-        let floating = Rect::new(180, 140, 700, 500);
-        let (mut wm, win) = wm_with_client(ClientMode::floating(), floating);
-
-        toggle_client_maximized(&mut wm.ctx());
-        let maximized = wm.core.model.client(win).unwrap();
-        assert!(maximized.mode().is_wm_maximized());
-        assert_eq!(maximized.geo, Rect::new(0, 30, 1200, 770));
-
-        toggle_client_maximized(&mut wm.ctx());
-        let restored = wm.core.model.client(win).unwrap();
-        assert!(restored.mode().is_normal_floating());
-        assert_eq!(restored.geo, floating);
     }
 
     #[test]

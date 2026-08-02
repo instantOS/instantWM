@@ -558,6 +558,7 @@ impl WmModel {
     }
 
     /// Apply instantWM's protocol-independent per-window zoom.
+    #[cfg(test)]
     pub(crate) fn set_wm_maximized(
         &mut self,
         win: WindowId,

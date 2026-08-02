@@ -79,6 +79,33 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
+    if ctx
+        .core()
+        .model()
+        .client(win)
+        .is_some_and(|client| client.is_scratchpad())
+    {
+        let target_tag = match dir {
+            Direction::Left => current_tag.checked_sub(offset as usize),
+            Direction::Right => current_tag.checked_add(offset as usize),
+            Direction::Up | Direction::Down => None,
+        };
+        let Some(target_mask) = target_tag
+            .and_then(TagMask::single)
+            .map(|mask| mask & tagmask)
+            .filter(|mask| !mask.is_empty())
+        else {
+            return;
+        };
+        let monitor_id = ctx.core().model().selected_monitor_id();
+        let _ = crate::floating::scratchpad::scratchpad_restore_window(
+            ctx,
+            win,
+            Some((monitor_id, target_mask)),
+        );
+        return;
+    }
+
     let target_tags = ctx
         .core()
         .model()

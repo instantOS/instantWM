@@ -151,7 +151,13 @@ pub enum ScratchpadAction {
         #[arg(long)]
         direction: Option<String>,
     },
-    Delete {
+    /// Restore a scratchpad to an ordinary window.
+    #[command(alias = "unmake")]
+    Restore {
+        /// Scratchpad name; omit to restore the focused scratchpad.
+        #[arg(conflicts_with = "window_id")]
+        name: Option<String>,
+        /// Stable window ID, useful when the scratchpad is hidden.
         #[arg(long, short = 'w')]
         window_id: Option<u32>,
     },
@@ -646,7 +652,7 @@ impl From<ScratchpadAction> for ScratchpadCommand {
                 status,
                 direction,
             },
-            ScratchpadAction::Delete { window_id } => Self::Delete { window_id },
+            ScratchpadAction::Restore { name, window_id } => Self::Restore { name, window_id },
         }
     }
 }

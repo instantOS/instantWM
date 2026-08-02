@@ -146,6 +146,38 @@ mod tests {
     }
 
     #[test]
+    fn parses_scratchpad_restore_by_name() {
+        let command: IpcCommand =
+            Cli::parse_from(["instantwmctl", "scratchpad", "restore", "menu"])
+                .command
+                .into();
+
+        assert!(matches!(
+            command,
+            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Restore {
+                name: Some(name),
+                window_id: None,
+            }) if name == "menu"
+        ));
+    }
+
+    #[test]
+    fn parses_scratchpad_restore_by_window_id() {
+        let command: IpcCommand =
+            Cli::parse_from(["instantwmctl", "scratchpad", "restore", "--window-id", "42"])
+                .command
+                .into();
+
+        assert!(matches!(
+            command,
+            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Restore {
+                name: None,
+                window_id: Some(42),
+            })
+        ));
+    }
+
+    #[test]
     fn parses_window_info_command() {
         let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "window", "info", "42"])
             .command

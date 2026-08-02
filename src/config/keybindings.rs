@@ -97,6 +97,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | SHIFT, XK_E => KeyAction::named(NamedAction::CancelOverview)),
         key!(MODKEY | CONTROL, XK_T => KeyAction::named(NamedAction::EdgeScratchpadCreate)),
         key!(MODKEY, XK_S => KeyAction::named(NamedAction::ScratchpadToggle)),
+        key!(MODKEY | SHIFT, XK_S => KeyAction::named(NamedAction::ScratchpadRestore)),
         key!(MODKEY, XK_B => KeyAction::named(NamedAction::ToggleBar)),
         key!(MODKEY | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleSticky)),
         key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAltTag)),
@@ -242,6 +243,14 @@ mod tests {
                 KeyAction::Named { action, .. } => Some(action),
                 _ => None,
             })
+    }
+
+    #[test]
+    fn scratchpad_restore_has_a_default_binding() {
+        assert_eq!(
+            default_named_action(MODKEY | SHIFT, XK_S),
+            Some(NamedAction::ScratchpadRestore)
+        );
     }
 
     #[test]

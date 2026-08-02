@@ -90,7 +90,7 @@ fn apply_rules_impl(
         // we may see later title/app_id updates that re-run this function; do
         // not let those rule refreshes retag an existing scratchpad back into
         // a normal window.
-        if c.scratchpad.is_some() {
+        if c.is_scratchpad() {
             return InitialRulePlacement::Default;
         }
     }
@@ -99,32 +99,34 @@ fn apply_rules_impl(
     // with a stable `scratchpad_<name>` class/app-id. Classify that protocol
     // role before clearing inherited tags or running ordinary window rules, so
     // the client can never occupy a tiling leaf for its first arrange.
-    if let Some(name) =
-        crate::floating::scratchpad::name_from_window_identity(&props.class, &props.instance)
-            .map(str::to_owned)
+    if application == RuleApplication::Initial
+        && let Some(name) =
+            crate::floating::scratchpad::name_from_window_identity(&props.class, &props.instance)
+                .map(str::to_owned)
     {
         let role = state.model.client_view(win).map(|view| {
             let content = view.monitor.visible_content_rect(&state.model.clients);
             (
-                view.client.tags,
                 content,
                 view.client.border_width,
                 view.monitor.selected.filter(|&selected| selected != win),
             )
         });
-        if let Some((restore_tags, content, border_width, restore_focus)) = role
+        if let Some((content, border_width, restore_focus)) = role
             && state.model.scratchpad_find(&name).is_none()
             && let Some(client) = state.model.client_mut(win)
         {
-            client.apply_scratchpad_state(&name, None, restore_tags, content.w, content.h);
-            client.show_as_scratchpad(restore_tags, None);
+            // Launcher identity owns this initial role. Generic backend
+            // stickiness is not an ordinary preference to restore later.
+            client.is_sticky = false;
+            let _ = client.promote_to_scratchpad(&name, None, content.w, content.h);
             if let Ok(rect) =
                 crate::floating::scratchpad::default_regular_scratchpad_rect(content, border_width)
             {
                 client.geo = rect;
                 client.set_preferred_floating_size(rect.size());
             }
-            if let Some(scratchpad) = client.scratchpad.as_mut() {
+            if let Some(scratchpad) = client.scratchpad_mut() {
                 scratchpad.remember_focus(restore_focus);
             }
             return InitialRulePlacement::Center;
@@ -866,13 +868,13 @@ mod tests {
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
         assert!(outcome.changed);
         assert!(client.mode().is_normal_floating());
-        assert!(client.is_sticky);
-        assert_eq!(client.tags, selected_tags);
+        assert!(!client.is_sticky);
+        assert_eq!(client.tags, TagMask::SCRATCHPAD);
+        assert!(client.is_scratchpad_visible());
         assert_eq!(client.total_rect(), Rect::new(300, 160, 600, 480));
-        let scratchpad = client.scratchpad.as_ref().unwrap();
-        assert_eq!(scratchpad.name, "menu");
-        assert_eq!(scratchpad.restore_tags, selected_tags);
-        assert_eq!(scratchpad.restore_focus, Some(WindowId(44)));
+        let scratchpad = client.scratchpad().unwrap();
+        assert_eq!(scratchpad.name(), "menu");
+        assert_eq!(scratchpad.original_tags(), selected_tags);
         state
             .model
             .monitor_mut(MonitorId::default())
@@ -889,6 +891,26 @@ mod tests {
                 .all(|client| client.win != win),
             "an inferred scratchpad must never become a layout-tree leaf"
         );
+
+        state
+            .model
+            .client_mut(win)
+            .unwrap()
+            .restore_from_scratchpad(None)
+            .unwrap();
+        apply_property_change(
+            &mut state,
+            win,
+            &WindowProperties {
+                class: "scratchpad_menu".to_string(),
+                title: "updated title".to_string(),
+                ..Default::default()
+            },
+        );
+        let restored = state.model.client(win).unwrap();
+        assert!(!restored.is_scratchpad());
+        assert_eq!(restored.tags, selected_tags);
+        assert!(restored.mode().is_normal_tiling());
     }
 
     #[test]

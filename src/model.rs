@@ -204,7 +204,7 @@ impl WmModel {
         }
 
         for c in self.clients.values() {
-            if c.is_scratchpad() && c.scratchpad.as_ref().is_some_and(|sp| sp.name == name) {
+            if c.scratchpad().is_some_and(|sp| sp.name() == name) {
                 return Some(c.win);
             }
         }

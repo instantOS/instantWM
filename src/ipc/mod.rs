@@ -291,7 +291,13 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
             | MonitorCommand::Set { .. },
         ) => Some(RestorePrevious),
         IpcCommand::Window(WindowCommand::Resize { .. } | WindowCommand::Close(None))
-        | IpcCommand::Scratchpad(ScratchpadCommand::Create { .. }) => Some(ToSelectedWindow),
+        | IpcCommand::Scratchpad(
+            ScratchpadCommand::Create { .. }
+            | ScratchpadCommand::Restore {
+                name: None,
+                window_id: None,
+            },
+        ) => Some(ToSelectedWindow),
 
         IpcCommand::Status
         | IpcCommand::Reload
@@ -311,7 +317,10 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
             | ScratchpadCommand::HideAll
             | ScratchpadCommand::Status(_)
             | ScratchpadCommand::Resize { .. }
-            | ScratchpadCommand::Delete { .. },
+            | ScratchpadCommand::Restore { name: Some(_), .. }
+            | ScratchpadCommand::Restore {
+                window_id: Some(_), ..
+            },
         )
         | IpcCommand::Keyboard(_)
         | IpcCommand::Tag(_)

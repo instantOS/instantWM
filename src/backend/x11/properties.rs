@@ -245,7 +245,7 @@ fn set_wm_desktop_prop(
         return;
     };
 
-    let desktop = if client.is_sticky {
+    let desktop = if client.is_sticky || client.is_scratchpad() {
         u32::MAX
     } else {
         let tag = client.tags.first_tag().unwrap_or(1);

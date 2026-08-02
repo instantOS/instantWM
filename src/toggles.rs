@@ -26,6 +26,9 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        if client.is_scratchpad() {
+            return;
+        }
         client.is_sticky = !client.is_sticky;
         client.monitor_id
     } else {

@@ -727,6 +727,20 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     let desktop = e.data.as_data32()[0];
 
     if desktop == u32::MAX {
+        if ctx
+            .core
+            .model()
+            .client(win)
+            .is_some_and(|client| client.is_scratchpad())
+        {
+            crate::backend::x11::set_client_tag_prop(
+                ctx.core.state,
+                &ctx.x11,
+                ctx.x11_runtime,
+                win,
+            );
+            return;
+        }
         if let Some(client) = ctx.core.model_mut().client_mut(win) {
             client.is_sticky = true;
         }
@@ -744,12 +758,25 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     };
 
+    if ctx
+        .core
+        .model()
+        .client(win)
+        .is_some_and(|client| client.is_scratchpad())
+    {
+        let _ = crate::floating::scratchpad::scratchpad_restore_window(
+            &mut WmCtx::X11(ctx.reborrow()),
+            win,
+            Some((target_mon, target_tags)),
+        );
+        return;
+    }
+
     let old_mon = ctx.core.model().client(win).map(|client| client.monitor_id);
     {
         let globals = &mut ctx.core.state;
         if let Some(client) = globals.model.client_mut(win) {
             client.is_sticky = false;
-            client.clear_sticky_if_scratchpad();
             client.set_tag_mask(target_tags);
         } else {
             return;

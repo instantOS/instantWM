@@ -495,6 +495,12 @@ fn read_client_info(
     x11_runtime: &X11RuntimeConfig,
     window: WindowId,
 ) {
+    if model
+        .client(window)
+        .is_some_and(|client| client.is_scratchpad())
+    {
+        return;
+    }
     let x11_window: Window = window.into();
     let client_info_atom = x11_runtime.netatom.client_info;
 
@@ -552,6 +558,16 @@ fn read_wm_desktop_hint(
     };
     let Some(desktop) = data.next() else { return };
 
+    // Scratchpad role and parking tags were established by shared rules before
+    // backend hints are imported. Generic EWMH sticky/desktop state must not
+    // overwrite that authoritative role transition.
+    if model
+        .client(window)
+        .is_some_and(|client| client.is_scratchpad())
+    {
+        return;
+    }
+
     if desktop == u32::MAX {
         if let Some(client) = model.client_mut(window) {
             client.is_sticky = true;
@@ -571,7 +587,6 @@ fn read_wm_desktop_hint(
     if let Some(client) = model.client_mut(window) {
         client.monitor_id = monitor_id;
         client.is_sticky = false;
-        client.clear_sticky_if_scratchpad();
         client.set_tag_mask(tags);
     }
 }

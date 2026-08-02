@@ -1011,13 +1011,9 @@ mod tests {
             mode: ClientMode::floating(),
             ..Client::default()
         };
-        client.apply_scratchpad_state(
-            "insmenu",
-            None,
-            crate::types::TagMask::from_bits(1),
-            1920,
-            1080,
-        );
+        client
+            .promote_to_scratchpad("insmenu", None, 1920, 1080)
+            .unwrap();
         wm.core.model.insert_client(client);
 
         apply_committed_window_size(&mut wm, win, 1920, 1080);

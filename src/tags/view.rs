@@ -244,9 +244,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
         return;
     };
 
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-        client.set_tag_mask(target_mask);
-    }
+    crate::tags::client_tags::set_client_tag(ctx, win, target_mask);
 
     view_tags(ctx, target_mask);
     crate::focus::focus(ctx, Some(win));
