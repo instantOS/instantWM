@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::animation::ease_out_cubic;
 use crate::backend::wayland::compositor::WaylandState;
-use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
+use crate::constants::animation::{DISTANCE_THRESHOLD, WAYLAND_DEFAULT_ANIMATION_MILLIS};
 use crate::types::{Rect, WindowId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -24,6 +24,109 @@ enum ResizeConfigure {
     Unchanged,
     Pending(Size<i32, Logical>),
     Sent(Size<i32, Logical>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SurfaceAnchor {
+    Near,
+    Center,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SurfaceAnchors {
+    x: SurfaceAnchor,
+    y: SurfaceAnchor,
+}
+
+impl SurfaceAnchors {
+    #[cfg(test)]
+    const CENTERED: Self = Self {
+        x: SurfaceAnchor::Center,
+        y: SurfaceAnchor::Center,
+    };
+
+    fn between(from: Rect, to: Rect, from_border: i32, to_border: i32) -> Self {
+        Self {
+            x: axis_anchor(from.x, from.w, from_border, to.x, to.w, to_border),
+            y: axis_anchor(from.y, from.h, from_border, to.y, to.h, to_border),
+        }
+    }
+
+    /// Retargeting samples a new visual frame while the client may still be
+    /// displaying an older committed size. Keep the anchor whose placement is
+    /// closest to the current surface location; changing policy here would
+    /// itself create a teleport.
+    fn continuous_with(
+        self,
+        frame: Rect,
+        committed_size: Size<i32, Logical>,
+        border_width: i32,
+        current_location: Point<i32, Logical>,
+    ) -> Self {
+        Self {
+            x: closest_axis_anchor(
+                frame.x,
+                frame.w,
+                committed_size.w,
+                border_width,
+                current_location.x,
+                self.x,
+            ),
+            y: closest_axis_anchor(
+                frame.y,
+                frame.h,
+                committed_size.h,
+                border_width,
+                current_location.y,
+                self.y,
+            ),
+        }
+    }
+}
+
+/// Centering masks a discrete resize only when that center travels. If an
+/// axis expands around a stationary center, centering leaves the old buffer
+/// motionless until the client commits its new size. Anchor that axis at its
+/// near edge instead, so frame motion remains visible before the size switch.
+fn axis_anchor(
+    from_position: i32,
+    from_size: i32,
+    from_border: i32,
+    to_position: i32,
+    to_size: i32,
+    to_border: i32,
+) -> SurfaceAnchor {
+    let presented_center_twice = |position: i32, size: i32, border: i32| {
+        2 * (i64::from(position) + i64::from(border.max(0))) + i64::from(size)
+    };
+    let from_center = presented_center_twice(from_position, from_size, from_border);
+    let to_center = presented_center_twice(to_position, to_size, to_border);
+    let stationary_threshold = 2 * i64::from(DISTANCE_THRESHOLD);
+
+    if (to_center - from_center).abs() <= stationary_threshold {
+        SurfaceAnchor::Near
+    } else {
+        SurfaceAnchor::Center
+    }
+}
+
+fn closest_axis_anchor(
+    frame_position: i32,
+    frame_size: i32,
+    committed_size: i32,
+    border_width: i32,
+    current_position: i32,
+    preferred: SurfaceAnchor,
+) -> SurfaceAnchor {
+    let near = frame_position + border_width.max(0);
+    let center = near + (frame_size - committed_size) / 2;
+    let distance = |candidate: i32| (i64::from(current_position) - i64::from(candidate)).abs();
+
+    match distance(near).cmp(&distance(center)) {
+        std::cmp::Ordering::Less => SurfaceAnchor::Near,
+        std::cmp::Ordering::Greater => SurfaceAnchor::Center,
+        std::cmp::Ordering::Equal => preferred,
+    }
 }
 
 impl ResizeConfigure {
@@ -57,10 +160,12 @@ impl ResizeConfigure {
 /// Wayland presentation state for one logical geometry transition.
 ///
 /// The intended frame interpolates every edge. The client surface keeps its
-/// currently committed size and is centered inside that frame, so one-sided
-/// growth/shrink creates cheap motion on both sides of the single real resize.
-/// Only `ResizeConfigure::Pending` can emit a configure, making repeated
-/// client relayout during an animation unrepresentable.
+/// currently committed size. Axes whose presented center travels keep that
+/// buffer centered, so movement is split across the single real resize. Axes
+/// expanding around a stationary center follow their near edge instead, so
+/// they visibly move before the client commits. Only `ResizeConfigure::Pending`
+/// can emit a configure, making repeated client relayout during an animation
+/// unrepresentable.
 ///
 /// The border width is part of the transition: it animates from the width the
 /// window was displayed with (`from_border`) to the width the requested
@@ -75,6 +180,7 @@ pub(crate) struct WaylandWindowAnimation {
     displayed_border: i32,
     from_border: i32,
     to_border: i32,
+    anchors: SurfaceAnchors,
     resize: ResizeConfigure,
 }
 
@@ -103,6 +209,7 @@ impl WaylandWindowAnimation {
         from_border: i32,
         to_border: i32,
     ) -> Self {
+        let anchors = SurfaceAnchors::between(from, to, from_border, to_border);
         Self {
             frame: crate::animation::WindowAnimation {
                 from,
@@ -114,6 +221,7 @@ impl WaylandWindowAnimation {
             displayed_border: from_border,
             from_border,
             to_border,
+            anchors,
             resize: ResizeConfigure::toward(committed_size, to),
         }
     }
@@ -151,10 +259,11 @@ impl WaylandWindowAnimation {
         WaylandAnimationTick {
             previous_frame,
             frame: tick.rect,
-            surface_location: centered_surface_location(
+            surface_location: anchored_surface_location(
                 tick.rect,
                 committed_size,
                 self.displayed_border,
+                self.anchors,
             ),
             configure_size: self.resize.advance(tick.progress),
             done: tick.done,
@@ -162,15 +271,20 @@ impl WaylandWindowAnimation {
     }
 }
 
-fn centered_surface_location(
+fn anchored_surface_location(
     frame: Rect,
     committed_size: Size<i32, Logical>,
     border_width: i32,
+    anchors: SurfaceAnchors,
 ) -> Point<i32, Logical> {
     let border_width = border_width.max(0);
+    let offset = |frame_size: i32, committed_size: i32, anchor: SurfaceAnchor| match anchor {
+        SurfaceAnchor::Near => 0,
+        SurfaceAnchor::Center => (frame_size - committed_size) / 2,
+    };
     Point::from((
-        frame.x + border_width + (frame.w - committed_size.w) / 2,
-        frame.y + border_width + (frame.h - committed_size.h) / 2,
+        frame.x + border_width + offset(frame.w, committed_size.w, anchors.x),
+        frame.y + border_width + offset(frame.h, committed_size.h, anchors.y),
     ))
 }
 
@@ -378,24 +492,29 @@ impl WaylandState {
             return;
         }
 
-        let start_loc = centered_surface_location(from, actual_size, from_border);
+        let mut animation = WaylandWindowAnimation::new(
+            from,
+            target,
+            actual_size,
+            animation_duration,
+            Instant::now(),
+            from_border,
+            to_border,
+        );
+        if let Some(actual_loc) = actual_loc {
+            animation.anchors =
+                animation
+                    .anchors
+                    .continuous_with(from, actual_size, from_border, actual_loc);
+        }
+        let start_loc =
+            anchored_surface_location(from, actual_size, from_border, animation.anchors);
         if actual_loc != Some(start_loc) {
             self.remap_element_preserving_z_order(&element, start_loc, false);
         }
         self.placed_border.insert(window_id, from_border);
 
-        self.insert_or_replace_window_animation(
-            window_id,
-            WaylandWindowAnimation::new(
-                from,
-                target,
-                actual_size,
-                animation_duration,
-                Instant::now(),
-                from_border,
-                to_border,
-            ),
-        );
+        self.insert_or_replace_window_animation(window_id, animation);
     }
 
     /// Cancel a single window's in-flight animation.
@@ -670,11 +789,12 @@ mod tests {
         let early = animation.displayed_border_width();
         assert!(early > 0 && early < 2);
 
-        // Border and buffer-size presentation are independent: at the visual
-        // midpoint, the old committed buffer remains centered in the frame
-        // while the border follows the same eased progress as the frame.
+        // Border and buffer-size presentation are independent. The horizontal
+        // center is stationary, so that axis follows its moving near edge;
+        // the vertically traveling center remains centered around the old
+        // committed buffer. The border follows the eased frame progress.
         let midpoint = animation.tick(start + Duration::from_millis(50), Size::from((1200, 740)));
-        assert_eq!(midpoint.surface_location, Point::from((0, 43)));
+        assert_eq!(midpoint.surface_location, Point::from((133, 43)));
         assert_eq!(animation.displayed_border_width(), 2);
 
         // The transition ends fully bordered, landed exactly on the target
@@ -686,16 +806,93 @@ mod tests {
     }
 
     #[test]
+    fn centered_float_to_single_tile_anchors_near_edges_so_the_surface_moves() {
+        let start = Instant::now();
+        let from = Rect::new(198, 313, 600, 400);
+        let to = Rect::new(0, 30, 1000, 970);
+        let committed = Size::from((600, 400));
+        let mut animation = WaylandWindowAnimation::new(
+            from,
+            to,
+            committed,
+            Duration::from_millis(100),
+            start,
+            2,
+            0,
+        );
+
+        assert_eq!(animation.anchors.x, SurfaceAnchor::Near);
+        assert_eq!(animation.anchors.y, SurfaceAnchor::Near);
+
+        let midpoint = animation.tick(start + Duration::from_millis(50), committed);
+        assert!(midpoint.surface_location.x < from.x + 2);
+        assert!(midpoint.surface_location.y < from.y + 2);
+
+        let end = animation.tick(start + Duration::from_millis(100), Size::from((1000, 970)));
+        assert_eq!(end.surface_location, Point::from((to.x, to.y)));
+    }
+
+    #[test]
+    fn right_half_to_bottom_right_quarter_keeps_vertical_center_anchoring() {
+        let animation = WaylandWindowAnimation::new(
+            Rect::new(500, 0, 500, 1000),
+            Rect::new(500, 500, 500, 500),
+            Size::from((500, 1000)),
+            Duration::from_millis(100),
+            Instant::now(),
+            0,
+            0,
+        );
+
+        assert_eq!(animation.anchors.x, SurfaceAnchor::Near);
+        assert_eq!(animation.anchors.y, SurfaceAnchor::Center);
+    }
+
+    #[test]
+    fn retarget_keeps_the_anchor_matching_the_current_surface_location() {
+        let frame = Rect::new(0, 0, 120, 80);
+        let committed = Size::from((100, 80));
+        let current_location = Point::from((10, 0));
+        let preferred = SurfaceAnchors {
+            x: SurfaceAnchor::Near,
+            y: SurfaceAnchor::Near,
+        };
+
+        assert_eq!(
+            preferred.continuous_with(frame, committed, 0, current_location),
+            SurfaceAnchors {
+                x: SurfaceAnchor::Center,
+                y: SurfaceAnchor::Near,
+            }
+        );
+    }
+
+    #[test]
     fn one_sided_growth_moves_before_and_after_the_size_switch() {
         let halfway_frame = Rect::new(0, 0, 120, 80);
 
-        let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
-        let after_resize = centered_surface_location(halfway_frame, Size::from((140, 80)), 0);
+        let before_resize = anchored_surface_location(
+            halfway_frame,
+            Size::from((100, 80)),
+            0,
+            SurfaceAnchors::CENTERED,
+        );
+        let after_resize = anchored_surface_location(
+            halfway_frame,
+            Size::from((140, 80)),
+            0,
+            SurfaceAnchors::CENTERED,
+        );
 
         assert_eq!(before_resize, Point::from((10, 0)));
         assert_eq!(after_resize, Point::from((-10, 0)));
         assert_eq!(
-            centered_surface_location(Rect::new(0, 0, 140, 80), Size::from((140, 80)), 0,),
+            anchored_surface_location(
+                Rect::new(0, 0, 140, 80),
+                Size::from((140, 80)),
+                0,
+                SurfaceAnchors::CENTERED,
+            ),
             Point::from((0, 0))
         );
     }
@@ -704,13 +901,28 @@ mod tests {
     fn one_sided_shrink_moves_before_and_after_the_size_switch() {
         let halfway_frame = Rect::new(0, 0, 80, 80);
 
-        let before_resize = centered_surface_location(halfway_frame, Size::from((100, 80)), 0);
-        let after_resize = centered_surface_location(halfway_frame, Size::from((60, 80)), 0);
+        let before_resize = anchored_surface_location(
+            halfway_frame,
+            Size::from((100, 80)),
+            0,
+            SurfaceAnchors::CENTERED,
+        );
+        let after_resize = anchored_surface_location(
+            halfway_frame,
+            Size::from((60, 80)),
+            0,
+            SurfaceAnchors::CENTERED,
+        );
 
         assert_eq!(before_resize, Point::from((-10, 0)));
         assert_eq!(after_resize, Point::from((10, 0)));
         assert_eq!(
-            centered_surface_location(Rect::new(0, 0, 60, 80), Size::from((60, 80)), 0,),
+            anchored_surface_location(
+                Rect::new(0, 0, 60, 80),
+                Size::from((60, 80)),
+                0,
+                SurfaceAnchors::CENTERED,
+            ),
             Point::from((0, 0))
         );
     }
@@ -737,7 +949,12 @@ mod tests {
                         ];
 
                         for committed in committed_sizes {
-                            let location = centered_surface_location(frame, committed, border);
+                            let location = anchored_surface_location(
+                                frame,
+                                committed,
+                                border,
+                                SurfaceAnchors::CENTERED,
+                            );
                             assert_eq!(
                                 2 * location.x + committed.w,
                                 2 * (frame.x + border) + frame.w
