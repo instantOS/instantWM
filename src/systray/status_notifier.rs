@@ -593,10 +593,7 @@ fn spawn_icon_watchers(
     watching: &mut HashSet<String>,
     changed_tx: &Sender<(String, String)>,
 ) {
-    let new_ids: Vec<&String> = ids
-        .iter()
-        .filter(|id| !watching.contains(*id))
-        .collect();
+    let new_ids: Vec<&String> = ids.iter().filter(|id| !watching.contains(*id)).collect();
     for id in new_ids {
         let Some((service, path)) = parse_sni_id(id) else {
             continue;
@@ -621,12 +618,7 @@ fn spawn_icon_watchers(
 /// Any failure (item gone, DBus error, no signal support) simply ends this
 /// watcher; the item is still covered by the slow fallback reconcile, so this
 /// is best-effort and never silently drops an icon forever.
-fn watch_item_icon(
-    conn: Connection,
-    tx: Sender<(String, String)>,
-    service: String,
-    path: String,
-) {
+fn watch_item_icon(conn: Connection, tx: Sender<(String, String)>, service: String, path: String) {
     let proxy = match uncached_proxy(&conn, &service, &path, ITEM_IFACE) {
         Ok(proxy) => proxy,
         Err(_) => return,
@@ -643,12 +635,7 @@ fn watch_item_icon(
 }
 
 /// Fetch and re-publish one item's icon on demand (e.g. after `NewIcon`).
-fn refresh_item_icon(
-    conn: &Connection,
-    evt_tx: &Sender<SystrayEvt>,
-    service: &str,
-    path: &str,
-) {
+fn refresh_item_icon(conn: &Connection, evt_tx: &Sender<SystrayEvt>, service: &str, path: &str) {
     let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, service, path) else {
         return;
     };

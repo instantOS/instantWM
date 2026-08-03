@@ -13,11 +13,13 @@ pub(crate) enum WindowMoveMode {
     AnimateFrom { from: Rect, duration: Duration },
 }
 
-/// Send the single expensive client resize around the spatial midpoint of the
-/// ease-out transition. `ease_out_cubic(0.2)` is approximately `0.49`; using
-/// linear progress `0.5` would wait until 87.5% of the visual motion was over.
-/// The frame and cheap compositor motion continue for the full duration.
+/// Normally send the single expensive client resize around the spatial
+/// midpoint of the ease-out transition. `ease_out_cubic(0.2)` is approximately
+/// `0.49`; using linear progress `0.5` would wait until 87.5% of the visual
+/// motion was over. A shrink whose removed pixels are offscreen at the target
+/// delays its configure until movement is complete.
 const RESIZE_CONFIGURE_PHASE: f64 = 0.2;
+const OFFSCREEN_RESIZE_CONFIGURE_PHASE: f64 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResizeConfigure {
@@ -140,11 +142,11 @@ impl ResizeConfigure {
         }
     }
 
-    fn advance(&mut self, progress: f64) -> Option<Size<i32, Logical>> {
+    fn advance(&mut self, progress: f64, configure_phase: f64) -> Option<Size<i32, Logical>> {
         let Self::Pending(size) = *self else {
             return None;
         };
-        if progress < RESIZE_CONFIGURE_PHASE {
+        if progress < configure_phase {
             return None;
         }
         *self = Self::Sent(size);
@@ -183,6 +185,7 @@ pub(crate) struct WaylandWindowAnimation {
     to_border: i32,
     anchors: SurfaceAnchors,
     resize: ResizeConfigure,
+    resize_configure_phase: f64,
     waiting_for_resize: bool,
 }
 
@@ -226,6 +229,7 @@ impl WaylandWindowAnimation {
             to_border,
             anchors,
             resize: ResizeConfigure::toward(committed_size, last_configured_size, to),
+            resize_configure_phase: RESIZE_CONFIGURE_PHASE,
             waiting_for_resize: false,
         }
     }
@@ -264,6 +268,24 @@ impl WaylandWindowAnimation {
         !self.waiting_for_resize
     }
 
+    fn revalidate_offscreen_resize_delay(
+        &mut self,
+        committed_size: Size<i32, Logical>,
+        outputs: &[Rect],
+    ) {
+        if self.resize_configure_phase == OFFSCREEN_RESIZE_CONFIGURE_PHASE
+            && !resize_removal_is_offscreen_at_target(
+                self.target(),
+                committed_size,
+                self.to_border,
+                self.anchors,
+                outputs,
+            )
+        {
+            self.resize_configure_phase = RESIZE_CONFIGURE_PHASE;
+        }
+    }
+
     fn tick(&mut self, now: Instant, committed_size: Size<i32, Logical>) -> WaylandAnimationTick {
         let previous_frame = self.displayed_frame;
         let tick = self.frame.tick(now);
@@ -279,7 +301,9 @@ impl WaylandWindowAnimation {
                 self.displayed_border,
                 self.anchors,
             ),
-            configure_size: self.resize.advance(tick.progress),
+            configure_size: self
+                .resize
+                .advance(tick.progress, self.resize_configure_phase),
             done: tick.done,
         }
     }
@@ -300,6 +324,48 @@ fn anchored_surface_location(
         frame.x + border_width + offset(frame.w, committed_size.w, anchors.x),
         frame.y + border_width + offset(frame.h, committed_size.h, anchors.y),
     ))
+}
+
+/// At the target placement, determine whether shrinking the committed surface
+/// only removes pixels outside every output. Growing or mixed-axis resizes can
+/// reveal pixels and therefore retain the normal mid-animation configure.
+fn resize_removal_is_offscreen_at_target(
+    target: Rect,
+    committed_size: Size<i32, Logical>,
+    border_width: i32,
+    anchors: SurfaceAnchors,
+    outputs: &[Rect],
+) -> bool {
+    let target_size = Size::from((target.w.max(1), target.h.max(1)));
+    if outputs.is_empty()
+        || committed_size.w < target_size.w
+        || committed_size.h < target_size.h
+        || committed_size == target_size
+    {
+        return false;
+    }
+
+    let committed_loc = anchored_surface_location(target, committed_size, border_width, anchors);
+    let target_loc = anchored_surface_location(target, target_size, border_width, anchors);
+    let committed_rect = Rect::new(
+        committed_loc.x,
+        committed_loc.y,
+        committed_size.w,
+        committed_size.h,
+    );
+    let target_rect = Rect::new(target_loc.x, target_loc.y, target_size.w, target_size.h);
+    let contains = |outer: Rect, inner: Rect| {
+        outer.x <= inner.x
+            && outer.y <= inner.y
+            && outer.right() >= inner.right()
+            && outer.bottom() >= inner.bottom()
+    };
+
+    outputs.iter().all(|output| {
+        committed_rect
+            .intersection(output)
+            .is_none_or(|visible_committed| contains(target_rect, visible_committed))
+    })
 }
 
 impl WaylandState {
@@ -528,6 +594,28 @@ impl WaylandState {
                     .anchors
                     .continuous_with(from, actual_size, from_border, actual_loc);
         }
+        let output_rects: Vec<_> = self
+            .space
+            .outputs()
+            .filter_map(|output| self.space.output_geometry(output))
+            .map(|geometry| {
+                Rect::new(
+                    geometry.loc.x,
+                    geometry.loc.y,
+                    geometry.size.w,
+                    geometry.size.h,
+                )
+            })
+            .collect();
+        if resize_removal_is_offscreen_at_target(
+            target,
+            actual_size,
+            to_border,
+            animation.anchors,
+            &output_rects,
+        ) {
+            animation.resize_configure_phase = OFFSCREEN_RESIZE_CONFIGURE_PHASE;
+        }
         let start_loc =
             anchored_surface_location(from, actual_size, from_border, animation.anchors);
         if actual_loc != Some(start_loc) {
@@ -642,6 +730,25 @@ impl WaylandState {
                 )
             })
             .collect();
+        let output_rects: Vec<_> = self
+            .window_animations
+            .values()
+            .any(|animation| animation.resize_configure_phase == OFFSCREEN_RESIZE_CONFIGURE_PHASE)
+            .then(|| {
+                self.space
+                    .outputs()
+                    .filter_map(|output| self.space.output_geometry(output))
+                    .map(|geometry| {
+                        Rect::new(
+                            geometry.loc.x,
+                            geometry.loc.y,
+                            geometry.size.w,
+                            geometry.size.h,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut updates = Vec::with_capacity(animation_inputs.len());
         let mut finished: Vec<WindowId> = Vec::new();
         for (win, committed_size) in animation_inputs {
@@ -650,6 +757,7 @@ impl WaylandState {
                 continue;
             };
             if let Some(animation) = self.window_animations.get_mut(&win) {
+                animation.revalidate_offscreen_resize_delay(committed_size, &output_rects);
                 let tick = animation.tick(now, committed_size);
                 let waiting_for_resize = tick.done && animation.needs_landing(committed_size);
                 if tick.done {
@@ -796,6 +904,98 @@ mod tests {
             None
         );
         assert!(matches!(animation.resize, ResizeConfigure::Sent(_)));
+    }
+
+    #[test]
+    fn offscreen_shrink_waits_until_movement_is_complete() {
+        let start = Instant::now();
+        let from = Rect::new(500, 0, 500, 1000);
+        let target = Rect::new(500, 500, 500, 500);
+        let committed = Size::from((500, 1000));
+        let output = Rect::new(0, 0, 1000, 1000);
+        let mut animation = WaylandWindowAnimation::new(
+            from,
+            target,
+            committed,
+            None,
+            Duration::from_millis(100),
+            start,
+            0,
+            0,
+        );
+
+        assert!(resize_removal_is_offscreen_at_target(
+            target,
+            committed,
+            0,
+            animation.anchors,
+            &[output],
+        ));
+        animation.resize_configure_phase = OFFSCREEN_RESIZE_CONFIGURE_PHASE;
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(99), committed)
+                .configure_size,
+            None
+        );
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(100), committed)
+                .configure_size,
+            Some(Size::from((500, 500)))
+        );
+    }
+
+    #[test]
+    fn shrink_stays_mid_animation_when_removed_pixels_touch_an_output() {
+        let target = Rect::new(500, 500, 500, 500);
+        let committed = Size::from((500, 1000));
+        let anchors = SurfaceAnchors::between(Rect::new(500, 0, 500, 1000), target, 0, 0);
+
+        assert!(!resize_removal_is_offscreen_at_target(
+            target,
+            committed,
+            0,
+            anchors,
+            &[Rect::new(0, 0, 1000, 1000), Rect::new(0, 1000, 1000, 1000)],
+        ));
+        assert!(!resize_removal_is_offscreen_at_target(
+            Rect::new(500, 400, 500, 500),
+            committed,
+            0,
+            anchors,
+            &[Rect::new(0, 0, 1000, 1000)],
+        ));
+    }
+
+    #[test]
+    fn delayed_shrink_falls_back_after_an_unsafe_late_commit() {
+        let start = Instant::now();
+        let target = Rect::new(500, 500, 500, 500);
+        let initial_committed = Size::from((500, 1000));
+        let late_committed = Size::from((500, 400));
+        let output = Rect::new(0, 0, 1000, 1000);
+        let mut animation = WaylandWindowAnimation::new(
+            Rect::new(500, 0, 500, 1000),
+            target,
+            initial_committed,
+            None,
+            Duration::from_millis(100),
+            start,
+            0,
+            0,
+        );
+        animation.resize_configure_phase = OFFSCREEN_RESIZE_CONFIGURE_PHASE;
+
+        animation.revalidate_offscreen_resize_delay(late_committed, &[output]);
+
+        assert_eq!(animation.resize_configure_phase, RESIZE_CONFIGURE_PHASE);
+        assert_eq!(
+            animation
+                .tick(start + Duration::from_millis(50), late_committed)
+                .configure_size,
+            Some(Size::from((500, 500)))
+        );
     }
 
     #[test]
