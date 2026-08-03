@@ -163,6 +163,7 @@ impl CompositorHandler for WaylandState {
                 .filter(|marker| !marker.is_overlay)
                 .map(|marker| marker.id)
             {
+                self.reconcile_completed_window_animation(id, window.geometry().size);
                 self.sync_client_size_from_window(id);
                 // xdg min/max sizes are double-buffered surface state and do
                 // not have a dedicated XdgShellHandler callback. Refresh the

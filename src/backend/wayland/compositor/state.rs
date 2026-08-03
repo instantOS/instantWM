@@ -831,7 +831,10 @@ impl WaylandState {
 
     pub fn has_window_animations_on_output(&self, output: &smithay::output::Output) -> bool {
         let output_rect = self.space.output_geometry(output);
-        self.window_animations.keys().any(|window_id| {
+        self.window_animations.iter().any(|(window_id, animation)| {
+            if !animation.is_active() {
+                return false;
+            }
             let surface_overlaps = self
                 .find_window(*window_id)
                 .is_some_and(|window| self.outputs_for_window_geometry(window).contains(output));

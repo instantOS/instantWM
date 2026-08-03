@@ -125,11 +125,18 @@ fn closest_axis_anchor(
 }
 
 impl ResizeConfigure {
-    fn toward(committed_size: Size<i32, Logical>, to: Rect) -> Self {
-        if committed_size.w == to.w && committed_size.h == to.h {
+    fn toward(
+        committed_size: Size<i32, Logical>,
+        last_configured_size: Option<(i32, i32)>,
+        to: Rect,
+    ) -> Self {
+        let target = (to.w.max(1), to.h.max(1));
+        let committed_matches = committed_size.w == target.0 && committed_size.h == target.1;
+        let stale_configure_outstanding = last_configured_size.is_some_and(|size| size != target);
+        if committed_matches && !stale_configure_outstanding {
             Self::Unchanged
         } else {
-            Self::Pending(Size::from((to.w.max(1), to.h.max(1))))
+            Self::Pending(Size::from(target))
         }
     }
 
@@ -176,6 +183,7 @@ pub(crate) struct WaylandWindowAnimation {
     to_border: i32,
     anchors: SurfaceAnchors,
     resize: ResizeConfigure,
+    waiting_for_resize: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -198,6 +206,7 @@ impl WaylandWindowAnimation {
         from: Rect,
         to: Rect,
         committed_size: Size<i32, Logical>,
+        last_configured_size: Option<(i32, i32)>,
         duration: Duration,
         now: Instant,
         from_border: i32,
@@ -216,7 +225,8 @@ impl WaylandWindowAnimation {
             from_border,
             to_border,
             anchors,
-            resize: ResizeConfigure::toward(committed_size, to),
+            resize: ResizeConfigure::toward(committed_size, last_configured_size, to),
+            waiting_for_resize: false,
         }
     }
 
@@ -242,6 +252,16 @@ impl WaylandWindowAnimation {
 
     fn resize_target(&self) -> Option<Size<i32, Logical>> {
         self.resize.target()
+    }
+
+    fn needs_landing(&self, committed_size: Size<i32, Logical>) -> bool {
+        let target = self.target();
+        (self.anchors.x == SurfaceAnchor::Far && committed_size.w != target.w)
+            || (self.anchors.y == SurfaceAnchor::Far && committed_size.h != target.h)
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        !self.waiting_for_resize
     }
 
     fn tick(&mut self, now: Instant, committed_size: Size<i32, Logical>) -> WaylandAnimationTick {
@@ -458,21 +478,27 @@ impl WaylandState {
         // Resolve the displayed outer frame at animation start. The actual
         // committed surface size deliberately remains independent.
         let actual_size = element.geometry().size;
+        let now = Instant::now();
+        let animated_from = self
+            .window_animations
+            .get(&window_id)
+            .map(|animation| animation.frame.tick(now).rect);
         let (from, animation_duration) = match mode {
             WindowMoveMode::AnimateFrom { from, duration } => (from, duration),
             WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
-                let loc = actual_loc.unwrap_or(target_loc);
-                (
+                let from = animated_from.unwrap_or_else(|| {
+                    let loc = actual_loc.unwrap_or(target_loc);
                     Rect {
                         x: loc.x - from_border,
                         y: loc.y - from_border,
                         w: actual_size.w.max(1),
                         h: actual_size.h.max(1),
-                    },
-                    self.configured_animation_duration(Duration::from_millis(
-                        WAYLAND_DEFAULT_ANIMATION_MILLIS,
-                    )),
-                )
+                    }
+                });
+                let duration = self.configured_animation_duration(Duration::from_millis(
+                    WAYLAND_DEFAULT_ANIMATION_MILLIS,
+                ));
+                (from, duration)
             }
         };
 
@@ -490,8 +516,9 @@ impl WaylandState {
             from,
             target,
             actual_size,
+            self.last_configured_size.get(&window_id).copied(),
             animation_duration,
-            Instant::now(),
+            now,
             from_border,
             to_border,
         );
@@ -552,10 +579,51 @@ impl WaylandState {
         Some(animation.frame.tick(now).rect)
     }
 
+    /// Reposition a completed far-anchored transition after a client buffer
+    /// commit. Its anchor remains presentation state without keeping the frame
+    /// timer active, so a late resize cannot move the preserved edge.
+    pub(crate) fn reconcile_completed_window_animation(
+        &mut self,
+        win: WindowId,
+        committed_size: Size<i32, Logical>,
+    ) {
+        let Some(animation) = self
+            .window_animations
+            .get(&win)
+            .filter(|animation| animation.waiting_for_resize)
+        else {
+            return;
+        };
+        let target = animation.target();
+        let border_width = animation.target_border_width();
+        let anchors = animation.anchors;
+        let landed = !animation.needs_landing(committed_size);
+        let loc = anchored_surface_location(target, committed_size, border_width, anchors);
+
+        if let Some(element) = self.find_window(win).cloned()
+            && self.space.element_location(&element).is_some()
+        {
+            self.request_visible_window_render(&element);
+            self.request_visual_rect_render(target.with_borders(border_width));
+            if self.space.element_location(&element) != Some(loc) {
+                self.remap_element_preserving_z_order(&element, loc, false);
+            }
+            self.placed_border.insert(win, border_width);
+            self.request_visible_window_render(&element);
+            self.request_visual_rect_render(target.with_borders(border_width));
+        }
+
+        if landed {
+            self.last_configured_size
+                .insert(win, (target.w.max(1), target.h.max(1)));
+            self.window_animations.remove(&win);
+        }
+    }
+
     /// Tick all active window animations.
     pub fn tick_animations(&mut self) {
         let preview_active = self.layout_preview_animation.is_active();
-        if self.window_animations.is_empty() && !preview_active {
+        if !self.has_active_window_animations() && !preview_active {
             return;
         }
         let now = Instant::now();
@@ -565,8 +633,9 @@ impl WaylandState {
         }
         let animation_inputs: Vec<_> = self
             .window_animations
-            .keys()
-            .map(|&win| {
+            .iter()
+            .filter(|(_, animation)| !animation.waiting_for_resize)
+            .map(|(&win, _)| {
                 (
                     win,
                     self.find_window(win).map(|element| element.geometry().size),
@@ -582,6 +651,10 @@ impl WaylandState {
             };
             if let Some(animation) = self.window_animations.get_mut(&win) {
                 let tick = animation.tick(now, committed_size);
+                let waiting_for_resize = tick.done && animation.needs_landing(committed_size);
+                if tick.done {
+                    animation.waiting_for_resize = waiting_for_resize;
+                }
                 let border_width = animation.displayed_border_width();
                 let configure_target = tick.configure_size.map(|_| animation.target());
                 updates.push((
@@ -592,11 +665,22 @@ impl WaylandState {
                     tick.frame,
                     border_width,
                     tick.done,
+                    waiting_for_resize,
                 ));
             }
         }
 
-        for (win, loc, configure_target, previous_frame, frame, border_width, done) in updates {
+        for (
+            win,
+            loc,
+            configure_target,
+            previous_frame,
+            frame,
+            border_width,
+            done,
+            waiting_for_resize,
+        ) in updates
+        {
             if let Some(element) = self.find_window(win).cloned() {
                 self.request_visual_rect_render(previous_frame.with_borders(border_width));
                 self.request_visible_window_render(&element);
@@ -608,15 +692,15 @@ impl WaylandState {
                 }
                 self.placed_border.insert(win, border_width);
                 // Preserve damage on both sides of a cross-output move and
-                // redraw animated borders even when a symmetric resize keeps
-                // the surface center stationary.
+                // redraw animated borders even when an anchored edge keeps
+                // the surface location stationary.
                 self.request_visible_window_render(&element);
                 self.request_visual_rect_render(frame.with_borders(border_width));
             } else {
                 finished.push(win);
                 continue;
             }
-            if done {
+            if done && !waiting_for_resize {
                 finished.push(win);
             }
         }
@@ -636,7 +720,9 @@ impl WaylandState {
 
     /// Check if there are active window animations.
     pub fn has_active_window_animations(&self) -> bool {
-        !self.window_animations.is_empty()
+        self.window_animations
+            .values()
+            .any(WaylandWindowAnimation::is_active)
     }
 
     /// Check if any compositor visual transition needs another frame.
@@ -684,6 +770,7 @@ mod tests {
             Rect::new(0, 0, 100, 80),
             Rect::new(0, 0, 140, 60),
             Size::from((100, 80)),
+            None,
             Duration::from_millis(100),
             start,
             2,
@@ -718,6 +805,7 @@ mod tests {
             Rect::new(0, 0, 100, 80),
             Rect::new(50, 20, 100, 80),
             Size::from((100, 80)),
+            None,
             Duration::from_millis(100),
             start,
             0,
@@ -740,6 +828,7 @@ mod tests {
             Rect::new(0, 0, 120, 80),
             Rect::new(10, 0, 120, 80),
             Size::from((140, 80)),
+            None,
             Duration::from_millis(100),
             start,
             0,
@@ -749,6 +838,7 @@ mod tests {
             Rect::new(0, 0, 120, 80),
             Rect::new(10, 0, 140, 80),
             Size::from((140, 80)),
+            None,
             Duration::from_millis(100),
             start,
             0,
@@ -763,12 +853,32 @@ mod tests {
     }
 
     #[test]
+    fn resize_schedule_supersedes_a_stale_outstanding_configure() {
+        let animation = WaylandWindowAnimation::new(
+            Rect::new(0, 0, 60, 80),
+            Rect::new(0, 0, 100, 80),
+            Size::from((100, 80)),
+            Some((60, 80)),
+            Duration::from_millis(100),
+            Instant::now(),
+            0,
+            0,
+        );
+
+        assert_eq!(
+            animation.resize,
+            ResizeConfigure::Pending(Size::from((100, 80)))
+        );
+    }
+
+    #[test]
     fn borders_interpolate_from_the_displayed_to_the_target_width() {
         let start = Instant::now();
         let mut animation = WaylandWindowAnimation::new(
             Rect::new(0, 30, 1200, 740),
             Rect::new(150, 126, 896, 573),
             Size::from((1200, 740)),
+            None,
             Duration::from_millis(100),
             start,
             0,
@@ -809,6 +919,7 @@ mod tests {
             from,
             to,
             committed,
+            None,
             Duration::from_millis(100),
             start,
             2,
@@ -832,6 +943,7 @@ mod tests {
             Rect::new(500, 0, 500, 1000),
             Rect::new(500, 500, 500, 500),
             Size::from((500, 1000)),
+            None,
             Duration::from_millis(100),
             Instant::now(),
             0,
@@ -899,6 +1011,24 @@ mod tests {
             anchored_surface_location(Rect::new(40, 0, 60, 80), Size::from((60, 80)), 0, anchors,),
             Point::from((40, 0))
         );
+    }
+
+    #[test]
+    fn far_anchored_completion_waits_for_the_target_committed_size() {
+        let animation = WaylandWindowAnimation::new(
+            Rect::new(0, 0, 100, 80),
+            Rect::new(40, 0, 60, 80),
+            Size::from((100, 80)),
+            None,
+            Duration::from_millis(100),
+            Instant::now(),
+            0,
+            0,
+        );
+
+        assert_eq!(animation.anchors.x, SurfaceAnchor::Far);
+        assert!(animation.needs_landing(Size::from((100, 80))));
+        assert!(!animation.needs_landing(Size::from((60, 80))));
     }
 
     #[test]
