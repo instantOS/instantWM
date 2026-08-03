@@ -45,6 +45,15 @@ fn committed_size_is_stale(
     pending_authoritative_size.is_some_and(|configured| configured != committed_size)
 }
 
+fn configured_size_should_be_invalidated(
+    configured_size: Option<(i32, i32)>,
+    committed_size: (i32, i32),
+    client_size_is_authoritative: bool,
+) -> bool {
+    client_size_is_authoritative
+        && configured_size.is_some_and(|configured| configured != committed_size)
+}
+
 impl WaylandState {
     /// Check if a window exists in the index.
     pub fn window_exists(&self, window: WindowId) -> bool {
@@ -122,6 +131,7 @@ impl WaylandState {
         window: WindowId,
         new_w: i32,
         new_h: i32,
+        client_size_is_authoritative: bool,
     ) -> bool {
         // A fullscreen client can commit its old buffer after the compositor
         // has restored floating mode. While that one-shot restore configure is
@@ -138,15 +148,16 @@ impl WaylandState {
             self.pending_authoritative_sizes.remove(&window);
         }
 
-        // Outside an authoritative transition, floating clients may legally
-        // commit a size different from the request. Invalidate configure
-        // de-duplication so layout-owned modes can resend their target, while
-        // still forwarding the actual size for floating-mode reconciliation.
-        if self
-            .last_configured_size
-            .get(&window)
-            .is_some_and(|&size| size != (new_w, new_h))
-        {
+        // Floating clients may legally choose a size different from our
+        // suggestion, so their commit becomes authoritative and permits a
+        // later configure. Layout-owned sizes are the opposite: an old buffer
+        // arriving after a newer configure must not clear de-duplication and
+        // start the same resize/animation again.
+        if configured_size_should_be_invalidated(
+            self.last_configured_size.get(&window).copied(),
+            (new_w, new_h),
+            client_size_is_authoritative,
+        ) {
             self.last_configured_size.remove(&window);
             self.request_space_sync();
         }
@@ -224,7 +235,10 @@ impl WaylandState {
 
 #[cfg(test)]
 mod tests {
-    use super::{committed_size_is_stale, displayed_rect_from_space_geometry};
+    use super::{
+        committed_size_is_stale, configured_size_should_be_invalidated,
+        displayed_rect_from_space_geometry,
+    };
     use smithay::utils::{Point, Size};
 
     #[test]
@@ -232,6 +246,23 @@ mod tests {
         assert!(!committed_size_is_stale(None, (800, 600)));
         assert!(!committed_size_is_stale(Some((800, 600)), (800, 600)));
         assert!(committed_size_is_stale(Some((800, 600)), (1920, 1080)));
+    }
+
+    #[test]
+    fn stale_layout_owned_commit_does_not_invalidate_the_current_configure() {
+        let configured = Some((500, 1000));
+        let stale_fullscreen_commit = (1000, 1000);
+
+        assert!(!configured_size_should_be_invalidated(
+            configured,
+            stale_fullscreen_commit,
+            false,
+        ));
+        assert!(configured_size_should_be_invalidated(
+            configured,
+            stale_fullscreen_commit,
+            true,
+        ));
     }
 
     #[test]

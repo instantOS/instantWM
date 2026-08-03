@@ -462,7 +462,12 @@ fn handle_update_window_size(
     w: i32,
     h: i32,
 ) {
-    if !state.committed_size_may_update_model(win, w, h) {
+    let client_size_is_authoritative = wm
+        .core
+        .model
+        .client(win)
+        .is_some_and(|client| client.mode().is_normal_floating() && !client.is_scratchpad());
+    if !state.committed_size_may_update_model(win, w, h, client_size_is_authoritative) {
         return;
     }
     apply_committed_window_size(wm, win, w, h);
