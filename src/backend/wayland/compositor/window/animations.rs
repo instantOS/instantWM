@@ -78,9 +78,9 @@ impl SurfaceAnchors {
     }
 }
 
-/// Preserve the edge that travels less, placing the instantaneous client
-/// resize on the edge already moving farther. Equal travel uses the near edge,
-/// so symmetric expansion still produces visible surface motion.
+/// Follow the edge that travels farther so compositor-side translation masks
+/// the instantaneous client resize. Equal travel uses the near edge, keeping
+/// symmetric expansion visibly moving toward the top-left.
 fn axis_anchor(
     from_position: i32,
     from_size: i32,
@@ -98,7 +98,7 @@ fn axis_anchor(
     let near_travel = (to_near - from_near).abs();
     let far_travel = (to_far - from_far).abs();
 
-    if near_travel <= far_travel {
+    if near_travel >= far_travel {
         SurfaceAnchor::Near
     } else {
         SurfaceAnchor::Far
@@ -162,9 +162,9 @@ impl ResizeConfigure {
 /// Wayland presentation state for one logical geometry transition.
 ///
 /// The intended frame interpolates every edge. The client surface keeps its
-/// currently committed size and follows the frame edge that travels less on
-/// each axis. The opposite, farther-traveling edge absorbs the single real
-/// resize where motion can best mask it. Only `ResizeConfigure::Pending` can
+/// currently committed size and follows the frame edge that travels farther
+/// on each axis. The opposite edge absorbs the single real resize while the
+/// surface is visibly moving. Only `ResizeConfigure::Pending` can
 /// emit a configure, making repeated client relayout during an animation
 /// unrepresentable.
 ///
@@ -894,11 +894,11 @@ mod tests {
         assert!(early > 0 && early < 2);
 
         // Border and buffer-size presentation are independent. The horizontal
-        // edges move equally, so that axis follows the near edge. Vertically,
-        // the far edge moves less and remains anchored while the border follows
-        // the eased frame progress.
+        // Horizontal edges move equally, so that axis follows the near edge.
+        // Vertically, the farther-moving near edge carries the surface while
+        // the border follows the eased frame progress.
         let midpoint = animation.tick(start + Duration::from_millis(50), Size::from((1200, 740)));
-        assert_eq!(midpoint.surface_location, Point::from((133, -30)));
+        assert_eq!(midpoint.surface_location, Point::from((133, 116)));
         assert_eq!(animation.displayed_border_width(), 2);
 
         // The transition ends fully bordered, landed exactly on the target
@@ -938,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn right_half_to_bottom_right_quarter_anchors_the_fixed_bottom_edge() {
+    fn right_half_to_bottom_right_quarter_follows_the_moving_top_edge() {
         let animation = WaylandWindowAnimation::new(
             Rect::new(500, 0, 500, 1000),
             Rect::new(500, 500, 500, 500),
@@ -951,7 +951,27 @@ mod tests {
         );
 
         assert_eq!(animation.anchors.x, SurfaceAnchor::Near);
-        assert_eq!(animation.anchors.y, SurfaceAnchor::Far);
+        assert_eq!(animation.anchors.y, SurfaceAnchor::Near);
+    }
+
+    #[test]
+    fn bottom_left_quarter_to_left_half_follows_the_moving_top_edge() {
+        let start = Instant::now();
+        let committed = Size::from((500, 500));
+        let mut animation = WaylandWindowAnimation::new(
+            Rect::new(0, 500, 500, 500),
+            Rect::new(0, 0, 500, 1000),
+            committed,
+            None,
+            Duration::from_millis(100),
+            start,
+            0,
+            0,
+        );
+
+        assert_eq!(animation.anchors.y, SurfaceAnchor::Near);
+        let midpoint = animation.tick(start + Duration::from_millis(50), committed);
+        assert!(midpoint.surface_location.y < 500);
     }
 
     #[test]
@@ -974,7 +994,7 @@ mod tests {
     }
 
     #[test]
-    fn one_sided_growth_anchors_the_fixed_near_edge() {
+    fn one_sided_growth_follows_the_moving_far_edge() {
         let anchors =
             SurfaceAnchors::between(Rect::new(0, 0, 100, 80), Rect::new(0, 0, 140, 80), 0, 0);
         let halfway_frame = Rect::new(0, 0, 120, 80);
@@ -984,9 +1004,9 @@ mod tests {
         let after_resize =
             anchored_surface_location(halfway_frame, Size::from((140, 80)), 0, anchors);
 
-        assert_eq!(anchors.x, SurfaceAnchor::Near);
-        assert_eq!(before_resize, Point::from((0, 0)));
-        assert_eq!(after_resize, Point::from((0, 0)));
+        assert_eq!(anchors.x, SurfaceAnchor::Far);
+        assert_eq!(before_resize, Point::from((20, 0)));
+        assert_eq!(after_resize, Point::from((-20, 0)));
         assert_eq!(
             anchored_surface_location(Rect::new(0, 0, 140, 80), Size::from((140, 80)), 0, anchors,),
             Point::from((0, 0))
@@ -994,7 +1014,7 @@ mod tests {
     }
 
     #[test]
-    fn one_sided_shrink_anchors_the_fixed_far_edge() {
+    fn one_sided_shrink_follows_the_moving_near_edge() {
         let anchors =
             SurfaceAnchors::between(Rect::new(0, 0, 100, 80), Rect::new(40, 0, 60, 80), 0, 0);
         let halfway_frame = Rect::new(20, 0, 80, 80);
@@ -1004,9 +1024,9 @@ mod tests {
         let after_resize =
             anchored_surface_location(halfway_frame, Size::from((60, 80)), 0, anchors);
 
-        assert_eq!(anchors.x, SurfaceAnchor::Far);
-        assert_eq!(before_resize, Point::from((0, 0)));
-        assert_eq!(after_resize, Point::from((40, 0)));
+        assert_eq!(anchors.x, SurfaceAnchor::Near);
+        assert_eq!(before_resize, Point::from((20, 0)));
+        assert_eq!(after_resize, Point::from((20, 0)));
         assert_eq!(
             anchored_surface_location(Rect::new(40, 0, 60, 80), Size::from((60, 80)), 0, anchors,),
             Point::from((40, 0))
@@ -1017,7 +1037,7 @@ mod tests {
     fn far_anchored_completion_waits_for_the_target_committed_size() {
         let animation = WaylandWindowAnimation::new(
             Rect::new(0, 0, 100, 80),
-            Rect::new(40, 0, 60, 80),
+            Rect::new(0, 0, 140, 80),
             Size::from((100, 80)),
             None,
             Duration::from_millis(100),
@@ -1028,11 +1048,11 @@ mod tests {
 
         assert_eq!(animation.anchors.x, SurfaceAnchor::Far);
         assert!(animation.needs_landing(Size::from((100, 80))));
-        assert!(!animation.needs_landing(Size::from((60, 80))));
+        assert!(!animation.needs_landing(Size::from((140, 80))));
     }
 
     #[test]
-    fn every_edge_combination_anchors_the_less_traveled_edge() {
+    fn every_edge_combination_anchors_the_farther_traveled_edge() {
         let border = 4;
         let from = Rect::new(0, 0, 100, 80);
 
@@ -1047,6 +1067,22 @@ mod tests {
                         let frame = Rect::new(left, top, right - left, bottom - top);
                         assert!(frame.is_valid());
                         let anchors = SurfaceAnchors::between(from, frame, border, border);
+                        assert_eq!(
+                            anchors.x,
+                            if left_delta.abs() >= right_delta.abs() {
+                                SurfaceAnchor::Near
+                            } else {
+                                SurfaceAnchor::Far
+                            }
+                        );
+                        assert_eq!(
+                            anchors.y,
+                            if top_delta.abs() >= bottom_delta.abs() {
+                                SurfaceAnchor::Near
+                            } else {
+                                SurfaceAnchor::Far
+                            }
+                        );
 
                         let committed_sizes = [
                             Size::from((100, 80)),
