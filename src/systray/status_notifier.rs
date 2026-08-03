@@ -23,6 +23,14 @@ const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 const WORKER_RETRY_MIN: Duration = Duration::from_secs(1);
 const WORKER_RETRY_MAX: Duration = Duration::from_secs(60);
 
+/// How often to fall back to a full reconcile scan of StatusNotifierItems.
+///
+/// Live icon changes are delivered via the item's `NewIcon` signal so the
+/// compositor does not need to poll the (potentially large) `IconPixmap`
+/// property every second. This fallback only exists for items that do not
+/// emit `NewIcon`, so it runs at a slow, low-cost cadence.
+const ICON_REFRESH_FALLBACK: Duration = Duration::from_secs(10);
+
 /// Build a short-lived proxy without zbus' lazy property cache.
 ///
 /// The systray worker reads individual properties while reconciling items and
@@ -540,20 +548,116 @@ fn run_item_refresh(
     stop_rx: Receiver<()>,
 ) {
     let mut known_ids = HashSet::new();
+    let mut watching = HashSet::new();
     reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
     if evt_tx.send(SystrayEvt::Ready).is_err() {
         return;
     }
 
-    let refresh_interval = Duration::from_secs(1);
+    // Live icon changes are delivered by each item's `NewIcon` signal, so we
+    // do not need to re-download IconPixmap on a tight timer. Watcher threads
+    // forward (service, path) here whenever an icon actually changes.
+    let (changed_tx, changed_rx) = channel();
+    spawn_icon_watchers(conn, &known_ids, &mut watching, &changed_tx);
+
+    let mut fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
     loop {
-        match stop_rx.recv_timeout(refresh_interval) {
-            Err(RecvTimeoutError::Timeout) => {
-                reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+        match changed_rx.recv_timeout(Duration::from_secs(1)) {
+            Ok((service, path)) => {
+                refresh_item_icon(conn, evt_tx, &service, &path);
             }
-            Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Timeout) => {
+                // Parent ended the worker by dropping the stop sender, or sent
+                // an explicit stop signal.
+                match stop_rx.try_recv() {
+                    Err(TryRecvError::Empty) => {}
+                    Ok(()) | Err(TryRecvError::Disconnected) => break,
+                }
+                if Instant::now() >= fallback_deadline {
+                    reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+                    spawn_icon_watchers(conn, &known_ids, &mut watching, &changed_tx);
+                    fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => return,
         }
     }
+}
+
+/// Spawn a blocking `NewIcon` watcher for each registered item that does not
+/// yet have one. Each watcher forwards `(service, path)` when the item emits
+/// `NewIcon`, so icons update immediately without the compositor polling.
+fn spawn_icon_watchers(
+    conn: &Connection,
+    ids: &HashSet<String>,
+    watching: &mut HashSet<String>,
+    changed_tx: &Sender<(String, String)>,
+) {
+    let new_ids: Vec<&String> = ids
+        .iter()
+        .filter(|id| !watching.contains(*id))
+        .collect();
+    for id in new_ids {
+        let Some((service, path)) = parse_sni_id(id) else {
+            continue;
+        };
+        watching.insert(id.clone());
+        let conn = conn.clone();
+        let tx = changed_tx.clone();
+        let watch_service = service.clone();
+        let watch_path = path.clone();
+        if std::thread::Builder::new()
+            .name("instantwm-sni-watch".to_string())
+            .spawn(move || watch_item_icon(conn, tx, watch_service, watch_path))
+            .is_err()
+        {
+            log::warn!("status notifier: failed to spawn icon watcher for {service}{path}");
+        }
+    }
+}
+
+/// Block waiting for the item's `NewIcon` signal, re-emitting its current icon.
+///
+/// Any failure (item gone, DBus error, no signal support) simply ends this
+/// watcher; the item is still covered by the slow fallback reconcile, so this
+/// is best-effort and never silently drops an icon forever.
+fn watch_item_icon(
+    conn: Connection,
+    tx: Sender<(String, String)>,
+    service: String,
+    path: String,
+) {
+    let proxy = match uncached_proxy(&conn, &service, &path, ITEM_IFACE) {
+        Ok(proxy) => proxy,
+        Err(_) => return,
+    };
+    let mut signals = match proxy.receive_signal("NewIcon") {
+        Ok(signals) => signals,
+        Err(_) => return,
+    };
+    while signals.next().is_some() {
+        if tx.send((service.clone(), path.clone())).is_err() {
+            return;
+        }
+    }
+}
+
+/// Fetch and re-publish one item's icon on demand (e.g. after `NewIcon`).
+fn refresh_item_icon(
+    conn: &Connection,
+    evt_tx: &Sender<SystrayEvt>,
+    service: &str,
+    path: &str,
+) {
+    let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, service, path) else {
+        return;
+    };
+    let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
+        service: service.to_string(),
+        path: path.to_string(),
+        icon_rgba,
+        icon_size,
+    }));
 }
 
 /// Probe the session bus for an existing StatusNotifierWatcher.
