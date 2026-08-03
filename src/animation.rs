@@ -159,8 +159,8 @@ pub(crate) fn take_current_animation_rect(
 pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
     let animated = ctx.core().behavior().animated;
 
-    let Some((target, is_tiling, is_visible)) = ctx.core().model().client_view(window).and_then(
-        |view| {
+    let Some((target, is_tiling, is_visible)) =
+        ctx.core().model().client_view(window).and_then(|view| {
             if view.client.mode().is_fullscreen() {
                 return None;
             }
@@ -169,8 +169,8 @@ pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
                 view.monitor.is_tiling_layout(),
                 view.client.is_visible(view.monitor.visible_tags()),
             ))
-        },
-    ) else {
+        })
+    else {
         return;
     };
 
