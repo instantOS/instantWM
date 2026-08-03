@@ -126,9 +126,14 @@ pub fn drop_x11_animation(x11_runtime: &mut X11RuntimeConfig, win: WindowId) {
     let _ = x11_runtime.take_window_animation(win);
 }
 
-/// Take an in-flight animation and return its rectangle at `now` without
-/// snapping to the obsolete target. This is the correct starting point when a
-/// live interaction retargets a moving window.
+/// Take an in-flight animation and return its current visual rectangle
+/// without snapping to the obsolete target — the correct starting point
+/// when a live interaction retargets a moving window.
+///
+/// The X11 arm ticks to `now`; the Wayland arm returns the last frame the
+/// compositor rendered (`displayed_frame`), since that is what is actually
+/// on screen. The `now` parameter is therefore live for X11 and unused on
+/// the Wayland path.
 pub(crate) fn take_current_animation_rect(
     ctx: &mut WmCtx<'_>,
     win: WindowId,

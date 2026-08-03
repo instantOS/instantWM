@@ -914,7 +914,6 @@ impl WaylandState {
             && self.space.element_location(&element).is_some()
         {
             self.request_visible_window_render(&element);
-            self.request_visual_rect_render(target.with_borders(border_width));
             if self.space.element_location(&element) != Some(loc) {
                 self.remap_element_preserving_z_order(&element, loc, false);
             }
@@ -957,20 +956,18 @@ impl WaylandState {
             .values()
             .any(|animation| animation.resize_timing != ResizeTiming::Normal)
         {
-            {
-                self.space
-                    .outputs()
-                    .filter_map(|output| self.space.output_geometry(output))
-                    .map(|geometry| {
-                        Rect::new(
-                            geometry.loc.x,
-                            geometry.loc.y,
-                            geometry.size.w,
-                            geometry.size.h,
-                        )
-                    })
-                    .collect()
-            }
+            self.space
+                .outputs()
+                .filter_map(|output| self.space.output_geometry(output))
+                .map(|geometry| {
+                    Rect::new(
+                        geometry.loc.x,
+                        geometry.loc.y,
+                        geometry.size.w,
+                        geometry.size.h,
+                    )
+                })
+                .collect()
         } else {
             Default::default()
         };
