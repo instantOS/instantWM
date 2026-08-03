@@ -21,6 +21,7 @@ pub(crate) enum WindowMoveMode {
 const OFFSCREEN_GROWTH_CONFIGURE_PHASE: f64 = 0.0;
 const RESIZE_CONFIGURE_PHASE: f64 = 0.2;
 const OFFSCREEN_SHRINK_CONFIGURE_PHASE: f64 = 1.0;
+const MAX_VISIBLE_OFFSCREEN_RESIZE_PERCENT: i64 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResizeConfigure {
@@ -339,8 +340,49 @@ fn anchored_surface_location(
     ))
 }
 
-/// Determine whether all pixels in `larger_size` but not `smaller_size` are
-/// outside every output when both surfaces follow the same anchored frame.
+fn rectangle_union_area(rects: &[Rect]) -> i64 {
+    let mut x_edges: Vec<_> = rects
+        .iter()
+        .flat_map(|rect| [rect.x, rect.right()])
+        .collect();
+    x_edges.sort_unstable();
+    x_edges.dedup();
+
+    x_edges
+        .windows(2)
+        .map(|x| {
+            let mut intervals: Vec<_> = rects
+                .iter()
+                .filter(|rect| rect.x < x[1] && rect.right() > x[0])
+                .map(|rect| (rect.y, rect.bottom()))
+                .collect();
+            intervals.sort_unstable();
+
+            let mut covered_y = 0_i64;
+            let mut current: Option<(i32, i32)> = None;
+            for (start, end) in intervals {
+                match current {
+                    Some((current_start, current_end)) if start <= current_end => {
+                        current = Some((current_start, current_end.max(end)));
+                    }
+                    Some((current_start, current_end)) => {
+                        covered_y += i64::from(current_end) - i64::from(current_start);
+                        current = Some((start, end));
+                    }
+                    None => current = Some((start, end)),
+                }
+            }
+            if let Some((start, end)) = current {
+                covered_y += i64::from(end) - i64::from(start);
+            }
+            (i64::from(x[1]) - i64::from(x[0])) * covered_y
+        })
+        .sum()
+}
+
+/// Determine whether at least 95% of the pixels in `larger_size` but not
+/// `smaller_size` are outside the union of all outputs when both surfaces
+/// follow the same anchored frame.
 fn extra_surface_pixels_are_offscreen(
     frame: Rect,
     smaller_size: Size<i32, Logical>,
@@ -361,18 +403,23 @@ fn extra_surface_pixels_are_offscreen(
     let larger_loc = anchored_surface_location(frame, larger_size, border_width, anchors);
     let smaller_rect = Rect::new(smaller_loc.x, smaller_loc.y, smaller_size.w, smaller_size.h);
     let larger_rect = Rect::new(larger_loc.x, larger_loc.y, larger_size.w, larger_size.h);
-    let contains = |outer: Rect, inner: Rect| {
-        outer.x <= inner.x
-            && outer.y <= inner.y
-            && outer.right() >= inner.right()
-            && outer.bottom() >= inner.bottom()
+    let visible_intersections = |surface: Rect| {
+        outputs
+            .iter()
+            .filter_map(|output| surface.intersection(output))
+            .collect::<Vec<_>>()
     };
+    let total_extra = i64::from(larger_size.w) * i64::from(larger_size.h)
+        - i64::from(smaller_size.w) * i64::from(smaller_size.h);
+    let visible_larger = rectangle_union_area(&visible_intersections(larger_rect));
+    let visible_smaller = rectangle_union_area(&visible_intersections(smaller_rect));
+    if visible_smaller > visible_larger {
+        return false;
+    }
+    let visible_extra = visible_larger - visible_smaller;
 
-    outputs.iter().all(|output| {
-        larger_rect
-            .intersection(output)
-            .is_none_or(|visible_larger| contains(smaller_rect, visible_larger))
-    })
+    i128::from(visible_extra) * 100
+        <= i128::from(total_extra) * i128::from(MAX_VISIBLE_OFFSCREEN_RESIZE_PERCENT)
 }
 
 fn resize_removal_is_offscreen_at_target(
@@ -1068,6 +1115,48 @@ mod tests {
             0,
             anchors,
             &[Rect::new(0, 0, 1000, 1000), Rect::new(0, 1000, 1000, 1000)],
+        ));
+    }
+
+    #[test]
+    fn offscreen_resize_allows_five_percent_visible_leeway() {
+        let target = Rect::new(0, 0, 500, 1000);
+        let committed = Size::from((500, 500));
+        let output = Rect::new(0, 0, 1000, 1000);
+        let five_percent_visible = Rect::new(0, 475, 500, 500);
+        let more_than_five_percent_visible = Rect::new(0, 474, 500, 500);
+
+        assert!(resize_growth_is_offscreen_at_start(
+            five_percent_visible,
+            target,
+            committed,
+            0,
+            SurfaceAnchors::between(five_percent_visible, target, 0, 0),
+            // Mirrored outputs must not count the visible area twice.
+            &[output, output],
+        ));
+        assert!(!resize_growth_is_offscreen_at_start(
+            more_than_five_percent_visible,
+            target,
+            committed,
+            0,
+            SurfaceAnchors::between(more_than_five_percent_visible, target, 0, 0),
+            &[output],
+        ));
+    }
+
+    #[test]
+    fn offscreen_percentage_handles_maximum_surface_dimensions() {
+        assert!(extra_surface_pixels_are_offscreen(
+            Rect::new(0, 0, 1, 1),
+            Size::from((1, 1)),
+            Size::from((i32::MAX, i32::MAX)),
+            0,
+            SurfaceAnchors {
+                x: SurfaceAnchor::Near,
+                y: SurfaceAnchor::Near,
+            },
+            &[Rect::new(0, 0, 2, 1)],
         ));
     }
 
