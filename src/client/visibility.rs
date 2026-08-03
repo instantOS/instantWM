@@ -57,8 +57,13 @@ pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
 
 pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
     let globals = ctx.core.state();
+    let pending_spawns = &ctx.core.pending_work().spawn_animations;
     for entry in visibility_plan(&globals.model) {
-        if entry.visible {
+        // Newly spawned windows (pending their first layout) are intentionally
+        // left unmapped here.  They are mapped at their layout-allocated rect
+        // after arrange runs, so the client never appears at its initial
+        // buffer size before the tiling layout resizes it.
+        if entry.visible && !pending_spawns.contains(&entry.win) {
             ctx.wayland.map_window(entry.win);
         } else {
             ctx.wayland.unmap_window(entry.win);

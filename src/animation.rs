@@ -157,18 +157,40 @@ pub(crate) fn take_current_animation_rect(
 /// owns presentation only: it does not initiate layout or mutate window
 /// policy. Fullscreen windows skip the decorative transition.
 pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
-    if !ctx.core().behavior().animated {
-        return;
-    }
+    let animated = ctx.core().behavior().animated;
 
-    let Some((target, is_tiling)) = ctx.core().model().client_view(window).and_then(|view| {
-        if view.client.mode().is_fullscreen() {
-            return None;
-        }
-        Some((view.client.geo, view.monitor.is_tiling_layout()))
-    }) else {
+    let Some((target, is_tiling, is_visible)) = ctx.core().model().client_view(window).and_then(
+        |view| {
+            if view.client.mode().is_fullscreen() {
+                return None;
+            }
+            Some((
+                view.client.geo,
+                view.monitor.is_tiling_layout(),
+                view.client.is_visible(view.monitor.visible_tags()),
+            ))
+        },
+    ) else {
         return;
     };
+
+    // On Wayland, newly spawned windows are intentionally left unmapped by
+    // apply_visibility until their layout rect has been computed.  Snap them
+    // to the authoritative target now so the client receives the layout-size
+    // configure and is mapped at the correct rect *before* the decorative
+    // spawn transition starts.  This avoids a flash of the client's initial
+    // (pre-layout) buffer size.  Invisible windows (hidden tags) are skipped;
+    // set_window_target_rect already no-ops unmapped surfaces.  For
+    // non-animated mode this also covers the edge case where arrange's
+    // move_resize short-circuited (from == target) without mapping.
+    if is_visible && let WmCtx::Wayland(_) = ctx {
+        ctx.window_backend().resize_window(window, target);
+        ctx.window_backend().flush();
+    }
+
+    if !animated {
+        return;
+    }
 
     ctx.move_resize(
         window,
