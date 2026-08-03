@@ -6,10 +6,24 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::{Rect, WindowId};
 
+/// Backend-resolved placement mode for a Wayland window — the Wayland
+/// compositor's counterpart to the core `MoveResizeMode`. Unlike the core
+/// enum (caller intent), these variants carry *resolved* semantics:
+/// [`Retarget`](Self::Retarget) is the only mode that lets the backend resolve
+/// the origin itself, by peeking an in-flight animation so a live transition
+/// can be retargeted without restarting. Durations are always supplied by the
+/// caller; the backend never synthesizes a hidden default.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum WindowMoveMode {
-    AnimateTo,
-    Immediate,
+    /// Animate from the surface's current visual position to `target`. The
+    /// backend peeks any in-flight animation to keep the transition continuous
+    /// and preserves it when the target is unchanged. `duration` is supplied
+    /// by the caller (e.g. the default-move resolver).
+    Retarget { duration: Duration },
+    /// Place at `target` immediately, without a transition.
+    Snap,
+    /// Animate from an explicit `from` rect to `target` over `duration`. The
+    /// caller has already resolved both the origin and the (scaled) duration.
     AnimateFrom { from: Rect, duration: Duration },
 }
 
@@ -510,10 +524,16 @@ impl WaylandState {
 
     pub(crate) fn default_window_move_mode(&self) -> WindowMoveMode {
         if self.interactive_motion_active() {
-            WindowMoveMode::Immediate
+            WindowMoveMode::Snap
         } else {
-            WindowMoveMode::AnimateTo
+            WindowMoveMode::Retarget {
+                duration: self.default_animation_duration(),
+            }
         }
+    }
+
+    pub(crate) fn default_animation_duration(&self) -> Duration {
+        self.configured_animation_duration(Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS))
     }
 
     fn configured_size_unchanged(&self, window_id: WindowId, target: Rect) -> bool {
@@ -556,6 +576,23 @@ impl WaylandState {
             let _ = surface.configure(Some(geometry));
         }
         self.last_configured_size.insert(window_id, configured);
+    }
+
+    /// Snap `element` to `target`: configure its geometry, remap without
+    /// disturbing z-order, and record the border width. Shared by an explicit
+    /// [`WindowMoveMode::Snap`] and by an animated mode that resolves to a
+    /// no-transition placement (animations disabled, or `from == target`).
+    fn snap_window_to(
+        &mut self,
+        window_id: WindowId,
+        element: &smithay::desktop::Window,
+        target: Rect,
+        target_loc: Point<i32, Logical>,
+        to_border: i32,
+    ) {
+        self.configure_window_geometry_if_needed(window_id, element, target);
+        self.remap_window_immediately(window_id, element, target_loc);
+        self.placed_border.insert(window_id, to_border);
     }
 
     /// Place a window at `target` (in outer/WM coordinates) using the given
@@ -605,14 +642,17 @@ impl WaylandState {
 
         // Geometry updates for hidden/unmapped windows must not remap them.
         // The WM layer owns visibility.
-        if actual_loc.is_none() && mode != WindowMoveMode::Immediate {
+        if actual_loc.is_none() && mode != WindowMoveMode::Snap {
             self.drop_window_animation(window_id);
             return;
         }
 
         // Skip if already at the target with unchanged size.
         let size_unchanged = self.configured_size_unchanged(window_id, target);
-        if actual_loc == Some(target_loc) && mode == WindowMoveMode::AnimateTo && size_unchanged {
+        if actual_loc == Some(target_loc)
+            && matches!(mode, WindowMoveMode::Retarget { .. })
+            && size_unchanged
+        {
             self.drop_window_animation(window_id);
             return;
         }
@@ -641,8 +681,12 @@ impl WaylandState {
             .get(&window_id)
             .map(|animation| animation.frame.tick(now).rect);
         let (from, animation_duration) = match mode {
+            WindowMoveMode::Snap => {
+                self.snap_window_to(window_id, &element, target, target_loc, to_border);
+                return;
+            }
             WindowMoveMode::AnimateFrom { from, duration } => (from, duration),
-            WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
+            WindowMoveMode::Retarget { duration } => {
                 let from = animated_from.unwrap_or_else(|| {
                     let loc = actual_loc.unwrap_or(target_loc);
                     Rect {
@@ -652,20 +696,14 @@ impl WaylandState {
                         h: actual_size.h.max(1),
                     }
                 });
-                let duration = self.configured_animation_duration(Duration::from_millis(
-                    WAYLAND_DEFAULT_ANIMATION_MILLIS,
-                ));
                 (from, duration)
             }
         };
 
-        let should_snap =
-            !self.animations_enabled() || mode == WindowMoveMode::Immediate || from == target;
+        let should_snap = !self.animations_enabled() || from == target;
 
         if should_snap {
-            self.configure_window_geometry_if_needed(window_id, &element, target);
-            self.remap_window_immediately(window_id, &element, target_loc);
-            self.placed_border.insert(window_id, to_border);
+            self.snap_window_to(window_id, &element, target, target_loc, to_border);
             return;
         }
 
@@ -830,11 +868,12 @@ impl WaylandState {
                 )
             })
             .collect();
-        let output_rects: Vec<_> = self
+        let output_rects: Vec<_> = if self
             .window_animations
             .values()
             .any(|animation| animation.resize_configure_phase != RESIZE_CONFIGURE_PHASE)
-            .then(|| {
+        {
+            {
                 self.space
                     .outputs()
                     .filter_map(|output| self.space.output_geometry(output))
@@ -847,8 +886,10 @@ impl WaylandState {
                         )
                     })
                     .collect()
-            })
-            .unwrap_or_default();
+            }
+        } else {
+            Default::default()
+        };
         let mut updates = Vec::with_capacity(animation_inputs.len());
         let mut finished: Vec<WindowId> = Vec::new();
         for (win, committed_size) in animation_inputs {

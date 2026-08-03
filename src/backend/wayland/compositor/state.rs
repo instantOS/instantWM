@@ -715,7 +715,9 @@ impl WaylandState {
             self.set_window_target_rect(
                 window_id,
                 geo,
-                super::window::animations::WindowMoveMode::AnimateTo,
+                super::window::animations::WindowMoveMode::Retarget {
+                    duration: self.default_animation_duration(),
+                },
             );
         }
         self.raise_unmanaged_x11_windows();

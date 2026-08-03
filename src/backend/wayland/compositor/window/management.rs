@@ -44,7 +44,7 @@ impl WaylandState {
             );
             let _ = surface.configure(Some(geometry));
         }
-        let mode = WindowMoveMode::Immediate;
+        let mode = WindowMoveMode::Snap;
         self.set_window_target_rect(window, rect, mode);
     }
 
