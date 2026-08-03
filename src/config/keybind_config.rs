@@ -120,6 +120,7 @@ pub fn parse_keysym(name: &str) -> Option<u32> {
         "xf86monbrightnessdown" | "brightnessdown" => Some(XF86XK_MON_BRIGHTNESS_DOWN),
         "xf86audiolowervolume" | "volumedown" => Some(XF86XK_AUDIO_LOWER_VOLUME),
         "xf86audiomute" | "volumemute" | "mute" => Some(XF86XK_AUDIO_MUTE),
+        "xf86audiomicmute" | "micmute" => Some(XF86XK_AUDIO_MIC_MUTE),
         "xf86audioraisevolume" | "volumeup" => Some(XF86XK_AUDIO_RAISE_VOLUME),
         "xf86audioplay" | "audioplay" => Some(XF86XK_AUDIO_PLAY),
         "xf86audiopause" | "audiopause" => Some(XF86XK_AUDIO_PAUSE),

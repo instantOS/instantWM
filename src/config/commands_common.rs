@@ -31,6 +31,9 @@ pub mod media {
     pub fn mute_vol() -> &'static [&'static str] {
         &["ins", "assist", "volume", "mute"]
     }
+    pub fn mic_mute() -> &'static [&'static str] {
+        &["ins", "assist", "run", "vm"]
+    }
     pub fn up_bright() -> &'static [&'static str] {
         &["ins", "assist", "bright", "+"]
     }

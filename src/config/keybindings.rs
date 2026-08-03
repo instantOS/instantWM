@@ -138,6 +138,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(0, XF86XK_AUDIO_LOWER_VOLUME => KeyAction::named_args(NamedAction::Spawn, media::down_vol())),
         key!(0, XF86XK_AUDIO_MUTE => KeyAction::named_args(NamedAction::Spawn, media::mute_vol())),
         key!(0, XF86XK_AUDIO_RAISE_VOLUME => KeyAction::named_args(NamedAction::Spawn, media::up_vol())),
+        key!(0, XF86XK_AUDIO_MIC_MUTE => KeyAction::named_args(NamedAction::Spawn, media::mic_mute())),
         key!(0, XF86XK_AUDIO_PLAY => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "play-pause"])),
         key!(0, XF86XK_AUDIO_PAUSE => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "play-pause"])),
         key!(0, XF86XK_AUDIO_NEXT => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "next"])),
@@ -345,6 +346,19 @@ mod tests {
         assert_eq!(
             default_spawn_args(MODKEY | SHIFT, XK_V),
             Some(vec!["quickmenu".to_string()])
+        );
+    }
+
+    #[test]
+    fn mic_mute_key_defaults_to_assist_chord() {
+        assert_eq!(
+            default_spawn_args(0, XF86XK_AUDIO_MIC_MUTE),
+            Some(vec![
+                "ins".to_string(),
+                "assist".to_string(),
+                "run".to_string(),
+                "vm".to_string()
+            ])
         );
     }
 
