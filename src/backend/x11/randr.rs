@@ -95,7 +95,12 @@ fn process_outputs(
             Rect::new(crtc_info.x as i32, crtc_info.y as i32, w, h)
         } else {
             let preferred_mode = find_preferred_mode(&output_info, modes)?;
-            Rect::new(0, 0, preferred_mode.width as i32, preferred_mode.height as i32)
+            Rect::new(
+                0,
+                0,
+                preferred_mode.width as i32,
+                preferred_mode.height as i32,
+            )
         };
 
         outputs.push(BackendOutputInfo {
@@ -121,13 +126,23 @@ fn get_screen_resources_current(
         .ok()?
         .reply()
         .ok()?;
-    process_outputs(conn, &resources.outputs, resources.config_timestamp, &resources.modes)
+    process_outputs(
+        conn,
+        &resources.outputs,
+        resources.config_timestamp,
+        &resources.modes,
+    )
 }
 
 /// Get outputs using GetScreenResources (fallback).
 fn get_screen_resources(conn: &RustConnection, root: Window) -> Option<Vec<BackendOutputInfo>> {
     let resources = conn.randr_get_screen_resources(root).ok()?.reply().ok()?;
-    process_outputs(conn, &resources.outputs, resources.config_timestamp, &resources.modes)
+    process_outputs(
+        conn,
+        &resources.outputs,
+        resources.config_timestamp,
+        &resources.modes,
+    )
 }
 
 /// Set monitor configuration using XRandR.
@@ -155,7 +170,11 @@ fn set_monitor_config_inner(
             Some(r) => r,
             None => return false,
         };
-        (resources.outputs, resources.config_timestamp, resources.modes)
+        (
+            resources.outputs,
+            resources.config_timestamp,
+            resources.modes,
+        )
     } else {
         let resources = match conn
             .randr_get_screen_resources(root)
@@ -165,11 +184,14 @@ fn set_monitor_config_inner(
             Some(r) => r,
             None => return false,
         };
-        (resources.outputs, resources.config_timestamp, resources.modes)
+        (
+            resources.outputs,
+            resources.config_timestamp,
+            resources.modes,
+        )
     };
 
-    let known_outputs =
-        collect_output_rects(conn, &output_ids, config_timestamp, &modes);
+    let known_outputs = collect_output_rects(conn, &output_ids, config_timestamp, &modes);
 
     for output_id in &output_ids {
         let output_info = match conn

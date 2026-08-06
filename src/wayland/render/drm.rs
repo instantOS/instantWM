@@ -882,25 +882,16 @@ fn build_cursor_elements(
             }
         }
         CursorPresentation::Surface { surface, hotspot } => {
-            if !smithay::utils::IsAlive::alive(surface) {
+            let Some(cursor_elements) = super::cursor_surface_render_elements(
+                renderer,
+                surface,
+                local_pointer,
+                *hotspot,
+                scale as f64,
+            ) else {
                 return custom_elements;
-            }
-            let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-                (local_pointer.x - hotspot.x as f64).round() as i32,
-                (local_pointer.y - hotspot.y as f64).round() as i32,
-            ));
-            let cursor_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                    renderer,
-                    surface,
-                    cursor_loc,
-                    smithay::utils::Scale::from(scale as f64),
-                    1.0,
-                    smithay::backend::renderer::element::Kind::Cursor,
-                );
-            for elem in cursor_elements {
-                custom_elements.push(DrmExtras::Surface(elem));
-            }
+            };
+            custom_elements.extend(cursor_elements.into_iter().map(DrmExtras::Surface));
         }
         CursorPresentation::DndIcon {
             icon,
@@ -916,26 +907,16 @@ fn build_cursor_elements(
                 millis,
             ));
 
-            if !smithay::utils::IsAlive::alive(icon) {
+            let Some(dnd_elements) = super::cursor_surface_render_elements(
+                renderer,
+                icon,
+                local_pointer,
+                *hotspot,
+                scale as f64,
+            ) else {
                 return custom_elements;
-            }
-
-            let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-                (local_pointer.x - hotspot.x as f64).round() as i32,
-                (local_pointer.y - hotspot.y as f64).round() as i32,
-            ));
-            let dnd_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                    renderer,
-                    icon,
-                    dnd_loc,
-                    smithay::utils::Scale::from(scale as f64),
-                    1.0,
-                    smithay::backend::renderer::element::Kind::Cursor,
-                );
-            for elem in dnd_elements {
-                custom_elements.push(DrmExtras::Surface(elem));
-            }
+            };
+            custom_elements.extend(dnd_elements.into_iter().map(DrmExtras::Surface));
         }
     }
 

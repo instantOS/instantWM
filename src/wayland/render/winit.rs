@@ -200,25 +200,16 @@ fn render_cursor_overlays(
         CursorPresentation::Hidden | CursorPresentation::Named(_) => {}
         CursorPresentation::Surface { surface, hotspot } => {
             // Double-check that the surface is still alive before rendering.
-            if !smithay::utils::IsAlive::alive(surface) {
+            let Some(elements) = super::cursor_surface_render_elements(
+                renderer,
+                surface,
+                pointer_location,
+                *hotspot,
+                1.0,
+            ) else {
                 return;
-            }
-            let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-                (pointer_location.x - hotspot.x as f64).round() as i32,
-                (pointer_location.y - hotspot.y as f64).round() as i32,
-            ));
-            let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                    renderer,
-                    surface,
-                    cursor_loc,
-                    smithay::utils::Scale::from(1.0),
-                    1.0,
-                    smithay::backend::renderer::element::Kind::Cursor,
-                );
-            for elem in elements {
-                render_elements.push(WaylandExtras::Surface(elem));
-            }
+            };
+            render_elements.extend(elements.into_iter().map(WaylandExtras::Surface));
         }
         CursorPresentation::DndIcon {
             icon,
@@ -229,27 +220,18 @@ fn render_cursor_overlays(
             render_cursor_overlays(renderer, cursor, pointer_location, render_elements);
 
             // Double-check that the drag icon surface is still alive before rendering.
-            if !smithay::utils::IsAlive::alive(icon) {
+            let Some(dnd_elements) = super::cursor_surface_render_elements(
+                renderer,
+                icon,
+                pointer_location,
+                *hotspot,
+                1.0,
+            ) else {
                 return;
-            }
+            };
 
             // Then render the drag icon
-            let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-                (pointer_location.x - hotspot.x as f64).round() as i32,
-                (pointer_location.y - hotspot.y as f64).round() as i32,
-            ));
-            let dnd_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                    renderer,
-                    icon,
-                    dnd_loc,
-                    smithay::utils::Scale::from(1.0),
-                    1.0,
-                    smithay::backend::renderer::element::Kind::Cursor,
-                );
-            for elem in dnd_elements {
-                render_elements.push(WaylandExtras::Surface(elem));
-            }
+            render_elements.extend(dnd_elements.into_iter().map(WaylandExtras::Surface));
         }
     }
 }
