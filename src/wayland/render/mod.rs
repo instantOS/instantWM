@@ -62,7 +62,6 @@ fn cursor_surface_loc(
     ))
 }
 
-
 /// Render a client-provided cursor surface (or DnD icon) tree into render
 /// elements, positioned so that `hotspot` sits at `pointer_location`.
 ///
@@ -100,7 +99,7 @@ pub fn cursor_surface_render_elements(
 #[cfg(test)]
 mod cursor_loc_tests {
     use super::cursor_surface_loc;
-    use smithay::utils::{Logical, Physical, Point};
+    use smithay::utils::{Physical, Point};
 
     #[test]
     fn hotspot_offsets_the_cursor_surface() {

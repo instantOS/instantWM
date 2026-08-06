@@ -1,16 +1,14 @@
-use std::time::Duration;
-
 use smithay::{
     backend::{
         allocator::{Fourcc, dmabuf::Dmabuf},
         drm::DrmNode,
         renderer::{
-            Bind, Blit, BufferType, ExportMem, TextureFilter, buffer_type,
+            Bind, BufferType, buffer_type,
             gles::{GlesRenderer, GlesTarget},
         },
     },
     output::{Output, WeakOutput},
-    reexports::wayland_server::protocol::{wl_buffer::WlBuffer, wl_shm},
+    reexports::wayland_server::protocol::wl_shm,
     utils::{Buffer as BufferCoords, IsAlive, Rectangle, Transform},
     wayland::{
         image_capture_source::{
@@ -25,6 +23,9 @@ use smithay::{
 };
 
 use super::WaylandState;
+
+// Re-exported so the render backends keep using the shared implementation.
+pub(crate) use super::capture_common::monotonic_timestamp;
 
 pub struct PendingImageCapture {
     pub output: Output,
@@ -210,8 +211,20 @@ pub fn submit_image_captures(
         let buffer = capture.frame.buffer();
         let region = Rectangle::<i32, BufferCoords>::from_size(capture.size);
         let result = match buffer_type(&buffer) {
-            Some(BufferType::Shm) => copy_into_shm(renderer, framebuffer, region, &buffer),
-            Some(BufferType::Dma) => copy_into_dmabuf(renderer, framebuffer, region, &buffer),
+            Some(BufferType::Shm) => super::capture_common::copy_into_shm(
+                renderer,
+                framebuffer,
+                region,
+                &buffer,
+                "image-capture",
+            ),
+            Some(BufferType::Dma) => super::capture_common::copy_into_dmabuf(
+                renderer,
+                framebuffer,
+                region,
+                &buffer,
+                "image-capture",
+            ),
             _ => Err(()),
         };
 
@@ -225,98 +238,5 @@ pub fn submit_image_captures(
             None::<Vec<Rectangle<i32, BufferCoords>>>,
             monotonic_timestamp(),
         );
-    }
-}
-
-fn copy_into_shm(
-    renderer: &mut GlesRenderer,
-    framebuffer: &GlesTarget<'_>,
-    region: Rectangle<i32, BufferCoords>,
-    buffer: &WlBuffer,
-) -> Result<(), ()> {
-    let mapping = renderer
-        .copy_framebuffer(framebuffer, region, Fourcc::Xrgb8888)
-        .map_err(|err| {
-            log::warn!("image-capture: copy_framebuffer failed: {:?}", err);
-        })?;
-
-    let pixels = renderer.map_texture(&mapping).map_err(|err| {
-        log::warn!("image-capture: map_texture failed: {:?}", err);
-    })?;
-
-    smithay::wayland::shm::with_buffer_contents_mut(buffer, |dst_ptr, dst_len, data| {
-        let src_stride = region.size.w as usize * 4;
-        let copy_w = src_stride.min(data.stride as usize);
-        let height = region.size.h.max(0) as usize;
-        let dst_stride = data.stride.max(0) as usize;
-
-        if data.format != wl_shm::Format::Xrgb8888
-            || data.width < region.size.w
-            || data.height < region.size.h
-        {
-            return;
-        }
-
-        let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, dst_len) };
-        for row in 0..height {
-            let src_offset = row * src_stride;
-            let dst_offset = row * dst_stride;
-            if src_offset + copy_w > pixels.len() || dst_offset + copy_w > dst.len() {
-                break;
-            }
-            dst[dst_offset..dst_offset + copy_w]
-                .copy_from_slice(&pixels[src_offset..src_offset + copy_w]);
-        }
-    })
-    .map_err(|_| {
-        log::warn!("image-capture: failed to write SHM buffer");
-    })
-}
-
-fn copy_into_dmabuf(
-    renderer: &mut GlesRenderer,
-    framebuffer: &GlesTarget<'_>,
-    region: Rectangle<i32, BufferCoords>,
-    buffer: &WlBuffer,
-) -> Result<(), ()> {
-    let dmabuf = smithay::wayland::dmabuf::get_dmabuf(buffer).map_err(|err| {
-        log::warn!("image-capture: failed to access dmabuf: {:?}", err);
-    })?;
-
-    let mut dmabuf = dmabuf.clone();
-    let mut target = renderer.bind(&mut dmabuf).map_err(|err| {
-        log::warn!("image-capture: failed to bind dmabuf: {:?}", err);
-    })?;
-
-    let _ = renderer
-        .blit(
-            framebuffer,
-            &mut target,
-            Rectangle::<i32, smithay::utils::Physical>::from_size(
-                (region.size.w, region.size.h).into(),
-            ),
-            Rectangle::<i32, smithay::utils::Physical>::from_size(
-                (region.size.w, region.size.h).into(),
-            ),
-            TextureFilter::Linear,
-        )
-        .map_err(|err| {
-            log::warn!("image-capture: dmabuf blit failed: {:?}", err);
-        })?;
-    Ok(())
-}
-
-pub(crate) fn monotonic_timestamp() -> Duration {
-    let mut ts = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } == 0
-        && ts.tv_sec >= 0
-        && ts.tv_nsec >= 0
-    {
-        Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
-    } else {
-        Duration::ZERO
     }
 }

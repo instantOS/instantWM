@@ -26,6 +26,7 @@
 //! The delegation macro MUST be called at module level (not inside an `impl`
 //! block). It wires Smithay's internal message routing to the handler traits.
 
+mod capture_common;
 mod focus;
 mod handlers;
 pub(crate) mod image_capture;

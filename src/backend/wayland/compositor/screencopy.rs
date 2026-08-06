@@ -23,12 +23,11 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use super::WaylandState;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer, Fourcc};
-use smithay::backend::renderer::{Bind, Blit, BufferType, ExportMem, TextureFilter, buffer_type};
+use smithay::backend::renderer::{Bind, BufferType, buffer_type};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -392,12 +391,20 @@ pub fn submit_pending_screencopies(
         let region = screencopy.buffer_region;
 
         let copy_result = match buffer_type(&screencopy.buffer) {
-            Some(BufferType::Shm) => {
-                copy_into_shm(renderer, framebuffer, region, &screencopy.buffer)
-            }
-            Some(BufferType::Dma) => {
-                copy_into_dmabuf(renderer, framebuffer, region, &screencopy.buffer)
-            }
+            Some(BufferType::Shm) => super::capture_common::copy_into_shm(
+                renderer,
+                framebuffer,
+                region,
+                &screencopy.buffer,
+                "screencopy",
+            ),
+            Some(BufferType::Dma) => super::capture_common::copy_into_dmabuf(
+                renderer,
+                framebuffer,
+                region,
+                &screencopy.buffer,
+                "screencopy",
+            ),
             _ => {
                 log::warn!("screencopy: unsupported client buffer type");
                 Err(())
@@ -419,102 +426,11 @@ pub fn submit_pending_screencopies(
             .frame
             .flags(zwlr_screencopy_frame_v1::Flags::YInvert);
 
-        let presented = monotonic_timestamp();
+        let presented = super::capture_common::monotonic_timestamp();
         let tv_sec_hi = (presented.as_secs() >> 32) as u32;
         let tv_sec_lo = (presented.as_secs() & 0xFFFF_FFFF) as u32;
         screencopy
             .frame
             .ready(tv_sec_hi, tv_sec_lo, presented.subsec_nanos());
-    }
-}
-
-fn copy_into_shm(
-    renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
-    framebuffer: &smithay::backend::renderer::gles::GlesTarget<'_>,
-    region: Rectangle<i32, BufferCoords>,
-    buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
-) -> Result<(), ()> {
-    let mapping = renderer
-        .copy_framebuffer(framebuffer, region, Fourcc::Xrgb8888)
-        .map_err(|err| {
-            log::warn!("screencopy: copy_framebuffer failed: {:?}", err);
-        })?;
-
-    let pixels = renderer.map_texture(&mapping).map_err(|err| {
-        log::warn!("screencopy: map_texture failed: {:?}", err);
-    })?;
-
-    smithay::wayland::shm::with_buffer_contents_mut(buffer, |dst_ptr, dst_len, bd| {
-        let src_stride = region.size.w as usize * 4;
-        let dst_stride = bd.stride as usize;
-        let height = region.size.h as usize;
-        let copy_w = (region.size.w as usize * 4).min(dst_stride);
-
-        // SAFETY: with_buffer_contents_mut guarantees dst_ptr is valid for dst_len.
-        let dst_slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr, dst_len) };
-
-        for row in 0..height {
-            let src_offset = row * src_stride;
-            let dst_offset = row * dst_stride;
-            if src_offset + copy_w > pixels.len() || dst_offset + copy_w > dst_len {
-                break;
-            }
-            dst_slice[dst_offset..dst_offset + copy_w]
-                .copy_from_slice(&pixels[src_offset..src_offset + copy_w]);
-        }
-    })
-    .map_err(|_| {
-        log::warn!("screencopy: failed to write to client SHM buffer");
-    })
-}
-
-fn copy_into_dmabuf(
-    renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
-    framebuffer: &smithay::backend::renderer::gles::GlesTarget<'_>,
-    region: Rectangle<i32, BufferCoords>,
-    buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
-) -> Result<(), ()> {
-    let dmabuf = get_dmabuf(buffer).map_err(|err| {
-        log::warn!("screencopy: failed to access client dmabuf: {:?}", err);
-    })?;
-
-    let mut dmabuf = dmabuf.clone();
-    let mut target = renderer.bind(&mut dmabuf).map_err(|err| {
-        log::warn!("screencopy: failed to bind client dmabuf: {:?}", err);
-    })?;
-
-    let _ = renderer
-        .blit(
-            framebuffer,
-            &mut target,
-            Rectangle::<i32, smithay::utils::Physical>::new(
-                (region.loc.x, region.loc.y).into(),
-                (region.size.w, region.size.h).into(),
-            ),
-            Rectangle::<i32, smithay::utils::Physical>::from_size(
-                (region.size.w, region.size.h).into(),
-            ),
-            TextureFilter::Linear,
-        )
-        .map_err(|err| {
-            log::warn!("screencopy: dmabuf blit failed: {:?}", err);
-        })?;
-
-    Ok(())
-}
-
-fn monotonic_timestamp() -> Duration {
-    let mut ts = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: `ts` points to valid writable storage owned by this function.
-    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } == 0
-        && ts.tv_sec >= 0
-        && ts.tv_nsec >= 0
-    {
-        Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
-    } else {
-        Duration::ZERO
     }
 }
