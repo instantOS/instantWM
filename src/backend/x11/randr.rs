@@ -57,6 +57,60 @@ pub fn get_outputs(conn: &RustConnection, root: Window) -> Vec<BackendOutputInfo
     }
 }
 
+/// Extract output info from already-fetched RandR resources.
+fn process_outputs(
+    conn: &RustConnection,
+    output_ids: &[randr::Output],
+    config_timestamp: u32,
+    modes: &[randr::ModeInfo],
+) -> Option<Vec<BackendOutputInfo>> {
+    let mut outputs = Vec::new();
+
+    for output_id in output_ids {
+        let output_info = conn
+            .randr_get_output_info(*output_id, config_timestamp)
+            .ok()?
+            .reply()
+            .ok()?;
+
+        if output_info.connection != randr::Connection::CONNECTED {
+            continue;
+        }
+
+        let name = String::from_utf8_lossy(&output_info.name).to_string();
+
+        let rect = if output_info.crtc != 0 {
+            let crtc_info = conn
+                .randr_get_crtc_info(output_info.crtc, config_timestamp)
+                .ok()?
+                .reply()
+                .ok()?;
+
+            let (w, h) = modes
+                .iter()
+                .find(|m| m.id == crtc_info.mode)
+                .map(|m| (m.width as i32, m.height as i32))
+                .unwrap_or((crtc_info.width as i32, crtc_info.height as i32));
+
+            Rect::new(crtc_info.x as i32, crtc_info.y as i32, w, h)
+        } else {
+            let preferred_mode = find_preferred_mode(&output_info, modes)?;
+            Rect::new(0, 0, preferred_mode.width as i32, preferred_mode.height as i32)
+        };
+
+        outputs.push(BackendOutputInfo {
+            name,
+            rect,
+            scale: 1.0,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        });
+    }
+
+    Some(outputs)
+}
+
 /// Get outputs using GetScreenResourcesCurrent.
 fn get_screen_resources_current(
     conn: &RustConnection,
@@ -67,171 +121,57 @@ fn get_screen_resources_current(
         .ok()?
         .reply()
         .ok()?;
-
-    let mut outputs = Vec::new();
-    let config_timestamp = resources.config_timestamp;
-
-    for output_id in &resources.outputs {
-        let output_info = conn
-            .randr_get_output_info(*output_id, config_timestamp)
-            .ok()?
-            .reply()
-            .ok()?;
-
-        // Only include connected outputs
-        if output_info.connection != randr::Connection::CONNECTED {
-            continue;
-        }
-
-        let name = String::from_utf8_lossy(&output_info.name).to_string();
-
-        let rect = if output_info.crtc != 0 {
-            let crtc_info = conn
-                .randr_get_crtc_info(output_info.crtc, config_timestamp)
-                .ok()?
-                .reply()
-                .ok()?;
-
-            let mode_width;
-            let mode_height;
-
-            if let Some(mode_info) = resources.modes.iter().find(|m| m.id == crtc_info.mode) {
-                mode_width = mode_info.width as i32;
-                mode_height = mode_info.height as i32;
-            } else {
-                mode_width = crtc_info.width as i32;
-                mode_height = crtc_info.height as i32;
-            }
-
-            Rect {
-                x: crtc_info.x as i32,
-                y: crtc_info.y as i32,
-                w: mode_width,
-                h: mode_height,
-            }
-        } else {
-            let preferred_mode = find_preferred_mode(&output_info, &resources.modes)?;
-            Rect {
-                x: 0,
-                y: 0,
-                w: preferred_mode.width as i32,
-                h: preferred_mode.height as i32,
-            }
-        };
-
-        outputs.push(BackendOutputInfo {
-            name,
-            rect,
-            scale: 1.0,
-            vrr_support: BackendVrrSupport::Unsupported,
-            vrr_mode: None,
-            vrr_enabled: false,
-        });
-    }
-
-    Some(outputs)
+    process_outputs(conn, &resources.outputs, resources.config_timestamp, &resources.modes)
 }
 
 /// Get outputs using GetScreenResources (fallback).
 fn get_screen_resources(conn: &RustConnection, root: Window) -> Option<Vec<BackendOutputInfo>> {
     let resources = conn.randr_get_screen_resources(root).ok()?.reply().ok()?;
-
-    let mut outputs = Vec::new();
-    let config_timestamp = resources.config_timestamp;
-
-    for output_id in &resources.outputs {
-        let output_info = conn
-            .randr_get_output_info(*output_id, config_timestamp)
-            .ok()?
-            .reply()
-            .ok()?;
-
-        // Only include connected outputs
-        if output_info.connection != randr::Connection::CONNECTED {
-            continue;
-        }
-
-        let name = String::from_utf8_lossy(&output_info.name).to_string();
-
-        let rect = if output_info.crtc != 0 {
-            let crtc_info = conn
-                .randr_get_crtc_info(output_info.crtc, config_timestamp)
-                .ok()?
-                .reply()
-                .ok()?;
-
-            let mode_width;
-            let mode_height;
-
-            if let Some(mode_info) = resources.modes.iter().find(|m| m.id == crtc_info.mode) {
-                mode_width = mode_info.width as i32;
-                mode_height = mode_info.height as i32;
-            } else {
-                mode_width = crtc_info.width as i32;
-                mode_height = crtc_info.height as i32;
-            }
-
-            Rect {
-                x: crtc_info.x as i32,
-                y: crtc_info.y as i32,
-                w: mode_width,
-                h: mode_height,
-            }
-        } else {
-            let preferred_mode = find_preferred_mode(&output_info, &resources.modes)?;
-            Rect {
-                x: 0,
-                y: 0,
-                w: preferred_mode.width as i32,
-                h: preferred_mode.height as i32,
-            }
-        };
-
-        outputs.push(BackendOutputInfo {
-            name,
-            rect,
-            scale: 1.0,
-            vrr_support: BackendVrrSupport::Unsupported,
-            vrr_mode: None,
-            vrr_enabled: false,
-        });
-    }
-
-    Some(outputs)
+    process_outputs(conn, &resources.outputs, resources.config_timestamp, &resources.modes)
 }
 
 /// Set monitor configuration using XRandR.
 pub fn set_monitor_config(conn: &RustConnection, root: Window, name: &str, config: &MonitorConfig) {
-    // Try to use current resources first
-    if set_monitor_config_current(conn, root, name, config) {
+    if set_monitor_config_inner(conn, root, name, config, true) {
         return;
     }
-
-    // Fall back to regular resources
-    let _ = set_monitor_config_fallback(conn, root, name, config);
+    let _ = set_monitor_config_inner(conn, root, name, config, false);
 }
 
-/// Set monitor configuration using GetScreenResourcesCurrent.
-fn set_monitor_config_current(
+/// Set monitor configuration for a given resource-fetch strategy.
+fn set_monitor_config_inner(
     conn: &RustConnection,
     root: Window,
     name: &str,
     config: &MonitorConfig,
+    use_current: bool,
 ) -> bool {
-    let resources = match conn
-        .randr_get_screen_resources_current(root)
-        .ok()
-        .and_then(|c| c.reply().ok())
-    {
-        Some(r) => r,
-        None => return false,
+    let (output_ids, config_timestamp, modes) = if use_current {
+        let resources = match conn
+            .randr_get_screen_resources_current(root)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        {
+            Some(r) => r,
+            None => return false,
+        };
+        (resources.outputs, resources.config_timestamp, resources.modes)
+    } else {
+        let resources = match conn
+            .randr_get_screen_resources(root)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        {
+            Some(r) => r,
+            None => return false,
+        };
+        (resources.outputs, resources.config_timestamp, resources.modes)
     };
 
-    let config_timestamp = resources.config_timestamp;
     let known_outputs =
-        collect_output_rects(conn, &resources.outputs, config_timestamp, &resources.modes);
+        collect_output_rects(conn, &output_ids, config_timestamp, &modes);
 
-    for output_id in &resources.outputs {
+    for output_id in &output_ids {
         let output_info = match conn
             .randr_get_output_info(*output_id, config_timestamp)
             .ok()
@@ -258,70 +198,16 @@ fn set_monitor_config_current(
             &output_info,
             config,
             config_timestamp,
-            &resources.modes,
+            &modes,
             &known_outputs,
+            use_current,
         );
     }
 
     true
 }
 
-/// Set monitor configuration using GetScreenResources (fallback).
-fn set_monitor_config_fallback(
-    conn: &RustConnection,
-    root: Window,
-    name: &str,
-    config: &MonitorConfig,
-) -> bool {
-    let resources = match conn
-        .randr_get_screen_resources(root)
-        .ok()
-        .and_then(|c| c.reply().ok())
-    {
-        Some(r) => r,
-        None => return false,
-    };
-
-    let config_timestamp = resources.config_timestamp;
-    let known_outputs =
-        collect_output_rects(conn, &resources.outputs, config_timestamp, &resources.modes);
-
-    for output_id in &resources.outputs {
-        let output_info = match conn
-            .randr_get_output_info(*output_id, config_timestamp)
-            .ok()
-            .and_then(|c| c.reply().ok())
-        {
-            Some(info) => info,
-            None => continue,
-        };
-
-        let output_name = String::from_utf8_lossy(&output_info.name);
-
-        if name != "*" && output_name != name {
-            continue;
-        }
-
-        if output_info.connection != randr::Connection::CONNECTED {
-            continue;
-        }
-
-        apply_output_config_fallback(
-            conn,
-            root,
-            *output_id,
-            &output_info,
-            config,
-            config_timestamp,
-            &resources.modes,
-            &known_outputs,
-        );
-    }
-
-    true
-}
-
-/// Apply configuration to a specific output (current version).
+/// Apply configuration to a specific output.
 fn apply_output_config(
     conn: &RustConnection,
     root: Window,
@@ -331,12 +217,11 @@ fn apply_output_config(
     config_timestamp: u32,
     modes: &[randr::ModeInfo],
     known_outputs: &[(String, Rect)],
+    use_current: bool,
 ) {
-    // Handle enable/disable
     if let Some(enable) = config.enable
         && !enable
     {
-        // Disable the output by setting CRTC to None
         if output_info.crtc != 0 {
             let _ = conn.randr_set_crtc_config(
                 output_info.crtc,
@@ -344,15 +229,14 @@ fn apply_output_config(
                 config_timestamp,
                 0,
                 0,
-                0, // No mode
+                0,
                 randr::Rotation::ROTATE0,
-                &[], // No outputs
+                &[],
             );
         }
         return;
     }
 
-    // Find the mode to use
     let mode = if let Some(ref resolution) = config.resolution {
         parse_resolution(resolution)
             .and_then(|(w, h)| find_mode_by_resolution(modes, w, h))
@@ -365,7 +249,6 @@ fn apply_output_config(
         return;
     };
 
-    // Parse position
     let position = if let Some(ref position) = config.position {
         MonitorPosition::parse(position)
             .and_then(|p| {
@@ -380,113 +263,23 @@ fn apply_output_config(
     } else {
         crate::types::Point::default()
     };
-    let x = position.x;
-    let y = position.y;
 
-    // Find a CRTC to use
     let crtc = if output_info.crtc != 0 {
         output_info.crtc
     } else {
-        find_available_crtc_current(conn, output_id, output_info, root)
+        find_available_crtc(conn, output_id, output_info, root, use_current)
     };
 
     if crtc == 0 {
         return;
     }
 
-    // Set the CRTC configuration
     let _ = conn.randr_set_crtc_config(
         crtc,
         x11rb::CURRENT_TIME,
         config_timestamp,
-        x as i16,
-        y as i16,
-        mode_info.id,
-        randr::Rotation::ROTATE0,
-        &[output_id],
-    );
-}
-
-/// Apply configuration to a specific output (fallback version).
-fn apply_output_config_fallback(
-    conn: &RustConnection,
-    root: Window,
-    output_id: randr::Output,
-    output_info: &randr::GetOutputInfoReply,
-    config: &MonitorConfig,
-    config_timestamp: u32,
-    modes: &[randr::ModeInfo],
-    known_outputs: &[(String, Rect)],
-) {
-    // Handle enable/disable
-    if let Some(enable) = config.enable
-        && !enable
-    {
-        // Disable the output by setting CRTC to None
-        if output_info.crtc != 0 {
-            let _ = conn.randr_set_crtc_config(
-                output_info.crtc,
-                x11rb::CURRENT_TIME,
-                config_timestamp,
-                0,
-                0,
-                0, // No mode
-                randr::Rotation::ROTATE0,
-                &[], // No outputs
-            );
-        }
-        return;
-    }
-
-    // Find the mode to use
-    let mode = if let Some(ref resolution) = config.resolution {
-        parse_resolution(resolution)
-            .and_then(|(w, h)| find_mode_by_resolution(modes, w, h))
-            .or_else(|| find_preferred_mode(output_info, modes))
-    } else {
-        find_preferred_mode(output_info, modes)
-    };
-
-    let Some(mode_info) = mode else {
-        return;
-    };
-
-    // Parse position
-    let position = if let Some(ref position) = config.position {
-        MonitorPosition::parse(position)
-            .and_then(|p| {
-                p.resolve(
-                    crate::types::Size::new(mode_info.width as i32, mode_info.height as i32),
-                    known_outputs
-                        .iter()
-                        .map(|(name, rect)| (name.as_str(), *rect)),
-                )
-            })
-            .unwrap_or_default()
-    } else {
-        crate::types::Point::default()
-    };
-    let x = position.x;
-    let y = position.y;
-
-    // Find a CRTC to use
-    let crtc = if output_info.crtc != 0 {
-        output_info.crtc
-    } else {
-        find_available_crtc_fallback(conn, output_id, output_info, root)
-    };
-
-    if crtc == 0 {
-        return;
-    }
-
-    // Set the CRTC configuration
-    let _ = conn.randr_set_crtc_config(
-        crtc,
-        x11rb::CURRENT_TIME,
-        config_timestamp,
-        x as i16,
-        y as i16,
+        position.x as i16,
+        position.y as i16,
         mode_info.id,
         randr::Rotation::ROTATE0,
         &[output_id],
@@ -583,67 +376,43 @@ fn collect_output_rects(
     outputs
 }
 
-/// Find an available CRTC (current version).
-fn find_available_crtc_current(
+/// Find an available CRTC.
+fn find_available_crtc(
     conn: &RustConnection,
     _output_id: randr::Output,
     output_info: &randr::GetOutputInfoReply,
     root: Window,
+    use_current: bool,
 ) -> randr::Crtc {
     if output_info.crtc != 0 {
         return output_info.crtc;
     }
 
-    let resources = match conn
-        .randr_get_screen_resources_current(root)
-        .ok()
-        .and_then(|c| c.reply().ok())
-    {
-        Some(r) => r,
-        None => return 0,
-    };
-
-    for crtc_id in &resources.crtcs {
-        let crtc_info = match conn
-            .randr_get_crtc_info(*crtc_id, resources.config_timestamp)
+    let (crtcs, config_timestamp) = if use_current {
+        let resources = match conn
+            .randr_get_screen_resources_current(root)
             .ok()
             .and_then(|c| c.reply().ok())
         {
-            Some(info) => info,
-            None => continue,
+            Some(r) => r,
+            None => return 0,
         };
-
-        if crtc_info.outputs.is_empty() {
-            return *crtc_id;
-        }
-    }
-
-    0
-}
-
-/// Find an available CRTC (fallback version).
-fn find_available_crtc_fallback(
-    conn: &RustConnection,
-    _output_id: randr::Output,
-    output_info: &randr::GetOutputInfoReply,
-    root: Window,
-) -> randr::Crtc {
-    if output_info.crtc != 0 {
-        return output_info.crtc;
-    }
-
-    let resources = match conn
-        .randr_get_screen_resources(root)
-        .ok()
-        .and_then(|c| c.reply().ok())
-    {
-        Some(r) => r,
-        None => return 0,
+        (resources.crtcs, resources.config_timestamp)
+    } else {
+        let resources = match conn
+            .randr_get_screen_resources(root)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        {
+            Some(r) => r,
+            None => return 0,
+        };
+        (resources.crtcs, resources.config_timestamp)
     };
 
-    for crtc_id in &resources.crtcs {
+    for crtc_id in &crtcs {
         let crtc_info = match conn
-            .randr_get_crtc_info(*crtc_id, resources.config_timestamp)
+            .randr_get_crtc_info(*crtc_id, config_timestamp)
             .ok()
             .and_then(|c| c.reply().ok())
         {
