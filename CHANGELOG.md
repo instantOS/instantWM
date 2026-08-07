@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20](https://github.com/instantOS/instantWM/compare/v0.1.19...v0.1.20) - 2026-08-07
+
+### Fixed
+
+- wayland positioning fix
+- animate stationary-center Wayland resizes
+- preserve Wayland resize anchors through commits
+- animate the farther-moving resize edge
+- hide Wayland shrinks outside outputs
+- grow Wayland surfaces outside outputs
+- tolerate mostly offscreen Wayland resizes
+
+### Other
+
+- fix animation pacing, optimize maximized thingy
+- bump stuff
+- add more help text
+- rename misnomer option
+- fix weird animation stuff
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fmt
+- remove dead code
+- fix busy systray icon fetch
+- replace buggy center anchoring
+- unify some stuff
+- better model resize timing
+- optimize redundant ops
+- fix spawn flash
+- add mic mute keybind
+- bump deps
+- dedupe randr
+- unify drm/winit more
+- unify screen capture
+
 ## [0.1.19](https://github.com/instantOS/instantWM/compare/v0.1.18...v0.1.19) - 2026-08-02
 
 ### Changed
