@@ -79,15 +79,18 @@ pub(crate) fn constrain_aspect_size(
     (width.max(1), height.max(1))
 }
 
-/// Begin resizing `win` using the pointer's current quadrant.
+/// Begin resizing `win` using the supplied input position's current quadrant.
 ///
 /// The fullscreen check intentionally remains here even though title-drag
 /// arming performs the same eligibility check: Wayland can change window mode
 /// between the button press and the later drag-threshold event.
-pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
-    let Some(source) = ctx.core().drag_state().captured_source() else {
-        return;
-    };
+pub fn resize_from_point(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    btn: MouseButton,
+    source: InteractionSource,
+    point: Point,
+) {
     crate::client::fullscreen::leave_maximized(ctx, win);
     let Some((geo, is_floating)) = ctx.core().model().client(win).and_then(|client| {
         (!client.mode().is_true_fullscreen())
@@ -96,12 +99,9 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton
         return;
     };
 
-    let Some(ptr) = ctx.pointer_backend().pointer_location() else {
-        return;
-    };
-
-    if let Some(tree_resize) = crate::layouts::manager::pointer_tree_resize_start(ctx, win, ptr) {
-        let _ = crate::mouse::drag::tree_resize_begin(ctx, win, btn, source, ptr, geo, tree_resize);
+    if let Some(tree_resize) = crate::layouts::manager::pointer_tree_resize_start(ctx, win, point) {
+        let _ =
+            crate::mouse::drag::tree_resize_begin(ctx, win, btn, source, point, geo, tree_resize);
         return;
     }
 
@@ -115,18 +115,18 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton
         let Some((new_geo, _)) = promote_to_floating(
             ctx,
             win,
-            FloatingPlacementIntent::PreservePointerAnchor(ptr),
+            FloatingPlacementIntent::PreservePointerAnchor(point),
         ) else {
             return;
         };
 
-        let dir = ResizeDirection::from_hit(new_geo.size(), new_geo.local_point(ptr));
+        let dir = ResizeDirection::from_hit(new_geo.size(), new_geo.local_point(point));
 
         let _ = crate::mouse::drag::directional_resize_begin(ctx, win, btn, source, dir, new_geo);
         return;
     }
 
-    let dir = ResizeDirection::from_hit(geo.size(), geo.local_point(ptr));
+    let dir = ResizeDirection::from_hit(geo.size(), geo.local_point(point));
 
     let _ = crate::mouse::drag::directional_resize_begin(ctx, win, btn, source, dir, geo);
 }

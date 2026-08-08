@@ -238,12 +238,20 @@ pub fn active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
             )
         }
         crate::core_state::DragOperationRef::Resize(dir) => {
+            // Core geometry uses an outer origin and content size on both
+            // backends. Account for the modelled border so dragging an end
+            // edge keeps that edge under the input position.
+            let border_width = ctx
+                .core()
+                .model()
+                .client(drag.win())
+                .map_or(0, |client| client.border_width.max(0));
             let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
             let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
                 root.x,
                 drag.win_start_geo().x,
                 drag.win_start_geo().right(),
-                0,
+                border_width,
                 affects_left,
                 affects_right,
             );
@@ -251,7 +259,7 @@ pub fn active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
                 root.y,
                 drag.win_start_geo().y,
                 drag.win_start_geo().bottom(),
-                0,
+                border_width,
                 affects_top,
                 affects_bottom,
             );
@@ -304,4 +312,52 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::active_drag_motion;
+    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::types::{
+        Client, ClientMode, InteractionSource, Monitor, MouseButton, Point, Rect, ResizeDirection,
+        TagMask, WindowId,
+    };
+    use crate::wm::Wm;
+
+    #[test]
+    fn end_edge_resize_accounts_for_the_modelled_border() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let win = WindowId(17);
+        let geometry = Rect::new(100, 100, 500, 300);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::floating(),
+            geo: geometry,
+            border_width: 5,
+            ..Client::default()
+        });
+        wm.core
+            .drag
+            .begin_resize(
+                win,
+                MouseButton::Right,
+                InteractionSource::Pointer,
+                ResizeDirection::Right,
+                Point::new(610, 250),
+                geometry,
+            )
+            .unwrap();
+
+        assert!(active_drag_motion(&mut wm.ctx(), Point::new(710, 250)));
+        assert_eq!(wm.core.model.client(win).unwrap().geo.w, 601);
+    }
 }

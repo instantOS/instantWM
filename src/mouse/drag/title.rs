@@ -8,7 +8,7 @@ use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
 use crate::mouse::drag::move_drop::promote_to_floating;
-use crate::mouse::resize::resize_mouse_from_cursor;
+use crate::mouse::resize::resize_from_point;
 use crate::mouse::warp;
 use crate::types::geometry::Point;
 use crate::types::*;
@@ -104,6 +104,14 @@ fn begin_move_drag(
     input: DragInput,
     start_point: Point,
 ) -> Option<(Rect, Point)> {
+    let client = ctx.core().model().client(win)?;
+    if client.is_edge_scratchpad() {
+        return None;
+    }
+    if client.snap_status != SnapPosition::None {
+        crate::floating::reset_snap(ctx, win);
+    }
+
     let position = input.position();
     if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
         let geo = ctx.client_geo(win)?;
@@ -124,13 +132,14 @@ fn begin_move_drag(
 
 /// Handle the transition from an armed click to an active shared drag.
 fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
-    let (win, btn, start_point, suppress_click_action) = {
+    let (win, btn, source, start_point, suppress_click_action) = {
         let Some(drag) = ctx.core().drag_state().armed_interaction() else {
             return false;
         };
         (
             drag.win(),
             drag.button(),
+            drag.source(),
             drag.start_point(),
             drag.suppress_click_action(),
         )
@@ -141,14 +150,17 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
             // Bar-title resizing retains its established bottom-right handle;
             // Super+right-drag uses the pointer's quadrant instead.
-            if !suppress_click_action {
-                let _ = warp::warp_to_resize_corner(ctx, win, ResizeDirection::BottomRight);
-            }
+            let point = if suppress_click_action {
+                input.position()
+            } else {
+                warp::warp_to_resize_corner(ctx, win, ResizeDirection::BottomRight)
+                    .unwrap_or(start_point)
+            };
             // Tree resize owns an initial tree snapshot, so replace the armed
             // click with the authoritative resize interaction after the drag
             // threshold has been crossed.
             let _ = ctx.core_mut().drag_state_mut().finish_armed();
-            resize_mouse_from_cursor(ctx, win, btn);
+            resize_from_point(ctx, win, btn, source, point);
             return true;
         }
 
@@ -312,4 +324,154 @@ pub fn thresholded_client_drag(
     suppress_click_action: bool,
 ) {
     let _ = title_drag_begin(ctx, win, btn, source, click_root, suppress_click_action);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DragInput, begin_move_drag, title_drag_begin, title_drag_motion};
+    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::layouts::tree::Preset;
+    use crate::types::{
+        Client, ClientMode, InteractionSource, Monitor, MouseButton, Point, Rect, SnapPosition,
+        TagMask, WindowId,
+    };
+    use crate::wm::Wm;
+
+    fn tiled_pair_fixture() -> (Wm, WindowId, Rect) {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            show_bar: false,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let windows = [WindowId(21), WindowId(22)];
+        for win in windows {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            });
+        }
+        let bounds = {
+            let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+            monitor.set_selected_tags(tags);
+            monitor.clients = windows.to_vec();
+            monitor.selected = Some(windows[0]);
+            monitor
+                .per_tag_state()
+                .layout_tree
+                .apply_preset(Preset::MasterStack, &windows, 1);
+            monitor
+                .per_tag()
+                .unwrap()
+                .layout_tree
+                .bounds(monitor.available_rect)
+        };
+        for (&win, &geo) in &bounds {
+            wm.core.model.client_mut(win).unwrap().geo = geo;
+        }
+        (wm, windows[0], bounds[&windows[0]])
+    }
+
+    #[test]
+    fn tiled_right_drag_preserves_source_when_arming_tree_resize() {
+        let (mut wm, win, geo) = tiled_pair_fixture();
+        let press = Point::new(geo.x + geo.w / 2, geo.y + geo.h / 2);
+        assert!(title_drag_begin(
+            &mut wm.ctx(),
+            win,
+            MouseButton::Right,
+            InteractionSource::Pointer,
+            press,
+            true,
+        ));
+
+        assert!(title_drag_motion(
+            &mut wm.ctx(),
+            DragInput::Absolute(Point::new(press.x + 20, press.y))
+        ));
+        let active = wm.core.drag.active_interaction().unwrap();
+        assert_eq!(active.source(), InteractionSource::Pointer);
+        assert!(matches!(
+            active.drag_type(),
+            crate::core_state::DragType::TreeResize(_)
+        ));
+    }
+
+    #[test]
+    fn snapped_move_restores_free_geometry_before_starting() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let work = Rect::new(0, 30, 1200, 770);
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: work,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let win = WindowId(23);
+        let saved = Rect::new(250, 180, 600, 420);
+        let mut client = Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::floating(),
+            geo: Rect::new(0, 30, 600, 770),
+            snap_status: SnapPosition::Left,
+            ..Client::default()
+        };
+        client.save_floating_placement(saved, work);
+        wm.core.model.insert_client(client);
+
+        let result = begin_move_drag(
+            &mut wm.ctx(),
+            win,
+            DragInput::Absolute(Point::new(300, 220)),
+            Point::new(300, 220),
+        );
+
+        assert_eq!(result, Some((saved, Point::new(300, 220))));
+        assert_eq!(
+            wm.core.model.client(win).unwrap().snap_status,
+            SnapPosition::None
+        );
+    }
+
+    #[test]
+    fn edge_scratchpad_cannot_start_a_move_drag() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 30, 1200, 770),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let win = WindowId(24);
+        let mut client = Client {
+            win,
+            monitor_id,
+            mode: ClientMode::floating(),
+            geo: Rect::new(0, 30, 400, 770),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("edge", Some(crate::types::EdgeDirection::Left), 1200, 800)
+            .unwrap();
+        wm.core.model.insert_client(client);
+
+        assert_eq!(
+            begin_move_drag(
+                &mut wm.ctx(),
+                win,
+                DragInput::Absolute(Point::new(100, 200)),
+                Point::new(100, 200),
+            ),
+            None
+        );
+    }
 }
