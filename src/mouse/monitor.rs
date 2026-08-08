@@ -7,7 +7,7 @@
 //! # Typical call flow
 //!
 //! ```text
-//! move_mouse / resize_mouse loop ends
+//! shared move/resize interaction ends
 //!   └─► handle_client_monitor_switch(win)
 //!             └─► reads client.geo
 //!                   └─► handle_monitor_switch(win, &rect)

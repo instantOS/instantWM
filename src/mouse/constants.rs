@@ -13,13 +13,8 @@ pub const RESIZE_BORDER_ZONE: i32 = 30;
 /// [`crate::mouse::drag::window_title_mouse_handler`].
 pub const DRAG_THRESHOLD: i32 = 5;
 
-/// If a window's edge is within this many pixels of the monitor edge when
-/// `move_mouse` starts, we assume it is "maximized" and restore the saved
-/// float geometry instead of moving it.
-pub const MAX_UNMAXIMIZE_OFFSET: i32 = 100;
-
 /// Width of the screen-edge zone (in pixels) that triggers an edge-snap
-/// indicator during [`crate::mouse::drag::move_mouse`].
+/// indicator during a window move interaction.
 pub const OVERLAY_ZONE_WIDTH: i32 = 50;
 
 /// Tolerance added around the monitor boundary when validating slop-selected

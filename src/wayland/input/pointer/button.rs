@@ -15,7 +15,6 @@ use crate::wayland::input::focus::focus_managed_target;
 use crate::wm::Wm;
 
 use crate::wayland::input::bar::handle_bar_click;
-use crate::wayland::input::pointer::drag::{hover_resize_drag_begin, hover_resize_drag_finish};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PointerButtonInput {
@@ -150,25 +149,35 @@ fn handle_button_press(
                 state,
                 pos,
                 button.button_code,
+                crate::types::InteractionSource::Pointer,
                 button.root,
                 clean_modifiers,
             );
             pointer_handle.frame(state);
             return true;
         }
-        PointerRegion::Sidebar(target) => {
-            state.dismiss_native_systray_menu();
-            if clean_modifiers == 0
-                && let Some(btn @ MouseButton::Left) = button.wm_button
-            {
-                let mut ctx = wm.ctx();
-                if crate::mouse::sidebar_gesture_begin(&mut ctx, btn, target, button.root) {
-                    pointer_handle.frame(state);
-                    return true;
-                }
-            }
-        }
         PointerRegion::Client(_) | PointerRegion::Root { .. } => {}
+    }
+
+    // The global edge gesture is selected independently from config-binding
+    // regions. Only its actual activation chord is preempted; other buttons
+    // and modified client bindings at the edge retain normal behavior.
+    if clean_modifiers == 0
+        && let Some(btn @ MouseButton::Left) = button.wm_button
+        && let Some(target) = crate::mouse::pointer::sidebar_target_at(&wm.core.model, button.root)
+    {
+        state.dismiss_native_systray_menu();
+        let mut ctx = wm.ctx();
+        if crate::mouse::sidebar_gesture_begin(
+            &mut ctx,
+            btn,
+            crate::types::InteractionSource::Pointer,
+            target,
+            button.root,
+        ) {
+            pointer_handle.frame(state);
+            return true;
+        }
     }
 
     state.dismiss_native_systray_menu();
@@ -204,12 +213,12 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     let Some(btn) = button.wm_button else {
         return false;
     };
-    let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        hover_resize_drag_begin(&mut ctx, button.root, btn)
-    } else {
-        false
-    }
+    crate::mouse::drag::hover_drag_begin(
+        &mut wm.ctx(),
+        button.root,
+        btn,
+        crate::types::InteractionSource::Pointer,
+    )
 }
 
 fn focus_layer_button_target(
@@ -244,74 +253,39 @@ fn handle_button_release(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     button: ButtonPress,
 ) -> bool {
-    // A release belongs to whichever interaction consumed its press. Finish
-    // WM drags even when the pointer has moved over an overlay; ordinary
-    // overlay releases are forwarded by the non-WM-drag path below.
-    if finish_hover_resize_drag(wm, keyboard_handle, button) {
-        return true;
-    }
-
-    if !is_wm_drag_release(wm, button.wm_button) {
+    let was_captured = is_wm_drag_release(wm, button.wm_button);
+    if !was_captured {
         forward_button(state, pointer_handle, button);
     }
-
-    if wm.core.drag.tag.active && button.wm_button == Some(wm.core.drag.tag.button) {
-        let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
-        let mut ctx = wm.ctx();
-        crate::mouse::drag_tag_finish(&mut ctx, mod_state);
-    }
-
-    if wm.core.drag.armed_interaction().is_some()
-        && button.wm_button == wm.core.drag.interaction_button()
-    {
-        let mut ctx = wm.ctx();
-        crate::mouse::title_drag_finish(&mut ctx);
-    }
-
-    if wm.core.drag.sidebar_volume_active()
-        && let Some(btn) = button.wm_button
-    {
+    if let Some(btn) = button.wm_button {
         let occupied = state
             .layer_surface_under_pointer(button.pointer_location)
             .is_some()
             || state.is_pointer_over_overlay(button.pointer_location);
-        let window_at_root = state.logical_window_under_pointer(button.pointer_location);
         let hover_target = (!occupied)
-            .then(|| {
-                crate::mouse::pointer::desktop_sidebar_target_at(
-                    &wm.core.model,
-                    button.root,
-                    window_at_root,
-                )
-            })
+            .then(|| crate::mouse::pointer::sidebar_target_at(&wm.core.model, button.root))
             .flatten();
         let mut ctx = wm.ctx();
-        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, btn, hover_target);
+        let outcome = crate::mouse::interaction::handle(
+            &mut ctx,
+            crate::mouse::interaction::InteractionEvent::pointer_end(
+                button.root,
+                btn,
+                clean_modifier_state(keyboard_handle),
+                hover_target,
+            ),
+        );
+        if outcome.captured() {
+            pointer_handle.frame(state);
+        }
+        return outcome.captured();
     }
-
-    false
-}
-
-fn finish_hover_resize_drag(
-    wm: &mut Wm,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    button: ButtonPress,
-) -> bool {
-    let Some(btn) = button.wm_button else {
-        return false;
-    };
-    let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        hover_resize_drag_finish(&mut ctx, btn, clean_modifier_state(keyboard_handle))
-    } else {
-        false
-    }
+    was_captured
 }
 
 fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
-    (released_btn.is_some() && wm.core.drag.interaction_button() == released_btn)
-        || (wm.core.drag.tag.active && released_btn == Some(wm.core.drag.tag.button))
-        || (released_btn.is_some() && wm.core.drag.sidebar_volume_button() == released_btn)
+    wm.core.drag.captured_source() == Some(crate::types::InteractionSource::Pointer)
+        && wm.core.drag.captured_button() == released_btn
 }
 
 fn consume_pointer_binding(
@@ -335,6 +309,7 @@ fn consume_pointer_binding(
             target,
             window: clicked_win,
             button: btn,
+            source: crate::types::InteractionSource::Pointer,
             root,
             clean_state,
         },

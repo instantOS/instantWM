@@ -3,8 +3,6 @@
 //! This module handles click and drag interactions on window title bars,
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
-use crate::backend::BackendEvent;
-use crate::backend::x11::mouse::resize_mouse_directional;
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
@@ -42,6 +40,7 @@ pub fn title_drag_begin(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
+    source: InteractionSource,
     click_root: Point,
     suppress_click_action: bool,
 ) -> bool {
@@ -74,6 +73,7 @@ pub fn title_drag_begin(
         .arm_title_drag(crate::core_state::ArmedDragParams {
             win,
             button: btn,
+            source,
             start: click_root,
             geometry: win_start_geo,
             restore_geometry: drop_restore_geo,
@@ -122,8 +122,8 @@ fn begin_move_drag(
     }
 }
 
-/// Handle the transition from click to drag on Wayland when the threshold is exceeded.
-fn title_drag_start_wayland(ctx: &mut WmCtx, input: DragInput) -> bool {
+/// Handle the transition from an armed click to an active shared drag.
+fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     let (win, btn, start_point, suppress_click_action) = {
         let Some(drag) = ctx.core().drag_state().armed_interaction() else {
             return false;
@@ -171,20 +171,26 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, input: DragInput) -> bool {
             return true;
         };
 
-        if let WmCtx::Wayland(wl) = ctx {
-            if activate_armed_resize(
-                wl.core.drag_state_mut(),
-                wl.wayland,
+        let activated = match ctx {
+            WmCtx::X11(x11) => activate_armed_resize(
+                x11.core.drag_state_mut(),
+                &x11.x11,
                 dir,
                 warp_point,
                 current_geo,
-            )
-            .is_err()
-            {
-                return false;
-            }
-            WmCtx::Wayland(wl.reborrow()).set_cursor_style(AltCursor::Resize(dir));
+            ),
+            WmCtx::Wayland(wayland) => activate_armed_resize(
+                wayland.core.drag_state_mut(),
+                wayland.wayland,
+                dir,
+                warp_point,
+                current_geo,
+            ),
+        };
+        if activated.is_err() {
+            return false;
         }
+        ctx.set_cursor_style(AltCursor::Resize(dir));
         return true;
     }
 
@@ -229,9 +235,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     // Threshold exceeded — start the drag action.
     let drag = armed.clone();
     let win = drag.win();
-    let btn = drag.button();
     let was_hidden = drag.was_hidden();
-    let is_right_click = btn == MouseButton::Right;
 
     if was_hidden {
         crate::client::show_window(ctx, win);
@@ -239,64 +243,14 @@ pub fn title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     crate::focus::focus(ctx, Some(win));
     ctx.raise_client(win);
 
-    if ctx.is_wayland() {
-        return title_drag_start_wayland(ctx, input);
-    }
-
-    // X11 uses a nested synchronous grab loop. Consume the armed click
-    // interaction before starting the immediate move/resize interaction.
-    let Some(armed) = ctx.core_mut().drag_state_mut().finish_armed() else {
-        return false;
-    };
-
-    if is_right_click {
-        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
-            if !armed.suppress_click_action() {
-                let _ = warp::warp_to_resize_corner(ctx, win, ResizeDirection::BottomRight);
-            }
-            resize_mouse_from_cursor(ctx, win, btn);
-            return true;
-        }
-
-        // The initial title/client drag already crossed the threshold. Promote
-        // now rather than making the user cross a second resize threshold.
-        let direction = if armed.suppress_click_action() {
-            let Some(geo) = ctx.client_geo(win) else {
-                return false;
-            };
-            ResizeDirection::from_hit(geo.size(), geo.local_point(armed.start_point()))
-        } else {
-            ResizeDirection::BottomRight
-        };
-        let Some((_current_geo, _)) = promote_to_floating(
-            ctx,
-            win,
-            FloatingPlacementIntent::PreservePointerAnchor(armed.start_point()),
-        ) else {
-            return false;
-        };
-        let _ = warp::warp_to_resize_corner(ctx, win, direction);
-        if let WmCtx::X11(x11) = ctx {
-            resize_mouse_directional(x11, Some(direction), btn);
-        }
-    } else {
-        let float_restore_geo = armed.drop_restore_geo();
-        let Some((_current_geo, start)) = begin_move_drag(ctx, win, input, armed.start_point())
-        else {
-            return false;
-        };
-        if let WmCtx::X11(x11) = ctx {
-            crate::backend::x11::mouse::move_mouse(x11, btn, start, Some(float_restore_geo));
-        }
-    }
-    true
+    title_drag_start(ctx, input)
 }
 
 /// Finish a title drag interaction (button release without exceeding the
 /// drag threshold).  Performs the click action (focus / hide / zoom).
 ///
 /// Once the drag threshold promotes the interaction to `Active`, the unified
-/// `hover_resize_drag_finish` handles the drop instead.
+/// the shared interaction transport handles the drop instead.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
     let Some(drag) = ctx.core_mut().drag_state_mut().finish_armed() else {
         return;
@@ -332,18 +286,18 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// Left-click / drag handler for a window title bar entry.
 ///
 /// Click: hidden → show+focus; focused → hide; otherwise → focus.
-/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`crate::backend::x11::mouse::move_mouse`].
+/// Drag > [`DRAG_THRESHOLD`]: show, focus, and promote to the shared move state.
 /// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
 ///
-/// On Wayland, starts the async state machine and returns immediately.
-/// On X11, runs a synchronous grab loop.
+/// Input adapters own capture; this function only arms shared interaction state.
 pub fn window_title_mouse_handler(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
+    source: InteractionSource,
     click_root: Point,
 ) {
-    thresholded_client_drag(ctx, win, btn, click_root, false);
+    thresholded_client_drag(ctx, win, btn, source, click_root, false);
 }
 
 /// Start a client move/resize that remains a click until the pointer crosses
@@ -353,38 +307,9 @@ pub fn thresholded_client_drag(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
+    source: InteractionSource,
     click_root: Point,
     suppress_click_action: bool,
 ) {
-    if !title_drag_begin(ctx, win, btn, click_root, suppress_click_action) {
-        return;
-    }
-
-    match ctx {
-        WmCtx::X11(ctx_x11) => {
-            let cursor = if btn == MouseButton::Right {
-                AltCursor::Move
-            } else {
-                AltCursor::Default
-            };
-            crate::backend::x11::grab::mouse_drag_loop(
-                ctx_x11,
-                btn,
-                cursor,
-                false,
-                |ctx, event| {
-                    if let BackendEvent::Motion { root, .. } = event {
-                        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                        if title_drag_motion(&mut wm_ctx, DragInput::Pointer(*root)) {
-                            return false;
-                        }
-                    }
-                    true
-                },
-            );
-            let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-            title_drag_finish(&mut wm_ctx);
-        }
-        WmCtx::Wayland(_) => {}
-    }
+    let _ = title_drag_begin(ctx, win, btn, source, click_root, suppress_click_action);
 }

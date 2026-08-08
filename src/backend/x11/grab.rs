@@ -1,9 +1,7 @@
 //! X11 pointer-grab helpers.
 //!
-//! This module handles active, modal pointer grabs ([`grab_pointer`], [`ungrab`])
-//! used during interactive move/resize loops.  Every drag loop in
-//! `drag.rs` and `resize.rs` calls [`grab_pointer`] at the start and
-//! [`ungrab`] when it exits.
+//! This module adapts X11's modal pointer grab to the shared WM interaction
+//! transport. Gesture recognition and behavior do not live here.
 //!
 //! # Typical drag loop skeleton
 //!
@@ -194,15 +192,22 @@ where
 /// If `with_keys` is true, also captures KeyPress events.
 /// The closure `on_event` returns `true` to continue the loop, `false` to break.
 /// Events are converted to [`BackendEvent`] so callers are backend-agnostic.
-/// Returns the modifier mask from the matching button release, when one was
-/// observed. This is the authoritative state for modifier-sensitive drops.
+/// Returns the root coordinates and modifier mask from the matching button
+/// release. Both values are already present in the event, so callers never
+/// need a synchronous `QueryPointer` round trip to finish an interaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct X11DragRelease {
+    pub root: Point,
+    pub modifiers: u32,
+}
+
 pub fn mouse_drag_loop<F>(
     ctx: &mut WmCtxX11<'_>,
     btn: MouseButton,
     cursor: AltCursor,
     with_keys: bool,
     mut on_event: F,
-) -> Option<u32>
+) -> Option<X11DragRelease>
 where
     F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
 {
@@ -218,7 +223,7 @@ where
 
     pump_deferred_work(ctx);
 
-    let mut release_modifiers = None;
+    let mut release = None;
     // Wait for at least one event (blocking) each iteration.
     while let Some(mut event) = wait_event(&ctx.x11) {
         // If it's a motion event, compress it by eating all subsequent pending
@@ -248,7 +253,10 @@ where
                             {
                                 pump_deferred_work(ctx);
                                 ungrab(&ctx.x11, ctx.x11_runtime);
-                                return Some(u16::from(br.state) as u32);
+                                return Some(X11DragRelease {
+                                    root: Point::new(br.root_x as i32, br.root_y as i32),
+                                    modifiers: u16::from(br.state) as u32,
+                                });
                             }
                             if !call_on_event(&mut on_event, ctx, &next_evt) {
                                 pump_deferred_work(ctx);
@@ -273,7 +281,10 @@ where
         let should_continue = match &event {
             x11rb::protocol::Event::ButtonRelease(br) => {
                 if br.detail == btn.to_x11_detail() {
-                    release_modifiers = Some(u16::from(br.state) as u32);
+                    release = Some(X11DragRelease {
+                        root: Point::new(br.root_x as i32, br.root_y as i32),
+                        modifiers: u16::from(br.state) as u32,
+                    });
                     false
                 } else {
                     call_on_event(&mut on_event, ctx, &event)
@@ -291,5 +302,72 @@ where
 
     pump_deferred_work(ctx);
     ungrab(&ctx.x11, ctx.x11_runtime);
-    release_modifiers
+    release
+}
+
+/// Drive any compositor-owned interaction through the shared transport.
+///
+/// X11 alone needs a native pointer grab and a synchronous adapter. Gesture
+/// semantics remain in `mouse::interaction`, alongside Wayland pointer/touch.
+pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
+    if ctx.core.drag_state().captured_button() != Some(btn)
+        || ctx.core.drag_state().captured_source() != Some(crate::types::InteractionSource::Pointer)
+    {
+        return false;
+    }
+    let cursor = if ctx.core.drag_state().sidebar_volume_active() {
+        AltCursor::VerticalAdjust
+    } else if let Some(drag) = ctx
+        .core
+        .drag_state()
+        .active_interaction()
+        .or_else(|| ctx.core.drag_state().armed_interaction())
+    {
+        match drag.drag_type() {
+            crate::core_state::DragType::Move if btn == MouseButton::Right => AltCursor::Move,
+            crate::core_state::DragType::Move => AltCursor::Default,
+            crate::core_state::DragType::Resize(dir)
+            | crate::core_state::DragType::TreeResize(dir) => AltCursor::Resize(dir),
+        }
+    } else {
+        AltCursor::Default
+    };
+
+    let release = mouse_drag_loop(ctx, btn, cursor, false, |ctx, event| {
+        if let BackendEvent::Motion { root, modifiers } = event {
+            let _ = crate::mouse::interaction::handle(
+                &mut crate::contexts::WmCtx::X11(ctx.reborrow()),
+                crate::mouse::interaction::InteractionEvent::pointer_update(*root, *modifiers),
+            );
+        }
+        true
+    });
+
+    let Some(release) = release else {
+        let _ = crate::mouse::interaction::handle(
+            &mut crate::contexts::WmCtx::X11(ctx.reborrow()),
+            crate::mouse::interaction::InteractionEvent {
+                source: crate::types::InteractionSource::Pointer,
+                phase: crate::mouse::interaction::InteractionPhase::Cancel {
+                    reason: crate::core_state::DragCancelReason::InputCaptureLost,
+                },
+                root: Default::default(),
+                modifiers: 0,
+                sidebar_hover: None,
+            },
+        );
+        return true;
+    };
+
+    let sidebar_hover = crate::mouse::pointer::sidebar_target_at(ctx.core.model(), release.root);
+    let _ = crate::mouse::interaction::handle(
+        &mut crate::contexts::WmCtx::X11(ctx.reborrow()),
+        crate::mouse::interaction::InteractionEvent::pointer_end(
+            release.root,
+            btn,
+            release.modifiers,
+            sidebar_hover,
+        ),
+    );
+    true
 }

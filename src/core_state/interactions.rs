@@ -12,6 +12,35 @@ pub enum DragType {
     TreeResize(ResizeDirection),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ResizePolicy {
+    #[default]
+    Free,
+    PreserveAspect,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ActiveResizeParams {
+    pub win: WindowId,
+    pub button: MouseButton,
+    pub source: InteractionSource,
+    pub direction: ResizeDirection,
+    pub start: Point,
+    pub geometry: Rect,
+    pub policy: ResizePolicy,
+}
+
+#[derive(Debug, Clone)]
+pub struct TreeResizeParams {
+    pub win: WindowId,
+    pub button: MouseButton,
+    pub source: InteractionSource,
+    pub direction: ResizeDirection,
+    pub start: Point,
+    pub geometry: Rect,
+    pub origin: crate::layouts::tree::LayoutTree,
+}
+
 /// Operations to which an armed title-bar interaction may transition.
 /// Tree resizing is deliberately absent because it must start with an
 /// authoritative layout-tree snapshot.
@@ -61,6 +90,7 @@ pub enum DragOperationRef<'a> {
 pub struct DragInteraction {
     win: WindowId,
     button: MouseButton,
+    source: InteractionSource,
     operation: DragOperation,
     win_start_geo: Rect,
     start_point: Point,
@@ -73,12 +103,14 @@ pub struct DragInteraction {
     was_focused: bool,
     was_hidden: bool,
     suppress_click_action: bool,
+    resize_policy: ResizePolicy,
 }
 
 impl DragInteraction {
     fn immediate(
         win: WindowId,
         button: MouseButton,
+        source: InteractionSource,
         operation: DragOperation,
         start: Point,
         geo: Rect,
@@ -86,6 +118,7 @@ impl DragInteraction {
         Self {
             win,
             button,
+            source,
             operation,
             start_point: start,
             win_start_geo: geo,
@@ -94,6 +127,7 @@ impl DragInteraction {
             was_focused: false,
             was_hidden: false,
             suppress_click_action: false,
+            resize_policy: ResizePolicy::Free,
         }
     }
 
@@ -101,6 +135,7 @@ impl DragInteraction {
         Self {
             win: params.win,
             button: params.button,
+            source: params.source,
             operation: DragOperation::Move,
             start_point: params.start,
             win_start_geo: params.geometry,
@@ -109,6 +144,7 @@ impl DragInteraction {
             was_focused: params.was_focused,
             was_hidden: params.was_hidden,
             suppress_click_action: params.suppress_click_action,
+            resize_policy: ResizePolicy::Free,
         }
     }
 
@@ -117,6 +153,9 @@ impl DragInteraction {
     }
     pub fn button(&self) -> MouseButton {
         self.button
+    }
+    pub fn source(&self) -> InteractionSource {
+        self.source
     }
     pub fn drag_type(&self) -> DragType {
         self.operation.kind()
@@ -152,6 +191,13 @@ impl DragInteraction {
     }
     pub fn suppress_click_action(&self) -> bool {
         self.suppress_click_action
+    }
+    pub fn resize_policy(&self) -> ResizePolicy {
+        self.resize_policy
+    }
+
+    fn set_resize_policy(&mut self, policy: ResizePolicy) {
+        self.resize_policy = policy;
     }
 
     fn record_motion(&mut self, point: Point) {
@@ -204,6 +250,7 @@ pub enum DragCancelReason {
     WindowDestroyed,
     SessionLocked,
     InputDeviceRemoved,
+    InputCaptureLost,
     TouchCancelled,
 }
 
@@ -211,6 +258,7 @@ pub enum DragCancelReason {
 pub struct ArmedDragParams {
     pub win: WindowId,
     pub button: MouseButton,
+    pub source: InteractionSource,
     pub start: Point,
     pub geometry: Rect,
     pub restore_geometry: Rect,
@@ -259,20 +307,30 @@ pub struct TagDragState {
     pub last_motion: Option<(Point, u32)>,
     /// The mouse button that started the drag.
     pub button: MouseButton,
+    /// Input stream that owns this interaction.
+    pub source: Option<InteractionSource>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SidebarVolumeDrag {
     button: MouseButton,
+    source: InteractionSource,
     monitor_id: MonitorId,
     anchor_y: i32,
     threshold: i32,
 }
 
 impl SidebarVolumeDrag {
-    pub fn new(button: MouseButton, monitor_id: MonitorId, anchor_y: i32, threshold: i32) -> Self {
+    pub fn new(
+        button: MouseButton,
+        source: InteractionSource,
+        monitor_id: MonitorId,
+        anchor_y: i32,
+        threshold: i32,
+    ) -> Self {
         Self {
             button,
+            source,
             monitor_id,
             anchor_y,
             threshold: threshold.max(1),
@@ -281,6 +339,10 @@ impl SidebarVolumeDrag {
 
     pub fn button(self) -> MouseButton {
         self.button
+    }
+
+    pub fn source(self) -> InteractionSource {
+        self.source
     }
 
     pub fn monitor_id(self) -> MonitorId {
@@ -341,7 +403,7 @@ impl HotCornerState {
 #[cfg(test)]
 mod pointer_interaction_tests {
     use super::{DragState, HotCornerState, SidebarVolumeDrag};
-    use crate::types::{MonitorId, MouseButton};
+    use crate::types::{InteractionSource, MonitorId, MouseButton};
 
     #[test]
     fn hot_corner_fires_once_until_pointer_leaves_keep_zone() {
@@ -368,7 +430,13 @@ mod pointer_interaction_tests {
 
     #[test]
     fn volume_drag_preserves_distance_across_compressed_motion() {
-        let mut drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+        let mut drag = SidebarVolumeDrag::new(
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            MonitorId::from_raw(3),
+            500,
+            30,
+        );
 
         assert_eq!(drag.update(395), 3);
         assert_eq!(drag.update(381), 0);
@@ -377,7 +445,13 @@ mod pointer_interaction_tests {
 
     #[test]
     fn volume_drag_handles_direction_reversal_with_residual_distance() {
-        let mut drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+        let mut drag = SidebarVolumeDrag::new(
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            MonitorId::from_raw(3),
+            500,
+            30,
+        );
 
         assert_eq!(drag.update(475), 0);
         assert_eq!(drag.update(510), 0);
@@ -387,7 +461,13 @@ mod pointer_interaction_tests {
 
     #[test]
     fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
-        let drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+        let drag = SidebarVolumeDrag::new(
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            MonitorId::from_raw(3),
+            500,
+            30,
+        );
         let mut interactions = DragState::default();
         interactions.tag.active = true;
         assert!(interactions.begin_sidebar_volume(drag).is_err());
@@ -466,6 +546,21 @@ impl DragState {
             .map(DragInteraction::button)
     }
 
+    /// Button whose complete press/motion/release sequence is WM-owned.
+    pub fn captured_button(&self) -> Option<MouseButton> {
+        self.interaction_button()
+            .or_else(|| self.tag.active.then_some(self.tag.button))
+            .or_else(|| self.sidebar_volume_button())
+    }
+
+    pub fn captured_source(&self) -> Option<InteractionSource> {
+        self.active_interaction()
+            .or_else(|| self.armed_interaction())
+            .map(DragInteraction::source)
+            .or_else(|| self.tag.active.then_some(self.tag.source).flatten())
+            .or_else(|| self.sidebar_volume.map(SidebarVolumeDrag::source))
+    }
+
     pub fn sidebar_volume_active(&self) -> bool {
         self.sidebar_volume.is_some()
     }
@@ -509,12 +604,14 @@ impl DragState {
         &mut self,
         win: WindowId,
         button: MouseButton,
+        source: InteractionSource,
         start: Point,
         geo: Rect,
     ) -> Result<(), DragAlreadyActive> {
         self.begin_active(DragInteraction::immediate(
             win,
             button,
+            source,
             DragOperation::Move,
             start,
             geo,
@@ -525,42 +622,54 @@ impl DragState {
         &mut self,
         win: WindowId,
         button: MouseButton,
+        source: InteractionSource,
         dir: ResizeDirection,
         start: Point,
         geo: Rect,
     ) -> Result<(), DragAlreadyActive> {
-        self.begin_active(DragInteraction::immediate(
+        self.begin_resize_with_policy(ActiveResizeParams {
             win,
             button,
-            DragOperation::Resize(dir),
+            source,
+            direction: dir,
             start,
-            geo,
-        ))
+            geometry: geo,
+            policy: ResizePolicy::Free,
+        })
     }
 
-    pub fn begin_tree_resize(
+    pub fn begin_resize_with_policy(
         &mut self,
-        win: WindowId,
-        button: MouseButton,
-        dir: ResizeDirection,
-        start: Point,
-        geo: Rect,
-        origin: crate::layouts::tree::LayoutTree,
+        params: ActiveResizeParams,
     ) -> Result<(), DragAlreadyActive> {
+        let mut drag = DragInteraction::immediate(
+            params.win,
+            params.button,
+            params.source,
+            DragOperation::Resize(params.direction),
+            params.start,
+            params.geometry,
+        );
+        drag.set_resize_policy(params.policy);
+        self.begin_active(drag)
+    }
+
+    pub fn begin_tree_resize(&mut self, params: TreeResizeParams) -> Result<(), DragAlreadyActive> {
         self.begin_active(DragInteraction::immediate(
-            win,
-            button,
+            params.win,
+            params.button,
+            params.source,
             DragOperation::TreeResize {
-                direction: dir,
-                origin,
+                direction: params.direction,
+                origin: params.origin,
             },
-            start,
-            geo,
+            params.start,
+            params.geometry,
         ))
     }
 
     fn begin_active(&mut self, drag: DragInteraction) -> Result<(), DragAlreadyActive> {
-        if !self.interactive.is_idle() {
+        if self.any_drag_active() {
             return Err(DragAlreadyActive);
         }
         self.interactive = InteractiveDrag::Active(drag);
@@ -568,7 +677,7 @@ impl DragState {
     }
 
     pub fn arm_title_drag(&mut self, params: ArmedDragParams) -> Result<(), DragAlreadyActive> {
-        if !self.interactive.is_idle() {
+        if self.any_drag_active() {
             return Err(DragAlreadyActive);
         }
         self.interactive = InteractiveDrag::Armed(DragInteraction::armed(params));

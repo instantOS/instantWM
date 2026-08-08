@@ -19,6 +19,8 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let buttons_clone = ctx.core.config().bindings.buttons.clone();
     let mut selmon_id = ctx.core.model().selected_monitor_id();
     let focusfollowsmouse = ctx.core.behavior().focus_follows_mouse.is_enabled();
+    let root = Point::new(e.root_x as i32, e.root_y as i32);
+    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
 
     if let Some(clicked_mon) = ctx
         .core
@@ -31,6 +33,40 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     {
         selmon_id = clicked_mon;
         crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), clicked_mon);
+    }
+
+    if let Some(monitor_id) = ctx
+        .core
+        .model()
+        .monitors
+        .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
+    {
+        selmon_id = monitor_id;
+        crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+    }
+
+    if clean_state == 0
+        && let Some(btn @ MouseButton::Left) = MouseButton::from_x11_detail(e.detail)
+        && let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root)
+    {
+        // Client passive grabs are synchronous. Release that freeze without
+        // replaying the press before acquiring the interaction's active grab.
+        let _ = ctx
+            .x11
+            .conn
+            .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
+        let _ = ctx.x11.conn.flush();
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        if crate::mouse::sidebar_gesture_begin(
+            &mut wm_ctx,
+            btn,
+            crate::types::InteractionSource::Pointer,
+            target,
+            root,
+        ) {
+            crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
+        }
+        return;
     }
 
     let target_window = ctx
@@ -60,19 +96,9 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         crate::focus::raise_floating_on_client_click(&mut WmCtx::X11(ctx.reborrow()), win, button);
     }
 
-    let root = Point::new(e.root_x as i32, e.root_y as i32);
-    if let Some(monitor_id) = ctx
-        .core
-        .model()
-        .monitors
-        .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
-    {
-        crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
-    }
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
     let button_target = region.binding_target();
 
-    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
     if button_target == Some(ButtonTarget::Bar(BarPosition::StatusText)) {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         crate::bar::handle_status_text_click(
@@ -115,15 +141,6 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    if clean_state == 0
-        && let crate::mouse::pointer::PointerRegion::Sidebar(target) = region
-        && let Some(btn @ MouseButton::Left) = MouseButton::from_x11_detail(e.detail)
-    {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        crate::mouse::sidebar_gesture_begin(&mut wm_ctx, btn, target, root);
-        return;
-    }
-
     if let (Some(btn), Some(button_target)) =
         (MouseButton::from_x11_detail(e.detail), button_target)
     {
@@ -133,12 +150,14 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 target: button_target,
                 window: target_window,
                 button: btn,
+                source: crate::types::InteractionSource::Pointer,
                 root: crate::types::Point::new(e.root_x as i32, e.root_y as i32),
                 clean_state,
             },
             numlockmask,
             crate::mouse::bindings::MatchPolicy::All,
         );
+        let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
     }
 }
 
@@ -408,7 +427,12 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 
     if root.y >= monitor_y + bar_height {
-        if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root) {
+        // Resolve the monitor-edge gesture from event coordinates before
+        // querying X for the child window. Sidebar hover does not need that
+        // synchronous server round trip.
+        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root, false)
+            .affects_pointer_handling()
+        {
             return;
         }
         let hovered = crate::backend::x11::mouse::cursor_client_win(
@@ -416,9 +440,7 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
             ctx.x11.conn,
             ctx.x11_runtime.root,
         );
-        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root, hovered)
-            .affects_pointer_handling()
-        {
+        if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root) {
             return;
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));

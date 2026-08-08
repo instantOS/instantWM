@@ -18,6 +18,7 @@ pub fn handle_bar_click(
     state: &mut WaylandState,
     pos: BarPosition,
     button_code: u32,
+    source: InteractionSource,
     root: Point,
     clean_state: u32,
 ) {
@@ -96,7 +97,7 @@ pub fn handle_bar_click(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    run_bar_bindings(wayland_ctx, pos, button, root, clean_state);
+    run_bar_bindings(wayland_ctx, pos, button, source, root, clean_state);
 }
 
 /// Close the bar-hosted DBusMenu, returning whether a menu was open.
@@ -123,13 +124,21 @@ pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point,
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    run_bar_bindings(wayland_ctx, pos, button, root, clean_state);
+    run_bar_bindings(
+        wayland_ctx,
+        pos,
+        button,
+        InteractionSource::Pointer,
+        root,
+        clean_state,
+    );
 }
 
 fn run_bar_bindings(
     ctx: &mut WmCtxWayland<'_>,
     pos: BarPosition,
     btn: MouseButton,
+    source: InteractionSource,
     root: Point,
     clean_state: u32,
 ) {
@@ -140,6 +149,7 @@ fn run_bar_bindings(
             target: ButtonTarget::Bar(pos),
             window: None,
             button: btn,
+            source,
             root,
             clean_state,
         },

@@ -408,6 +408,7 @@ fn handle_begin_move(wm: &mut Wm, state: &WaylandState, win: crate::types::Windo
         &mut ctx,
         win,
         crate::types::MouseButton::Left,
+        crate::types::InteractionSource::Pointer,
         root,
         true,
     );
@@ -813,16 +814,16 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
 
 fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelReason) {
     let mut ctx = wm.ctx();
-    let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx else {
-        return;
-    };
-    if crate::mouse::drag::lifecycle::cancel(wl_ctx.core.drag_state_mut(), wl_ctx.wayland, reason)
-        .is_some()
-    {
-        ctx.set_cursor_style(crate::types::AltCursor::Default);
-        ctx.update_layout_preview(None);
-        crate::mouse::drag::clear_bar_hover(&mut ctx);
-    }
+    let _ = crate::mouse::interaction::handle(
+        &mut ctx,
+        crate::mouse::interaction::InteractionEvent {
+            source: crate::mouse::interaction::InteractionSource::Pointer,
+            phase: crate::mouse::interaction::InteractionPhase::Cancel { reason },
+            root: Default::default(),
+            modifiers: 0,
+            sidebar_hover: None,
+        },
+    );
 }
 
 fn handle_activate_window(wm: &mut Wm, win: crate::types::WindowId) {
@@ -860,9 +861,11 @@ fn handle_begin_resize(
             crate::mouse::drag::lifecycle::ResizeDragParams {
                 win,
                 button: crate::types::MouseButton::Left,
+                source: crate::types::InteractionSource::Pointer,
                 direction: dir,
                 start,
                 geometry,
+                policy: crate::core_state::ResizePolicy::Free,
             },
         )
         .is_err()

@@ -6,26 +6,19 @@
 
 use crate::backend::InteractiveResizeOps;
 use crate::core_state::{
-    ArmedDragType, DragAlreadyActive, DragCancelReason, DragInteraction, DragNotArmed, DragState,
-    DragType,
+    ActiveResizeParams, ArmedDragType, DragAlreadyActive, DragCancelReason, DragInteraction,
+    DragNotArmed, DragState, DragType,
 };
 use crate::types::{MouseButton, Point, Rect, ResizeDirection, WindowId};
 
-#[derive(Debug, Clone, Copy)]
-pub struct ResizeDragParams {
-    pub win: WindowId,
-    pub button: MouseButton,
-    pub direction: ResizeDirection,
-    pub start: Point,
-    pub geometry: Rect,
-}
+pub type ResizeDragParams = ActiveResizeParams;
 
 pub fn begin_resize(
     interactions: &mut DragState,
     protocol: &dyn InteractiveResizeOps,
     params: ResizeDragParams,
 ) -> Result<(), DragAlreadyActive> {
-    if !interactions.interactive().is_idle() {
+    if interactions.any_drag_active() {
         return Err(DragAlreadyActive);
     }
 
@@ -34,13 +27,7 @@ pub fn begin_resize(
     // resizing state before the first size configure can be emitted.
     protocol.begin_interactive_resize(params.win);
     interactions
-        .begin_resize(
-            params.win,
-            params.button,
-            params.direction,
-            params.start,
-            params.geometry,
-        )
+        .begin_resize_with_policy(params)
         .expect("validated idle interaction must accept resize");
     Ok(())
 }
@@ -114,6 +101,7 @@ mod tests {
 
     use super::*;
     use crate::core_state::ArmedDragParams;
+    use crate::types::InteractionSource;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum ProtocolEvent {
@@ -149,9 +137,11 @@ mod tests {
         ResizeDragParams {
             win,
             button: MouseButton::Right,
+            source: InteractionSource::Pointer,
             direction: ResizeDirection::BottomRight,
             start: Point::new(810, 620),
             geometry: geometry(),
+            policy: crate::core_state::ResizePolicy::Free,
         }
     }
 
@@ -195,11 +185,31 @@ mod tests {
     }
 
     #[test]
+    fn resize_rejects_non_window_interaction_without_protocol_side_effects() {
+        let protocol = RecordingProtocol::default();
+        let mut interactions = DragState::default();
+        interactions.tag.active = true;
+
+        assert_eq!(
+            begin_resize(&mut interactions, &protocol, resize_params(WindowId(7)),),
+            Err(DragAlreadyActive)
+        );
+        assert!(protocol.events.borrow().is_empty());
+        assert!(interactions.tag.active);
+    }
+
+    #[test]
     fn invalid_armed_activation_preserves_an_existing_active_drag() {
         let win = WindowId(7);
         let mut interactions = DragState::default();
         interactions
-            .begin_move(win, MouseButton::Left, Point::new(100, 100), geometry())
+            .begin_move(
+                win,
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(100, 100),
+                geometry(),
+            )
             .unwrap();
 
         assert_eq!(
@@ -242,14 +252,15 @@ mod tests {
         );
 
         interactions
-            .begin_tree_resize(
+            .begin_tree_resize(crate::core_state::TreeResizeParams {
                 win,
-                MouseButton::Right,
-                ResizeDirection::Right,
-                Point::new(100, 100),
-                geometry(),
-                tree,
-            )
+                button: MouseButton::Right,
+                source: InteractionSource::Pointer,
+                direction: ResizeDirection::Right,
+                start: Point::new(100, 100),
+                geometry: geometry(),
+                origin: tree,
+            })
             .unwrap();
         let active = interactions.active_interaction().unwrap();
         assert_eq!(
@@ -271,7 +282,13 @@ mod tests {
         let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
         interactions
-            .begin_move(win, MouseButton::Left, Point::new(100, 100), geometry())
+            .begin_move(
+                win,
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(100, 100),
+                geometry(),
+            )
             .unwrap();
 
         let finished = finish(&mut interactions, &protocol, MouseButton::Left).unwrap();
@@ -289,6 +306,7 @@ mod tests {
             .arm_title_drag(ArmedDragParams {
                 win,
                 button: MouseButton::Right,
+                source: InteractionSource::Pointer,
                 start: Point::new(100, 100),
                 geometry: geometry(),
                 restore_geometry: geometry(),

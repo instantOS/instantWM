@@ -1,8 +1,7 @@
 //! Click and drag interactions for tag indicators in the bar.
 
-use crate::backend::BackendEvent;
 use crate::config::{CONTROL, MOD1};
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::types::*;
 
@@ -68,8 +67,12 @@ pub fn drag_tag_begin(
     ctx: &mut WmCtx,
     bar_pos: BarPosition,
     btn: MouseButton,
+    source: InteractionSource,
     start: Point,
 ) -> bool {
+    if ctx.core().drag_state().any_drag_active() {
+        return false;
+    }
     let BarPosition::Tag(tag_idx) = bar_pos else {
         return false;
     };
@@ -87,6 +90,7 @@ pub fn drag_tag_begin(
         cursor_on_bar: true,
         last_motion: Some((start, 0)),
         button: btn,
+        source: Some(source),
     };
     true
 }
@@ -197,40 +201,6 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
         ctx.set_cursor_style(AltCursor::Default);
     }
     ctx.request_bar_update();
-}
-
-/// X11's synchronous wrapper around the shared tag interaction state machine.
-pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, start: Point) {
-    if !{
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        drag_tag_begin(&mut wm_ctx, bar_pos, btn, start)
-    } {
-        return;
-    }
-
-    let release_modifiers = crate::backend::x11::grab::mouse_drag_loop(
-        ctx,
-        btn,
-        AltCursor::Default,
-        false,
-        |ctx, event| {
-            if let BackendEvent::Motion { root, modifiers } = event {
-                ctx.core.drag_state_mut().tag.last_motion = Some((*root, *modifiers));
-                return drag_tag_motion(&mut WmCtx::X11(ctx.reborrow()), *root);
-            }
-            true
-        },
-    )
-    .or_else(|| {
-        ctx.core
-            .drag_state()
-            .tag
-            .last_motion
-            .map(|(_, modifiers)| modifiers)
-    })
-    .unwrap_or(0);
-
-    drag_tag_finish(&mut WmCtx::X11(ctx.reborrow()), release_modifiers);
 }
 
 #[cfg(test)]

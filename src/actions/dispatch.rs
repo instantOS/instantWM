@@ -5,7 +5,7 @@ use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
 };
 use crate::model::WmModel;
-use crate::mouse::{drag_tag, resize_aspect_mouse, window_title_mouse_handler};
+use crate::mouse::{resize_aspect_mouse, window_title_mouse_handler};
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
 
@@ -87,7 +87,7 @@ pub fn execute_button_action(
             let Some(crate::types::BarPosition::WinTitle(win)) = arg.bar_position() else {
                 return;
             };
-            window_title_mouse_handler(ctx, win, arg.btn, arg.root);
+            window_title_mouse_handler(ctx, win, arg.btn, arg.source, arg.root);
         }
         ButtonAction::CloseClickedTitleWindow => {
             let Some(crate::types::BarPosition::WinTitle(win)) = arg.bar_position() else {
@@ -95,18 +95,11 @@ pub fn execute_button_action(
             };
             close_win(ctx, win);
         }
-        ButtonAction::DragTagBegin => match ctx {
-            WmCtx::X11(ctx_x11) => {
-                if let Some(pos) = arg.bar_position() {
-                    drag_tag(ctx_x11, pos, arg.btn, arg.root);
-                }
+        ButtonAction::DragTagBegin => {
+            if let Some(pos) = arg.bar_position() {
+                let _ = crate::mouse::drag::drag_tag_begin(ctx, pos, arg.btn, arg.source, arg.root);
             }
-            WmCtx::Wayland(_) => {
-                if let Some(pos) = arg.bar_position() {
-                    let _ = crate::mouse::drag::drag_tag_begin(ctx, pos, arg.btn, arg.root);
-                }
-            }
-        },
+        }
         ButtonAction::ToggleClickedViewTag => {
             if let Some(crate::types::BarPosition::Tag(idx)) = arg.bar_position() {
                 crate::tags::view::toggle_view_tag(ctx, idx);
@@ -129,13 +122,15 @@ pub fn execute_button_action(
         ButtonAction::ClientMoveDrag => {
             if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::focus::focus(ctx, Some(win));
-                crate::mouse::drag::thresholded_client_drag(ctx, win, arg.btn, arg.root, true);
+                crate::mouse::drag::thresholded_client_drag(
+                    ctx, win, arg.btn, arg.source, arg.root, true,
+                );
             }
         }
         ButtonAction::ResizeSelectedAspect => {
             if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::focus::focus(ctx, Some(win));
-                resize_aspect_mouse(ctx, win, arg.btn);
+                resize_aspect_mouse(ctx, win, arg.btn, arg.source);
             }
         }
         ButtonAction::KillSelectedClient => {
@@ -182,7 +177,9 @@ pub fn execute_button_action(
             if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::focus::select_monitor_for_client(ctx, win);
                 crate::focus::focus(ctx, Some(win));
-                crate::mouse::drag::thresholded_client_drag(ctx, win, arg.btn, arg.root, true);
+                crate::mouse::drag::thresholded_client_drag(
+                    ctx, win, arg.btn, arg.source, arg.root, true,
+                );
             }
         }
     }

@@ -16,7 +16,7 @@ use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wayland::input::bar::update_bar_hit_state;
 use crate::wayland::input::pointer::constraints::{ActivePointerConstraint, activate_under};
-use crate::wayland::input::pointer::drag::{active_drag_window, hover_resize_drag_motion};
+use crate::wayland::input::pointer::drag::active_drag_window;
 use crate::wm::Wm;
 
 fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
@@ -211,7 +211,13 @@ mod tests {
         });
         wm.core
             .drag
-            .begin_move(win, MouseButton::Left, RootPoint::new(200, 200), geo)
+            .begin_move(
+                win,
+                MouseButton::Left,
+                crate::types::InteractionSource::Pointer,
+                RootPoint::new(200, 200),
+                geo,
+            )
             .unwrap();
         let pointer = state.seat.get_pointer().unwrap();
         let keyboard = state.seat.get_keyboard().unwrap();
@@ -553,14 +559,28 @@ fn dispatch_pointer_motion(
         return;
     }
 
-    // A desktop sidebar offer suppresses ordinary hover/focus policy, but it
+    // A global sidebar offer suppresses ordinary hover/focus policy, but it
     // must not consume the motion event: Smithay's pointer position is the
     // protocol authority used by constraints, buttons, and cursor rendering.
     let sidebar_offer_active = if !wm.core.drag.any_drag_active() {
         let ctx = wm.ctx();
         if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+            // Layer/overlay hit testing is substantially richer than the
+            // monitor-rectangle sidebar test. Only pay for it inside the edge
+            // strip; ordinary pointer motion must not gain another scene walk.
+            let in_sidebar =
+                crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root).is_some();
+            let blocked_by_compositor_ui = in_sidebar
+                && (state
+                    .layer_surface_under_pointer(pointer_location)
+                    .is_some()
+                    || state.is_pointer_over_overlay(pointer_location));
             matches!(
-                update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root, hovered_win,),
+                update_sidebar_offer_at(
+                    &mut WmCtx::Wayland(ctx.reborrow()),
+                    root,
+                    blocked_by_compositor_ui,
+                ),
                 crate::mouse::SidebarOfferUpdate::Active
             )
         } else {
@@ -674,10 +694,14 @@ fn handle_resize_drag_motion(
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
     let handled = if update_active_drag {
-        hover_resize_drag_motion(
-            ctx,
-            RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
+        crate::mouse::interaction::handle(
+            &mut WmCtx::Wayland(ctx.reborrow()),
+            crate::mouse::interaction::InteractionEvent::pointer_update(
+                RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
+                0,
+            ),
         )
+        .captured()
     } else {
         ctx.core.drag_state().active_interaction().is_some()
     };
@@ -826,14 +850,9 @@ fn handle_wm_drag_motion(
     root: RootPoint,
 ) {
     let mut ctx = wm.ctx();
-    if ctx.core().drag_state().tag.active && !crate::mouse::drag_tag_motion(&mut ctx, root) {
-        let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
-        crate::mouse::drag_tag_finish(&mut ctx, mod_state);
-    }
-    if ctx.core().drag_state().armed_interaction().is_some() {
-        crate::mouse::title_drag_motion(&mut ctx, crate::mouse::DragInput::Pointer(root));
-    }
-    if ctx.core().drag_state().sidebar_volume_active() {
-        crate::mouse::update_sidebar_gesture(&mut ctx, root.y);
-    }
+    let modifiers = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+    let _ = crate::mouse::interaction::handle(
+        &mut ctx,
+        crate::mouse::interaction::InteractionEvent::pointer_update(root, modifiers),
+    );
 }

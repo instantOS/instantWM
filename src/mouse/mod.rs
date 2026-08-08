@@ -9,40 +9,32 @@
 //!   - [`drag::tag`] — tag bar drag operations
 //!   - [`drag::title`] — title bar click/drag
 //!   - [`drag::gesture`] — root-window gestures
-//! - [`resize`]     — resize loops: corner resize, aspect resize, hover-resize
+//! - [`interaction`] — normalized pointer/touch update, end, and cancel events
+//! - [`resize`]     — shared corner, aspect, and hover-resize policy
 //! - [`slop`]       — slop-based `draw_window`, geometry validation, `apply_window_resize`
 //! - [`monitor`]    — monitor-crossing detection after a drag/resize
 //!
 //! # Typical call flow
 //!
 //! ```text
-//! X11 ButtonPress event
-//!   └─► events.rs dispatches to one of:
-//!         ├─ move_mouse                  (drag module)
-//!         ├─ resize_mouse                (resize module)
-//!         ├─ window_title_mouse_handler  (drag module)
-//!         ├─ drag_tag                    (drag module)
-//!         └─ sidebar_gesture_begin       (drag module)
+//! native pointer/touch event
+//!   └─► backend hit-testing / capture
+//!         └─► interaction::handle
+//!               ├─► active window move/resize
+//!               ├─► thresholded title interaction
+//!               ├─► tag drag
+//!               └─► sidebar gesture
 //! ```
 //!
-//! All drag/resize functions follow the same skeleton:
-//!
-//! ```text
-//! backend::x11::grab::grab_pointer(cursor_index)
-//! loop {
-//!     ButtonRelease → break
-//!     MotionNotify  → throttle → update geometry
-//!     _             → ignore
-//! }
-//! backend::x11::grab::ungrab(ctx)
-//! monitor::handle_client_monitor_switch(win)   // if applicable
-//! ```
+//! X11's native grab loop and Wayland's event-driven pointer/touch adapters
+//! feed the same state machine. They do not implement gesture behavior.
 
 pub mod bindings;
 pub mod constants;
 pub mod drag;
 pub mod hot_corner;
 pub mod hover;
+pub mod interaction;
 pub mod monitor;
 pub mod pointer;
 pub mod resize;
@@ -54,9 +46,8 @@ pub mod warp;
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    DragInput, drag_tag, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture,
-    sidebar_gesture_begin, title_drag_finish, title_drag_motion, update_sidebar_gesture,
-    window_title_mouse_handler,
+    DragInput, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture, sidebar_gesture_begin,
+    title_drag_finish, title_drag_motion, update_sidebar_gesture, window_title_mouse_handler,
 };
 
 // ── hover ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,307 @@
+//! Backend-neutral active window move/resize processing.
+//!
+//! Input transports decide how events are captured. Once captured, pointer and
+//! touch samples use these same motion and finish operations on every backend.
+
+use crate::contexts::WmCtx;
+use crate::geometry::MoveResizeOptions;
+use crate::mouse::constants::RESIZE_BORDER_ZONE;
+use crate::mouse::drag::lifecycle::{ResizeDragParams, begin_resize};
+use crate::types::{AltCursor, InteractionSource, MouseButton, Point, Rect, WindowId};
+
+fn begin_active_resize(
+    ctx: &mut WmCtx<'_>,
+    params: ResizeDragParams,
+) -> Result<(), crate::core_state::DragAlreadyActive> {
+    match ctx {
+        WmCtx::X11(x11) => begin_resize(x11.core.drag_state_mut(), &x11.x11, params),
+        WmCtx::Wayland(wayland) => {
+            begin_resize(wayland.core.drag_state_mut(), wayland.wayland, params)
+        }
+    }
+}
+
+/// Begin a directional resize from a compositor binding on any backend.
+pub fn directional_resize_begin(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    source: InteractionSource,
+    direction: crate::types::ResizeDirection,
+    geometry: Rect,
+) -> bool {
+    directional_resize_begin_with_policy(
+        ctx,
+        win,
+        btn,
+        source,
+        direction,
+        geometry,
+        crate::core_state::ResizePolicy::Free,
+    )
+}
+
+pub fn directional_resize_begin_with_policy(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    source: InteractionSource,
+    direction: crate::types::ResizeDirection,
+    geometry: Rect,
+    policy: crate::core_state::ResizePolicy,
+) -> bool {
+    let Some(start) = crate::mouse::warp::warp_to_resize_corner(ctx, win, direction) else {
+        return false;
+    };
+    if begin_active_resize(
+        ctx,
+        ResizeDragParams {
+            win,
+            button: btn,
+            source,
+            direction,
+            start,
+            geometry,
+            policy,
+        },
+    )
+    .is_err()
+    {
+        return false;
+    }
+    ctx.set_cursor_style(AltCursor::Resize(direction));
+    crate::focus::focus(ctx, Some(win));
+    ctx.raise_client(win);
+    true
+}
+
+/// Begin a semantic tiled-tree resize from a compositor binding.
+pub fn tree_resize_begin(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    source: InteractionSource,
+    start: Point,
+    geometry: Rect,
+    resize: crate::layouts::manager::PointerTreeResizeStart,
+) -> bool {
+    if ctx
+        .core_mut()
+        .drag_state_mut()
+        .begin_tree_resize(crate::core_state::TreeResizeParams {
+            win,
+            button: btn,
+            source,
+            direction: resize.direction,
+            start,
+            geometry,
+            origin: resize.origin,
+        })
+        .is_err()
+    {
+        return false;
+    }
+    ctx.set_cursor_style(AltCursor::Resize(resize.direction));
+    crate::focus::focus(ctx, Some(win));
+    ctx.raise_client(win);
+    true
+}
+
+/// Commit the currently selected floating-border hover target.
+pub fn hover_drag_begin(
+    ctx: &mut WmCtx<'_>,
+    position: Point,
+    btn: MouseButton,
+    source: InteractionSource,
+) -> bool {
+    let Some(target) =
+        crate::mouse::hover::selected_hover_resize_target_at(ctx.core().model(), position)
+    else {
+        return false;
+    };
+
+    if btn == MouseButton::Middle {
+        crate::client::kill::close_win(ctx, target.win);
+        return true;
+    }
+    if btn != MouseButton::Left && btn != MouseButton::Right {
+        return false;
+    }
+
+    let drag_type = if btn == MouseButton::Right
+        || target
+            .geo
+            .is_at_top_middle_edge(position, RESIZE_BORDER_ZONE)
+    {
+        crate::core_state::DragType::Move
+    } else {
+        crate::core_state::DragType::Resize(target.dir)
+    };
+    let started = match drag_type {
+        crate::core_state::DragType::Move => ctx
+            .core_mut()
+            .drag_state_mut()
+            .begin_move(target.win, btn, source, position, target.geo),
+        crate::core_state::DragType::Resize(direction) => begin_active_resize(
+            ctx,
+            ResizeDragParams {
+                win: target.win,
+                button: btn,
+                source,
+                direction,
+                start: position,
+                geometry: target.geo,
+                policy: crate::core_state::ResizePolicy::Free,
+            },
+        ),
+        crate::core_state::DragType::TreeResize(_) => unreachable!(),
+    };
+    if started.is_err() {
+        return false;
+    }
+
+    crate::mouse::clear_hover_offer(ctx);
+    match drag_type {
+        crate::core_state::DragType::Move => ctx.set_cursor_style(AltCursor::Move),
+        crate::core_state::DragType::Resize(direction) => {
+            ctx.set_cursor_style(AltCursor::Resize(direction));
+        }
+        crate::core_state::DragType::TreeResize(_) => unreachable!(),
+    }
+    crate::focus::focus(ctx, Some(target.win));
+    ctx.raise_client(target.win);
+    true
+}
+
+/// Apply one absolute motion sample to the active window interaction.
+pub fn active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
+    let Some(drag) = ctx.core().drag_state().active_interaction().cloned() else {
+        return false;
+    };
+    ctx.core_mut()
+        .drag_state_mut()
+        .record_interactive_motion(root);
+
+    match drag.operation() {
+        crate::core_state::DragOperationRef::Move => {
+            let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
+            let edge = crate::mouse::drag::move_drop::check_edge_snap(ctx.core().model(), root);
+
+            if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, drag.win()) {
+                crate::mouse::drag::move_drop::update_tiled_drag_preview(
+                    ctx,
+                    drag.win(),
+                    root,
+                    on_bar,
+                    edge,
+                );
+                return true;
+            }
+
+            ctx.update_layout_preview(None);
+            let mut new_pos = Point::new(
+                drag.win_start_geo().x + (root.x - drag.start_point().x),
+                drag.win_start_geo().y + (root.y - drag.start_point().y),
+            );
+
+            if on_bar {
+                let mon = ctx.core().model().expect_selected_monitor();
+                new_pos.y = mon.bar_y() + mon.bar_height;
+            }
+
+            crate::mouse::drag::snap_window_to_monitor_edges(
+                ctx.core().state(),
+                drag.win(),
+                drag.win_start_geo().size(),
+                &mut new_pos,
+            );
+            ctx.move_resize(
+                drag.win(),
+                Rect::new(
+                    new_pos.x,
+                    new_pos.y,
+                    drag.win_start_geo().w.max(1),
+                    drag.win_start_geo().h.max(1),
+                ),
+                MoveResizeOptions::hinted_immediate(true),
+            );
+            true
+        }
+        crate::core_state::DragOperationRef::TreeResize { direction, origin } => {
+            crate::layouts::manager::update_pointer_tree_resize(
+                ctx,
+                drag.win(),
+                origin,
+                direction,
+                drag.start_point(),
+                root,
+            )
+        }
+        crate::core_state::DragOperationRef::Resize(dir) => {
+            let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
+            let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
+                root.x,
+                drag.win_start_geo().x,
+                drag.win_start_geo().right(),
+                0,
+                affects_left,
+                affects_right,
+            );
+            let (new_y, new_h) = crate::mouse::resize::compute_axis_resize(
+                root.y,
+                drag.win_start_geo().y,
+                drag.win_start_geo().bottom(),
+                0,
+                affects_top,
+                affects_bottom,
+            );
+            let (new_w, new_h) = match drag.resize_policy() {
+                crate::core_state::ResizePolicy::Free => (new_w, new_h),
+                crate::core_state::ResizePolicy::PreserveAspect => {
+                    crate::mouse::resize::constrain_aspect_size(ctx, drag.win(), new_w, new_h)
+                }
+            };
+            ctx.move_resize(
+                drag.win(),
+                Rect::new(new_x, new_y, new_w, new_h),
+                MoveResizeOptions::hinted_immediate(true),
+            );
+            true
+        }
+    }
+}
+
+/// Finish the active window interaction using backend protocol capabilities.
+pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32) -> bool {
+    let finished = match ctx {
+        WmCtx::X11(x11) => {
+            crate::mouse::drag::lifecycle::finish(x11.core.drag_state_mut(), &x11.x11, btn)
+        }
+        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::finish(
+            wayland.core.drag_state_mut(),
+            wayland.wayland,
+            btn,
+        ),
+    };
+    let Some(drag) = finished else {
+        return false;
+    };
+
+    match drag.drag_type() {
+        crate::core_state::DragType::Move => crate::mouse::drag::finish_drag_move(
+            ctx,
+            drag.win(),
+            drag.drop_restore_geo(),
+            crate::mouse::drag::move_drop::check_edge_snap(
+                ctx.core().model(),
+                drag.last_root_point(),
+            ),
+            Some(drag.last_root_point()),
+            modifiers,
+        ),
+        crate::core_state::DragType::Resize(_) | crate::core_state::DragType::TreeResize(_) => {
+            crate::mouse::drag::finish_drag_resize(ctx, drag.win());
+        }
+    }
+    true
+}

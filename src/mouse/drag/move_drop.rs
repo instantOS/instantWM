@@ -7,21 +7,15 @@
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::core_state::CoreState;
-use crate::floating::{WindowModeRequest, change_snap, reset_snap, set_window_mode};
-use crate::geometry::MoveResizeOptions;
+use crate::floating::{WindowModeRequest, change_snap, set_window_mode};
 use crate::layouts::PresentationMode;
 use crate::layouts::arrange;
 use crate::tags::{move_client_follow_view, shift_tag};
 use crate::types::*;
 
-use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
+use crate::mouse::constants::OVERLAY_ZONE_WIDTH;
 
 use crate::mouse::monitor::handle_client_monitor_switch;
-
-/// Snap `pos` to the work-area edges of `selmon` when within `globals.config.window.snap_threshold` pixels.
-pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, pos: &mut Point) {
-    snap_window_to_monitor_edges(ctx.core().state(), c.win, c.geo.size(), pos);
-}
 
 pub fn snap_window_to_monitor_edges(
     state: &CoreState,
@@ -108,139 +102,7 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
 
 // ── move_mouse helpers ────────────────────────────────────────────────────
 
-/// State threaded through the move-mouse event loop.
-pub struct MoveState {
-    /// Drag origin in root coordinates.
-    pub start_point: Point,
-    /// Window geometry at drag start.
-    pub grab_start_rect: Rect,
-    /// Floating geometry to retain if the drag ends by re-tiling the client.
-    /// This is deliberately separate from `grab_start_rect`: promoting a
-    /// tiled client changes the geometry used for motion without discarding
-    /// its saved floating restore geometry.
-    pub drop_restore_rect: Rect,
-    /// Whether the cursor was over the bar on the previous motion event.
-    pub cursor_on_bar: bool,
-    /// The last edge-snap zone the cursor was in.
-    pub edge_snap_indicator: Option<SnapPosition>,
-}
-
-/// Perform the pre-flight checks for [`crate::backend::x11::mouse::move_mouse`].
-///
-/// Returns the window to drag, or `None` if the drag should be aborted.
-/// As a side effect:
-/// * exits fake-fullscreen and returns `None` so the caller re-enters after the transition
-/// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
-/// * restores a near-maximized floating window to its saved geometry
-pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
-    let sel = {
-        let state = ctx.core_mut().state_mut();
-        let mon = state.expect_selected_monitor();
-        mon.selected?
-    };
-    let c = ctx.core().model().client(sel)?;
-    let is_true_fullscreen = c.mode().is_true_fullscreen();
-    let is_edge_scratchpad = c.is_edge_scratchpad();
-    let is_maximized = c.mode().is_maximized();
-
-    if is_true_fullscreen {
-        return None;
-    }
-    if is_edge_scratchpad {
-        return None;
-    }
-    if is_maximized {
-        crate::client::fullscreen::leave_maximized(ctx, sel);
-        return None;
-    }
-    let selected_window = sel;
-
-    let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
-    crate::layouts::sync_monitor_z_order(ctx, selmon_id);
-
-    // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = {
-        let c = ctx.core().model().client(selected_window)?;
-        c.snap_status != SnapPosition::None
-    };
-    if is_snapped {
-        reset_snap(ctx, selected_window);
-        return None;
-    }
-
-    // In a floating layout, if the window fills (nearly) the whole monitor,
-    // restore the saved float geometry so we drag the real size, not a maximized one.
-    let restore_geo: Option<Rect> = {
-        let has_tiling = ctx
-            .core_mut()
-            .state_mut()
-            .expect_selected_monitor()
-            .is_tiling_layout();
-
-        if !has_tiling {
-            let mon = ctx.core().model().expect_selected_monitor();
-            let bar_height = mon.bar_height;
-            if let Some(c) = ctx.core().model().client(selected_window) {
-                let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
-                    && c.geo.y >= mon.monitor_rect.y + bar_height - MAX_UNMAXIMIZE_OFFSET
-                    && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
-                    && c.geo.h >= mon.monitor_rect.h - MAX_UNMAXIMIZE_OFFSET;
-                if nearly_maximized {
-                    c.saved_floating_rect()
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    };
-    if let Some(geo) = restore_geo {
-        ctx.move_resize(
-            selected_window,
-            geo,
-            MoveResizeOptions::hinted_immediate(false),
-        );
-    }
-
-    Some(selected_window)
-}
-
-/// Update `bar_dragging` and the gesture (tag hover highlight) while dragging.
-///
-/// Tracks enter/leave transitions via `state.cursor_on_bar` so the bar is only
-/// redrawn when something changes.  Returns `true` while the cursor is on the bar.
-pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> bool {
-    let on_bar = point_is_on_bar(ctx.core().model(), root);
-
-    if on_bar {
-        let new_gesture = {
-            let core = ctx.core();
-            let mon = core.model().expect_selected_monitor();
-            mon.bar_position_at_x(core, mon.local_work_point(root).x)
-                .to_gesture()
-        };
-
-        let monitor_id = ctx.core().model().selected_monitor_id();
-        let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
-
-        if !state.cursor_on_bar || gesture_changed {
-            ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true);
-            ctx.request_bar_update();
-        }
-    } else if state.cursor_on_bar {
-        ctx.core_mut().bar.hover.clear();
-        ctx.request_bar_update();
-    }
-
-    on_bar
-}
-
-/// Simplified bar hover update for Wayland drag paths that don't use [`MoveState`].
-///
-/// Sets the drag hover and gesture highlight when the cursor enters the bar,
+/// Set the drag hover and gesture highlight when the cursor enters the bar,
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     let on_bar = point_is_on_bar(ctx.core().model(), root);
@@ -265,63 +127,6 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     }
 
     on_bar
-}
-
-/// Process a single throttled `MotionNotify` event during [`crate::backend::x11::mouse::move_mouse`].
-pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, state: &mut MoveState) {
-    state.cursor_on_bar = update_bar_hover(ctx, root, state);
-    state.edge_snap_indicator = check_edge_snap(ctx.core().model(), root);
-
-    let mut new_pos = Point::new(
-        state.grab_start_rect.x + (event.x - state.start_point.x),
-        state.grab_start_rect.y + (event.y - state.start_point.y),
-    );
-
-    // While hovering over the bar, keep the window just below it.
-    if state.cursor_on_bar {
-        let bar_bottom = {
-            let mon = ctx.core().model().expect_selected_monitor();
-            mon.bar_y() + mon.bar_height
-        };
-        new_pos.y = bar_bottom;
-    }
-
-    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
-        update_tiled_drag_preview(
-            ctx,
-            win,
-            root,
-            state.cursor_on_bar,
-            state.edge_snap_indicator,
-        );
-        return;
-    }
-
-    // Thresholding is owned by the shared client/title drag state machine.
-    // Once motion reaches this function, any tiled client that cannot perform
-    // a meaningful tree edit becomes an ordinary floating move.
-    let Some((drag_geo, _)) = promote_to_floating(
-        ctx,
-        win,
-        FloatingPlacementIntent::PreservePointerAnchor(root),
-    ) else {
-        return;
-    };
-    ctx.update_layout_preview(None);
-
-    if let Some(client) = ctx.core().model().client(win).cloned() {
-        snap_to_monitor_edges(ctx, &client, &mut new_pos);
-    }
-    ctx.move_resize(
-        win,
-        Rect {
-            x: new_pos.x,
-            y: new_pos.y,
-            w: drag_geo.w,
-            h: drag_geo.h,
-        },
-        MoveResizeOptions::hinted_immediate(true),
-    );
 }
 
 /// Clears `bar_dragging` and redraws the bar unconditionally.

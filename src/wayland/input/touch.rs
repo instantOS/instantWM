@@ -126,6 +126,7 @@ pub fn handle_touch_down(
                     state,
                     position,
                     TOUCH_BUTTON_CODE,
+                    crate::types::InteractionSource::Touch(event.slot.into()),
                     root,
                     modifiers,
                 );
@@ -133,14 +134,16 @@ pub fn handle_touch_down(
             }
             if state.runtime.wm_gesture_touch_slot.is_none()
                 && clean_modifier_state(state) == 0
-                && let Some(target) = crate::mouse::pointer::desktop_sidebar_target_at(
-                    &wm.core.model,
-                    root,
-                    hit.hovered_window,
-                )
+                && let Some(target) = crate::mouse::pointer::sidebar_target_at(&wm.core.model, root)
             {
                 let mut ctx = wm.ctx();
-                if crate::mouse::sidebar_gesture_begin(&mut ctx, MouseButton::Left, target, root) {
+                if crate::mouse::sidebar_gesture_begin(
+                    &mut ctx,
+                    MouseButton::Left,
+                    crate::types::InteractionSource::Touch(event.slot.into()),
+                    target,
+                    root,
+                ) {
                     state.runtime.wm_gesture_touch_slot = Some(event.slot);
                     return;
                 }
@@ -207,7 +210,7 @@ pub fn handle_touch_motion(
         return;
     };
     if state.runtime.wm_gesture_touch_slot == Some(event.slot) {
-        handle_wm_gesture_touch_motion(wm, state, root_point(location));
+        handle_wm_gesture_touch_motion(wm, state, event.slot, root_point(location));
         return;
     }
     if state.runtime.pointer_touch_slot == Some(event.slot) {
@@ -252,7 +255,7 @@ pub fn handle_touch_motion(
 pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
     if state.runtime.wm_gesture_touch_slot == Some(slot) {
         state.runtime.wm_gesture_touch_slot = None;
-        finish_wm_gesture_touch(wm, state);
+        finish_wm_gesture_touch(wm, state, slot);
         return;
     }
     let serial = SERIAL_COUNTER.next_serial();
@@ -340,63 +343,53 @@ fn clean_modifier_state(state: &WaylandState) -> u32 {
 fn handle_wm_gesture_touch_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
+    slot: TouchSlot,
     root: crate::types::Point,
 ) {
     let mut ctx = wm.ctx();
-    if ctx.core().drag_state().tag.active && !crate::mouse::drag_tag_motion(&mut ctx, root) {
-        crate::mouse::drag_tag_finish(&mut ctx, clean_modifier_state(state));
-    }
-    if ctx.core().drag_state().armed_interaction().is_some() {
-        crate::mouse::title_drag_motion(&mut ctx, crate::mouse::DragInput::Absolute(root));
-    }
-    if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx
-        && wayland.core.drag_state().active_interaction().is_some()
-    {
-        crate::wayland::input::pointer::drag::hover_resize_drag_motion(wayland, root);
-    }
-    if ctx.core().drag_state().sidebar_volume_active() {
-        crate::mouse::update_sidebar_gesture(&mut ctx, root.y);
-    }
+    let _ = crate::mouse::interaction::handle(
+        &mut ctx,
+        crate::mouse::interaction::InteractionEvent {
+            source: crate::mouse::interaction::InteractionSource::Touch(slot.into()),
+            phase: crate::mouse::interaction::InteractionPhase::Update,
+            root,
+            modifiers: clean_modifier_state(state),
+            sidebar_hover: None,
+        },
+    );
 }
 
-fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState) {
+fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot) {
     let modifiers = clean_modifier_state(state);
     let mut ctx = wm.ctx();
-
-    if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx
-        && crate::wayland::input::pointer::drag::hover_resize_drag_finish(
-            wayland,
-            MouseButton::Left,
+    let _ = crate::mouse::interaction::handle(
+        &mut ctx,
+        crate::mouse::interaction::InteractionEvent {
+            source: crate::mouse::interaction::InteractionSource::Touch(slot.into()),
+            phase: crate::mouse::interaction::InteractionPhase::End {
+                button: MouseButton::Left,
+            },
+            root: Default::default(),
             modifiers,
-        )
-    {
-        return;
-    }
-    if ctx.core().drag_state().tag.active {
-        crate::mouse::drag_tag_finish(&mut ctx, modifiers);
-    }
-    if ctx.core().drag_state().armed_interaction().is_some() {
-        crate::mouse::title_drag_finish(&mut ctx);
-    }
-    if ctx.core().drag_state().sidebar_volume_active() {
-        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, MouseButton::Left, None);
-    }
+            sidebar_hover: None,
+        },
+    );
 }
 
 fn cancel_wm_gesture_touch(wm: &mut Wm, _state: &mut WaylandState) {
     let mut ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx {
-        crate::mouse::drag::lifecycle::cancel(
-            wayland.core.drag_state_mut(),
-            wayland.wayland,
-            crate::core_state::DragCancelReason::TouchCancelled,
-        );
-    }
-    ctx.core_mut().drag_state_mut().tag = Default::default();
-    ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
-    ctx.core_mut().bar.hover.clear();
-    ctx.set_cursor_style(crate::types::AltCursor::Default);
-    ctx.request_bar_update();
+    let _ = crate::mouse::interaction::handle(
+        &mut ctx,
+        crate::mouse::interaction::InteractionEvent {
+            source: crate::mouse::interaction::InteractionSource::Touch(-1),
+            phase: crate::mouse::interaction::InteractionPhase::Cancel {
+                reason: crate::core_state::DragCancelReason::TouchCancelled,
+            },
+            root: Default::default(),
+            modifiers: 0,
+            sidebar_hover: None,
+        },
+    );
 }
 
 fn event_location(

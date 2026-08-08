@@ -15,13 +15,13 @@
 //! | [`update_selected_resize_offer_at`]           | Wayland motion       | Update selected-window resize offer        |
 //! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 
+use crate::backend::PointerOps;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::core_state::HoverOffer;
 use crate::model::WmModel;
 use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
-use crate::backend::x11::mouse::resize_mouse_directional;
 
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
@@ -60,10 +60,9 @@ pub fn clear_hover_offer(ctx: &mut WmCtx) {
 /// Returns `false` when there is no resize offer or the mouse button is not a
 /// valid commit button for hover resize.
 pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
-    let Some((win, dir)) = ctx.core.drag_state().hover_offer.resize_target() else {
+    let Some((win, _)) = ctx.core.drag_state().hover_offer.resize_target() else {
         return false;
     };
-
     if btn == MouseButton::Middle {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         clear_hover_offer(&mut wm_ctx);
@@ -73,45 +72,32 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
         crate::client::kill::close_win(&mut wm_ctx, win);
         return true;
     }
-
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
-
-    let move_from_top_middle = {
+    let start = ctx
+        .x11
+        .pointer_location()
+        .or_else(|| {
+            ctx.core
+                .model()
+                .client(win)
+                .map(|client| client.geo.center())
+        })
+        .unwrap_or_default();
+    let started = {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        clear_hover_offer(&mut wm_ctx);
         if wm_ctx.core().model().selected_win() != Some(win) {
             crate::focus::focus(&mut wm_ctx, Some(win));
         }
-
-        let Some(c) = wm_ctx.core().model().client(win) else {
-            return false;
-        };
-        wm_ctx
-            .pointer_backend()
-            .pointer_location()
-            .map(|p| c.geo.is_at_top_middle_edge(p, RESIZE_BORDER_ZONE))
-            .unwrap_or(dir == ResizeDirection::Top)
+        crate::mouse::drag::hover_drag_begin(
+            &mut wm_ctx,
+            start,
+            btn,
+            crate::types::InteractionSource::Pointer,
+        )
     };
-
-    if btn == MouseButton::Right || move_from_top_middle {
-        let start = {
-            let wm_ctx = WmCtx::X11(ctx.reborrow());
-            wm_ctx
-                .pointer_backend()
-                .pointer_location()
-                .unwrap_or_else(|| {
-                    let c = wm_ctx.core().model().client(win);
-                    c.map(|c| c.geo.center()).unwrap_or_default()
-                })
-        };
-        crate::backend::x11::mouse::move_mouse(ctx, btn, start, None);
-    } else {
-        resize_mouse_directional(ctx, Some(dir), btn);
-    }
-
-    true
+    started && crate::backend::x11::grab::drive_wm_interaction(ctx, btn)
 }
 
 fn resize_target_for_window(
@@ -264,9 +250,10 @@ pub fn set_sidebar_offer(
 pub fn update_sidebar_offer_at(
     ctx: &mut WmCtx,
     root: crate::types::Point,
-    window_at_root: Option<WindowId>,
+    blocked_by_compositor_ui: bool,
 ) -> SidebarOfferUpdate {
-    let target =
-        crate::mouse::pointer::desktop_sidebar_target_at(ctx.core().model(), root, window_at_root);
+    let target = (!blocked_by_compositor_ui)
+        .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core().model(), root))
+        .flatten();
     set_sidebar_offer(ctx, target)
 }

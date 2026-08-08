@@ -14,7 +14,6 @@ pub enum PointerRegion {
         monitor_id: MonitorId,
         pos: BarPosition,
     },
-    Sidebar(SidebarTarget),
     Client(WindowId),
     Root {
         monitor_id: MonitorId,
@@ -24,12 +23,9 @@ pub enum PointerRegion {
 impl PointerRegion {
     /// Return the config-binding target for regions owned by the binding system.
     ///
-    /// The sidebar is a compositor gesture and deliberately has no configurable
-    /// button target: its press, motion, and release must share one lifecycle.
     pub fn binding_target(self) -> Option<crate::types::ButtonTarget> {
         match self {
             PointerRegion::Bar { pos, .. } => Some(crate::types::ButtonTarget::Bar(pos)),
-            PointerRegion::Sidebar(_) => None,
             PointerRegion::Client(_) => Some(crate::types::ButtonTarget::ClientWin),
             PointerRegion::Root { .. } => Some(crate::types::ButtonTarget::Root),
         }
@@ -69,22 +65,6 @@ pub fn sidebar_target_at(model: &WmModel, root: Point) -> Option<SidebarTarget> 
     })
 }
 
-/// Resolve the sidebar only when compositor desktop is exposed at `root`.
-///
-/// A 50px invisible region must not steal input from a client. Motion and
-/// button handlers both call this policy so the offered cursor and press owner
-/// cannot disagree.
-pub fn desktop_sidebar_target_at(
-    model: &WmModel,
-    root: Point,
-    window_at_root: Option<WindowId>,
-) -> Option<SidebarTarget> {
-    window_at_root
-        .is_none()
-        .then(|| sidebar_target_at(model, root))
-        .flatten()
-}
-
 /// Full click classification shared by X11 and Wayland button handlers.
 pub fn button_region_at(
     core: &mut CoreCtx<'_>,
@@ -93,10 +73,6 @@ pub fn button_region_at(
 ) -> PointerRegion {
     if let Some((monitor_id, pos)) = crate::bar::resolve_bar_position_at_root(core, root) {
         return PointerRegion::Bar { monitor_id, pos };
-    }
-
-    if let Some(target) = desktop_sidebar_target_at(core.model(), root, clicked_win) {
-        return PointerRegion::Sidebar(target);
     }
 
     if let Some(win) = clicked_win {
@@ -113,9 +89,9 @@ pub fn button_region_at(
 
 #[cfg(test)]
 mod tests {
-    use super::{desktop_sidebar_target_at, right_sidebar_rect};
+    use super::{right_sidebar_rect, sidebar_target_at};
     use crate::model::WmModel;
-    use crate::types::{Monitor, Point, Rect, SIDEBAR_WIDTH, WindowId};
+    use crate::types::{Monitor, Point, Rect, SIDEBAR_WIDTH};
 
     #[test]
     fn right_sidebar_rect_uses_shared_width_and_monitor_origin() {
@@ -135,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn desktop_sidebar_never_steals_a_client_point() {
+    fn global_sidebar_hit_test_depends_only_on_monitor_geometry() {
         let mut model = WmModel::new();
         model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
@@ -144,10 +120,6 @@ mod tests {
         });
         let point = Point::new(1900, 500);
 
-        assert!(desktop_sidebar_target_at(&model, point, None).is_some());
-        assert_eq!(
-            desktop_sidebar_target_at(&model, point, Some(WindowId(7))),
-            None
-        );
+        assert!(sidebar_target_at(&model, point).is_some());
     }
 }

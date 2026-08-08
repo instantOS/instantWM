@@ -1,27 +1,13 @@
-//! Interactive mouse-resize operations.
+//! Backend-neutral interactive resize policy and geometry helpers.
 //!
-//! Three distinct resize modes are provided:
-//!
-//! | Function                  | Description                                                  |
-//! |---------------------------|--------------------------------------------------------------|
-//! | [`resize_mouse`]          | Drag the bottom-right corner to resize                      |
-//! | [`resize_aspect_mouse`]   | Same, but clamps to the window's declared aspect-ratio hints |
-//! | [`force_resize_mouse`]    | Alias for `resize_mouse` (bypasses fullscreen guard)        |
-//!
-//! All three share the same grab/event-loop/ungrab skeleton; they differ only
-//! in how they compute the new width and height from the pointer position.
-//!
-//! On Wayland, `resize_mouse_from_cursor` and `resize_aspect_mouse` bypass the
-//! title-drag state machine and instead directly activate a
-//! `DragInteraction`.  This reuses the same directional-resize event loop
-//! that hover-border drags use, giving correct per-quadrant behaviour without
-//! any cursor warp or anchor chaos.
+//! Recognition creates a shared `DragInteraction`; native backends only feed
+//! normalized input to it. Free and aspect-preserving resize therefore use
+//! identical geometry and lifecycle behavior on X11 and Wayland.
 
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::types::*;
 
-use super::drag::lifecycle::{ResizeDragParams, begin_resize};
 use super::drag::move_drop::promote_to_floating;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -58,12 +44,50 @@ pub(crate) fn compute_axis_resize(
     }
 }
 
+pub(crate) fn constrain_aspect_size(
+    ctx: &WmCtx<'_>,
+    win: WindowId,
+    raw_width: i32,
+    raw_height: i32,
+) -> (i32, i32) {
+    let Some(client) = ctx.core().model().client(win) else {
+        return (raw_width.max(1), raw_height.max(1));
+    };
+    let mut width = raw_width.max(1);
+    let mut height = raw_height.max(1);
+    let hints = client.size_hints;
+    if hints.min_width > 0 {
+        width = width.max(hints.min_width);
+    }
+    if hints.min_height > 0 {
+        height = height.max(hints.min_height);
+    }
+    if hints.max_width > 0 {
+        width = width.min(hints.max_width);
+    }
+    if hints.max_height > 0 {
+        height = height.min(hints.max_height);
+    }
+    if client.min_aspect > 0.0 && client.max_aspect > 0.0 {
+        let ratio = width as f32 / height as f32;
+        if ratio > client.max_aspect {
+            width = (height as f32 * client.max_aspect) as i32;
+        } else if ratio < client.min_aspect {
+            height = (width as f32 / client.min_aspect) as i32;
+        }
+    }
+    (width.max(1), height.max(1))
+}
+
 /// Begin resizing `win` using the pointer's current quadrant.
 ///
 /// The fullscreen check intentionally remains here even though title-drag
 /// arming performs the same eligibility check: Wayland can change window mode
 /// between the button press and the later drag-threshold event.
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
+    let Some(source) = ctx.core().drag_state().captured_source() else {
+        return;
+    };
     crate::client::fullscreen::leave_maximized(ctx, win);
     let Some((geo, is_floating)) = ctx.core().model().client(win).and_then(|client| {
         (!client.mode().is_true_fullscreen())
@@ -77,21 +101,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton
     };
 
     if let Some(tree_resize) = crate::layouts::manager::pointer_tree_resize_start(ctx, win, ptr) {
-        match ctx {
-            WmCtx::X11(x11) => {
-                crate::backend::x11::mouse::resize_tree_mouse_x11(
-                    x11,
-                    win,
-                    btn,
-                    ptr,
-                    geo,
-                    tree_resize,
-                );
-            }
-            WmCtx::Wayland(wl) => {
-                begin_wayland_tree_resize(wl, win, btn, ptr, geo, tree_resize);
-            }
-        }
+        let _ = crate::mouse::drag::tree_resize_begin(ctx, win, btn, source, ptr, geo, tree_resize);
         return;
     }
 
@@ -112,101 +122,13 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton
 
         let dir = ResizeDirection::from_hit(new_geo.size(), new_geo.local_point(ptr));
 
-        match ctx {
-            WmCtx::X11(x11) => {
-                crate::backend::x11::mouse::resize_mouse_directional(x11, Some(dir), btn);
-            }
-            WmCtx::Wayland(wl) => {
-                begin_wayland_super_resize(wl, win, btn, dir, new_geo);
-            }
-        }
+        let _ = crate::mouse::drag::directional_resize_begin(ctx, win, btn, source, dir, new_geo);
         return;
     }
 
     let dir = ResizeDirection::from_hit(geo.size(), geo.local_point(ptr));
 
-    match ctx {
-        WmCtx::X11(x11) => {
-            crate::backend::x11::mouse::resize_mouse_directional(x11, Some(dir), btn);
-        }
-        WmCtx::Wayland(wl) => {
-            begin_wayland_super_resize(wl, win, btn, dir, geo);
-        }
-    }
-}
-
-fn begin_wayland_tree_resize(
-    wl: &mut crate::contexts::WmCtxWayland<'_>,
-    win: WindowId,
-    btn: MouseButton,
-    start: Point,
-    geo: Rect,
-    resize: crate::layouts::manager::PointerTreeResizeStart,
-) {
-    if wl
-        .core
-        .drag_state_mut()
-        .begin_tree_resize(win, btn, resize.direction, start, geo, resize.origin)
-        .is_err()
-    {
-        return;
-    }
-    prepare_wayland_resize(wl, win, resize.direction);
-}
-
-fn prepare_wayland_resize(
-    wl: &mut crate::contexts::WmCtxWayland<'_>,
-    win: WindowId,
-    direction: ResizeDirection,
-) {
-    let mut ctx = WmCtx::Wayland(wl.reborrow());
-    ctx.set_cursor_style(AltCursor::Resize(direction));
-    crate::focus::focus(&mut ctx, Some(win));
-    ctx.raise_client(win);
-}
-
-/// Activate a `DragInteraction` for a Super+RMB resize initiated anywhere
-/// on a Wayland window (not just the hover-border zone).  This reuses the same
-/// directional-resize event loop as hover-border resizes, giving correct
-/// per-quadrant behaviour with cursor warped to the nearest edge/corner.
-fn begin_wayland_super_resize(
-    wl: &mut crate::contexts::WmCtxWayland<'_>,
-    win: WindowId,
-    btn: MouseButton,
-    dir: ResizeDirection,
-    geo: Rect,
-) {
-    // Warp the cursor to the nearest edge/corner for this direction so the
-    // visual position of the cursor matches what is being dragged.  The resize
-    // math in hover_resize_drag_motion uses root_x/root_y directly
-    // against the window edges, so the first motion event is correct regardless
-    // of where the cursor started — but warping gives immediate visual feedback
-    // and prevents the cursor sitting in the middle of the window while a corner
-    // is moving.
-    let root = {
-        let mut wmctx = WmCtx::Wayland(wl.reborrow());
-        match super::warp::warp_to_resize_corner(&mut wmctx, win, dir) {
-            Some(p) => p,
-            None => return,
-        }
-    };
-
-    if begin_resize(
-        wl.core.drag_state_mut(),
-        wl.wayland,
-        ResizeDragParams {
-            win,
-            button: btn,
-            direction: dir,
-            start: root,
-            geometry: geo,
-        },
-    )
-    .is_err()
-    {
-        return;
-    }
-    prepare_wayland_resize(wl, win, dir);
+    let _ = crate::mouse::drag::directional_resize_begin(ctx, win, btn, source, dir, geo);
 }
 
 // ── resize_aspect_mouse ───────────────────────────────────────────────────────
@@ -220,25 +142,25 @@ fn begin_wayland_super_resize(
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
-    let Some(ptr) = ctx.pointer_backend().pointer_location() else {
-        return;
-    };
-
+pub fn resize_aspect_mouse(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    btn: MouseButton,
+    source: InteractionSource,
+) {
     let Some(geo) = ctx.client_geo(win) else {
         return;
     };
 
-    let dir = ResizeDirection::from_hit(geo.size(), geo.local_point(ptr));
-
-    match ctx {
-        WmCtx::X11(x11) => {
-            crate::backend::x11::mouse::resize_aspect_mouse_x11(x11, win, btn);
-        }
-        WmCtx::Wayland(wl) => {
-            begin_wayland_super_resize(wl, win, btn, dir, geo);
-        }
-    }
+    let _ = crate::mouse::drag::directional_resize_begin_with_policy(
+        ctx,
+        win,
+        btn,
+        source,
+        ResizeDirection::BottomRight,
+        geo,
+        crate::core_state::ResizePolicy::PreserveAspect,
+    );
 }
 
 // Hover-offer loops live in `super::hover`.

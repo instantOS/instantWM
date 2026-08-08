@@ -6,6 +6,16 @@ use std::str::FromStr;
 
 use crate::types::{MonitorId, Point, Rect, Size, TagMask, WindowId};
 
+/// Physical input stream that owns a compositor interaction.
+///
+/// Keeping ownership in shared state prevents a second device from updating
+/// or releasing an interaction it did not start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InteractionSource {
+    Pointer,
+    Touch(i32),
+}
+
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MouseButton {
