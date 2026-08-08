@@ -177,6 +177,24 @@ pub fn handle_touch_down(
                     return;
                 }
             }
+            if state.runtime.wm_gesture_touch_slot.is_none()
+                && let Some(window) = hit.hovered_window
+                && wm.core.model.is_overview_active()
+            {
+                let source = crate::types::InteractionSource::Touch(event.slot.into());
+                if crate::overview::begin_card_gesture(
+                    &mut wm.ctx(),
+                    window,
+                    MouseButton::Left,
+                    source,
+                    root,
+                ) {
+                    // Do not emit wl_touch.down (or an emulated pointer press):
+                    // the overview owns this contact through motion/up.
+                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
+                    return;
+                }
+            }
             focus_managed_target(wm, hit.hovered_window, Some(MouseButton::Left));
         }
     }

@@ -331,6 +331,70 @@ fn hovered_card_is_committed_on_overview_confirmation() {
 }
 
 #[test]
+fn overview_card_tap_selects_on_release_and_clears_capture() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert!(begin_card_gesture(
+        &mut wm.ctx(),
+        second,
+        crate::types::MouseButton::Left,
+        crate::types::InteractionSource::Pointer,
+        Point::new(900, 300),
+    ));
+    assert_eq!(
+        wm.core.drag.captured_source(),
+        Some(crate::types::InteractionSource::Pointer)
+    );
+    // Press alone must neither leave overview nor focus the client.
+    assert!(wm.core.model.is_overview_active());
+    assert_eq!(wm.core.model.selected_win(), Some(first));
+
+    assert!(finish_card_gesture(
+        &mut wm.ctx(),
+        crate::types::MouseButton::Left,
+    ));
+
+    assert!(!wm.core.model.is_overview_active());
+    assert_eq!(wm.core.model.selected_win(), Some(second));
+    assert_eq!(
+        wm.core.model.expect_selected_monitor().selected_tags(),
+        tag2
+    );
+    assert_eq!(wm.core.drag.captured_source(), None);
+}
+
+#[test]
+fn non_upward_overview_drag_is_consumed_without_selecting() {
+    let tags = TagMask::single(1).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert!(begin_card_gesture(
+        &mut wm.ctx(),
+        second,
+        crate::types::MouseButton::Left,
+        crate::types::InteractionSource::Pointer,
+        Point::new(500, 400),
+    ));
+    assert!(update_card_gesture(&mut wm.ctx(), Point::new(600, 400)));
+    assert!(finish_card_gesture(
+        &mut wm.ctx(),
+        crate::types::MouseButton::Left,
+    ));
+
+    assert!(wm.core.model.is_overview_active());
+    assert_eq!(wm.core.model.selected_win(), Some(first));
+    assert_eq!(wm.core.drag.captured_source(), None);
+}
+
+#[test]
 fn keyboard_navigation_continues_from_the_hovered_card() {
     let tags = TagMask::single(1).unwrap();
     let first = WindowId(1);

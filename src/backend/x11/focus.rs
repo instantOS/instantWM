@@ -233,8 +233,13 @@ pub fn grab_buttons(
     let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
     let mut grabs: Vec<(u8, u32)> = Vec::new();
 
+    // Overview owns plain left-button card interactions, including on the
+    // currently focused client. Outside overview, preserve normal X11
+    // click-through for the focused client.
     if !focused {
         grabs.extend([(1, 0), (3, 0)]);
+    } else if globals.model.is_overview_active() {
+        grabs.push((1, 0));
     }
 
     for button in &globals.config.bindings.buttons {

@@ -295,11 +295,12 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
             chunk.copy_from_slice(&[pr, pg, pb, pa]);
         }
 
-        // Draw the centered indicator: blend the bar background ~35% toward
-        // white so it reads as a subtle, bright handle.
+        // Draw the centered indicator: blend the bar background heavily
+        // toward white (~85%) so the handle reads as a bright, white pill
+        // regardless of the bar's theme color.
         let indicator = mon.bottom_bar_indicator_rect();
         if indicator.w > 0 && indicator.h > 0 {
-            let blend = |bg: u8| -> u8 { (bg as u16 * 65 + 255 * 35) as u8 / 100 };
+            let blend = |bg: u8| -> u8 { (bg as u16 * 15 + 255 * 85) as u8 / 100 };
             let ir = blend(r);
             let ig = blend(g);
             let ib = blend(b);

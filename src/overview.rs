@@ -209,6 +209,65 @@ pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     ctx.transition_current_mode(crate::core_state::ActiveWmMode::Default, mode);
 }
 
+/// Capture a left-button press on an overview card.
+///
+/// Selection is intentionally deferred until release. This makes the whole
+/// press/motion/release sequence compositor-owned and prevents the activating
+/// click from being replayed to the client after overview closes.
+pub fn begin_card_gesture(
+    ctx: &mut WmCtx<'_>,
+    window: WindowId,
+    button: crate::types::MouseButton,
+    source: crate::types::InteractionSource,
+    root: Point,
+) -> bool {
+    if !ctx.core().model().is_overview_active() || button != crate::types::MouseButton::Left {
+        return false;
+    }
+    let Some(client) = ctx.core().model().client(window) else {
+        return false;
+    };
+    let monitor_id = ctx.core().model().selected_monitor_id();
+    let Some(monitor) = ctx.core().model().monitor(monitor_id) else {
+        return false;
+    };
+    if client.monitor_id != monitor_id || !overview_eligible(client, monitor.visible_tags()) {
+        return false;
+    }
+    let threshold = (monitor.monitor_rect.h / 30).max(1);
+    ctx.core_mut()
+        .drag_state_mut()
+        .begin_overview_card(crate::core_state::OverviewCardDrag::new(
+            window, button, source, root, threshold,
+        ))
+        .is_ok()
+}
+
+pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
+    ctx.core_mut().drag_state_mut().update_overview_card(root)
+}
+
+pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::MouseButton) -> bool {
+    let Some(action) = ctx.core_mut().drag_state_mut().finish_overview_card(button) else {
+        return false;
+    };
+    match action {
+        crate::core_state::OverviewCardAction::Select(window) => {
+            // Set overview's private selection without focusing the client
+            // while its card geometry is still projected.
+            let _ = hover_window(ctx, Some(window), None);
+            exit_overview(ctx, ExitMode::ToSelectedWindow);
+        }
+        crate::core_state::OverviewCardAction::Close(window) => {
+            // Match Super+Q exactly: request the client's graceful close and
+            // remain in overview while other cards are still available.
+            crate::client::kill_client(ctx, window);
+        }
+        crate::core_state::OverviewCardAction::Cancel => {}
+    }
+    true
+}
+
 fn enter(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
     let selected_window = ctx.core().model().selected_win();
@@ -250,6 +309,9 @@ fn enter(ctx: &mut WmCtx<'_>) {
 }
 
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
+    // An external mode transition (keyboard, IPC, lock, etc.) invalidates any
+    // card press that has not reached release yet.
+    ctx.core_mut().drag_state_mut().cancel_overview_card();
     let state = {
         let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
         mon.overview_state.take()

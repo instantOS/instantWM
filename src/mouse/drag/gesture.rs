@@ -144,7 +144,10 @@ pub fn bottom_bar_gesture_begin(
         return false;
     }
     crate::mouse::clear_hover_offer(ctx);
-    ctx.set_cursor_style(AltCursor::HorizontalAdjust);
+    // Use a neutral 4-way move cursor until a direction latches — the bar
+    // supports left/right/up gestures, so a horizontal-only cursor is
+    // misleading.
+    ctx.set_cursor_style(AltCursor::Move);
     true
 }
 

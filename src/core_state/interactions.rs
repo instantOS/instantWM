@@ -462,6 +462,77 @@ pub struct SidebarVolumeDrag {
     threshold: i32,
 }
 
+/// A compositor-owned press on an overview card.
+///
+/// The complete input sequence is captured so neither the press nor release
+/// can leak to the client selected when overview closes. Gesture semantics are
+/// resolved from the final displacement on release: a tap selects the card,
+/// a predominantly upward drag closes it, and other drags are cancelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverviewCardDrag {
+    window: WindowId,
+    button: MouseButton,
+    source: InteractionSource,
+    start: Point,
+    last: Point,
+    threshold: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverviewCardAction {
+    Select(WindowId),
+    Close(WindowId),
+    Cancel,
+}
+
+impl OverviewCardDrag {
+    pub fn new(
+        window: WindowId,
+        button: MouseButton,
+        source: InteractionSource,
+        start: Point,
+        threshold: i32,
+    ) -> Self {
+        Self {
+            window,
+            button,
+            source,
+            start,
+            last: start,
+            threshold: threshold.max(1),
+        }
+    }
+
+    pub fn window(self) -> WindowId {
+        self.window
+    }
+
+    pub fn button(self) -> MouseButton {
+        self.button
+    }
+
+    pub fn source(self) -> InteractionSource {
+        self.source
+    }
+
+    pub fn update(&mut self, root: Point) {
+        self.last = root;
+    }
+
+    pub fn action(self) -> OverviewCardAction {
+        let dx = self.last.x - self.start.x;
+        let dy = self.last.y - self.start.y;
+        let up = -dy;
+        if dx.abs() < self.threshold && dy.abs() < self.threshold {
+            OverviewCardAction::Select(self.window)
+        } else if up >= self.threshold && up >= dx.abs() {
+            OverviewCardAction::Close(self.window)
+        } else {
+            OverviewCardAction::Cancel
+        }
+    }
+}
+
 impl SidebarVolumeDrag {
     pub fn new(
         button: MouseButton,
@@ -544,9 +615,12 @@ impl HotCornerState {
 
 #[cfg(test)]
 mod pointer_interaction_tests {
-    use super::{BottomBarDrag, DragState, HotCornerState, SidebarVolumeDrag, SwipeDirection};
+    use super::{
+        BottomBarDrag, DragState, HotCornerState, OverviewCardAction, OverviewCardDrag,
+        SidebarVolumeDrag, SwipeDirection,
+    };
     use crate::actions::ButtonAction;
-    use crate::types::{InteractionSource, MonitorId, MouseButton, Point};
+    use crate::types::{InteractionSource, MonitorId, MouseButton, Point, WindowId};
 
     fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
         BottomBarDrag::new(
@@ -758,6 +832,63 @@ mod pointer_interaction_tests {
         assert!(interactions.finish_sidebar_volume(MouseButton::Left));
         assert!(!interactions.sidebar_volume_active());
     }
+
+    #[test]
+    fn overview_card_gesture_resolves_tap_upward_drag_and_other_drag() {
+        let win = WindowId(7);
+        let gesture = || {
+            OverviewCardDrag::new(
+                win,
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(500, 400),
+                30,
+            )
+        };
+
+        let mut tap = gesture();
+        tap.update(Point::new(510, 390));
+        assert_eq!(tap.action(), OverviewCardAction::Select(win));
+
+        let mut upward = gesture();
+        upward.update(Point::new(520, 350));
+        assert_eq!(upward.action(), OverviewCardAction::Close(win));
+
+        let mut horizontal = gesture();
+        horizontal.update(Point::new(550, 380));
+        assert_eq!(horizontal.action(), OverviewCardAction::Cancel);
+
+        let mut downward = gesture();
+        downward.update(Point::new(500, 450));
+        assert_eq!(downward.action(), OverviewCardAction::Cancel);
+    }
+
+    #[test]
+    fn overview_card_gesture_captures_its_complete_input_sequence() {
+        let win = WindowId(9);
+        let mut interactions = DragState::default();
+        interactions
+            .begin_overview_card(OverviewCardDrag::new(
+                win,
+                MouseButton::Left,
+                InteractionSource::Touch(4),
+                Point::new(100, 100),
+                20,
+            ))
+            .unwrap();
+
+        assert_eq!(interactions.captured_button(), Some(MouseButton::Left));
+        assert_eq!(
+            interactions.captured_source(),
+            Some(InteractionSource::Touch(4))
+        );
+        assert!(interactions.any_drag_active());
+        assert_eq!(
+            interactions.finish_overview_card(MouseButton::Left),
+            Some(OverviewCardAction::Select(win))
+        );
+        assert!(!interactions.any_drag_active());
+    }
 }
 
 /// The pointer-owned interaction currently being offered before a click commits it.
@@ -803,6 +934,7 @@ pub struct DragState {
     interactive: InteractiveDrag,
     sidebar_volume: Option<SidebarVolumeDrag>,
     bottom_bar: Option<BottomBarDrag>,
+    overview_card: Option<OverviewCardDrag>,
     pub hover_offer: HoverOffer,
 }
 
@@ -831,6 +963,7 @@ impl DragState {
             .or_else(|| self.tag.active.then_some(self.tag.button))
             .or_else(|| self.sidebar_volume_button())
             .or_else(|| self.bottom_bar.as_ref().map(BottomBarDrag::button))
+            .or_else(|| self.overview_card.map(OverviewCardDrag::button))
     }
 
     pub fn captured_source(&self) -> Option<InteractionSource> {
@@ -840,6 +973,38 @@ impl DragState {
             .or_else(|| self.tag.active.then_some(self.tag.source).flatten())
             .or_else(|| self.sidebar_volume.map(SidebarVolumeDrag::source))
             .or_else(|| self.bottom_bar.as_ref().map(BottomBarDrag::source))
+            .or_else(|| self.overview_card.map(OverviewCardDrag::source))
+    }
+
+    pub fn overview_card_drag(&self) -> Option<OverviewCardDrag> {
+        self.overview_card
+    }
+
+    pub fn begin_overview_card(&mut self, drag: OverviewCardDrag) -> Result<(), DragAlreadyActive> {
+        if self.any_drag_active() {
+            return Err(DragAlreadyActive);
+        }
+        self.overview_card = Some(drag);
+        Ok(())
+    }
+
+    pub fn update_overview_card(&mut self, root: Point) -> bool {
+        let Some(drag) = self.overview_card.as_mut() else {
+            return false;
+        };
+        drag.update(root);
+        true
+    }
+
+    pub fn finish_overview_card(&mut self, button: MouseButton) -> Option<OverviewCardAction> {
+        if self.overview_card.map(OverviewCardDrag::button) != Some(button) {
+            return None;
+        }
+        self.overview_card.take().map(OverviewCardDrag::action)
+    }
+
+    pub fn cancel_overview_card(&mut self) -> bool {
+        self.overview_card.take().is_some()
     }
 
     pub fn sidebar_volume_active(&self) -> bool {
@@ -1068,6 +1233,7 @@ impl DragState {
             || self.tag.active
             || self.sidebar_volume.is_some()
             || self.bottom_bar.is_some()
+            || self.overview_card.is_some()
     }
 
     #[inline]

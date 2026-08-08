@@ -142,6 +142,22 @@ fn handle_button_press(
     };
     let clean_modifiers = clean_modifier_state(keyboard_handle);
 
+    if let (PointerRegion::Client(window), Some(MouseButton::Left)) =
+        (pointer_region, button.wm_button)
+        && wm.core.model.is_overview_active()
+        && crate::overview::begin_card_gesture(
+            &mut wm.ctx(),
+            window,
+            MouseButton::Left,
+            crate::types::InteractionSource::Pointer,
+            button.root,
+        )
+    {
+        state.dismiss_native_systray_menu();
+        pointer_handle.frame(state);
+        return true;
+    }
+
     match pointer_region {
         PointerRegion::Bar { pos, .. } => {
             handle_bar_click(

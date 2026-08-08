@@ -78,6 +78,30 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         .contains_key(&event_win)
         .then_some(event_win);
 
+    if e.detail == MouseButton::Left.to_x11_detail()
+        && let Some(window) = target_window
+        && ctx.core.model().is_overview_active()
+    {
+        // The passive client grab is synchronous. Thaw it without replaying
+        // the press, then let the shared overview gesture own motion/release.
+        let _ = ctx
+            .x11
+            .conn
+            .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
+        let _ = ctx.x11.conn.flush();
+        let began = crate::overview::begin_card_gesture(
+            &mut WmCtx::X11(ctx.reborrow()),
+            window,
+            MouseButton::Left,
+            crate::types::InteractionSource::Pointer,
+            root,
+        );
+        if began {
+            let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, MouseButton::Left);
+        }
+        return;
+    }
+
     if e.detail == MouseButton::Left.to_x11_detail() {
         let exit_mode = if target_window.is_some() {
             crate::overview::ExitMode::ToSelectedWindow

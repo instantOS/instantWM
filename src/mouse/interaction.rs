@@ -82,6 +82,10 @@ pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcom
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
+    if ctx.core().drag_state().overview_card_drag().is_some() {
+        let _ = crate::overview::update_card_gesture(ctx, event.root);
+        return InteractionOutcome::Captured;
+    }
     if ctx.core().drag_state().active_interaction().is_some() {
         return if crate::mouse::drag::active_drag_motion(ctx, event.root) {
             InteractionOutcome::Captured
@@ -122,6 +126,9 @@ fn finish(
     button: MouseButton,
     time_msec: u32,
 ) -> InteractionOutcome {
+    if crate::overview::finish_card_gesture(ctx, button) {
+        return InteractionOutcome::Captured;
+    }
     if crate::mouse::drag::active_drag_finish(ctx, button, event.modifiers) {
         return InteractionOutcome::Captured;
     }
@@ -162,8 +169,14 @@ fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
     let cancelled_tag = ctx.core().drag_state().tag.active;
     let cancelled_sidebar = ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
     let cancelled_bottom_bar = ctx.core_mut().drag_state_mut().cancel_bottom_bar();
+    let cancelled_overview = ctx.core_mut().drag_state_mut().cancel_overview_card();
     ctx.core_mut().drag_state_mut().tag = Default::default();
-    if cancelled_interactive || cancelled_tag || cancelled_sidebar || cancelled_bottom_bar {
+    if cancelled_interactive
+        || cancelled_tag
+        || cancelled_sidebar
+        || cancelled_bottom_bar
+        || cancelled_overview
+    {
         ctx.core_mut().bar.hover.clear();
         ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);
