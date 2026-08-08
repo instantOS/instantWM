@@ -55,7 +55,6 @@ pub enum ButtonAction {
     ResizeSelectedAspect,
     KillSelectedClient,
     ToggleLockSelectedClient,
-    SidebarGestureBegin,
     ReorderSelected {
         direction: crate::types::StackDirection,
     },

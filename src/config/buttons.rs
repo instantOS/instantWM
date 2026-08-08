@@ -29,7 +29,7 @@ macro_rules! btn {
 
 pub fn get_buttons() -> Vec<Button> {
     use BarPosition::*;
-    use ButtonTarget::{ClientWin, Root, SideBar};
+    use ButtonTarget::{ClientWin, Root};
 
     vec![
         btn!(LayoutSymbol, 0, button:MouseButton::Left => ButtonAction::named(NamedAction::CycleLayoutPrev)),
@@ -86,7 +86,6 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(ShutDown, 0, button:MouseButton::Left => ButtonAction::named_args(NamedAction::Spawn, &["instantshutdown"])),
         btn!(ShutDown, 0, button:MouseButton::Middle => ButtonAction::named_args(NamedAction::Spawn, &["instantlock", "-o"])),
         btn!(ShutDown, 0, button:MouseButton::Right => ButtonAction::named_args(NamedAction::Spawn, &[".config/instantos/default/lockscreen"])),
-        btn!(screen:SideBar, 0, button:MouseButton::Left => ButtonAction::SidebarGestureBegin),
         btn!(StartMenu, 0, button:MouseButton::Left => ButtonAction::named_args(NamedAction::Spawn, &["instantstartmenu"])),
         btn!(StartMenu, 0, button:MouseButton::Right => ButtonAction::named_args(NamedAction::Spawn, &["quickmenu"])),
         btn!(StartMenu, SHIFT, button:MouseButton::Left => ButtonAction::named(NamedAction::TogglePrefix)),

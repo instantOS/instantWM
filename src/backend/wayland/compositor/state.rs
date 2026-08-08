@@ -297,7 +297,7 @@ pub struct WaylandRuntimeState {
     /// The built-in bar is not a Wayland surface, so a touch sequence that
     /// starts there must remain compositor-owned until its matching up/cancel.
     /// Other slots continue through the native `wl_touch` path.
-    pub(crate) bar_touch_slot: Option<smithay::backend::input::TouchSlot>,
+    pub(crate) wm_gesture_touch_slot: Option<smithay::backend::input::TouchSlot>,
     /// Touch slot emulating a pointer for a client without a `wl_touch` binding.
     pub(crate) pointer_touch_slot: Option<smithay::backend::input::TouchSlot>,
     pub cursor_hidden_by_touch: bool,
@@ -335,7 +335,7 @@ impl Default for WaylandRuntimeState {
             pending_systray_menu: std::sync::Arc::new(std::sync::Mutex::new(None)),
             active_systray_menu: None,
             pointer_location: Point::from((0.0, 0.0)),
-            bar_touch_slot: None,
+            wm_gesture_touch_slot: None,
             pointer_touch_slot: None,
             cursor_hidden_by_touch: false,
             cursor_is_animated: false,

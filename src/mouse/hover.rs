@@ -238,15 +238,18 @@ impl SidebarOfferUpdate {
     }
 }
 
-pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root: crate::types::Point) -> SidebarOfferUpdate {
-    if let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core().model(), root) {
-        if ctx.core().drag_state().hover_offer != HoverOffer::Sidebar(target) {
-            ctx.core_mut()
-                .state_mut()
-                .drag
-                .set_hover_offer(HoverOffer::Sidebar(target));
-            ctx.set_cursor_style(AltCursor::Resize(ResizeDirection::Left));
-        }
+pub fn set_sidebar_offer(
+    ctx: &mut WmCtx,
+    target: Option<crate::types::SidebarTarget>,
+) -> SidebarOfferUpdate {
+    if let Some(target) = target {
+        ctx.core_mut()
+            .state_mut()
+            .drag
+            .set_hover_offer(HoverOffer::Sidebar(target));
+        // Always project the cursor. Gesture completion can leave the same
+        // logical offer in place while changing the active cursor override.
+        ctx.set_cursor_style(AltCursor::VerticalAdjust);
         return SidebarOfferUpdate::Active;
     }
 
@@ -256,4 +259,14 @@ pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root: crate::types::Point) -> Si
     }
 
     SidebarOfferUpdate::None
+}
+
+pub fn update_sidebar_offer_at(
+    ctx: &mut WmCtx,
+    root: crate::types::Point,
+    window_at_root: Option<WindowId>,
+) -> SidebarOfferUpdate {
+    let target =
+        crate::mouse::pointer::desktop_sidebar_target_at(ctx.core().model(), root, window_at_root);
+    set_sidebar_offer(ctx, target)
 }

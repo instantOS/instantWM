@@ -156,14 +156,17 @@ fn handle_button_press(
             pointer_handle.frame(state);
             return true;
         }
-        PointerRegion::Sidebar(_) => {
+        PointerRegion::Sidebar(target) => {
             state.dismiss_native_systray_menu();
-            if let Some(btn) = button.wm_button {
-                let _ =
-                    consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers);
+            if clean_modifiers == 0
+                && let Some(btn @ MouseButton::Left) = button.wm_button
+            {
+                let mut ctx = wm.ctx();
+                if crate::mouse::sidebar_gesture_begin(&mut ctx, btn, target, button.root) {
+                    pointer_handle.frame(state);
+                    return true;
+                }
             }
-            pointer_handle.frame(state);
-            return true;
         }
         PointerRegion::Client(_) | PointerRegion::Root { .. } => {}
     }
@@ -268,8 +271,22 @@ fn handle_button_release(
     if wm.core.drag.sidebar_volume_active()
         && let Some(btn) = button.wm_button
     {
+        let occupied = state
+            .layer_surface_under_pointer(button.pointer_location)
+            .is_some()
+            || state.is_pointer_over_overlay(button.pointer_location);
+        let window_at_root = state.logical_window_under_pointer(button.pointer_location);
+        let hover_target = (!occupied)
+            .then(|| {
+                crate::mouse::pointer::desktop_sidebar_target_at(
+                    &wm.core.model,
+                    button.root,
+                    window_at_root,
+                )
+            })
+            .flatten();
         let mut ctx = wm.ctx();
-        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, btn);
+        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, btn, hover_target);
     }
 
     false
@@ -308,7 +325,9 @@ fn consume_pointer_binding(
         PointerRegion::Client(win) => Some(win),
         _ => None,
     };
-    let target = region.to_button_target();
+    let Some(target) = region.binding_target() else {
+        return false;
+    };
     let mut ctx = wm.ctx();
     crate::mouse::bindings::consume_one(
         &mut ctx,

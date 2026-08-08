@@ -32,7 +32,7 @@ impl SessionLockHandler for WaylandState {
         // can never retain touch focus while the session is locked.
         self.touch.clone().cancel(self);
         crate::wayland::input::touch::cancel_pointer_emulation(self, 0);
-        self.runtime.bar_touch_slot = None;
+        self.runtime.wm_gesture_touch_slot = None;
 
         let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();

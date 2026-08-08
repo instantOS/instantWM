@@ -98,7 +98,6 @@ pub(crate) fn prepare_button_action(ctx: &mut WmCtx<'_>, action: &ButtonAction) 
     let transition = match action {
         ButtonAction::Named { .. }
         | ButtonAction::CloseClickedTitleWindow
-        | ButtonAction::SidebarGestureBegin
         | ButtonAction::HideEdgeScratchpad
         | ButtonAction::ShowEdgeScratchpad => ActionTransition::Preserve,
         ButtonAction::ToggleClickedViewTag => ActionTransition::Cancel,

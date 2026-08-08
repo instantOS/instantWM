@@ -72,6 +72,8 @@ pub enum AltCursor {
     Default,
     /// Move cursor.
     Move,
+    /// A value adjusted by dragging vertically.
+    VerticalAdjust,
     /// Resize cursor with direction.
     Resize(ResizeDirection),
 }
@@ -88,6 +90,7 @@ impl AltCursor {
         match self {
             AltCursor::Default => 0,
             AltCursor::Move => 2,
+            AltCursor::VerticalAdjust => 4,
             AltCursor::Resize(dir) => match dir {
                 ResizeDirection::TopLeft => 8,
                 ResizeDirection::Top => 4,
@@ -106,6 +109,7 @@ impl AltCursor {
         match self {
             AltCursor::Default => None,
             AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
+            AltCursor::VerticalAdjust => Some(smithay::input::pointer::CursorIcon::NsResize),
             AltCursor::Resize(dir) => Some(match dir {
                 ResizeDirection::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
                 ResizeDirection::Top => smithay::input::pointer::CursorIcon::NResize,
@@ -613,6 +617,15 @@ mod tests {
             assert_eq!(alt.to_x11_index(), expected_x11);
             assert_eq!(alt.to_wayland_icon(), Some(expected_wayland));
         }
+    }
+
+    #[test]
+    fn vertical_adjust_cursor_is_vertical_on_both_backends() {
+        assert_eq!(AltCursor::VerticalAdjust.to_x11_index(), 4);
+        assert_eq!(
+            AltCursor::VerticalAdjust.to_wayland_icon(),
+            Some(smithay::input::pointer::CursorIcon::NsResize)
+        );
     }
 
     #[test]

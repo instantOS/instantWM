@@ -116,10 +116,10 @@ pub fn handle_touch_down(
                 crate::bar::resolve_bar_position_at_root(ctx.core_mut(), root)
                     .map(|(_, position)| position)
             };
-            if state.runtime.bar_touch_slot.is_none()
+            if state.runtime.wm_gesture_touch_slot.is_none()
                 && let Some(position) = bar_position
             {
-                state.runtime.bar_touch_slot = Some(event.slot);
+                state.runtime.wm_gesture_touch_slot = Some(event.slot);
                 let modifiers = clean_modifier_state(state);
                 crate::wayland::input::bar::handle_bar_click(
                     wm,
@@ -130,6 +130,20 @@ pub fn handle_touch_down(
                     modifiers,
                 );
                 return;
+            }
+            if state.runtime.wm_gesture_touch_slot.is_none()
+                && clean_modifier_state(state) == 0
+                && let Some(target) = crate::mouse::pointer::desktop_sidebar_target_at(
+                    &wm.core.model,
+                    root,
+                    hit.hovered_window,
+                )
+            {
+                let mut ctx = wm.ctx();
+                if crate::mouse::sidebar_gesture_begin(&mut ctx, MouseButton::Left, target, root) {
+                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
+                    return;
+                }
             }
             focus_managed_target(wm, hit.hovered_window, Some(MouseButton::Left));
         }
@@ -192,8 +206,8 @@ pub fn handle_touch_motion(
     let Some(location) = event_location(state, event.position, mapping) else {
         return;
     };
-    if state.runtime.bar_touch_slot == Some(event.slot) {
-        handle_bar_touch_motion(wm, state, root_point(location));
+    if state.runtime.wm_gesture_touch_slot == Some(event.slot) {
+        handle_wm_gesture_touch_motion(wm, state, root_point(location));
         return;
     }
     if state.runtime.pointer_touch_slot == Some(event.slot) {
@@ -236,9 +250,9 @@ pub fn handle_touch_motion(
 
 /// Deliver the end of a touch point.
 pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
-    if state.runtime.bar_touch_slot == Some(slot) {
-        state.runtime.bar_touch_slot = None;
-        finish_bar_touch(wm, state);
+    if state.runtime.wm_gesture_touch_slot == Some(slot) {
+        state.runtime.wm_gesture_touch_slot = None;
+        finish_wm_gesture_touch(wm, state);
         return;
     }
     let serial = SERIAL_COUNTER.next_serial();
@@ -273,8 +287,8 @@ pub fn handle_touch_frame(state: &mut WaylandState) {
 
 /// Cancel every active touch point.
 pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
-    if state.runtime.bar_touch_slot.take().is_some() {
-        cancel_bar_touch(wm, state);
+    if state.runtime.wm_gesture_touch_slot.take().is_some() {
+        cancel_wm_gesture_touch(wm, state);
     }
     cancel_pointer_emulation(state, 0);
     state.touch.clone().cancel(state);
@@ -323,7 +337,11 @@ fn clean_modifier_state(state: &WaylandState) -> u32 {
     crate::util::clean_mask(modifiers_to_x11_mask(&state.keyboard.modifier_state()), 0)
 }
 
-fn handle_bar_touch_motion(wm: &mut Wm, state: &mut WaylandState, root: crate::types::Point) {
+fn handle_wm_gesture_touch_motion(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    root: crate::types::Point,
+) {
     let mut ctx = wm.ctx();
     if ctx.core().drag_state().tag.active && !crate::mouse::drag_tag_motion(&mut ctx, root) {
         crate::mouse::drag_tag_finish(&mut ctx, clean_modifier_state(state));
@@ -341,7 +359,7 @@ fn handle_bar_touch_motion(wm: &mut Wm, state: &mut WaylandState, root: crate::t
     }
 }
 
-fn finish_bar_touch(wm: &mut Wm, state: &mut WaylandState) {
+fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState) {
     let modifiers = clean_modifier_state(state);
     let mut ctx = wm.ctx();
 
@@ -361,11 +379,11 @@ fn finish_bar_touch(wm: &mut Wm, state: &mut WaylandState) {
         crate::mouse::title_drag_finish(&mut ctx);
     }
     if ctx.core().drag_state().sidebar_volume_active() {
-        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, MouseButton::Left);
+        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, MouseButton::Left, None);
     }
 }
 
-fn cancel_bar_touch(wm: &mut Wm, _state: &mut WaylandState) {
+fn cancel_wm_gesture_touch(wm: &mut Wm, _state: &mut WaylandState) {
     let mut ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx {
         crate::mouse::drag::lifecycle::cancel(

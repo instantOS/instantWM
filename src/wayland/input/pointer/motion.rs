@@ -148,6 +148,40 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_hover_still_advances_smithay_pointer_location() {
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.config.derived.display.width = 1920;
+        wm.core.config.derived.display.height = 1080;
+        wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            bar_height: 30,
+            ..Monitor::default()
+        });
+        let pointer = state.seat.get_pointer().unwrap();
+        let keyboard = state.seat.get_keyboard().unwrap();
+
+        let _ = process_pointer_motion_command_cached(
+            &mut wm,
+            &mut state,
+            &pointer,
+            &keyboard,
+            PointerMotionCommand::Absolute {
+                x: 1900.0,
+                y: 500.0,
+                time_msec: 1,
+            },
+            None,
+            true,
+        );
+
+        assert_eq!(pointer.current_location(), Point::from((1900.0, 500.0)));
+        assert!(wm.core.drag.hover_offer.is_sidebar());
+    }
+
+    #[test]
     fn active_drag_batch_reuses_current_hit_and_scene_snapshot() {
         const MOTIONS: usize = 48;
         let (_event_loop, mut state) =
@@ -519,44 +553,42 @@ fn dispatch_pointer_motion(
         return;
     }
 
-    // Cheap shared sidebar hover path: monitor lookup + rectangle test, no
-    // client scans and no button binding dispatch on motion.
-    // Only check when no window is under the cursor — a window covering the
-    // sidebar area must receive events normally.
-    if !wm.core.drag.any_drag_active() {
-        if hovered_win.is_none() {
-            let ctx = wm.ctx();
-            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-                && update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root)
-                    .affects_pointer_handling()
-            {
-                return;
-            }
-        } else if wm.core.drag.hover_offer.is_sidebar() {
-            let ctx = wm.ctx();
-            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-                clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
-            }
+    // A desktop sidebar offer suppresses ordinary hover/focus policy, but it
+    // must not consume the motion event: Smithay's pointer position is the
+    // protocol authority used by constraints, buttons, and cursor rendering.
+    let sidebar_offer_active = if !wm.core.drag.any_drag_active() {
+        let ctx = wm.ctx();
+        if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+            matches!(
+                update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root, hovered_win,),
+                crate::mouse::SidebarOfferUpdate::Active
+            )
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
 
-    // Phase 5: Update hover resize state for floating windows
-    let suppress_hover_focus =
-        update_hover_resize_state(wm, root, hovered_win, wm.core.drag.any_drag_active());
+    if !sidebar_offer_active {
+        // Phase 5: Update hover resize state for floating windows
+        let suppress_hover_focus =
+            update_hover_resize_state(wm, root, hovered_win, wm.core.drag.any_drag_active());
 
-    // Phase 6: Update pointer focus based on drag state. An exclusive layer
-    // surface (for example slurp) temporarily owns keyboard focus; moving the
-    // pointer while it is active must not select/reorder managed windows below
-    // the overlay.
-    if !state.exclusive_layer_has_keyboard_focus() {
-        update_pointer_focus(
-            wm,
-            active_drag_window,
-            hovered_win,
-            suppress_hover_focus,
-            root,
-            hover_focus_trigger,
-        );
+        // Phase 6: Update pointer focus based on drag state. An exclusive layer
+        // surface (for example slurp) temporarily owns keyboard focus; moving the
+        // pointer while it is active must not select/reorder managed windows below
+        // the overlay.
+        if !state.exclusive_layer_has_keyboard_focus() {
+            update_pointer_focus(
+                wm,
+                active_drag_window,
+                hovered_win,
+                suppress_hover_focus,
+                root,
+                hover_focus_trigger,
+            );
+        }
     }
 
     // Phase 7: Handle tag/title drag motion

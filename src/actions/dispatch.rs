@@ -5,9 +5,7 @@ use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
 };
 use crate::model::WmModel;
-use crate::mouse::{
-    drag_tag, resize_aspect_mouse, sidebar_gesture_begin, window_title_mouse_handler,
-};
+use crate::mouse::{drag_tag, resize_aspect_mouse, window_title_mouse_handler};
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
 
@@ -150,7 +148,6 @@ pub fn execute_button_action(
                 toggle_locked(ctx, win);
             }
         }
-        ButtonAction::SidebarGestureBegin => sidebar_gesture_begin(ctx, arg.btn),
         ButtonAction::ReorderSelected { direction } => {
             if !matches!(
                 crate::layouts::reorder_maximized_stack(ctx, *direction),

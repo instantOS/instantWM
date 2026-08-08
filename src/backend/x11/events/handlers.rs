@@ -70,10 +70,10 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     }
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
-    let button_target = region.to_button_target();
+    let button_target = region.binding_target();
 
     let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
-    if button_target == ButtonTarget::Bar(BarPosition::StatusText) {
+    if button_target == Some(ButtonTarget::Bar(BarPosition::StatusText)) {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         crate::bar::handle_status_text_click(
             &mut wm_ctx,
@@ -84,9 +84,9 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     }
 
-    let client_binding_matched = button_target == ButtonTarget::ClientWin
+    let client_binding_matched = button_target == Some(ButtonTarget::ClientWin)
         && buttons_clone.iter().any(|button| {
-            button.matches(button_target)
+            button_target.is_some_and(|target| button.matches(target))
                 && button.button.to_x11_detail() == e.detail
                 && crate::util::clean_mask(button.mask, numlockmask) == clean_state
         });
@@ -106,7 +106,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     );
     let _ = conn.flush();
 
-    if button_target == ButtonTarget::Root
+    if button_target == Some(ButtonTarget::Root)
         && let Some(mon) = ctx.core.model().monitor(selmon_id)
         && mon.selected.is_some()
         && let Some(btn) = MouseButton::from_x11_detail(e.detail)
@@ -115,7 +115,18 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
+    if clean_state == 0
+        && let crate::mouse::pointer::PointerRegion::Sidebar(target) = region
+        && let Some(btn @ MouseButton::Left) = MouseButton::from_x11_detail(e.detail)
+    {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::mouse::sidebar_gesture_begin(&mut wm_ctx, btn, target, root);
+        return;
+    }
+
+    if let (Some(btn), Some(button_target)) =
+        (MouseButton::from_x11_detail(e.detail), button_target)
+    {
         crate::mouse::bindings::run_matching(
             &mut WmCtx::X11(ctx.reborrow()),
             crate::mouse::bindings::ButtonBindingEvent {
@@ -400,17 +411,17 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
         if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root) {
             return;
         }
-        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root)
-            .affects_pointer_handling()
-        {
-            return;
-        }
-        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         let hovered = crate::backend::x11::mouse::cursor_client_win(
             ctx.core.state,
             ctx.x11.conn,
             ctx.x11_runtime.root,
         );
+        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root, hovered)
+            .affects_pointer_handling()
+        {
+            return;
+        }
+        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         crate::focus::apply_hover_focus(
             &mut WmCtx::X11(ctx.reborrow()),
             hovered,

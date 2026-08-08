@@ -79,7 +79,6 @@ impl Debug for Key {
 pub enum ButtonTarget {
     Bar(BarPosition),
     ClientWin,
-    SideBar,
     #[default]
     Root,
 }
@@ -140,7 +139,7 @@ mod tests {
             target,
             mask: 0,
             button: MouseButton::Left,
-            action: ButtonAction::SidebarGestureBegin,
+            action: ButtonAction::HideEdgeScratchpad,
         }
     }
 
@@ -154,11 +153,11 @@ mod tests {
 
     #[test]
     fn button_target_keeps_non_bar_targets_separate() {
-        let sidebar = button(ButtonTarget::SideBar);
+        let root = button(ButtonTarget::Root);
 
-        assert!(sidebar.matches(ButtonTarget::SideBar));
-        assert!(!sidebar.matches(ButtonTarget::Root));
-        assert!(!sidebar.matches(ButtonTarget::Bar(BarPosition::Root)));
+        assert!(root.matches(ButtonTarget::Root));
+        assert!(!root.matches(ButtonTarget::ClientWin));
+        assert!(!root.matches(ButtonTarget::Bar(BarPosition::Root)));
     }
 }
 

@@ -2,7 +2,7 @@
 //!
 //! This module handles root-window gestures like vertical swipes.
 
-use crate::backend::BackendEvent;
+use crate::backend::{BackendEvent, PointerOps};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::*;
 
@@ -10,40 +10,46 @@ use crate::types::*;
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn sidebar_gesture_begin(ctx: &mut WmCtx, btn: MouseButton) {
+pub fn sidebar_gesture_begin(
+    ctx: &mut WmCtx,
+    btn: MouseButton,
+    target: SidebarTarget,
+    start: Point,
+) -> bool {
     match ctx {
-        WmCtx::X11(x11) => sidebar_gesture_x11(x11, btn),
-        WmCtx::Wayland(_) => begin_sidebar_gesture(ctx, btn),
+        WmCtx::X11(x11) => sidebar_gesture_x11(x11, btn, target, start),
+        WmCtx::Wayland(_) => begin_sidebar_gesture(ctx, btn, target, start),
     }
 }
 
-pub fn begin_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) {
-    let Some(ptr) = ctx.pointer_backend().pointer_location() else {
-        return;
-    };
-    let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core().model(), ptr) else {
-        return;
-    };
+fn begin_sidebar_gesture(
+    ctx: &mut WmCtx,
+    btn: MouseButton,
+    target: SidebarTarget,
+    start: Point,
+) -> bool {
     let threshold = ctx
         .core()
         .model()
         .monitor(target.monitor_id)
         .map(|monitor| (monitor.monitor_rect.h / 30).max(1))
-        .unwrap_or(1);
+        .unwrap_or_else(|| (target.rect.h / 30).max(1));
     if ctx
         .core_mut()
         .drag_state_mut()
         .begin_sidebar_volume(crate::core_state::SidebarVolumeDrag::new(
             btn,
             target.monitor_id,
-            ptr.y,
+            start.y,
             threshold,
         ))
         .is_err()
     {
-        return;
+        return false;
     }
-    ctx.set_cursor_style(AltCursor::Move);
+    crate::mouse::clear_hover_offer(ctx);
+    ctx.set_cursor_style(AltCursor::VerticalAdjust);
+    true
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
@@ -81,32 +87,56 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
     }
 }
 
-pub fn finish_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) -> bool {
+pub fn finish_sidebar_gesture(
+    ctx: &mut WmCtx,
+    btn: MouseButton,
+    hover_target: Option<SidebarTarget>,
+) -> bool {
     if ctx.core().drag_state().sidebar_volume_button() != Some(btn) {
         return false;
     }
     ctx.core_mut().drag_state_mut().finish_sidebar_volume(btn);
     ctx.set_cursor_style(AltCursor::Default);
+    let _ = crate::mouse::set_sidebar_offer(ctx, hover_target);
     true
 }
 
-pub fn sidebar_gesture_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
+fn sidebar_gesture_x11(
+    ctx: &mut WmCtxX11,
+    btn: MouseButton,
+    target: SidebarTarget,
+    start: Point,
+) -> bool {
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        begin_sidebar_gesture(&mut wm_ctx, btn);
-        if !wm_ctx.core().drag_state().sidebar_volume_active() {
-            return;
+        if !begin_sidebar_gesture(&mut wm_ctx, btn, target, start) {
+            return false;
         }
     }
 
-    crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let BackendEvent::Motion { root, .. } = event {
-            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            update_sidebar_gesture(&mut wm_ctx, root.y);
-        }
-        true
-    });
+    crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::VerticalAdjust,
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                update_sidebar_gesture(&mut wm_ctx, root.y);
+            }
+            true
+        },
+    );
 
+    let root = ctx.x11.pointer_location().unwrap_or(start);
+    let window_at_root = crate::backend::x11::mouse::cursor_client_win(
+        ctx.core.state,
+        ctx.x11.conn,
+        ctx.x11_runtime.root,
+    );
+    let hover_target =
+        crate::mouse::pointer::desktop_sidebar_target_at(ctx.core.model(), root, window_at_root);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    let _ = finish_sidebar_gesture(&mut wm_ctx, btn);
+    let _ = finish_sidebar_gesture(&mut wm_ctx, btn, hover_target);
+    true
 }
