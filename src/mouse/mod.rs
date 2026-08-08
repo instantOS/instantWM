@@ -23,7 +23,8 @@
 //!               ├─► active window move/resize
 //!               ├─► thresholded title interaction
 //!               ├─► tag drag
-//!               └─► sidebar gesture
+//!               ├─► sidebar gesture
+//!               └─► bottom-bar gesture
 //! ```
 //!
 //! X11's native grab loop and Wayland's event-driven pointer/touch adapters
@@ -46,8 +47,9 @@ pub mod warp;
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    DragInput, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture, sidebar_gesture_begin,
-    title_drag_finish, title_drag_motion, update_sidebar_gesture, window_title_mouse_handler,
+    DragInput, drag_tag_finish, drag_tag_motion, finish_bottom_bar_gesture, finish_sidebar_gesture,
+    sidebar_gesture_begin, title_drag_finish, title_drag_motion, update_bottom_bar_gesture,
+    update_sidebar_gesture, window_title_mouse_handler,
 };
 
 // ── hover ─────────────────────────────────────────────────────────────────────

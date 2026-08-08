@@ -570,16 +570,19 @@ fn dispatch_pointer_motion(
             // strip; ordinary pointer motion must not gain another scene walk.
             let in_sidebar =
                 crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root).is_some();
-            let blocked_by_compositor_ui = in_sidebar
+            let blocked_by_non_desktop = in_sidebar
                 && (state
-                    .layer_surface_under_pointer(pointer_location)
+                    .logical_window_under_pointer(pointer_location)
                     .is_some()
+                    || state
+                        .layer_surface_under_pointer(pointer_location)
+                        .is_some()
                     || state.is_pointer_over_overlay(pointer_location));
             matches!(
                 update_sidebar_offer_at(
                     &mut WmCtx::Wayland(ctx.reborrow()),
                     root,
-                    blocked_by_compositor_ui,
+                    blocked_by_non_desktop,
                 ),
                 crate::mouse::SidebarOfferUpdate::Active
             )

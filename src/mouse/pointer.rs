@@ -33,7 +33,7 @@ impl PointerRegion {
         match self {
             PointerRegion::Bar { pos, .. } => Some(crate::types::ButtonTarget::Bar(pos)),
             PointerRegion::Client(_) => Some(crate::types::ButtonTarget::ClientWin),
-            PointerRegion::BottomBar { .. } => None,
+            PointerRegion::BottomBar { .. } => Some(crate::types::ButtonTarget::BottomBar),
             PointerRegion::Root { .. } => Some(crate::types::ButtonTarget::Root),
         }
     }
@@ -80,6 +80,17 @@ pub fn sidebar_target_at(model: &WmModel, root: Point) -> Option<SidebarTarget> 
     })
 }
 
+/// Cheap bottom-bar-only hit test for pointer press ownership.
+///
+/// Mirrors `button_region_at`'s strip classification: the strip must be
+/// visible on the monitor under the pointer.
+pub fn bottom_bar_monitor_at(model: &WmModel, root: Point) -> Option<MonitorId> {
+    let monitor_id = model.monitors.id_intersecting_rect(point_rect(root))?;
+    let mon = model.monitor(monitor_id)?;
+    mon.bottom_bar_contains_y(&model.clients, root.y)
+        .then_some(monitor_id)
+}
+
 /// Full click classification shared by X11 and Wayland button handlers.
 pub fn button_region_at(
     core: &mut CoreCtx<'_>,
@@ -113,7 +124,10 @@ pub fn button_region_at(
 
 #[cfg(test)]
 mod tests {
-    use super::{PointerRegion, button_region_at, right_sidebar_rect, sidebar_target_at};
+    use super::{
+        PointerRegion, bottom_bar_monitor_at, button_region_at, right_sidebar_rect,
+        sidebar_target_at,
+    };
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::model::WmModel;
     use crate::types::{Monitor, Point, Rect, SIDEBAR_WIDTH, WindowId};
@@ -186,6 +200,26 @@ mod tests {
             ),
             PointerRegion::Client(WindowId::from(99_u32))
         );
+    }
+
+    #[test]
+    fn bottom_bar_monitor_at_respects_visibility_and_y_band() {
+        let mut model = WmModel::new();
+        let mut mon = Monitor::new_with_values(true);
+        mon.show_bottom_bar = true;
+        mon.bottom_bar_height = 30;
+        mon.monitor_rect = Rect::new(0, 0, 1920, 1080);
+        mon.set_available_rect(mon.monitor_rect);
+        let monitor_id = model.monitors.push(mon);
+
+        let inside = Point::new(500, 1060);
+        let outside = Point::new(500, 1000);
+
+        assert_eq!(bottom_bar_monitor_at(&model, inside), Some(monitor_id));
+        assert_eq!(bottom_bar_monitor_at(&model, outside), None);
+
+        model.monitor_mut(monitor_id).unwrap().show_bottom_bar = false;
+        assert_eq!(bottom_bar_monitor_at(&model, inside), None);
     }
 
     #[test]

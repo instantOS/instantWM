@@ -250,9 +250,9 @@ pub fn set_sidebar_offer(
 pub fn update_sidebar_offer_at(
     ctx: &mut WmCtx,
     root: crate::types::Point,
-    blocked_by_compositor_ui: bool,
+    blocked_by_non_desktop: bool,
 ) -> SidebarOfferUpdate {
-    let target = (!blocked_by_compositor_ui)
+    let target = (!blocked_by_non_desktop)
         .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core().model(), root))
         .flatten();
     set_sidebar_offer(ctx, target)

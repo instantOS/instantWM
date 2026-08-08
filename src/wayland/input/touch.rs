@@ -133,6 +133,7 @@ pub fn handle_touch_down(
                 return;
             }
             if state.runtime.wm_gesture_touch_slot.is_none()
+                && state.logical_window_under_pointer(location).is_none()
                 && clean_modifier_state(state) == 0
                 && let Some(target) = crate::mouse::pointer::sidebar_target_at(&wm.core.model, root)
             {
@@ -144,6 +145,33 @@ pub fn handle_touch_down(
                     target,
                     root,
                 ) {
+                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
+                    return;
+                }
+            }
+            if state.runtime.wm_gesture_touch_slot.is_none()
+                && crate::mouse::pointer::bottom_bar_monitor_at(&wm.core.model, root).is_some()
+            {
+                // Run configured strip bindings (by default this starts the
+                // horizontal swipe gesture). If a binding captures the touch,
+                // motion/up are driven through the shared interaction transport.
+                let source = crate::types::InteractionSource::Touch(event.slot.into());
+                let clean_state = clean_modifier_state(state);
+                let mut ctx = wm.ctx();
+                crate::mouse::bindings::run_matching(
+                    &mut ctx,
+                    crate::mouse::bindings::ButtonBindingEvent {
+                        target: crate::types::ButtonTarget::BottomBar,
+                        window: None,
+                        button: MouseButton::Left,
+                        source,
+                        root,
+                        clean_state,
+                    },
+                    0,
+                    crate::mouse::bindings::MatchPolicy::All,
+                );
+                if wm.core.drag.captured_source() == Some(source) {
                     state.runtime.wm_gesture_touch_slot = Some(event.slot);
                     return;
                 }

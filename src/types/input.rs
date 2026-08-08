@@ -84,6 +84,8 @@ pub enum AltCursor {
     Move,
     /// A value adjusted by dragging vertically.
     VerticalAdjust,
+    /// A value adjusted by dragging horizontally.
+    HorizontalAdjust,
     /// Resize cursor with direction.
     Resize(ResizeDirection),
 }
@@ -101,6 +103,7 @@ impl AltCursor {
             AltCursor::Default => 0,
             AltCursor::Move => 2,
             AltCursor::VerticalAdjust => 4,
+            AltCursor::HorizontalAdjust => 5,
             AltCursor::Resize(dir) => match dir {
                 ResizeDirection::TopLeft => 8,
                 ResizeDirection::Top => 4,
@@ -120,6 +123,7 @@ impl AltCursor {
             AltCursor::Default => None,
             AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
             AltCursor::VerticalAdjust => Some(smithay::input::pointer::CursorIcon::NsResize),
+            AltCursor::HorizontalAdjust => Some(smithay::input::pointer::CursorIcon::EwResize),
             AltCursor::Resize(dir) => Some(match dir {
                 ResizeDirection::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
                 ResizeDirection::Top => smithay::input::pointer::CursorIcon::NResize,

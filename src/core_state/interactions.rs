@@ -1,3 +1,5 @@
+use crate::actions::ButtonAction;
+
 use super::*;
 
 /// What kind of drag interaction is active.
@@ -311,6 +313,130 @@ pub struct TagDragState {
     pub source: Option<InteractionSource>,
 }
 
+/// Direction latched by a bottom-bar swipe.
+///
+/// Horizontal swipes keep their previous semantics (left = previous tag,
+/// right = next tag); a mostly-upward swipe latches [`Self::Up`] instead, so a
+/// press-hold-slide-release leaving the bar can trigger a third binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwipeDirection {
+    Left,
+    Right,
+    Up,
+}
+
+/// Horizontal or upward swipe on the bottom-bar gesture strip.
+///
+/// Once the pointer travels at least `threshold` pixels from the press
+/// position, the swipe direction is latched (rightward = `right` action,
+/// leftward = `left` action, mostly upward = `up` action) and locked in until
+/// release. Release fires the latched action exactly once, so the whole
+/// press-hold-slide-release sequence behaves like a single keybind regardless
+/// of how far the drag goes. The directional actions are captured from the
+/// binding at press time, so both the trigger button/modifiers and the
+/// resulting action are fully rebindable.
+#[derive(Debug, Clone)]
+pub struct BottomBarDrag {
+    button: MouseButton,
+    source: InteractionSource,
+    monitor_id: MonitorId,
+    anchor_x: i32,
+    anchor_y: i32,
+    threshold: i32,
+    left: Box<ButtonAction>,
+    right: Box<ButtonAction>,
+    up: Box<ButtonAction>,
+    /// Swipe direction latched once the pointer travels at least `threshold`
+    /// pixels from the press position. Locked in for the remainder of the
+    /// gesture: one press-hold-slide-release always produces exactly one
+    /// action (fired on release), regardless of how far the drag goes.
+    direction: Option<SwipeDirection>,
+}
+
+impl BottomBarDrag {
+    pub fn new(
+        button: MouseButton,
+        source: InteractionSource,
+        monitor_id: MonitorId,
+        anchor: Point,
+        threshold: i32,
+        left: Box<ButtonAction>,
+        right: Box<ButtonAction>,
+        up: Box<ButtonAction>,
+    ) -> Self {
+        Self {
+            button,
+            source,
+            monitor_id,
+            anchor_x: anchor.x,
+            anchor_y: anchor.y,
+            threshold: threshold.max(1),
+            left,
+            right,
+            up,
+            direction: None,
+        }
+    }
+
+    pub fn button(&self) -> MouseButton {
+        self.button
+    }
+
+    pub fn source(&self) -> InteractionSource {
+        self.source
+    }
+
+    pub fn monitor_id(&self) -> MonitorId {
+        self.monitor_id
+    }
+
+    pub fn left(&self) -> &ButtonAction {
+        &self.left
+    }
+
+    pub fn right(&self) -> &ButtonAction {
+        &self.right
+    }
+
+    pub fn up(&self) -> &ButtonAction {
+        &self.up
+    }
+
+    /// The swipe direction latched so far, if any.
+    pub fn latched_direction(&self) -> Option<SwipeDirection> {
+        self.direction
+    }
+
+    /// Observe pointer motion, latching the swipe direction the first time the
+    /// pointer travels at least `threshold` pixels from the press position.
+    ///
+    /// The dominant axis wins: a mostly-upward drag latches [`SwipeDirection::Up`]
+    /// (up = `anchor_y - root.y`), anything else latches left/right from the
+    /// horizontal displacement. Returns the newly latched direction, or `None`
+    /// when the motion is still below the threshold or the direction was
+    /// already latched. The latch is never updated afterwards, so a single
+    /// swipe always maps to one action.
+    pub fn update(&mut self, root: Point) -> Option<SwipeDirection> {
+        if self.direction.is_some() {
+            return None;
+        }
+        let dx = root.x - self.anchor_x;
+        let up = self.anchor_y - root.y;
+        if dx.abs() < self.threshold && up < self.threshold {
+            return None;
+        }
+        let direction = if up >= dx.abs() {
+            SwipeDirection::Up
+        } else if dx > 0 {
+            SwipeDirection::Right
+        } else {
+            SwipeDirection::Left
+        };
+        self.direction = Some(direction);
+        self.direction
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SidebarVolumeDrag {
     button: MouseButton,
@@ -402,8 +528,137 @@ impl HotCornerState {
 
 #[cfg(test)]
 mod pointer_interaction_tests {
-    use super::{DragState, HotCornerState, SidebarVolumeDrag};
-    use crate::types::{InteractionSource, MonitorId, MouseButton};
+    use super::{BottomBarDrag, DragState, HotCornerState, SidebarVolumeDrag, SwipeDirection};
+    use crate::actions::ButtonAction;
+    use crate::types::{InteractionSource, MonitorId, MouseButton, Point};
+
+    fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
+        BottomBarDrag::new(
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            MonitorId::from_raw(3),
+            Point::new(anchor_x, anchor_y),
+            30,
+            Box::new(ButtonAction::named(crate::actions::NamedAction::ScrollLeft)),
+            Box::new(ButtonAction::named(
+                crate::actions::NamedAction::ScrollRight,
+            )),
+            Box::new(ButtonAction::named(
+                crate::actions::NamedAction::ToggleOverview,
+            )),
+        )
+    }
+
+    #[test]
+    fn bottom_bar_swipe_latches_direction_at_threshold() {
+        let mut drag = bottom_bar_drag(500, 1000);
+
+        assert_eq!(drag.update(Point::new(529, 1000)), None); // 29px < 30: not yet
+        assert_eq!(
+            drag.update(Point::new(530, 1000)),
+            Some(SwipeDirection::Right)
+        );
+        assert_eq!(drag.update(Point::new(700, 1000)), None); // already latched
+        assert_eq!(drag.latched_direction(), Some(SwipeDirection::Right));
+
+        let mut left = bottom_bar_drag(500, 1000);
+        assert_eq!(
+            left.update(Point::new(470, 1000)),
+            Some(SwipeDirection::Left)
+        );
+        assert_eq!(left.latched_direction(), Some(SwipeDirection::Left));
+
+        let mut up = bottom_bar_drag(500, 1000);
+        assert_eq!(up.update(Point::new(500, 970)), Some(SwipeDirection::Up));
+        assert_eq!(up.latched_direction(), Some(SwipeDirection::Up));
+    }
+
+    #[test]
+    fn bottom_bar_swipe_dominant_axis_wins() {
+        // A mostly-upward drag latches Up even though horizontal travel exists.
+        let mut drag = bottom_bar_drag(500, 1000);
+        assert_eq!(drag.update(Point::new(520, 960)), Some(SwipeDirection::Up));
+        assert_eq!(drag.latched_direction(), Some(SwipeDirection::Up));
+
+        // A mostly-rightward drag with some upward travel latches Right.
+        let mut drag = bottom_bar_drag(500, 1000);
+        assert_eq!(
+            drag.update(Point::new(560, 990)),
+            Some(SwipeDirection::Right)
+        );
+    }
+
+    #[test]
+    fn bottom_bar_swipe_direction_is_locked_after_first_crossing() {
+        let mut drag = bottom_bar_drag(500, 1000);
+
+        assert_eq!(
+            drag.update(Point::new(560, 1000)),
+            Some(SwipeDirection::Right)
+        );
+        // Reversing past the threshold on the other side must not re-latch.
+        assert_eq!(drag.update(Point::new(300, 100)), None);
+        assert_eq!(drag.latched_direction(), Some(SwipeDirection::Right));
+    }
+
+    #[test]
+    fn bottom_bar_drag_exposes_bound_directional_actions() {
+        let drag = bottom_bar_drag(100, 1000);
+        assert!(matches!(
+            drag.left(),
+            ButtonAction::Named {
+                action: crate::actions::NamedAction::ScrollLeft,
+                ..
+            }
+        ));
+        assert!(matches!(
+            drag.right(),
+            ButtonAction::Named {
+                action: crate::actions::NamedAction::ScrollRight,
+                ..
+            }
+        ));
+        assert!(matches!(
+            drag.up(),
+            ButtonAction::Named {
+                action: crate::actions::NamedAction::ToggleOverview,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn bottom_bar_lifecycle_rejects_overlap_and_wrong_button_release() {
+        let mut interactions = DragState::default();
+        interactions.tag.active = true;
+        assert!(
+            interactions
+                .begin_bottom_bar(bottom_bar_drag(500, 1000))
+                .is_err()
+        );
+        assert!(!interactions.bottom_bar_gesture_active());
+
+        interactions.tag.active = false;
+        interactions
+            .begin_bottom_bar(bottom_bar_drag(500, 1000))
+            .unwrap();
+        assert!(interactions.captured_source() == Some(InteractionSource::Pointer));
+        assert!(!interactions.finish_bottom_bar(MouseButton::Right));
+        assert!(interactions.bottom_bar_gesture_active());
+        assert!(interactions.finish_bottom_bar(MouseButton::Left));
+        assert!(!interactions.bottom_bar_gesture_active());
+    }
+
+    #[test]
+    fn bottom_bar_cancel_clears_the_gesture() {
+        let mut interactions = DragState::default();
+        interactions
+            .begin_bottom_bar(bottom_bar_drag(500, 1000))
+            .unwrap();
+        assert!(interactions.cancel_bottom_bar());
+        assert!(!interactions.bottom_bar_gesture_active());
+        assert!(!interactions.cancel_bottom_bar());
+    }
 
     #[test]
     fn hot_corner_fires_once_until_pointer_leaves_keep_zone() {
@@ -524,6 +779,7 @@ pub struct DragState {
     pub tag: TagDragState,
     interactive: InteractiveDrag,
     sidebar_volume: Option<SidebarVolumeDrag>,
+    bottom_bar: Option<BottomBarDrag>,
     pub hover_offer: HoverOffer,
 }
 
@@ -551,6 +807,7 @@ impl DragState {
         self.interaction_button()
             .or_else(|| self.tag.active.then_some(self.tag.button))
             .or_else(|| self.sidebar_volume_button())
+            .or_else(|| self.bottom_bar.as_ref().map(BottomBarDrag::button))
     }
 
     pub fn captured_source(&self) -> Option<InteractionSource> {
@@ -559,6 +816,7 @@ impl DragState {
             .map(DragInteraction::source)
             .or_else(|| self.tag.active.then_some(self.tag.source).flatten())
             .or_else(|| self.sidebar_volume.map(SidebarVolumeDrag::source))
+            .or_else(|| self.bottom_bar.as_ref().map(BottomBarDrag::source))
     }
 
     pub fn sidebar_volume_active(&self) -> bool {
@@ -598,6 +856,46 @@ impl DragState {
 
     pub fn cancel_sidebar_volume(&mut self) -> bool {
         self.sidebar_volume.take().is_some()
+    }
+
+    pub fn bottom_bar_gesture_active(&self) -> bool {
+        self.bottom_bar.is_some()
+    }
+
+    pub fn bottom_bar_button(&self) -> Option<MouseButton> {
+        self.bottom_bar.as_ref().map(BottomBarDrag::button)
+    }
+
+    pub fn bottom_bar_monitor(&self) -> Option<MonitorId> {
+        self.bottom_bar.as_ref().map(BottomBarDrag::monitor_id)
+    }
+
+    pub fn bottom_bar_drag(&self) -> Option<&BottomBarDrag> {
+        self.bottom_bar.as_ref()
+    }
+
+    pub fn begin_bottom_bar(&mut self, drag: BottomBarDrag) -> Result<(), DragAlreadyActive> {
+        if self.any_drag_active() {
+            return Err(DragAlreadyActive);
+        }
+        self.bottom_bar = Some(drag);
+        Ok(())
+    }
+
+    pub fn update_bottom_bar(&mut self, root: Point) -> Option<SwipeDirection> {
+        self.bottom_bar.as_mut().and_then(|drag| drag.update(root))
+    }
+
+    pub fn finish_bottom_bar(&mut self, button: MouseButton) -> bool {
+        if self.bottom_bar_button() != Some(button) {
+            return false;
+        }
+        self.bottom_bar = None;
+        true
+    }
+
+    pub fn cancel_bottom_bar(&mut self) -> bool {
+        self.bottom_bar.take().is_some()
     }
 
     pub fn begin_move(
@@ -743,7 +1041,10 @@ impl DragState {
 
     #[inline]
     pub fn any_drag_active(&self) -> bool {
-        !self.interactive.is_idle() || self.tag.active || self.sidebar_volume.is_some()
+        !self.interactive.is_idle()
+            || self.tag.active
+            || self.sidebar_volume.is_some()
+            || self.bottom_bar.is_some()
     }
 
     #[inline]

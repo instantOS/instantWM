@@ -7,14 +7,18 @@
 //! - [`tag`] — Tag bar drag: [`drag_tag_begin`], [`drag_tag_motion`], [`drag_tag_finish`]
 //! - [`title`] — Title bar click/drag: [`title_drag_begin`], [`title_drag_motion`],
 //!   [`title_drag_finish`], [`window_title_mouse_handler`]
-//! - [`gesture`] — Sidebar gestures: [`sidebar_gesture_begin`]
+//! - [`gesture`] — Sidebar and bottom-bar gestures: [`sidebar_gesture_begin`],
+//!   [`bottom_bar_gesture_begin`]
 //!
 //! Native backends only acquire input and translate it to
 //! [`crate::mouse::interaction::InteractionEvent`]. Recognition, mutation,
 //! cursor policy, and cleanup live in this shared subsystem.
 
 // Re-export from submodules
-pub use gesture::{finish_sidebar_gesture, sidebar_gesture_begin, update_sidebar_gesture};
+pub use gesture::{
+    bottom_bar_gesture_begin, finish_bottom_bar_gesture, finish_sidebar_gesture,
+    sidebar_gesture_begin, update_bottom_bar_gesture, update_sidebar_gesture,
+};
 pub use move_drop::{
     clear_bar_hover, complete_move_drop, snap_window_to_monitor_edges, update_bar_hover_simple,
 };

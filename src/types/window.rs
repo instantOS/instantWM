@@ -80,6 +80,12 @@ impl Debug for Key {
 pub enum ButtonTarget {
     Bar(BarPosition),
     ClientWin,
+    /// The bottom gesture strip (visible when `show_bottom_bar` is enabled).
+    ///
+    /// Bindable like any other screen region; the default binding starts the
+    /// horizontal drag gesture that steps through the configured left/right
+    /// actions (adjacent-tag switching by default).
+    BottomBar,
     #[default]
     Root,
 }

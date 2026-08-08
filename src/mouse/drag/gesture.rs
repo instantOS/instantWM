@@ -1,7 +1,9 @@
 //! Mouse gesture operations.
 //!
-//! This module handles root-window gestures like vertical swipes.
+//! This module handles root-window gestures like vertical swipes and the
+//! bottom-bar horizontal swipe.
 
+use crate::actions::{ButtonAction, execute_button_action};
 use crate::contexts::WmCtx;
 use crate::types::*;
 
@@ -97,5 +99,96 @@ pub fn finish_sidebar_gesture(
     ctx.core_mut().drag_state_mut().finish_sidebar_volume(btn);
     ctx.set_cursor_style(AltCursor::Default);
     let _ = crate::mouse::set_sidebar_offer(ctx, hover_target);
+    true
+}
+
+/// Bottom-bar swipe gesture recogniser.
+///
+/// Begins a swipe on the bottom gesture strip. Once the cursor travels more
+/// than `monitor_width / 30` pixels from the press position, the swipe
+/// direction (left, right, or up) is latched; releasing the button then runs
+/// the matching bound action exactly once (adjacent-tag switching left/right,
+/// overview toggle up by default). The drag may leave the strip — motion keeps
+/// being delivered to the captured gesture — so a press-hold-slide-release
+/// that leaves the bar still triggers exactly one action, no matter how far the
+/// drag goes.
+pub fn bottom_bar_gesture_begin(
+    ctx: &mut WmCtx,
+    btn: MouseButton,
+    source: InteractionSource,
+    monitor_id: MonitorId,
+    start: Point,
+    left: Box<ButtonAction>,
+    right: Box<ButtonAction>,
+    up: Box<ButtonAction>,
+) -> bool {
+    let threshold = ctx
+        .core()
+        .model()
+        .monitor(monitor_id)
+        .map(|monitor| (monitor.monitor_rect.w / 30).max(1))
+        .unwrap_or(1);
+    if ctx
+        .core_mut()
+        .drag_state_mut()
+        .begin_bottom_bar(crate::core_state::BottomBarDrag::new(
+            btn, source, monitor_id, start, threshold, left, right, up,
+        ))
+        .is_err()
+    {
+        return false;
+    }
+    crate::mouse::clear_hover_offer(ctx);
+    ctx.set_cursor_style(AltCursor::HorizontalAdjust);
+    true
+}
+
+pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
+    let Some(monitor_id) = ctx.core().drag_state().bottom_bar_monitor() else {
+        return;
+    };
+    if ctx.core().model().monitor(monitor_id).is_none() {
+        ctx.core_mut().drag_state_mut().cancel_bottom_bar();
+        ctx.set_cursor_style(AltCursor::Default);
+        return;
+    }
+    if let Some(direction) = ctx.core_mut().drag_state_mut().update_bottom_bar(root) {
+        // Reflect the latched direction in the cursor for tactile feedback.
+        let style = match direction {
+            crate::core_state::SwipeDirection::Up => AltCursor::VerticalAdjust,
+            _ => AltCursor::HorizontalAdjust,
+        };
+        ctx.set_cursor_style(style);
+    }
+}
+
+pub fn finish_bottom_bar_gesture(ctx: &mut WmCtx, btn: MouseButton, root: Point) -> bool {
+    if ctx.core().drag_state().bottom_bar_button() != Some(btn) {
+        return false;
+    }
+    let (source, action) = {
+        let Some(drag) = ctx.core().drag_state().bottom_bar_drag() else {
+            return false;
+        };
+        let action = match drag.latched_direction() {
+            Some(crate::core_state::SwipeDirection::Left) => Some(drag.left().clone()),
+            Some(crate::core_state::SwipeDirection::Right) => Some(drag.right().clone()),
+            Some(crate::core_state::SwipeDirection::Up) => Some(drag.up().clone()),
+            None => None,
+        };
+        (drag.source(), action)
+    };
+    ctx.core_mut().drag_state_mut().finish_bottom_bar(btn);
+    ctx.set_cursor_style(AltCursor::Default);
+    if let Some(action) = action {
+        let arg = crate::types::ButtonArg {
+            target: crate::types::ButtonTarget::BottomBar,
+            window: None,
+            btn,
+            source,
+            root,
+        };
+        execute_button_action(ctx, &action, arg);
+    }
     true
 }

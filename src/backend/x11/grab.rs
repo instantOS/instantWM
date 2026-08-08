@@ -317,6 +317,8 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     }
     let cursor = if ctx.core.drag_state().sidebar_volume_active() {
         AltCursor::VerticalAdjust
+    } else if ctx.core.drag_state().bottom_bar_gesture_active() {
+        AltCursor::HorizontalAdjust
     } else if let Some(drag) = ctx
         .core
         .drag_state()

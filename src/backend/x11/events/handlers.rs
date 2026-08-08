@@ -45,7 +45,8 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     }
 
-    if clean_state == 0
+    if !ctx.core.model().clients.contains_key(&event_win)
+        && clean_state == 0
         && let Some(btn @ MouseButton::Left) = MouseButton::from_x11_detail(e.detail)
         && let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root)
     {
@@ -101,8 +102,33 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         region,
         crate::mouse::pointer::PointerRegion::BottomBar { .. }
     ) {
-        // The bottom strip has no contents, bindings, or root fall-through:
-        // swallow every button (including scroll) over the visible strip.
+        // The strip only reacts to configured bindings; by default the
+        // left-button binding starts the horizontal swipe gesture. Any other
+        // press is swallowed: no contents, no root fall-through.
+        if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
+            // Release a possible press freeze before acquiring the
+            // interaction's active grab.
+            let _ = ctx
+                .x11
+                .conn
+                .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
+            let _ = ctx.x11.conn.flush();
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            crate::mouse::bindings::run_matching(
+                &mut wm_ctx,
+                crate::mouse::bindings::ButtonBindingEvent {
+                    target: ButtonTarget::BottomBar,
+                    window: None,
+                    button: btn,
+                    source: crate::types::InteractionSource::Pointer,
+                    root,
+                    clean_state,
+                },
+                numlockmask,
+                crate::mouse::bindings::MatchPolicy::All,
+            );
+            let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
+        }
         return;
     }
     let button_target = region.binding_target();
@@ -435,19 +461,20 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 
     if root.y >= monitor_y + bar_height {
-        // Resolve the monitor-edge gesture from event coordinates before
-        // querying X for the child window. Sidebar hover does not need that
-        // synchronous server round trip.
-        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root, false)
-            .affects_pointer_handling()
-        {
-            return;
-        }
         let hovered = crate::backend::x11::mouse::cursor_client_win(
             ctx.core.state,
             ctx.x11.conn,
             ctx.x11_runtime.root,
         );
+        if crate::mouse::update_sidebar_offer_at(
+            &mut WmCtx::X11(ctx.reborrow()),
+            root,
+            hovered.is_some(),
+        )
+        .affects_pointer_handling()
+        {
+            return;
+        }
         if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root) {
             return;
         }

@@ -157,8 +157,17 @@ fn handle_button_press(
             return true;
         }
         PointerRegion::BottomBar { .. } => {
-            // Swallow the press: the strip has no contents, bindings, or
-            // fall-through behavior.
+            // The strip only reacts to configured bindings; by default the
+            // left-button binding starts the horizontal swipe gesture. Any
+            // other press is swallowed: the strip neither acts like a bar nor
+            // falls through to clients.
+            if button.wm_button.is_some_and(|btn| {
+                consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers)
+            }) {
+                // The BottomBarDrag binding captured the press. Motion and
+                // release are driven through the shared interaction transport.
+            }
+            state.dismiss_native_systray_menu();
             pointer_handle.frame(state);
             return true;
         }
@@ -168,7 +177,8 @@ fn handle_button_press(
     // The global edge gesture is selected independently from config-binding
     // regions. Only its actual activation chord is preempted; other buttons
     // and modified client bindings at the edge retain normal behavior.
-    if clean_modifiers == 0
+    if matches!(pointer_region, PointerRegion::Root { .. })
+        && clean_modifiers == 0
         && let Some(btn @ MouseButton::Left) = button.wm_button
         && let Some(target) = crate::mouse::pointer::sidebar_target_at(&wm.core.model, button.root)
     {
@@ -267,7 +277,10 @@ fn handle_button_release(
         let occupied = state
             .layer_surface_under_pointer(button.pointer_location)
             .is_some()
-            || state.is_pointer_over_overlay(button.pointer_location);
+            || state.is_pointer_over_overlay(button.pointer_location)
+            || state
+                .logical_window_under_pointer(button.pointer_location)
+                .is_some();
         let hover_target = (!occupied)
             .then(|| crate::mouse::pointer::sidebar_target_at(&wm.core.model, button.root))
             .flatten();

@@ -182,6 +182,23 @@ pub fn execute_button_action(
                 );
             }
         }
+        ButtonAction::BottomBarDrag { left, right, up } => {
+            let Some(monitor_id) =
+                crate::mouse::pointer::bottom_bar_monitor_at(ctx.core().model(), arg.root)
+            else {
+                return;
+            };
+            crate::mouse::drag::bottom_bar_gesture_begin(
+                ctx,
+                arg.btn,
+                arg.source,
+                monitor_id,
+                arg.root,
+                left.clone(),
+                right.clone(),
+                up.clone(),
+            );
+        }
     }
 }
 

@@ -108,6 +108,10 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
         crate::mouse::update_sidebar_gesture(ctx, event.root.y);
         return InteractionOutcome::Captured;
     }
+    if ctx.core().drag_state().bottom_bar_gesture_active() {
+        crate::mouse::update_bottom_bar_gesture(ctx, event.root);
+        return InteractionOutcome::Captured;
+    }
     InteractionOutcome::Ignored
 }
 
@@ -131,6 +135,9 @@ fn finish(ctx: &mut WmCtx<'_>, event: InteractionEvent, button: MouseButton) -> 
     if crate::mouse::finish_sidebar_gesture(ctx, button, event.sidebar_hover) {
         return InteractionOutcome::Captured;
     }
+    if crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root) {
+        return InteractionOutcome::Captured;
+    }
     InteractionOutcome::Ignored
 }
 
@@ -148,8 +155,9 @@ fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
     .is_some();
     let cancelled_tag = ctx.core().drag_state().tag.active;
     let cancelled_sidebar = ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
+    let cancelled_bottom_bar = ctx.core_mut().drag_state_mut().cancel_bottom_bar();
     ctx.core_mut().drag_state_mut().tag = Default::default();
-    if cancelled_interactive || cancelled_tag || cancelled_sidebar {
+    if cancelled_interactive || cancelled_tag || cancelled_sidebar || cancelled_bottom_bar {
         ctx.core_mut().bar.hover.clear();
         ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);
@@ -165,7 +173,7 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, Monitor, Rect, TagMask, WindowId};
+    use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     fn floating_drag_fixture(source: InteractionSource) -> (Wm, WindowId) {
@@ -272,6 +280,163 @@ mod tests {
             ),
             InteractionOutcome::Ignored
         );
+    }
+
+    fn bottom_bar_fixture() -> (Wm, MonitorId) {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 9;
+        let tags = TagMask::single(2).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            show_bar: true,
+            show_bottom_bar: true,
+            bottom_bar_height: 30,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        // Add a client so overview-style actions can activate.
+        let win = WindowId(7);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            geo: Rect::new(100, 100, 500, 300),
+            ..Client::default()
+        });
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        monitor.clients = vec![win];
+        monitor.selected = Some(win);
+        (wm, monitor_id)
+    }
+
+    fn begin_bottom_bar_drag(wm: &mut Wm, monitor_id: MonitorId, root: Point) {
+        let left = Box::new(crate::actions::ButtonAction::named(
+            crate::actions::NamedAction::ScrollLeft,
+        ));
+        let right = Box::new(crate::actions::ButtonAction::named(
+            crate::actions::NamedAction::ScrollRight,
+        ));
+        let up = Box::new(crate::actions::ButtonAction::named(
+            crate::actions::NamedAction::ToggleOverview,
+        ));
+        assert!(crate::mouse::drag::bottom_bar_gesture_begin(
+            &mut wm.ctx(),
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            monitor_id,
+            root,
+            left,
+            right,
+            up,
+        ));
+    }
+
+    fn end_bottom_bar_drag(wm: &mut Wm, root: Point) {
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                InteractionEvent {
+                    source: InteractionSource::Pointer,
+                    phase: InteractionPhase::End {
+                        button: MouseButton::Left,
+                    },
+                    root,
+                    modifiers: 0,
+                    sidebar_hover: None,
+                }
+            ),
+            InteractionOutcome::Captured
+        );
+        assert!(!wm.core.drag.bottom_bar_gesture_active());
+    }
+
+    #[test]
+    fn bottom_bar_swipe_switches_exactly_one_adjacent_tag_on_release() {
+        let (mut wm, monitor_id) = bottom_bar_fixture();
+        let begin_root = Point::new(100, 1060);
+        assert_eq!(
+            crate::mouse::pointer::bottom_bar_monitor_at(&wm.core.model, begin_root),
+            Some(monitor_id)
+        );
+
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+
+        // Threshold is 1920 / 30 = 64. Crossing it latches right; motion alone
+        // must not change the view (action fires on release).
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(164, 1060))
+            ),
+            InteractionOutcome::Captured
+        );
+        // Dragging far beyond the threshold still produces only one action.
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(1500, 1060))
+            ),
+            InteractionOutcome::Captured
+        );
+        assert_eq!(
+            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            TagMask::single(2).unwrap()
+        );
+
+        // Release fires the right (next-tag) action exactly once: tag 2 -> 3.
+        end_bottom_bar_drag(&mut wm, Point::new(1500, 1060));
+        assert_eq!(
+            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            TagMask::single(3).unwrap()
+        );
+
+        // A left swipe switches back exactly one tag: tag 3 -> 2.
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(36, 1060))
+            ),
+            InteractionOutcome::Captured
+        );
+        end_bottom_bar_drag(&mut wm, Point::new(36, 1060));
+        assert_eq!(
+            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            TagMask::single(2).unwrap()
+        );
+
+        // A plain click (release without crossing the threshold) does nothing.
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+        end_bottom_bar_drag(&mut wm, begin_root);
+        assert_eq!(
+            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            TagMask::single(2).unwrap()
+        );
+    }
+
+    #[test]
+    fn bottom_bar_up_swipe_leaves_the_strip_and_triggers_once_on_release() {
+        let (mut wm, monitor_id) = bottom_bar_fixture();
+        let begin_root = Point::new(100, 1060);
+
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+
+        // Drag up well past the threshold and off the strip into the desktop.
+        // Motion alone must not fire anything (overview stays inactive).
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(100, 500))
+            ),
+            InteractionOutcome::Captured
+        );
+        assert!(!wm.core.model.is_overview_active());
+
+        // Release fires the up (overview) action exactly once.
+        end_bottom_bar_drag(&mut wm, Point::new(100, 500));
+        assert!(wm.core.model.is_overview_active());
     }
 
     #[test]
