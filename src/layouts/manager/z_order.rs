@@ -3,7 +3,7 @@ use crate::types::{Client, Monitor, MonitorId, WindowId};
 use std::collections::{HashMap, HashSet};
 
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    ctx.request_bar_update();
+    ctx.request_bar_geometry_update(monitor_id);
 
     let Some(monitor) = ctx.core().model().monitor(monitor_id) else {
         return;
@@ -50,6 +50,7 @@ pub(super) fn compute_monitor_z_order(
     let selected_window = monitor.selected;
     let selected_tags = monitor.visible_tags();
     let bar_win = monitor.bar_win;
+    let bottom_bar_win = monitor.bottom_bar_win;
     let layout = monitor.current_layout();
     let tiled_focus = monitor.most_recent_focus(selected_tags, |win| {
         clients
@@ -126,6 +127,9 @@ pub(super) fn compute_monitor_z_order(
     // blocked waiting for a response.
     let mut stack = tiled_stack;
     stack.push(bar_win);
+    if bottom_bar_win != WindowId::default() {
+        stack.push(bottom_bar_win);
+    }
     stack.extend(floating_stack);
     stack.extend(fullscreen_stack);
     stack.extend(transient_stack.into_iter().map(|(_, win)| win));

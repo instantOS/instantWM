@@ -59,6 +59,7 @@ pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
         | NamedAction::EdgeScratchpadDirectionLeft
         | NamedAction::EdgeScratchpadDirectionRight
         | NamedAction::ToggleBar
+        | NamedAction::ToggleBottomBar
         | NamedAction::ToggleAltTag
         | NamedAction::ToggleAnimated
         | NamedAction::ToggleHideTags

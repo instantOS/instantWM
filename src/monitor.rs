@@ -179,7 +179,7 @@ impl MonitorManager {
         clients: &HashMap<WindowId, Client>,
     ) -> Option<MonitorId> {
         for (i, m) in self.iter() {
-            if w == m.bar_win {
+            if w == m.bar_win || w == m.bottom_bar_win {
                 return Some(i);
             }
         }
@@ -614,6 +614,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
 
     let template = ctx.core().config().tag_template.clone();
     let show_bar = ctx.core().config().bar.show;
+    let show_bottom_bar = ctx.core().config().bar.show_bottom;
 
     let layout_size = output_layout_extent(&outputs);
     let mut changed = sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_size);
@@ -650,6 +651,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
                 changed = true;
                 let id = ctx.core_mut().state_mut().model.monitors.allocate_id();
                 let mut m = Monitor::new_with_values(show_bar);
+                m.show_bottom_bar = show_bottom_bar;
                 m.monitor_id = id;
                 m.init_tags(&template);
                 apply_output_to_monitor(&mut m, i, output, bh, hp, sm);
@@ -662,6 +664,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     for slot in &mut pool {
         if let Some(m) = slot.as_ref() {
             crate::backend::x11::monitor_helpers::destroy_monitor_bar(ctx, m.bar_win);
+            crate::backend::x11::monitor_helpers::destroy_monitor_bar(ctx, m.bottom_bar_win);
         }
     }
 

@@ -4,6 +4,8 @@
 pub struct PerTagState {
     pub master_count: usize,
     pub show_bar: bool,
+    /// Whether the bottom (gesture) strip is shown on this tag mask.
+    pub show_bottom_bar: bool,
     pub presentation: crate::layouts::PresentationMode,
     /// Persistent manual tiling topology for this exact visible tag mask.
     pub layout_tree: crate::layouts::tree::LayoutTree,
@@ -13,15 +15,16 @@ pub struct PerTagState {
 
 impl Default for PerTagState {
     fn default() -> Self {
-        Self::new(true)
+        Self::new(true, false)
     }
 }
 
 impl PerTagState {
-    pub fn new(show_bar: bool) -> Self {
+    pub fn new(show_bar: bool, show_bottom_bar: bool) -> Self {
         Self {
             master_count: 1,
             show_bar,
+            show_bottom_bar,
             presentation: crate::layouts::PresentationMode::Tiled,
             layout_tree: crate::layouts::tree::LayoutTree::default(),
             preset_cycle_cursor: crate::layouts::tree::Preset::MasterStack,

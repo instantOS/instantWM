@@ -508,7 +508,14 @@ pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandState,
 ) -> Vec<(MemoryRenderBuffer, crate::types::Point)> {
-    if !wm.core.config.bar.show {
+    let show_top = wm.core.config.bar.show;
+    let show_bottom = wm.core.config.bar.show_bottom
+        || wm
+            .core
+            .model
+            .monitors_iter()
+            .any(|(_, m)| m.shows_bottom_bar());
+    if !show_top && !show_bottom {
         return Vec::new();
     }
 
@@ -521,7 +528,7 @@ pub fn build_bar_buffers(
         &mut wm.focus,
     );
 
-    {
+    let mut buffers = if show_top {
         let Backend::Wayland(data) = &mut wm.backend else {
             return Vec::new();
         };
@@ -535,7 +542,15 @@ pub fn build_bar_buffers(
             &data.status_notifier_tray,
             tray_menu.as_ref(),
         )
+    } else {
+        Vec::new()
+    };
+
+    if show_bottom {
+        buffers.extend(crate::bar::wayland::build_bottom_bar_buffers(&mut core));
     }
+
+    buffers
 }
 
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.

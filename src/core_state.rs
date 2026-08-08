@@ -52,6 +52,8 @@ impl Default for WindowConfig {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BarConfig {
     pub show: bool,
+    /// Show the bottom gesture strip (plain background, no contents).
+    pub show_bottom: bool,
     pub height: i32,
     pub startmenu_size: i32,
 }
@@ -60,6 +62,7 @@ impl Default for BarConfig {
     fn default() -> Self {
         Self {
             show: true,
+            show_bottom: true,
             height: 0,
             startmenu_size: 0,
         }
@@ -794,6 +797,7 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
     next.systray.spacing = cfg.systray_spacing;
     next.systray.show = cfg.show_systray;
     next.bar.show = cfg.show_bar;
+    next.bar.show_bottom = cfg.show_bottom_bar;
     next.bar.height = cfg.bar_height;
     next.window.resize_hints = cfg.resize_hints;
     next.window.decor_hints = cfg.decor_hints;
@@ -873,6 +877,14 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
     // Rebuild tag template so monitor creation picks up any config changes.
     next.tag_template = build_tag_template(cfg);
     *config = next;
+    // The file setting is global. Reloading it resets interactive per-tag
+    // overrides so existing outputs immediately match newly created outputs.
+    for (_id, monitor) in state.model.monitors_iter_mut() {
+        monitor.show_bottom_bar = cfg.show_bottom_bar;
+        for per_tag in monitor.per_tag.values_mut() {
+            per_tag.show_bottom_bar = cfg.show_bottom_bar;
+        }
+    }
     apply_tags_config(&mut state.model, &mut state.config, cfg);
 }
 

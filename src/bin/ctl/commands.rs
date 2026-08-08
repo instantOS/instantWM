@@ -297,6 +297,11 @@ pub enum ToggleCliAction {
         /// What to do (default: toggle)
         action: Option<ToggleAction>,
     },
+    /// Toggle the bottom gesture strip
+    BottomBar {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -607,6 +612,7 @@ impl From<ToggleCliAction> for ToggleCommand {
             }
             ToggleCliAction::AltTag { action } => Self::AltTag(action.unwrap_or_default()),
             ToggleCliAction::HideTags { action } => Self::HideTags(action.unwrap_or_default()),
+            ToggleCliAction::BottomBar { action } => Self::BottomBar(action.unwrap_or_default()),
         }
     }
 }

@@ -261,6 +261,8 @@ pub enum ToggleCommand {
     FocusFollowsFloatMouse(ToggleAction),
     AltTag(ToggleAction),
     HideTags(ToggleAction),
+    /// Toggle the bottom gesture strip (like the top-bar toggle).
+    BottomBar(ToggleAction),
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]

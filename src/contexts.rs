@@ -506,6 +506,36 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Refresh bar rendering and synchronize backend-owned bar geometry for
+    /// one monitor. Tag changes use this because bar visibility is per-tag.
+    pub fn request_bar_geometry_update(&mut self, monitor_id: MonitorId) {
+        match self {
+            WmCtx::X11(ctx_x11) => {
+                if let Some(monitor) = ctx_x11.core.model().monitor(monitor_id).cloned() {
+                    crate::backend::x11::bar::resize_bar_win(
+                        ctx_x11.core.state(),
+                        &ctx_x11.x11,
+                        &*ctx_x11.x11_runtime,
+                        ctx_x11.xembed_tray.as_ref(),
+                        &monitor,
+                    );
+                    crate::backend::x11::bar::resize_bottom_bar_win(
+                        ctx_x11.core.state(),
+                        &ctx_x11.x11,
+                        &*ctx_x11.x11_runtime,
+                        &monitor,
+                    );
+                }
+                ctx_x11.core.bar.mark_dirty();
+            }
+            WmCtx::Wayland(ctx_wayland) => {
+                if !ctx_wayland.wayland.request_bar_redraw() {
+                    ctx_wayland.core.bar.mark_dirty();
+                }
+            }
+        }
+    }
+
     pub fn current_mode(&self) -> &crate::core_state::ActiveWmMode {
         &self.core().behavior().current_mode
     }

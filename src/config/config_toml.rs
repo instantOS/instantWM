@@ -67,6 +67,9 @@ pub struct ThemeConfig {
     /// Bar height in logical pixels. 0 = auto (derive from font metrics).
     #[serde(default)]
     pub bar_height: u32,
+    /// Show the bottom gesture strip (plain status-bar background, no
+    /// contents, no input handling). Same height as the top bar.
+    pub show_bottom_bar: bool,
     /// Commands to execute once at startup (like sway `exec` / Hyprland `exec-once`).
     #[serde(default)]
     pub exec_once: Vec<String>,
@@ -95,6 +98,7 @@ impl Default for ThemeConfig {
             raise_floating_on_click: false,
             rules: Vec::new(),
             bar_height: 0,
+            show_bottom_bar: true,
             exec_once: Vec::new(),
             exec: Vec::new(),
         }
@@ -707,6 +711,12 @@ mod theme_tests {
     fn floating_click_raise_is_an_explicit_opt_in() {
         assert!(!parse("").raise_floating_on_click);
         assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
+    }
+
+    #[test]
+    fn bottom_bar_uses_the_documented_default_when_omitted() {
+        assert!(parse("").show_bottom_bar);
+        assert!(!parse("show_bottom_bar = false").show_bottom_bar);
     }
 
     #[test]

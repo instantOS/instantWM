@@ -32,6 +32,8 @@ pub struct Monitor {
     pub ui_scale: f64,
     /// Effective bar height for this monitor.
     pub bar_height: i32,
+    /// Height of the bottom gesture strip on this monitor (0 = none).
+    pub bottom_bar_height: i32,
     /// Effective horizontal padding for this monitor's bar.
     pub horizontal_padding: i32,
     /// Effective start menu width for this monitor's bar.
@@ -51,8 +53,12 @@ pub struct Monitor {
     pub tag_set: [TagMask; 2],
     /// Whether to show the bar.
     pub show_bar: bool,
+    /// Whether the bottom bar is enabled for this monitor (config default).
+    pub show_bottom_bar: bool,
     /// Bar window handle.
     pub bar_win: WindowId,
+    /// X11 window backing the bottom bar strip (Wayland: default id).
+    pub bottom_bar_win: WindowId,
     /// Whether to hide empty inactive tags from the bar.
     pub hide_tags: bool,
     /// Previously selected single tag index.
@@ -86,6 +92,7 @@ impl Default for Monitor {
             num: 0,
             ui_scale: 1.0,
             bar_height: 0,
+            bottom_bar_height: 0,
             horizontal_padding: 0,
             startmenu_size: 0,
             bar_clients_width: 0,
@@ -94,7 +101,9 @@ impl Default for Monitor {
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
             show_bar: true,
+            show_bottom_bar: false,
             bar_win: WindowId::default(),
+            bottom_bar_win: WindowId::default(),
             hide_tags: false,
             prev_tag: None,
             tags: Vec::new(),
@@ -159,9 +168,55 @@ impl Monitor {
         root_y >= bar_bottom && root_y < bar_bottom + 4
     }
 
+    /// Bottom bar Y position (root space), bottom-aligned inside
+    /// `available_rect`. When hidden, the strip sits just below the monitor so
+    /// the X11 window can stay mapped without overlapping any content.
+    pub fn bottom_bar_y(&self) -> i32 {
+        let safe_bh = self.bottom_bar_height.min(self.available_rect.h.max(0));
+        if self.shows_bottom_bar() {
+            self.available_rect.bottom() - safe_bh
+        } else {
+            self.available_rect.bottom()
+        }
+    }
+
+    /// Check whether a root-space y-coordinate falls within the bottom bar's
+    /// vertical span. Does not check bar visibility — caller must do that.
+    pub fn y_in_bottom_bar(&self, root_y: i32) -> bool {
+        let h = self
+            .bottom_bar_height
+            .min(self.available_rect.h.max(0))
+            .max(1);
+        root_y >= self.bottom_bar_y() && root_y < self.bottom_bar_y() + h
+    }
+
     /// Check whether the bar is visible on this monitor.
     pub fn bar_visible(&self, clients: &HashMap<WindowId, Client>) -> bool {
         self.shows_bar() && !self.has_real_fullscreen(clients)
+    }
+
+    /// Whether this monitor draws the bottom bar, independent of the top bar.
+    pub fn shows_bottom_bar(&self) -> bool {
+        self.show_bottom_bar_for_mask(self.selected_tags())
+    }
+
+    /// Returns bottom bar state for the given tag mask.
+    pub fn show_bottom_bar_for_mask(&self, mask: TagMask) -> bool {
+        self.per_tag
+            .get(&mask)
+            .map(|s| s.show_bottom_bar)
+            .unwrap_or(self.show_bottom_bar)
+    }
+
+    /// Check whether the bottom bar is visible on this monitor.
+    pub fn bottom_bar_visible(&self, clients: &HashMap<WindowId, Client>) -> bool {
+        self.shows_bottom_bar() && !self.has_real_fullscreen(clients)
+    }
+
+    /// Check whether the bottom bar is visible on this monitor and `root_y`
+    /// falls within it.
+    pub fn bottom_bar_contains_y(&self, clients: &HashMap<WindowId, Client>, root_y: i32) -> bool {
+        self.bottom_bar_visible(clients) && self.y_in_bottom_bar(root_y)
     }
 
     /// Check whether the monitor has a client in true fullscreen mode.
@@ -250,9 +305,10 @@ impl Monitor {
     pub fn per_tag_state(&mut self) -> &mut PerTagState {
         let mask = self.selected_tags();
         let default_show_bar = self.show_bar;
+        let default_show_bottom_bar = self.show_bottom_bar;
         self.per_tag
             .entry(mask)
-            .or_insert_with(|| PerTagState::new(default_show_bar))
+            .or_insert_with(|| PerTagState::new(default_show_bar, default_show_bottom_bar))
     }
 
     /// Read the current pertag state, returning `None` if no entry exists yet.
@@ -645,33 +701,48 @@ impl Monitor {
 
     /// Work area geometry (excluding bar and exclusive layer surfaces).
     ///
-    /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
-    /// so it can never fall out of sync with the monitor's real geometry.
+    /// Derived from `available_rect`, `bar_height`, the bottom bar height and
+    /// the bar visibility flags, so it can never fall out of sync with the
+    /// monitor's real geometry.
     pub fn work_rect(&self) -> Rect {
-        self.rect_excluding_internal_bar(self.shows_bar())
+        self.rect_excluding_internal_bars(self.shows_bar(), self.shows_bottom_bar())
     }
 
     /// Area not occupied by exclusive layer surfaces or the currently visible
-    /// built-in bar.
+    /// built-in bars.
     ///
     /// Unlike [`Self::work_rect`], this accounts for a true-fullscreen client
-    /// temporarily hiding the built-in bar. It is intended for WM-owned UI
+    /// temporarily hiding the built-in bars. It is intended for WM-owned UI
     /// such as edge scratchpads that must avoid every visible bar.
     pub fn visible_content_rect(&self, clients: &HashMap<WindowId, Client>) -> Rect {
-        self.rect_excluding_internal_bar(self.bar_visible(clients))
+        self.rect_excluding_internal_bars(
+            self.bar_visible(clients),
+            self.bottom_bar_visible(clients),
+        )
     }
 
-    fn rect_excluding_internal_bar(&self, bar_visible: bool) -> Rect {
-        let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
-        let mut rect = Rect::new(self.available_rect.x, 0, self.available_rect.w.max(1), 0);
-        if bar_visible {
-            rect.y = self.available_rect.y + safe_bh;
-            rect.h = (self.available_rect.h - safe_bh).max(1);
+    fn rect_excluding_internal_bars(
+        &self,
+        top_bar_visible: bool,
+        bottom_bar_visible: bool,
+    ) -> Rect {
+        let safe_bh = if top_bar_visible {
+            self.bar_height.min(self.available_rect.h.max(0))
         } else {
-            rect.y = self.available_rect.y;
-            rect.h = self.available_rect.h.max(1);
-        }
-        rect
+            0
+        };
+        let safe_bbh = if bottom_bar_visible {
+            self.bottom_bar_height
+                .min((self.available_rect.h - safe_bh).max(0))
+        } else {
+            0
+        };
+        Rect::new(
+            self.available_rect.x,
+            self.available_rect.y + safe_bh,
+            self.available_rect.w.max(1),
+            (self.available_rect.h - safe_bh - safe_bbh).max(1),
+        )
     }
 
     /// Set the rectangle that is not consumed by exclusive layer-shell
@@ -719,6 +790,7 @@ impl Monitor {
             1.0
         };
         self.bar_height = bar_height.max(0);
+        self.bottom_bar_height = bar_height.max(0);
         self.horizontal_padding = horizontal_padding.max(0);
         self.startmenu_size = startmenu_size.max(0);
     }

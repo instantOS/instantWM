@@ -140,6 +140,8 @@ pub struct Config {
     pub show_systray: bool,
     /// Whether to show the bar by default.
     pub show_bar: bool,
+    /// Whether to show the bottom gesture strip by default.
+    pub show_bottom_bar: bool,
     /// Override bar height (0 = derive from font metrics).
     pub bar_height: i32,
 
@@ -315,6 +317,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         systray_spacing: 0,
         show_systray: true,
         show_bar: true,
+        show_bottom_bar: theme.show_bottom_bar,
         bar_height: theme.bar_height as i32,
 
         // --- Tiling ---

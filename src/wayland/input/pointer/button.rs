@@ -156,6 +156,12 @@ fn handle_button_press(
             pointer_handle.frame(state);
             return true;
         }
+        PointerRegion::BottomBar { .. } => {
+            // Swallow the press: the strip has no contents, bindings, or
+            // fall-through behavior.
+            pointer_handle.frame(state);
+            return true;
+        }
         PointerRegion::Client(_) | PointerRegion::Root { .. } => {}
     }
 

@@ -151,6 +151,34 @@ pub fn resize_bar_win(
     );
 }
 
+/// Move/resize the bottom bar window to its current monitor strip and re-apply
+/// its background color. `m.bottom_bar_y()` slides the window off-screen when
+/// the bar is hidden, so this doubles as the show/hide operation.
+pub fn resize_bottom_bar_win(
+    globals: &crate::core_state::CoreState,
+    x11: &X11BackendRef,
+    _x11_runtime: &X11RuntimeConfig,
+    m: &Monitor,
+) {
+    let bottom_win: Window = m.bottom_bar_win.into();
+    if bottom_win == 0 {
+        return;
+    }
+    let status_bg: u32 = globals.config.colors.status_bar.bg.into();
+    let _ = x11.conn.change_window_attributes(
+        bottom_win,
+        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().background_pixel(status_bg),
+    );
+    let _ = x11.conn.configure_window(
+        bottom_win,
+        &x11rb::protocol::xproto::ConfigureWindowAux::new()
+            .x(m.work_rect().x)
+            .y(m.bottom_bar_y())
+            .width(m.work_rect().w as u32)
+            .height(m.bottom_bar_height as u32),
+    );
+}
+
 pub fn update_bars(
     globals: &mut crate::core_state::CoreState,
     x11: &X11BackendRef,
@@ -232,9 +260,56 @@ pub fn update_bars(
         created.push((*i, win_id));
     }
 
+    // Bottom bar strips: plain override-redirect backgrounds, one per monitor.
+    // They select no input events, so button events propagate to the root,
+    // where the WM classifies and swallows presses inside the strip.
+    let mut bottom_created: Vec<(MonitorId, u32)> = Vec::new();
+    for (i, m) in globals.monitors_iter() {
+        if m.bottom_bar_win != WindowId::default() {
+            continue;
+        }
+        let win_id = conn
+            .generate_id()
+            .expect("failed to generate X11 window ID for bottom bar");
+
+        let aux = x11rb::protocol::xproto::CreateWindowAux::new()
+            .override_redirect(1)
+            .background_pixel(status_bg);
+
+        let _ = conn.create_window(
+            x11rb::COPY_FROM_PARENT as u8,
+            win_id,
+            root,
+            m.work_rect().x as i16,
+            m.bottom_bar_y() as i16,
+            m.work_rect().w as u16,
+            m.bottom_bar_height as u16,
+            0,
+            x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &aux,
+        );
+
+        let _ = conn.map_window(win_id);
+        let _ = conn.flush();
+        bottom_created.push((i, win_id));
+    }
+
     for (i, win_id) in created {
         if let Some(mon) = globals.monitor_mut(i) {
             mon.bar_win = WindowId::from(win_id);
+        }
+    }
+    // Assign bottom windows, then refresh every existing bottom window's
+    // geometry/background (reloads, monitor moves, config color changes).
+    for (i, win_id) in bottom_created {
+        if let Some(mon) = globals.monitor_mut(i) {
+            mon.bottom_bar_win = WindowId::from(win_id);
+        }
+    }
+    for (_, m) in globals.monitors_iter() {
+        if m.bottom_bar_win != WindowId::default() {
+            resize_bottom_bar_win(globals, x11, x11_runtime, m);
         }
     }
 }

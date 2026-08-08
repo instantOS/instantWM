@@ -143,6 +143,48 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 }
 
+/// Toggle the bottom bar on the selected monitor's current tag, exactly like
+/// [`toggle_bar`] does for the top bar.
+pub fn toggle_bottom_bar(ctx: &mut WmCtx) {
+    let shown = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .shows_bottom_bar();
+    set_bottom_bar_shown(ctx, !shown);
+}
+
+/// Set the bottom bar visibility on the selected monitor's current tag.
+///
+/// Shared by the hotkey toggle and the IPC toggle command (which can also
+/// force on/off).
+pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
+    let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+    selected_monitor.per_tag_state().show_bottom_bar = shown;
+    selected_monitor.show_bottom_bar = shown;
+
+    let selmon_idx = ctx.core().model().selected_monitor_id();
+
+    match ctx {
+        WmCtx::X11(x11) => {
+            if let Some(m) = x11.core.model().monitors.get(selmon_idx).cloned() {
+                crate::backend::x11::bar::resize_bottom_bar_win(
+                    x11.core.state(),
+                    &x11.x11,
+                    &*x11.x11_runtime,
+                    &m,
+                );
+            }
+            x11.core.bar.mark_dirty();
+        }
+        WmCtx::Wayland(_) => {
+            ctx.request_bar_update();
+        }
+    }
+
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
+}
+
 #[cfg(test)]
 mod tests {
     use super::{toggle_mode_name, toggled_bool};

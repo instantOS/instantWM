@@ -1,5 +1,5 @@
 use crate::ipc_types::{Response, ToggleCommand};
-use crate::toggles::{toggle_alt_tag, toggle_hide_tags};
+use crate::toggles::{set_bottom_bar_shown, toggle_alt_tag, toggle_hide_tags};
 use crate::wm::Wm;
 
 pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> Response {
@@ -19,6 +19,15 @@ pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> Response {
         }
         ToggleCommand::HideTags(action) => {
             toggle_hide_tags(&mut ctx, action);
+        }
+        ToggleCommand::BottomBar(action) => {
+            let mut shown = ctx
+                .core()
+                .model()
+                .expect_selected_monitor()
+                .shows_bottom_bar();
+            action.apply(&mut shown);
+            set_bottom_bar_shown(&mut ctx, shown);
         }
     }
     Response::ok()

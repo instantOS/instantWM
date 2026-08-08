@@ -256,3 +256,97 @@ pub fn render_bar_buffers(
         .map(|buffer| (buffer.buffer.clone(), buffer.position))
         .collect()
 }
+
+/// Plain background buffers for the bottom bar strip.
+///
+/// The bottom bar is a gesture surface in the making: for now it renders only
+/// the status-bar background color. Input classification (`button_region_at`)
+/// treats the strip as a swallowed `BottomBar` region with no bindings, so it
+/// neither acts like the top bar nor falls through to desktop actions.
+pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
+    let mut buffers = Vec::new();
+    let bg = core.config().colors.status_bar.bg;
+    let monitors: Vec<crate::types::Monitor> = core
+        .model()
+        .monitors_iter()
+        .filter(|(_, mon)| mon.bottom_bar_visible(&core.model().clients))
+        .map(|(_, mon)| mon.clone())
+        .collect();
+    for mon in monitors {
+        let w = mon.work_rect().w;
+        let h = mon.bottom_bar_height;
+        if w <= 0 || h <= 0 {
+            continue;
+        }
+        let [r, g, b, a] = bg.to_rgba8();
+        let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
+        if a >= 255 {
+            for chunk in pixels.chunks_exact_mut(4) {
+                chunk.copy_from_slice(&[b, g, r, 255]);
+            }
+        } else {
+            // Premultiply so the GL composite renders the translucent strip
+            // correctly.
+            for chunk in pixels.chunks_exact_mut(4) {
+                chunk.copy_from_slice(&[
+                    (b as u16 * a as u16 / 255) as u8,
+                    (g as u16 * a as u16 / 255) as u8,
+                    (r as u16 * a as u16 / 255) as u8,
+                    a,
+                ]);
+            }
+        }
+        let buffer = MemoryRenderBuffer::from_slice(
+            &pixels,
+            Fourcc::Argb8888,
+            (w, h),
+            1,
+            Transform::Normal,
+            None,
+        );
+        buffers.push((buffer, Point::new(mon.work_rect().x, mon.bottom_bar_y())));
+    }
+    buffers
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_wm() -> crate::wm::Wm {
+        use crate::backend::{Backend, wayland::WaylandBackend};
+        crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()))
+    }
+
+    /// The bottom strip must be an opaque, monitor-width buffer aligned to the
+    /// bottom of the monitor. It must never fall back to alpha 0.
+    #[test]
+    fn bottom_bar_buffers_are_opaque_and_bottom_aligned() {
+        let mut wm = test_wm();
+
+        let show_bar = wm.core.config.bar.show;
+        let show_bottom = wm.core.config.bar.show_bottom;
+        assert!(show_bottom, "bottom bar defaults to shown");
+
+        let mut mon = crate::types::Monitor::new_with_values(show_bar);
+        mon.show_bottom_bar = show_bottom;
+        mon.bottom_bar_height = 24;
+        let id = wm.core.model.monitors.allocate_id();
+        mon.monitor_id = id;
+        mon.set_available_rect(crate::types::Rect::new(0, 0, 1920, 1080));
+        wm.core.model.monitors.restore(vec![mon]);
+
+        let mut core = crate::contexts::CoreCtx::new(
+            &mut wm.core,
+            &mut wm.work,
+            &mut wm.running,
+            &mut wm.bar,
+            &mut wm.focus,
+        );
+        let buffers = build_bottom_bar_buffers(&mut core);
+        assert_eq!(buffers.len(), 1, "one bottom strip buffer expected");
+        let (_buffer, pos) = &buffers[0];
+        assert_eq!(pos.x, 0);
+        assert_eq!(pos.y, 1080 - 24, "strip must be bottom-aligned");
+    }
+}

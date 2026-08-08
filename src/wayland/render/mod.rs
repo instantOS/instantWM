@@ -9,18 +9,19 @@ pub mod borders;
 pub mod drm;
 pub mod winit;
 
-/// Assemble render elements in z-order from shared scene elements.
+/// Assemble render elements in front-to-back order from shared scene elements,
+/// as required by Smithay's `OutputDamageTracker`.
 ///
-/// Both the DRM and winit backends use the same layering order:
+/// Front-to-back order (index 0 = front-most, last index = back-most):
 ///   1. Overlays (dmenu, popups)
 ///   2. Upper layer shells (Overlay / Top)
-///   3. Status bar
-///   4. Borders
+///   3. Status bar (top bar and bottom bar)
+///   4. Window borders
 ///   5. Windows and lower layer shells (Bottom / Background)
 ///
-/// The only difference is the concrete render-element enum (`DrmExtras` vs
-/// `WaylandExtras`), so this macro generates the assembly for any target
-/// type that has `Surface`, `Space`, `Memory`, and `Solid` variants.
+/// Smithay's `OutputDamageTracker::render_output` uses this front-to-back list to
+/// perform occlusion culling, then renders elements in reverse (`.rev()`) order
+/// back-to-front onto the framebuffer.
 macro_rules! assemble_scene_elements {
     ($target:ident, $scene:expr, $space_elements:expr, $num_upper:expr, $suppress_upper:expr, $elements:expr) => {{
         // 1. Overlays (dmenu, popups)
@@ -34,7 +35,7 @@ macro_rules! assemble_scene_elements {
                 $elements.push($target::Space(elem));
             }
         }
-        // 3. Status Bar
+        // 3. Status bar (top bar and bottom bar)
         for elem in $scene.bar {
             $elements.push($target::Memory(elem));
         }

@@ -97,6 +97,14 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     }
 
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
+    if matches!(
+        region,
+        crate::mouse::pointer::PointerRegion::BottomBar { .. }
+    ) {
+        // The bottom strip has no contents, bindings, or root fall-through:
+        // swallow every button (including scroll) over the visible strip.
+        return;
+    }
     let button_target = region.binding_target();
 
     if button_target == Some(ButtonTarget::Bar(BarPosition::StatusText)) {

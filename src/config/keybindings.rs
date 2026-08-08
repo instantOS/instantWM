@@ -99,6 +99,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_S => KeyAction::named(NamedAction::ScratchpadToggle)),
         key!(MODKEY | SHIFT, XK_S => KeyAction::named(NamedAction::ScratchpadRestore)),
         key!(MODKEY, XK_B => KeyAction::named(NamedAction::ToggleBar)),
+        key!(MODKEY | SHIFT, XK_B => KeyAction::named(NamedAction::ToggleBottomBar)),
         key!(MODKEY | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleSticky)),
         key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAltTag)),
         key!(MODKEY | SHIFT | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAnimated)),

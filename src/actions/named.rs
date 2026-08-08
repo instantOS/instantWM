@@ -26,7 +26,8 @@ use crate::tags::{
     toggle_overview, win_view,
 };
 use crate::toggles::{
-    toggle_alt_tag, toggle_bar, toggle_hide_tags, toggle_mode, toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_bar, toggle_bottom_bar, toggle_hide_tags, toggle_mode, toggle_sticky,
+    unhide_all,
 };
 use crate::types::{
     EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, TagSelection,
@@ -276,6 +277,7 @@ define_named_actions!(
         run: |ctx, _args| { let _ = scratchpad_restore(ctx, None, None); }
     },
     ToggleBar => { name: "toggle_bar", arg_example: None, doc: "toggle status bar", run: |ctx, _args| { toggle_bar(ctx); } },
+    ToggleBottomBar => { name: "toggle_bottom_bar", arg_example: None, doc: "toggle bottom bar", run: |ctx, _args| { toggle_bottom_bar(ctx); } },
     ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { toggle_sticky(ctx, win); } } },
     ToggleAltTag => { name: "toggle_alt_tag", arg_example: None, doc: "toggle alt-tag mode", run: |ctx, _args| { toggle_alt_tag(ctx, ToggleAction::Toggle); } },
