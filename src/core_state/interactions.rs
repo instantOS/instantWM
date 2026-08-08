@@ -325,16 +325,25 @@ pub enum SwipeDirection {
     Up,
 }
 
-/// Horizontal or upward swipe on the bottom-bar gesture strip.
+/// All configurable actions for a bottom-bar press-hold-slide-release gesture.
+#[derive(Debug, Clone)]
+pub struct BottomBarActions {
+    pub left: Box<ButtonAction>,
+    pub right: Box<ButtonAction>,
+    pub up: Box<ButtonAction>,
+    pub click: Box<ButtonAction>,
+    pub hold: Box<ButtonAction>,
+}
+
+/// Swipe or tap on the bottom-bar gesture strip.
 ///
 /// Once the pointer travels at least `threshold` pixels from the press
 /// position, the swipe direction is latched (rightward = `right` action,
 /// leftward = `left` action, mostly upward = `up` action) and locked in until
-/// release. Release fires the latched action exactly once, so the whole
-/// press-hold-slide-release sequence behaves like a single keybind regardless
-/// of how far the drag goes. The directional actions are captured from the
-/// binding at press time, so both the trigger button/modifiers and the
-/// resulting action are fully rebindable.
+/// release. If no direction latches, release distinguishes a quick **click**
+/// (short press) from a **hold** (long press) by duration and fires that action
+/// instead. Exactly one action fires per press-hold-slide-release, regardless
+/// of how far or long the drag goes.
 #[derive(Debug, Clone)]
 pub struct BottomBarDrag {
     button: MouseButton,
@@ -343,13 +352,10 @@ pub struct BottomBarDrag {
     anchor_x: i32,
     anchor_y: i32,
     threshold: i32,
-    left: Box<ButtonAction>,
-    right: Box<ButtonAction>,
-    up: Box<ButtonAction>,
+    press_time_msec: u32,
+    actions: BottomBarActions,
     /// Swipe direction latched once the pointer travels at least `threshold`
-    /// pixels from the press position. Locked in for the remainder of the
-    /// gesture: one press-hold-slide-release always produces exactly one
-    /// action (fired on release), regardless of how far the drag goes.
+    /// pixels from the press position.
     direction: Option<SwipeDirection>,
 }
 
@@ -360,9 +366,8 @@ impl BottomBarDrag {
         monitor_id: MonitorId,
         anchor: Point,
         threshold: i32,
-        left: Box<ButtonAction>,
-        right: Box<ButtonAction>,
-        up: Box<ButtonAction>,
+        press_time_msec: u32,
+        actions: BottomBarActions,
     ) -> Self {
         Self {
             button,
@@ -371,9 +376,8 @@ impl BottomBarDrag {
             anchor_x: anchor.x,
             anchor_y: anchor.y,
             threshold: threshold.max(1),
-            left,
-            right,
-            up,
+            press_time_msec,
+            actions,
             direction: None,
         }
     }
@@ -390,16 +394,28 @@ impl BottomBarDrag {
         self.monitor_id
     }
 
+    pub fn press_time_msec(&self) -> u32 {
+        self.press_time_msec
+    }
+
     pub fn left(&self) -> &ButtonAction {
-        &self.left
+        &self.actions.left
     }
 
     pub fn right(&self) -> &ButtonAction {
-        &self.right
+        &self.actions.right
     }
 
     pub fn up(&self) -> &ButtonAction {
-        &self.up
+        &self.actions.up
+    }
+
+    pub fn click(&self) -> &ButtonAction {
+        &self.actions.click
+    }
+
+    pub fn hold(&self) -> &ButtonAction {
+        &self.actions.hold
     }
 
     /// The swipe direction latched so far, if any.
@@ -539,13 +555,20 @@ mod pointer_interaction_tests {
             MonitorId::from_raw(3),
             Point::new(anchor_x, anchor_y),
             30,
-            Box::new(ButtonAction::named(crate::actions::NamedAction::ScrollLeft)),
-            Box::new(ButtonAction::named(
-                crate::actions::NamedAction::ScrollRight,
-            )),
-            Box::new(ButtonAction::named(
-                crate::actions::NamedAction::ToggleOverview,
-            )),
+            0,
+            super::BottomBarActions {
+                left: Box::new(ButtonAction::named(crate::actions::NamedAction::ScrollLeft)),
+                right: Box::new(ButtonAction::named(
+                    crate::actions::NamedAction::ScrollRight,
+                )),
+                up: Box::new(ButtonAction::named(
+                    crate::actions::NamedAction::ToggleOverview,
+                )),
+                click: Box::new(ButtonAction::named(crate::actions::NamedAction::Spawn)),
+                hold: Box::new(ButtonAction::named(
+                    crate::actions::NamedAction::ToggleOverview,
+                )),
+            },
         )
     }
 

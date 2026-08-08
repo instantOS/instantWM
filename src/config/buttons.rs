@@ -72,6 +72,8 @@ pub fn get_buttons() -> Vec<Button> {
             left: Box::new(ButtonAction::named(NamedAction::ScrollLeft)),
             right: Box::new(ButtonAction::named(NamedAction::ScrollRight)),
             up: Box::new(ButtonAction::named(NamedAction::ToggleOverview)),
+            click: Box::new(ButtonAction::named_args(NamedAction::Spawn, defaults::APPMENU)),
+            hold: Box::new(ButtonAction::named_args(NamedAction::Spawn, defaults::SETTINGS)),
         }),
         btn!(screen:Root, 0, button:MouseButton::Left => ButtonAction::named_args(NamedAction::Spawn, defaults::APPMENU)),
         btn!(screen:Root, 0, button:MouseButton::Middle => ButtonAction::named_args(NamedAction::Spawn, menu::RUN)),

@@ -13,7 +13,7 @@ pub use crate::types::InteractionSource;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InteractionPhase {
     Update,
-    End { button: MouseButton },
+    End { button: MouseButton, time_msec: u32 },
     Cancel { reason: DragCancelReason },
 }
 
@@ -44,10 +44,11 @@ impl InteractionEvent {
         button: MouseButton,
         modifiers: u32,
         sidebar_hover: Option<SidebarTarget>,
+        time_msec: u32,
     ) -> Self {
         Self {
             source: InteractionSource::Pointer,
-            phase: InteractionPhase::End { button },
+            phase: InteractionPhase::End { button, time_msec },
             root,
             modifiers,
             sidebar_hover,
@@ -75,7 +76,7 @@ pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcom
     }
     match event.phase {
         InteractionPhase::Update => update(ctx, event),
-        InteractionPhase::End { button } => finish(ctx, event, button),
+        InteractionPhase::End { button, time_msec } => finish(ctx, event, button, time_msec),
         InteractionPhase::Cancel { reason } => cancel(ctx, reason),
     }
 }
@@ -115,7 +116,12 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
     InteractionOutcome::Ignored
 }
 
-fn finish(ctx: &mut WmCtx<'_>, event: InteractionEvent, button: MouseButton) -> InteractionOutcome {
+fn finish(
+    ctx: &mut WmCtx<'_>,
+    event: InteractionEvent,
+    button: MouseButton,
+    time_msec: u32,
+) -> InteractionOutcome {
     if crate::mouse::drag::active_drag_finish(ctx, button, event.modifiers) {
         return InteractionOutcome::Captured;
     }
@@ -135,7 +141,7 @@ fn finish(ctx: &mut WmCtx<'_>, event: InteractionEvent, button: MouseButton) -> 
     if crate::mouse::finish_sidebar_gesture(ctx, button, event.sidebar_hover) {
         return InteractionOutcome::Captured;
     }
-    if crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root) {
+    if crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root, time_msec) {
         return InteractionOutcome::Captured;
     }
     InteractionOutcome::Ignored
@@ -312,28 +318,39 @@ mod tests {
     }
 
     fn begin_bottom_bar_drag(wm: &mut Wm, monitor_id: MonitorId, root: Point) {
-        let left = Box::new(crate::actions::ButtonAction::named(
-            crate::actions::NamedAction::ScrollLeft,
-        ));
-        let right = Box::new(crate::actions::ButtonAction::named(
-            crate::actions::NamedAction::ScrollRight,
-        ));
-        let up = Box::new(crate::actions::ButtonAction::named(
-            crate::actions::NamedAction::ToggleOverview,
-        ));
+        let actions = crate::core_state::BottomBarActions {
+            left: Box::new(crate::actions::ButtonAction::named(
+                crate::actions::NamedAction::ScrollLeft,
+            )),
+            right: Box::new(crate::actions::ButtonAction::named(
+                crate::actions::NamedAction::ScrollRight,
+            )),
+            up: Box::new(crate::actions::ButtonAction::named(
+                crate::actions::NamedAction::ToggleOverview,
+            )),
+            click: Box::new(crate::actions::ButtonAction::named(
+                crate::actions::NamedAction::CancelOverview,
+            )),
+            hold: Box::new(crate::actions::ButtonAction::named(
+                crate::actions::NamedAction::CancelOverview,
+            )),
+        };
         assert!(crate::mouse::drag::bottom_bar_gesture_begin(
             &mut wm.ctx(),
             MouseButton::Left,
             InteractionSource::Pointer,
             monitor_id,
             root,
-            left,
-            right,
-            up,
+            0,
+            actions,
         ));
     }
 
     fn end_bottom_bar_drag(wm: &mut Wm, root: Point) {
+        end_bottom_bar_drag_at(wm, root, 0);
+    }
+
+    fn end_bottom_bar_drag_at(wm: &mut Wm, root: Point, time_msec: u32) {
         assert_eq!(
             handle(
                 &mut wm.ctx(),
@@ -341,6 +358,7 @@ mod tests {
                     source: InteractionSource::Pointer,
                     phase: InteractionPhase::End {
                         button: MouseButton::Left,
+                        time_msec,
                     },
                     root,
                     modifiers: 0,
@@ -417,6 +435,41 @@ mod tests {
     }
 
     #[test]
+    fn bottom_bar_click_and_hold_fire_on_release_without_a_swipe() {
+        let (mut wm, monitor_id) = bottom_bar_fixture();
+        let begin_root = Point::new(100, 1060);
+
+        // A quick release (no movement, short duration) fires `click` and
+        // completes the gesture.
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+        end_bottom_bar_drag_at(&mut wm, begin_root, 0);
+        assert!(!wm.core.drag.bottom_bar_gesture_active());
+
+        // A long hold (no movement, duration >= 400ms) fires `hold`.
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+        end_bottom_bar_drag_at(&mut wm, begin_root, 500);
+        assert!(!wm.core.drag.bottom_bar_gesture_active());
+
+        // A swipe still takes precedence over click/hold regardless of duration:
+        // even after holding 600ms, the latched direction wins.
+        let tags_before = wm.core.model.monitor(monitor_id).unwrap().selected_tags();
+        begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(164, 1060))
+            ),
+            InteractionOutcome::Captured
+        );
+        end_bottom_bar_drag_at(&mut wm, Point::new(164, 1060), 600);
+        // The right-swipe action (ScrollRight) advanced exactly one tag.
+        assert_ne!(
+            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            tags_before
+        );
+    }
+
+    #[test]
     fn bottom_bar_up_swipe_leaves_the_strip_and_triggers_once_on_release() {
         let (mut wm, monitor_id) = bottom_bar_fixture();
         let begin_root = Point::new(100, 1060);
@@ -460,6 +513,7 @@ mod tests {
                     source: InteractionSource::Touch(9),
                     phase: InteractionPhase::End {
                         button: MouseButton::Left,
+                        time_msec: 0,
                     },
                     root: Point::new(700, 600),
                     modifiers: 0,

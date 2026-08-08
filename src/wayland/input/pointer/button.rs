@@ -162,7 +162,14 @@ fn handle_button_press(
             // other press is swallowed: the strip neither acts like a bar nor
             // falls through to clients.
             if button.wm_button.is_some_and(|btn| {
-                consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers)
+                consume_pointer_binding(
+                    wm,
+                    pointer_region,
+                    btn,
+                    button.root,
+                    clean_modifiers,
+                    button.time,
+                )
             }) {
                 // The BottomBarDrag binding captured the press. Motion and
                 // release are driven through the shared interaction transport.
@@ -208,7 +215,14 @@ fn handle_button_press(
     focus_managed_target(wm, clicked_win, button.wm_button);
 
     let consumed = button.wm_button.is_some_and(|btn| {
-        consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers)
+        consume_pointer_binding(
+            wm,
+            pointer_region,
+            btn,
+            button.root,
+            clean_modifiers,
+            button.time,
+        )
     });
 
     if !consumed {
@@ -292,6 +306,7 @@ fn handle_button_release(
                 btn,
                 clean_modifier_state(keyboard_handle),
                 hover_target,
+                button.time,
             ),
         );
         if outcome.captured() {
@@ -313,6 +328,7 @@ fn consume_pointer_binding(
     btn: MouseButton,
     root: RootPoint,
     clean_state: u32,
+    time_msec: u32,
 ) -> bool {
     let clicked_win = match region {
         PointerRegion::Client(win) => Some(win),
@@ -331,6 +347,7 @@ fn consume_pointer_binding(
             source: crate::types::InteractionSource::Pointer,
             root,
             clean_state,
+            time_msec,
         },
         0,
     )

@@ -182,11 +182,24 @@ pub fn execute_button_action(
                 );
             }
         }
-        ButtonAction::BottomBarDrag { left, right, up } => {
+        ButtonAction::BottomBarDrag {
+            left,
+            right,
+            up,
+            click,
+            hold,
+        } => {
             let Some(monitor_id) =
                 crate::mouse::pointer::bottom_bar_monitor_at(ctx.core().model(), arg.root)
             else {
                 return;
+            };
+            let actions = crate::core_state::BottomBarActions {
+                left: left.clone(),
+                right: right.clone(),
+                up: up.clone(),
+                click: click.clone(),
+                hold: hold.clone(),
             };
             crate::mouse::drag::bottom_bar_gesture_begin(
                 ctx,
@@ -194,9 +207,8 @@ pub fn execute_button_action(
                 arg.source,
                 monitor_id,
                 arg.root,
-                left.clone(),
-                right.clone(),
-                up.clone(),
+                arg.time_msec,
+                actions,
             );
         }
     }

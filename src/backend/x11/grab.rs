@@ -199,6 +199,7 @@ where
 pub struct X11DragRelease {
     pub root: Point,
     pub modifiers: u32,
+    pub time_msec: u32,
 }
 
 pub fn mouse_drag_loop<F>(
@@ -256,6 +257,7 @@ where
                                 return Some(X11DragRelease {
                                     root: Point::new(br.root_x as i32, br.root_y as i32),
                                     modifiers: u16::from(br.state) as u32,
+                                    time_msec: br.time,
                                 });
                             }
                             if !call_on_event(&mut on_event, ctx, &next_evt) {
@@ -284,6 +286,7 @@ where
                     release = Some(X11DragRelease {
                         root: Point::new(br.root_x as i32, br.root_y as i32),
                         modifiers: u16::from(br.state) as u32,
+                        time_msec: br.time,
                     });
                     false
                 } else {
@@ -369,6 +372,7 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
             btn,
             release.modifiers,
             sidebar_hover,
+            release.time_msec,
         ),
     );
     true

@@ -65,17 +65,19 @@ pub enum ButtonAction {
     ShowEdgeScratchpad,
     ToggleFloatingSelected,
     ResizeMouseFromCursor,
-    /// Begin the bottom-bar swipe gesture.
+    /// Begin the bottom-bar gesture.
     ///
     /// The swipe direction is latched once the pointer travels past a
     /// per-monitor threshold, and the matching `left`, `right`, or `up` action
-    /// is dispatched exactly once on release (adjacent-tag switching for left
-    /// /right and overview toggle for up by default, rebindable in
+    /// is dispatched exactly once on release. If no swipe latches, a short
+    /// press fires `click` and a long press fires `hold` (rebindable in
     /// `get_buttons`).
     BottomBarDrag {
         left: Box<ButtonAction>,
         right: Box<ButtonAction>,
         up: Box<ButtonAction>,
+        click: Box<ButtonAction>,
+        hold: Box<ButtonAction>,
     },
 }
 

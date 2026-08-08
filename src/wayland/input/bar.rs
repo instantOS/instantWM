@@ -152,6 +152,7 @@ fn run_bar_bindings(
             source,
             root,
             clean_state,
+            time_msec: 0,
         },
         0,
         crate::mouse::bindings::MatchPolicy::All,

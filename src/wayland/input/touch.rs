@@ -167,6 +167,7 @@ pub fn handle_touch_down(
                         source,
                         root,
                         clean_state,
+                        time_msec: event.time_msec,
                     },
                     0,
                     crate::mouse::bindings::MatchPolicy::All,
@@ -283,7 +284,7 @@ pub fn handle_touch_motion(
 pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
     if state.runtime.wm_gesture_touch_slot == Some(slot) {
         state.runtime.wm_gesture_touch_slot = None;
-        finish_wm_gesture_touch(wm, state, slot);
+        finish_wm_gesture_touch(wm, state, slot, time_msec);
         return;
     }
     let serial = SERIAL_COUNTER.next_serial();
@@ -387,7 +388,7 @@ fn handle_wm_gesture_touch_motion(
     );
 }
 
-fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot) {
+fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
     let modifiers = clean_modifier_state(state);
     let mut ctx = wm.ctx();
     let _ = crate::mouse::interaction::handle(
@@ -396,6 +397,7 @@ fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlo
             source: crate::mouse::interaction::InteractionSource::Touch(slot.into()),
             phase: crate::mouse::interaction::InteractionPhase::End {
                 button: MouseButton::Left,
+                time_msec,
             },
             root: Default::default(),
             modifiers,

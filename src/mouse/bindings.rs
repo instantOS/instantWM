@@ -12,6 +12,7 @@ pub struct ButtonBindingEvent {
     pub source: InteractionSource,
     pub root: Point,
     pub clean_state: u32,
+    pub time_msec: u32,
 }
 
 pub fn consume_one(ctx: &mut WmCtx<'_>, event: ButtonBindingEvent, numlockmask: u32) -> bool {
@@ -49,6 +50,7 @@ pub(crate) fn run_matching(
                 btn: binding.button,
                 source: event.source,
                 root: event.root,
+                time_msec: event.time_msec,
             },
         );
         matched = true;

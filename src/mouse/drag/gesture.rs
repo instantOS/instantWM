@@ -3,7 +3,7 @@
 //! This module handles root-window gestures like vertical swipes and the
 //! bottom-bar horizontal swipe.
 
-use crate::actions::{ButtonAction, execute_button_action};
+use crate::actions::execute_button_action;
 use crate::contexts::WmCtx;
 use crate::types::*;
 
@@ -118,9 +118,8 @@ pub fn bottom_bar_gesture_begin(
     source: InteractionSource,
     monitor_id: MonitorId,
     start: Point,
-    left: Box<ButtonAction>,
-    right: Box<ButtonAction>,
-    up: Box<ButtonAction>,
+    press_time_msec: u32,
+    actions: crate::core_state::BottomBarActions,
 ) -> bool {
     let threshold = ctx
         .core()
@@ -132,7 +131,13 @@ pub fn bottom_bar_gesture_begin(
         .core_mut()
         .drag_state_mut()
         .begin_bottom_bar(crate::core_state::BottomBarDrag::new(
-            btn, source, monitor_id, start, threshold, left, right, up,
+            btn,
+            source,
+            monitor_id,
+            start,
+            threshold,
+            press_time_msec,
+            actions,
         ))
         .is_err()
     {
@@ -142,6 +147,10 @@ pub fn bottom_bar_gesture_begin(
     ctx.set_cursor_style(AltCursor::HorizontalAdjust);
     true
 }
+
+/// Minimum press duration (in milliseconds) for a no-swipe release to count as
+/// a hold rather than a click.
+const BOTTOM_BAR_HOLD_MS: u32 = 400;
 
 pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
     let Some(monitor_id) = ctx.core().drag_state().bottom_bar_monitor() else {
@@ -162,7 +171,12 @@ pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
     }
 }
 
-pub fn finish_bottom_bar_gesture(ctx: &mut WmCtx, btn: MouseButton, root: Point) -> bool {
+pub fn finish_bottom_bar_gesture(
+    ctx: &mut WmCtx,
+    btn: MouseButton,
+    root: Point,
+    time_msec: u32,
+) -> bool {
     if ctx.core().drag_state().bottom_bar_button() != Some(btn) {
         return false;
     }
@@ -174,7 +188,15 @@ pub fn finish_bottom_bar_gesture(ctx: &mut WmCtx, btn: MouseButton, root: Point)
             Some(crate::core_state::SwipeDirection::Left) => Some(drag.left().clone()),
             Some(crate::core_state::SwipeDirection::Right) => Some(drag.right().clone()),
             Some(crate::core_state::SwipeDirection::Up) => Some(drag.up().clone()),
-            None => None,
+            None => {
+                // No swipe: distinguish click (short press) from hold (long press).
+                let held = time_msec.wrapping_sub(drag.press_time_msec());
+                if held >= BOTTOM_BAR_HOLD_MS {
+                    Some(drag.hold().clone())
+                } else {
+                    Some(drag.click().clone())
+                }
+            }
         };
         (drag.source(), action)
     };
@@ -187,6 +209,7 @@ pub fn finish_bottom_bar_gesture(ctx: &mut WmCtx, btn: MouseButton, root: Point)
             btn,
             source,
             root,
+            time_msec,
         };
         execute_button_action(ctx, &action, arg);
     }

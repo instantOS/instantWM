@@ -39,6 +39,7 @@ pub struct ButtonArg {
     pub btn: MouseButton,
     pub source: InteractionSource,
     pub root: Point,
+    pub time_msec: u32,
 }
 
 impl ButtonArg {
