@@ -257,12 +257,12 @@ pub fn render_bar_buffers(
         .collect()
 }
 
-/// Plain background buffers for the bottom bar strip.
+/// Background buffers for the bottom bar strip, with a centered "grab handle"
+/// indicator so users know the bar is interactive.
 ///
-/// The bottom bar is a gesture surface in the making: for now it renders only
-/// the status-bar background color. Input classification (`button_region_at`)
-/// treats the strip as a swallowed `BottomBar` region with no bindings, so it
-/// neither acts like the top bar nor falls through to desktop actions.
+/// The strip renders the status-bar background color plus a semi-transparent
+/// white rectangle in the center. Input classification (`button_region_at`)
+/// routes presses to the configured `BottomBar` bindings.
 pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
     let mut buffers = Vec::new();
     let bg = core.config().colors.status_bar.bg;
@@ -280,22 +280,50 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
         }
         let [r, g, b, a] = bg.to_rgba8();
         let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
-        if a >= 255 {
-            for chunk in pixels.chunks_exact_mut(4) {
-                chunk.copy_from_slice(&[b, g, r, 255]);
-            }
-        } else {
-            // Premultiply so the GL composite renders the translucent strip
-            // correctly.
-            for chunk in pixels.chunks_exact_mut(4) {
-                chunk.copy_from_slice(&[
+        // Fill background, premultiplying alpha for GL compositing.
+        for chunk in pixels.chunks_exact_mut(4) {
+            let (pr, pg, pb, pa) = if a == 255 {
+                (b, g, r, 255)
+            } else {
+                (
                     (b as u16 * a as u16 / 255) as u8,
                     (g as u16 * a as u16 / 255) as u8,
                     (r as u16 * a as u16 / 255) as u8,
                     a,
-                ]);
+                )
+            };
+            chunk.copy_from_slice(&[pr, pg, pb, pa]);
+        }
+
+        // Draw the centered indicator: blend the bar background ~35% toward
+        // white so it reads as a subtle, bright handle.
+        let indicator = mon.bottom_bar_indicator_rect();
+        if indicator.w > 0 && indicator.h > 0 {
+            let blend = |bg: u8| -> u8 { (bg as u16 * 65 + 255 * 35) as u8 / 100 };
+            let ir = blend(r);
+            let ig = blend(g);
+            let ib = blend(b);
+            for y in 0..indicator.h.min(h) {
+                for x in 0..indicator.w.min(w) {
+                    let idx =
+                        ((indicator.y + y) as usize * w as usize + (indicator.x + x) as usize) * 4;
+                    if idx + 3 < pixels.len() {
+                        let (pr, pg, pb, pa) = if a == 255 {
+                            (ib, ig, ir, 255)
+                        } else {
+                            (
+                                (ib as u16 * a as u16 / 255) as u8,
+                                (ig as u16 * a as u16 / 255) as u8,
+                                (ir as u16 * a as u16 / 255) as u8,
+                                a,
+                            )
+                        };
+                        pixels[idx..idx + 4].copy_from_slice(&[pr, pg, pb, pa]);
+                    }
+                }
             }
         }
+
         let buffer = MemoryRenderBuffer::from_slice(
             &pixels,
             Fourcc::Argb8888,

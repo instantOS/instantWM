@@ -59,6 +59,8 @@ pub struct Monitor {
     pub bar_win: WindowId,
     /// X11 window backing the bottom bar strip (Wayland: default id).
     pub bottom_bar_win: WindowId,
+    /// X11 child window for the bottom-bar indicator rectangle (Wayland: default id).
+    pub bottom_bar_indicator_win: WindowId,
     /// Whether to hide empty inactive tags from the bar.
     pub hide_tags: bool,
     /// Previously selected single tag index.
@@ -104,6 +106,7 @@ impl Default for Monitor {
             show_bottom_bar: false,
             bar_win: WindowId::default(),
             bottom_bar_win: WindowId::default(),
+            bottom_bar_indicator_win: WindowId::default(),
             hide_tags: false,
             prev_tag: None,
             tags: Vec::new(),
@@ -188,6 +191,19 @@ impl Monitor {
             .min(self.available_rect.h.max(0))
             .max(1);
         root_y >= self.bottom_bar_y() && root_y < self.bottom_bar_y() + h
+    }
+
+    /// Centered "grab handle" rectangle inside the bottom bar, local to the
+    /// strip's top-left corner. Wide and thin so it reads as an interactive
+    /// indicator without dominating the bar.
+    pub fn bottom_bar_indicator_rect(&self) -> Rect {
+        let bar_w = self.work_rect().w;
+        let bar_h = self.bottom_bar_height;
+        let w = (bar_w / 6).max(40).min(bar_w);
+        let h = (bar_h / 4).max(3).min(bar_h);
+        let x = (bar_w - w) / 2;
+        let y = (bar_h - h) / 2;
+        Rect::new(x, y, w, h)
     }
 
     /// Check whether the bar is visible on this monitor.
@@ -789,8 +805,12 @@ impl Monitor {
         } else {
             1.0
         };
-        self.bar_height = bar_height.max(0);
-        self.bottom_bar_height = bar_height.max(0);
+        let bar_height = bar_height.max(0);
+        self.bar_height = bar_height;
+        // The bottom strip is just a gesture handle, so it stays thinner than
+        // the status bar. Half the top bar height (with a small minimum so the
+        // indicator still has room to breathe) keeps it subtle but reachable.
+        self.bottom_bar_height = (bar_height / 2).max(6);
         self.horizontal_padding = horizontal_padding.max(0);
         self.startmenu_size = startmenu_size.max(0);
     }

@@ -177,6 +177,20 @@ pub fn resize_bottom_bar_win(
             .width(m.work_rect().w as u32)
             .height(m.bottom_bar_height as u32),
     );
+
+    // Position the white indicator child window inside the strip.
+    let indicator_win: Window = m.bottom_bar_indicator_win.into();
+    if indicator_win != 0 {
+        let indicator = m.bottom_bar_indicator_rect();
+        let _ = x11.conn.configure_window(
+            indicator_win,
+            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .x(indicator.x)
+                .y(indicator.y)
+                .width(indicator.w as u32)
+                .height(indicator.h as u32),
+        );
+    }
 }
 
 pub fn update_bars(
@@ -293,6 +307,34 @@ pub fn update_bars(
         let _ = conn.map_window(win_id);
         let _ = conn.flush();
         bottom_created.push((i, win_id));
+    }
+
+    // Create a white indicator child window for each newly-created bottom bar.
+    for (i, bottom_id) in &bottom_created {
+        let m = globals.monitor(*i).unwrap();
+        let indicator = m.bottom_bar_indicator_rect();
+        let ind_win = conn
+            .generate_id()
+            .expect("failed to generate X11 window ID for bottom bar indicator");
+        let _ = conn.create_window(
+            x11rb::COPY_FROM_PARENT as u8,
+            ind_win,
+            *bottom_id,
+            indicator.x as i16,
+            indicator.y as i16,
+            indicator.w as u16,
+            indicator.h as u16,
+            0,
+            x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &x11rb::protocol::xproto::CreateWindowAux::new()
+                .override_redirect(1)
+                .background_pixel(0xffffff),
+        );
+        let _ = conn.map_window(ind_win);
+        if let Some(mon) = globals.monitor_mut(*i) {
+            mon.bottom_bar_indicator_win = WindowId::from(ind_win);
+        }
     }
 
     for (i, win_id) in created {
