@@ -114,10 +114,12 @@ pub fn update_layout_preview(
     x11_runtime: &mut X11RuntimeConfig,
     rect: Option<crate::types::Rect>,
     style: crate::types::InteractionOutlineStyle,
+    target: Option<crate::types::WindowId>,
     animate: bool,
     duration: std::time::Duration,
 ) {
     x11_runtime.layout_preview_style = style;
+    x11_runtime.layout_preview_target = target;
     let displayed = x11_runtime.layout_preview_animation.set_target(
         rect,
         animate,
@@ -209,15 +211,18 @@ fn render_layout_preview(
                 window,
                 &ChangeWindowAttributesAux::new().background_pixel(color),
             );
-            let _ = conn.configure_window(
-                window,
-                &ConfigureWindowAux::new()
-                    .x(side.x)
-                    .y(side.y)
-                    .width(side.w.max(1) as u32)
-                    .height(side.h.max(1) as u32)
-                    .stack_mode(StackMode::ABOVE),
-            );
+            let mut configure = ConfigureWindowAux::new()
+                .x(side.x)
+                .y(side.y)
+                .width(side.w.max(1) as u32)
+                .height(side.h.max(1) as u32)
+                .stack_mode(StackMode::ABOVE);
+            if x11_runtime.layout_preview_style == crate::types::InteractionOutlineStyle::Close
+                && let Some(target) = x11_runtime.layout_preview_target
+            {
+                configure = configure.sibling(u32::from(target));
+            }
+            let _ = conn.configure_window(window, &configure);
             let _ = conn.map_window(window);
         }
     } else {
@@ -241,10 +246,19 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
         &mut self,
         rect: Option<crate::types::Rect>,
         style: crate::types::InteractionOutlineStyle,
+        target: Option<crate::types::WindowId>,
         animate: bool,
         duration: std::time::Duration,
     ) {
-        update_layout_preview(&self.x11, self.x11_runtime, rect, style, animate, duration);
+        update_layout_preview(
+            &self.x11,
+            self.x11_runtime,
+            rect,
+            style,
+            target,
+            animate,
+            duration,
+        );
     }
 }
 

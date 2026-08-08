@@ -62,7 +62,10 @@ impl Default for BarConfig {
     fn default() -> Self {
         Self {
             show: true,
-            show_bottom: true,
+            // Disabled by default — the bottom strip is a gesture surface that
+            // the user opts into via `Super+Shift+B` (`ToggleBottomBar`), IPC
+            // toggle, or by setting `show_bottom_bar = true` in the config.
+            show_bottom: false,
             height: 0,
             startmenu_size: 0,
         }

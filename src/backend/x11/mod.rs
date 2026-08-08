@@ -54,6 +54,7 @@ pub struct X11RuntimeConfig {
     /// Current visual rectangle and optional transition for those windows.
     pub layout_preview_animation: crate::animation::LayoutPreviewAnimation,
     pub layout_preview_style: crate::types::InteractionOutlineStyle,
+    pub layout_preview_target: Option<WindowId>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
     /// Border widths to restore when X11 windows leave WM management.
@@ -80,6 +81,7 @@ impl Default for X11RuntimeConfig {
             layout_preview_windows: None,
             layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
             layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
+            layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
         }

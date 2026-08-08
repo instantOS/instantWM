@@ -98,7 +98,10 @@ impl Default for ThemeConfig {
             raise_floating_on_click: false,
             rules: Vec::new(),
             bar_height: 0,
-            show_bottom_bar: true,
+            // Disabled by default — opt in via config or `ToggleBottomBar`
+            // (Super+Shift+B). When enabled the strip renders a thin white
+            // gesture handle and reacts to the BottomBarDrag mouse binding.
+            show_bottom_bar: false,
             exec_once: Vec::new(),
             exec: Vec::new(),
         }
@@ -714,9 +717,11 @@ mod theme_tests {
     }
 
     #[test]
-    fn bottom_bar_uses_the_documented_default_when_omitted() {
-        assert!(parse("").show_bottom_bar);
-        assert!(!parse("show_bottom_bar = false").show_bottom_bar);
+    fn bottom_bar_is_off_by_default_and_explicitly_opt_in() {
+        // Disabled by default — the bottom bar is a gesture surface the user
+        // must enable via config, IPC toggle, or `Super+Shift+B`.
+        assert!(!parse("").show_bottom_bar);
+        assert!(parse("show_bottom_bar = true").show_bottom_bar);
     }
 
     #[test]

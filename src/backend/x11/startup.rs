@@ -229,6 +229,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     let metrics = wm.core.config.fonts.bar_metrics(wm.core.config.bar.height);
     let bordercolors = wm.core.config.colors.border;
     let statusbarcolors = wm.core.config.colors.status_bar;
+    let close_color = wm.core.config.colors.close_button.gesture_color();
 
     init_cursors(&mut data.x11_runtime, &mut drw);
     init_schemes(
@@ -236,6 +237,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         &mut drw,
         &bordercolors,
         &statusbarcolors,
+        close_color,
     );
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
@@ -270,6 +272,7 @@ fn init_schemes(
     drw: &mut DrawContext,
     bordercolors: &crate::types::BorderColorConfig,
     statusbarcolors: &crate::types::StatusColorConfig,
+    close_color: crate::bar::color::Rgba,
 ) {
     let normal = drw
         .clr_create(&bordercolors.normal.to_string())
@@ -284,7 +287,7 @@ fn init_schemes(
         .clr_create(&bordercolors.snap.to_string())
         .expect("Failed to create snap border color");
     let close = drw
-        .clr_create("#ff2020")
+        .clr_create(&close_color.to_string())
         .expect("Failed to create close gesture border color");
 
     let borderscheme = BorderScheme {

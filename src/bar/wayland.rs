@@ -355,10 +355,15 @@ mod tests {
 
         let show_bar = wm.core.config.bar.show;
         let show_bottom = wm.core.config.bar.show_bottom;
-        assert!(show_bottom, "bottom bar defaults to shown");
+        assert!(
+            !show_bottom,
+            "bottom bar defaults to hidden — opt in via ToggleBottomBar / config"
+        );
 
         let mut mon = crate::types::Monitor::new_with_values(show_bar);
-        mon.show_bottom_bar = show_bottom;
+        // Enable the bar for this test only — the production default is
+        // hidden, so the test must opt in to exercise the buffer pipeline.
+        mon.show_bottom_bar = true;
         mon.bottom_bar_height = 24;
         let id = wm.core.model.monitors.allocate_id();
         mon.monitor_id = id;

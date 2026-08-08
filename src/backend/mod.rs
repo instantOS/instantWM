@@ -151,6 +151,7 @@ pub trait LayoutInteractionOps {
         &mut self,
         rect: Option<Rect>,
         style: crate::types::InteractionOutlineStyle,
+        target: Option<crate::types::WindowId>,
         animate: bool,
         duration: std::time::Duration,
     );

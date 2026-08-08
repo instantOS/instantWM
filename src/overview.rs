@@ -264,7 +264,7 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
             .then_some(window)
             .and_then(|window| ctx.core().model().client(window))
             .map(|client| client.geo.with_borders(client.border_width));
-        ctx.update_close_preview(outline);
+        ctx.update_close_preview(close_armed.then_some(window), outline);
     }
     true
 }
@@ -273,7 +273,7 @@ pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::Mou
     let Some(action) = ctx.core_mut().drag_state_mut().finish_overview_card(button) else {
         return false;
     };
-    ctx.update_close_preview(None);
+    ctx.update_close_preview(None, None);
     ctx.set_cursor_style(crate::types::AltCursor::Default);
     match action {
         crate::core_state::OverviewCardAction::Select(window) => {
@@ -336,7 +336,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     // An external mode transition (keyboard, IPC, lock, etc.) invalidates any
     // card press that has not reached release yet.
     if ctx.core_mut().drag_state_mut().cancel_overview_card() {
-        ctx.update_close_preview(None);
+        ctx.update_close_preview(None, None);
         ctx.set_cursor_style(crate::types::AltCursor::Default);
     }
     let state = {

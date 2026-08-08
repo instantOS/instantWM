@@ -372,12 +372,13 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
         &mut self,
         rect: Option<Rect>,
         style: crate::types::InteractionOutlineStyle,
+        target: Option<crate::types::WindowId>,
         animate: bool,
         duration: std::time::Duration,
     ) {
-        let _ = self
-            .wayland
-            .with_state(|state| state.set_layout_preview_target(rect, style, animate, duration));
+        let _ = self.wayland.with_state(|state| {
+            state.set_layout_preview_target(rect, style, target, animate, duration)
+        });
     }
 }
 

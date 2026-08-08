@@ -344,6 +344,12 @@ impl CloseButtonColorConfigs {
         }
         .colors_for(role)
     }
+
+    /// Theme color shared by the close button and destructive window gestures.
+    pub fn gesture_color(&self) -> Rgba {
+        self.colors_for(SchemeHover::Hover, SchemeClose::Normal)
+            .detail
+    }
 }
 
 /// Border color configuration with pre-parsed RGBA values.

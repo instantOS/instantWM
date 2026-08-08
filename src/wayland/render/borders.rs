@@ -67,6 +67,7 @@ pub struct BorderScene {
     windows: Vec<WindowBorderInfo>,
     popup_occluders: Vec<Rect>,
     selected_win: Option<WindowId>,
+    close_outline_target: Option<WindowId>,
 }
 
 impl BorderScene {
@@ -75,13 +76,21 @@ impl BorderScene {
             windows: collect_window_info(model, state),
             popup_occluders: build_popup_occluders(state),
             selected_win: model.selected_win(),
+            close_outline_target: (state.layout_preview_rect().is_some()
+                && state.layout_preview_style() == crate::types::InteractionOutlineStyle::Close)
+                .then(|| state.layout_preview_target())
+                .flatten(),
         }
     }
 
     /// Hash exactly the captured inputs which affect generated border
     /// elements. A displayed animation step therefore invalidates borders,
     /// while unrelated logical model changes do not.
-    pub fn cache_key(&self, colors: &BorderColorConfig) -> u64 {
+    pub fn cache_key(
+        &self,
+        colors: &BorderColorConfig,
+        close_color: crate::bar::color::Rgba,
+    ) -> u64 {
         use std::hash::{Hash, Hasher};
 
         fn hash_rect(rect: Rect, hasher: &mut impl Hasher) {
@@ -99,6 +108,7 @@ impl BorderScene {
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.selected_win.hash(&mut hasher);
+        self.close_outline_target.hash(&mut hasher);
         for window in &self.windows {
             window.id.hash(&mut hasher);
             hash_rect(window.displayed_rect, &mut hasher);
@@ -114,11 +124,18 @@ impl BorderScene {
         hash_color(colors.normal, &mut hasher);
         hash_color(colors.tile_focus, &mut hasher);
         hash_color(colors.float_focus, &mut hasher);
+        if self.close_outline_target.is_some() {
+            hash_color(close_color, &mut hasher);
+        }
         hasher.finish()
     }
 
-    pub fn render(&self, colors: &BorderColorConfig) -> Vec<SolidColorRenderElement> {
-        render_border_scene(self, colors)
+    pub fn render(
+        &self,
+        colors: &BorderColorConfig,
+        close_color: crate::bar::color::Rgba,
+    ) -> Vec<SolidColorRenderElement> {
+        render_border_scene(self, colors, close_color)
     }
 }
 
@@ -290,10 +307,37 @@ fn visible_border_parts(
     )
 }
 
+fn visible_close_outline_parts(scene: &BorderScene, scratch: &mut Vec<Rect>) -> Vec<Rect> {
+    let Some(target_index) = scene
+        .close_outline_target
+        .and_then(|target| scene.windows.iter().position(|window| window.id == target))
+    else {
+        return Vec::new();
+    };
+    let Some(window) = scene
+        .windows
+        .get(target_index)
+        .filter(|window| window.is_visible && !window.is_hidden)
+    else {
+        return Vec::new();
+    };
+    let parts = crate::layouts::placement::outline_rectangles(
+        window.bounding_rect(),
+        crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
+    )
+    .to_vec();
+    let higher_occluders = scene.windows[target_index + 1..]
+        .iter()
+        .filter_map(WindowBorderInfo::occluder);
+    let visible = apply_occluders(parts, higher_occluders, scratch);
+    apply_occluders(visible, scene.popup_occluders.iter().copied(), scratch)
+}
+
 /// Render border elements from a previously captured displayed scene.
 fn render_border_scene(
     scene: &BorderScene,
     colors: &BorderColorConfig,
+    close_color: crate::bar::color::Rgba,
 ) -> Vec<SolidColorRenderElement> {
     let windows = &scene.windows;
     let mut elements = Vec::new();
@@ -311,6 +355,10 @@ fn render_border_scene(
         for part in visible_parts {
             push_solid(&mut elements, part, color);
         }
+    }
+
+    for part in visible_close_outline_parts(scene, &mut scratch) {
+        push_solid(&mut elements, part, close_color);
     }
 
     elements
@@ -371,6 +419,7 @@ mod tests {
             windows: vec![window_at(displayed_rect)],
             popup_occluders: Vec::new(),
             selected_win: Some(WindowId(1)),
+            close_outline_target: None,
         }
     }
 
@@ -395,7 +444,10 @@ mod tests {
         let first = scene_at(Rect::new(100, 200, 800, 600));
         let next = scene_at(Rect::new(108, 200, 800, 600));
 
-        assert_ne!(first.cache_key(&colors), next.cache_key(&colors));
+        assert_ne!(
+            first.cache_key(&colors, Rgba::ZERO),
+            next.cache_key(&colors, Rgba::ZERO)
+        );
     }
 
     #[test]
@@ -405,7 +457,10 @@ mod tests {
         let mut next = first;
         next.float_focus = Rgba::rgb(0.25, 0.5, 0.75);
 
-        assert_ne!(scene.cache_key(&first), scene.cache_key(&next));
+        assert_ne!(
+            scene.cache_key(&first, Rgba::ZERO),
+            scene.cache_key(&next, Rgba::ZERO)
+        );
     }
 
     #[test]
@@ -432,6 +487,7 @@ mod tests {
             windows: vec![invisible_lower, target, higher],
             popup_occluders: Vec::new(),
             selected_win: None,
+            close_outline_target: None,
         };
         let mut scratch = Vec::new();
 
@@ -439,5 +495,28 @@ mod tests {
 
         assert!(parts.contains(&Rect::new(0, 0, 10, 3)));
         assert!(!parts.contains(&Rect::new(0, 0, 26, 3)));
+    }
+
+    #[test]
+    fn close_outline_is_clipped_by_higher_windows() {
+        let mut target = window_at(Rect::new(0, 0, 100, 100));
+        target.id = WindowId(1);
+        let mut higher = window_at(Rect::new(50, 0, 50, 50));
+        higher.id = WindowId(2);
+        let scene = BorderScene {
+            windows: vec![target, higher],
+            popup_occluders: Vec::new(),
+            selected_win: None,
+            close_outline_target: Some(WindowId(1)),
+        };
+
+        let parts = visible_close_outline_parts(&scene, &mut Vec::new());
+
+        assert!(parts.contains(&Rect::new(0, 0, 50, 6)));
+        assert!(
+            !parts
+                .iter()
+                .any(|part| part.contains_point(crate::types::Point::new(75, 3)))
+        );
     }
 }

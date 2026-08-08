@@ -203,6 +203,7 @@ pub struct WaylandState {
         HashMap<WindowId, super::window::animations::WaylandWindowAnimation>,
     pub(super) layout_preview_animation: crate::animation::LayoutPreviewAnimation,
     pub(super) layout_preview_style: crate::types::InteractionOutlineStyle,
+    pub(super) layout_preview_target: Option<WindowId>,
     /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
 
@@ -561,6 +562,7 @@ impl WaylandState {
             window_animations: HashMap::new(),
             layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
             layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
+            layout_preview_target: None,
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
             runtime: WaylandRuntimeState::default(),
