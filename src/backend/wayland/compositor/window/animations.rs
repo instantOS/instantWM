@@ -557,9 +557,11 @@ impl WaylandState {
     pub(crate) fn set_layout_preview_target(
         &mut self,
         target: Option<Rect>,
+        style: crate::types::InteractionOutlineStyle,
         animate: bool,
         duration: Duration,
     ) {
+        self.layout_preview_style = style;
         self.layout_preview_animation
             .set_target(target, animate, duration, Instant::now());
         self.request_render();
@@ -567,6 +569,10 @@ impl WaylandState {
 
     pub(crate) fn layout_preview_rect(&self) -> Option<Rect> {
         self.layout_preview_animation.displayed()
+    }
+
+    pub(crate) fn layout_preview_style(&self) -> crate::types::InteractionOutlineStyle {
+        self.layout_preview_style
     }
 
     pub(crate) fn has_active_layout_preview_animation(&self) -> bool {

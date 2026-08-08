@@ -501,17 +501,26 @@ impl OverviewCardDrag {
         self.source
     }
 
-    pub fn update(&mut self, root: Point) {
+    /// Record motion and report a close-threshold transition, if one occurred.
+    pub fn update(&mut self, root: Point) -> Option<bool> {
+        let was_armed = self.close_armed();
         self.last = root;
+        let is_armed = self.close_armed();
+        (was_armed != is_armed).then_some(is_armed)
+    }
+
+    pub fn close_armed(self) -> bool {
+        let dx = self.last.x - self.start.x;
+        let up = self.start.y - self.last.y;
+        up >= self.threshold && up >= dx.abs()
     }
 
     pub fn action(self) -> OverviewCardAction {
         let dx = self.last.x - self.start.x;
         let dy = self.last.y - self.start.y;
-        let up = -dy;
         if dx.abs() < self.threshold && dy.abs() < self.threshold {
             OverviewCardAction::Select(self.window)
-        } else if up >= self.threshold && up >= dx.abs() {
+        } else if self.close_armed() {
             OverviewCardAction::Close(self.window)
         } else {
             OverviewCardAction::Cancel
@@ -849,19 +858,21 @@ mod pointer_interaction_tests {
         };
 
         let mut tap = gesture();
-        tap.update(Point::new(510, 390));
+        assert_eq!(tap.update(Point::new(510, 390)), None);
         assert_eq!(tap.action(), OverviewCardAction::Select(win));
 
         let mut upward = gesture();
-        upward.update(Point::new(520, 350));
+        assert_eq!(upward.update(Point::new(520, 350)), Some(true));
         assert_eq!(upward.action(), OverviewCardAction::Close(win));
+        assert_eq!(upward.update(Point::new(500, 390)), Some(false));
+        assert_eq!(upward.action(), OverviewCardAction::Select(win));
 
         let mut horizontal = gesture();
-        horizontal.update(Point::new(550, 380));
+        assert_eq!(horizontal.update(Point::new(550, 380)), None);
         assert_eq!(horizontal.action(), OverviewCardAction::Cancel);
 
         let mut downward = gesture();
-        downward.update(Point::new(500, 450));
+        assert_eq!(downward.update(Point::new(500, 450)), None);
         assert_eq!(downward.action(), OverviewCardAction::Cancel);
     }
 
@@ -1039,13 +1050,10 @@ impl DragState {
         self.begin_capture(CapturedInteraction::OverviewCard(drag))
     }
 
-    pub fn update_overview_card(&mut self, root: Point) -> bool {
+    pub fn update_overview_card(&mut self, root: Point) -> Option<bool> {
         match self.capture.as_mut() {
-            Some(CapturedInteraction::OverviewCard(drag)) => {
-                drag.update(root);
-                true
-            }
-            _ => false,
+            Some(CapturedInteraction::OverviewCard(drag)) => drag.update(root),
+            _ => None,
         }
     }
 
@@ -1267,11 +1275,11 @@ impl DragState {
     }
 
     pub fn record_interactive_motion(&mut self, point: Point) {
-        match self.capture.as_mut() {
-            Some(CapturedInteraction::Window(
-                WindowDragState::Armed(drag) | WindowDragState::Active(drag),
-            )) => drag.record_motion(point),
-            _ => {}
+        if let Some(CapturedInteraction::Window(
+            WindowDragState::Armed(drag) | WindowDragState::Active(drag),
+        )) = self.capture.as_mut()
+        {
+            drag.record_motion(point)
         }
     }
 

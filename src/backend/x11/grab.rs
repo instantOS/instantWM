@@ -330,10 +330,8 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
                 | crate::core_state::DragType::TreeResize(dir) => AltCursor::Resize(dir),
             }
         }
-        Some(
-            crate::core_state::CapturedInteraction::Tag(_)
-            | crate::core_state::CapturedInteraction::OverviewCard(_),
-        ) => AltCursor::Default,
+        Some(crate::core_state::CapturedInteraction::Tag(_)) => AltCursor::Default,
+        Some(crate::core_state::CapturedInteraction::OverviewCard(_)) => AltCursor::Move,
         None => return false,
     };
 

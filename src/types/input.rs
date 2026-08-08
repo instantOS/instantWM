@@ -86,6 +86,8 @@ pub enum AltCursor {
     VerticalAdjust,
     /// A value adjusted by dragging horizontally.
     HorizontalAdjust,
+    /// A destructive action is armed and will run on release.
+    Close,
     /// Resize cursor with direction.
     Resize(ResizeDirection),
 }
@@ -104,6 +106,7 @@ impl AltCursor {
             AltCursor::Move => 2,
             AltCursor::VerticalAdjust => 4,
             AltCursor::HorizontalAdjust => 5,
+            AltCursor::Close => 1,
             AltCursor::Resize(dir) => match dir {
                 ResizeDirection::TopLeft => 8,
                 ResizeDirection::Top => 4,
@@ -124,6 +127,7 @@ impl AltCursor {
             AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
             AltCursor::VerticalAdjust => Some(smithay::input::pointer::CursorIcon::NsResize),
             AltCursor::HorizontalAdjust => Some(smithay::input::pointer::CursorIcon::EwResize),
+            AltCursor::Close => Some(smithay::input::pointer::CursorIcon::NotAllowed),
             AltCursor::Resize(dir) => Some(match dir {
                 ResizeDirection::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
                 ResizeDirection::Top => smithay::input::pointer::CursorIcon::NResize,
@@ -136,6 +140,14 @@ impl AltCursor {
             }),
         }
     }
+}
+
+/// Visual treatment for the shared compositor-owned outline overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InteractionOutlineStyle {
+    #[default]
+    Layout,
+    Close,
 }
 
 /// Describes precisely what the mouse cursor is positioned over in the bar.
@@ -639,6 +651,15 @@ mod tests {
         assert_eq!(
             AltCursor::VerticalAdjust.to_wayland_icon(),
             Some(smithay::input::pointer::CursorIcon::NsResize)
+        );
+    }
+
+    #[test]
+    fn close_cursor_is_destructive_on_both_backends() {
+        assert_eq!(AltCursor::Close.to_x11_index(), 1);
+        assert_eq!(
+            AltCursor::Close.to_wayland_icon(),
+            Some(smithay::input::pointer::CursorIcon::NotAllowed)
         );
     }
 

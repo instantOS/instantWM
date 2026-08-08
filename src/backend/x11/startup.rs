@@ -283,12 +283,16 @@ fn init_schemes(
     let snap = drw
         .clr_create(&bordercolors.snap.to_string())
         .expect("Failed to create snap border color");
+    let close = drw
+        .clr_create("#ff2020")
+        .expect("Failed to create close gesture border color");
 
     let borderscheme = BorderScheme {
         normal: ColorScheme::from_single(normal),
         tile_focus: ColorScheme::from_single(tile),
         float_focus: ColorScheme::from_single(float),
         snap: ColorScheme::from_single(snap),
+        close: ColorScheme::from_single(close),
     };
 
     let status = drw

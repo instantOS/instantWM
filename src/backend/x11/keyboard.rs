@@ -113,9 +113,11 @@ pub fn update_layout_preview(
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
     rect: Option<crate::types::Rect>,
+    style: crate::types::InteractionOutlineStyle,
     animate: bool,
     duration: std::time::Duration,
 ) {
+    x11_runtime.layout_preview_style = style;
     let displayed = x11_runtime.layout_preview_animation.set_target(
         rect,
         animate,
@@ -146,7 +148,14 @@ fn render_layout_preview(
             return;
         };
         let windows: [Window; 4] = ids.try_into().expect("exactly four preview windows");
-        let color = x11_runtime.border_scheme.snap.bg.pixel();
+        let color = match x11_runtime.layout_preview_style {
+            crate::types::InteractionOutlineStyle::Layout => {
+                x11_runtime.border_scheme.snap.bg.pixel()
+            }
+            crate::types::InteractionOutlineStyle::Close => {
+                x11_runtime.border_scheme.close.bg.pixel()
+            }
+        };
         let aux = CreateWindowAux::new()
             .override_redirect(1)
             .background_pixel(color);
@@ -180,7 +189,14 @@ fn render_layout_preview(
         return;
     };
     if let Some(rect) = rect {
-        let color = x11_runtime.border_scheme.snap.bg.pixel();
+        let color = match x11_runtime.layout_preview_style {
+            crate::types::InteractionOutlineStyle::Layout => {
+                x11_runtime.border_scheme.snap.bg.pixel()
+            }
+            crate::types::InteractionOutlineStyle::Close => {
+                x11_runtime.border_scheme.close.bg.pixel()
+            }
+        };
         for (window, side) in
             windows
                 .into_iter()
@@ -224,10 +240,11 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
     fn layout_preview_changed(
         &mut self,
         rect: Option<crate::types::Rect>,
+        style: crate::types::InteractionOutlineStyle,
         animate: bool,
         duration: std::time::Duration,
     ) {
-        update_layout_preview(&self.x11, self.x11_runtime, rect, animate, duration);
+        update_layout_preview(&self.x11, self.x11_runtime, rect, style, animate, duration);
     }
 }
 

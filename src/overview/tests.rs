@@ -395,6 +395,43 @@ fn non_upward_overview_drag_is_consumed_without_selecting() {
 }
 
 #[test]
+fn close_threshold_projects_and_clears_the_destructive_outline() {
+    let tags = TagMask::single(1).unwrap();
+    let win = WindowId(1);
+    let mut wm = wm_with_overview_clients(tags, &[(win, tags)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert!(begin_card_gesture(
+        &mut wm.ctx(),
+        win,
+        crate::types::MouseButton::Left,
+        crate::types::InteractionSource::Pointer,
+        Point::new(500, 400),
+    ));
+    assert_eq!(wm.core.layout_preview, None);
+
+    assert!(update_card_gesture(&mut wm.ctx(), Point::new(510, 350)));
+    let client = wm.core.model.client(win).unwrap();
+    assert_eq!(
+        wm.core.layout_preview,
+        Some(client.geo.with_borders(client.border_width))
+    );
+    assert_eq!(
+        wm.core.layout_preview_style,
+        crate::types::InteractionOutlineStyle::Close
+    );
+
+    assert!(update_card_gesture(&mut wm.ctx(), Point::new(500, 395)));
+    assert_eq!(wm.core.layout_preview, None);
+
+    assert!(finish_card_gesture(
+        &mut wm.ctx(),
+        crate::types::MouseButton::Left,
+    ));
+    assert_eq!(wm.core.layout_preview, None);
+}
+
+#[test]
 fn keyboard_navigation_continues_from_the_hovered_card() {
     let tags = TagMask::single(1).unwrap();
     let first = WindowId(1);

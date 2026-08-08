@@ -313,8 +313,21 @@ impl<'a> WmCtx<'a> {
 
     /// Refresh the backend-native visualization of a pending tree placement.
     pub fn update_layout_preview(&mut self, rect: Option<Rect>) {
+        self.update_interaction_outline(rect, crate::types::InteractionOutlineStyle::Layout);
+    }
+
+    pub fn update_close_preview(&mut self, rect: Option<Rect>) {
+        self.update_interaction_outline(rect, crate::types::InteractionOutlineStyle::Close);
+    }
+
+    fn update_interaction_outline(
+        &mut self,
+        rect: Option<Rect>,
+        style: crate::types::InteractionOutlineStyle,
+    ) {
         let previous = self.core().state().layout_preview;
-        if previous == rect {
+        let previous_style = self.core().state().layout_preview_style;
+        if previous == rect && (rect.is_none() || previous_style == style) {
             return;
         }
         if rect.is_none() {
@@ -327,6 +340,7 @@ impl<'a> WmCtx<'a> {
             && self.core().behavior().animated
             && self.current_mode().tree_placement().is_some();
         self.core_mut().state_mut().layout_preview = rect;
+        self.core_mut().state_mut().layout_preview_style = style;
         let duration =
             self.core()
                 .config()
@@ -336,8 +350,8 @@ impl<'a> WmCtx<'a> {
                 ));
         use crate::backend::LayoutInteractionOps;
         match self {
-            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, animate, duration),
-            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect, animate, duration),
+            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, style, animate, duration),
+            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect, style, animate, duration),
         }
     }
 

@@ -139,6 +139,8 @@ pub struct BorderScheme {
     pub float_focus: ColorScheme,
     /// Snap indicator border colors.
     pub snap: ColorScheme,
+    /// Destructive overview gesture threshold feedback.
+    pub close: ColorScheme,
 }
 
 /// Color scheme for status bar elements.

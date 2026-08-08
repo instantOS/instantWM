@@ -306,9 +306,10 @@ pub struct CoreState {
     pub drag: DragState,
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
-    /// Backend-neutral outer rectangle of the currently previewed manual-tree
-    /// placement. Both keyboard and pointer placement project this state.
+    /// Backend-neutral outer rectangle of the active compositor interaction
+    /// outline (manual-tree placement or destructive overview gesture).
     pub layout_preview: Option<Rect>,
+    pub layout_preview_style: InteractionOutlineStyle,
     /// Lazily solved trigger zones for the active pointer tree-placement drag.
     /// Authoritative arrange passes invalidate the cached layout/constraints;
     /// source, monitor, tag view, and edge policy are checked before reuse.

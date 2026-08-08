@@ -150,6 +150,7 @@ pub trait LayoutInteractionOps {
     fn layout_preview_changed(
         &mut self,
         rect: Option<Rect>,
+        style: crate::types::InteractionOutlineStyle,
         animate: bool,
         duration: std::time::Duration,
     );

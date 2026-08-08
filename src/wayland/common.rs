@@ -590,6 +590,12 @@ pub fn build_shared_scene_elements(
     wm: &mut Wm,
     state: &mut WaylandState,
 ) -> Rc<SharedSceneElements> {
+    let layout_preview_color = match state.layout_preview_style() {
+        crate::types::InteractionOutlineStyle::Layout => wm.core.config.colors.border.snap,
+        crate::types::InteractionOutlineStyle::Close => {
+            crate::bar::color::Rgba::rgb(1.0, 0.125, 0.125)
+        }
+    };
     let bar_seq = wm.bar.update_seq();
     let border_scene = crate::wayland::render::borders::BorderScene::capture(&wm.core.model, state);
     let borders_hash = border_scene.cache_key(&wm.core.config.colors.border);
@@ -599,7 +605,7 @@ pub fn build_shared_scene_elements(
         && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.shared_scene_cache
         && cached_bar == bar_seq
         && cached_borders == borders_hash
-        && elements.layout_preview_color == wm.core.config.colors.border.snap
+        && elements.layout_preview_color == layout_preview_color
     {
         return elements.clone();
     }
@@ -616,7 +622,7 @@ pub fn build_shared_scene_elements(
     let elements = Rc::new(SharedSceneElements {
         bar_buffers,
         borders,
-        layout_preview_color: wm.core.config.colors.border.snap,
+        layout_preview_color,
     });
 
     if !wm.bar.needs_redraw() {

@@ -235,22 +235,46 @@ pub fn begin_card_gesture(
         return false;
     }
     let threshold = (monitor.monitor_rect.h / 30).max(1);
-    ctx.core_mut()
+    let started = ctx
+        .core_mut()
         .drag_state_mut()
         .begin_overview_card(crate::core_state::OverviewCardDrag::new(
             window, button, source, root, threshold,
         ))
-        .is_ok()
+        .is_ok();
+    if started {
+        ctx.set_cursor_style(crate::types::AltCursor::Move);
+    }
+    started
 }
 
 pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    ctx.core_mut().drag_state_mut().update_overview_card(root)
+    let window = match ctx.core().drag_state().capture() {
+        Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window(),
+        _ => return false,
+    };
+    let transition = ctx.core_mut().drag_state_mut().update_overview_card(root);
+    if let Some(close_armed) = transition {
+        ctx.set_cursor_style(if close_armed {
+            crate::types::AltCursor::Close
+        } else {
+            crate::types::AltCursor::Move
+        });
+        let outline = close_armed
+            .then_some(window)
+            .and_then(|window| ctx.core().model().client(window))
+            .map(|client| client.geo.with_borders(client.border_width));
+        ctx.update_close_preview(outline);
+    }
+    true
 }
 
 pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::MouseButton) -> bool {
     let Some(action) = ctx.core_mut().drag_state_mut().finish_overview_card(button) else {
         return false;
     };
+    ctx.update_close_preview(None);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
     match action {
         crate::core_state::OverviewCardAction::Select(window) => {
             // Set overview's private selection without focusing the client
@@ -311,7 +335,10 @@ fn enter(ctx: &mut WmCtx<'_>) {
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     // An external mode transition (keyboard, IPC, lock, etc.) invalidates any
     // card press that has not reached release yet.
-    ctx.core_mut().drag_state_mut().cancel_overview_card();
+    if ctx.core_mut().drag_state_mut().cancel_overview_card() {
+        ctx.update_close_preview(None);
+        ctx.set_cursor_style(crate::types::AltCursor::Default);
+    }
     let state = {
         let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
         mon.overview_state.take()

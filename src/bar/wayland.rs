@@ -300,7 +300,7 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
         // regardless of the bar's theme color.
         let indicator = mon.bottom_bar_indicator_rect();
         if indicator.w > 0 && indicator.h > 0 {
-            let blend = |bg: u8| -> u8 { (bg as u16 * 15 + 255 * 85) as u8 / 100 };
+            let blend = |bg: u8| -> u8 { ((bg as u16 * 15 + 255 * 85) / 100) as u8 };
             let ir = blend(r);
             let ig = blend(g);
             let ib = blend(b);
@@ -377,5 +377,17 @@ mod tests {
         let (_buffer, pos) = &buffers[0];
         assert_eq!(pos.x, 0);
         assert_eq!(pos.y, 1080 - 24, "strip must be bottom-aligned");
+    }
+
+    /// The indicator blend must compute visibly brighter than the background.
+    /// Regression guard for the truncation bug in the blend formula
+    /// (`(bg as u16 * 15 + 255 * 85) as u8 / 100` silently casts to u8 *before*
+    /// dividing, producing ~1 instead of ~219 on dark backgrounds).
+    #[test]
+    fn bottom_bar_blend_toward_white_is_not_truncated() {
+        let blend = |bg: u8| -> u8 { ((bg as u16 * 15 + 255 * 85) / 100) as u8 };
+        assert_eq!(blend(18), 219, "dark bg (18) must blend toward near-white");
+        assert_eq!(blend(255), 255, "white bg stays white");
+        assert_eq!(blend(0), 216, "black bg blends to ~85% white");
     }
 }
