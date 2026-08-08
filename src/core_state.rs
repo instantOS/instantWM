@@ -52,7 +52,6 @@ impl Default for WindowConfig {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BarConfig {
     pub show: bool,
-    pub position: EdgeDirection,
     pub height: i32,
     pub startmenu_size: i32,
 }
@@ -61,7 +60,6 @@ impl Default for BarConfig {
     fn default() -> Self {
         Self {
             show: true,
-            position: EdgeDirection::Top,
             height: 0,
             startmenu_size: 0,
         }
@@ -796,7 +794,6 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
     next.systray.spacing = cfg.systray_spacing;
     next.systray.show = cfg.show_systray;
     next.bar.show = cfg.show_bar;
-    next.bar.position = cfg.bar_position;
     next.bar.height = cfg.bar_height;
     next.window.resize_hints = cfg.resize_hints;
     next.window.decor_hints = cfg.decor_hints;

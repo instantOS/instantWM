@@ -467,8 +467,7 @@ mod tests {
     use crate::core_state::CoreState;
     use crate::model::WmModel;
     use crate::types::{
-        Client, EdgeDirection, Monitor, MonitorId, Point, Rect, Size, SnapPosition, TagMask,
-        WindowId,
+        Client, Monitor, MonitorId, Point, Rect, Size, SnapPosition, TagMask, WindowId,
     };
 
     fn outer_rect(rect: Rect, border: i32) -> Rect {
@@ -483,7 +482,7 @@ mod tests {
     fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> CoreState {
         let mut globals = CoreState::default();
 
-        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
+        let mut monitor = Monitor::new_with_values(true);
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());

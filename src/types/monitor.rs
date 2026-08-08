@@ -10,7 +10,7 @@ use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, OrderedClients, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
-use crate::types::input::{EdgeDirection, StackDirection};
+use crate::types::input::StackDirection;
 
 mod tag_state;
 mod z_order;
@@ -51,8 +51,6 @@ pub struct Monitor {
     pub tag_set: [TagMask; 2],
     /// Whether to show the bar.
     pub show_bar: bool,
-    /// Position of the status bar on this monitor.
-    pub bar_position: EdgeDirection,
     /// Bar window handle.
     pub bar_win: WindowId,
     /// Whether to hide empty inactive tags from the bar.
@@ -96,7 +94,6 @@ impl Default for Monitor {
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
             show_bar: true,
-            bar_position: EdgeDirection::Top,
             bar_win: WindowId::default(),
             hide_tags: false,
             prev_tag: None,
@@ -183,10 +180,9 @@ impl Monitor {
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
-    pub fn new_with_values(show_bar: bool, bar_position: EdgeDirection) -> Self {
+    pub fn new_with_values(show_bar: bool) -> Self {
         Self {
             show_bar,
-            bar_position,
             per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             prev_tag: Some(1),
@@ -564,14 +560,9 @@ impl Monitor {
     }
 
     /// Returns true when an exclusive layer-shell surface reserves space on the
-    /// same edge where instantWM would place its own bar.
+    /// top edge where instantWM would place its own bar.
     pub fn has_external_bar_on_internal_bar_edge(&self) -> bool {
-        if self.bar_position == EdgeDirection::Top {
-            self.available_rect.y > self.monitor_rect.y
-        } else {
-            self.available_rect.y + self.available_rect.h
-                < self.monitor_rect.y + self.monitor_rect.h
-        }
+        self.available_rect.y > self.monitor_rect.y
     }
 
     /// Returns presentation state for the given tag mask.
@@ -641,20 +632,14 @@ impl Monitor {
 
     /// Bar Y position (vertical position of the status bar).
     ///
-    /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
+    /// Derived from `available_rect`, `bar_height` and `shows_bar()`
     /// so it can never fall out of sync with the monitor's real geometry.
     pub fn bar_y(&self) -> i32 {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
         if self.shows_bar() {
-            if self.bar_position == EdgeDirection::Top {
-                self.available_rect.y
-            } else {
-                self.available_rect.y + self.available_rect.h - safe_bh
-            }
-        } else if self.bar_position == EdgeDirection::Top {
-            self.available_rect.y - safe_bh
+            self.available_rect.y
         } else {
-            self.available_rect.y + self.available_rect.h
+            self.available_rect.y - safe_bh
         }
     }
 
@@ -680,11 +665,7 @@ impl Monitor {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
         let mut rect = Rect::new(self.available_rect.x, 0, self.available_rect.w.max(1), 0);
         if bar_visible {
-            rect.y = if self.bar_position == EdgeDirection::Top {
-                self.available_rect.y + safe_bh
-            } else {
-                self.available_rect.y
-            };
+            rect.y = self.available_rect.y + safe_bh;
             rect.h = (self.available_rect.h - safe_bh).max(1);
         } else {
             rect.y = self.available_rect.y;

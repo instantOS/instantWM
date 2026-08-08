@@ -431,7 +431,7 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::{CoreState, LayoutWorkTargets};
     use crate::types::{
-        Client, ClientMode, EdgeDirection, Monitor, MonitorId, Rect, SpecialNext, TagMask, WindowId,
+        Client, ClientMode, Monitor, MonitorId, Rect, SpecialNext, TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -554,7 +554,7 @@ mod tests {
         let mut state = CoreState::default();
         state.model.tags.num_tags = 9;
 
-        let mut mon = Monitor::new_with_values(true, EdgeDirection::Top);
+        let mut mon = Monitor::new_with_values(true);
         mon.set_selected_tags(TagMask::single(1).unwrap());
         state.model.monitors.push(mon);
 
@@ -703,10 +703,7 @@ mod tests {
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
-        state
-            .model
-            .monitors
-            .push(Monitor::new_with_values(true, EdgeDirection::Top));
+        state.model.monitors.push(Monitor::new_with_values(true));
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("tile-when-renamed")),
             instance: None,
@@ -744,10 +741,7 @@ mod tests {
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
-        state
-            .model
-            .monitors
-            .push(Monitor::new_with_values(true, EdgeDirection::Top)); // Add a monitor
+        state.model.monitors.push(Monitor::new_with_values(true)); // Add a monitor
 
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("test")),
@@ -788,7 +782,7 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
+        let mut monitor = Monitor::new_with_values(true);
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         state.model.monitors.push(monitor);
         state.config.bindings.rules = vec![Rule {
@@ -827,9 +821,8 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 3;
-        use crate::types::EdgeDirection;
         let selected_tags = TagMask::single(2).unwrap();
-        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
+        let mut monitor = Monitor::new_with_values(true);
         monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(selected_tags);
@@ -920,7 +913,7 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
+        let mut monitor = Monitor::new_with_values(true);
         monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
         monitor.available_rect = monitor.monitor_rect;
         monitor.bar_height = 32;

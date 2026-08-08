@@ -165,8 +165,7 @@ mod tests {
         {
             let mon = wm.core.model.monitor_mut(monitor_id).unwrap();
             mon.set_selected_tags(tag2);
-            mon.per_tag_state().presentation =
-                crate::layouts::PresentationMode::Maximized;
+            mon.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
         }
         let win_b = WindowId(2);
         let win_c = WindowId(3);

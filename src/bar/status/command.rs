@@ -624,10 +624,10 @@ mod tests {
     #[test]
     fn status_visibility_follows_the_selected_monitor_only() {
         let mut model = crate::model::WmModel::default();
-        let mut hidden = Monitor::new_with_values(false, crate::types::EdgeDirection::Top);
+        let mut hidden = Monitor::new_with_values(false);
         hidden.monitor_rect = Rect::new(0, 0, 100, 100);
         let hidden_id = model.monitors.push(hidden);
-        let mut visible = Monitor::new_with_values(true, crate::types::EdgeDirection::Top);
+        let mut visible = Monitor::new_with_values(true);
         visible.monitor_rect = Rect::new(100, 0, 100, 100);
         let visible_id = model.monitors.push(visible);
 

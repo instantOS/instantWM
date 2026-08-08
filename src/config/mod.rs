@@ -140,8 +140,6 @@ pub struct Config {
     pub show_systray: bool,
     /// Whether to show the bar by default.
     pub show_bar: bool,
-    /// Position of the status bar (top, bottom, left, right).
-    pub bar_position: EdgeDirection,
     /// Override bar height (0 = derive from font metrics).
     pub bar_height: i32,
 
@@ -317,7 +315,6 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         systray_spacing: 0,
         show_systray: true,
         show_bar: true,
-        bar_position: EdgeDirection::Top,
         bar_height: theme.bar_height as i32,
 
         // --- Tiling ---
