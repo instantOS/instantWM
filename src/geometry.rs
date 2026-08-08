@@ -84,7 +84,7 @@ impl MoveResizeOptions {
     }
 
     pub fn for_floating_transition() -> Self {
-        Self::immediate()
+        Self::animate_to(crate::constants::animation::DEFAULT_ANIMATION_MILLIS)
             .with_size_hints()
             .with_floating_transition_bounds()
     }
