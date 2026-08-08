@@ -542,7 +542,7 @@ fn dispatch_pointer_motion(
     // An armed/active tag drag owns the bar hover until release. Running the
     // ordinary hover path as well makes the two states alternate every motion
     // frame, which is visible as flicker on Wayland.
-    let bar_pos = if wm.core.drag.tag.active {
+    let bar_pos = if wm.core.drag.tag_drag().is_some() {
         None
     } else {
         update_bar_hit_state(wm, root, false)
@@ -562,7 +562,7 @@ fn dispatch_pointer_motion(
     // A global sidebar offer suppresses ordinary hover/focus policy, but it
     // must not consume the motion event: Smithay's pointer position is the
     // protocol authority used by constraints, buttons, and cursor rendering.
-    let sidebar_offer_active = if !wm.core.drag.any_drag_active() {
+    let sidebar_offer_active = if !wm.core.drag.has_capture() {
         let ctx = wm.ctx();
         if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
             // Layer/overlay hit testing is substantially richer than the
@@ -596,7 +596,7 @@ fn dispatch_pointer_motion(
     if !sidebar_offer_active {
         // Phase 5: Update hover resize state for floating windows
         let suppress_hover_focus =
-            update_hover_resize_state(wm, root, hovered_win, wm.core.drag.any_drag_active());
+            update_hover_resize_state(wm, root, hovered_win, wm.core.drag.has_capture());
 
         // Phase 6: Update pointer focus based on drag state. An exclusive layer
         // surface (for example slurp) temporarily owns keyboard focus; moving the
@@ -653,7 +653,7 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
             let bar_visible = monitor_bar_visible(wm, mon);
             let in_bar = bar_visible && mon.y_in_bar(root.y);
             let in_guard =
-                bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
+                bar_visible && !wm.core.drag.has_capture() && mon.y_in_guard_band(root.y);
             (in_bar, in_guard)
         })
         .unwrap_or((false, false))
@@ -738,7 +738,7 @@ fn handle_bar_motion(
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
-    let is_drag = wm.core.drag.any_drag_active();
+    let is_drag = wm.core.drag.has_capture();
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {

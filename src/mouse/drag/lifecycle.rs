@@ -18,7 +18,7 @@ pub fn begin_resize(
     protocol: &dyn InteractiveResizeOps,
     params: ResizeDragParams,
 ) -> Result<(), DragAlreadyActive> {
-    if interactions.any_drag_active() {
+    if interactions.has_capture() {
         return Err(DragAlreadyActive);
     }
 
@@ -161,7 +161,7 @@ mod tests {
 
         let finished = finish(&mut interactions, &protocol, MouseButton::Right).unwrap();
         assert_eq!(finished.win(), win);
-        assert!(interactions.interactive().is_idle());
+        assert!(!interactions.has_capture());
         assert_eq!(
             *protocol.events.borrow(),
             vec![ProtocolEvent::Begin(win), ProtocolEvent::End(win)]
@@ -188,14 +188,25 @@ mod tests {
     fn resize_rejects_non_window_interaction_without_protocol_side_effects() {
         let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
-        interactions.tag.active = true;
+        interactions
+            .begin_overview_card(crate::core_state::OverviewCardDrag::new(
+                WindowId(1),
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(0, 0),
+                10,
+            ))
+            .unwrap();
 
         assert_eq!(
             begin_resize(&mut interactions, &protocol, resize_params(WindowId(7)),),
             Err(DragAlreadyActive)
         );
         assert!(protocol.events.borrow().is_empty());
-        assert!(interactions.tag.active);
+        assert!(matches!(
+            interactions.capture(),
+            Some(crate::core_state::CapturedInteraction::OverviewCard(_))
+        ));
     }
 
     #[test]
@@ -293,7 +304,7 @@ mod tests {
 
         let finished = finish(&mut interactions, &protocol, MouseButton::Left).unwrap();
         assert_eq!(finished.drag_type(), DragType::Move);
-        assert!(interactions.interactive().is_idle());
+        assert!(!interactions.has_capture());
         assert!(protocol.events.borrow().is_empty());
     }
 
@@ -360,7 +371,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cancelled.win(), win);
-        assert!(interactions.interactive().is_idle());
+        assert!(!interactions.has_capture());
         assert_eq!(
             *protocol.events.borrow(),
             vec![ProtocolEvent::Begin(win), ProtocolEvent::End(win)]

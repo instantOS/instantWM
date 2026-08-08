@@ -70,9 +70,6 @@ pub fn drag_tag_begin(
     source: InteractionSource,
     start: Point,
 ) -> bool {
-    if ctx.core().drag_state().any_drag_active() {
-        return false;
-    }
     let BarPosition::Tag(tag_idx) = bar_pos else {
         return false;
     };
@@ -80,30 +77,29 @@ pub fn drag_tag_begin(
         return false;
     };
     let monitor_id = ctx.core().model().selected_monitor_id();
-    ctx.core_mut().drag_state_mut().tag = crate::core_state::TagDragState {
-        active: true,
-        initial_tag,
-        start,
-        dragging: false,
-        monitor_id,
-        last_tag: Some(tag_idx),
-        cursor_on_bar: true,
-        last_motion: Some((start, 0)),
-        button: btn,
-        source: Some(source),
-    };
-    true
+    ctx.core_mut()
+        .drag_state_mut()
+        .begin_tag_drag(crate::core_state::TagDragState {
+            initial_tag,
+            start,
+            dragging: false,
+            monitor_id,
+            last_tag: Some(tag_idx),
+            cursor_on_bar: true,
+            last_motion: Some((start, 0)),
+            button: btn,
+            source,
+        })
+        .is_ok()
 }
 
 /// Update an armed tag interaction. The interaction remains active outside the
 /// bar so users can leave and re-enter before releasing.
 pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
-    if !ctx.core().drag_state().tag.active {
-        return false;
-    }
-
     let (monitor_id, start, was_dragging, previous_modifiers) = {
-        let drag = &ctx.core().drag_state().tag;
+        let Some(drag) = ctx.core().drag_state().tag_drag() else {
+            return false;
+        };
         (
             drag.monitor_id,
             drag.start,
@@ -111,7 +107,11 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             drag.last_motion.map_or(0, |(_, modifiers)| modifiers),
         )
     };
-    ctx.core_mut().drag_state_mut().tag.last_motion = Some((root, previous_modifiers));
+    ctx.core_mut()
+        .drag_state_mut()
+        .tag_drag_mut()
+        .expect("tag capture remained active")
+        .last_motion = Some((root, previous_modifiers));
 
     if !was_dragging && root.manhattan_distance(&start) <= DRAG_THRESHOLD {
         return true;
@@ -122,7 +122,11 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         if selected_on_monitor(ctx, monitor_id).is_none() {
             return true;
         }
-        ctx.core_mut().drag_state_mut().tag.dragging = true;
+        ctx.core_mut()
+            .drag_state_mut()
+            .tag_drag_mut()
+            .expect("tag capture remained active")
+            .dragging = true;
         ctx.set_cursor_style(AltCursor::Move);
     }
 
@@ -134,11 +138,19 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     };
     let cursor_on_bar = position.is_some();
     let changed = {
-        let drag = &ctx.core().drag_state().tag;
+        let drag = ctx
+            .core()
+            .drag_state()
+            .tag_drag()
+            .expect("tag capture remained active");
         drag.cursor_on_bar != cursor_on_bar || drag.last_tag != tag_idx
     };
     if changed || !was_dragging {
-        let drag = &mut ctx.core_mut().drag_state_mut().tag;
+        let drag = ctx
+            .core_mut()
+            .drag_state_mut()
+            .tag_drag_mut()
+            .expect("tag capture remained active");
         drag.cursor_on_bar = cursor_on_bar;
         drag.last_tag = tag_idx;
         if cursor_on_bar {
@@ -153,10 +165,14 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 
 /// Finish a tag click or drag using the modifiers held at release time.
 pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
-    if !ctx.core().drag_state().tag.active {
+    let Some(button) = ctx.core().drag_state().tag_drag().map(|drag| drag.button) else {
         return;
-    }
-    let drag = std::mem::take(&mut ctx.core_mut().drag_state_mut().tag);
+    };
+    let drag = ctx
+        .core_mut()
+        .drag_state_mut()
+        .finish_tag_drag(button)
+        .expect("matching tag capture remained active");
     let root = drag.last_motion.map_or(drag.start, |(root, _)| root);
     let final_position = position_at(ctx, drag.monitor_id, root);
     let final_tag = final_position.and_then(|position| match position {

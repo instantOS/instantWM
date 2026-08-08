@@ -5,7 +5,7 @@
 //! update, release, or cancellation.
 
 use crate::contexts::WmCtx;
-use crate::core_state::DragCancelReason;
+use crate::core_state::{CapturedInteraction, DragCancelReason, WindowDragState};
 use crate::types::{MouseButton, Point, SidebarTarget};
 
 pub use crate::types::InteractionSource;
@@ -82,42 +82,39 @@ pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcom
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
-    if ctx.core().drag_state().overview_card_drag().is_some() {
-        let _ = crate::overview::update_card_gesture(ctx, event.root);
-        return InteractionOutcome::Captured;
+    match ctx.core().drag_state().capture() {
+        Some(CapturedInteraction::OverviewCard(_)) => {
+            let _ = crate::overview::update_card_gesture(ctx, event.root);
+        }
+        Some(CapturedInteraction::Window(WindowDragState::Active(_))) => {
+            let _ = crate::mouse::drag::active_drag_motion(ctx, event.root);
+        }
+        Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
+            let _ = crate::mouse::title_drag_motion(
+                ctx,
+                match event.source {
+                    InteractionSource::Pointer => crate::mouse::DragInput::Pointer(event.root),
+                    InteractionSource::Touch(_) => crate::mouse::DragInput::Absolute(event.root),
+                },
+            );
+        }
+        Some(CapturedInteraction::Tag(_)) => {
+            ctx.core_mut()
+                .drag_state_mut()
+                .tag_drag_mut()
+                .expect("tag capture remained active")
+                .last_motion = Some((event.root, event.modifiers));
+            let _ = crate::mouse::drag_tag_motion(ctx, event.root);
+        }
+        Some(CapturedInteraction::SidebarVolume(_)) => {
+            crate::mouse::update_sidebar_gesture(ctx, event.root.y);
+        }
+        Some(CapturedInteraction::BottomBar(_)) => {
+            crate::mouse::update_bottom_bar_gesture(ctx, event.root);
+        }
+        None => return InteractionOutcome::Ignored,
     }
-    if ctx.core().drag_state().active_interaction().is_some() {
-        return if crate::mouse::drag::active_drag_motion(ctx, event.root) {
-            InteractionOutcome::Captured
-        } else {
-            InteractionOutcome::Ignored
-        };
-    }
-    if ctx.core().drag_state().tag.active {
-        let drag = &mut ctx.core_mut().drag_state_mut().tag;
-        drag.last_motion = Some((event.root, event.modifiers));
-        let _ = crate::mouse::drag_tag_motion(ctx, event.root);
-        return InteractionOutcome::Captured;
-    }
-    if ctx.core().drag_state().armed_interaction().is_some() {
-        let _ = crate::mouse::title_drag_motion(
-            ctx,
-            match event.source {
-                InteractionSource::Pointer => crate::mouse::DragInput::Pointer(event.root),
-                InteractionSource::Touch(_) => crate::mouse::DragInput::Absolute(event.root),
-            },
-        );
-        return InteractionOutcome::Captured;
-    }
-    if ctx.core().drag_state().sidebar_volume_active() {
-        crate::mouse::update_sidebar_gesture(ctx, event.root.y);
-        return InteractionOutcome::Captured;
-    }
-    if ctx.core().drag_state().bottom_bar_gesture_active() {
-        crate::mouse::update_bottom_bar_gesture(ctx, event.root);
-        return InteractionOutcome::Captured;
-    }
-    InteractionOutcome::Ignored
+    InteractionOutcome::Captured
 }
 
 fn finish(
@@ -126,32 +123,31 @@ fn finish(
     button: MouseButton,
     time_msec: u32,
 ) -> InteractionOutcome {
-    if crate::overview::finish_card_gesture(ctx, button) {
-        return InteractionOutcome::Captured;
+    if ctx.core().drag_state().captured_button() != Some(button) {
+        return InteractionOutcome::Ignored;
     }
-    if crate::mouse::drag::active_drag_finish(ctx, button, event.modifiers) {
-        return InteractionOutcome::Captured;
+    match ctx.core().drag_state().capture() {
+        Some(CapturedInteraction::OverviewCard(_)) => {
+            let _ = crate::overview::finish_card_gesture(ctx, button);
+        }
+        Some(CapturedInteraction::Window(WindowDragState::Active(_))) => {
+            let _ = crate::mouse::drag::active_drag_finish(ctx, button, event.modifiers);
+        }
+        Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
+            crate::mouse::title_drag_finish(ctx);
+        }
+        Some(CapturedInteraction::Tag(_)) => {
+            crate::mouse::drag_tag_finish(ctx, event.modifiers);
+        }
+        Some(CapturedInteraction::SidebarVolume(_)) => {
+            let _ = crate::mouse::finish_sidebar_gesture(ctx, button, event.sidebar_hover);
+        }
+        Some(CapturedInteraction::BottomBar(_)) => {
+            let _ = crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root, time_msec);
+        }
+        None => return InteractionOutcome::Ignored,
     }
-    if ctx.core().drag_state().tag.active && ctx.core().drag_state().tag.button == button {
-        crate::mouse::drag_tag_finish(ctx, event.modifiers);
-        return InteractionOutcome::Captured;
-    }
-    if ctx
-        .core()
-        .drag_state()
-        .armed_interaction()
-        .is_some_and(|drag| drag.button() == button)
-    {
-        crate::mouse::title_drag_finish(ctx);
-        return InteractionOutcome::Captured;
-    }
-    if crate::mouse::finish_sidebar_gesture(ctx, button, event.sidebar_hover) {
-        return InteractionOutcome::Captured;
-    }
-    if crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root, time_msec) {
-        return InteractionOutcome::Captured;
-    }
-    InteractionOutcome::Ignored
+    InteractionOutcome::Captured
 }
 
 fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
@@ -166,17 +162,8 @@ fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
         ),
     }
     .is_some();
-    let cancelled_tag = ctx.core().drag_state().tag.active;
-    let cancelled_sidebar = ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
-    let cancelled_bottom_bar = ctx.core_mut().drag_state_mut().cancel_bottom_bar();
-    let cancelled_overview = ctx.core_mut().drag_state_mut().cancel_overview_card();
-    ctx.core_mut().drag_state_mut().tag = Default::default();
-    if cancelled_interactive
-        || cancelled_tag
-        || cancelled_sidebar
-        || cancelled_bottom_bar
-        || cancelled_overview
-    {
+    let cancelled_other = ctx.core_mut().drag_state_mut().cancel_capture().is_some();
+    if cancelled_interactive || cancelled_other {
         ctx.core_mut().bar.hover.clear();
         ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);

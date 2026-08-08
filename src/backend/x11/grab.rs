@@ -318,24 +318,23 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     {
         return false;
     }
-    let cursor = if ctx.core.drag_state().sidebar_volume_active() {
-        AltCursor::VerticalAdjust
-    } else if ctx.core.drag_state().bottom_bar_gesture_active() {
-        AltCursor::HorizontalAdjust
-    } else if let Some(drag) = ctx
-        .core
-        .drag_state()
-        .active_interaction()
-        .or_else(|| ctx.core.drag_state().armed_interaction())
-    {
-        match drag.drag_type() {
-            crate::core_state::DragType::Move if btn == MouseButton::Right => AltCursor::Move,
-            crate::core_state::DragType::Move => AltCursor::Default,
-            crate::core_state::DragType::Resize(dir)
-            | crate::core_state::DragType::TreeResize(dir) => AltCursor::Resize(dir),
+    let cursor = match ctx.core.drag_state().capture() {
+        Some(crate::core_state::CapturedInteraction::SidebarVolume(_)) => AltCursor::VerticalAdjust,
+        Some(crate::core_state::CapturedInteraction::BottomBar(_)) => AltCursor::HorizontalAdjust,
+        Some(crate::core_state::CapturedInteraction::Window(state)) => {
+            let drag = state.interaction();
+            match drag.drag_type() {
+                crate::core_state::DragType::Move if btn == MouseButton::Right => AltCursor::Move,
+                crate::core_state::DragType::Move => AltCursor::Default,
+                crate::core_state::DragType::Resize(dir)
+                | crate::core_state::DragType::TreeResize(dir) => AltCursor::Resize(dir),
+            }
         }
-    } else {
-        AltCursor::Default
+        Some(
+            crate::core_state::CapturedInteraction::Tag(_)
+            | crate::core_state::CapturedInteraction::OverviewCard(_),
+        ) => AltCursor::Default,
+        None => return false,
     };
 
     let release = mouse_drag_loop(ctx, btn, cursor, false, |ctx, event| {

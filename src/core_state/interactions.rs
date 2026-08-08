@@ -217,10 +217,8 @@ impl DragInteraction {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub enum InteractiveDrag {
-    #[default]
-    Idle,
+#[derive(Debug, Clone)]
+pub enum WindowDragState {
     Armed(DragInteraction),
     Active(DragInteraction),
 }
@@ -269,30 +267,18 @@ pub struct ArmedDragParams {
     pub suppress_click_action: bool,
 }
 
-impl InteractiveDrag {
-    pub fn is_idle(&self) -> bool {
-        matches!(self, Self::Idle)
-    }
-    pub fn armed(&self) -> Option<&DragInteraction> {
+impl WindowDragState {
+    pub fn interaction(&self) -> &DragInteraction {
         match self {
-            Self::Armed(drag) => Some(drag),
-            _ => None,
-        }
-    }
-    pub fn active(&self) -> Option<&DragInteraction> {
-        match self {
-            Self::Active(drag) => Some(drag),
-            _ => None,
+            Self::Armed(drag) | Self::Active(drag) => drag,
         }
     }
 }
 
 /// On X11, the synchronous grab loop drives this. On Wayland, the calloop
 /// press/motion/release events drive it asynchronously.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TagDragState {
-    /// Whether a tag drag is currently active.
-    pub active: bool,
     /// The initial tag mask that was clicked.
     pub initial_tag: TagMask,
     /// Pointer position at press time, used to distinguish a click from a drag.
@@ -310,7 +296,7 @@ pub struct TagDragState {
     /// The mouse button that started the drag.
     pub button: MouseButton,
     /// Input stream that owns this interaction.
-    pub source: Option<InteractionSource>,
+    pub source: InteractionSource,
 }
 
 /// Direction latched by a bottom-bar swipe.
@@ -727,7 +713,15 @@ mod pointer_interaction_tests {
     #[test]
     fn bottom_bar_lifecycle_rejects_overlap_and_wrong_button_release() {
         let mut interactions = DragState::default();
-        interactions.tag.active = true;
+        interactions
+            .begin_overview_card(OverviewCardDrag::new(
+                WindowId(1),
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(0, 0),
+                10,
+            ))
+            .unwrap();
         assert!(
             interactions
                 .begin_bottom_bar(bottom_bar_drag(500, 1000))
@@ -735,7 +729,7 @@ mod pointer_interaction_tests {
         );
         assert!(!interactions.bottom_bar_gesture_active());
 
-        interactions.tag.active = false;
+        interactions.cancel_capture();
         interactions
             .begin_bottom_bar(bottom_bar_drag(500, 1000))
             .unwrap();
@@ -821,11 +815,19 @@ mod pointer_interaction_tests {
             30,
         );
         let mut interactions = DragState::default();
-        interactions.tag.active = true;
+        interactions
+            .begin_overview_card(OverviewCardDrag::new(
+                WindowId(1),
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(0, 0),
+                10,
+            ))
+            .unwrap();
         assert!(interactions.begin_sidebar_volume(drag).is_err());
         assert!(!interactions.sidebar_volume_active());
 
-        interactions.tag.active = false;
+        interactions.cancel_capture();
         interactions.begin_sidebar_volume(drag).unwrap();
         assert!(!interactions.finish_sidebar_volume(MouseButton::Right));
         assert!(interactions.sidebar_volume_active());
@@ -882,12 +884,12 @@ mod pointer_interaction_tests {
             interactions.captured_source(),
             Some(InteractionSource::Touch(4))
         );
-        assert!(interactions.any_drag_active());
+        assert!(interactions.has_capture());
         assert_eq!(
             interactions.finish_overview_card(MouseButton::Left),
             Some(OverviewCardAction::Select(win))
         );
-        assert!(!interactions.any_drag_active());
+        assert!(!interactions.has_capture());
     }
 }
 
@@ -927,163 +929,245 @@ impl HoverOffer {
     }
 }
 
+/// The single compositor-owned input sequence currently in progress.
+///
+/// Making capture mutually exclusive in the type system removes the former
+/// priority ordering between several independent `Option` fields. Backends
+/// can now decide whether to forward an event from this one source of truth.
+#[derive(Debug, Clone)]
+pub enum CapturedInteraction {
+    Window(WindowDragState),
+    Tag(TagDragState),
+    SidebarVolume(SidebarVolumeDrag),
+    BottomBar(BottomBarDrag),
+    OverviewCard(OverviewCardDrag),
+}
+
+impl CapturedInteraction {
+    pub fn button(&self) -> MouseButton {
+        match self {
+            Self::Window(state) => state.interaction().button(),
+            Self::Tag(state) => state.button,
+            Self::SidebarVolume(state) => state.button(),
+            Self::BottomBar(state) => state.button(),
+            Self::OverviewCard(state) => state.button(),
+        }
+    }
+
+    pub fn source(&self) -> InteractionSource {
+        match self {
+            Self::Window(state) => state.interaction().source(),
+            Self::Tag(state) => state.source,
+            Self::SidebarVolume(state) => state.source(),
+            Self::BottomBar(state) => state.source(),
+            Self::OverviewCard(state) => state.source(),
+        }
+    }
+}
+
 /// Consolidated state for mouse/touch interactions.
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
-    pub tag: TagDragState,
-    interactive: InteractiveDrag,
-    sidebar_volume: Option<SidebarVolumeDrag>,
-    bottom_bar: Option<BottomBarDrag>,
-    overview_card: Option<OverviewCardDrag>,
+    capture: Option<CapturedInteraction>,
     pub hover_offer: HoverOffer,
 }
 
 impl DragState {
-    pub fn interactive(&self) -> &InteractiveDrag {
-        &self.interactive
+    pub fn capture(&self) -> Option<&CapturedInteraction> {
+        self.capture.as_ref()
+    }
+
+    pub fn has_capture(&self) -> bool {
+        self.capture.is_some()
     }
 
     pub fn active_interaction(&self) -> Option<&DragInteraction> {
-        self.interactive.active()
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::Window(WindowDragState::Active(drag))) => Some(drag),
+            _ => None,
+        }
     }
 
     pub fn armed_interaction(&self) -> Option<&DragInteraction> {
-        self.interactive.armed()
-    }
-
-    pub fn interaction_button(&self) -> Option<MouseButton> {
-        self.active_interaction()
-            .or_else(|| self.armed_interaction())
-            .map(DragInteraction::button)
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => Some(drag),
+            _ => None,
+        }
     }
 
     /// Button whose complete press/motion/release sequence is WM-owned.
     pub fn captured_button(&self) -> Option<MouseButton> {
-        self.interaction_button()
-            .or_else(|| self.tag.active.then_some(self.tag.button))
-            .or_else(|| self.sidebar_volume_button())
-            .or_else(|| self.bottom_bar.as_ref().map(BottomBarDrag::button))
-            .or_else(|| self.overview_card.map(OverviewCardDrag::button))
+        self.capture.as_ref().map(CapturedInteraction::button)
     }
 
     pub fn captured_source(&self) -> Option<InteractionSource> {
-        self.active_interaction()
-            .or_else(|| self.armed_interaction())
-            .map(DragInteraction::source)
-            .or_else(|| self.tag.active.then_some(self.tag.source).flatten())
-            .or_else(|| self.sidebar_volume.map(SidebarVolumeDrag::source))
-            .or_else(|| self.bottom_bar.as_ref().map(BottomBarDrag::source))
-            .or_else(|| self.overview_card.map(OverviewCardDrag::source))
+        self.capture.as_ref().map(CapturedInteraction::source)
     }
 
-    pub fn overview_card_drag(&self) -> Option<OverviewCardDrag> {
-        self.overview_card
+    pub fn tag_drag(&self) -> Option<&TagDragState> {
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::Tag(drag)) => Some(drag),
+            _ => None,
+        }
+    }
+
+    pub fn tag_drag_mut(&mut self) -> Option<&mut TagDragState> {
+        match self.capture.as_mut() {
+            Some(CapturedInteraction::Tag(drag)) => Some(drag),
+            _ => None,
+        }
+    }
+
+    pub fn begin_tag_drag(&mut self, drag: TagDragState) -> Result<(), DragAlreadyActive> {
+        self.begin_capture(CapturedInteraction::Tag(drag))
+    }
+
+    pub fn finish_tag_drag(&mut self, button: MouseButton) -> Option<TagDragState> {
+        if !matches!(
+            self.capture.as_ref(),
+            Some(CapturedInteraction::Tag(drag)) if drag.button == button
+        ) {
+            return None;
+        }
+        match self.capture.take() {
+            Some(CapturedInteraction::Tag(drag)) => Some(drag),
+            _ => unreachable!(),
+        }
     }
 
     pub fn begin_overview_card(&mut self, drag: OverviewCardDrag) -> Result<(), DragAlreadyActive> {
-        if self.any_drag_active() {
-            return Err(DragAlreadyActive);
-        }
-        self.overview_card = Some(drag);
-        Ok(())
+        self.begin_capture(CapturedInteraction::OverviewCard(drag))
     }
 
     pub fn update_overview_card(&mut self, root: Point) -> bool {
-        let Some(drag) = self.overview_card.as_mut() else {
-            return false;
-        };
-        drag.update(root);
-        true
+        match self.capture.as_mut() {
+            Some(CapturedInteraction::OverviewCard(drag)) => {
+                drag.update(root);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn finish_overview_card(&mut self, button: MouseButton) -> Option<OverviewCardAction> {
-        if self.overview_card.map(OverviewCardDrag::button) != Some(button) {
+        if !matches!(
+            self.capture.as_ref(),
+            Some(CapturedInteraction::OverviewCard(drag)) if drag.button() == button
+        ) {
             return None;
         }
-        self.overview_card.take().map(OverviewCardDrag::action)
+        match self.capture.take() {
+            Some(CapturedInteraction::OverviewCard(drag)) => Some(drag.action()),
+            _ => unreachable!(),
+        }
     }
 
     pub fn cancel_overview_card(&mut self) -> bool {
-        self.overview_card.take().is_some()
+        if !matches!(self.capture, Some(CapturedInteraction::OverviewCard(_))) {
+            return false;
+        }
+        self.capture = None;
+        true
     }
 
     pub fn sidebar_volume_active(&self) -> bool {
-        self.sidebar_volume.is_some()
+        matches!(self.capture, Some(CapturedInteraction::SidebarVolume(_)))
     }
 
     pub fn sidebar_volume_button(&self) -> Option<MouseButton> {
-        self.sidebar_volume.map(SidebarVolumeDrag::button)
+        match self.capture {
+            Some(CapturedInteraction::SidebarVolume(drag)) => Some(drag.button()),
+            _ => None,
+        }
     }
 
     pub fn sidebar_volume_monitor(&self) -> Option<MonitorId> {
-        self.sidebar_volume.map(SidebarVolumeDrag::monitor_id)
+        match self.capture {
+            Some(CapturedInteraction::SidebarVolume(drag)) => Some(drag.monitor_id()),
+            _ => None,
+        }
     }
 
     pub fn begin_sidebar_volume(
         &mut self,
         drag: SidebarVolumeDrag,
     ) -> Result<(), DragAlreadyActive> {
-        if self.any_drag_active() {
-            return Err(DragAlreadyActive);
-        }
-        self.sidebar_volume = Some(drag);
-        Ok(())
+        self.begin_capture(CapturedInteraction::SidebarVolume(drag))
     }
 
     pub fn update_sidebar_volume(&mut self, root_y: i32) -> Option<i32> {
-        self.sidebar_volume.as_mut().map(|drag| drag.update(root_y))
+        match self.capture.as_mut() {
+            Some(CapturedInteraction::SidebarVolume(drag)) => Some(drag.update(root_y)),
+            _ => None,
+        }
     }
 
     pub fn finish_sidebar_volume(&mut self, button: MouseButton) -> bool {
         if self.sidebar_volume_button() != Some(button) {
             return false;
         }
-        self.sidebar_volume = None;
+        self.capture = None;
         true
     }
 
     pub fn cancel_sidebar_volume(&mut self) -> bool {
-        self.sidebar_volume.take().is_some()
+        if !self.sidebar_volume_active() {
+            return false;
+        }
+        self.capture = None;
+        true
     }
 
     pub fn bottom_bar_gesture_active(&self) -> bool {
-        self.bottom_bar.is_some()
+        matches!(self.capture, Some(CapturedInteraction::BottomBar(_)))
     }
 
     pub fn bottom_bar_button(&self) -> Option<MouseButton> {
-        self.bottom_bar.as_ref().map(BottomBarDrag::button)
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::BottomBar(drag)) => Some(drag.button()),
+            _ => None,
+        }
     }
 
     pub fn bottom_bar_monitor(&self) -> Option<MonitorId> {
-        self.bottom_bar.as_ref().map(BottomBarDrag::monitor_id)
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::BottomBar(drag)) => Some(drag.monitor_id()),
+            _ => None,
+        }
     }
 
     pub fn bottom_bar_drag(&self) -> Option<&BottomBarDrag> {
-        self.bottom_bar.as_ref()
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::BottomBar(drag)) => Some(drag),
+            _ => None,
+        }
     }
 
     pub fn begin_bottom_bar(&mut self, drag: BottomBarDrag) -> Result<(), DragAlreadyActive> {
-        if self.any_drag_active() {
-            return Err(DragAlreadyActive);
-        }
-        self.bottom_bar = Some(drag);
-        Ok(())
+        self.begin_capture(CapturedInteraction::BottomBar(drag))
     }
 
     pub fn update_bottom_bar(&mut self, root: Point) -> Option<SwipeDirection> {
-        self.bottom_bar.as_mut().and_then(|drag| drag.update(root))
+        match self.capture.as_mut() {
+            Some(CapturedInteraction::BottomBar(drag)) => drag.update(root),
+            _ => None,
+        }
     }
 
     pub fn finish_bottom_bar(&mut self, button: MouseButton) -> bool {
         if self.bottom_bar_button() != Some(button) {
             return false;
         }
-        self.bottom_bar = None;
+        self.capture = None;
         true
     }
 
     pub fn cancel_bottom_bar(&mut self) -> bool {
-        self.bottom_bar.take().is_some()
+        if !self.bottom_bar_gesture_active() {
+            return false;
+        }
+        self.capture = None;
+        true
     }
 
     pub fn begin_move(
@@ -1155,19 +1239,13 @@ impl DragState {
     }
 
     fn begin_active(&mut self, drag: DragInteraction) -> Result<(), DragAlreadyActive> {
-        if self.any_drag_active() {
-            return Err(DragAlreadyActive);
-        }
-        self.interactive = InteractiveDrag::Active(drag);
-        Ok(())
+        self.begin_capture(CapturedInteraction::Window(WindowDragState::Active(drag)))
     }
 
     pub fn arm_title_drag(&mut self, params: ArmedDragParams) -> Result<(), DragAlreadyActive> {
-        if self.any_drag_active() {
-            return Err(DragAlreadyActive);
-        }
-        self.interactive = InteractiveDrag::Armed(DragInteraction::armed(params));
-        Ok(())
+        self.begin_capture(CapturedInteraction::Window(WindowDragState::Armed(
+            DragInteraction::armed(params),
+        )))
     }
 
     pub fn activate_armed(
@@ -1176,24 +1254,24 @@ impl DragState {
         start: Point,
         geo: Rect,
     ) -> Result<(), DragNotArmed> {
-        let mut drag = match std::mem::take(&mut self.interactive) {
-            InteractiveDrag::Armed(drag) => drag,
+        let mut drag = match self.capture.take() {
+            Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => drag,
             other => {
-                self.interactive = other;
+                self.capture = other;
                 return Err(DragNotArmed);
             }
         };
         drag.activate_as(drag_type, start, geo);
-        self.interactive = InteractiveDrag::Active(drag);
+        self.capture = Some(CapturedInteraction::Window(WindowDragState::Active(drag)));
         Ok(())
     }
 
     pub fn record_interactive_motion(&mut self, point: Point) {
-        match &mut self.interactive {
-            InteractiveDrag::Armed(drag) | InteractiveDrag::Active(drag) => {
-                drag.record_motion(point)
-            }
-            InteractiveDrag::Idle => {}
+        match self.capture.as_mut() {
+            Some(CapturedInteraction::Window(
+                WindowDragState::Armed(drag) | WindowDragState::Active(drag),
+            )) => drag.record_motion(point),
+            _ => {}
         }
     }
 
@@ -1204,36 +1282,44 @@ impl DragState {
         {
             return None;
         }
-        match std::mem::take(&mut self.interactive) {
-            InteractiveDrag::Active(drag) => Some(drag),
+        match self.capture.take() {
+            Some(CapturedInteraction::Window(WindowDragState::Active(drag))) => Some(drag),
             _ => unreachable!(),
         }
     }
 
     pub fn finish_armed(&mut self) -> Option<DragInteraction> {
-        match std::mem::take(&mut self.interactive) {
-            InteractiveDrag::Armed(drag) => Some(drag),
+        match self.capture.take() {
+            Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => Some(drag),
             other => {
-                self.interactive = other;
+                self.capture = other;
                 None
             }
         }
     }
 
     pub fn cancel_interactive(&mut self) -> Option<DragInteraction> {
-        match std::mem::take(&mut self.interactive) {
-            InteractiveDrag::Idle => None,
-            InteractiveDrag::Armed(drag) | InteractiveDrag::Active(drag) => Some(drag),
+        match self.capture.take() {
+            Some(CapturedInteraction::Window(
+                WindowDragState::Armed(drag) | WindowDragState::Active(drag),
+            )) => Some(drag),
+            other => {
+                self.capture = other;
+                None
+            }
         }
     }
 
-    #[inline]
-    pub fn any_drag_active(&self) -> bool {
-        !self.interactive.is_idle()
-            || self.tag.active
-            || self.sidebar_volume.is_some()
-            || self.bottom_bar.is_some()
-            || self.overview_card.is_some()
+    pub fn cancel_capture(&mut self) -> Option<CapturedInteraction> {
+        self.capture.take()
+    }
+
+    fn begin_capture(&mut self, capture: CapturedInteraction) -> Result<(), DragAlreadyActive> {
+        if self.capture.is_some() {
+            return Err(DragAlreadyActive);
+        }
+        self.capture = Some(capture);
+        Ok(())
     }
 
     #[inline]
