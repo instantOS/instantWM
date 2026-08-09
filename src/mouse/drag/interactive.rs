@@ -178,7 +178,7 @@ pub fn hover_drag_begin(
 /// Handles the `Active` phase of `WindowDragState`: the press has already
 /// crossed the drag threshold, or the drag started immediately from a resize
 /// handle, hovered border, or client request. The pre-threshold `Armed` phase
-/// is handled by `title_drag_motion` instead, which only records samples.
+/// is handled by `process_title_drag_motion` instead, which only records samples.
 ///
 /// Returns `false` when no window drag is currently active (the sample was
 /// not consumed); `true` when the sample was applied to the ongoing move,

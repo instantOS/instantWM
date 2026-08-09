@@ -35,7 +35,7 @@ impl DragInput {
 ///
 /// Returns `true` if the state machine was started.  On X11 the caller
 /// continues into the synchronous grab loop; on Wayland the calloop drives
-/// [`title_drag_motion`] and [`title_drag_finish`].
+/// [`process_title_drag_motion`] and [`title_drag_finish`].
 pub fn title_drag_begin(
     ctx: &mut WmCtx,
     win: WindowId,
@@ -231,7 +231,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed. [`DragInput::Absolute`] preserves the contact point as the window
 /// anchor and never warps or consults the compositor pointer.
-pub fn title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
+pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     let root = input.position();
     let Some(armed) = ctx.core().drag_state().armed_interaction() else {
         return false;
@@ -302,20 +302,20 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
 ///
 /// Input adapters own capture; this function only arms shared interaction state.
-pub fn window_title_mouse_handler(
+pub fn handle_window_title_mouse(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
     source: InteractionSource,
     click_root: Point,
 ) {
-    thresholded_client_drag(ctx, win, btn, source, click_root, false);
+    begin_thresholded_client_drag(ctx, win, btn, source, click_root, false);
 }
 
 /// Start a client move/resize that remains a click until the pointer crosses
 /// [`DRAG_THRESHOLD`]. Used by both Super+client drags and bar-title drags so
 /// X11 and Wayland have identical activation semantics.
-pub fn thresholded_client_drag(
+pub fn begin_thresholded_client_drag(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
@@ -328,7 +328,7 @@ pub fn thresholded_client_drag(
 
 #[cfg(test)]
 mod tests {
-    use super::{DragInput, begin_move_drag, title_drag_begin, title_drag_motion};
+    use super::{DragInput, begin_move_drag, process_title_drag_motion, title_drag_begin};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::tree::Preset;
     use crate::types::{
@@ -391,7 +391,7 @@ mod tests {
             true,
         ));
 
-        assert!(title_drag_motion(
+        assert!(process_title_drag_motion(
             &mut wm.ctx(),
             DragInput::Absolute(Point::new(press.x + 20, press.y))
         ));

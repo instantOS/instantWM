@@ -10,7 +10,7 @@ pub const RESIZE_BORDER_ZONE: i32 = 30;
 
 /// How many pixels the cursor must travel before a title-bar click is
 /// promoted from a "click" to a "drag" in
-/// [`crate::mouse::drag::window_title_mouse_handler`].
+/// [`crate::mouse::drag::handle_window_title_mouse`].
 pub const DRAG_THRESHOLD: i32 = 5;
 
 /// Width of the screen-edge zone (in pixels) that triggers an edge-snap

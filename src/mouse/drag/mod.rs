@@ -4,9 +4,9 @@
 //!
 //! - [`interactive`] — Backend-neutral active window move/resize lifecycle
 //! - [`move_drop`] — Shared bar hover, edge snap, and drop completion
-//! - [`tag`] — Tag bar drag: [`drag_tag_begin`], [`drag_tag_motion`], [`drag_tag_finish`]
-//! - [`title`] — Title bar click/drag: [`title_drag_begin`], [`title_drag_motion`],
-//!   [`title_drag_finish`], [`window_title_mouse_handler`]
+//! - [`tag`] — Tag bar drag: [`apply_drag_tag_motion`], [`drag_tag_begin`], [`drag_tag_finish`]
+//! - [`title`] — Title bar click/drag: [`title_drag_begin`], [`process_title_drag_motion`],
+//!   [`title_drag_finish`], [`handle_window_title_mouse`]
 //! - [`gesture`] — Sidebar and bottom-bar gestures: [`sidebar_gesture_begin`],
 //!   [`bottom_bar_gesture_begin`]
 //!
@@ -22,10 +22,10 @@ pub use gesture::{
 pub use move_drop::{
     clear_bar_hover, complete_move_drop, snap_window_to_monitor_edges, update_bar_hover_simple,
 };
-pub use tag::{drag_tag_begin, drag_tag_finish, drag_tag_motion};
+pub use tag::{apply_drag_tag_motion, drag_tag_begin, drag_tag_finish};
 pub use title::{
-    DragInput, thresholded_client_drag, title_drag_finish, title_drag_motion,
-    window_title_mouse_handler,
+    DragInput, begin_thresholded_client_drag, handle_window_title_mouse, process_title_drag_motion,
+    title_drag_finish,
 };
 
 use crate::contexts::WmCtx;

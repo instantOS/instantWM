@@ -95,7 +95,7 @@ pub fn drag_tag_begin(
 
 /// Update an armed tag interaction. The interaction remains active outside the
 /// bar so users can leave and re-enter before releasing.
-pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
+pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let (monitor_id, start, was_dragging, previous_modifiers) = {
         let Some(drag) = ctx.core().drag_state().tag_drag() else {
             return false;
