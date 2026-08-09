@@ -296,7 +296,7 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
     };
 
     match drag.drag_type() {
-        crate::core_state::DragType::Move => crate::mouse::drag::finish_drag_move(
+        crate::core_state::DragType::Move => crate::mouse::drag::drag_move_finish(
             ctx,
             drag.win(),
             drag.drop_restore_geo(),
@@ -308,7 +308,7 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
             modifiers,
         ),
         crate::core_state::DragType::Resize(_) | crate::core_state::DragType::TreeResize(_) => {
-            crate::mouse::drag::finish_drag_resize(ctx, drag.win());
+            crate::mouse::drag::drag_resize_finish(ctx, drag.win());
         }
     }
     true

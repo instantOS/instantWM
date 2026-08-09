@@ -140,10 +140,10 @@ fn finish(
             crate::mouse::drag_tag_finish(ctx, event.modifiers);
         }
         Some(CapturedInteraction::SidebarVolume(_)) => {
-            let _ = crate::mouse::finish_sidebar_gesture(ctx, button, event.sidebar_hover);
+            let _ = crate::mouse::sidebar_gesture_finish(ctx, button, event.sidebar_hover);
         }
         Some(CapturedInteraction::BottomBar(_)) => {
-            let _ = crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root, time_msec);
+            let _ = crate::mouse::bottom_bar_gesture_finish(ctx, button, event.root, time_msec);
         }
         None => return InteractionOutcome::Ignored,
     }
