@@ -7,6 +7,14 @@
 use crate::model::WmModel;
 use crate::types::{Client, ClientMode, ClientPlacement, MonitorId, Rect, WindowId};
 
+/// Presentation state requested by a client before its backend has completed
+/// the authoritative window-management transaction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct InitialPresentationIntent {
+    pub fullscreen: bool,
+    pub maximized: bool,
+}
+
 /// Commit only the client-local portion of a fullscreen transition.
 ///
 /// Model transactions use this directly, and compound policy transactions may
@@ -266,6 +274,23 @@ impl MaximizedTransition {
 }
 
 impl WmModel {
+    /// Apply coalesced initial presentation intent after rules and backend
+    /// placement policy have established the client's restore mode.
+    pub(crate) fn apply_initial_presentation_intent(
+        &mut self,
+        win: WindowId,
+        intent: InitialPresentationIntent,
+    ) {
+        // Maximization establishes the mode restored after fullscreen, so it
+        // must be applied first regardless of protocol request ordering.
+        if intent.maximized {
+            let _ = self.apply_client_maximize_intent(win, true);
+        }
+        if intent.fullscreen {
+            let _ = self.set_fullscreen(win, true);
+        }
+    }
+
     /// Whether the application should perceive its window as maximized.
     ///
     /// Tiling presentations deliberately expose tiled placement through the

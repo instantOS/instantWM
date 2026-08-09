@@ -1,5 +1,6 @@
 use std::os::unix::io::OwnedFd;
 
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::{
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
@@ -49,6 +50,46 @@ fn xdg_toplevel_policy_wants_floating(has_parent: bool, has_fixed_size: bool) ->
 }
 
 impl WaylandState {
+    fn initialize_pending_toplevel_presentation(surface: &ToplevelSurface) {
+        compositor::with_states(surface.wl_surface(), |states| {
+            let _ = states.data_map.get_or_insert_threadsafe(|| {
+                std::sync::Mutex::new(crate::client::mode::InitialPresentationIntent::default())
+            });
+        });
+    }
+
+    fn record_pending_toplevel_presentation(
+        &self,
+        surface: &ToplevelSurface,
+        update: impl FnOnce(&mut crate::client::mode::InitialPresentationIntent),
+    ) {
+        let presentation = compositor::with_states(surface.wl_surface(), |states| {
+            let presentation = states.data_map.get_or_insert_threadsafe(|| {
+                std::sync::Mutex::new(crate::client::mode::InitialPresentationIntent::default())
+            });
+            let mut presentation = presentation.lock().unwrap();
+            update(&mut presentation);
+            *presentation
+        });
+
+        // A client may wait for the requested state before drawing its first
+        // buffer. Acknowledge the state now; authoritative geometry follows
+        // once monitor assignment and initial rules run in the map transaction.
+        surface.with_pending_state(|state| {
+            if presentation.fullscreen {
+                state.states.set(ToplevelState::Fullscreen);
+            } else {
+                state.states.unset(ToplevelState::Fullscreen);
+            }
+            if presentation.maximized {
+                state.states.set(ToplevelState::Maximized);
+            } else {
+                state.states.unset(ToplevelState::Maximized);
+            }
+        });
+        surface.send_pending_configure();
+    }
+
     /// Apply the xdg-positioner's constraint adjustments against the outputs
     /// occupied by the popup's toplevel.  Popup geometry is parent-relative;
     /// the output union therefore has to be translated into that coordinate
@@ -379,6 +420,7 @@ impl XdgShellHandler for WaylandState {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         // Defer window creation until the surface commits its first buffer.
+        Self::initialize_pending_toplevel_presentation(&surface);
         if !surface.is_initial_configure_sent() {
             let _ = surface.send_configure();
         }
@@ -556,63 +598,63 @@ impl XdgShellHandler for WaylandState {
     fn fullscreen_request(
         &mut self,
         surface: ToplevelSurface,
-        mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+        _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
-            return;
-        };
-        let Some(transition) = self.commit_native_fullscreen_request(win, true) else {
-            return;
-        };
-        crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
-        self.sync_window_presentation(win);
-        self.request_space_sync();
-        self.request_render();
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(transition) = self.commit_native_fullscreen_request(win, true)
+        {
+            crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
+            self.sync_window_presentation(win);
+            self.request_space_sync();
+            self.request_render();
+        } else {
+            self.record_pending_toplevel_presentation(&surface, |state| state.fullscreen = true);
+        }
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
-            return;
-        };
-        let Some(transition) = self.commit_native_fullscreen_request(win, false) else {
-            return;
-        };
-        crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
-        self.sync_window_presentation(win);
-        self.request_space_sync();
-        self.request_render();
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(transition) = self.commit_native_fullscreen_request(win, false)
+        {
+            crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
+            self.sync_window_presentation(win);
+            self.request_space_sync();
+            self.request_render();
+        } else {
+            self.record_pending_toplevel_presentation(&surface, |state| state.fullscreen = false);
+        }
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
-            return;
-        };
-        let Some(transition) = self.commit_native_maximized_request(win, true) else {
-            return;
-        };
-        crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
-        if transition.entered_floating_presentation() {
-            self.raise_window_visual_only(win);
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(transition) = self.commit_native_maximized_request(win, true)
+        {
+            crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+            if transition.entered_floating_presentation() {
+                self.raise_window_visual_only(win);
+            }
+            self.sync_window_presentation(win);
+            self.request_space_sync();
+            self.request_render();
+        } else {
+            self.record_pending_toplevel_presentation(&surface, |state| state.maximized = true);
         }
-        self.sync_window_presentation(win);
-        self.request_space_sync();
-        self.request_render();
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
-            return;
-        };
-        let Some(transition) = self.commit_native_maximized_request(win, false) else {
-            return;
-        };
-        crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
-        if transition.entered_floating_presentation() {
-            self.raise_window_visual_only(win);
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(transition) = self.commit_native_maximized_request(win, false)
+        {
+            crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+            if transition.entered_floating_presentation() {
+                self.raise_window_visual_only(win);
+            }
+            self.sync_window_presentation(win);
+            self.request_space_sync();
+            self.request_render();
+        } else {
+            self.record_pending_toplevel_presentation(&surface, |state| state.maximized = false);
         }
-        self.sync_window_presentation(win);
-        self.request_space_sync();
-        self.request_render();
     }
 }
 

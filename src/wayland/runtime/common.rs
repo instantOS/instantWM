@@ -603,6 +603,7 @@ fn handle_map_window(
         .position_is_explicit(initial_position_is_explicit);
 
     apply_wayland_surface_policy(state, wl_state, element.as_ref(), win, parent);
+    apply_initial_surface_presentation(state, element.as_ref(), win);
     position_new_wayland_floating_window(
         state,
         wl_state,
@@ -622,6 +623,36 @@ fn handle_map_window(
     }
     wl_state.sync_window_presentation(win);
     wl_state.request_space_sync();
+}
+
+fn apply_initial_surface_presentation(
+    state: &mut crate::core_state::CoreState,
+    element: Option<&smithay::desktop::Window>,
+    win: crate::types::WindowId,
+) {
+    let Some(element) = element else {
+        return;
+    };
+    let presentation = if let Some(toplevel) = element.toplevel() {
+        smithay::wayland::compositor::with_states(toplevel.wl_surface(), |surface_states| {
+            surface_states
+                .data_map
+                .get::<std::sync::Mutex<crate::client::mode::InitialPresentationIntent>>()
+                .map(|state| *state.lock().unwrap())
+                .unwrap_or_default()
+        })
+    } else if let Some(x11) = element.x11_surface() {
+        crate::client::mode::InitialPresentationIntent {
+            fullscreen: x11.is_fullscreen(),
+            maximized: x11.is_maximized(),
+        }
+    } else {
+        return;
+    };
+
+    state
+        .model
+        .apply_initial_presentation_intent(win, presentation);
 }
 
 fn take_wayland_launch_context(
@@ -963,6 +994,61 @@ mod tests {
         assert!(should_update_active_drag(true, false));
         assert!(should_update_active_drag(false, true));
         assert!(should_update_active_drag(false, false));
+    }
+
+    #[test]
+    fn initial_fullscreen_intent_is_applied_after_window_creation() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(72);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        });
+
+        wm.core.model.apply_initial_presentation_intent(
+            win,
+            crate::client::mode::InitialPresentationIntent {
+                fullscreen: true,
+                maximized: false,
+            },
+        );
+
+        assert!(
+            wm.core
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_true_fullscreen()
+        );
+    }
+
+    #[test]
+    fn initial_maximize_becomes_the_fullscreen_restore_mode() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(73);
+        let mut client = Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        };
+        client.set_placement(ClientPlacement::Floating);
+        wm.core.model.insert_client(client);
+
+        wm.core.model.apply_initial_presentation_intent(
+            win,
+            crate::client::mode::InitialPresentationIntent {
+                fullscreen: true,
+                maximized: true,
+            },
+        );
+        let mode = wm.core.model.client(win).unwrap().mode();
+
+        assert!(mode.is_true_fullscreen());
+        assert_eq!(mode.restored(), ClientMode::tiled());
     }
 
     #[test]
