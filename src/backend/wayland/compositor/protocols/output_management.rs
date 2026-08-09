@@ -8,6 +8,7 @@
 //! the `GlobalDispatch` / `Dispatch` traits ourselves, following the pattern
 //! used by cosmic-comp.
 
+use std::collections::HashMap;
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
@@ -26,6 +27,11 @@ use smithay::reexports::wayland_server::{
     backend::{ClientId, GlobalId},
 };
 use smithay::utils::{Logical, Physical, Point, Size, Transform};
+
+use crate::backend::output::{
+    AdaptiveSyncPolicy, OutputHeadConfiguration, OutputId, OutputMode as TransactionOutputMode,
+    OutputTransaction, OutputTransactionId, OutputTransactionKind, OutputTransform,
+};
 
 // ---------------------------------------------------------------------------
 // Public state types
@@ -48,6 +54,7 @@ pub struct OutputManagementState {
     global: GlobalId,
     /// Cached display handle (for creating resources outside of bind).
     dh: DisplayHandle,
+    pending_transactions: HashMap<OutputTransactionId, ZwlrOutputConfigurationV1>,
 }
 
 #[derive(Debug)]
@@ -157,7 +164,7 @@ pub enum ModeConfiguration {
 #[derive(Debug, Clone)]
 pub struct OutputModeData {
     pub output: WeakOutput,
-    pub mode: Mode,
+    pub mode: TransactionOutputMode,
 }
 
 /// The final configuration for one output, extracted from the pending state.
@@ -173,25 +180,95 @@ pub enum OutputConfiguration {
     Disabled,
 }
 
-#[derive(Debug)]
-pub struct OutputConfigurationTransaction {
-    pub configuration: ZwlrOutputConfigurationV1,
-    pub heads: Vec<(Output, OutputConfiguration)>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApplyResult {
-    Succeeded,
-    Failed,
-    Deferred,
-}
-
 fn valid_custom_mode(width: i32, height: i32, refresh: i32) -> bool {
     width > 0 && height > 0 && refresh >= 0
 }
 
 fn valid_scale(scale: f64) -> bool {
     scale.is_finite() && scale > 0.0
+}
+
+fn transaction_mode(mode: Mode) -> TransactionOutputMode {
+    TransactionOutputMode {
+        width: mode.size.w,
+        height: mode.size.h,
+        refresh_millihertz: mode.refresh,
+    }
+}
+
+fn transaction_transform(transform: Transform) -> OutputTransform {
+    match transform {
+        Transform::Normal => OutputTransform::Normal,
+        Transform::_90 => OutputTransform::Rotate90,
+        Transform::_180 => OutputTransform::Rotate180,
+        Transform::_270 => OutputTransform::Rotate270,
+        Transform::Flipped => OutputTransform::Flipped,
+        Transform::Flipped90 => OutputTransform::Flipped90,
+        Transform::Flipped180 => OutputTransform::Flipped180,
+        Transform::Flipped270 => OutputTransform::Flipped270,
+    }
+}
+
+fn build_transaction(configurations: &[(Output, OutputConfiguration)]) -> OutputTransaction {
+    let heads = configurations
+        .iter()
+        .map(|(output, configuration)| match configuration {
+            OutputConfiguration::Disabled => OutputHeadConfiguration {
+                id: OutputId(output.name()),
+                enabled: false,
+                mode: output.current_mode().map(transaction_mode),
+                position: crate::types::Point::new(
+                    output.current_location().x,
+                    output.current_location().y,
+                ),
+                transform: transaction_transform(output.current_transform()),
+                scale: output.current_scale().fractional_scale(),
+                adaptive_sync: None,
+            },
+            OutputConfiguration::Enabled {
+                mode,
+                position,
+                transform,
+                scale,
+                adaptive_sync,
+            } => {
+                let selected_mode = match mode {
+                    Some(ModeConfiguration::Mode(resource)) => {
+                        resource.data::<OutputModeData>().map(|data| data.mode)
+                    }
+                    Some(ModeConfiguration::Custom { size, refresh }) => output
+                        .modes()
+                        .into_iter()
+                        .map(transaction_mode)
+                        .find(|candidate| {
+                            candidate.width == size.w
+                                && candidate.height == size.h
+                                && refresh.is_none_or(|value| candidate.refresh_millihertz == value)
+                        }),
+                    None => output.current_mode().map(transaction_mode),
+                };
+                let position = position.unwrap_or_else(|| output.current_location());
+                OutputHeadConfiguration {
+                    id: OutputId(output.name()),
+                    enabled: true,
+                    mode: selected_mode,
+                    position: crate::types::Point::new(position.x, position.y),
+                    transform: transaction_transform(
+                        transform.unwrap_or_else(|| output.current_transform()),
+                    ),
+                    scale: scale.unwrap_or_else(|| output.current_scale().fractional_scale()),
+                    adaptive_sync: adaptive_sync.map(|enabled| {
+                        if enabled {
+                            AdaptiveSyncPolicy::Enabled
+                        } else {
+                            AdaptiveSyncPolicy::Disabled
+                        }
+                    }),
+                }
+            }
+        })
+        .collect();
+    OutputTransaction { heads }
 }
 
 impl From<&PendingOutputConfigurationInner> for OutputConfiguration {
@@ -216,16 +293,12 @@ pub trait OutputManagementHandler {
     /// Access the mutable `OutputManagementState`.
     fn output_management_state(&mut self) -> &mut OutputManagementState;
 
-    /// Test a configuration without applying it.  Return `true` if the
-    /// configuration is valid and could be applied.
-    fn test_output_configuration(&mut self, conf: &[(Output, OutputConfiguration)]) -> bool;
-
-    /// Apply a configuration.  Return `true` on success.
-    fn apply_output_configuration(
+    fn submit_output_transaction(
         &mut self,
-        conf: &[(Output, OutputConfiguration)],
+        kind: OutputTransactionKind,
+        transaction: OutputTransaction,
         configuration: ZwlrOutputConfigurationV1,
-    ) -> ApplyResult;
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +331,7 @@ impl OutputManagementState {
             serial_counter: 0,
             global,
             dh: dh.clone(),
+            pending_transactions: HashMap::new(),
         }
     }
 
@@ -390,6 +464,25 @@ impl OutputManagementState {
             state.enabled.store(false, Ordering::Relaxed);
         }
     }
+
+    pub fn track_transaction(
+        &mut self,
+        id: OutputTransactionId,
+        configuration: ZwlrOutputConfigurationV1,
+    ) {
+        self.pending_transactions.insert(id, configuration);
+    }
+
+    pub fn finish_transaction(&mut self, id: OutputTransactionId, succeeded: bool) {
+        let Some(configuration) = self.pending_transactions.remove(&id) else {
+            return;
+        };
+        if succeeded {
+            configuration.succeeded();
+        } else {
+            configuration.failed();
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -485,20 +578,26 @@ where
 
     // Remove modes that no longer exist on the output
     head.modes.retain(|m| {
-        let still_exists = m
-            .data::<OutputModeData>()
-            .is_some_and(|data| output_modes.contains(&data.mode));
+        let still_exists = m.data::<OutputModeData>().is_some_and(|data| {
+            output_modes
+                .iter()
+                .copied()
+                .map(transaction_mode)
+                .any(|mode| mode == data.mode)
+        });
         if !still_exists {
             m.finished();
         }
         still_exists
     });
 
-    // Add or update modes
+    // Add or update modes. The current-mode event is emitted later because
+    // the protocol forbids sending it for a disabled head.
+    let mut current_mode = None;
     for output_mode in output_modes {
         let existing = head.modes.iter().find(|m| {
             m.data::<OutputModeData>()
-                .is_some_and(|d| d.mode == output_mode)
+                .is_some_and(|d| d.mode == transaction_mode(output_mode))
         });
 
         let mode_obj = if let Some(existing) = existing {
@@ -513,7 +612,7 @@ where
                 obj.version().min(3),
                 OutputModeData {
                     output: output.downgrade(),
-                    mode: output_mode,
+                    mode: transaction_mode(output_mode),
                 },
             ) else {
                 continue;
@@ -530,7 +629,7 @@ where
 
         // Send current_mode if this is the active one
         if output.current_mode().is_some_and(|c| c == output_mode) {
-            obj.current_mode(mode_obj);
+            current_mode = Some(mode_obj.clone());
         }
     }
 
@@ -541,6 +640,9 @@ where
 
     // Position, transform, scale (only if enabled)
     if enabled {
+        if let Some(mode) = current_mode {
+            obj.current_mode(&mode);
+        }
         let loc = output.current_location();
         obj.position(loc.x, loc.y);
         obj.transform(output.current_transform().into());
@@ -622,7 +724,7 @@ where
     ) {
         match request {
             zwlr_output_manager_v1::Request::CreateConfiguration { id, serial } => {
-                let conf = data_init.init(
+                data_init.init(
                     id,
                     PendingConfiguration::new(PendingConfigurationInner {
                         serial,
@@ -631,11 +733,6 @@ where
                         heads: Vec::new(),
                     }),
                 );
-
-                let mgmt_state = state.output_management_state();
-                if serial != mgmt_state.serial_counter {
-                    conf.cancelled();
-                }
             }
             zwlr_output_manager_v1::Request::Stop => {
                 let mgmt_state = state.output_management_state();
@@ -742,6 +839,13 @@ where
         match request {
             zwlr_output_configuration_v1::Request::EnableHead { id, head } => {
                 let mut pending = data.lock().unwrap();
+                if pending.used {
+                    obj.post_error(
+                        zwlr_output_configuration_v1::Error::AlreadyUsed,
+                        "configuration object was already applied or tested".to_string(),
+                    );
+                    return;
+                }
                 if pending.heads.iter().any(|(h, _)| *h == head) {
                     obj.post_error(
                         zwlr_output_configuration_v1::Error::AlreadyConfiguredHead,
@@ -772,6 +876,13 @@ where
             }
             zwlr_output_configuration_v1::Request::DisableHead { head } => {
                 let mut pending = data.lock().unwrap();
+                if pending.used {
+                    obj.post_error(
+                        zwlr_output_configuration_v1::Error::AlreadyUsed,
+                        "configuration object was already applied or tested".to_string(),
+                    );
+                    return;
+                }
                 if pending.heads.iter().any(|(h, _)| *h == head) {
                     obj.post_error(
                         zwlr_output_configuration_v1::Error::AlreadyConfiguredHead,
@@ -863,7 +974,11 @@ where
                         let mode_data = m.data::<OutputModeData>();
                         mode_data.is_none_or(|data| {
                             data.output.upgrade().as_ref() != Some(o)
-                                || !o.modes().contains(&data.mode)
+                                || !o
+                                    .modes()
+                                    .into_iter()
+                                    .map(transaction_mode)
+                                    .any(|mode| mode == data.mode)
                         })
                     }
                     _ => false,
@@ -872,21 +987,12 @@ where
                     return;
                 }
 
-                let result = if matches!(x, zwlr_output_configuration_v1::Request::Test) {
-                    if state.test_output_configuration(&final_conf) {
-                        ApplyResult::Succeeded
-                    } else {
-                        ApplyResult::Failed
-                    }
+                let kind = if matches!(x, zwlr_output_configuration_v1::Request::Test) {
+                    OutputTransactionKind::Test
                 } else {
-                    state.apply_output_configuration(&final_conf, obj.clone())
+                    OutputTransactionKind::Apply
                 };
-
-                match result {
-                    ApplyResult::Succeeded => obj.succeeded(),
-                    ApplyResult::Failed => obj.failed(),
-                    ApplyResult::Deferred => {}
-                }
+                state.submit_output_transaction(kind, build_transaction(&final_conf), obj.clone());
             }
             zwlr_output_configuration_v1::Request::Destroy => {
                 let pending = data.lock().unwrap();
@@ -898,6 +1004,18 @@ where
             }
             _ => {}
         }
+    }
+
+    fn destroyed(
+        state: &mut D,
+        _client: ClientId,
+        obj: &ZwlrOutputConfigurationV1,
+        _data: &PendingConfiguration,
+    ) {
+        state
+            .output_management_state()
+            .pending_transactions
+            .retain(|_, configuration| configuration != obj);
     }
 }
 

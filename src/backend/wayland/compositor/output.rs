@@ -4,19 +4,20 @@
 //! including creating outputs, listing displays, and configuring display modes.
 
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
-use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::utils::Transform;
 use std::sync::Mutex;
 
 use crate::backend::BackendVrrSupport;
+use crate::backend::output::{
+    AdaptiveSyncPolicy, CompletedOutputTransaction, OutputHeadConfiguration, OutputId,
+    OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction, OutputTransactionKind,
+    OutputTransform,
+};
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
 
-use super::protocols::output_management::{
-    ModeConfiguration, OutputConfiguration, OutputConfigurationTransaction,
-    OutputManagementOutputState, OutputModeData,
-};
+use super::protocols::output_management::OutputManagementOutputState;
 use super::state::WaylandState;
 
 struct OutputGlobal(Mutex<Option<GlobalId>>);
@@ -33,6 +34,67 @@ fn parse_transform(transform_str: &str) -> Option<Transform> {
         "flipped-270" | "flipped270" => Some(Transform::Flipped270),
         _ => None,
     }
+}
+
+fn smithay_transform(transform: OutputTransform) -> Transform {
+    match transform {
+        OutputTransform::Normal => Transform::Normal,
+        OutputTransform::Rotate90 => Transform::_90,
+        OutputTransform::Rotate180 => Transform::_180,
+        OutputTransform::Rotate270 => Transform::_270,
+        OutputTransform::Flipped => Transform::Flipped,
+        OutputTransform::Flipped90 => Transform::Flipped90,
+        OutputTransform::Flipped180 => Transform::Flipped180,
+        OutputTransform::Flipped270 => Transform::Flipped270,
+    }
+}
+
+fn transaction_transform(transform: Transform) -> OutputTransform {
+    match transform {
+        Transform::Normal => OutputTransform::Normal,
+        Transform::_90 => OutputTransform::Rotate90,
+        Transform::_180 => OutputTransform::Rotate180,
+        Transform::_270 => OutputTransform::Rotate270,
+        Transform::Flipped => OutputTransform::Flipped,
+        Transform::Flipped90 => OutputTransform::Flipped90,
+        Transform::Flipped180 => OutputTransform::Flipped180,
+        Transform::Flipped270 => OutputTransform::Flipped270,
+    }
+}
+
+fn smithay_mode(mode: TransactionOutputMode) -> OutputMode {
+    OutputMode {
+        size: (mode.width, mode.height).into(),
+        refresh: mode.refresh_millihertz,
+    }
+}
+
+fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
+    let mode = configuration.mode.unwrap_or(TransactionOutputMode {
+        width: WaylandState::MIN_WL_DIM,
+        height: WaylandState::MIN_WL_DIM,
+        refresh_millihertz: 60_000,
+    });
+    let (width, height) = if matches!(
+        configuration.transform,
+        OutputTransform::Rotate90
+            | OutputTransform::Rotate270
+            | OutputTransform::Flipped90
+            | OutputTransform::Flipped270
+    ) {
+        (mode.height, mode.width)
+    } else {
+        (mode.width, mode.height)
+    };
+    let scale = if configuration.scale.is_finite() && configuration.scale > 0.0 {
+        configuration.scale
+    } else {
+        1.0
+    };
+    Size::new(
+        (f64::from(width) / scale).round() as i32,
+        (f64::from(height) / scale).round() as i32,
+    )
 }
 
 impl WaylandState {
@@ -55,84 +117,130 @@ impl WaylandState {
         }
     }
 
-    pub fn finish_output_configuration(
-        &mut self,
-        transaction: OutputConfigurationTransaction,
-        succeeded: bool,
-    ) {
-        if !succeeded {
-            transaction.configuration.failed();
-            return;
-        }
-
-        let changed_outputs: Vec<_> = transaction
-            .heads
-            .iter()
-            .map(|(output, _)| output.clone())
-            .collect();
-
-        for (output, config) in &transaction.heads {
+    fn apply_output_snapshot(&mut self, snapshot: &OutputSnapshot) {
+        let mut changed_outputs = Vec::new();
+        for head in &snapshot.heads {
+            let Some(output) = self
+                .output_management_state
+                .outputs()
+                .iter()
+                .find(|output| output.name() == head.configuration.id.0)
+                .cloned()
+            else {
+                continue;
+            };
+            let config = &head.configuration;
+            let available_modes: Vec<_> = head.modes.iter().copied().map(smithay_mode).collect();
+            for mode in output.modes() {
+                if !available_modes.contains(&mode) {
+                    output.delete_mode(mode);
+                }
+            }
+            for mode in available_modes {
+                output.add_mode(mode);
+            }
             let output_state = output
                 .user_data()
                 .get::<OutputManagementOutputState>()
                 .expect("output-management state is initialized when a head is added");
-            match config {
-                OutputConfiguration::Disabled => {
-                    output_state.set(false, false);
-                    self.runtime.output_enabled.insert(output.name(), false);
-                    self.space.unmap_output(output);
-                    self.set_output_global_enabled(output, false);
-                    self.fail_pending_captures_for_output(output);
-                }
-                OutputConfiguration::Enabled {
-                    mode,
-                    position,
-                    transform,
-                    scale,
-                    adaptive_sync,
-                } => {
-                    let mode = match mode {
-                        Some(ModeConfiguration::Mode(resource)) => {
-                            resource.data::<OutputModeData>().map(|data| data.mode)
-                        }
-                        Some(ModeConfiguration::Custom { size, refresh }) => {
-                            output.modes().into_iter().find(|candidate| {
-                                candidate.size == *size
-                                    && refresh.is_none_or(|value| candidate.refresh == value)
-                            })
-                        }
-                        None => output.current_mode(),
-                    };
-                    let location = position.unwrap_or_else(|| output.current_location());
-                    let adaptive_sync =
-                        adaptive_sync.unwrap_or_else(|| output_state.adaptive_sync());
-                    output.change_current_state(
-                        mode,
-                        transform.or(Some(output.current_transform())),
-                        scale
-                            .map(Scale::Fractional)
-                            .or(Some(output.current_scale())),
-                        Some(location),
-                    );
-                    self.space.map_output(output, location);
-                    self.set_output_global_enabled(output, true);
-                    self.runtime.output_enabled.insert(output.name(), true);
-                    output_state.set(true, adaptive_sync);
-                    self.set_output_vrr_mode(
-                        &output.name(),
-                        if adaptive_sync {
-                            VrrMode::On
-                        } else {
-                            VrrMode::Off
-                        },
-                    );
-                }
+            self.project_output_vrr_state(
+                &output.name(),
+                match head.adaptive_sync_policy {
+                    AdaptiveSyncPolicy::Disabled => VrrMode::Off,
+                    AdaptiveSyncPolicy::Enabled => VrrMode::On,
+                    AdaptiveSyncPolicy::Automatic => VrrMode::Auto,
+                },
+                head.adaptive_sync_enabled,
+            );
+            if !config.enabled {
+                output_state.set(false, false);
+                self.space.unmap_output(&output);
+                self.set_output_global_enabled(&output, false);
+                self.fail_pending_captures_for_output(&output);
+            } else {
+                let location = (config.position.x, config.position.y).into();
+                output.change_current_state(
+                    config.mode.map(smithay_mode),
+                    Some(smithay_transform(config.transform)),
+                    Some(Scale::Fractional(config.scale)),
+                    Some(location),
+                );
+                self.space.map_output(&output, location);
+                self.set_output_global_enabled(&output, true);
+                output_state.set(true, head.adaptive_sync_enabled);
             }
+            changed_outputs.push(output);
         }
-
         self.output_management_state
             .update_heads::<Self>(changed_outputs.iter());
-        transaction.configuration.succeeded();
+        self.request_render();
+    }
+
+    fn finish_output_transaction(&mut self, completed: CompletedOutputTransaction) -> bool {
+        let succeeded = completed.result.is_ok();
+        let changed = completed.kind == OutputTransactionKind::Apply && succeeded;
+        if let Err(error) = &completed.result {
+            log::warn!("output transaction {:?} failed: {error}", completed.id);
+        }
+        if let Ok(snapshot) = &completed.result
+            && completed.kind == OutputTransactionKind::Apply
+        {
+            self.apply_output_snapshot(snapshot);
+        }
+        self.output_management_state
+            .finish_transaction(completed.id, succeeded);
+        changed
+    }
+
+    pub fn project_completed_output_transactions(&mut self) -> bool {
+        let completed = self.runtime.output_transactions.take_completed();
+        let mut changed = false;
+        for transaction in completed {
+            changed |= self.finish_output_transaction(transaction);
+        }
+        changed
+    }
+
+    fn current_output_transaction(&self) -> OutputTransaction {
+        if let Some(pending) = self.runtime.output_transactions.latest_pending_apply() {
+            return pending.clone();
+        }
+        let heads = self
+            .output_management_state
+            .outputs()
+            .iter()
+            .map(|output| {
+                let output_state = output.user_data().get::<OutputManagementOutputState>();
+                let vrr_mode = self
+                    .output_vrr_metadata(&output.name())
+                    .map(|metadata| metadata.vrr_mode)
+                    .unwrap_or(VrrMode::Off);
+                OutputHeadConfiguration {
+                    id: OutputId(output.name()),
+                    enabled: output_state.is_none_or(OutputManagementOutputState::enabled),
+                    mode: output.current_mode().map(|mode| TransactionOutputMode {
+                        width: mode.size.w,
+                        height: mode.size.h,
+                        refresh_millihertz: mode.refresh,
+                    }),
+                    position: Point::new(output.current_location().x, output.current_location().y),
+                    transform: transaction_transform(output.current_transform()),
+                    scale: output.current_scale().fractional_scale(),
+                    adaptive_sync: Some(match vrr_mode {
+                        VrrMode::Off => AdaptiveSyncPolicy::Disabled,
+                        VrrMode::On => AdaptiveSyncPolicy::Enabled,
+                        VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
+                    }),
+                }
+            })
+            .collect();
+        OutputTransaction { heads }
+    }
+
+    fn queue_output_transaction(&mut self, transaction: OutputTransaction) {
+        self.runtime
+            .output_transactions
+            .submit_coalescing_apply(transaction);
         self.request_render();
     }
 
@@ -220,15 +328,33 @@ impl WaylandState {
 
     /// Set the display mode for a display.
     pub fn set_display_mode(&mut self, display: &str, size: Size) {
-        if let Some(output) = self.space.outputs().find(|o| o.name() == display).cloned()
-            && let Some(mode) = output
-                .modes()
-                .into_iter()
-                .find(|mode| mode.size.w == size.w && mode.size.h == size.h)
+        let mut transaction = self.current_output_transaction();
+        let Some(output) = self
+            .output_management_state
+            .outputs()
+            .iter()
+            .find(|output| output.name() == display)
+        else {
+            return;
+        };
+        let Some(mode) = output
+            .modes()
+            .into_iter()
+            .find(|mode| mode.size.w == size.w && mode.size.h == size.h)
+        else {
+            return;
+        };
+        if let Some(head) = transaction
+            .heads
+            .iter_mut()
+            .find(|head| head.id.0 == display)
         {
-            output.change_current_state(Some(mode), None, None, None);
-            self.output_management_state
-                .update_heads::<Self>(std::iter::once(&output));
+            head.mode = Some(TransactionOutputMode {
+                width: mode.size.w,
+                height: mode.size.h,
+                refresh_millihertz: mode.refresh,
+            });
+            self.queue_output_transaction(transaction);
         }
     }
 
@@ -238,29 +364,28 @@ impl WaylandState {
         display: &str,
         config: &crate::config::config_toml::MonitorConfig,
     ) {
-        let outputs: Vec<_> = self.space.outputs().cloned().collect();
-        let known_outputs: Vec<_> = outputs
+        let mut transaction = self.current_output_transaction();
+        let known_outputs: Vec<_> = transaction
+            .heads
             .iter()
-            .map(|output| {
-                let geom = self.space.output_geometry(output).unwrap_or_default();
+            .map(|head| {
+                let size = logical_output_size(head);
                 (
-                    output.name(),
-                    Rect::new(geom.loc.x, geom.loc.y, geom.size.w, geom.size.h),
+                    head.id.0.clone(),
+                    Rect::new(head.position.x, head.position.y, size.w, size.h),
                 )
             })
             .collect();
 
-        let mut changed_outputs = Vec::new();
-        for output in outputs {
-            if display != "*" && output.name() != display {
+        let outputs = self.output_management_state.outputs().to_vec();
+        let mut changed = false;
+        for head in &mut transaction.heads {
+            if display != "*" && head.id.0 != display {
                 continue;
             }
-
-            let mut current_mode = output.current_mode();
-            let mut current_scale = output.current_scale();
-            let current_transform = output.current_transform();
-            let current_geometry = self.space.output_geometry(&output).unwrap_or_default();
-            let mut current_location = current_geometry.loc;
+            let Some(output) = outputs.iter().find(|output| output.name() == head.id.0) else {
+                continue;
+            };
 
             if let Some(ref res) = config.resolution
                 && let Some((w_str, h_str)) = res.split_once('x')
@@ -274,33 +399,36 @@ impl WaylandState {
                             .unwrap_or(true)
                 })
             {
-                current_mode = Some(mode);
+                head.mode = Some(TransactionOutputMode {
+                    width: mode.size.w,
+                    height: mode.size.h,
+                    refresh_millihertz: mode.refresh,
+                });
             }
 
             if let Some(scale) = config.scale {
-                current_scale = Scale::Fractional(scale as f64);
+                head.scale = f64::from(scale);
             }
 
             if let Some(vrr) = config.vrr {
-                self.set_output_vrr_mode(&output.name(), vrr);
+                head.adaptive_sync = Some(match vrr {
+                    VrrMode::Off => AdaptiveSyncPolicy::Disabled,
+                    VrrMode::On => AdaptiveSyncPolicy::Enabled,
+                    VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
+                });
             }
 
             if let Some(enable) = config.enable {
-                self.runtime.output_enabled.insert(output.name(), enable);
-                if let Some(output_state) = output.user_data().get::<OutputManagementOutputState>()
-                {
-                    output_state.set(enable, output_state.adaptive_sync());
-                }
+                head.enabled = enable;
             }
 
-            let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));
+            if let Some(transform) = config.transform.as_ref().and_then(|t| parse_transform(t)) {
+                head.transform = transaction_transform(transform);
+            }
 
             if let Some(ref pos) = config.position
                 && let Some(position) = MonitorPosition::parse(pos).and_then(|p| {
-                    let size = current_mode
-                        .as_ref()
-                        .map(|mode| Size::new(mode.size.w, mode.size.h))
-                        .unwrap_or(Size::new(current_geometry.size.w, current_geometry.size.h));
+                    let size = logical_output_size(head);
                     p.resolve(
                         size,
                         known_outputs
@@ -309,33 +437,53 @@ impl WaylandState {
                     )
                 })
             {
-                current_location = (position.x, position.y).into();
+                head.position = position;
             }
+            changed = true;
+        }
+        if changed {
+            self.queue_output_transaction(transaction);
+        }
+    }
+}
 
-            output.change_current_state(
-                current_mode,
-                new_transform.or(Some(current_transform)),
-                Some(current_scale),
-                Some(current_location),
-            );
-            if self
-                .runtime
-                .output_enabled
-                .get(&output.name())
-                .copied()
-                .unwrap_or(true)
-            {
-                self.space.map_output(&output, current_location);
-                self.set_output_global_enabled(&output, true);
-            } else {
-                self.space.unmap_output(&output);
-                self.set_output_global_enabled(&output, false);
-            }
-            changed_outputs.push(output);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn configuration(transform: OutputTransform, scale: f64) -> OutputHeadConfiguration {
+        OutputHeadConfiguration {
+            id: "test".into(),
+            enabled: true,
+            mode: Some(TransactionOutputMode {
+                width: 1920,
+                height: 1080,
+                refresh_millihertz: 60_000,
+            }),
+            position: Point::default(),
+            transform,
+            scale,
+            adaptive_sync: None,
         }
-        if !changed_outputs.is_empty() {
-            self.output_management_state
-                .update_heads::<Self>(changed_outputs.iter());
-        }
+    }
+
+    #[test]
+    fn transaction_geometry_uses_logical_scaled_dimensions() {
+        assert_eq!(
+            logical_output_size(&configuration(OutputTransform::Normal, 1.5)),
+            Size::new(1280, 720)
+        );
+    }
+
+    #[test]
+    fn transaction_geometry_swaps_rotated_dimensions() {
+        assert_eq!(
+            logical_output_size(&configuration(OutputTransform::Rotate90, 2.0)),
+            Size::new(540, 960)
+        );
+        assert_eq!(
+            logical_output_size(&configuration(OutputTransform::Flipped270, 1.0)),
+            Size::new(1080, 1920)
+        );
     }
 }

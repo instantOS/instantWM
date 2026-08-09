@@ -5,6 +5,7 @@
 //! - **Wayland** (feature-gated behind `wayland_backend`) — a Smithay-based
 //!   Wayland compositor backend.
 
+pub mod output;
 pub mod wayland;
 pub mod x11;
 

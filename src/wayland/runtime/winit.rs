@@ -10,6 +10,10 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::LoopSignal;
 
+use crate::backend::output::{
+    AdaptiveSyncPolicy, OutputHeadCapabilities, OutputHeadSnapshot,
+    OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransactionKind,
+};
 use crate::backend::wayland::commands::{
     PointerAxis, PointerAxisCommand, PointerButtonCommand, PointerMotionCommand, WmCommand,
 };
@@ -135,11 +139,8 @@ pub fn run() -> ! {
 
             // ── 2. Shared tick: layout, IPC, monitor config ─────────────
             super::common::event_loop_tick_and_request_render(&mut wm, state, &mut ipc_server);
-            let transactions = std::mem::take(&mut state.runtime.pending_output_configurations);
-            let outputs_changed = !transactions.is_empty();
-            for transaction in transactions {
-                state.finish_output_configuration(transaction, true);
-            }
+            process_output_configurations(state, &output);
+            let outputs_changed = state.project_completed_output_transactions();
             if outputs_changed {
                 refresh_monitor_layout(&mut wm.ctx());
                 state.push_command(WmCommand::SyncLayerExclusiveZones);
@@ -216,6 +217,41 @@ pub fn run() -> ! {
         })
         .expect("wayland event loop run");
     exit(0);
+}
+
+fn process_output_configurations(state: &mut WaylandState, output: &smithay::output::Output) {
+    let modes: Vec<_> = output
+        .modes()
+        .into_iter()
+        .map(|candidate| TransactionOutputMode {
+            width: candidate.size.w,
+            height: candidate.size.h,
+            refresh_millihertz: candidate.refresh,
+        })
+        .collect();
+    let capabilities = [OutputHeadCapabilities {
+        id: output.name().as_str().into(),
+        modes: modes.clone(),
+        adaptive_sync: false,
+    }];
+    while let Some(pending) = state.runtime.output_transactions.take_next_pending() {
+        let kind = pending.kind;
+        let result = pending.transaction.validate(&capabilities).map(|()| {
+            let head = &pending.transaction.heads[0];
+            OutputSnapshot {
+                heads: vec![OutputHeadSnapshot {
+                    configuration: head.clone(),
+                    modes: modes.clone(),
+                    adaptive_sync_policy: AdaptiveSyncPolicy::Disabled,
+                    adaptive_sync_enabled: false,
+                }],
+            }
+        });
+        state.runtime.output_transactions.complete(pending, result);
+        if kind == OutputTransactionKind::Apply {
+            break;
+        }
+    }
 }
 
 /// Dispatch a winit input event, pushing commands for deferred processing.

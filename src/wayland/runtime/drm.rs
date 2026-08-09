@@ -12,7 +12,6 @@ use smithay::reexports::calloop::{EventLoop, LoopHandle, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
-use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
 use std::collections::{HashMap, HashSet};
@@ -23,10 +22,12 @@ use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::time::Instant;
 
 use crate::backend::BackendVrrSupport;
-use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::compositor::protocols::output_management::{
-    ModeConfiguration, OutputConfiguration, OutputModeData,
+use crate::backend::output::{
+    AdaptiveSyncPolicy, OutputHeadCapabilities, OutputHeadConfiguration, OutputHeadSnapshot,
+    OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction, OutputTransactionError,
+    OutputTransactionKind,
 };
+use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
@@ -528,13 +529,14 @@ fn run_event_loop(
                 start_time,
             );
             super::common::event_loop_tick_and_request_render(wm, state, ipc_server);
-            let outputs_changed = process_output_configurations(
+            process_output_configurations(
                 state,
                 output_surfaces,
                 output_manager,
                 renderer,
                 loop_state,
             );
+            let outputs_changed = state.project_completed_output_transactions();
             if outputs_changed {
                 crate::monitor::refresh_monitor_layout(&mut wm.ctx());
                 state.push_command(
@@ -549,9 +551,6 @@ fn run_event_loop(
             }
             super::common::process_animations_and_request_render(state);
             process_commit_redraws(state, loop_state, output_surfaces);
-            sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
-            sync_output_enabled_from_state(state, output_surfaces, loop_state);
-
             let bar_update_seq = wm.bar.update_seq();
             if loop_state.last_bar_update_seq != bar_update_seq {
                 loop_state.last_bar_update_seq = bar_update_seq;
@@ -767,79 +766,99 @@ fn process_cursor_warp(
     }
 }
 
-fn sync_output_vrr_modes_from_state(
-    state: &mut WaylandState,
-    output_surfaces: &mut [OutputSurfaceEntry],
-    loop_state: &mut DrmLoopState,
-) {
-    let mut changed = false;
-    for entry in output_surfaces.iter_mut() {
-        let output_name = entry.output.name();
-        if let Some(metadata) = state.output_vrr_metadata(&output_name)
-            && entry.configured_vrr_mode != metadata.vrr_mode
-        {
-            entry.configured_vrr_mode = metadata.vrr_mode;
-            log::info!(
-                "Output {}: VRR mode set to {:?} (support: {:?})",
-                output_name,
-                entry.configured_vrr_mode,
-                entry.vrr_support
-            );
-            changed = true;
-        }
-    }
-    if changed {
-        loop_state.mark_all_dirty();
-    }
-}
-
-fn sync_output_enabled_from_state(
-    state: &mut WaylandState,
-    output_surfaces: &mut [OutputSurfaceEntry],
-    loop_state: &mut DrmLoopState,
-) {
-    let mut changed = false;
-    for entry in output_surfaces.iter_mut() {
-        let output_name = entry.output.name();
-        if let Some(&enabled) = state.runtime.output_enabled.get(&output_name)
-            && entry.enabled != enabled
-        {
-            if !enabled {
-                state.fail_pending_captures_for_output(&entry.output);
-            }
-            entry.enabled = enabled;
-            log::info!("Output {}: enabled set to {}", output_name, entry.enabled);
-            changed = true;
-        }
-    }
-    if changed {
-        loop_state.mark_all_dirty();
-    }
-}
-
 fn requested_mode(
     entry: &OutputSurfaceEntry,
-    config: &OutputConfiguration,
+    config: &OutputHeadConfiguration,
 ) -> Option<smithay::reexports::drm::control::Mode> {
-    let requested = match config {
-        OutputConfiguration::Enabled { mode, .. } => match mode {
-            Some(ModeConfiguration::Mode(resource)) => {
-                resource.data::<OutputModeData>().map(|data| data.mode)
-            }
-            Some(ModeConfiguration::Custom { size, refresh }) => {
-                entry.modes.iter().map(|(mode, _)| *mode).find(|mode| {
-                    mode.size == *size && refresh.is_none_or(|value| mode.refresh == value)
-                })
-            }
-            None => entry.output.current_mode(),
-        },
-        OutputConfiguration::Disabled => return None,
-    }?;
+    let requested = config.mode?;
+    entry.modes.iter().find_map(|(output_mode, drm_mode)| {
+        (output_mode.size.w == requested.width
+            && output_mode.size.h == requested.height
+            && output_mode.refresh == requested.refresh_millihertz)
+            .then_some(*drm_mode)
+    })
+}
 
-    entry
-        .modes
+fn transaction_snapshot(
+    transaction: &OutputTransaction,
+    output_surfaces: &[OutputSurfaceEntry],
+) -> OutputSnapshot {
+    OutputSnapshot {
+        heads: transaction
+            .heads
+            .iter()
+            .map(|configuration| {
+                let entry = output_surfaces
+                    .iter()
+                    .find(|entry| entry.output.name() == configuration.id.0);
+                let modes = entry
+                    .map(|entry| {
+                        entry
+                            .modes
+                            .iter()
+                            .map(|(mode, _)| TransactionOutputMode {
+                                width: mode.size.w,
+                                height: mode.size.h,
+                                refresh_millihertz: mode.refresh,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let adaptive_sync_policy = configuration.adaptive_sync.unwrap_or_else(|| {
+                    entry.map_or(AdaptiveSyncPolicy::Disabled, |entry| {
+                        match entry.configured_vrr_mode {
+                            VrrMode::Off => AdaptiveSyncPolicy::Disabled,
+                            VrrMode::On => AdaptiveSyncPolicy::Enabled,
+                            VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
+                        }
+                    })
+                });
+                OutputHeadSnapshot {
+                    configuration: configuration.clone(),
+                    modes,
+                    adaptive_sync_policy,
+                    adaptive_sync_enabled: entry.is_some_and(|entry| entry.vrr_enabled),
+                }
+            })
+            .collect(),
+    }
+}
+
+fn output_capabilities(output_surfaces: &[OutputSurfaceEntry]) -> Vec<OutputHeadCapabilities> {
+    output_surfaces
         .iter()
-        .find_map(|(output_mode, drm_mode)| (*output_mode == requested).then_some(*drm_mode))
+        .map(|entry| OutputHeadCapabilities {
+            id: entry.output.name().as_str().into(),
+            modes: entry
+                .modes
+                .iter()
+                .map(|(mode, _)| TransactionOutputMode {
+                    width: mode.size.w,
+                    height: mode.size.h,
+                    refresh_millihertz: mode.refresh,
+                })
+                .collect(),
+            adaptive_sync: !matches!(entry.vrr_support, BackendVrrSupport::Unsupported),
+        })
+        .collect()
+}
+
+fn requested_vrr(
+    entry: &OutputSurfaceEntry,
+    configuration: &OutputHeadConfiguration,
+) -> (VrrMode, bool) {
+    let policy = configuration
+        .adaptive_sync
+        .unwrap_or(match entry.configured_vrr_mode {
+            VrrMode::Off => AdaptiveSyncPolicy::Disabled,
+            VrrMode::On => AdaptiveSyncPolicy::Enabled,
+            VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
+        });
+    match policy {
+        AdaptiveSyncPolicy::Disabled => (VrrMode::Off, false),
+        AdaptiveSyncPolicy::Enabled => (VrrMode::On, true),
+        AdaptiveSyncPolicy::Automatic => (VrrMode::Auto, entry.vrr_enabled),
+    }
 }
 
 fn process_output_configurations(
@@ -848,47 +867,53 @@ fn process_output_configurations(
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
     renderer: &mut GlesRenderer,
     loop_state: &mut DrmLoopState,
-) -> bool {
-    let transactions = mem::take(&mut state.runtime.pending_output_configurations);
-    let mut outputs_changed = false;
+) {
     let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
         GlesRenderer,
         crate::wayland::render::drm::DrmExtras,
     >::default();
+    let capabilities = output_capabilities(output_surfaces);
 
-    for transaction in transactions {
-        let mut requested = Vec::with_capacity(transaction.heads.len());
-        let mut valid = true;
-        for (output, config) in &transaction.heads {
-            let Some(index) = output_surfaces
-                .iter()
-                .position(|entry| entry.output == *output)
-            else {
-                valid = false;
-                break;
-            };
-            let mode = requested_mode(&output_surfaces[index], config);
-            if matches!(config, OutputConfiguration::Enabled { .. }) && mode.is_none() {
-                valid = false;
-                break;
-            }
-            requested.push((index, config, mode));
-        }
-
-        if !valid {
-            state.finish_output_configuration(transaction, false);
+    while let Some(pending) = state.runtime.output_transactions.take_next_pending() {
+        if let Err(error) = pending.transaction.validate(&capabilities) {
+            state
+                .runtime
+                .output_transactions
+                .complete(pending, Err(error));
             continue;
         }
+        if pending.kind == OutputTransactionKind::Test {
+            let snapshot = transaction_snapshot(&pending.transaction, output_surfaces);
+            state
+                .runtime
+                .output_transactions
+                .complete(pending, Ok(snapshot));
+            continue;
+        }
+
+        let requested: Vec<_> = pending
+            .transaction
+            .heads
+            .iter()
+            .map(|config| {
+                let index = output_surfaces
+                    .iter()
+                    .position(|entry| entry.output.name() == config.id.0)
+                    .expect("validated output disappeared before application");
+                (
+                    index,
+                    config,
+                    requested_mode(&output_surfaces[index], config),
+                )
+            })
+            .collect();
         if requested.iter().any(|(index, _, _)| {
             loop_state
                 .pending_crtcs
                 .contains(&output_surfaces[*index].crtc)
         }) {
-            state
-                .runtime
-                .pending_output_configurations
-                .push(transaction);
-            continue;
+            state.runtime.output_transactions.requeue(pending);
+            break;
         }
 
         let previous: Vec<_> = requested
@@ -909,7 +934,7 @@ fn process_output_configurations(
         let mut applied = true;
 
         for (index, config, mode) in &requested {
-            if !matches!(config, OutputConfiguration::Enabled { .. }) {
+            if !config.enabled {
                 continue;
             }
             let entry = &mut output_surfaces[*index];
@@ -921,7 +946,7 @@ fn process_output_configurations(
                 }
             } else {
                 let mut manager = output_manager.lock().unwrap();
-                let initialized = manager.lock().initialize_output(
+                match manager.lock().initialize_output(
                     entry.crtc,
                     mode,
                     &[entry.connector],
@@ -929,29 +954,25 @@ fn process_output_configurations(
                     None,
                     renderer,
                     &render_elements,
-                );
-                match initialized {
+                ) {
                     Ok(surface) => {
                         entry.surface = Some(surface);
                         newly_enabled.push(*index);
                     }
-                    Err(err) => {
-                        log::warn!("failed to enable output {}: {err:?}", entry.output.name());
+                    Err(error) => {
+                        log::warn!("failed to enable output {}: {error:?}", entry.output.name());
                         applied = false;
                         break;
                     }
                 }
             }
-            if let OutputConfiguration::Enabled {
-                adaptive_sync: Some(target),
-                ..
-            } = config
-                && entry
-                    .surface
-                    .as_ref()
-                    .expect("output was enabled above")
-                    .with_compositor(|compositor| compositor.use_vrr(*target))
-                    .is_err()
+            let (_, adaptive_sync) = requested_vrr(entry, config);
+            if entry
+                .surface
+                .as_ref()
+                .expect("output was enabled above")
+                .with_compositor(|compositor| compositor.use_vrr(adaptive_sync))
+                .is_err()
             {
                 applied = false;
                 break;
@@ -971,32 +992,37 @@ fn process_output_configurations(
                     let _ = surface.with_compositor(|compositor| compositor.use_vrr(old_vrr));
                 }
             }
-            state.finish_output_configuration(transaction, false);
+            state.runtime.output_transactions.complete(
+                pending,
+                Err(OutputTransactionError::Backend(
+                    "DRM could not commit the requested output state".to_string(),
+                )),
+            );
             continue;
         }
 
         for (index, config, _) in &requested {
-            if matches!(config, OutputConfiguration::Disabled) {
-                output_surfaces[*index].surface.take();
-                output_surfaces[*index].enabled = false;
+            let entry = &mut output_surfaces[*index];
+            if !config.enabled {
+                entry.surface.take();
+                entry.enabled = false;
+                entry.vrr_enabled = false;
             } else {
-                output_surfaces[*index].enabled = true;
-                if let OutputConfiguration::Enabled {
-                    adaptive_sync: Some(target),
-                    ..
-                } = config
-                {
-                    output_surfaces[*index].vrr_enabled = *target;
-                    output_surfaces[*index].configured_vrr_mode =
-                        if *target { VrrMode::On } else { VrrMode::Off };
-                }
+                entry.enabled = true;
+                let (mode, enabled) = requested_vrr(entry, config);
+                entry.vrr_enabled = enabled;
+                entry.configured_vrr_mode = mode;
             }
         }
-        state.finish_output_configuration(transaction, true);
-        outputs_changed = true;
+        let snapshot = transaction_snapshot(&pending.transaction, output_surfaces);
+        state
+            .runtime
+            .output_transactions
+            .complete(pending, Ok(snapshot));
         loop_state.mark_all_dirty();
+        // Project the authoritative state before attempting another apply.
+        break;
     }
-    outputs_changed
 }
 
 fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {

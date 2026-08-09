@@ -314,9 +314,7 @@ pub struct WaylandRuntimeState {
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
     pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
-    pub output_enabled: HashMap<String, bool>,
-    pub pending_output_configurations:
-        Vec<super::protocols::output_management::OutputConfigurationTransaction>,
+    pub output_transactions: crate::backend::output::OutputTransactionService,
     pub intercepted_key_releases: HashSet<Keycode>,
     pub shared_scene_cache: Option<(
         u64,
@@ -350,8 +348,7 @@ impl Default for WaylandRuntimeState {
             winit_window_size: smithay::utils::Size::from((0, 0)),
             pending_winit_resize: None,
             winit_close_requested: false,
-            output_enabled: HashMap::new(),
-            pending_output_configurations: Vec::new(),
+            output_transactions: crate::backend::output::OutputTransactionService::default(),
             intercepted_key_releases: HashSet::new(),
             shared_scene_cache: None,
         }
@@ -751,12 +748,6 @@ impl WaylandState {
 
     pub(super) fn output_can_render(&self, output: &smithay::output::Output) -> bool {
         self.space.outputs().any(|active| active == output)
-            && self
-                .runtime
-                .output_enabled
-                .get(&output.name())
-                .copied()
-                .unwrap_or(true)
     }
 
     /// Drop capture work that can never complete once an output is disabled
@@ -966,6 +957,20 @@ impl WaylandState {
                 vrr_enabled: false,
             });
         entry.vrr_mode = mode;
+    }
+
+    pub(super) fn project_output_vrr_state(
+        &mut self,
+        output_name: &str,
+        mode: VrrMode,
+        enabled: bool,
+    ) {
+        self.set_output_vrr_mode(output_name, mode);
+        self.runtime
+            .output_metadata
+            .get_mut(output_name)
+            .expect("setting the VRR mode initializes output metadata")
+            .vrr_enabled = enabled;
     }
 
     pub fn set_output_vrr_enabled(&mut self, output_name: &str, enabled: bool) {

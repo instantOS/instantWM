@@ -455,7 +455,7 @@ fn event_location(
             let output = state
                 .space
                 .outputs()
-                .find(|output| output.name() == *name && output_is_active(state, output))?;
+                .find(|output| output.name() == *name)?;
             let geometry = state.space.output_geometry(output)?;
             Some(map_normalized_to_output(
                 normalized,
@@ -497,21 +497,11 @@ fn focus_at(state: &WaylandState, location: Point<f64, Logical>) -> TouchHit {
     }
 }
 
-fn output_is_active(state: &WaylandState, output: &smithay::output::Output) -> bool {
-    state
-        .runtime
-        .output_enabled
-        .get(&output.name())
-        .copied()
-        .unwrap_or(true)
-}
-
 fn active_layout_bounds(state: &WaylandState) -> Option<Rectangle<i32, Logical>> {
     layout_bounds(
         state
             .space
             .outputs()
-            .filter(|output| output_is_active(state, output))
             .filter_map(|output| state.space.output_geometry(output)),
     )
 }
