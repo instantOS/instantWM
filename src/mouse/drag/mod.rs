@@ -40,7 +40,7 @@ pub mod tag;
 pub mod title;
 
 pub use interactive::{
-    active_drag_finish, active_drag_motion, directional_resize_begin,
+    active_drag_finish, apply_active_drag_motion, directional_resize_begin,
     directional_resize_begin_with_policy, hover_drag_begin, tree_resize_begin,
 };
 

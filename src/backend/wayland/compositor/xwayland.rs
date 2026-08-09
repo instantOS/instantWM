@@ -92,7 +92,7 @@ pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
 /// Unlike app-initiated move, the user is already actively grabbing a
 /// resize handle, so this skips the click-vs-drag threshold and engages
 /// the resize immediately (`dragging = true`). The unified
-/// [`crate::mouse::drag::active_drag_motion`]
+/// [`crate::mouse::drag::apply_active_drag_motion`]
 /// handler then drives the resize from subsequent pointer motion events.
 pub(super) fn begin_app_resize_drag(state: &mut WaylandState, win: WindowId, dir: ResizeDirection) {
     state.request_window_focus(win);

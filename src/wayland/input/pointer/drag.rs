@@ -87,7 +87,10 @@ mod tests {
     }
 
     fn process_drag_sample(wm: &mut Wm, point: Point) {
-        assert!(crate::mouse::drag::active_drag_motion(&mut wm.ctx(), point));
+        assert!(crate::mouse::drag::apply_active_drag_motion(
+            &mut wm.ctx(),
+            point
+        ));
     }
 
     fn run_samples(wm: &mut Wm, clear_cache_each_sample: bool, batch_size: usize) -> usize {

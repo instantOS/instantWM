@@ -87,7 +87,7 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
             let _ = crate::overview::update_card_gesture(ctx, event.root);
         }
         Some(CapturedInteraction::Window(WindowDragState::Active(_))) => {
-            let _ = crate::mouse::drag::active_drag_motion(ctx, event.root);
+            let _ = crate::mouse::drag::apply_active_drag_motion(ctx, event.root);
         }
         Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
             let _ = crate::mouse::title_drag_motion(
