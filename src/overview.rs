@@ -773,8 +773,8 @@ fn card_field_rects(work_rect: Rect, sizes: &[Size], active_index: usize) -> Vec
     }
     let grid = CardGrid::for_work_rect(work_rect, sizes.len());
     let (active_row, active_column) = grid.position(active_index.min(sizes.len() - 1));
-    let column_edges = weighted_edges(work_rect.x, work_rect.w, grid.columns, active_column);
-    let row_edges = weighted_edges(work_rect.y, work_rect.h, grid.rows, active_row);
+    let column_edges = weighted_cell_edges(work_rect.x, work_rect.w, grid.columns, active_column);
+    let row_edges = weighted_cell_edges(work_rect.y, work_rect.h, grid.rows, active_row);
 
     sizes
         .iter()
@@ -809,7 +809,19 @@ fn card_field_rects(work_rect: Rect, sizes: &[Size], active_index: usize) -> Vec
         .collect()
 }
 
-fn weighted_edges(start: i32, extent: i32, count: usize, active: usize) -> Vec<i32> {
+/// Split an axis of length `extent` starting at `start` into `count` cells and
+/// return the `count + 1` boundary positions.
+///
+/// Cells are sized proportionally to `1 + 4/(|i - active| + 1)`, so the active
+/// cell (the focused card's row or column) gets the largest territory and
+/// neighboring cells decay smoothly with distance. This produces the
+/// overview's focus-and-context field while still covering the full extent
+/// (`edges[0] == start`, `edges[count] == start + extent`).
+///
+/// The sequence is non-decreasing; when the extent is large enough for every
+/// cell to hold at least one pixel it is also strictly increasing, so each
+/// card origin is a distinct, clickable pixel.
+fn weighted_cell_edges(start: i32, extent: i32, count: usize, active: usize) -> Vec<i32> {
     debug_assert!(count > 0);
     let weights = (0..count)
         .map(|index| {

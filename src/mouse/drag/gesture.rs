@@ -88,7 +88,7 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
     }
 }
 
-pub fn finish_sidebar_gesture(
+pub fn sidebar_gesture_finish(
     ctx: &mut WmCtx,
     btn: MouseButton,
     hover_target: Option<SidebarTarget>,
@@ -174,7 +174,7 @@ pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
     }
 }
 
-pub fn finish_bottom_bar_gesture(
+pub fn bottom_bar_gesture_finish(
     ctx: &mut WmCtx,
     btn: MouseButton,
     root: Point,

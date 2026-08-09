@@ -8,8 +8,10 @@ use std::env;
 
 mod interactions;
 mod keyboard_state;
+mod mode;
 pub use interactions::*;
 pub use keyboard_state::*;
+pub use mode::*;
 
 // ---------------------------------------------------------------------------
 // Sub-structs for RuntimeConfig

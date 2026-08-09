@@ -87,10 +87,10 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
             let _ = crate::overview::update_card_gesture(ctx, event.root);
         }
         Some(CapturedInteraction::Window(WindowDragState::Active(_))) => {
-            let _ = crate::mouse::drag::active_drag_motion(ctx, event.root);
+            let _ = crate::mouse::drag::apply_active_drag_motion(ctx, event.root);
         }
         Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
-            let _ = crate::mouse::title_drag_motion(
+            let _ = crate::mouse::process_title_drag_motion(
                 ctx,
                 match event.source {
                     InteractionSource::Pointer => crate::mouse::DragInput::Pointer(event.root),
@@ -104,7 +104,7 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
                 .tag_drag_mut()
                 .expect("tag capture remained active")
                 .last_motion = Some((event.root, event.modifiers));
-            let _ = crate::mouse::drag_tag_motion(ctx, event.root);
+            let _ = crate::mouse::apply_drag_tag_motion(ctx, event.root);
         }
         Some(CapturedInteraction::SidebarVolume(_)) => {
             crate::mouse::update_sidebar_gesture(ctx, event.root.y);
@@ -140,10 +140,10 @@ fn finish(
             crate::mouse::drag_tag_finish(ctx, event.modifiers);
         }
         Some(CapturedInteraction::SidebarVolume(_)) => {
-            let _ = crate::mouse::finish_sidebar_gesture(ctx, button, event.sidebar_hover);
+            let _ = crate::mouse::sidebar_gesture_finish(ctx, button, event.sidebar_hover);
         }
         Some(CapturedInteraction::BottomBar(_)) => {
-            let _ = crate::mouse::finish_bottom_bar_gesture(ctx, button, event.root, time_msec);
+            let _ = crate::mouse::bottom_bar_gesture_finish(ctx, button, event.root, time_msec);
         }
         None => return InteractionOutcome::Ignored,
     }

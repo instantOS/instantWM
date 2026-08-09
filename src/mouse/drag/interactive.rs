@@ -173,8 +173,17 @@ pub fn hover_drag_begin(
     true
 }
 
-/// Apply one absolute motion sample to the active window interaction.
-pub fn active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
+/// Apply one absolute motion sample to an engaged window drag.
+///
+/// Handles the `Active` phase of `WindowDragState`: the press has already
+/// crossed the drag threshold, or the drag started immediately from a resize
+/// handle, hovered border, or client request. The pre-threshold `Armed` phase
+/// is handled by `process_title_drag_motion` instead, which only records samples.
+///
+/// Returns `false` when no window drag is currently active (the sample was
+/// not consumed); `true` when the sample was applied to the ongoing move,
+/// resize, or tree-resize.
+pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     let Some(drag) = ctx.core().drag_state().active_interaction().cloned() else {
         return false;
     };
@@ -296,7 +305,7 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
     };
 
     match drag.drag_type() {
-        crate::core_state::DragType::Move => crate::mouse::drag::finish_drag_move(
+        crate::core_state::DragType::Move => crate::mouse::drag::drag_move_finish(
             ctx,
             drag.win(),
             drag.drop_restore_geo(),
@@ -308,7 +317,7 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
             modifiers,
         ),
         crate::core_state::DragType::Resize(_) | crate::core_state::DragType::TreeResize(_) => {
-            crate::mouse::drag::finish_drag_resize(ctx, drag.win());
+            crate::mouse::drag::drag_resize_finish(ctx, drag.win());
         }
     }
     true
@@ -316,7 +325,7 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
 
 #[cfg(test)]
 mod tests {
-    use super::active_drag_motion;
+    use super::apply_active_drag_motion;
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::types::{
         Client, ClientMode, InteractionSource, Monitor, MouseButton, Point, Rect, ResizeDirection,
@@ -357,7 +366,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(active_drag_motion(&mut wm.ctx(), Point::new(710, 250)));
+        assert!(apply_active_drag_motion(
+            &mut wm.ctx(),
+            Point::new(710, 250)
+        ));
         assert_eq!(wm.core.model.client(win).unwrap().geo.w, 601);
     }
 }

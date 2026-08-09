@@ -86,8 +86,8 @@ fn active_card_gets_the_largest_grid_territory() {
     let grid = CardGrid::for_work_rect(work, sizes.len());
     let active = 6;
     let (active_row, active_column) = grid.position(active);
-    let columns = weighted_edges(work.x, work.w, grid.columns, active_column);
-    let rows = weighted_edges(work.y, work.h, grid.rows, active_row);
+    let columns = weighted_cell_edges(work.x, work.w, grid.columns, active_column);
+    let rows = weighted_cell_edges(work.y, work.h, grid.rows, active_row);
 
     let active_width = columns[active_column + 1] - columns[active_column];
     let active_height = rows[active_row + 1] - rows[active_row];
