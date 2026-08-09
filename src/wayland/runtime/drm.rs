@@ -14,11 +14,13 @@ use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::mem;
 use std::process::exit;
-use std::sync::{Arc, Mutex, RwLock, mpsc};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 use crate::backend::BackendVrrSupport;
@@ -193,7 +195,11 @@ pub fn run() -> ! {
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 
-    let layout_state = Arc::new(RwLock::new(init_layout_state(&output_surfaces, total_size)));
+    let mut layout_state = init_layout_state(&output_surfaces, total_size);
+    // Calloop dispatches sources and the loop callback sequentially on this
+    // thread. Libinput only needs the current dimensions, so share that small
+    // copy without putting the complete layout behind an atomic lock.
+    let input_dimensions = Rc::new(Cell::new(total_size));
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
@@ -206,14 +212,13 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
 
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
-    let shared_layout = Arc::clone(&layout_state);
+    let shared_input_dimensions = Rc::clone(&input_dimensions);
     let runtime_event_tx_input = runtime_event_tx.clone();
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let layout = shared_layout.read().unwrap();
-            let total_w = layout.total_size.w;
-            let total_h = layout.total_size.h;
-            drop(layout);
+            let dimensions = shared_input_dimensions.get();
+            let total_w = dimensions.w;
+            let total_h = dimensions.h;
 
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
@@ -294,7 +299,8 @@ pub fn run() -> ! {
         event_loop,
         &mut wm,
         &mut state,
-        &layout_state,
+        &mut layout_state,
+        &input_dimensions,
         &mut loop_state,
         &mut output_surfaces,
         &output_manager,
@@ -360,7 +366,7 @@ fn init_layout_state(
 fn refresh_drm_layout_state(
     state: &WaylandState,
     output_surfaces: &mut [OutputSurfaceEntry],
-    layout_state: &Arc<RwLock<DrmLayoutState>>,
+    layout_state: &mut DrmLayoutState,
 ) {
     for entry in output_surfaces.iter_mut().filter(|entry| entry.enabled) {
         if let Some(geometry) = state.space.output_geometry(&entry.output) {
@@ -390,7 +396,7 @@ fn refresh_drm_layout_state(
             .unwrap_or(1)
             .max(1),
     );
-    *layout_state.write().unwrap() = DrmLayoutState {
+    *layout_state = DrmLayoutState {
         total_size,
         output_hit_regions: active
             .iter()
@@ -489,7 +495,8 @@ fn run_event_loop(
     mut event_loop: EventLoop<WaylandState>,
     wm: &mut Wm,
     state: &mut WaylandState,
-    layout_state: &Arc<RwLock<DrmLayoutState>>,
+    layout_state: &mut DrmLayoutState,
+    input_dimensions: &Rc<Cell<crate::types::Size>>,
     loop_state: &mut DrmLoopState,
     output_surfaces: &mut [OutputSurfaceEntry],
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
@@ -506,21 +513,18 @@ fn run_event_loop(
     let pointer_handle = state.pointer.clone();
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let render_retry_guard = crate::runtime::AnimationTimerGuard::new();
-    let shared_layout = Arc::clone(layout_state);
+    let shared_input_dimensions = Rc::clone(input_dimensions);
     let monotonic_clock = Clock::<Monotonic>::new();
 
     event_loop
         .run(None, state, move |state| {
-            let pointer_moved = {
-                let layout = shared_layout.read().unwrap();
-                process_runtime_events(
-                    &runtime_event_rx,
-                    loop_state,
-                    &layout,
-                    output_surfaces,
-                    &monotonic_clock,
-                )
-            };
+            let pointer_moved = process_runtime_events(
+                &runtime_event_rx,
+                loop_state,
+                layout_state,
+                output_surfaces,
+                &monotonic_clock,
+            );
             process_frame_callback_requests(
                 state,
                 &loop_handle,
@@ -542,12 +546,14 @@ fn run_event_loop(
                 state.push_command(
                     crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones,
                 );
+                refresh_drm_layout_state(state, output_surfaces, layout_state);
+                shared_input_dimensions.set(layout_state.total_size);
             }
-            refresh_drm_layout_state(state, output_surfaces, &shared_layout);
             if pointer_moved {
-                let layout = shared_layout.read().unwrap();
-                loop_state
-                    .mark_pointer_output_dirty(state.runtime.pointer_location.x as i32, &layout);
+                loop_state.mark_pointer_output_dirty(
+                    state.runtime.pointer_location.x as i32,
+                    layout_state,
+                );
             }
             super::common::process_animations_and_request_render(state);
             process_commit_redraws(state, loop_state, output_surfaces);
@@ -598,9 +604,10 @@ fn run_event_loop(
             };
             state.runtime.cursor_is_animated = animated;
             if animated {
-                let layout = shared_layout.read().unwrap();
-                loop_state
-                    .mark_pointer_output_dirty(state.runtime.pointer_location.x as i32, &layout);
+                loop_state.mark_pointer_output_dirty(
+                    state.runtime.pointer_location.x as i32,
+                    layout_state,
+                );
             }
 
             // Arm an on-demand animation timer when animations are active.
@@ -868,6 +875,10 @@ fn process_output_configurations(
     renderer: &mut GlesRenderer,
     loop_state: &mut DrmLoopState,
 ) {
+    if !state.runtime.output_transactions.has_pending() {
+        return;
+    }
+
     let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
         GlesRenderer,
         crate::wayland::render::drm::DrmExtras,
@@ -916,21 +927,9 @@ fn process_output_configurations(
             break;
         }
 
-        let previous: Vec<_> = requested
-            .iter()
-            .map(|(index, _, _)| {
-                let entry = &output_surfaces[*index];
-                (
-                    *index,
-                    entry.surface.is_some(),
-                    entry.surface.as_ref().map(|surface| {
-                        surface.with_compositor(|compositor| compositor.current_mode())
-                    }),
-                    entry.vrr_enabled,
-                )
-            })
-            .collect();
         let mut newly_enabled = Vec::new();
+        let mut changed_modes = Vec::new();
+        let mut changed_vrr = Vec::new();
         let mut applied = true;
 
         for (index, config, mode) in &requested {
@@ -939,10 +938,15 @@ fn process_output_configurations(
             }
             let entry = &mut output_surfaces[*index];
             let mode = mode.expect("enabled configurations were prevalidated");
+            let was_enabled = entry.surface.is_some();
             if let Some(surface) = entry.surface.as_mut() {
-                if surface.use_mode(mode, renderer, &render_elements).is_err() {
-                    applied = false;
-                    break;
+                let current_mode = surface.with_compositor(|compositor| compositor.current_mode());
+                if current_mode != mode {
+                    if surface.use_mode(mode, renderer, &render_elements).is_err() {
+                        applied = false;
+                        break;
+                    }
+                    changed_modes.push((*index, current_mode));
                 }
             } else {
                 let mut manager = output_manager.lock().unwrap();
@@ -967,15 +971,25 @@ fn process_output_configurations(
                 }
             }
             let (_, adaptive_sync) = requested_vrr(entry, config);
-            if entry
+            let current_vrr = entry
                 .surface
                 .as_ref()
                 .expect("output was enabled above")
-                .with_compositor(|compositor| compositor.use_vrr(adaptive_sync))
-                .is_err()
-            {
-                applied = false;
-                break;
+                .with_compositor(|compositor| compositor.vrr_enabled());
+            if current_vrr != adaptive_sync {
+                if entry
+                    .surface
+                    .as_ref()
+                    .expect("output was enabled above")
+                    .with_compositor(|compositor| compositor.use_vrr(adaptive_sync))
+                    .is_err()
+                {
+                    applied = false;
+                    break;
+                }
+                if was_enabled {
+                    changed_vrr.push((*index, current_vrr));
+                }
             }
         }
 
@@ -983,12 +997,13 @@ fn process_output_configurations(
             for index in newly_enabled {
                 output_surfaces[index].surface.take();
             }
-            for (index, was_enabled, old_mode, old_vrr) in previous {
-                if was_enabled
-                    && let (Some(surface), Some(old_mode)) =
-                        (output_surfaces[index].surface.as_mut(), old_mode)
-                {
+            for (index, old_mode) in changed_modes {
+                if let Some(surface) = output_surfaces[index].surface.as_mut() {
                     let _ = surface.use_mode(old_mode, renderer, &render_elements);
+                }
+            }
+            for (index, old_vrr) in changed_vrr {
+                if let Some(surface) = output_surfaces[index].surface.as_ref() {
                     let _ = surface.with_compositor(|compositor| compositor.use_vrr(old_vrr));
                 }
             }

@@ -220,6 +220,10 @@ pub fn run() -> ! {
 }
 
 fn process_output_configurations(state: &mut WaylandState, output: &smithay::output::Output) {
+    if !state.runtime.output_transactions.has_pending() {
+        return;
+    }
+
     let modes: Vec<_> = output
         .modes()
         .into_iter()

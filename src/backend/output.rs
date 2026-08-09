@@ -205,6 +205,11 @@ pub struct OutputTransactionService {
 }
 
 impl OutputTransactionService {
+    #[inline]
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     pub fn submit(
         &mut self,
         kind: OutputTransactionKind,
@@ -319,10 +324,14 @@ mod tests {
     #[test]
     fn service_preserves_submission_order_and_identity() {
         let mut service = OutputTransactionService::default();
+        assert!(!service.has_pending());
         let first = service.submit(OutputTransactionKind::Test, transaction());
         let second = service.submit(OutputTransactionKind::Apply, transaction());
+        assert!(service.has_pending());
         assert_eq!(service.take_next_pending().unwrap().id, first);
+        assert!(service.has_pending());
         assert_eq!(service.take_next_pending().unwrap().id, second);
+        assert!(!service.has_pending());
         assert!(service.take_next_pending().is_none());
     }
 
