@@ -151,11 +151,13 @@ impl OutputTransaction {
                     mode,
                 });
             }
+            // Automatic is a policy, not a demand that the backend enable
+            // adaptive sync.  It must remain valid on unsupported hardware so
+            // that an unrelated mode, position, or scale update can preserve
+            // the compositor's default policy.  Only an explicit request to
+            // enable adaptive sync requires backend support.
             if !capability.adaptive_sync
-                && !matches!(
-                    head.adaptive_sync,
-                    None | Some(AdaptiveSyncPolicy::Disabled)
-                )
+                && matches!(head.adaptive_sync, Some(AdaptiveSyncPolicy::Enabled))
             {
                 return Err(OutputTransactionError::AdaptiveSyncUnsupported(
                     head.id.0.clone(),
@@ -245,10 +247,6 @@ impl OutputTransactionService {
         id
     }
 
-    pub fn take_pending(&mut self) -> Vec<PendingOutputTransaction> {
-        self.pending.drain(..).collect()
-    }
-
     pub fn take_next_pending(&mut self) -> Option<PendingOutputTransaction> {
         self.pending.pop_front()
     }
@@ -323,21 +321,20 @@ mod tests {
         let mut service = OutputTransactionService::default();
         let first = service.submit(OutputTransactionKind::Test, transaction());
         let second = service.submit(OutputTransactionKind::Apply, transaction());
-        let pending = service.take_pending();
-
-        assert_eq!(pending.len(), 2);
-        assert_eq!(pending[0].id, first);
-        assert_eq!(pending[1].id, second);
+        assert_eq!(service.take_next_pending().unwrap().id, first);
+        assert_eq!(service.take_next_pending().unwrap().id, second);
+        assert!(service.take_next_pending().is_none());
     }
 
     #[test]
     fn requeued_transactions_remain_pending_without_completing() {
         let mut service = OutputTransactionService::default();
         service.submit(OutputTransactionKind::Apply, transaction());
-        let pending = service.take_pending().pop().unwrap();
+        let pending = service.take_next_pending().unwrap();
         service.requeue(pending);
 
-        assert_eq!(service.take_pending().len(), 1);
+        assert!(service.take_next_pending().is_some());
+        assert!(service.take_next_pending().is_none());
         assert!(service.take_completed().is_empty());
     }
 
@@ -357,7 +354,7 @@ mod tests {
     fn completion_retains_kind_and_result() {
         let mut service = OutputTransactionService::default();
         service.submit(OutputTransactionKind::Test, transaction());
-        let pending = service.take_pending().pop().unwrap();
+        let pending = service.take_next_pending().unwrap();
         service.complete(pending, Ok(OutputSnapshot { heads: Vec::new() }));
         let completed = service.take_completed().pop().unwrap();
 
@@ -372,7 +369,9 @@ mod tests {
         assert_eq!(service.submit_coalescing_apply(transaction()), policy_id);
         service.submit(OutputTransactionKind::Apply, transaction());
 
-        assert_eq!(service.take_pending().len(), 2);
+        assert!(service.take_next_pending().is_some());
+        assert!(service.take_next_pending().is_some());
+        assert!(service.take_next_pending().is_none());
     }
 
     #[test]
@@ -417,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_checks_mode_scale_and_adaptive_sync_capabilities() {
+    fn validation_checks_mode_scale_and_explicit_adaptive_sync() {
         let mut configured = head("one");
         configured.scale = 0.0;
         assert_eq!(
@@ -442,12 +441,25 @@ mod tests {
         configured.adaptive_sync = Some(AdaptiveSyncPolicy::Enabled);
         assert_eq!(
             OutputTransaction {
-                heads: vec![configured]
+                heads: vec![configured.clone()]
             }
             .validate(&[capability("one")]),
             Err(OutputTransactionError::AdaptiveSyncUnsupported(
                 "one".into()
             ))
+        );
+    }
+
+    #[test]
+    fn automatic_adaptive_sync_is_valid_without_backend_support() {
+        let mut configured = head("one");
+        configured.adaptive_sync = Some(AdaptiveSyncPolicy::Automatic);
+        assert_eq!(
+            OutputTransaction {
+                heads: vec![configured]
+            }
+            .validate(&[capability("one")]),
+            Ok(())
         );
     }
 }

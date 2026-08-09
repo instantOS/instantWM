@@ -138,11 +138,11 @@ pub type PendingConfiguration = Mutex<PendingConfigurationInner>;
 #[derive(Debug, Clone)]
 pub struct PendingOutputConfigurationInner {
     output: WeakOutput,
-    pub mode: Option<ModeConfiguration>,
-    pub position: Option<Point<i32, Logical>>,
-    pub transform: Option<Transform>,
-    pub scale: Option<f64>,
-    pub adaptive_sync: Option<bool>,
+    mode: Option<ModeConfiguration>,
+    position: Option<Point<i32, Logical>>,
+    transform: Option<Transform>,
+    scale: Option<f64>,
+    adaptive_sync: Option<bool>,
 }
 
 /// Mutex-wrapped per-head pending config.
@@ -150,7 +150,7 @@ pub type PendingOutputConfiguration = Mutex<PendingOutputConfigurationInner>;
 
 /// How the client wants the mode set.
 #[derive(Debug, Clone)]
-pub enum ModeConfiguration {
+enum ModeConfiguration {
     /// Use an existing `zwlr_output_mode_v1` resource (carries the `Mode` as
     /// its user data).
     Mode(ZwlrOutputModeV1),
@@ -163,21 +163,8 @@ pub enum ModeConfiguration {
 
 #[derive(Debug, Clone)]
 pub struct OutputModeData {
-    pub output: WeakOutput,
-    pub mode: TransactionOutputMode,
-}
-
-/// The final configuration for one output, extracted from the pending state.
-#[derive(Debug, Clone)]
-pub enum OutputConfiguration {
-    Enabled {
-        mode: Option<ModeConfiguration>,
-        position: Option<Point<i32, Logical>>,
-        transform: Option<Transform>,
-        scale: Option<f64>,
-        adaptive_sync: Option<bool>,
-    },
-    Disabled,
+    output: WeakOutput,
+    mode: TransactionOutputMode,
 }
 
 fn valid_custom_mode(width: i32, height: i32, refresh: i32) -> bool {
@@ -209,11 +196,13 @@ fn transaction_transform(transform: Transform) -> OutputTransform {
     }
 }
 
-fn build_transaction(configurations: &[(Output, OutputConfiguration)]) -> OutputTransaction {
+fn build_transaction(
+    configurations: &[(Output, Option<PendingOutputConfigurationInner>)],
+) -> OutputTransaction {
     let heads = configurations
         .iter()
         .map(|(output, configuration)| match configuration {
-            OutputConfiguration::Disabled => OutputHeadConfiguration {
+            None => OutputHeadConfiguration {
                 id: OutputId(output.name()),
                 enabled: false,
                 mode: output.current_mode().map(transaction_mode),
@@ -225,14 +214,8 @@ fn build_transaction(configurations: &[(Output, OutputConfiguration)]) -> Output
                 scale: output.current_scale().fractional_scale(),
                 adaptive_sync: None,
             },
-            OutputConfiguration::Enabled {
-                mode,
-                position,
-                transform,
-                scale,
-                adaptive_sync,
-            } => {
-                let selected_mode = match mode {
+            Some(configuration) => {
+                let selected_mode = match &configuration.mode {
                     Some(ModeConfiguration::Mode(resource)) => {
                         resource.data::<OutputModeData>().map(|data| data.mode)
                     }
@@ -247,17 +230,23 @@ fn build_transaction(configurations: &[(Output, OutputConfiguration)]) -> Output
                         }),
                     None => output.current_mode().map(transaction_mode),
                 };
-                let position = position.unwrap_or_else(|| output.current_location());
+                let position = configuration
+                    .position
+                    .unwrap_or_else(|| output.current_location());
                 OutputHeadConfiguration {
                     id: OutputId(output.name()),
                     enabled: true,
                     mode: selected_mode,
                     position: crate::types::Point::new(position.x, position.y),
                     transform: transaction_transform(
-                        transform.unwrap_or_else(|| output.current_transform()),
+                        configuration
+                            .transform
+                            .unwrap_or_else(|| output.current_transform()),
                     ),
-                    scale: scale.unwrap_or_else(|| output.current_scale().fractional_scale()),
-                    adaptive_sync: adaptive_sync.map(|enabled| {
+                    scale: configuration
+                        .scale
+                        .unwrap_or_else(|| output.current_scale().fractional_scale()),
+                    adaptive_sync: configuration.adaptive_sync.map(|enabled| {
                         if enabled {
                             AdaptiveSyncPolicy::Enabled
                         } else {
@@ -269,19 +258,6 @@ fn build_transaction(configurations: &[(Output, OutputConfiguration)]) -> Output
         })
         .collect();
     OutputTransaction { heads }
-}
-
-impl From<&PendingOutputConfigurationInner> for OutputConfiguration {
-    fn from(pending: &PendingOutputConfigurationInner) -> Self {
-        let mode = pending.mode.clone();
-        OutputConfiguration::Enabled {
-            mode,
-            position: pending.position,
-            transform: pending.transform,
-            scale: pending.scale,
-            adaptive_sync: pending.adaptive_sync,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -912,45 +888,43 @@ where
                 }
 
                 // Build the final configuration list
-                let final_conf =
-                    match pending
-                        .heads
-                        .iter()
-                        .map(|(head, conf)| {
-                            // Find the output for this head resource
-                            let output = mgmt_state
-                                .instances
-                                .iter()
-                                .filter(|inst| inst.obj == pending.manager)
-                                .find_map(|inst| {
-                                    inst.heads
-                                        .iter()
-                                        .find(|h| h.obj == *head)
-                                        .map(|h| h.output.clone())
-                                })
-                                .ok_or(zwlr_output_configuration_v1::Error::UnconfiguredHead)?;
+                let final_conf = match pending
+                    .heads
+                    .iter()
+                    .map(|(head, conf)| {
+                        // Find the output for this head resource
+                        let output = mgmt_state
+                            .instances
+                            .iter()
+                            .filter(|inst| inst.obj == pending.manager)
+                            .find_map(|inst| {
+                                inst.heads
+                                    .iter()
+                                    .find(|h| h.obj == *head)
+                                    .map(|h| h.output.clone())
+                            })
+                            .ok_or(zwlr_output_configuration_v1::Error::UnconfiguredHead)?;
 
-                            match conf {
-                                Some(conf_head) => {
-                                    let pending_inner =
-                                        conf_head.data::<PendingOutputConfiguration>().unwrap();
-                                    let inner = pending_inner.lock().unwrap();
-                                    let config = OutputConfiguration::from(&*inner);
-                                    Ok((output, config))
-                                }
-                                None => Ok((output, OutputConfiguration::Disabled)),
+                        match conf {
+                            Some(conf_head) => {
+                                let pending_inner =
+                                    conf_head.data::<PendingOutputConfiguration>().unwrap();
+                                let inner = pending_inner.lock().unwrap();
+                                Ok((output, Some(inner.clone())))
                             }
-                        })
-                        .collect::<Result<
-                            Vec<(Output, OutputConfiguration)>,
-                            zwlr_output_configuration_v1::Error,
-                        >>() {
-                        Ok(conf) => conf,
-                        Err(code) => {
-                            return obj
-                                .post_error(code, "head is not part of this manager".to_string());
+                            None => Ok((output, None)),
                         }
-                    };
+                    })
+                    .collect::<Result<
+                        Vec<(Output, Option<PendingOutputConfigurationInner>)>,
+                        zwlr_output_configuration_v1::Error,
+                    >>() {
+                    Ok(conf) => conf,
+                    Err(code) => {
+                        return obj
+                            .post_error(code, "head is not part of this manager".to_string());
+                    }
+                };
 
                 // Check that all outputs are configured
                 let configured_outputs: Vec<&Output> = final_conf.iter().map(|(o, _)| o).collect();
@@ -967,10 +941,10 @@ where
 
                 // Check that selected modes still exist
                 if final_conf.iter().any(|(o, c)| match c {
-                    OutputConfiguration::Enabled {
+                    Some(PendingOutputConfigurationInner {
                         mode: Some(ModeConfiguration::Mode(m)),
                         ..
-                    } => {
+                    }) => {
                         let mode_data = m.data::<OutputModeData>();
                         mode_data.is_none_or(|data| {
                             data.output.upgrade().as_ref() != Some(o)
