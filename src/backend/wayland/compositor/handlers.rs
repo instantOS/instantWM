@@ -21,6 +21,10 @@ use smithay::{
     xwayland::XWaylandClientData,
 };
 
+use super::protocols::output_management::{
+    ApplyResult, OutputConfiguration, OutputConfigurationTransaction, OutputManagementHandler,
+    OutputManagementState, OutputModeData,
+};
 use super::{
     focus::KeyboardFocusTarget,
     state::{WaylandClientState, WaylandState},
@@ -483,3 +487,87 @@ impl InputMethodHandler for WaylandState {
             .unwrap_or_default()
     }
 }
+
+// ---------------------------------------------------------------------------
+// wlr-output-management-unstable-v1 handler
+// ---------------------------------------------------------------------------
+
+impl OutputManagementHandler for WaylandState {
+    fn output_management_state(&mut self) -> &mut OutputManagementState {
+        &mut self.output_management_state
+    }
+
+    fn test_output_configuration(
+        &mut self,
+        conf: &[(smithay::output::Output, OutputConfiguration)],
+    ) -> bool {
+        use super::protocols::output_management::ModeConfiguration;
+
+        conf.iter()
+            .any(|(_, c)| matches!(c, OutputConfiguration::Enabled { .. }))
+            && conf.iter().all(|(output, config)| match config {
+                OutputConfiguration::Disabled => true,
+                OutputConfiguration::Enabled {
+                    mode,
+                    scale,
+                    adaptive_sync,
+                    ..
+                } => {
+                    scale.is_none_or(|scale| scale.is_finite() && scale > 0.0)
+                        && adaptive_sync.is_none_or(|enabled| {
+                            !enabled
+                                || self.output_vrr_metadata(&output.name()).is_some_and(
+                                    |metadata| {
+                                        !matches!(
+                                            metadata.vrr_support,
+                                            crate::backend::BackendVrrSupport::Unsupported
+                                        )
+                                    },
+                                )
+                        })
+                        && match mode {
+                            Some(ModeConfiguration::Mode(resource)) => {
+                                resource.data::<OutputModeData>().is_some_and(|data| {
+                                    data.output.upgrade().as_ref() == Some(output)
+                                        && output.modes().contains(&data.mode)
+                                })
+                            }
+                            Some(ModeConfiguration::Custom { size, refresh }) => {
+                                output.modes().iter().any(|mode| {
+                                    mode.size == *size
+                                        && refresh.is_none_or(|value| mode.refresh == value)
+                                })
+                            }
+                            None => output.current_mode().is_some(),
+                        }
+                }
+            })
+    }
+
+    fn apply_output_configuration(
+        &mut self,
+        conf: &[(smithay::output::Output, OutputConfiguration)],
+        configuration: smithay::reexports::wayland_protocols_wlr::output_management::v1::server::zwlr_output_configuration_v1::ZwlrOutputConfigurationV1,
+    ) -> ApplyResult {
+        if !self.test_output_configuration(conf) {
+            return ApplyResult::Failed;
+        }
+        self.runtime
+            .pending_output_configurations
+            .push(OutputConfigurationTransaction {
+                configuration,
+                heads: conf.to_vec(),
+            });
+        self.request_render();
+        ApplyResult::Deferred
+    }
+}
+
+// Wire `WaylandState`'s dispatching into `OutputManagementState`.  After this
+// macro expands, `WaylandState` implements every `Dispatch<…, …>` and
+// `GlobalDispatch<…, …>` for the wlr-output-management interfaces, forwarding
+// to the impls on `OutputManagementState`.  Without this, the
+// `where D: Dispatch<…> + OutputManagementHandler` bounds on
+// `OutputManagementState::new`, `add_heads`, etc. are not satisfied when
+// `D = WaylandState`.
+crate::delegate_output_management!(WaylandState);

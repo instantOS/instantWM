@@ -135,6 +135,15 @@ pub fn run() -> ! {
 
             // ── 2. Shared tick: layout, IPC, monitor config ─────────────
             super::common::event_loop_tick_and_request_render(&mut wm, state, &mut ipc_server);
+            let transactions = std::mem::take(&mut state.runtime.pending_output_configurations);
+            let outputs_changed = !transactions.is_empty();
+            for transaction in transactions {
+                state.finish_output_configuration(transaction, true);
+            }
+            if outputs_changed {
+                refresh_monitor_layout(&mut wm.ctx());
+                state.push_command(WmCommand::SyncLayerExclusiveZones);
+            }
 
             // Winit has no libinput devices to reconfigure, but clear the
             // pending bit so it doesn't remain queued forever (scroll_factor is

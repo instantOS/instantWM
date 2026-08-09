@@ -115,6 +115,7 @@ struct DrmOutputSpec {
     connector: connector::Handle,
     crtc: crtc::Handle,
     mode: control::Mode,
+    modes: Vec<control::Mode>,
     pixel_size: crate::types::Size,
     physical_size: crate::types::Size,
     name: String,
@@ -143,6 +144,7 @@ fn drm_output_spec(
         connector,
         crtc,
         mode,
+        modes: conn_info.modes().to_vec(),
         pixel_size: crate::types::Size::new(width as i32, height as i32),
         physical_size: crate::types::Size::new(physical_size.0 as i32, physical_size.1 as i32),
         name: format!(
@@ -219,7 +221,14 @@ fn initialize_drm_output_surface(
 
     OutputSurfaceEntry {
         crtc: spec.crtc,
-        surface,
+        surface: Some(surface),
+        connector: spec.connector,
+        modes: spec
+            .modes
+            .iter()
+            .copied()
+            .map(|mode| (OutputMode::from(mode), mode))
+            .collect(),
         output: output.clone(),
         rect: crate::types::Rect::from_position_and_size(
             crate::types::Point::new(x_offset, 0),
@@ -233,11 +242,8 @@ fn initialize_drm_output_surface(
 }
 
 fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offset: i32) -> Output {
-    let out_mode = OutputMode {
-        size: (spec.pixel_size.w, spec.pixel_size.h).into(),
-        refresh: (spec.mode.vrefresh() as i32) * 1000,
-    };
-    state.create_output_global(
+    let out_mode = OutputMode::from(spec.mode);
+    let output = state.create_output_global(
         spec.name.clone(),
         PhysicalProperties {
             size: (spec.physical_size.w, spec.physical_size.h).into(),
@@ -248,7 +254,11 @@ fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offse
         },
         out_mode,
         crate::types::Point::new(x_offset, 0),
-    )
+    );
+    for mode in &spec.modes {
+        output.add_mode(OutputMode::from(*mode));
+    }
+    output
 }
 
 fn configure_drm_output_vrr(
@@ -354,12 +364,17 @@ pub fn render_drm_output(
     );
     let capture_requests = take_drm_capture_requests(state, &entry.output);
 
-    let frame_result = match entry.surface.render_frame(
-        renderer,
-        &render_elements,
-        [0.05, 0.05, 0.07, 1.0],
-        drm_frame_flags(entry),
-    ) {
+    let frame_flags = drm_frame_flags(entry);
+    let frame_result = match entry
+        .surface
+        .as_mut()
+        .expect("enabled DRM output has a surface")
+        .render_frame(
+            renderer,
+            &render_elements,
+            [0.05, 0.05, 0.07, 1.0],
+            frame_flags,
+        ) {
         Ok(result) => result,
         Err(err) => {
             log::warn!("render_frame: {:?}", err);
@@ -392,7 +407,12 @@ pub fn render_drm_output(
         presentation_feedback: collect_presentation_feedback(state, entry, &frame_result.states),
     };
 
-    match entry.surface.queue_frame(frame_metadata) {
+    match entry
+        .surface
+        .as_mut()
+        .expect("enabled DRM output has a surface")
+        .queue_frame(frame_metadata)
+    {
         Ok(()) => {}
         Err(FrameError::EmptyFrame) => {
             return RenderOutcome::EmptyFrame;

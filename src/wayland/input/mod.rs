@@ -112,6 +112,9 @@ pub fn handle_resize(
         .map(|geo| geo.loc)
         .unwrap_or_default();
     state.space.map_output(output, output_loc);
+    state
+        .output_management_state
+        .update_heads::<crate::backend::wayland::compositor::WaylandState>(std::iter::once(output));
     layer_map_for_output(output).arrange();
 
     wm.core.config.derived.display.width = safe_size.w;

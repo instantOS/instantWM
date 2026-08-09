@@ -67,6 +67,7 @@ use smithay::{
 };
 
 use super::protocols::ext_workspace::ExtWorkspaceManagerState;
+use super::protocols::output_management::OutputManagementState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::core_state::CoreState;
@@ -159,6 +160,7 @@ pub struct WaylandState {
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
     pub ext_workspace_state: ExtWorkspaceManagerState,
+    pub output_management_state: OutputManagementState,
     /// Current session lock state.
     pub lock_state: SessionLockState,
     /// Lock surfaces per output (keyed by output name).
@@ -313,6 +315,8 @@ pub struct WaylandRuntimeState {
     pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
+    pub pending_output_configurations:
+        Vec<super::protocols::output_management::OutputConfigurationTransaction>,
     pub intercepted_key_releases: HashSet<Keycode>,
     pub shared_scene_cache: Option<(
         u64,
@@ -347,6 +351,7 @@ impl Default for WaylandRuntimeState {
             pending_winit_resize: None,
             winit_close_requested: false,
             output_enabled: HashMap::new(),
+            pending_output_configurations: Vec::new(),
             intercepted_key_releases: HashSet::new(),
             shared_scene_cache: None,
         }
@@ -483,6 +488,7 @@ impl WaylandState {
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let ext_workspace_state = ExtWorkspaceManagerState::new(&dh);
+        let output_management_state = OutputManagementState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -537,6 +543,7 @@ impl WaylandState {
             idle_notify_manager_state,
             session_lock_manager_state,
             ext_workspace_state,
+            output_management_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
@@ -971,7 +978,26 @@ impl WaylandState {
                 vrr_mode: VrrMode::Auto,
                 vrr_enabled: enabled,
             });
+        let changed = entry.vrr_enabled != enabled;
         entry.vrr_enabled = enabled;
+        if changed
+            && let Some(output) = self
+                .output_management_state
+                .outputs()
+                .iter()
+                .find(|output| output.name() == output_name)
+                .cloned()
+        {
+            if let Some(output_state) =
+                output
+                    .user_data()
+                    .get::<super::protocols::output_management::OutputManagementOutputState>()
+            {
+                output_state.set(output_state.enabled(), enabled);
+            }
+            self.output_management_state
+                .update_heads::<Self>(std::iter::once(&output));
+        }
     }
 
     pub fn output_vrr_metadata(&self, output_name: &str) -> Option<&WaylandOutputMetadata> {

@@ -4,13 +4,22 @@
 //! including creating outputs, listing displays, and configuring display modes.
 
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::utils::Transform;
+use std::sync::Mutex;
 
 use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
 
+use super::protocols::output_management::{
+    ModeConfiguration, OutputConfiguration, OutputConfigurationTransaction,
+    OutputManagementOutputState, OutputModeData,
+};
 use super::state::WaylandState;
+
+struct OutputGlobal(Mutex<Option<GlobalId>>);
 
 fn parse_transform(transform_str: &str) -> Option<Transform> {
     match transform_str.to_lowercase().as_str() {
@@ -27,6 +36,106 @@ fn parse_transform(transform_str: &str) -> Option<Transform> {
 }
 
 impl WaylandState {
+    fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
+        let Some(global) = output.user_data().get::<OutputGlobal>() else {
+            return;
+        };
+        let mut global_id = global.0.lock().unwrap();
+        match (enabled, global_id.take()) {
+            (true, None) => {
+                *global_id = Some(output.create_global::<Self>(&self.display_handle));
+            }
+            (true, Some(existing)) => {
+                *global_id = Some(existing);
+            }
+            (false, Some(existing)) => {
+                self.display_handle.remove_global::<Self>(existing);
+            }
+            (false, None) => {}
+        }
+    }
+
+    pub fn finish_output_configuration(
+        &mut self,
+        transaction: OutputConfigurationTransaction,
+        succeeded: bool,
+    ) {
+        if !succeeded {
+            transaction.configuration.failed();
+            return;
+        }
+
+        let changed_outputs: Vec<_> = transaction
+            .heads
+            .iter()
+            .map(|(output, _)| output.clone())
+            .collect();
+
+        for (output, config) in &transaction.heads {
+            let output_state = output
+                .user_data()
+                .get::<OutputManagementOutputState>()
+                .expect("output-management state is initialized when a head is added");
+            match config {
+                OutputConfiguration::Disabled => {
+                    output_state.set(false, false);
+                    self.runtime.output_enabled.insert(output.name(), false);
+                    self.space.unmap_output(output);
+                    self.set_output_global_enabled(output, false);
+                    self.fail_pending_captures_for_output(output);
+                }
+                OutputConfiguration::Enabled {
+                    mode,
+                    position,
+                    transform,
+                    scale,
+                    adaptive_sync,
+                } => {
+                    let mode = match mode {
+                        Some(ModeConfiguration::Mode(resource)) => {
+                            resource.data::<OutputModeData>().map(|data| data.mode)
+                        }
+                        Some(ModeConfiguration::Custom { size, refresh }) => {
+                            output.modes().into_iter().find(|candidate| {
+                                candidate.size == *size
+                                    && refresh.is_none_or(|value| candidate.refresh == value)
+                            })
+                        }
+                        None => output.current_mode(),
+                    };
+                    let location = position.unwrap_or_else(|| output.current_location());
+                    let adaptive_sync =
+                        adaptive_sync.unwrap_or_else(|| output_state.adaptive_sync());
+                    output.change_current_state(
+                        mode,
+                        transform.or(Some(output.current_transform())),
+                        scale
+                            .map(Scale::Fractional)
+                            .or(Some(output.current_scale())),
+                        Some(location),
+                    );
+                    self.space.map_output(output, location);
+                    self.set_output_global_enabled(output, true);
+                    self.runtime.output_enabled.insert(output.name(), true);
+                    output_state.set(true, adaptive_sync);
+                    self.set_output_vrr_mode(
+                        &output.name(),
+                        if adaptive_sync {
+                            VrrMode::On
+                        } else {
+                            VrrMode::Off
+                        },
+                    );
+                }
+            }
+        }
+
+        self.output_management_state
+            .update_heads::<Self>(changed_outputs.iter());
+        transaction.configuration.succeeded();
+        self.request_render();
+    }
+
     /// Create and register a default output.
     pub fn create_output(
         &mut self,
@@ -59,6 +168,10 @@ impl WaylandState {
         self.set_output_vrr_mode(name, VrrMode::Off);
         self.set_output_vrr_enabled(name, false);
 
+        // Register the new output with wlr-output-management.
+        self.output_management_state
+            .add_heads::<Self>(std::iter::once(&output));
+
         output
     }
 
@@ -77,7 +190,10 @@ impl WaylandState {
             Some((location.x, location.y).into()),
         );
         output.set_preferred(mode);
-        let _global = output.create_global::<WaylandState>(&self.display_handle);
+        let global = output.create_global::<WaylandState>(&self.display_handle);
+        output
+            .user_data()
+            .insert_if_missing_threadsafe(|| OutputGlobal(Mutex::new(Some(global))));
         output
     }
 
@@ -111,6 +227,8 @@ impl WaylandState {
                 .find(|mode| mode.size.w == size.w && mode.size.h == size.h)
         {
             output.change_current_state(Some(mode), None, None, None);
+            self.output_management_state
+                .update_heads::<Self>(std::iter::once(&output));
         }
     }
 
@@ -132,6 +250,7 @@ impl WaylandState {
             })
             .collect();
 
+        let mut changed_outputs = Vec::new();
         for output in outputs {
             if display != "*" && output.name() != display {
                 continue;
@@ -168,6 +287,10 @@ impl WaylandState {
 
             if let Some(enable) = config.enable {
                 self.runtime.output_enabled.insert(output.name(), enable);
+                if let Some(output_state) = output.user_data().get::<OutputManagementOutputState>()
+                {
+                    output_state.set(enable, output_state.adaptive_sync());
+                }
             }
 
             let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));
@@ -195,7 +318,24 @@ impl WaylandState {
                 Some(current_scale),
                 Some(current_location),
             );
-            self.space.map_output(&output, current_location);
+            if self
+                .runtime
+                .output_enabled
+                .get(&output.name())
+                .copied()
+                .unwrap_or(true)
+            {
+                self.space.map_output(&output, current_location);
+                self.set_output_global_enabled(&output, true);
+            } else {
+                self.space.unmap_output(&output);
+                self.set_output_global_enabled(&output, false);
+            }
+            changed_outputs.push(output);
+        }
+        if !changed_outputs.is_empty() {
+            self.output_management_state
+                .update_heads::<Self>(changed_outputs.iter());
         }
     }
 }

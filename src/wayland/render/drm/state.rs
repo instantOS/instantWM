@@ -4,8 +4,9 @@ use smithay::backend::allocator::gbm::GbmAllocator;
 use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager};
+use smithay::output::Mode as OutputMode;
 use smithay::output::Output;
-use smithay::reexports::drm::control::crtc;
+use smithay::reexports::drm::control::{self, connector, crtc};
 
 use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::VrrMode;
@@ -28,8 +29,11 @@ pub struct OutputHitRegion {
 
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
-    pub surface:
+    pub surface: Option<
         DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>,
+    >,
+    pub connector: connector::Handle,
+    pub modes: Vec<(OutputMode, control::Mode)>,
     pub output: Output,
     pub rect: crate::types::Rect,
     pub vrr_support: BackendVrrSupport,
