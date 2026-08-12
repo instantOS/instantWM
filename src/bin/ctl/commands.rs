@@ -83,8 +83,6 @@ pub enum MonitorAction {
         #[arg(default_value = "focused")]
         identifier: String,
     },
-    /// Turn display power on or off for the focused monitor.
-    Dpms { state: String },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -472,12 +470,6 @@ pub enum CommandKind {
     UpdateStatus { text: String },
     /// Set the wallpaper image path.
     Wallpaper { path: String },
-    /// Turn display power on or off.
-    Dpms {
-        #[arg(default_value = "focused")]
-        identifier: String,
-        state: String,
-    },
     /// Read or update runtime configuration values.
     Config {
         #[command(subcommand)]
@@ -500,30 +492,6 @@ pub struct Cli {
     pub json: bool,
     #[command(subcommand)]
     pub command: CommandKind,
-}
-
-fn parse_dpms_state(state: &str) -> bool {
-    match state.to_ascii_lowercase().as_str() {
-        "on" | "enable" | "enabled" => true,
-        "off" | "disable" | "disabled" => false,
-        _ => {
-            eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-            process::exit(1);
-        }
-    }
-}
-
-fn dpms_command(identifier: String, state: &str) -> MonitorCommand {
-    MonitorCommand::Set {
-        identifier,
-        resolution: None,
-        refresh_rate: None,
-        position: None,
-        scale: None,
-        transform: None,
-        enable: Some(parse_dpms_state(state)),
-        vrr: None,
-    }
 }
 
 impl From<MonitorAction> for MonitorCommand {
@@ -562,7 +530,6 @@ impl From<MonitorAction> for MonitorCommand {
             MonitorAction::Modes { identifier } => Self::Modes {
                 identifier: Some(identifier),
             },
-            MonitorAction::Dpms { state } => dpms_command("focused".to_string(), &state),
         }
     }
 }
@@ -816,9 +783,6 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::Mouse { action } => Self::Input(action.into()),
             CommandKind::Mode { action } => Self::Mode(action.into()),
             CommandKind::Wallpaper { path } => Self::Wallpaper(path),
-            CommandKind::Dpms { identifier, state } => {
-                Self::Monitor(dpms_command(identifier, &state))
-            }
             CommandKind::UpdateStatus { text } => Self::UpdateStatus(text),
             CommandKind::Config { action } => Self::Config(action.into()),
             CommandKind::Test { action } => Self::Test(test_command(action)),
