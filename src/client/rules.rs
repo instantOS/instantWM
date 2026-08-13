@@ -151,31 +151,28 @@ fn apply_rules_impl(
     // application (not on property refreshes). On a match the rule is
     // removed from the pending list; expired entries are dropped lazily.
     let mut matched_pending_id: Option<u64> = None;
-    if application == RuleApplication::Initial {
+    if application == RuleApplication::Initial
+        && !state.behavior.pending_tmp_rules.is_empty()
+    {
         let now = std::time::Instant::now();
+        // Sweep expired entries, then locate the first match by index.
+        // Removing that index yields an owned entry, so `apply_rule` can
+        // borrow `state` mutably without first cloning every pending rule
+        // into a snapshot (important on this hot path: most users never queue
+        // any pending rules).
         state
             .behavior
             .pending_tmp_rules
             .retain(|p| p.deadline > now);
-        let pending_snap: Vec<(u64, crate::types::Rule)> = state
+        let matched_idx = state
             .behavior
             .pending_tmp_rules
             .iter()
-            .map(|p| (p.id, p.rule.clone()))
-            .collect();
-        for (id, rule) in &pending_snap {
-            if !rule.matches(&props.class, &props.instance, &props.title) {
-                continue;
-            }
-            apply_rule(state, win, rule, &mut placement, bar_height);
-            matched_pending_id = Some(*id);
-            break;
-        }
-        if let Some(id) = matched_pending_id {
-            state
-                .behavior
-                .pending_tmp_rules
-                .retain(|p| p.id != id);
+            .position(|p| p.rule.matches(&props.class, &props.instance, &props.title));
+        if let Some(idx) = matched_idx {
+            let entry = state.behavior.pending_tmp_rules.remove(idx);
+            apply_rule(state, win, &entry.rule, &mut placement, bar_height);
+            matched_pending_id = Some(entry.id);
         }
     }
 
