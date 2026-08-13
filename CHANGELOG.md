@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20](https://github.com/instantOS/instantWM/compare/v0.1.19...v0.1.20) - 2026-08-09
+
+### Fixed
+
+- wayland positioning fix
+- animate stationary-center Wayland resizes
+- preserve Wayland resize anchors through commits
+- animate the farther-moving resize edge
+- hide Wayland shrinks outside outputs
+- grow Wayland surfaces outside outputs
+- tolerate mostly offscreen Wayland resizes
+
+### Other
+
+- fix animation pacing, optimize maximized thingy
+- bump stuff
+- add more help text
+- rename misnomer option
+- fix weird animation stuff
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fmt
+- remove dead code
+- fix busy systray icon fetch
+- replace buggy center anchoring
+- unify some stuff
+- better model resize timing
+- optimize redundant ops
+- fix spawn flash
+- add mic mute keybind
+- bump deps
+- dedupe randr
+- unify drm/winit more
+- unify screen capture
+- fix focus history thing
+- fix floating transition thingy
+- remove defunct bar position feature
+- fix sidebar drag
+- make input more backend agnostic
+- add bottom bar
+- init bottomdrag gesture and fix super + right click drag
+- fix resize drag thingy
+- init bottom drag
+- bar indicator
+- more gestures
+- refactor gestures
+- add border marker thingy
+- fix gesture color preview
+- more consistent naming
+- rename function
+- refactor wm mode
+- init display config protocol
+- refactor output config
+- some renames
+- fix full screen spawn bug
+- dedupe prior refactor
+- less mutex
+
 ## [0.1.19](https://github.com/instantOS/instantWM/compare/v0.1.18...v0.1.19) - 2026-08-02
 
 ### Changed
