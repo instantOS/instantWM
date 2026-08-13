@@ -20,6 +20,148 @@ mod tests {
     }
 
     #[test]
+    fn parses_pending_tmp_rule_add_defaults_timeout_30s() {
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "pending-tmp-rule",
+            "add",
+            "--float",
+        ]);
+        match cli.command {
+            ctl::CommandKind::PendingTmpRule {
+                action:
+                    ctl::commands::PendingTmpRuleAction::Add {
+                        float,
+                        tile,
+                        timeout_ms,
+                        class,
+                        ..
+                    },
+            } => {
+                assert!(float);
+                assert!(!tile);
+                assert_eq!(timeout_ms, 30_000);
+                assert!(class.is_none());
+            }
+            other => panic!("expected PendingTmpRule Add, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_pending_tmp_rule_add_with_class_and_explicit_timeout() {
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "pending-tmp-rule",
+            "add",
+            "--class",
+            "mpv",
+            "--float",
+            "--tag",
+            "5",
+            "--timeout-ms",
+            "10000",
+        ]);
+        match cli.command {
+            ctl::CommandKind::PendingTmpRule {
+                action:
+                    ctl::commands::PendingTmpRuleAction::Add {
+                        class,
+                        float,
+                        tag,
+                        timeout_ms,
+                        tile,
+                        ..
+                    },
+            } => {
+                assert_eq!(class.as_deref(), Some("mpv"));
+                assert!(float);
+                assert!(!tile);
+                assert_eq!(tag, Some(5));
+                assert_eq!(timeout_ms, 10_000);
+            }
+            other => panic!("expected PendingTmpRule Add, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pending_tmp_rule_add_rejects_simultaneous_float_and_tile() {
+        let cli = Cli::try_parse_from([
+            "instantwmctl",
+            "pending-tmp-rule",
+            "add",
+            "--float",
+            "--tile",
+        ]);
+        assert!(cli.is_err(), "clap should reject --float with --tile");
+    }
+
+    #[test]
+    fn pending_tmp_rule_add_rejects_zero_timeout() {
+        // Rust guarantees timeout_ms: u64, but the CLI defaults to 30_000 — the
+        // server (not clap) is responsible for rejecting --timeout-ms 0. We
+        // only assert that the flag is wired.
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "pending-tmp-rule",
+            "add",
+            "--timeout-ms",
+            "0",
+        ]);
+        match cli.command {
+            ctl::CommandKind::PendingTmpRule {
+                action:
+                    ctl::commands::PendingTmpRuleAction::Add { timeout_ms, .. },
+            } => assert_eq!(timeout_ms, 0),
+            other => panic!("expected PendingTmpRule Add, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_pending_tmp_rule_list_and_cancel() {
+        let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "list"]);
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::PendingTmpRule {
+                action: ctl::commands::PendingTmpRuleAction::List,
+            }
+        ));
+
+        let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "cancel", "42"]);
+        match cli.command {
+            ctl::CommandKind::PendingTmpRule {
+                action: ctl::commands::PendingTmpRuleAction::Cancel { id },
+            } => assert_eq!(id, 42),
+            other => panic!("expected PendingTmpRule Cancel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pending_tmp_rule_add_translates_into_ipc_command() {
+        use instantwm::ipc_types::PendingTmpRuleCmd;
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "pending-tmp-rule",
+            "add",
+            "--class",
+            "mpv",
+            "--float",
+        ]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(cmd, IpcCommand::PendingTmpRule(_)));
+        if let IpcCommand::PendingTmpRule(PendingTmpRuleCmd::Add {
+            class,
+            is_floating,
+            timeout_ms,
+            ..
+        }) = cmd
+        {
+            assert_eq!(class.as_deref(), Some("mpv"));
+            assert_eq!(is_floating, Some(true));
+            assert_eq!(timeout_ms, 30_000);
+        }
+    }
+
+    #[test]
     fn parses_scratchpad_create_status_flag() {
         let cli = Cli::parse_from([
             "instantwmctl",

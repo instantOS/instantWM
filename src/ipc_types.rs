@@ -2,7 +2,7 @@ pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
 pub use crate::layouts::LayoutCommand;
 pub use crate::types::{
-    FocusFollowsMouseMode, KeyboardLayout, MonitorDirection, SpecialNext, TagMask, ToggleAction,
+    FocusFollowsMouseMode, KeyboardLayout, MonitorDirection, TagMask, ToggleAction,
 };
 use bincode::{Decode, Encode};
 
@@ -216,6 +216,50 @@ pub enum TagCommand {
     ResetNames,
 }
 
+/// Runtime commands for [`PendingTmpRule`]s (the `pending-tmp-rule` IPC).
+#[derive(Debug, Clone, Encode, Decode, serde::Serialize, serde::Deserialize)]
+pub enum PendingTmpRuleCmd {
+    /// Add a new one-shot rule and return its assigned id.
+    Add {
+        /// Window class to match.
+        class: Option<String>,
+        /// Window instance to match.
+        instance: Option<String>,
+        /// Window title substring to match.
+        title: Option<String>,
+        /// Floating behavior for the matched window.
+        /// `None` leaves the existing placement; `Some(true)` forces floating,
+        /// `Some(false)` forces tiled.
+        is_floating: Option<bool>,
+        /// 1-indexed tag number to assign; `None` leaves tags alone.
+        /// Stored on the server as a [`crate::types::TagMask`].
+        tag: Option<u32>,
+        /// Backend monitor `num` (the integer the backend reports, distinct
+        /// from the spatial position). `None` leaves the placement alone.
+        on_monitor: Option<i32>,
+        /// Time-to-live in milliseconds. `0` is invalid at the CLI layer.
+        timeout_ms: u64,
+    },
+    /// List all currently-pending one-shot rules.
+    List,
+    /// Cancel a pending rule by id.
+    Cancel(u64),
+}
+
+/// Response payload for `PendingTmpRuleCmd::List`.
+#[derive(Debug, Clone, Encode, Decode, serde::Serialize, serde::Deserialize)]
+pub struct PendingTmpRuleInfo {
+    pub id: u64,
+    pub class: Option<String>,
+    pub instance: Option<String>,
+    pub title: Option<String>,
+    pub is_floating: Option<bool>,
+    pub tag: Option<u32>,
+    pub on_monitor: Option<i32>,
+    /// Milliseconds remaining until the rule expires.
+    pub ms_remaining: u64,
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum WindowCommand {
     Info(Option<u32>),
@@ -310,7 +354,8 @@ pub enum IpcCommand {
     FollowMon(MonitorDirection),
     Layout(LayoutCommand),
     Border(Option<u32>),
-    SpecialNext(SpecialNext),
+    /// Add, list, or cancel runtime-added one-shot window rules.
+    PendingTmpRule(PendingTmpRuleCmd),
     UpdateStatus(String),
     Monitor(MonitorCommand),
     Scratchpad(ScratchpadCommand),
@@ -570,6 +615,10 @@ pub enum Response {
     Theme(String),
     /// Available colour theme names.
     ThemeList(Vec<String>),
+    /// Listing of currently-pending one-shot rules.
+    PendingTmpRuleList(Vec<PendingTmpRuleInfo>),
+    /// Ack of a successful Add command. The id is needed for cancel/inspect.
+    PendingTmpRuleAdded { id: u64, timeout_ms: u64 },
 }
 
 impl Response {

@@ -3,7 +3,7 @@ use crate::layouts::LayoutCommand;
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 
-use crate::types::{MonitorDirection, SpecialNext};
+use crate::types::MonitorDirection;
 use crate::wm::Wm;
 use std::process::Command;
 
@@ -97,11 +97,6 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
     {
         client.set_border_width(val as i32);
     }
-    Response::ok()
-}
-
-pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
-    wm.ctx().core_mut().behavior_mut().set_special_next(mode);
     Response::ok()
 }
 

@@ -616,7 +616,10 @@ pub struct WmBehavior {
     pub animated: bool,
     pub focus_follows_mouse: FocusFollowsMouseMode,
     pub focus_follows_float_mouse: bool,
-    pub specialnext: SpecialNext,
+    /// Runtime-added one-shot rules waiting to match the next matching window.
+    /// Each entry has an absolute deadline; see [`crate::client::rules`] for
+    /// the matching/consumption path.
+    pub pending_tmp_rules: Vec<crate::types::PendingTmpRule>,
     /// Current active mode (sway-like modes).
     pub current_mode: ActiveWmMode,
 }
@@ -627,7 +630,7 @@ impl Default for WmBehavior {
             animated: true,
             focus_follows_mouse: FocusFollowsMouseMode::Normal,
             focus_follows_float_mouse: true,
-            specialnext: SpecialNext::None,
+            pending_tmp_rules: Vec::new(),
             current_mode: ActiveWmMode::Default,
         }
     }
@@ -646,10 +649,6 @@ impl WmBehavior {
 
     pub fn toggle_animated(&mut self, action: ToggleAction) {
         action.apply(&mut self.animated);
-    }
-
-    pub fn set_special_next(&mut self, value: SpecialNext) {
-        self.specialnext = value;
     }
 
     pub fn set_focus_follows_mouse(&mut self, mode: FocusFollowsMouseMode) {

@@ -25,6 +25,67 @@ pub fn format_response(response: &Response, json: bool) {
         Response::Message(msg) => print!("{}", msg),
         Response::Theme(name) => format_theme(name, json),
         Response::ThemeList(themes) => format_theme_list(themes, json),
+        Response::PendingTmpRuleList(rules) => format_pending_tmp_rule_list(rules, json),
+        Response::PendingTmpRuleAdded { id, timeout_ms } => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "id": id,
+                        "timeout_ms": timeout_ms,
+                    })
+                );
+            } else {
+                println!("pending-tmp-rule added: id={id} timeout_ms={timeout_ms}");
+            }
+        }
+    }
+}
+
+fn format_pending_tmp_rule_list(
+    rules: &[instantwm::ipc_types::PendingTmpRuleInfo],
+    json: bool,
+) {
+    if json {
+        println!("{}", serde_json::to_string_pretty(rules).unwrap());
+        return;
+    }
+    if rules.is_empty() {
+        println!("No pending tmp rules");
+        return;
+    }
+    fn render<T: std::fmt::Display>(opt: Option<T>) -> String {
+        opt.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
+    }
+    fn render_ms(ms: u64) -> String {
+        if ms >= 60_000 {
+            format!("{}m{}s", ms / 60_000, (ms % 60_000) / 1_000)
+        } else if ms >= 1_000 {
+            format!("{}.{}s", ms / 1_000, (ms % 1_000) / 100)
+        } else {
+            format!("{ms}ms")
+        }
+    }
+    println!(
+        "{:<5} {:<14} {:<14} {:<14} {:<7} {:<4} {:<10} {:<8}",
+        "ID", "CLASS", "INSTANCE", "TITLE", "FLOAT", "TAG", "MONITOR", "REMAINING"
+    );
+    for r in rules {
+        println!(
+            "{:<5} {:<14} {:<14} {:<14} {:<7} {:<4} {:<10} {:<8}",
+            r.id,
+            render(r.class.as_ref().map(|s| truncate_with_ellipsis(s, 14))),
+            render(r.instance.as_ref().map(|s| truncate_with_ellipsis(s, 14))),
+            render(r.title.as_ref().map(|s| truncate_with_ellipsis(s, 14))),
+            match r.is_floating {
+                Some(true) => "yes",
+                Some(false) => "no",
+                None => "-",
+            },
+            render(r.tag),
+            render(r.on_monitor),
+            render_ms(r.ms_remaining)
+        );
     }
 }
 

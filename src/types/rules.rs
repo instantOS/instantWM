@@ -5,6 +5,7 @@
 use crate::types::TagMask;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::time::Instant;
 
 /// Floating behavior for window rules.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,5 +84,48 @@ impl Rule {
 #[inline]
 fn bytes_contains(haystack: &[u8], needle: &str) -> bool {
     let nb = needle.as_bytes();
+    // `windows(0)` panics; an empty matcher is degenerate, so treat it as
+    // "matches everything" like `str::contains("")`.
+    if nb.is_empty() {
+        return true;
+    }
     haystack.windows(nb.len()).any(|w| w == nb)
+}
+
+/// A rule queued at runtime to apply to the next matching window.
+///
+/// Distinct from config-loaded [`Rule`]s: every entry here has an absolute
+/// deadline and is consumed on first match (and only on initial rule
+/// application, never on property refresh). Expired entries are dropped
+/// lazily by [`crate::client::rules`].
+#[derive(Debug, Clone)]
+pub struct PendingTmpRule {
+    /// Unique id within the WM session, used by `--cancel` and the `--list`
+    /// output.
+    pub id: u64,
+    /// The rule that will be applied on match.
+    pub rule: Rule,
+    /// Absolute deadline; the entry is dropped when `Instant::now()` passes
+    /// this. The CLI always requires a positive TTL.
+    pub deadline: Instant,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_matcher_does_not_panic() {
+        // `windows(0)` would panic, so an empty matcher must be handled.
+        let rule = Rule {
+            class: Some(Cow::Borrowed("")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            is_floating: None,
+            monitor: MonitorRule::Any,
+        };
+        // Empty matcher matches everything rather than panicking.
+        assert!(rule.matches("anything", "anything", "anything"));
+    }
 }

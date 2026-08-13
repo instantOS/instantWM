@@ -2,8 +2,8 @@ use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
     ConfigCommand, FocusFollowsMouseMode, InputCommand, IpcCommand, KeyboardCommand,
     KeyboardLayout, LayoutCommand, ModeCommand, MonitorCommand, MonitorDirection,
-    ScratchpadCommand, ScratchpadInitialStatus, SpecialNext, TagCommand, TestCommand, ToggleAction,
-    ToggleCommand, Transform, VrrMode, WindowCommand,
+    PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand,
+    TestCommand, ToggleAction, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
 use std::process;
 use std::str::FromStr;
@@ -385,6 +385,51 @@ pub enum ConfigAction {
     },
 }
 
+/// Subcommands of `pending-tmp-rule` — runtime-added one-shot window rules.
+#[derive(Debug, Clone, Subcommand)]
+pub enum PendingTmpRuleAction {
+    /// Add a new pending tmp rule and print its id.
+    ///
+    /// With no `--class`/`--instance`/`--title` flag, the rule matches the
+    /// *next* window regardless of identity — useful for forcing the very
+    /// next spawn (e.g. an app launched via `spawn`) into a particular
+    /// placement. With any matcher set, only a window whose
+    /// class/instance/title contains the supplied string consumes it.
+    Add {
+        /// Window class to match.
+        #[arg(long)]
+        class: Option<String>,
+        /// Window instance to match.
+        #[arg(long)]
+        instance: Option<String>,
+        /// Window title substring to match.
+        #[arg(long)]
+        title: Option<String>,
+        /// Force the matched window to be floating.
+        #[arg(long, conflicts_with = "tile")]
+        float: bool,
+        /// Force the matched window to be tiled.
+        #[arg(long, conflicts_with = "float")]
+        tile: bool,
+        /// 1-indexed tag number to assign to the matched window.
+        #[arg(long)]
+        tag: Option<u32>,
+        /// Backend monitor index to place the matched window on.
+        #[arg(long, value_name = "INDEX")]
+        on_monitor: Option<i32>,
+        /// Time-to-live in milliseconds. Must be > 0; default 30_000.
+        #[arg(long, default_value_t = 30_000)]
+        timeout_ms: u64,
+    },
+    /// List all currently-pending one-shot rules.
+    List,
+    /// Cancel a pending rule by id.
+    Cancel {
+        /// Rule id (from `--list` or the value returned by `add`).
+        id: u64,
+    },
+}
+
 #[derive(Debug, Clone, Subcommand)]
 pub enum CommandKind {
     /// Run a named compositor action, or list available actions.
@@ -443,8 +488,15 @@ pub enum CommandKind {
     },
     /// Set the border width for windows.
     Border { width: Option<u32> },
-    /// Select the next special window behavior.
-    SpecialNext { mode: SpecialNext },
+    /// Add, list, or cancel runtime-added one-shot window rules.
+    ///
+    /// Pending tmp rules apply to the next matching window's initial rule
+    /// application and are then consumed. Each entry has a TTL (default
+    /// 30 seconds) and is dropped if the deadline passes first.
+    PendingTmpRule {
+        #[command(subcommand)]
+        action: PendingTmpRuleAction,
+    },
     /// Manage keyboard layouts and input settings.
     Keyboard {
         #[command(subcommand)]
@@ -735,6 +787,39 @@ impl From<ConfigAction> for ConfigCommand {
     }
 }
 
+impl From<PendingTmpRuleAction> for PendingTmpRuleCmd {
+    fn from(action: PendingTmpRuleAction) -> Self {
+        match action {
+            PendingTmpRuleAction::Add {
+                class,
+                instance,
+                title,
+                float,
+                tile,
+                tag,
+                on_monitor,
+                timeout_ms,
+            } => Self::Add {
+                class,
+                instance,
+                title,
+                is_floating: if float {
+                    Some(true)
+                } else if tile {
+                    Some(false)
+                } else {
+                    None
+                },
+                tag,
+                on_monitor,
+                timeout_ms,
+            },
+            PendingTmpRuleAction::List => Self::List,
+            PendingTmpRuleAction::Cancel { id } => Self::Cancel(id),
+        }
+    }
+}
+
 impl From<CommandKind> for IpcCommand {
     fn from(command: CommandKind) -> Self {
         match command {
@@ -777,7 +862,7 @@ impl From<CommandKind> for IpcCommand {
                 }
             }
             CommandKind::Border { width } => Self::Border(width),
-            CommandKind::SpecialNext { mode } => Self::SpecialNext(mode),
+            CommandKind::PendingTmpRule { action } => Self::PendingTmpRule(action.into()),
             CommandKind::Keyboard { action } => Self::Keyboard(action.into()),
             CommandKind::Scratchpad { action } => Self::Scratchpad(action.into()),
             CommandKind::Mouse { action } => Self::Input(action.into()),

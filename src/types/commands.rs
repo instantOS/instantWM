@@ -1,6 +1,6 @@
 //! Command action types.
 //!
-//! Types for toggle actions, special next actions, and other command-related enums.
+//! Types for toggle actions and other command-related enums.
 
 /// Action to perform on a boolean toggle setting.
 ///
@@ -108,33 +108,5 @@ mod focus_follows_mouse_tests {
         assert!(!Mode::Normal.allows(Trigger::SceneChange));
         assert!(Mode::Force.allows(Trigger::PointerMotion));
         assert!(Mode::Force.allows(Trigger::SceneChange));
-    }
-}
-
-/// Special next window action state.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    bincode::Decode,
-    bincode::Encode,
-    serde::Serialize,
-    serde::Deserialize,
-    clap::ValueEnum,
-)]
-pub enum SpecialNext {
-    /// No special next action.
-    #[default]
-    None,
-    /// Focus next floating window.
-    Float,
-}
-
-impl From<u32> for SpecialNext {
-    fn from(value: u32) -> Self {
-        if value == 0 { Self::None } else { Self::Float }
     }
 }

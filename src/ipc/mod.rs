@@ -17,6 +17,7 @@ pub mod input;
 pub mod keyboard;
 pub mod mode;
 pub mod monitor;
+pub mod pending_tmp_rule;
 pub mod scratchpad;
 pub mod tag;
 pub mod test;
@@ -253,7 +254,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::FollowMon(dir) => general::follow_mon(wm, dir),
         IpcCommand::Layout(val) => general::set_layout(wm, val),
         IpcCommand::Border(arg) => general::set_border(wm, arg),
-        IpcCommand::SpecialNext(arg) => general::set_special_next_cmd(wm, arg),
+        IpcCommand::PendingTmpRule(cmd) => pending_tmp_rule::handle_pending_tmp_rule(wm, cmd),
         IpcCommand::UpdateStatus(text) => general::update_status(wm, text),
         IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(wm, cmd),
         IpcCommand::Window(cmd) => window::handle_window_command(wm, cmd),
@@ -305,7 +306,6 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         | IpcCommand::Spawn(_)
         | IpcCommand::WarpFocus
         | IpcCommand::Layout(_)
-        | IpcCommand::SpecialNext(_)
         | IpcCommand::UpdateStatus(_)
         | IpcCommand::Monitor(MonitorCommand::List | MonitorCommand::Modes { .. })
         | IpcCommand::Scratchpad(
@@ -333,6 +333,7 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         | IpcCommand::Mode(_)
         | IpcCommand::Config(_)
         | IpcCommand::Test(_)
+        | IpcCommand::PendingTmpRule(_)
         | IpcCommand::GetTheme
         | IpcCommand::SetTheme(_)
         | IpcCommand::ListThemes

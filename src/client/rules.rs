@@ -4,7 +4,7 @@ use crate::client::LaunchContext;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
 use crate::types::{
-    ClientMode, ClientPlacement, MonitorRule, Rect, RuleFloat, SizeHints, SpecialNext, TagMask,
+    ClientMode, ClientPlacement, MonitorRule, Rect, RuleFloat, SizeHints, TagMask,
     WindowId,
 };
 
@@ -144,60 +144,49 @@ fn apply_rules_impl(
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
-    let special_next = state.behavior.specialnext;
-    let rules = state.config.bindings.rules.clone();
     let tag_mask = state.model.tags.mask();
     let bar_height = state.config.derived.bar_height;
 
-    // --- Handle SpecialNext shortcut or normal rule matching -----------------
-    if application == RuleApplication::Initial && special_next != SpecialNext::None {
-        if let SpecialNext::Float = special_next
-            && let Some(c) = state.model.client_mut(win)
-        {
-            c.set_placement(ClientPlacement::Floating);
+    // Pending tmp rules are tried before config rules, only on initial
+    // application (not on property refreshes). On a match the rule is
+    // removed from the pending list; expired entries are dropped lazily.
+    let mut matched_pending_id: Option<u64> = None;
+    if application == RuleApplication::Initial {
+        let now = std::time::Instant::now();
+        state
+            .behavior
+            .pending_tmp_rules
+            .retain(|p| p.deadline > now);
+        let pending_snap: Vec<(u64, crate::types::Rule)> = state
+            .behavior
+            .pending_tmp_rules
+            .iter()
+            .map(|p| (p.id, p.rule.clone()))
+            .collect();
+        for (id, rule) in &pending_snap {
+            if !rule.matches(&props.class, &props.instance, &props.title) {
+                continue;
+            }
+            apply_rule(state, win, rule, &mut placement, bar_height);
+            matched_pending_id = Some(*id);
+            break;
         }
-        state.behavior.specialnext = SpecialNext::None;
-    } else {
+        if let Some(id) = matched_pending_id {
+            state
+                .behavior
+                .pending_tmp_rules
+                .retain(|p| p.id != id);
+        }
+    }
+
+    // Fall through to config-loaded rules when no pending rule consumed.
+    if matched_pending_id.is_none() {
+        let rules = state.config.bindings.rules.clone();
         for rule in &rules {
             if !rule.matches(&props.class, &props.instance, &props.title) {
                 continue;
             }
-
-            // Special case: Onboard (on-screen keyboard) is always sticky.
-            if rule.class.as_deref() == Some("Onboard")
-                && let Some(c) = state.model.client_mut(win)
-            {
-                c.is_sticky = true;
-            }
-
-            apply_monitor_rule(state, win, rule);
-
-            // Look up monitor geometry for FloatFullscreen / Float rules.
-            let mon_geo = {
-                let view = match state.model.client_view(win) {
-                    Some(view) => view,
-                    None => continue,
-                };
-                let mon = view.monitor;
-                let mask = view.client.tags;
-                (
-                    mon.monitor_rect,
-                    mon.work_rect(),
-                    mon.show_bar_for_mask(mask),
-                )
-            };
-
-            if let Some(c) = state.model.client_mut(win) {
-                if let Some(ref float_rule) = rule.is_floating {
-                    apply_float_rule(c, float_rule, mon_geo, bar_height);
-                    placement = match float_rule {
-                        RuleFloat::FloatCenter => InitialRulePlacement::Center,
-                        RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
-                        _ => InitialRulePlacement::Default,
-                    };
-                }
-                c.update_tag_mask(|tags| tags | rule.tags);
-            }
+            apply_rule(state, win, rule, &mut placement, bar_height);
             break;
         }
     }
@@ -306,6 +295,56 @@ fn apply_float_rule(
         RuleFloat::Tiled => {
             client.set_placement(ClientPlacement::Tiling);
         }
+    }
+}
+
+/// Apply a single [`Rule`] (whether config-loaded or pending tmp) to a window.
+///
+/// Used both for the fallback config-rule pass and the leading pending-tmp-rule
+/// pass in [`apply_rules_impl`]. Extracted so the matching-class override,
+/// monitor placement, floating placement and tag assignment use the same code
+/// path regardless of rule origin.
+fn apply_rule(
+    state: &mut CoreState,
+    win: WindowId,
+    rule: &crate::types::Rule,
+    placement: &mut InitialRulePlacement,
+    bar_height: i32,
+) {
+    // Special case: Onboard (on-screen keyboard) is always sticky.
+    if rule.class.as_deref() == Some("Onboard")
+        && let Some(c) = state.model.client_mut(win)
+    {
+        c.is_sticky = true;
+    }
+
+    apply_monitor_rule(state, win, rule);
+
+    // Look up monitor geometry for FloatFullscreen / Float rules.
+    let mon_geo = {
+        let view = match state.model.client_view(win) {
+            Some(view) => view,
+            None => return,
+        };
+        let mon = view.monitor;
+        let mask = view.client.tags;
+        (
+            mon.monitor_rect,
+            mon.work_rect(),
+            mon.show_bar_for_mask(mask),
+        )
+    };
+
+    if let Some(c) = state.model.client_mut(win) {
+        if let Some(ref float_rule) = rule.is_floating {
+            apply_float_rule(c, float_rule, mon_geo, bar_height);
+            *placement = match float_rule {
+                RuleFloat::FloatCenter => InitialRulePlacement::Center,
+                RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
+                _ => InitialRulePlacement::Default,
+            };
+        }
+        c.update_tag_mask(|tags| tags | rule.tags);
     }
 }
 
@@ -431,7 +470,7 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::{CoreState, LayoutWorkTargets};
     use crate::types::{
-        Client, ClientMode, Monitor, MonitorId, Rect, SpecialNext, TagMask, WindowId,
+        Client, ClientMode, Monitor, MonitorId, Rect, RuleFloat, TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -678,11 +717,26 @@ mod tests {
     }
 
     #[test]
-    fn property_refresh_does_not_consume_one_shot_creation_policy() {
+    fn property_refresh_does_not_consume_pending_tmp_rule() {
+        // Adding a pending tmp rule with a `--float` policy must not be
+        // consumed by a property refresh — only by the next initial rule
+        // application.
         let mut state = CoreState::default();
         let win = WindowId(46);
         state.model.insert_client(Client::new(win));
-        state.behavior.specialnext = SpecialNext::Float;
+        let id = 0;
+        state.behavior.pending_tmp_rules.push(crate::types::PendingTmpRule {
+            id,
+            rule: crate::types::Rule {
+                class: None,
+                instance: None,
+                title: None,
+                tags: TagMask::EMPTY,
+                is_floating: Some(RuleFloat::Float),
+                monitor: crate::types::MonitorRule::Any,
+            },
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+        });
 
         apply_property_change(
             &mut state,
@@ -693,7 +747,8 @@ mod tests {
             },
         );
 
-        assert_eq!(state.behavior.specialnext, SpecialNext::Float);
+        assert_eq!(state.behavior.pending_tmp_rules.len(), 1);
+        assert_eq!(state.behavior.pending_tmp_rules[0].id, id);
         assert!(state.model.client(win).unwrap().mode().is_normal_tiling());
     }
 
