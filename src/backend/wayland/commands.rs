@@ -190,8 +190,17 @@ pub enum WmCommand {
         win: WindowId,
         update: crate::backend::x11::policy::XWaylandPolicyUpdate,
     },
-    /// Update a window's actual committed size from the compositor.
-    UpdateWindowSize { win: WindowId, w: i32, h: i32 },
+    /// Reconcile a window's actual committed size with the request it answers.
+    UpdateWindowSize {
+        win: WindowId,
+        w: i32,
+        h: i32,
+        /// Serial of the xdg configure acknowledged by the surface commit this
+        /// observation reports. `None` denotes a backend/client-originated
+        /// observation without an xdg configure transaction (X11 geometry
+        /// notifications).
+        acknowledged_configure: Option<smithay::utils::Serial>,
+    },
     /// Request to change a window's maximized state.
     SetMaximized { win: WindowId, maximized: bool },
     /// Request to change a window's fullscreen state.

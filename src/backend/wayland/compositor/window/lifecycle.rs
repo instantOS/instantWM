@@ -165,6 +165,7 @@ impl WaylandState {
         self.drop_window_animation(window);
         self.placed_border.remove(&window);
         self.last_configured_size.remove(&window);
+        self.pending_size_configure.remove(&window);
         self.pending_authoritative_sizes.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.request_space_sync();
@@ -189,6 +190,7 @@ impl WaylandState {
         self.drop_window_animation(window);
         self.placed_border.remove(&window);
         self.last_configured_size.remove(&window);
+        self.pending_size_configure.remove(&window);
         self.pending_authoritative_sizes.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);

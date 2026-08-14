@@ -45,13 +45,25 @@ fn committed_size_is_stale(
     pending_authoritative_size.is_some_and(|configured| configured != committed_size)
 }
 
-fn configured_size_should_be_invalidated(
-    configured_size: Option<(i32, i32)>,
-    committed_size: (i32, i32),
-    client_size_is_authoritative: bool,
-) -> bool {
-    client_size_is_authoritative
-        && configured_size.is_some_and(|configured| configured != committed_size)
+/// Correlate a committed geometry observation with the latest outstanding
+/// size configure using xdg serials.
+///
+/// Serials come from one globally ordered counter, so an acknowledgement
+/// compares cleanly against any earlier request. Unlike size equality this
+/// cannot alias two distinct requests that happen to share dimensions.
+fn classify_geometry_response(
+    outstanding: Option<smithay::utils::Serial>,
+    answered: Option<smithay::utils::Serial>,
+) -> crate::geometry::GeometryResponse {
+    use crate::geometry::GeometryResponse;
+    match (outstanding, answered) {
+        (None, _) => GeometryResponse::Unsolicited,
+        (Some(_), None) => GeometryResponse::Stale,
+        (Some(requested), Some(answered)) if answered.is_no_older_than(&requested) => {
+            GeometryResponse::Current
+        }
+        (Some(_), Some(_)) => GeometryResponse::Stale,
+    }
 }
 
 impl WaylandState {
@@ -114,14 +126,43 @@ impl WaylandState {
         let committed = element.geometry();
         let new_w = committed.size.w.max(1);
         let new_h = committed.size.h.max(1);
+        let acknowledged = self.native_acknowledged_configure(window, &element);
 
         self.push_command(
             crate::backend::wayland::commands::WmCommand::UpdateWindowSize {
                 win: window,
                 w: new_w,
                 h: new_h,
+                acknowledged_configure: acknowledged,
             },
         );
+    }
+
+    /// Read the serial of the configure this commit acknowledges.
+    ///
+    /// Classification is deferred until the queued observation is consumed so
+    /// a newer request issued in the meantime still wins. When no request is
+    /// outstanding the acknowledged serial can never influence the decision,
+    /// so skip reading the surface state entirely.
+    fn native_acknowledged_configure(
+        &self,
+        window: WindowId,
+        element: &Window,
+    ) -> Option<smithay::utils::Serial> {
+        if !self.pending_size_configure.contains_key(&window) {
+            return None;
+        }
+        element.toplevel().and_then(|toplevel| {
+            toplevel.with_cached_state(|state| state.last_acked.as_ref().map(|c| c.serial))
+        })
+    }
+
+    /// Whether the window's protocol surface is an xdg-shell toplevel (as
+    /// opposed to an XWayland X11 surface).
+    fn is_xdg_toplevel(&self, window: WindowId) -> bool {
+        self.window_index
+            .get(&window)
+            .is_some_and(|element| element.toplevel().is_some())
     }
 
     /// Decide whether committed client size may update logical floating
@@ -131,37 +172,61 @@ impl WaylandState {
         window: WindowId,
         new_w: i32,
         new_h: i32,
+        acknowledged_configure: Option<smithay::utils::Serial>,
         client_size_is_authoritative: bool,
     ) -> bool {
+        // Classify when the queued observation is consumed, not when it is
+        // emitted. A newer pointer sample may have configured another size in
+        // between; carrying the acknowledged serial preserves that ordering.
+        let response = classify_geometry_response(
+            self.pending_size_configure.get(&window).copied(),
+            acknowledged_configure,
+        );
+        let decision =
+            crate::geometry::reconcile_geometry_commit(response, client_size_is_authoritative);
+
         // A fullscreen client can commit its old buffer after the compositor
         // has restored floating mode. While that one-shot restore configure is
-        // outstanding, only its size may feed back into logical geometry.
+        // outstanding, only its size may feed back into logical geometry, and
+        // every mismatching commit must keep prodding the client toward it —
+        // including commits that are also stale for a newer request.
         let pending_authoritative_size = self.pending_authoritative_sizes.get(&window).copied();
-        let stale_for_authoritative_size =
-            committed_size_is_stale(pending_authoritative_size, (new_w, new_h));
-        if stale_for_authoritative_size {
+        if committed_size_is_stale(pending_authoritative_size, (new_w, new_h)) {
             self.last_configured_size.remove(&window);
             self.request_space_sync();
             return false;
+        }
+        if response == crate::geometry::GeometryResponse::Stale {
+            return false;
+        }
+        if decision.settle_request {
+            self.pending_size_configure.remove(&window);
         }
         if pending_authoritative_size.is_some() {
             self.pending_authoritative_sizes.remove(&window);
         }
 
-        // Floating clients may legally choose a size different from our
-        // suggestion, so their commit becomes authoritative and permits a
-        // later configure. Layout-owned sizes are the opposite: an old buffer
-        // arriving after a newer configure must not clear de-duplication and
-        // start the same resize/animation again.
-        if configured_size_should_be_invalidated(
-            self.last_configured_size.get(&window).copied(),
-            (new_w, new_h),
-            client_size_is_authoritative,
-        ) {
-            self.last_configured_size.remove(&window);
-            self.request_space_sync();
+        // A floating client may legally constrain the current suggestion. The
+        // accepted size must become both model and protocol state, so schedule
+        // one convergence configure when it differs. Stale responses returned
+        // above and therefore can never initiate the A <-> B feedback loop.
+        // X11 surfaces carry position in their configures, so a client-committed
+        // size must never make a future same-size placement skip the X11
+        // configure that transports the new position.
+        if decision.accept_client_size {
+            let actual = (new_w.max(1), new_h.max(1));
+            if self
+                .last_configured_size
+                .get(&window)
+                .is_some_and(|&configured| configured != actual)
+            {
+                self.last_configured_size.remove(&window);
+                self.request_space_sync();
+            } else if self.is_xdg_toplevel(window) {
+                self.last_configured_size.insert(window, actual);
+            }
         }
-        true
+        decision.accept_client_size
     }
 
     /// Request the compositor to warp the pointer to `(x, y)` in logical
@@ -236,10 +301,11 @@ impl WaylandState {
 #[cfg(test)]
 mod tests {
     use super::{
-        committed_size_is_stale, configured_size_should_be_invalidated,
-        displayed_rect_from_space_geometry,
+        classify_geometry_response, committed_size_is_stale, displayed_rect_from_space_geometry,
     };
-    use smithay::utils::{Point, Size};
+    use smithay::utils::{Point, Serial, Size};
+
+    use crate::types::WindowId;
 
     #[test]
     fn committed_size_must_match_an_authoritative_transition() {
@@ -249,20 +315,150 @@ mod tests {
     }
 
     #[test]
-    fn stale_layout_owned_commit_does_not_invalidate_the_current_configure() {
-        let configured = Some((500, 1000));
-        let stale_fullscreen_commit = (1000, 1000);
+    fn delayed_floating_commit_cannot_recreate_an_older_resize_request() {
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let _ = state.take_space_sync_pending();
+        let win = WindowId(17);
+        let older = (800, 600);
+        let latest = (1200, 900);
+        let older_serial = smithay::utils::Serial::from(7);
+        let latest_serial = smithay::utils::Serial::from(9);
+        state.last_configured_size.insert(win, latest);
+        state.pending_size_configure.insert(win, latest_serial);
 
-        assert!(!configured_size_should_be_invalidated(
-            configured,
-            stale_fullscreen_commit,
-            false,
-        ));
-        assert!(configured_size_should_be_invalidated(
-            configured,
-            stale_fullscreen_commit,
+        assert!(!state.committed_size_may_update_model(
+            win,
+            older.0,
+            older.1,
+            Some(older_serial),
             true,
         ));
+        assert_eq!(state.pending_size_configure.get(&win), Some(&latest_serial));
+        assert_eq!(state.last_configured_size.get(&win), Some(&latest));
+        assert!(!state.take_space_sync_pending());
+
+        assert!(state.committed_size_may_update_model(
+            win,
+            latest.0,
+            latest.1,
+            Some(latest_serial),
+            true,
+        ));
+        assert!(!state.pending_size_configure.contains_key(&win));
+        assert_eq!(state.last_configured_size.get(&win), Some(&latest));
+        assert!(!state.take_space_sync_pending());
+    }
+
+    /// Two distinct requests may share dimensions; the serial, not the size,
+    /// must decide which request a commit answers. Here an in-flight commit
+    /// acknowledges the older same-sized request and must stay stale.
+    #[test]
+    fn same_sized_requests_do_not_alias() {
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let _ = state.take_space_sync_pending();
+        let win = WindowId(19);
+        let size = (800, 600);
+        state.pending_size_configure.insert(win, Serial::from(5));
+
+        let older_request_acknowledged = classify_geometry_response(
+            state.pending_size_configure.get(&win).copied(),
+            Some(Serial::from(4)),
+        );
+        assert_eq!(
+            older_request_acknowledged,
+            crate::geometry::GeometryResponse::Stale
+        );
+        assert!(!state.committed_size_may_update_model(
+            win,
+            size.0,
+            size.1,
+            Some(Serial::from(4)),
+            true,
+        ));
+        assert_eq!(
+            state.pending_size_configure.get(&win),
+            Some(&Serial::from(5))
+        );
+    }
+
+    #[test]
+    fn current_constrained_commit_schedules_one_protocol_convergence() {
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let _ = state.take_space_sync_pending();
+        let win = WindowId(18);
+        let requested = (1200, 900);
+        let constrained = (1198, 898);
+        state.last_configured_size.insert(win, requested);
+        state.pending_size_configure.insert(win, Serial::from(11));
+
+        assert!(state.committed_size_may_update_model(
+            win,
+            constrained.0,
+            constrained.1,
+            Some(Serial::from(11)),
+            true,
+        ));
+        assert!(!state.pending_size_configure.contains_key(&win));
+        assert!(!state.last_configured_size.contains_key(&win));
+        assert!(state.take_space_sync_pending());
+    }
+
+    /// Layout-owned windows settle an outstanding request but never let the
+    /// committed size clear configure de-duplication or schedule a reconfigure;
+    /// otherwise a stale fullscreen buffer could restart the resize loop.
+    #[test]
+    fn layout_owned_current_commit_settles_without_touching_configure_state() {
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let _ = state.take_space_sync_pending();
+        let win = WindowId(20);
+        let configured = (1200, 900);
+        let committed = (1000, 1000);
+        state.last_configured_size.insert(win, configured);
+        state.pending_size_configure.insert(win, Serial::from(3));
+
+        assert!(!state.committed_size_may_update_model(
+            win,
+            committed.0,
+            committed.1,
+            Some(Serial::from(3)),
+            false,
+        ));
+        assert!(!state.pending_size_configure.contains_key(&win));
+        assert_eq!(state.last_configured_size.get(&win), Some(&configured));
+        assert!(!state.take_space_sync_pending());
+    }
+
+    /// A commit that is stale for the latest request must still prod the
+    /// retry for an outstanding authoritative (fullscreen restore) size.
+    #[test]
+    fn stale_commit_during_authoritative_transition_still_prods_a_retry() {
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let _ = state.take_space_sync_pending();
+        let win = WindowId(21);
+        let restore_size = (800, 600);
+        let fullscreen_buffer = (1920, 1080);
+        state.last_configured_size.insert(win, restore_size);
+        state.pending_size_configure.insert(win, Serial::from(6));
+        state.pending_authoritative_sizes.insert(win, restore_size);
+
+        assert!(!state.committed_size_may_update_model(
+            win,
+            fullscreen_buffer.0,
+            fullscreen_buffer.1,
+            Some(Serial::from(5)),
+            true,
+        ));
+        assert!(!state.last_configured_size.contains_key(&win));
+        assert_eq!(
+            state.pending_authoritative_sizes.get(&win),
+            Some(&restore_size)
+        );
+        assert!(state.take_space_sync_pending());
     }
 
     #[test]

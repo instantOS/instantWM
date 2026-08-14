@@ -372,6 +372,7 @@ impl XwmHandler for WaylandState {
                 win,
                 w: geo.size.w,
                 h: geo.size.h,
+                acknowledged_configure: None,
             });
         }
         let _ = window.configure(Some(geo));
@@ -409,6 +410,7 @@ impl XwmHandler for WaylandState {
             win,
             w: geometry.size.w,
             h: geometry.size.h,
+            acknowledged_configure: None,
         });
 
         // This is an acknowledgement/notification from XWayland about the

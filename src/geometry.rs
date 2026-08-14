@@ -5,6 +5,60 @@ use crate::constants::animation::DISTANCE_THRESHOLD;
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
 
+/// Relationship between a backend geometry observation and the WM's latest
+/// geometry request for that window.
+///
+/// The Wayland backend derives this from the xdg configure serial a surface
+/// commit acknowledges. Backends without a request/acknowledgement transaction
+/// simply report every observation as
+/// [`Unsolicited`](Self::Unsolicited). This keeps protocol ordering out of
+/// core policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GeometryResponse {
+    /// The observation answers the latest outstanding WM request.
+    Current,
+    /// The observation answers an older request and must not supersede the
+    /// latest WM intent.
+    Stale,
+    /// No WM geometry request is outstanding; the client/backend originated
+    /// this observation.
+    Unsolicited,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GeometryCommitDecision {
+    /// Whether this response completes the latest outstanding request.
+    pub settle_request: bool,
+    /// Whether its actual size may replace floating model geometry.
+    pub accept_client_size: bool,
+}
+
+/// Define backend-neutral geometry-authority policy for client observations.
+///
+/// Stale responses may be presented by a backend, but never feed back into the
+/// logical model. A current or unsolicited response becomes authoritative only
+/// for client-sized windows (normal floating clients today); layout-owned
+/// windows retain the WM target.
+pub(crate) fn reconcile_geometry_commit(
+    response: GeometryResponse,
+    client_size_is_authoritative: bool,
+) -> GeometryCommitDecision {
+    match response {
+        GeometryResponse::Current => GeometryCommitDecision {
+            settle_request: true,
+            accept_client_size: client_size_is_authoritative,
+        },
+        GeometryResponse::Stale => GeometryCommitDecision {
+            settle_request: false,
+            accept_client_size: false,
+        },
+        GeometryResponse::Unsolicited => GeometryCommitDecision {
+            settle_request: false,
+            accept_client_size: client_size_is_authoritative,
+        },
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MoveResizeMode {
     AnimateTo,
@@ -349,6 +403,34 @@ mod tests {
     use crate::model::WmModel;
     use crate::types::{Client, Monitor};
     use crate::wm::Wm;
+
+    #[test]
+    fn stale_geometry_response_cannot_supersede_the_latest_resize_intent() {
+        assert_eq!(
+            reconcile_geometry_commit(GeometryResponse::Stale, true),
+            GeometryCommitDecision {
+                settle_request: false,
+                accept_client_size: false,
+            }
+        );
+        assert_eq!(
+            reconcile_geometry_commit(GeometryResponse::Current, true),
+            GeometryCommitDecision {
+                settle_request: true,
+                accept_client_size: true,
+            }
+        );
+    }
+
+    #[test]
+    fn current_constrained_response_is_authoritative_only_for_client_sized_windows() {
+        assert!(reconcile_geometry_commit(GeometryResponse::Current, true).accept_client_size);
+        assert!(!reconcile_geometry_commit(GeometryResponse::Current, false).accept_client_size);
+        assert!(reconcile_geometry_commit(GeometryResponse::Unsolicited, true).accept_client_size);
+        assert!(
+            !reconcile_geometry_commit(GeometryResponse::Unsolicited, false).accept_client_size
+        );
+    }
 
     #[test]
     fn client_geometry_uses_assigned_monitor_not_virtual_layout_extent() {

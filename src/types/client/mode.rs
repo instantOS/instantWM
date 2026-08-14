@@ -312,6 +312,17 @@ impl Client {
         self.mode.placement()
     }
 
+    /// Whether a size the client commits itself may become authoritative
+    /// model geometry.
+    ///
+    /// Only normal floating windows grant the client that authority. Tiled,
+    /// maximized, fullscreen, and scratchpad geometry is owned by the WM, so
+    /// their committed sizes must never feed back into the model.
+    #[inline]
+    pub fn client_size_is_authoritative(&self) -> bool {
+        self.mode.is_normal_floating() && !self.is_scratchpad()
+    }
+
     /// Change the persistent tiled/floating policy while preserving any
     /// temporary fullscreen or maximized presentation.
     #[inline]

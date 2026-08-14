@@ -338,8 +338,13 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(wm, win, update);
             }
-            WmCommand::UpdateWindowSize { win, w, h } => {
-                handle_update_window_size(wm, state, win, w, h);
+            WmCommand::UpdateWindowSize {
+                win,
+                w,
+                h,
+                acknowledged_configure,
+            } => {
+                handle_update_window_size(wm, state, win, w, h, acknowledged_configure);
             }
             WmCommand::SetMaximized { win, maximized } => {
                 handle_set_maximized(wm, state, win, maximized);
@@ -463,13 +468,20 @@ fn handle_update_window_size(
     win: crate::types::WindowId,
     w: i32,
     h: i32,
+    acknowledged_configure: Option<smithay::utils::Serial>,
 ) {
     let client_size_is_authoritative = wm
         .core
         .model
         .client(win)
-        .is_some_and(|client| client.mode().is_normal_floating() && !client.is_scratchpad());
-    if !state.committed_size_may_update_model(win, w, h, client_size_is_authoritative) {
+        .is_some_and(|client| client.client_size_is_authoritative());
+    if !state.committed_size_may_update_model(
+        win,
+        w,
+        h,
+        acknowledged_configure,
+        client_size_is_authoritative,
+    ) {
         return;
     }
     apply_committed_window_size(wm, win, w, h);
@@ -483,8 +495,7 @@ fn apply_committed_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32,
         // WM. In particular, a native Wayland client may commit a stale startup
         // buffer after layout selected its final size; copying that size back
         // here would overwrite the layout or scratchpad target.
-        && client.mode().is_normal_floating()
-        && !client.is_scratchpad()
+        && client.client_size_is_authoritative()
         && (client.geo.w != w || client.geo.h != h)
     {
         let rect = crate::types::Rect {

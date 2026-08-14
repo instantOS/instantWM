@@ -190,56 +190,66 @@ impl WaylandState {
 
     /// Send a configure event to a toplevel surface with the specified size.
     /// This is a helper to avoid repeating the same configure pattern.
+    ///
+    /// Returns the serial of the configure that was actually sent. Every
+    /// size-bearing configure is registered here as the window's latest
+    /// outstanding request, so commits acknowledging an older serial are
+    /// always classified against it.
     pub(crate) fn send_toplevel_configure(
-        &self,
+        &mut self,
         window: &Window,
         size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
-    ) {
-        if let Some(toplevel) = window.toplevel() {
-            let is_resizing = window
-                .user_data()
-                .get::<WindowIdMarker>()
-                .is_some_and(|marker| self.active_resizes.contains(&marker.id));
-            let presentation = window
-                .user_data()
-                .get::<WindowIdMarker>()
-                .and_then(|marker| {
-                    self.globals().and_then(|state| {
-                        state.model.client(marker.id).map(|client| {
-                            (
-                                client.mode().is_fullscreen(),
-                                state
-                                    .model
-                                    .client_protocol_maximized(marker.id)
-                                    .unwrap_or(false),
-                            )
-                        })
+    ) -> Option<smithay::utils::Serial> {
+        let toplevel = window.toplevel()?;
+        let is_resizing = window
+            .user_data()
+            .get::<WindowIdMarker>()
+            .is_some_and(|marker| self.active_resizes.contains(&marker.id));
+        let presentation = window
+            .user_data()
+            .get::<WindowIdMarker>()
+            .and_then(|marker| {
+                self.globals().and_then(|state| {
+                    state.model.client(marker.id).map(|client| {
+                        (
+                            client.mode().is_fullscreen(),
+                            state
+                                .model
+                                .client_protocol_maximized(marker.id)
+                                .unwrap_or(false),
+                        )
                     })
-                });
-            let is_fullscreen = presentation.is_some_and(|state| state.0);
-            let is_maximized = presentation.is_some_and(|state| state.1);
-            toplevel.with_pending_state(|state| {
-                if let Some(size) = size {
-                    state.size = Some(size);
-                }
-                if is_resizing {
-                    state.states.set(ToplevelState::Resizing);
-                } else {
-                    state.states.unset(ToplevelState::Resizing);
-                }
-                if is_fullscreen {
-                    state.states.set(ToplevelState::Fullscreen);
-                } else {
-                    state.states.unset(ToplevelState::Fullscreen);
-                }
-                if is_maximized {
-                    state.states.set(ToplevelState::Maximized);
-                } else {
-                    state.states.unset(ToplevelState::Maximized);
-                }
+                })
             });
-            toplevel.send_pending_configure();
+        let is_fullscreen = presentation.is_some_and(|state| state.0);
+        let is_maximized = presentation.is_some_and(|state| state.1);
+        toplevel.with_pending_state(|state| {
+            if let Some(size) = size {
+                state.size = Some(size);
+            }
+            if is_resizing {
+                state.states.set(ToplevelState::Resizing);
+            } else {
+                state.states.unset(ToplevelState::Resizing);
+            }
+            if is_fullscreen {
+                state.states.set(ToplevelState::Fullscreen);
+            } else {
+                state.states.unset(ToplevelState::Fullscreen);
+            }
+            if is_maximized {
+                state.states.set(ToplevelState::Maximized);
+            } else {
+                state.states.unset(ToplevelState::Maximized);
+            }
+        });
+        let serial = toplevel.send_pending_configure();
+        if let (Some(serial), Some(_), Some(marker)) =
+            (serial, size, window.user_data().get::<WindowIdMarker>())
+        {
+            self.pending_size_configure.insert(marker.id, serial);
         }
+        serial
     }
 
     /// Re-project the authoritative WM presentation to the surface protocol.
@@ -247,8 +257,8 @@ impl WaylandState {
     /// This is needed for state-only transitions whose resulting geometry may
     /// equal the previous geometry. Relying on a resize to incidentally send a
     /// configure would otherwise allow the protocol and model to drift.
-    pub(crate) fn sync_window_presentation(&self, win: WindowId) {
-        let Some(window) = self.find_window(win) else {
+    pub(crate) fn sync_window_presentation(&mut self, win: WindowId) {
+        let Some(window) = self.find_window(win).cloned() else {
             return;
         };
         let Some((mode, maximized)) = self.globals().and_then(|state| {
@@ -266,7 +276,7 @@ impl WaylandState {
             let _ = surface.set_maximized(maximized);
             let _ = surface.set_fullscreen(mode.is_fullscreen());
         } else {
-            self.send_toplevel_configure(window, None);
+            self.send_toplevel_configure(&window, None);
         }
     }
 }

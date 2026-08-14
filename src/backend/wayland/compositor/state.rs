@@ -190,6 +190,12 @@ pub struct WaylandState {
     /// Mutations must go through the command_queue.
     wm: Option<NonNull<Wm>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    /// Serial of the latest size-bearing xdg-shell configure that no client
+    /// commit has acknowledged yet. Commits acknowledging an older configure
+    /// are presentation updates only and must not feed back into logical
+    /// floating geometry. Serials, unlike sizes, cannot alias two distinct
+    /// requests.
+    pub(super) pending_size_configure: HashMap<WindowId, smithay::utils::Serial>,
     /// The border width the window was last visually placed under. Model
     /// `border_width` flips before transitions, so animation/runtime code
     /// reads this record to start from the width the window actually showed.
@@ -558,6 +564,7 @@ impl WaylandState {
             next_window_id: 1,
             wm: None,
             last_configured_size: HashMap::new(),
+            pending_size_configure: HashMap::new(),
             placed_border: HashMap::new(),
             pending_authoritative_sizes: HashMap::new(),
             native_size_hints: HashMap::new(),
