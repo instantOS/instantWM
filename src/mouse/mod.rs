@@ -48,8 +48,9 @@ pub mod warp;
 
 pub use drag::{
     DragInput, apply_drag_tag_motion, bottom_bar_gesture_finish, drag_tag_finish,
-    handle_window_title_mouse, process_title_drag_motion, sidebar_gesture_begin,
-    sidebar_gesture_finish, title_drag_finish, update_bottom_bar_gesture, update_sidebar_gesture,
+    handle_window_title_mouse, process_title_drag_motion, process_title_reorder_motion,
+    sidebar_gesture_begin, sidebar_gesture_finish, title_drag_finish, title_reorder_finish,
+    update_bottom_bar_gesture, update_sidebar_gesture,
 };
 
 // ── hover ─────────────────────────────────────────────────────────────────────

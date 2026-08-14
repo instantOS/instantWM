@@ -408,6 +408,7 @@ fn handle_begin_move(wm: &mut Wm, state: &WaylandState, win: crate::types::Windo
         &mut ctx,
         win,
         crate::types::MouseButton::Left,
+        crate::core_state::ArmedDragOrigin::Client,
         crate::types::InteractionSource::Pointer,
         root,
         true,

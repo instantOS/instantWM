@@ -6,7 +6,8 @@
 //! - [`move_drop`] — Shared bar hover, edge snap, and drop completion
 //! - [`tag`] — Tag bar drag: [`apply_drag_tag_motion`], [`drag_tag_begin`], [`drag_tag_finish`]
 //! - [`title`] — Title bar click/drag: [`title_drag_begin`], [`process_title_drag_motion`],
-//!   [`title_drag_finish`], [`handle_window_title_mouse`]
+//!   [`title_drag_finish`], [`handle_window_title_mouse`], and the bar-title
+//!   strip reorder ([`process_title_reorder_motion`], [`title_reorder_finish`])
 //! - [`gesture`] — Sidebar and bottom-bar gestures: [`sidebar_gesture_begin`],
 //!   [`bottom_bar_gesture_begin`]
 //!
@@ -25,7 +26,7 @@ pub use move_drop::{
 pub use tag::{apply_drag_tag_motion, drag_tag_begin, drag_tag_finish};
 pub use title::{
     DragInput, begin_thresholded_client_drag, handle_window_title_mouse, process_title_drag_motion,
-    title_drag_finish,
+    process_title_reorder_motion, title_drag_finish, title_reorder_finish,
 };
 
 use crate::contexts::WmCtx;
@@ -38,6 +39,29 @@ pub mod lifecycle;
 pub mod move_drop;
 pub mod tag;
 pub mod title;
+
+/// Resolve a root-space point against one monitor's bar.
+///
+/// Returns `None` when the monitor is absent, its bar is hidden, or the point
+/// is outside the bar. Shared by the tag and title-strip drag gestures so both
+/// resolve hover targets identically.
+pub(crate) fn bar_position_on_monitor(
+    ctx: &WmCtx<'_>,
+    monitor_id: MonitorId,
+    root: Point,
+) -> Option<BarPosition> {
+    let core = ctx.core();
+    let monitor = core.model().monitor(monitor_id)?;
+    let mask = monitor.selected_tags();
+    if !monitor.show_bar_for_mask(mask)
+        || !monitor.y_in_bar(root.y)
+        || root.x < monitor.monitor_rect.x
+        || root.x >= monitor.monitor_rect.right()
+    {
+        return None;
+    }
+    Some(monitor.bar_position_at_x(core, monitor.local_work_point(root).x))
+}
 
 pub use interactive::{
     active_drag_finish, apply_active_drag_motion, directional_resize_begin,

@@ -40,6 +40,7 @@ pub fn title_drag_begin(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
+    origin: crate::core_state::ArmedDragOrigin,
     source: InteractionSource,
     click_root: Point,
     suppress_click_action: bool,
@@ -73,6 +74,7 @@ pub fn title_drag_begin(
         .arm_title_drag(crate::core_state::ArmedDragParams {
             win,
             button: btn,
+            origin,
             source,
             start: click_root,
             geometry: win_start_geo,
@@ -228,9 +230,9 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// Process motion during an active title drag.
 ///
 /// Returns `true` if the drag threshold was exceeded and the drag action
-/// (move/resize) was initiated — the caller should consider the interaction
-/// consumed. [`DragInput::Absolute`] preserves the contact point as the window
-/// anchor and never warps or consults the compositor pointer.
+/// (reorder/move/resize) was initiated — the caller should consider the
+/// interaction consumed. [`DragInput::Absolute`] preserves the contact point as
+/// the window anchor and never warps or consults the compositor pointer.
 pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     let root = input.position();
     let Some(armed) = ctx.core().drag_state().armed_interaction() else {
@@ -255,7 +257,157 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     crate::focus::focus(ctx, Some(win));
     ctx.raise_client(win);
 
+    // A bar-title left drag reorders the title strip while the pointer stays
+    // on it; anything else takes the ordinary move/resize path.
+    if drag.origin() == crate::core_state::ArmedDragOrigin::BarTitle
+        && drag.button() == MouseButton::Left
+        && let Some(monitor_id) = ctx
+            .core()
+            .model()
+            .client(win)
+            .map(|client| client.monitor_id)
+        && title_strip_target(ctx, monitor_id, root).is_some()
+        && begin_bar_reorder(ctx, win, monitor_id)
+    {
+        return true;
+    }
+
     title_drag_start(ctx, input)
+}
+
+/// The window whose title cell is under `root` on `monitor_id`'s bar, if any.
+///
+/// The selected window's close-button and resize-widget zones belong to its
+/// title cell, so they resolve to that window like the rest of the cell.
+fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Option<WindowId> {
+    match super::bar_position_on_monitor(ctx, monitor_id, root) {
+        Some(
+            BarPosition::WinTitle(win)
+            | BarPosition::CloseButton(win)
+            | BarPosition::ResizeWidget(win),
+        ) => Some(win),
+        _ => None,
+    }
+}
+
+/// Promote an armed bar-title press to a live title-strip reorder.
+fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> bool {
+    if ctx
+        .core_mut()
+        .drag_state_mut()
+        .begin_title_reorder(crate::core_state::TitleReorderDrag::new(monitor_id))
+        .is_err()
+    {
+        return false;
+    }
+    crate::mouse::clear_hover_offer(ctx);
+    ctx.set_cursor_style(AltCursor::HorizontalAdjust);
+    ctx.core_mut()
+        .bar
+        .hover
+        .set(monitor_id, Gesture::WinTitle(win), true);
+    ctx.request_bar_update();
+    true
+}
+
+/// Process motion during a live title-strip reorder.
+///
+/// While the pointer stays on a title cell of the press monitor's bar, the
+/// dragged title swaps with the cell it enters — order changes commit
+/// immediately. Leaving the title strip converts the interaction into the
+/// ordinary move drag (tiled windows promote to floating and follow the
+/// pointer, exactly like a drag started away from the bar). The conversion is
+/// one-way: returning to the strip keeps move semantics.
+///
+/// Returns `true` when a reorder is in progress; the caller should consider
+/// the interaction consumed.
+pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
+    let Some((drag, reorder)) = ctx.core().drag_state().reordering_interaction() else {
+        return false;
+    };
+    let win = drag.win();
+    let monitor_id = reorder.monitor_id();
+    let source = drag.source();
+    let start_point = drag.start_point();
+    ctx.core_mut()
+        .drag_state_mut()
+        .record_interactive_motion(root);
+
+    match title_strip_target(ctx, monitor_id, root) {
+        Some(target) => {
+            if target != win && crate::layouts::swap_bar_titles(ctx, monitor_id, win, target) {
+                // The swap moves the dragged title to a new cell; keep it
+                // highlighted there.
+                ctx.core_mut()
+                    .bar
+                    .hover
+                    .set(monitor_id, Gesture::WinTitle(win), true);
+                ctx.request_bar_update();
+            }
+            true
+        }
+        None => convert_reorder_to_move(ctx, win, source, start_point, root),
+    }
+}
+
+/// Convert a live title-strip reorder into the ordinary move drag.
+fn convert_reorder_to_move(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    source: InteractionSource,
+    start_point: Point,
+    root: Point,
+) -> bool {
+    let input = match source {
+        InteractionSource::Pointer => DragInput::Pointer(root),
+        InteractionSource::Touch(_) => DragInput::Absolute(root),
+    };
+    let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point) else {
+        // The window cannot start a move drag (e.g. an edge scratchpad); end
+        // the interaction instead of leaving the capture dangling.
+        let _ = ctx.core_mut().drag_state_mut().finish_reordering();
+        ctx.set_cursor_style(AltCursor::Default);
+        ctx.core_mut().bar.hover.clear();
+        ctx.request_bar_update();
+        return false;
+    };
+    if ctx
+        .core_mut()
+        .drag_state_mut()
+        .activate_reordering_as_move(start, current_geo)
+        .is_err()
+    {
+        return false;
+    }
+    ctx.set_cursor_style(AltCursor::Move);
+    true
+}
+
+/// Finish a live title-strip reorder (button release).
+///
+/// Order changes were already committed by the motion handler. No click action
+/// fires: the drag threshold was crossed.
+pub fn title_reorder_finish(ctx: &mut WmCtx) {
+    let Some((drag, reorder)) = ctx.core().drag_state().reordering_interaction() else {
+        return;
+    };
+    let root = drag.last_root_point();
+    let monitor_id = reorder.monitor_id();
+    let position = super::bar_position_on_monitor(ctx, monitor_id, root);
+    ctx.core_mut().drag_state_mut().finish_reordering();
+    ctx.set_cursor_style(AltCursor::Default);
+
+    // Leave the bar in its ordinary hover state. Clearing it unconditionally
+    // causes a visible one-frame flash before the next pointer-motion event.
+    if let Some(position) = position {
+        ctx.core_mut()
+            .bar
+            .hover
+            .set(monitor_id, position.to_gesture(), false);
+    } else {
+        ctx.core_mut().bar.hover.clear();
+    }
+    ctx.request_bar_update();
 }
 
 /// Finish a title drag interaction (button release without exceeding the
@@ -298,7 +450,9 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// Left-click / drag handler for a window title bar entry.
 ///
 /// Click: hidden → show+focus; focused → hide; otherwise → focus.
-/// Drag > [`DRAG_THRESHOLD`]: show, focus, and promote to the shared move state.
+/// Drag > [`DRAG_THRESHOLD`]: show, focus, and either reorder the title strip
+/// while the pointer stays on it (left button) or promote to the shared move
+/// state.
 /// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
 ///
 /// Input adapters own capture; this function only arms shared interaction state.
@@ -309,12 +463,20 @@ pub fn handle_window_title_mouse(
     source: InteractionSource,
     click_root: Point,
 ) {
-    begin_thresholded_client_drag(ctx, win, btn, source, click_root, false);
+    let _ = title_drag_begin(
+        ctx,
+        win,
+        btn,
+        crate::core_state::ArmedDragOrigin::BarTitle,
+        source,
+        click_root,
+        false,
+    );
 }
 
 /// Start a client move/resize that remains a click until the pointer crosses
-/// [`DRAG_THRESHOLD`]. Used by both Super+client drags and bar-title drags so
-/// X11 and Wayland have identical activation semantics.
+/// [`DRAG_THRESHOLD`]. Used by Super+client drags so X11 and Wayland have
+/// identical activation semantics.
 pub fn begin_thresholded_client_drag(
     ctx: &mut WmCtx,
     win: WindowId,
@@ -323,7 +485,15 @@ pub fn begin_thresholded_client_drag(
     click_root: Point,
     suppress_click_action: bool,
 ) {
-    let _ = title_drag_begin(ctx, win, btn, source, click_root, suppress_click_action);
+    let _ = title_drag_begin(
+        ctx,
+        win,
+        btn,
+        crate::core_state::ArmedDragOrigin::Client,
+        source,
+        click_root,
+        suppress_click_action,
+    );
 }
 
 #[cfg(test)]
@@ -331,9 +501,10 @@ mod tests {
     use super::{DragInput, begin_move_drag, process_title_drag_motion, title_drag_begin};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::tree::Preset;
+    use crate::mouse::constants::DRAG_THRESHOLD;
     use crate::types::{
-        Client, ClientMode, InteractionSource, Monitor, MouseButton, Point, Rect, SnapPosition,
-        TagMask, WindowId,
+        Client, ClientMode, InteractionSource, Monitor, MonitorId, MouseButton, Point, Rect,
+        SnapPosition, TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -386,6 +557,7 @@ mod tests {
             &mut wm.ctx(),
             win,
             MouseButton::Right,
+            crate::core_state::ArmedDragOrigin::Client,
             InteractionSource::Pointer,
             press,
             true,
@@ -401,6 +573,175 @@ mod tests {
             active.drag_type(),
             crate::core_state::DragType::TreeResize(_)
         ));
+    }
+
+    /// Two tiled clients on a monitor with a visible bar, in bar-presentation
+    /// order `[first, second]`.
+    fn bar_title_fixture(
+        presentation: crate::layouts::PresentationMode,
+    ) -> (Wm, MonitorId, WindowId, WindowId) {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 9;
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            bar_height: 30,
+            show_bar: true,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let windows = [WindowId(31), WindowId(32)];
+        for win in windows {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags,
+                mode: ClientMode::tiled(),
+                geo: Rect::new(0, 30, 600, 770),
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        monitor.clients = windows.to_vec();
+        monitor.selected = Some(windows[0]);
+        monitor.per_tag_state().presentation = presentation;
+        if presentation == crate::layouts::PresentationMode::Maximized {
+            monitor
+                .per_tag_state()
+                .layout_tree
+                .apply_preset(Preset::MasterStack, &windows, 1);
+        }
+        (wm, monitor_id, windows[0], windows[1])
+    }
+
+    /// Root-space center x of `win`'s title cell, scanned through the shared
+    /// hit-test so the test cannot drift from the renderer's layout.
+    fn title_cell_center(wm: &mut Wm, monitor_id: MonitorId, win: WindowId) -> i32 {
+        let mut span: Option<(i32, i32)> = None;
+        let ctx = wm.ctx();
+        for x in 0..1200 {
+            if super::title_strip_target(&ctx, monitor_id, Point::new(x, 10)) == Some(win) {
+                match span {
+                    Some((start, _)) => span = Some((start, x)),
+                    None => span = Some((x, x)),
+                }
+            }
+        }
+        let (start, end) = span.expect("window must own a title cell");
+        (start + end + 1) / 2
+    }
+
+    #[test]
+    fn bar_title_drag_within_strip_reorders_and_leaving_converts_to_move() {
+        let (mut wm, monitor_id, first, second) =
+            bar_title_fixture(crate::layouts::PresentationMode::Tiled);
+        let first_x = title_cell_center(&mut wm, monitor_id, first);
+        let second_x = title_cell_center(&mut wm, monitor_id, second);
+        assert!(second_x - first_x > DRAG_THRESHOLD * 2);
+
+        let press = Point::new(first_x, 10);
+        assert!(title_drag_begin(
+            &mut wm.ctx(),
+            first,
+            MouseButton::Left,
+            crate::core_state::ArmedDragOrigin::BarTitle,
+            InteractionSource::Pointer,
+            press,
+            false,
+        ));
+
+        // Crossing the threshold while still on the title strip starts a
+        // reorder, not a move.
+        assert!(process_title_drag_motion(
+            &mut wm.ctx(),
+            DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
+        ));
+        assert!(
+            wm.core.drag.reordering_interaction().is_some(),
+            "threshold crossing inside the strip must engage a reorder"
+        );
+
+        // Dragging onto the neighbour's cell swaps the bar order.
+        assert!(super::process_title_reorder_motion(
+            &mut wm.ctx(),
+            Point::new(second_x, 10)
+        ));
+        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        assert_eq!(
+            monitor.bar_client_order(&wm.core.model.clients),
+            vec![second, first]
+        );
+
+        // Leaving the strip converts the reorder into an ordinary move drag.
+        assert!(super::process_title_reorder_motion(
+            &mut wm.ctx(),
+            Point::new(second_x, 200)
+        ));
+        assert!(wm.core.drag.reordering_interaction().is_none());
+        let active = wm.core.drag.active_interaction().unwrap();
+        assert_eq!(active.win(), first);
+        assert_eq!(active.drag_type(), crate::core_state::DragType::Move);
+    }
+
+    #[test]
+    fn maximized_bar_title_drag_swaps_tree_order() {
+        let (mut wm, monitor_id, first, second) =
+            bar_title_fixture(crate::layouts::PresentationMode::Maximized);
+        let first_x = title_cell_center(&mut wm, monitor_id, first);
+        let second_x = title_cell_center(&mut wm, monitor_id, second);
+
+        assert!(title_drag_begin(
+            &mut wm.ctx(),
+            first,
+            MouseButton::Left,
+            crate::core_state::ArmedDragOrigin::BarTitle,
+            InteractionSource::Pointer,
+            Point::new(first_x, 10),
+            false,
+        ));
+        assert!(process_title_drag_motion(
+            &mut wm.ctx(),
+            DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
+        ));
+        assert!(super::process_title_reorder_motion(
+            &mut wm.ctx(),
+            Point::new(second_x, 10)
+        ));
+
+        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        assert_eq!(
+            monitor.tiled_tree_order(&wm.core.model.clients),
+            vec![second, first],
+            "maximized titles are stack tabs and must swap tree leaves"
+        );
+    }
+
+    #[test]
+    fn client_origin_drag_never_engages_a_reorder() {
+        let (mut wm, monitor_id, first, _second) =
+            bar_title_fixture(crate::layouts::PresentationMode::Tiled);
+        let first_x = title_cell_center(&mut wm, monitor_id, first);
+
+        assert!(title_drag_begin(
+            &mut wm.ctx(),
+            first,
+            MouseButton::Left,
+            crate::core_state::ArmedDragOrigin::Client,
+            InteractionSource::Pointer,
+            Point::new(first_x, 10),
+            true,
+        ));
+        assert!(process_title_drag_motion(
+            &mut wm.ctx(),
+            DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
+        ));
+        assert!(
+            wm.core.drag.reordering_interaction().is_none(),
+            "a Super+client drag must keep taking the move path"
+        );
+        assert!(wm.core.drag.active_interaction().is_some());
     }
 
     #[test]

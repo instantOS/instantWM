@@ -93,6 +93,7 @@ pub struct DragInteraction {
     win: WindowId,
     button: MouseButton,
     source: InteractionSource,
+    origin: ArmedDragOrigin,
     operation: DragOperation,
     win_start_geo: Rect,
     start_point: Point,
@@ -121,6 +122,7 @@ impl DragInteraction {
             win,
             button,
             source,
+            origin: ArmedDragOrigin::Client,
             operation,
             start_point: start,
             win_start_geo: geo,
@@ -138,6 +140,7 @@ impl DragInteraction {
             win: params.win,
             button: params.button,
             source: params.source,
+            origin: params.origin,
             operation: DragOperation::Move,
             start_point: params.start,
             win_start_geo: params.geometry,
@@ -158,6 +161,9 @@ impl DragInteraction {
     }
     pub fn source(&self) -> InteractionSource {
         self.source
+    }
+    pub fn origin(&self) -> ArmedDragOrigin {
+        self.origin
     }
     pub fn drag_type(&self) -> DragType {
         self.operation.kind()
@@ -220,6 +226,9 @@ impl DragInteraction {
 #[derive(Debug, Clone)]
 pub enum WindowDragState {
     Armed(DragInteraction),
+    /// Bar-title drag reordering the title strip. Converts to
+    /// [`Self::Active`] when the pointer leaves the title strip.
+    Reordering(DragInteraction, TitleReorderDrag),
     Active(DragInteraction),
 }
 
@@ -259,6 +268,7 @@ pub struct ArmedDragParams {
     pub win: WindowId,
     pub button: MouseButton,
     pub source: InteractionSource,
+    pub origin: ArmedDragOrigin,
     pub start: Point,
     pub geometry: Rect,
     pub restore_geometry: Rect,
@@ -267,10 +277,39 @@ pub struct ArmedDragParams {
     pub suppress_click_action: bool,
 }
 
+/// Where an armed title-bar interaction was pressed.
+///
+/// Only bar-title presses may promote to a bar reorder drag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArmedDragOrigin {
+    BarTitle,
+    Client,
+}
+
+/// A bar-title drag that is reordering the title strip.
+///
+/// Order changes are committed live while the pointer stays on a title cell of
+/// `monitor_id`; leaving the title strip converts the interaction into an
+/// ordinary move drag. There is no rollback on release or cancel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TitleReorderDrag {
+    monitor_id: MonitorId,
+}
+
+impl TitleReorderDrag {
+    pub fn new(monitor_id: MonitorId) -> Self {
+        Self { monitor_id }
+    }
+
+    pub fn monitor_id(&self) -> MonitorId {
+        self.monitor_id
+    }
+}
+
 impl WindowDragState {
     pub fn interaction(&self) -> &DragInteraction {
         match self {
-            Self::Armed(drag) | Self::Active(drag) => drag,
+            Self::Armed(drag) | Self::Reordering(drag, _) | Self::Active(drag) => drag,
         }
     }
 }
@@ -615,7 +654,7 @@ mod pointer_interaction_tests {
         SidebarVolumeDrag, SwipeDirection,
     };
     use crate::actions::ButtonAction;
-    use crate::types::{InteractionSource, MonitorId, MouseButton, Point, WindowId};
+    use crate::types::{InteractionSource, MonitorId, MouseButton, Point, Rect, WindowId};
 
     fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
         BottomBarDrag::new(
@@ -781,6 +820,79 @@ mod pointer_interaction_tests {
         assert_eq!(state.update(Some(first), true, true), Some(first));
         assert_eq!(state.update(Some(second), true, true), None);
         assert_eq!(state.update(Some(second), true, true), Some(second));
+    }
+
+    fn armed_title_drag(win: WindowId, origin: super::ArmedDragOrigin) -> DragState {
+        let mut interactions = DragState::default();
+        interactions
+            .arm_title_drag(super::ArmedDragParams {
+                win,
+                button: MouseButton::Left,
+                source: InteractionSource::Pointer,
+                origin,
+                start: Point::new(300, 10),
+                geometry: Rect::new(0, 0, 400, 300),
+                restore_geometry: Rect::new(0, 0, 400, 300),
+                was_focused: true,
+                was_hidden: false,
+                suppress_click_action: false,
+            })
+            .unwrap();
+        interactions
+    }
+
+    #[test]
+    fn title_reorder_transitions_from_armed_to_move_and_release() {
+        let win = WindowId(5);
+        let monitor = MonitorId::from_raw(2);
+        let mut interactions = armed_title_drag(win, super::ArmedDragOrigin::BarTitle);
+
+        interactions
+            .begin_title_reorder(super::TitleReorderDrag::new(monitor))
+            .unwrap();
+        let (drag, reorder) = interactions.reordering_interaction().unwrap();
+        assert_eq!(drag.win(), win);
+        assert_eq!(reorder.monitor_id(), monitor);
+
+        // An active drag or another capture cannot begin a reorder.
+        assert!(
+            interactions
+                .begin_title_reorder(super::TitleReorderDrag::new(monitor))
+                .is_err()
+        );
+
+        // Leaving the title strip converts the reorder into a move drag.
+        interactions
+            .activate_reordering_as_move(Point::new(320, 240), Rect::new(0, 0, 400, 300))
+            .unwrap();
+        assert!(interactions.reordering_interaction().is_none());
+        let active = interactions.active_interaction().unwrap();
+        assert_eq!(active.win(), win);
+        assert_eq!(active.drag_type(), super::DragType::Move);
+
+        // A fresh reorder ends cleanly on release.
+        let mut interactions = armed_title_drag(win, super::ArmedDragOrigin::BarTitle);
+        interactions
+            .begin_title_reorder(super::TitleReorderDrag::new(monitor))
+            .unwrap();
+        assert!(interactions.finish_reordering().is_some());
+        assert!(!interactions.has_capture());
+    }
+
+    #[test]
+    fn title_reorder_requires_an_armed_capture() {
+        let mut interactions = DragState::default();
+        assert!(
+            interactions
+                .begin_title_reorder(super::TitleReorderDrag::new(MonitorId::from_raw(1)))
+                .is_err()
+        );
+
+        // A client-origin armed drag arms fine but the caller never promotes
+        // it to a reorder; the state machine itself stays in Armed.
+        let interactions = armed_title_drag(WindowId(6), super::ArmedDragOrigin::Client);
+        assert!(interactions.reordering_interaction().is_none());
+        assert!(interactions.armed_interaction().is_some());
     }
 
     #[test]
@@ -1002,6 +1114,15 @@ impl DragState {
     pub fn armed_interaction(&self) -> Option<&DragInteraction> {
         match self.capture.as_ref() {
             Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => Some(drag),
+            _ => None,
+        }
+    }
+
+    pub fn reordering_interaction(&self) -> Option<(&DragInteraction, &TitleReorderDrag)> {
+        match self.capture.as_ref() {
+            Some(CapturedInteraction::Window(WindowDragState::Reordering(drag, reorder))) => {
+                Some((drag, reorder))
+            }
             _ => None,
         }
     }
@@ -1274,9 +1395,55 @@ impl DragState {
         Ok(())
     }
 
+    /// Promote an armed bar-title press to a live title-strip reorder.
+    pub fn begin_title_reorder(&mut self, reorder: TitleReorderDrag) -> Result<(), DragNotArmed> {
+        match self.capture.take() {
+            Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => {
+                self.capture = Some(CapturedInteraction::Window(WindowDragState::Reordering(
+                    drag, reorder,
+                )));
+                Ok(())
+            }
+            other => {
+                self.capture = other;
+                Err(DragNotArmed)
+            }
+        }
+    }
+
+    /// Convert a live title-strip reorder into an ordinary active move drag.
+    pub fn activate_reordering_as_move(
+        &mut self,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragNotArmed> {
+        let mut drag = match self.capture.take() {
+            Some(CapturedInteraction::Window(WindowDragState::Reordering(drag, _))) => drag,
+            other => {
+                self.capture = other;
+                return Err(DragNotArmed);
+            }
+        };
+        drag.activate_as(ArmedDragType::Move, start, geo);
+        self.capture = Some(CapturedInteraction::Window(WindowDragState::Active(drag)));
+        Ok(())
+    }
+
+    pub fn finish_reordering(&mut self) -> Option<DragInteraction> {
+        match self.capture.take() {
+            Some(CapturedInteraction::Window(WindowDragState::Reordering(drag, _))) => Some(drag),
+            other => {
+                self.capture = other;
+                None
+            }
+        }
+    }
+
     pub fn record_interactive_motion(&mut self, point: Point) {
         if let Some(CapturedInteraction::Window(
-            WindowDragState::Armed(drag) | WindowDragState::Active(drag),
+            WindowDragState::Armed(drag)
+            | WindowDragState::Reordering(drag, _)
+            | WindowDragState::Active(drag),
         )) = self.capture.as_mut()
         {
             drag.record_motion(point)
@@ -1309,7 +1476,9 @@ impl DragState {
     pub fn cancel_interactive(&mut self) -> Option<DragInteraction> {
         match self.capture.take() {
             Some(CapturedInteraction::Window(
-                WindowDragState::Armed(drag) | WindowDragState::Active(drag),
+                WindowDragState::Armed(drag)
+                | WindowDragState::Reordering(drag, _)
+                | WindowDragState::Active(drag),
             )) => Some(drag),
             other => {
                 self.capture = other;

@@ -318,6 +318,7 @@ mod tests {
                 win,
                 button: MouseButton::Right,
                 source: InteractionSource::Pointer,
+                origin: crate::core_state::ArmedDragOrigin::Client,
                 start: Point::new(100, 100),
                 geometry: geometry(),
                 restore_geometry: geometry(),

@@ -568,6 +568,26 @@ impl Monitor {
         self.selected
     }
 
+    /// Exchange the focus-list positions of two clients on this monitor.
+    ///
+    /// Unlike [`Self::move_client_in_stack`] this has no placement
+    /// restrictions: the bar title strip includes floating windows, and a
+    /// bar-title drag reorders exactly the order the strip presents. Returns
+    /// `false` when either window is absent or both share a position.
+    pub fn swap_clients_in_stack(&mut self, first: WindowId, second: WindowId) -> bool {
+        let Some(a) = self.clients.iter().position(|&w| w == first) else {
+            return false;
+        };
+        let Some(b) = self.clients.iter().position(|&w| w == second) else {
+            return false;
+        };
+        if a == b {
+            return false;
+        }
+        self.clients.swap(a, b);
+        true
+    }
+
     /// Walk the persistent z-order and return the topmost visible, non-hidden
     /// client on the currently selected tags.
     ///

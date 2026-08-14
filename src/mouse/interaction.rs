@@ -98,6 +98,9 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
                 },
             );
         }
+        Some(CapturedInteraction::Window(WindowDragState::Reordering(..))) => {
+            let _ = crate::mouse::process_title_reorder_motion(ctx, event.root);
+        }
         Some(CapturedInteraction::Tag(_)) => {
             ctx.core_mut()
                 .drag_state_mut()
@@ -135,6 +138,9 @@ fn finish(
         }
         Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
             crate::mouse::title_drag_finish(ctx);
+        }
+        Some(CapturedInteraction::Window(WindowDragState::Reordering(..))) => {
+            crate::mouse::title_reorder_finish(ctx);
         }
         Some(CapturedInteraction::Tag(_)) => {
             crate::mouse::drag_tag_finish(ctx, event.modifiers);

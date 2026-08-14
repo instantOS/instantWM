@@ -46,20 +46,6 @@ fn selected_on_monitor(ctx: &WmCtx<'_>, monitor_id: MonitorId) -> Option<WindowI
         .and_then(|monitor| monitor.selected)
 }
 
-fn position_at(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Option<BarPosition> {
-    let core = ctx.core();
-    let monitor = core.state().model.monitors.get(monitor_id)?;
-    let mask = monitor.selected_tags();
-    if !monitor.show_bar_for_mask(mask)
-        || !monitor.y_in_bar(root.y)
-        || root.x < monitor.monitor_rect.x
-        || root.x >= monitor.monitor_rect.right()
-    {
-        return None;
-    }
-    Some(monitor.bar_position_at_x(core, monitor.local_work_point(root).x))
-}
-
 /// Arm a tag click. Motion beyond [`DRAG_THRESHOLD`] promotes it to a drag.
 /// Keeping clicks armed until release makes modifier handling identical on X11
 /// and Wayland, and avoids a visual flash when the pointer merely clicks a tag.
@@ -130,7 +116,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         ctx.set_cursor_style(AltCursor::Move);
     }
 
-    let position = position_at(ctx, monitor_id, root);
+    let position = super::bar_position_on_monitor(ctx, monitor_id, root);
     let gesture = position.map_or(Gesture::None, BarPosition::to_gesture);
     let tag_idx = match position {
         Some(BarPosition::Tag(idx)) => Some(idx),
@@ -174,7 +160,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
         .finish_tag_drag(button)
         .expect("matching tag capture remained active");
     let root = drag.last_motion.map_or(drag.start, |(root, _)| root);
-    let final_position = position_at(ctx, drag.monitor_id, root);
+    let final_position = super::bar_position_on_monitor(ctx, drag.monitor_id, root);
     let final_tag = final_position.and_then(|position| match position {
         BarPosition::Tag(idx) => TagMask::from_index(idx).map(|mask| (idx, mask)),
         _ => None,

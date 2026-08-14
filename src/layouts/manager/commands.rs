@@ -160,6 +160,65 @@ pub fn reorder_maximized_stack(
     MaximizedStackReorder::Reordered
 }
 
+/// Exchange two entries of the bar title strip on `monitor_id`.
+///
+/// Applies the same policy as [`reorder_maximized_stack`]: in maximized
+/// presentation the tiled title prefix is the manual tree, so two tiled
+/// entries swap tree leaves; a tiled/floating pair marks the boundary between
+/// the tree prefix and the floating tail and cannot cross it. In every other
+/// presentation the strip is focus order, so the entries swap positions in
+/// the monitor client list.
+///
+/// Returns `true` when the presented order changed.
+pub fn swap_bar_titles(
+    ctx: &mut WmCtx<'_>,
+    monitor_id: crate::types::MonitorId,
+    first: WindowId,
+    second: WindowId,
+) -> bool {
+    let maximized_pair = {
+        let Some(model) = ctx.core().model().monitor(monitor_id) else {
+            return false;
+        };
+        let order = model.bar_client_order(&ctx.core().model().clients);
+        if !order.contains(&first) || !order.contains(&second) {
+            return false;
+        }
+        model.is_maximized_layout() && {
+            let tree_order = model.tiled_tree_order(&ctx.core().model().clients);
+            tree_order.contains(&first) && tree_order.contains(&second)
+        }
+    };
+
+    if maximized_pair {
+        let changed = ctx
+            .core_mut()
+            .model_mut()
+            .monitor_mut(monitor_id)
+            .expect("validated monitor must remain present")
+            .per_tag_state()
+            .layout_tree
+            .swap_windows(first, second);
+        debug_assert!(
+            changed,
+            "both windows validated against tiled_tree_order must be swappable leaves"
+        );
+        finish_layout_change(ctx);
+        return changed;
+    }
+
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .monitor_mut(monitor_id)
+        .expect("validated monitor must remain present")
+        .swap_clients_in_stack(first, second);
+    if changed {
+        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+    }
+    changed
+}
+
 pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     if !ctx
         .core()
