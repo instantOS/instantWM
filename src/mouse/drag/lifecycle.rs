@@ -6,8 +6,8 @@
 
 use crate::backend::InteractiveResizeOps;
 use crate::core_state::{
-    ActiveResizeParams, ArmedDragType, DragAlreadyActive, DragCancelReason, DragInteraction,
-    DragNotArmed, DragState, DragType,
+    ActiveResizeParams, ArmedDragType, DragCancelReason, DragInteraction, DragNotArmed, DragState,
+    DragType, InteractionAlreadyActive,
 };
 use crate::types::{MouseButton, Point, Rect, ResizeDirection, WindowId};
 
@@ -17,9 +17,9 @@ pub fn begin_resize(
     interactions: &mut DragState,
     protocol: &dyn InteractiveResizeOps,
     params: ResizeDragParams,
-) -> Result<(), DragAlreadyActive> {
+) -> Result<(), InteractionAlreadyActive> {
     if interactions.has_capture() {
-        return Err(DragAlreadyActive);
+        return Err(InteractionAlreadyActive);
     }
 
     // The precondition above makes the state commit infallible. Apply the
@@ -178,7 +178,7 @@ mod tests {
         begin_resize(&mut interactions, &protocol, resize_params(first)).unwrap();
         assert_eq!(
             begin_resize(&mut interactions, &protocol, resize_params(second)),
-            Err(DragAlreadyActive)
+            Err(InteractionAlreadyActive)
         );
         assert_eq!(*protocol.events.borrow(), vec![ProtocolEvent::Begin(first)]);
         assert_eq!(interactions.active_interaction().unwrap().win(), first);
@@ -200,7 +200,7 @@ mod tests {
 
         assert_eq!(
             begin_resize(&mut interactions, &protocol, resize_params(WindowId(7)),),
-            Err(DragAlreadyActive)
+            Err(InteractionAlreadyActive)
         );
         assert!(protocol.events.borrow().is_empty());
         assert!(matches!(

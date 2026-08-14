@@ -12,7 +12,7 @@ use crate::types::{AltCursor, InteractionSource, MouseButton, Point, Rect, Windo
 fn begin_active_resize(
     ctx: &mut WmCtx<'_>,
     params: ResizeDragParams,
-) -> Result<(), crate::core_state::DragAlreadyActive> {
+) -> Result<(), crate::core_state::InteractionAlreadyActive> {
     match ctx {
         WmCtx::X11(x11) => begin_resize(x11.core.drag_state_mut(), &x11.x11, params),
         WmCtx::Wayland(wayland) => {

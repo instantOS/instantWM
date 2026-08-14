@@ -6,9 +6,11 @@ use crate::types::*;
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::env;
 
+mod hot_corner;
 mod interactions;
 mod keyboard_state;
 mod mode;
+pub use hot_corner::*;
 pub use interactions::*;
 pub use keyboard_state::*;
 pub use mode::*;
