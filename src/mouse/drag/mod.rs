@@ -50,6 +50,19 @@ pub(crate) fn bar_position_on_monitor(
     monitor_id: MonitorId,
     root: Point,
 ) -> Option<BarPosition> {
+    let local_x = bar_local_x_on_monitor(ctx, monitor_id, root)?;
+    let core = ctx.core();
+    let monitor = core.model().monitor(monitor_id)?;
+    Some(monitor.bar_position_at_x(core, local_x))
+}
+
+/// Validate a root-space point against one monitor's visible bar and return
+/// its monitor-local x coordinate.
+pub(crate) fn bar_local_x_on_monitor(
+    ctx: &WmCtx<'_>,
+    monitor_id: MonitorId,
+    root: Point,
+) -> Option<i32> {
     let core = ctx.core();
     let monitor = core.model().monitor(monitor_id)?;
     let mask = monitor.selected_tags();
@@ -60,7 +73,7 @@ pub(crate) fn bar_position_on_monitor(
     {
         return None;
     }
-    Some(monitor.bar_position_at_x(core, monitor.local_work_point(root).x))
+    Some(monitor.local_work_point(root).x)
 }
 
 pub use interactive::{

@@ -124,6 +124,14 @@ pub(crate) fn hit_test(
     BarPosition::Root
 }
 
+/// Return the title-cell index at `local_x`, independent of the window
+/// identity captured in the render snapshot.
+pub(crate) fn title_hit_slot(hit: &MonitorHitCache, local_x: i32) -> Option<usize> {
+    hit.title_ranges
+        .iter()
+        .position(|range| local_x >= range.start && local_x < range.end)
+}
+
 /// Build a `MonitorHitCache` from scratch using the same utility functions that
 /// the renderer uses, for when the render-time cache is not yet available.
 pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {

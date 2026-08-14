@@ -51,6 +51,17 @@ impl CapturedInteraction {
             Self::OverviewCard(state) => state.source(),
         }
     }
+
+    /// Whether this interaction owns the built-in bar's hover presentation.
+    ///
+    /// Input adapters must not run ordinary hover updates while this is true:
+    /// doing so races the gesture's highlight state on every motion sample.
+    pub fn owns_bar_hover(&self) -> bool {
+        matches!(
+            self,
+            Self::Tag(_) | Self::Window(WindowDragState::Reordering(..))
+        )
+    }
 }
 
 /// Consolidated state for mouse/touch interactions.
@@ -67,6 +78,12 @@ impl DragState {
 
     pub fn has_capture(&self) -> bool {
         self.capture.is_some()
+    }
+
+    pub fn owns_bar_hover(&self) -> bool {
+        self.capture
+            .as_ref()
+            .is_some_and(CapturedInteraction::owns_bar_hover)
     }
 
     pub fn active_interaction(&self) -> Option<&DragInteraction> {

@@ -203,7 +203,9 @@ pub fn swap_bar_titles(
             changed,
             "both windows validated against tiled_tree_order must be swappable leaves"
         );
-        finish_layout_change(ctx);
+        // The drag may target a monitor other than the selected one; arrange
+        // the monitor whose tree actually changed.
+        finish_layout_change_for_monitor(ctx, monitor_id);
         return changed;
     }
 
@@ -213,9 +215,6 @@ pub fn swap_bar_titles(
         .monitor_mut(monitor_id)
         .expect("validated monitor must remain present")
         .swap_clients_in_stack(first, second);
-    if changed {
-        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
-    }
     changed
 }
 
@@ -372,17 +371,30 @@ pub fn toggle_floating_presentation(ctx: &mut WmCtx<'_>) {
 
 pub(crate) fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
+    finish_layout_change_for_monitor(ctx, selected_monitor_id);
+}
+
+/// Complete a layout change on `monitor_id`: reconcile tiling invariants,
+/// arrange, and re-project presentation signals.
+///
+/// Callers that target an explicitly chosen monitor (rather than the selected
+/// one) must pass it here so the arrange reaches the monitor whose layout
+/// actually changed.
+pub(crate) fn finish_layout_change_for_monitor(
+    ctx: &mut WmCtx<'_>,
+    monitor_id: crate::types::MonitorId,
+) {
     let is_floating = ctx
         .core()
         .model()
-        .monitor(selected_monitor_id)
+        .monitor(monitor_id)
         .is_some_and(|monitor| monitor.current_layout() == PresentationMode::Floating);
     if !is_floating {
         ctx.core_mut()
             .model_mut()
-            .reconcile_client_maximization_for_tiling(selected_monitor_id);
+            .reconcile_client_maximization_for_tiling(monitor_id);
     }
-    arrange(ctx, Some(selected_monitor_id));
+    arrange(ctx, Some(monitor_id));
 
     // The meaning exposed through the application maximize button changes
     // when the global presentation crosses the tiled/floating boundary, even
@@ -392,7 +404,7 @@ pub(crate) fn finish_layout_change(ctx: &mut WmCtx<'_>) {
         .model()
         .clients
         .values()
-        .filter(|client| client.monitor_id == selected_monitor_id)
+        .filter(|client| client.monitor_id == monitor_id)
         .map(|client| client.win)
         .collect::<Vec<_>>();
     for win in windows {

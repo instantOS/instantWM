@@ -280,14 +280,24 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// The selected window's close-button and resize-widget zones belong to its
 /// title cell, so they resolve to that window like the rest of the cell.
 fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Option<WindowId> {
-    match super::bar_position_on_monitor(ctx, monitor_id, root) {
-        Some(
-            BarPosition::WinTitle(win)
-            | BarPosition::CloseButton(win)
-            | BarPosition::ResizeWidget(win),
-        ) => Some(win),
-        _ => None,
-    }
+    use crate::bar::model::{build_fallback_hit_cache, title_hit_slot};
+
+    let local_x = super::bar_local_x_on_monitor(ctx, monitor_id, root)?;
+    let core = ctx.core();
+    let monitor = core.model().monitor(monitor_id)?;
+    let order = monitor.bar_client_order(&core.model().clients);
+    let fallback;
+    let hit = match core.bar.monitor_hit_cache(monitor_id) {
+        // Rendering is asynchronous on Wayland. Geometry remains useful
+        // across a reorder, but its captured window identities do not: using
+        // them can make the next motion sample undo the preceding swap.
+        Some(hit) if hit.title_ranges.len() == order.len() => hit,
+        _ => {
+            fallback = build_fallback_hit_cache(monitor, core);
+            &fallback
+        }
+    };
+    title_hit_slot(hit, local_x).and_then(|slot| order.get(slot).copied())
 }
 
 /// Promote an armed bar-title press to a live title-strip reorder.
@@ -379,6 +389,10 @@ fn convert_reorder_to_move(
     {
         return false;
     }
+    // The reorder's gesture highlight no longer applies once the interaction
+    // became an ordinary move drag; hover updates resume on the next motion.
+    ctx.core_mut().bar.hover.clear();
+    ctx.request_bar_update();
     ctx.set_cursor_style(AltCursor::Move);
     true
 }
@@ -633,6 +647,16 @@ mod tests {
         (start + end + 1) / 2
     }
 
+    fn install_rendered_bar_hit_cache(wm: &mut Wm, monitor_id: MonitorId) {
+        let hit = {
+            let ctx = wm.ctx();
+            let core = ctx.core();
+            let monitor = core.model().monitor(monitor_id).unwrap();
+            crate::bar::model::build_fallback_hit_cache(monitor, core)
+        };
+        wm.bar.replace_hit_cache(monitor_id, hit);
+    }
+
     #[test]
     fn bar_title_drag_within_strip_reorders_and_leaving_converts_to_move() {
         let (mut wm, monitor_id, first, second) =
@@ -640,6 +664,9 @@ mod tests {
         let first_x = title_cell_center(&mut wm, monitor_id, first);
         let second_x = title_cell_center(&mut wm, monitor_id, second);
         assert!(second_x - first_x > DRAG_THRESHOLD * 2);
+        // Reproduce the runtime path, where input uses identities recorded by
+        // the most recently rendered bar rather than the fallback model view.
+        install_rendered_bar_hit_cache(&mut wm, monitor_id);
 
         let press = Point::new(first_x, 10);
         assert!(title_drag_begin(
@@ -662,8 +689,28 @@ mod tests {
             wm.core.drag.reordering_interaction().is_some(),
             "threshold crossing inside the strip must engage a reorder"
         );
+        assert!(wm.core.drag.owns_bar_hover());
+        // Focus activation may have queued unrelated work. Isolate the swap's
+        // own invalidation contract below.
+        wm.work.layout.clear();
 
         // Dragging onto the neighbour's cell swaps the bar order.
+        assert!(super::process_title_reorder_motion(
+            &mut wm.ctx(),
+            Point::new(second_x, 10)
+        ));
+        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        assert_eq!(
+            monitor.bar_client_order(&wm.core.model.clients),
+            vec![second, first]
+        );
+        assert!(
+            !wm.work.layout.is_pending(),
+            "changing title order must not schedule an unrelated full layout"
+        );
+
+        // A second sample at the same location used to read the stale rendered
+        // identity and immediately swap the two titles back.
         assert!(super::process_title_reorder_motion(
             &mut wm.ctx(),
             Point::new(second_x, 10)
@@ -680,6 +727,7 @@ mod tests {
             Point::new(second_x, 200)
         ));
         assert!(wm.core.drag.reordering_interaction().is_none());
+        assert!(!wm.core.drag.owns_bar_hover());
         let active = wm.core.drag.active_interaction().unwrap();
         assert_eq!(active.win(), first);
         assert_eq!(active.drag_type(), crate::core_state::DragType::Move);

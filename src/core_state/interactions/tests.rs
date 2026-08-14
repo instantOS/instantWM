@@ -3,7 +3,7 @@ use super::{
     SwipeDirection,
 };
 use crate::actions::ButtonAction;
-use crate::types::{InteractionSource, MonitorId, MouseButton, Point, Rect, WindowId};
+use crate::types::{InteractionSource, MonitorId, MouseButton, Point, Rect, TagMask, WindowId};
 
 fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
     BottomBarDrag::new(
@@ -176,6 +176,7 @@ fn title_reorder_transitions_from_armed_to_move_and_release() {
     interactions
         .begin_title_reorder(super::TitleReorderDrag::new(monitor))
         .unwrap();
+    assert!(interactions.owns_bar_hover());
     let (drag, reorder) = interactions.reordering_interaction().unwrap();
     assert_eq!(drag.win(), win);
     assert_eq!(reorder.monitor_id(), monitor);
@@ -191,6 +192,7 @@ fn title_reorder_transitions_from_armed_to_move_and_release() {
     interactions
         .activate_reordering_as_move(Point::new(320, 240), Rect::new(0, 0, 400, 300))
         .unwrap();
+    assert!(!interactions.owns_bar_hover());
     assert!(interactions.reordering_interaction().is_none());
     let active = interactions.active_interaction().unwrap();
     assert_eq!(active.win(), win);
@@ -201,8 +203,10 @@ fn title_reorder_transitions_from_armed_to_move_and_release() {
     interactions
         .begin_title_reorder(super::TitleReorderDrag::new(monitor))
         .unwrap();
+    assert!(interactions.owns_bar_hover());
     assert!(interactions.finish_reordering().is_some());
     assert!(!interactions.has_capture());
+    assert!(!interactions.owns_bar_hover());
 }
 
 #[test]
@@ -219,6 +223,28 @@ fn title_reorder_requires_an_armed_capture() {
     let interactions = armed_title_drag(WindowId(6), super::ArmedDragOrigin::Client);
     assert!(interactions.reordering_interaction().is_none());
     assert!(interactions.armed_interaction().is_some());
+}
+
+#[test]
+fn tag_drag_owns_bar_hover_for_its_complete_capture() {
+    let mut interactions = DragState::default();
+    interactions
+        .begin_tag_drag(super::TagDragState {
+            initial_tag: TagMask::single(1).unwrap(),
+            start: Point::new(10, 10),
+            dragging: false,
+            monitor_id: MonitorId::from_raw(1),
+            last_tag: Some(1),
+            cursor_on_bar: true,
+            last_motion: None,
+            button: MouseButton::Left,
+            source: InteractionSource::Pointer,
+        })
+        .unwrap();
+
+    assert!(interactions.owns_bar_hover());
+    assert!(interactions.finish_tag_drag(MouseButton::Left).is_some());
+    assert!(!interactions.owns_bar_hover());
 }
 
 #[test]
