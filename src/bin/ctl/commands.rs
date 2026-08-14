@@ -2,8 +2,8 @@ use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
     ConfigCommand, FocusFollowsMouseMode, InputCommand, IpcCommand, KeyboardCommand,
     KeyboardLayout, LayoutCommand, ModeCommand, MonitorCommand, MonitorDirection,
-    PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand,
-    TestCommand, ToggleAction, ToggleCommand, Transform, VrrMode, WindowCommand,
+    PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand, TestCommand,
+    ToggleAction, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
 use std::process;
 use std::str::FromStr;

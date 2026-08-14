@@ -21,12 +21,7 @@ mod tests {
 
     #[test]
     fn parses_pending_tmp_rule_add_defaults_timeout_30s() {
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "pending-tmp-rule",
-            "add",
-            "--float",
-        ]);
+        let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "add", "--float"]);
         match cli.command {
             ctl::CommandKind::PendingTmpRule {
                 action:
@@ -109,8 +104,7 @@ mod tests {
         ]);
         match cli.command {
             ctl::CommandKind::PendingTmpRule {
-                action:
-                    ctl::commands::PendingTmpRuleAction::Add { timeout_ms, .. },
+                action: ctl::commands::PendingTmpRuleAction::Add { timeout_ms, .. },
             } => assert_eq!(timeout_ms, 0),
             other => panic!("expected PendingTmpRule Add, got {other:?}"),
         }

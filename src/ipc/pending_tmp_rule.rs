@@ -7,9 +7,7 @@
 //!
 //! See [`crate::client::rules`] for the matching/consumption path.
 
-use crate::ipc_types::{
-    PendingTmpRuleCmd, PendingTmpRuleInfo, Response,
-};
+use crate::ipc_types::{PendingTmpRuleCmd, PendingTmpRuleInfo, Response};
 use crate::types::{MonitorRule, Rule, RuleFloat, TagMask};
 use crate::wm::Wm;
 use std::borrow::Cow;
@@ -38,9 +36,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                 return Response::err("timeout-ms must be greater than zero");
             }
             if timeout_ms > MAX_TIMEOUT_MS {
-                return Response::err(format!(
-                    "timeout-ms must be <= {MAX_TIMEOUT_MS} (24h)"
-                ));
+                return Response::err(format!("timeout-ms must be <= {MAX_TIMEOUT_MS} (24h)"));
             }
 
             // A rule with no matcher and no effect would match every window
@@ -71,7 +67,12 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
             // one-shot isn't silently consumed by a no-op move at apply time
             // (`apply_monitor_rule` can only target existing monitors).
             if let Some(num) = on_monitor
-                && !wm.ctx().core().state().monitors_iter().any(|(_, m)| m.num == num)
+                && !wm
+                    .ctx()
+                    .core()
+                    .state()
+                    .monitors_iter()
+                    .any(|(_, m)| m.num == num)
             {
                 return Response::err(format!(
                     "on-monitor {num} does not match any connected monitor"
@@ -98,8 +99,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                 },
             };
 
-            let id = NEXT_PENDING_TMP_RULE_ID
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let id = NEXT_PENDING_TMP_RULE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let entry = crate::types::PendingTmpRule {
                 id,
                 rule,
@@ -259,12 +259,7 @@ mod tests {
         };
         assert!(entries.is_empty());
         // The entry is actually removed, not just hidden from the listing.
-        assert!(wm
-            .ctx()
-            .core()
-            .behavior()
-            .pending_tmp_rules
-            .is_empty());
+        assert!(wm.ctx().core().behavior().pending_tmp_rules.is_empty());
     }
 
     #[test]

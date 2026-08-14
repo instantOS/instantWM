@@ -4,8 +4,7 @@ use crate::client::LaunchContext;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
 use crate::types::{
-    ClientMode, ClientPlacement, MonitorRule, Rect, RuleFloat, SizeHints, TagMask,
-    WindowId,
+    ClientMode, ClientPlacement, MonitorRule, Rect, RuleFloat, SizeHints, TagMask, WindowId,
 };
 
 /// Properties used for rule matching.
@@ -151,9 +150,7 @@ fn apply_rules_impl(
     // application (not on property refreshes). On a match the rule is
     // removed from the pending list; expired entries are dropped lazily.
     let mut matched_pending_id: Option<u64> = None;
-    if application == RuleApplication::Initial
-        && !state.behavior.pending_tmp_rules.is_empty()
-    {
+    if application == RuleApplication::Initial && !state.behavior.pending_tmp_rules.is_empty() {
         let now = std::time::Instant::now();
         // Sweep expired entries, then locate the first match by index.
         // Removing that index yields an owned entry, so `apply_rule` can
@@ -722,18 +719,21 @@ mod tests {
         let win = WindowId(46);
         state.model.insert_client(Client::new(win));
         let id = 0;
-        state.behavior.pending_tmp_rules.push(crate::types::PendingTmpRule {
-            id,
-            rule: crate::types::Rule {
-                class: None,
-                instance: None,
-                title: None,
-                tags: TagMask::EMPTY,
-                is_floating: Some(RuleFloat::Float),
-                monitor: crate::types::MonitorRule::Any,
-            },
-            deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
-        });
+        state
+            .behavior
+            .pending_tmp_rules
+            .push(crate::types::PendingTmpRule {
+                id,
+                rule: crate::types::Rule {
+                    class: None,
+                    instance: None,
+                    title: None,
+                    tags: TagMask::EMPTY,
+                    is_floating: Some(RuleFloat::Float),
+                    monitor: crate::types::MonitorRule::Any,
+                },
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+            });
 
         apply_property_change(
             &mut state,

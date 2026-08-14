@@ -42,10 +42,7 @@ pub fn format_response(response: &Response, json: bool) {
     }
 }
 
-fn format_pending_tmp_rule_list(
-    rules: &[instantwm::ipc_types::PendingTmpRuleInfo],
-    json: bool,
-) {
+fn format_pending_tmp_rule_list(rules: &[instantwm::ipc_types::PendingTmpRuleInfo], json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(rules).unwrap());
         return;

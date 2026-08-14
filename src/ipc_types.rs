@@ -618,7 +618,10 @@ pub enum Response {
     /// Listing of currently-pending one-shot rules.
     PendingTmpRuleList(Vec<PendingTmpRuleInfo>),
     /// Ack of a successful Add command. The id is needed for cancel/inspect.
-    PendingTmpRuleAdded { id: u64, timeout_ms: u64 },
+    PendingTmpRuleAdded {
+        id: u64,
+        timeout_ms: u64,
+    },
 }
 
 impl Response {
