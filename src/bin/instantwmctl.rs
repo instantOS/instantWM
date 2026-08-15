@@ -20,6 +20,62 @@ mod tests {
     }
 
     #[test]
+    fn friendly_mutation_commands_compile_to_run_action() {
+        let cases = [
+            (
+                vec!["instantwmctl", "toggle", "alt-tag", "on"],
+                "toggle_alt_tag",
+                vec!["on"],
+            ),
+            (
+                vec!["instantwmctl", "layout", "grid"],
+                "set_layout",
+                vec!["grid"],
+            ),
+            (
+                vec!["instantwmctl", "mode", "set", "resize"],
+                "set_mode",
+                vec!["resize"],
+            ),
+            (
+                vec!["instantwmctl", "tag", "view", "4"],
+                "view_tag",
+                vec!["4"],
+            ),
+        ];
+
+        for (argv, expected_name, expected_args) in cases {
+            let cli = Cli::parse_from(argv);
+            let command: IpcCommand = cli.command.into();
+            match command {
+                IpcCommand::RunAction { name, args } => {
+                    assert_eq!(name, expected_name);
+                    assert_eq!(args, expected_args);
+                }
+                other => panic!("expected RunAction, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn spawn_preserves_argv_in_the_canonical_action() {
+        let cli = Cli::parse_from(["instantwmctl", "spawn", "printf", "hello world"]);
+        let command: IpcCommand = cli.command.into();
+        assert!(matches!(
+            command,
+            IpcCommand::RunAction { name, args }
+                if name == "spawn" && args == ["printf", "hello world"]
+        ));
+    }
+
+    #[test]
+    fn mode_listing_remains_a_structured_query() {
+        let cli = Cli::parse_from(["instantwmctl", "mode", "list"]);
+        let command: IpcCommand = cli.command.into();
+        assert!(matches!(command, IpcCommand::ListModes));
+    }
+
+    #[test]
     fn parses_pending_tmp_rule_add_defaults_timeout_30s() {
         let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "add", "--float"]);
         match cli.command {
@@ -583,7 +639,10 @@ fn main() {
                 );
                 std::process::exit(1);
             };
-            IpcCommand::Layout(layout)
+            IpcCommand::RunAction {
+                name: "set_layout".to_string(),
+                args: vec![layout.name().to_string()],
+            }
         }
         ctl::CommandKind::Config {
             action: ctl::commands::ConfigAction::Default,

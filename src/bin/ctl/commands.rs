@@ -1,12 +1,11 @@
 use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
-    ConfigCommand, FocusFollowsMouseMode, InputCommand, IpcCommand, KeyboardCommand,
-    KeyboardLayout, LayoutCommand, ModeCommand, MonitorCommand, MonitorDirection,
+    ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, MonitorCommand,
     PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand, TestCommand,
-    ToggleAction, ToggleCommand, Transform, VrrMode, WindowCommand,
+    Transform, VrrMode, WindowCommand,
 };
+use instantwm::types::{FocusFollowsMouseMode, MonitorDirection, ToggleAction};
 use std::process;
-use std::str::FromStr;
 
 const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 
@@ -464,7 +463,10 @@ pub enum CommandKind {
         action: ToggleCliAction,
     },
     /// Launch a command through the compositor.
-    Spawn { command: Vec<String> },
+    Spawn {
+        #[arg(required = true)]
+        command: Vec<String>,
+    },
     /// Warp the pointer to the focused window.
     WarpFocus,
     /// Move the focused tag view to another monitor.
@@ -611,56 +613,79 @@ impl From<WindowAction> for WindowCommand {
     }
 }
 
-impl From<TagAction> for TagCommand {
-    fn from(action: TagAction) -> Self {
-        match action {
-            TagAction::View { number } => Self::View(number.unwrap_or(2)),
-            TagAction::Name { name } => Self::Name(name),
-            TagAction::Reset => Self::ResetNames,
+fn run_action(name: &str, args: Vec<String>) -> IpcCommand {
+    IpcCommand::RunAction {
+        name: name.to_string(),
+        args,
+    }
+}
+
+fn toggle_arg(action: Option<ToggleAction>) -> Vec<String> {
+    match action.unwrap_or_default() {
+        ToggleAction::Toggle => Vec::new(),
+        ToggleAction::SetFalse => vec!["off".to_string()],
+        ToggleAction::SetTrue => vec!["on".to_string()],
+    }
+}
+
+fn direction_arg(direction: MonitorDirection) -> String {
+    if direction.is_prev() { "prev" } else { "next" }.to_string()
+}
+
+fn tag_command(action: TagAction) -> IpcCommand {
+    match action {
+        TagAction::View { number } => run_action("view_tag", vec![number.unwrap_or(2).to_string()]),
+        TagAction::Name { name } => IpcCommand::Tag(TagCommand::Name(name)),
+        TagAction::Reset => IpcCommand::Tag(TagCommand::ResetNames),
+    }
+}
+
+fn toggle_command(action: ToggleCliAction) -> IpcCommand {
+    match action {
+        ToggleCliAction::Animated { action } => run_action("toggle_animated", toggle_arg(action)),
+        ToggleCliAction::FocusFollowsMouse { mode } => {
+            let mode = match mode {
+                FocusFollowsMouseMode::Off => "off",
+                FocusFollowsMouseMode::Normal => "normal",
+                FocusFollowsMouseMode::Force => "force",
+            };
+            run_action("set_focus_follows_mouse", vec![mode.to_string()])
+        }
+        ToggleCliAction::FocusFollowsFloatMouse { action } => {
+            run_action("toggle_focus_follows_float_mouse", toggle_arg(action))
+        }
+        ToggleCliAction::AltTag { action } => run_action("toggle_alt_tag", toggle_arg(action)),
+        ToggleCliAction::HideTags { action } => run_action("toggle_hide_tags", toggle_arg(action)),
+        ToggleCliAction::BottomBar { action } => {
+            run_action("toggle_bottom_bar", toggle_arg(action))
         }
     }
 }
 
-impl From<ToggleCliAction> for ToggleCommand {
-    fn from(action: ToggleCliAction) -> Self {
-        match action {
-            ToggleCliAction::Animated { action } => Self::Animated(action.unwrap_or_default()),
-            ToggleCliAction::FocusFollowsMouse { mode } => Self::FocusFollowsMouse(mode),
-            ToggleCliAction::FocusFollowsFloatMouse { action } => {
-                Self::FocusFollowsFloatMouse(action.unwrap_or_default())
+fn keyboard_command(action: KeyboardAction) -> IpcCommand {
+    let command = match action {
+        KeyboardAction::Next => return run_action("next_keyboard_layout", Vec::new()),
+        KeyboardAction::Prev => return run_action("prev_keyboard_layout", Vec::new()),
+        KeyboardAction::List { all } => {
+            if all {
+                KeyboardCommand::ListAll
+            } else {
+                KeyboardCommand::List
             }
-            ToggleCliAction::AltTag { action } => Self::AltTag(action.unwrap_or_default()),
-            ToggleCliAction::HideTags { action } => Self::HideTags(action.unwrap_or_default()),
-            ToggleCliAction::BottomBar { action } => Self::BottomBar(action.unwrap_or_default()),
         }
-    }
-}
-
-impl From<KeyboardAction> for KeyboardCommand {
-    fn from(action: KeyboardAction) -> Self {
-        match action {
-            KeyboardAction::List { all } => {
-                if all {
-                    Self::ListAll
-                } else {
-                    Self::List
-                }
-            }
-            KeyboardAction::Status => Self::Status,
-            KeyboardAction::Next => Self::Next,
-            KeyboardAction::Prev => Self::Prev,
-            KeyboardAction::Set { layouts } => Self::Set(
-                layouts
-                    .into_iter()
-                    .map(KeyboardLayoutArg::from)
-                    .map(KeyboardLayout::from)
-                    .collect(),
-            ),
-            KeyboardAction::Add { name } => Self::Add(KeyboardLayoutArg::from(name).into()),
-            KeyboardAction::Remove { layout } => Self::Remove(layout),
-            KeyboardAction::SwapEscape { enabled } => Self::SwapEscape(enabled),
-        }
-    }
+        KeyboardAction::Status => KeyboardCommand::Status,
+        KeyboardAction::Set { layouts } => KeyboardCommand::Set(
+            layouts
+                .into_iter()
+                .map(KeyboardLayoutArg::from)
+                .map(KeyboardLayout::from)
+                .collect(),
+        ),
+        KeyboardAction::Add { name } => KeyboardCommand::Add(KeyboardLayoutArg::from(name).into()),
+        KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
+        KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
+    };
+    IpcCommand::Keyboard(command)
 }
 
 impl From<ScratchpadAction> for ScratchpadCommand {
@@ -744,16 +769,6 @@ impl From<InputAction> for InputCommand {
     }
 }
 
-impl From<ModeAction> for ModeCommand {
-    fn from(action: ModeAction) -> Self {
-        match action {
-            ModeAction::List => Self::List,
-            ModeAction::Set { name } => Self::Set(name),
-            ModeAction::Toggle { name } => Self::Toggle(name),
-        }
-    }
-}
-
 fn test_command(action: TestAction) -> TestCommand {
     match action {
         TestAction::Pointer {
@@ -831,17 +846,19 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::Reload => Self::Reload,
             CommandKind::Monitor { action } => Self::Monitor(action.into()),
             CommandKind::Window { action } => Self::Window(action.into()),
-            CommandKind::Tag { action } => Self::Tag(action.into()),
-            CommandKind::Toggle { action } => Self::Toggle(action.into()),
-            CommandKind::Spawn { command } => Self::Spawn(command.join(" ")),
-            CommandKind::WarpFocus => Self::WarpFocus,
-            CommandKind::TagMon { direction } => Self::TagMon(direction),
-            CommandKind::FollowMon { direction } => Self::FollowMon(direction),
-            CommandKind::Layout { name } => Self::Layout(
-                LayoutCommand::from_str(
-                    &name.expect("layout name required (use 'layout list' to see layouts)"),
-                )
-                .expect("invalid layout name (use 'layout list' to see layouts)"),
+            CommandKind::Tag { action } => tag_command(action),
+            CommandKind::Toggle { action } => toggle_command(action),
+            CommandKind::Spawn { command } => run_action("spawn", command),
+            CommandKind::WarpFocus => run_action("warp_focus", Vec::new()),
+            CommandKind::TagMon { direction } => {
+                run_action("tag_mon", vec![direction_arg(direction)])
+            }
+            CommandKind::FollowMon { direction } => {
+                run_action("follow_mon", vec![direction_arg(direction)])
+            }
+            CommandKind::Layout { name } => run_action(
+                "set_layout",
+                vec![name.expect("layout name required (use 'layout list' to see layouts)")],
             ),
             CommandKind::Theme { name, list } => {
                 if list {
@@ -861,17 +878,24 @@ impl From<CommandKind> for IpcCommand {
                     Self::GetTheme
                 }
             }
-            CommandKind::Border { width } => Self::Border(width),
+            CommandKind::Border { width } => run_action(
+                "set_border",
+                width.map(|value| value.to_string()).into_iter().collect(),
+            ),
             CommandKind::PendingTmpRule { action } => Self::PendingTmpRule(action.into()),
-            CommandKind::Keyboard { action } => Self::Keyboard(action.into()),
+            CommandKind::Keyboard { action } => keyboard_command(action),
             CommandKind::Scratchpad { action } => Self::Scratchpad(action.into()),
             CommandKind::Mouse { action } => Self::Input(action.into()),
-            CommandKind::Mode { action } => Self::Mode(action.into()),
+            CommandKind::Mode { action } => match action {
+                ModeAction::List => Self::ListModes,
+                ModeAction::Set { name } => run_action("set_mode", vec![name]),
+                ModeAction::Toggle { name } => run_action("mode_toggle", vec![name]),
+            },
             CommandKind::Wallpaper { path } => Self::Wallpaper(path),
             CommandKind::UpdateStatus { text } => Self::UpdateStatus(text),
             CommandKind::Config { action } => Self::Config(action.into()),
             CommandKind::Test { action } => Self::Test(test_command(action)),
-            CommandKind::Quit => Self::Quit,
+            CommandKind::Quit => run_action("quit", Vec::new()),
         }
     }
 }

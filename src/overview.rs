@@ -63,10 +63,13 @@ pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
         | NamedAction::ToggleAltTag
         | NamedAction::ToggleAnimated
         | NamedAction::ToggleHideTags
+        | NamedAction::ToggleFocusFollowsFloatMouse
+        | NamedAction::SetFocusFollowsMouse
         | NamedAction::NextKeyboardLayout
         | NamedAction::PrevKeyboardLayout
         | NamedAction::KeyboardLayout
         | NamedAction::Spawn
+        | NamedAction::WarpFocus
         | NamedAction::FocusStack => Preserve,
 
         NamedAction::FocusLast
@@ -76,8 +79,8 @@ pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
         | NamedAction::ShiftViewLeft
         | NamedAction::ShiftViewRight
         | NamedAction::ViewAll
-        | NamedAction::FocusMonPrev
-        | NamedAction::FocusMonNext => Cancel,
+        | NamedAction::ViewTag
+        | NamedAction::FocusMon => Cancel,
 
         _ => Confirm,
     };

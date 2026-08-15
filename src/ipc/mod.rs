@@ -22,7 +22,6 @@ pub mod scratchpad;
 pub mod tag;
 pub mod test;
 pub mod theme;
-pub mod toggle;
 pub mod window;
 
 pub struct IpcServer {
@@ -248,12 +247,6 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
             Err(err) => Response::err(err),
         },
         IpcCommand::RunAction { name, args } => general::run_action(wm, name, args),
-        IpcCommand::Spawn(command) => general::spawn_command(wm, command),
-        IpcCommand::WarpFocus => general::warp_focus(wm),
-        IpcCommand::TagMon(dir) => general::tag_mon(wm, dir),
-        IpcCommand::FollowMon(dir) => general::follow_mon(wm, dir),
-        IpcCommand::Layout(val) => general::set_layout(wm, val),
-        IpcCommand::Border(arg) => general::set_border(wm, arg),
         IpcCommand::PendingTmpRule(cmd) => pending_tmp_rule::handle_pending_tmp_rule(wm, cmd),
         IpcCommand::UpdateStatus(text) => general::update_status(wm, text),
         IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(wm, cmd),
@@ -261,19 +254,14 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Tag(cmd) => tag::handle_tag_command(wm, cmd),
         IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd),
         IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(wm, cmd),
-        IpcCommand::Toggle(cmd) => toggle::handle_toggle_command(wm, cmd),
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),
-        IpcCommand::Mode(cmd) => mode::handle_mode_command(wm, cmd),
+        IpcCommand::ListModes => mode::list_modes(wm),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
         IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
         IpcCommand::Test(cmd) => test::handle_test_command(wm, cmd),
         IpcCommand::GetTheme => theme::get_theme(wm),
         IpcCommand::SetTheme(theme) => theme::set_theme(wm, theme),
         IpcCommand::ListThemes => theme::list_themes(),
-        IpcCommand::Quit => {
-            wm.quit();
-            Response::ok()
-        }
     }
 }
 
@@ -282,9 +270,6 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
     use crate::overview::ExitMode::{RestorePrevious, ToSelectedWindow};
 
     match cmd {
-        IpcCommand::TagMon(_) | IpcCommand::FollowMon(_) | IpcCommand::Border(_) => {
-            Some(ToSelectedWindow)
-        }
         IpcCommand::Monitor(
             MonitorCommand::Switch { .. }
             | MonitorCommand::Next { .. }
@@ -303,9 +288,6 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         IpcCommand::Status
         | IpcCommand::Reload
         | IpcCommand::RunAction { .. }
-        | IpcCommand::Spawn(_)
-        | IpcCommand::WarpFocus
-        | IpcCommand::Layout(_)
         | IpcCommand::UpdateStatus(_)
         | IpcCommand::Monitor(MonitorCommand::List | MonitorCommand::Modes { .. })
         | IpcCommand::Scratchpad(
@@ -327,17 +309,15 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         | IpcCommand::Window(
             WindowCommand::Info(_) | WindowCommand::Close(Some(_)) | WindowCommand::List(_),
         )
-        | IpcCommand::Toggle(_)
         | IpcCommand::Wallpaper(_)
         | IpcCommand::Input(_)
-        | IpcCommand::Mode(_)
+        | IpcCommand::ListModes
         | IpcCommand::Config(_)
         | IpcCommand::Test(_)
         | IpcCommand::PendingTmpRule(_)
         | IpcCommand::GetTheme
         | IpcCommand::SetTheme(_)
-        | IpcCommand::ListThemes
-        | IpcCommand::Quit => None,
+        | IpcCommand::ListThemes => None,
     }
 }
 

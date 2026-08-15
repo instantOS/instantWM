@@ -28,14 +28,26 @@ fn button_target_client(
 }
 
 pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
+    if let Err(error) = try_execute_key_action(ctx, action) {
+        log::warn!("instantwm: action failed: {error}");
+    }
+}
+
+/// Execute an action and preserve failures for callers such as IPC.
+///
+/// Keybindings use [`execute_key_action`] because there is no interactive
+/// response channel. Control-plane callers use this function so malformed
+/// arguments and rejected state changes are reported instead of silently
+/// succeeding.
+pub fn try_execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) -> Result<(), String> {
     crate::overview::prepare_key_action(ctx, action);
     match action {
         KeyAction::Sequence(actions) => {
             for action in actions {
-                execute_key_action(ctx, action);
+                try_execute_key_action(ctx, action)?;
             }
         }
-        KeyAction::Named { action, args } => execute_named_action(ctx, *action, args),
+        KeyAction::Named { action, args } => execute_named_action(ctx, *action, args)?,
         KeyAction::ViewTag { tag_idx } => {
             if let Some(mask) = TagMask::from_index(*tag_idx) {
                 crate::tags::view::view_tags(ctx, mask);
@@ -73,6 +85,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
             }
         }
     }
+    Ok(())
 }
 
 pub fn execute_button_action(
@@ -82,7 +95,11 @@ pub fn execute_button_action(
 ) {
     crate::overview::prepare_button_action(ctx, action);
     match action {
-        ButtonAction::Named { action, args } => execute_named_action(ctx, *action, args),
+        ButtonAction::Named { action, args } => {
+            if let Err(error) = execute_named_action(ctx, *action, args) {
+                log::warn!("instantwm: button action failed: {error}");
+            }
+        }
         ButtonAction::WindowTitleMouseHandler => {
             let Some(crate::types::BarPosition::WinTitle(win)) = arg.bar_position() else {
                 return;
@@ -225,6 +242,13 @@ mod tests {
     #[test]
     fn key_action_sequences_execute_every_action_in_order() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        for name in ["first", "second", "final"] {
+            wm.core
+                .config
+                .bindings
+                .modes
+                .insert(name.to_string(), crate::config::ModeConfig::default());
+        }
         let action = KeyAction::Sequence(vec![
             KeyAction::Named {
                 action: NamedAction::SetMode,

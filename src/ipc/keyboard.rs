@@ -1,19 +1,10 @@
 use crate::ipc_types::{KeyboardCommand, KeyboardLayoutInfo, Response};
 use crate::keyboard_layout;
-use crate::types::input::StackDirection;
 use crate::wm::Wm;
 
 pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
     let mut ctx = wm.ctx();
     match cmd {
-        KeyboardCommand::Next => {
-            let status = keyboard_layout::cycle_keyboard_layout(&mut ctx, StackDirection::Next);
-            Response::Message(status)
-        }
-        KeyboardCommand::Prev => {
-            let status = keyboard_layout::cycle_keyboard_layout(&mut ctx, StackDirection::Previous);
-            Response::Message(status)
-        }
         KeyboardCommand::Status => {
             let status = ctx.core().keyboard_layout().status();
             Response::Message(status)

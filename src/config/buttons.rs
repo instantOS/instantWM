@@ -34,7 +34,7 @@ pub fn get_buttons() -> Vec<Button> {
     vec![
         btn!(LayoutSymbol, 0, button:MouseButton::Left => ButtonAction::named(NamedAction::CycleLayoutPrev)),
         btn!(LayoutSymbol, 0, button:MouseButton::Right => ButtonAction::named(NamedAction::CycleLayoutNext)),
-        btn!(LayoutSymbol, 0, button:MouseButton::Middle => ButtonAction::named(NamedAction::LayoutTile)),
+        btn!(LayoutSymbol, 0, button:MouseButton::Middle => ButtonAction::named_args(NamedAction::SetLayout, &["tile"])),
         btn!(LayoutSymbol, MODKEY, button:MouseButton::Left => ButtonAction::named(NamedAction::EdgeScratchpadCreate)),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => ButtonAction::WindowTitleMouseHandler),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Middle => ButtonAction::CloseClickedTitleWindow),
@@ -95,6 +95,6 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(ShutDown, 0, button:MouseButton::Right => ButtonAction::named_args(NamedAction::Spawn, &[".config/instantos/default/lockscreen"])),
         btn!(StartMenu, 0, button:MouseButton::Left => ButtonAction::named_args(NamedAction::Spawn, &["instantstartmenu"])),
         btn!(StartMenu, 0, button:MouseButton::Right => ButtonAction::named_args(NamedAction::Spawn, &["quickmenu"])),
-        btn!(StartMenu, SHIFT, button:MouseButton::Left => ButtonAction::named(NamedAction::TogglePrefix)),
+        btn!(StartMenu, SHIFT, button:MouseButton::Left => ButtonAction::named_args(NamedAction::ModeToggle, &["prefix"])),
     ]
 }

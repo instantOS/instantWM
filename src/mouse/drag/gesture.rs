@@ -84,7 +84,7 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
             .get(crate::config::commands::Cmd::DownVol)
     };
     for _ in 0..steps.unsigned_abs() {
-        crate::util::spawn(ctx, command);
+        let _ = crate::util::spawn(ctx, command);
     }
 }
 

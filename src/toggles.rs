@@ -143,17 +143,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 }
 
-/// Toggle the bottom bar on the selected monitor's current tag, exactly like
-/// [`toggle_bar`] does for the top bar.
-pub fn toggle_bottom_bar(ctx: &mut WmCtx) {
-    let shown = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .shows_bottom_bar();
-    set_bottom_bar_shown(ctx, !shown);
-}
-
 /// Set the bottom bar visibility on the selected monitor's current tag.
 ///
 /// Shared by the hotkey toggle and the IPC toggle command (which can also

@@ -1,9 +1,4 @@
 use crate::ipc_types::Response;
-use crate::layouts::LayoutCommand;
-use crate::monitor::move_to_monitor_and_follow;
-use crate::tags::send_to_monitor;
-
-use crate::types::MonitorDirection;
 use crate::wm::Wm;
 use std::process::Command;
 
@@ -30,74 +25,14 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
 }
 
 pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
-    use crate::actions::execute_key_action;
-    use crate::config::keybind_config::compile_action_with_args;
-    if let Some(action) = compile_action_with_args(&name, &args) {
-        let mut ctx = wm.ctx();
-        execute_key_action(&mut ctx, &action);
-        Response::ok()
-    } else {
-        Response::err(format!("unknown or invalid action '{name}'"))
-    }
-}
-
-pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
-    if command.trim().is_empty() {
-        return Response::err("spawn requires a command");
-    }
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c").arg(&command);
-    let metadata = {
-        let ctx = wm.ctx();
-        crate::util::prepare_spawn_command(&ctx, &mut cmd)
+    let Some(action) = crate::actions::parse_named_action(&name) else {
+        return Response::err(format!("unknown action '{name}'"));
     };
-    match cmd.spawn() {
-        Ok(child) => {
-            let reap_child = wm.backend.kind() == crate::backend::BackendKind::Wayland;
-            let pid = crate::util::record_spawned_child(
-                &mut wm.core.pending_launches,
-                child,
-                metadata,
-                reap_child,
-            );
-            Response::Message(format!("pid={pid}"))
-        }
-        Err(err) => Response::err(format!("spawn failed: {}", err)),
+    let action = crate::actions::KeyAction::Named { action, args };
+    match crate::actions::try_execute_key_action(&mut wm.ctx(), &action) {
+        Ok(()) => Response::ok(),
+        Err(error) => Response::err(error),
     }
-}
-
-pub fn warp_focus(wm: &mut Wm) -> Response {
-    crate::mouse::warp::warp_to_focus(&mut wm.ctx());
-    Response::ok()
-}
-
-pub fn tag_mon(wm: &mut Wm, direction: MonitorDirection) -> Response {
-    send_to_monitor(&mut wm.ctx(), direction);
-    Response::ok()
-}
-
-pub fn follow_mon(wm: &mut Wm, direction: MonitorDirection) -> Response {
-    move_to_monitor_and_follow(&mut wm.ctx(), direction);
-    Response::ok()
-}
-
-pub fn set_layout(wm: &mut Wm, layout: LayoutCommand) -> Response {
-    let action = crate::actions::KeyAction::named_args(
-        crate::actions::NamedAction::SetLayout,
-        &[layout.name()],
-    );
-    crate::actions::execute_key_action(&mut wm.ctx(), &action);
-    Response::ok()
-}
-
-pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
-    let val = arg.unwrap_or(crate::config::mod_consts::BORDER_PX as u32);
-    if let Some(win) = wm.ctx().core().model().selected_win()
-        && let Some(client) = wm.ctx().core_mut().model_mut().client_mut(win)
-    {
-        client.set_border_width(val as i32);
-    }
-    Response::ok()
 }
 
 pub fn update_status(wm: &mut Wm, text: String) -> Response {
@@ -123,4 +58,45 @@ pub fn get_status(wm: &Wm) -> Response {
     };
 
     Response::Status(info)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{Backend, wayland::WaylandBackend};
+
+    #[test]
+    fn run_action_reports_parser_and_argument_errors() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+
+        assert!(matches!(
+            run_action(&mut wm, "missing".to_string(), Vec::new()),
+            Response::Err(message) if message.contains("unknown action")
+        ));
+        assert!(matches!(
+            run_action(
+                &mut wm,
+                "toggle_alt_tag".to_string(),
+                vec!["invalid".to_string()],
+            ),
+            Response::Err(message) if message.contains("expected toggle, on, or off")
+        ));
+    }
+
+    #[test]
+    fn run_action_is_the_ipc_path_for_idempotent_toggle_updates() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+
+        for _ in 0..2 {
+            assert!(matches!(
+                run_action(
+                    &mut wm,
+                    "toggle_alt_tag".to_string(),
+                    vec!["on".to_string()],
+                ),
+                Response::Ok
+            ));
+        }
+        assert!(wm.core.model.tags.show_alternative_names);
+    }
 }

@@ -23,10 +23,10 @@ fn is_lockscreen_cmd(cmd: &str) -> bool {
         || cmd == "instantlock"
 }
 
-/// Spawn a command directly.
-pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
+/// Spawn a command directly and return its process id.
+pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> {
     if argv.is_empty() {
-        return;
+        return Err("spawn requires a command".to_string());
     }
 
     let primary_cmd = argv[0].as_ref();
@@ -36,14 +36,12 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
     let reap_child = matches!(ctx, WmCtx::Wayland(_));
 
     match command.spawn() {
-        Ok(child) => {
-            record_spawned_child(
-                ctx.core_mut().pending_launches_mut(),
-                child,
-                metadata,
-                reap_child,
-            );
-        }
+        Ok(child) => Ok(record_spawned_child(
+            ctx.core_mut().pending_launches_mut(),
+            child,
+            metadata,
+            reap_child,
+        )),
         Err(e) => {
             if e.kind() == std::io::ErrorKind::NotFound && is_lockscreen_cmd(primary_cmd) {
                 let fallback = crate::config::generated_keybinds::resolve_lockscreen_command(
@@ -61,13 +59,13 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
                     let fallback_meta = prepare_spawn_command(ctx, &mut fallback_cmd);
                     match fallback_cmd.spawn() {
                         Ok(child) => {
-                            record_spawned_child(
+                            let pid = record_spawned_child(
                                 ctx.core_mut().pending_launches_mut(),
                                 child,
                                 fallback_meta,
                                 reap_child,
                             );
-                            return;
+                            return Ok(pid);
                         }
                         Err(fallback_err) => {
                             log::error!(
@@ -79,7 +77,9 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
                     }
                 }
             }
-            log::error!("instantwm: failed to spawn '{}': {}", primary_cmd, e);
+            let message = format!("failed to spawn '{primary_cmd}': {e}");
+            log::error!("instantwm: {message}");
+            Err(message)
         }
     }
 }

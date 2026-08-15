@@ -220,14 +220,6 @@ pub fn compile_named_action(name: &str) -> Option<KeyAction> {
     })
 }
 
-pub fn compile_action_with_args(name: &str, args: &[String]) -> Option<KeyAction> {
-    let action = parse_named_action(name)?;
-    Some(KeyAction::Named {
-        action,
-        args: args.to_vec(),
-    })
-}
-
 fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
     match spec {
         ActionSpec::Structured(StructuredAction::Unbind(_)) => None,

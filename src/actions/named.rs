@@ -22,12 +22,11 @@ use crate::layouts::{
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
 use crate::tags::{
-    cancel_overview, follow_view, last_view, move_client_follow_view, quit, shift_tag, shift_view,
-    toggle_overview, win_view,
+    cancel_overview, follow_view, last_view, move_client_follow_view, send_to_monitor, shift_tag,
+    shift_view, toggle_overview, win_view,
 };
 use crate::toggles::{
-    toggle_alt_tag, toggle_bar, toggle_bottom_bar, toggle_hide_tags, toggle_mode, toggle_sticky,
-    unhide_all,
+    toggle_alt_tag, toggle_bar, toggle_hide_tags, toggle_mode, toggle_sticky, unhide_all,
 };
 use crate::types::{
     EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, TagSelection,
@@ -49,6 +48,14 @@ macro_rules! define_named_actions {
             $($variant,)+
         }
 
+        impl NamedAction {
+            pub const fn name(self) -> &'static str {
+                match self {
+                    $(NamedAction::$variant => $name,)+
+                }
+            }
+        }
+
         pub fn get_action_metadata() -> Vec<ActionMeta> {
             vec![
                 $(ActionMeta { name: $name, doc: $doc, arg_example: $arg_example }),+
@@ -62,17 +69,115 @@ macro_rules! define_named_actions {
             })
         }
 
-        pub fn execute_named_action(ctx: &mut WmCtx<'_>, action: NamedAction, args: &[String]) {
+        pub fn execute_named_action(
+            ctx: &mut WmCtx<'_>,
+            action: NamedAction,
+            args: &[String],
+        ) -> Result<(), String> {
+            validate_action_args(action, args)?;
             crate::overview::prepare_named_action(ctx, action);
             match action {
                 $(NamedAction::$variant => {
                     let $ctx = ctx;
                     let $args = args;
-                    $body
+                    $body;
+                    Ok(())
                 }),+
             }
         }
     };
+}
+
+fn expect_arg_count(name: &str, args: &[String], min: usize, max: usize) -> Result<(), String> {
+    if (min..=max).contains(&args.len()) {
+        Ok(())
+    } else if min == max {
+        Err(format!(
+            "action '{name}' expects {min} argument(s), got {}",
+            args.len()
+        ))
+    } else {
+        Err(format!(
+            "action '{name}' expects {min}..={max} arguments, got {}",
+            args.len()
+        ))
+    }
+}
+
+fn parse_toggle_action(value: Option<&str>) -> Result<ToggleAction, String> {
+    match value.map(str::to_ascii_lowercase).as_deref() {
+        None | Some("toggle") => Ok(ToggleAction::Toggle),
+        Some("on" | "true" | "1") => Ok(ToggleAction::SetTrue),
+        Some("off" | "false" | "0") => Ok(ToggleAction::SetFalse),
+        Some(value) => Err(format!(
+            "invalid toggle action '{value}'; expected toggle, on, or off"
+        )),
+    }
+}
+
+fn parse_monitor_direction(value: &str) -> Result<MonitorDirection, String> {
+    value
+        .parse()
+        .map_err(|()| format!("invalid monitor direction '{value}'; expected next or prev"))
+}
+
+fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), String> {
+    use NamedAction::*;
+
+    match action {
+        Spawn if args.is_empty() => Err("action 'spawn' expects a command".to_string()),
+        Spawn => Ok(()),
+        IncMasterCount => {
+            expect_arg_count("inc_master_count", args, 0, 1)?;
+            if let Some(value) = args.first() {
+                value.parse::<i32>().map_err(|_| {
+                    format!("invalid master-count delta '{value}'; expected an integer")
+                })?;
+            }
+            Ok(())
+        }
+        KeyboardLayout | SetMode | ModeToggle | SetLayout | FocusStack | ViewTag | FocusMon
+        | TagMon | FollowMon | SetFocusFollowsMouse => expect_arg_count(action.name(), args, 1, 1),
+        SetBorder => {
+            expect_arg_count("set_border", args, 0, 1)?;
+            if let Some(value) = args.first() {
+                let width = value.parse::<i32>().map_err(|_| {
+                    format!("invalid border width '{value}'; expected a non-negative integer")
+                })?;
+                if width < 0 {
+                    return Err(format!(
+                        "invalid border width '{value}'; expected a non-negative integer"
+                    ));
+                }
+            }
+            Ok(())
+        }
+        ToggleAltTag
+        | ToggleAnimated
+        | ToggleHideTags
+        | ToggleBottomBar
+        | ToggleFocusFollowsFloatMouse => {
+            expect_arg_count(action.name(), args, 0, 1)?;
+            parse_toggle_action(args.first().map(String::as_str)).map(|_| ())
+        }
+        _ => expect_arg_count(action.name(), args, 0, 0),
+    }
+}
+
+fn validate_mode_name(ctx: &WmCtx<'_>, name: &str) -> Result<(), String> {
+    if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
+        return Err("mode 'placement' can only be entered by begin_tree_placement".to_string());
+    }
+    if ctx.core().config().bindings.modes.contains_key(name)
+        || matches!(
+            crate::core_state::ActiveWmMode::from_name(name),
+            crate::core_state::ActiveWmMode::Default | crate::core_state::ActiveWmMode::Overview
+        )
+    {
+        Ok(())
+    } else {
+        Err(format!("mode '{name}' not found"))
+    }
 }
 
 fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
@@ -194,7 +299,7 @@ define_named_actions!(
     None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
     Kill => { name: "kill", arg_example: None, doc: "close focused window gracefully", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { kill_client(ctx, win); } } },
     ShutKill => { name: "shut_kill", arg_example: None, doc: "force kill focused window", run: |ctx, _args| { shut_kill(ctx); } },
-    Quit => { name: "quit", arg_example: None, doc: "quit instantwm", run: |_ctx, _args| { quit(); } },
+    Quit => { name: "quit", arg_example: None, doc: "quit instantwm", run: |ctx, _args| { ctx.quit(); } },
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
@@ -204,18 +309,11 @@ define_named_actions!(
     FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
-    LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Tile); } },
     LayoutFloat => { name: "layout_float", arg_example: None, doc: "toggle floating layout presentation without changing per-window floating state", run: |ctx, _args| { toggle_floating_presentation(ctx); } },
-    LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
     ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle maximized-stack presentation, or restore manual tiling from floating layout", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
-    LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Grid); } },
-    LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BottomStack); } },
-    LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::HorizGrid); } },
-    LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
-    DecMasterCount => { name: "dec_master_count", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_master_count_by(ctx, -1); } },
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
     KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "grow a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
@@ -245,10 +343,6 @@ define_named_actions!(
     TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); } } },
     ToggleOverview => { name: "toggle_overview", arg_example: None, doc: "toggle overview mode", run: |ctx, _args| { toggle_overview(ctx, TagMask::ALL_BITS); } },
     CancelOverview => { name: "cancel_overview", arg_example: None, doc: "leave overview and restore previous view", run: |ctx, _args| { cancel_overview(ctx, TagMask::ALL_BITS); } },
-    FocusMonPrev => { name: "focus_mon_prev", arg_example: None, doc: "focus previous monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::PREV); } },
-    FocusMonNext => { name: "focus_mon_next", arg_example: None, doc: "focus next monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::NEXT); } },
-    FollowMonPrev => { name: "follow_mon_prev", arg_example: None, doc: "move client to prev monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::PREV); } },
-    FollowMonNext => { name: "follow_mon_next", arg_example: None, doc: "move client to next monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::NEXT); } },
     EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", arg_example: None, doc: "toggle the default edge scratchpad", run: |ctx, _args| { scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME)); } },
     EdgeScratchpadCreate => { name: "edge_scratchpad_create", arg_example: None, doc: "toggle the default edge scratchpad (create from the focused window, or restore if it exists)", run: |ctx, _args| { edge_scratchpad_create(ctx); } },
     EdgeScratchpadShow => { name: "edge_scratchpad_show", arg_example: None, doc: "show the default edge scratchpad", run: |ctx, _args| { let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
@@ -277,14 +371,28 @@ define_named_actions!(
         run: |ctx, _args| { let _ = scratchpad_restore(ctx, None, None); }
     },
     ToggleBar => { name: "toggle_bar", arg_example: None, doc: "toggle status bar", run: |ctx, _args| { toggle_bar(ctx); } },
-    ToggleBottomBar => { name: "toggle_bottom_bar", arg_example: None, doc: "toggle bottom bar", run: |ctx, _args| { toggle_bottom_bar(ctx); } },
+    ToggleBottomBar => { name: "toggle_bottom_bar", arg_example: Some("[toggle|on|off]"), doc: "toggle or set bottom bar visibility", run: |ctx, args| {
+        let action = parse_toggle_action(args.first().map(String::as_str))?;
+        let mut shown = ctx.core().model().expect_selected_monitor().shows_bottom_bar();
+        action.apply(&mut shown);
+        crate::toggles::set_bottom_bar_shown(ctx, shown);
+    } },
     ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { toggle_sticky(ctx, win); } } },
-    ToggleAltTag => { name: "toggle_alt_tag", arg_example: None, doc: "toggle alt-tag mode", run: |ctx, _args| { toggle_alt_tag(ctx, ToggleAction::Toggle); } },
-    ToggleAnimated => { name: "toggle_animated", arg_example: None, doc: "toggle window animations", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| behavior.toggle_animated(ToggleAction::Toggle)); } },
-    ToggleHideTags => { name: "toggle_hide_tags", arg_example: None, doc: "toggle hiding empty tags in the bar", run: |ctx, _args| { toggle_hide_tags(ctx, ToggleAction::Toggle); } },
-    ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { if let Some(name) = args.first() { toggle_mode(ctx, name); } } },
-    TogglePrefix => { name: "toggle_prefix", arg_example: None, doc: "toggle prefix mode (legacy alias for mode_toggle prefix)", run: |ctx, _args| { toggle_mode(ctx, "prefix"); } },
+    ToggleAltTag => { name: "toggle_alt_tag", arg_example: Some("[toggle|on|off]"), doc: "toggle or set alt-tag mode", run: |ctx, args| { toggle_alt_tag(ctx, parse_toggle_action(args.first().map(String::as_str))?); } },
+    ToggleAnimated => { name: "toggle_animated", arg_example: Some("[toggle|on|off]"), doc: "toggle or set window animations", run: |ctx, args| { let action = parse_toggle_action(args.first().map(String::as_str))?; ctx.with_behavior_mut(|behavior| behavior.toggle_animated(action)); } },
+    ToggleHideTags => { name: "toggle_hide_tags", arg_example: Some("[toggle|on|off]"), doc: "toggle or set hiding empty tags in the bar", run: |ctx, args| { toggle_hide_tags(ctx, parse_toggle_action(args.first().map(String::as_str))?); } },
+    ToggleFocusFollowsFloatMouse => { name: "toggle_focus_follows_float_mouse", arg_example: Some("[toggle|on|off]"), doc: "toggle or set focus-follows-mouse for floating windows", run: |ctx, args| { let action = parse_toggle_action(args.first().map(String::as_str))?; ctx.with_behavior_mut(|behavior| behavior.toggle_focus_follows_float_mouse(action)); } },
+    SetFocusFollowsMouse => { name: "set_focus_follows_mouse", arg_example: Some("off|normal|force"), doc: "set focus-follows-mouse behavior", run: |ctx, args| {
+        let mode = match args[0].to_ascii_lowercase().as_str() {
+            "off" => crate::types::FocusFollowsMouseMode::Off,
+            "normal" => crate::types::FocusFollowsMouseMode::Normal,
+            "force" => crate::types::FocusFollowsMouseMode::Force,
+            value => return Err(format!("invalid focus-follows-mouse mode '{value}'; expected off, normal, or force")),
+        };
+        ctx.with_behavior_mut(|behavior| behavior.set_focus_follows_mouse(mode));
+    } },
+    ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { validate_mode_name(ctx, &args[0])?; toggle_mode(ctx, &args[0]); } },
     UnhideAll => { name: "unhide_all", arg_example: None, doc: "show all hidden windows", run: |ctx, _args| { unhide_all(ctx); } },
     Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::client::hide_for_user(ctx, win); } } },
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen", run: |ctx, _args| { toggle_fake_fullscreen(ctx); } },
@@ -310,10 +418,25 @@ define_named_actions!(
     NextKeyboardLayout => { name: "next_keyboard_layout", arg_example: None, doc: "cycle to next keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Next); } },
     PrevKeyboardLayout => { name: "prev_keyboard_layout", arg_example: None, doc: "cycle to previous keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
     KeyboardLayout => { name: "keyboard_layout", arg_example: Some("us(intl)"), doc: "set keyboard layout", run: |ctx, args| { if let Some(name) = args.first() { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name); } } },
-    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { if let Some(name) = args.first() && name != crate::core_state::TREE_PLACEMENT_MODE_NAME { ctx.set_current_mode(name.clone()); } } },
-    Spawn => { name: "spawn", arg_example: Some("kitty"), doc: "spawn command", run: |ctx, args| { spawn(ctx, args); } },
-    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| LayoutCommand::from_name(s)) { set_layout(ctx, name); } } },
-    FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| StackDirection::from_name(s)) { focus_stack(ctx, direction); } } }
+    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { validate_mode_name(ctx, &args[0])?; ctx.set_current_mode(args[0].clone()); } },
+    Spawn => { name: "spawn", arg_example: Some("COMMAND [ARG ...]"), doc: "spawn a command without shell expansion", run: |ctx, args| { spawn(ctx, args)?; } },
+    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { let Some(layout) = LayoutCommand::from_name(&args[0]) else { return Err(format!("invalid layout '{}'", args[0])); }; set_layout(ctx, layout); } },
+    FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { let Some(direction) = StackDirection::from_name(&args[0]) else { return Err(format!("invalid stack direction '{}'", args[0])); }; focus_stack(ctx, direction); } },
+    ViewTag => { name: "view_tag", arg_example: Some("NUMBER"), doc: "view a tag by its 1-based number", run: |ctx, args| {
+        let number = args[0].parse::<usize>().map_err(|_| format!("invalid tag number '{}'", args[0]))?;
+        let index = number.checked_sub(1).ok_or_else(|| "tag number must be at least 1".to_string())?;
+        if number > ctx.core().model().tags.num_tags { return Err(format!("tag number {number} is out of range")); }
+        let mask = TagMask::from_index(index).ok_or_else(|| format!("tag number {number} is out of range"))?;
+        crate::tags::view::view_tags(ctx, mask);
+    } },
+    WarpFocus => { name: "warp_focus", arg_example: None, doc: "warp the pointer to the focused window", run: |ctx, _args| { crate::mouse::warp::warp_to_focus(ctx); } },
+    FocusMon => { name: "focus_mon", arg_example: Some("next|prev"), doc: "focus another monitor", run: |ctx, args| { focus_monitor(ctx, parse_monitor_direction(&args[0])?); } },
+    TagMon => { name: "tag_mon", arg_example: Some("next|prev"), doc: "move the focused tag view to another monitor", run: |ctx, args| { send_to_monitor(ctx, parse_monitor_direction(&args[0])?); } },
+    FollowMon => { name: "follow_mon", arg_example: Some("next|prev"), doc: "move the focused client to another monitor and follow", run: |ctx, args| { move_to_monitor_and_follow(ctx, parse_monitor_direction(&args[0])?); } },
+    SetBorder => { name: "set_border", arg_example: Some("[WIDTH]"), doc: "set the focused window border width", run: |ctx, args| {
+        let width = args.first().map(|value| value.parse::<i32>()).transpose().map_err(|_| format!("invalid border width '{}'", args[0]))?.unwrap_or(crate::config::mod_consts::BORDER_PX);
+        if let Some(win) = ctx.core().model().selected_win() { ctx.set_border(win, width); }
+    } }
 );
 
 fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
@@ -328,7 +451,10 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{NamedAction, focus_vertical, move_horizontal, move_vertical, parse_named_action};
+    use super::{
+        NamedAction, execute_named_action, focus_vertical, move_horizontal, move_vertical,
+        parse_named_action, validate_action_args,
+    };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
@@ -439,6 +565,73 @@ mod tests {
             Some(NamedAction::BeginTreePlacement)
         );
         assert_eq!(parse_named_action("begin_keyboard_move"), None);
+    }
+
+    #[test]
+    fn action_arguments_are_validated_before_dispatch() {
+        assert!(validate_action_args(NamedAction::ToggleAltTag, &[]).is_ok());
+        assert!(validate_action_args(NamedAction::ToggleAltTag, &["on".to_string()]).is_ok());
+        assert!(
+            validate_action_args(NamedAction::ToggleAltTag, &["sometimes".to_string()]).is_err()
+        );
+        assert!(validate_action_args(NamedAction::FocusNext, &["unexpected".to_string()]).is_err());
+        assert!(validate_action_args(NamedAction::SetLayout, &[]).is_err());
+        assert!(validate_action_args(NamedAction::SetBorder, &["-1".to_string()]).is_err());
+    }
+
+    #[test]
+    fn action_dispatch_reports_invalid_values_and_can_set_toggles_idempotently() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+
+        execute_named_action(
+            &mut wm.ctx(),
+            NamedAction::ToggleAltTag,
+            &["on".to_string()],
+        )
+        .unwrap();
+        execute_named_action(
+            &mut wm.ctx(),
+            NamedAction::ToggleAltTag,
+            &["on".to_string()],
+        )
+        .unwrap();
+        assert!(wm.core.model.tags.show_alternative_names);
+
+        let error = execute_named_action(
+            &mut wm.ctx(),
+            NamedAction::SetLayout,
+            &["not-a-layout".to_string()],
+        )
+        .unwrap_err();
+        assert!(error.contains("invalid layout"));
+    }
+
+    #[test]
+    fn quit_action_uses_the_normal_wm_shutdown_flag() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        execute_named_action(&mut wm.ctx(), NamedAction::Quit, &[]).unwrap();
+        assert!(!wm.running);
+    }
+
+    #[test]
+    fn action_dispatch_rejects_unknown_and_interaction_owned_modes() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+
+        let unknown = execute_named_action(
+            &mut wm.ctx(),
+            NamedAction::SetMode,
+            &["does-not-exist".to_string()],
+        )
+        .unwrap_err();
+        assert!(unknown.contains("not found"));
+
+        let placement = execute_named_action(
+            &mut wm.ctx(),
+            NamedAction::SetMode,
+            &[crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string()],
+        )
+        .unwrap_err();
+        assert!(placement.contains("begin_tree_placement"));
     }
 
     #[test]

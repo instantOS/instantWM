@@ -1,9 +1,6 @@
 pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
-pub use crate::layouts::LayoutCommand;
-pub use crate::types::{
-    FocusFollowsMouseMode, KeyboardLayout, MonitorDirection, TagMask, ToggleAction,
-};
+pub use crate::types::{KeyboardLayout, TagMask};
 use bincode::{Decode, Encode};
 
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
@@ -140,13 +137,6 @@ pub enum MonitorCommand {
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub enum ModeCommand {
-    List,
-    Set(String),
-    Toggle(String),
-}
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ConfigCommand {
     Get { key: String },
     Set { key: String, value: String },
@@ -198,8 +188,6 @@ pub enum ScratchpadInitialStatus {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum KeyboardCommand {
-    Next,
-    Prev,
     Status,
     List,
     ListAll,
@@ -211,7 +199,6 @@ pub enum KeyboardCommand {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum TagCommand {
-    View(u32),
     Name(String),
     ResetNames,
 }
@@ -299,17 +286,6 @@ pub enum TestCommand {
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub enum ToggleCommand {
-    Animated(ToggleAction),
-    FocusFollowsMouse(FocusFollowsMouseMode),
-    FocusFollowsFloatMouse(ToggleAction),
-    AltTag(ToggleAction),
-    HideTags(ToggleAction),
-    /// Toggle the bottom gesture strip (like the top-bar toggle).
-    BottomBar(ToggleAction),
-}
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum InputCommand {
     List(Option<String>),
     Devices,
@@ -348,12 +324,6 @@ pub enum IpcCommand {
         #[serde(default)]
         args: Vec<String>,
     },
-    Spawn(String),
-    WarpFocus,
-    TagMon(MonitorDirection),
-    FollowMon(MonitorDirection),
-    Layout(LayoutCommand),
-    Border(Option<u32>),
     /// Add, list, or cancel runtime-added one-shot window rules.
     PendingTmpRule(PendingTmpRuleCmd),
     UpdateStatus(String),
@@ -362,16 +332,14 @@ pub enum IpcCommand {
     Keyboard(KeyboardCommand),
     Tag(TagCommand),
     Window(WindowCommand),
-    Toggle(ToggleCommand),
     Wallpaper(String),
     Input(InputCommand),
-    Mode(ModeCommand),
+    ListModes,
     Config(ConfigCommand),
     Test(TestCommand),
     GetTheme,
     SetTheme(crate::config::config_toml::ColorTheme),
     ListThemes,
-    Quit,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
