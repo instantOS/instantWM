@@ -102,7 +102,7 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
 
         let Some(mon_rect) = ctx_x11
             .core
-            .state()
+            .model()
             .monitor(monitor_id)
             .map(|m| m.monitor_rect)
         else {

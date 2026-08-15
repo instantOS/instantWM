@@ -349,6 +349,7 @@ fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types:
     };
 
     let target_mid = state
+        .model
         .monitors_iter()
         .find(|(_i, m)| m.num == target_num as i32)
         .map(|(i, _)| i);

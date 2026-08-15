@@ -215,7 +215,7 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bo
         return;
     }
 
-    let Some(mid) = ctx.core().state().model.client(win).map(|c| c.monitor_id) else {
+    let Some(mid) = ctx.core().model().client(win).map(|c| c.monitor_id) else {
         return;
     };
     arrange(ctx, Some(mid));
@@ -505,7 +505,7 @@ pub(crate) fn scratchpad_show_name_with_options(
     }
     let found = find_live_scratchpad(ctx, name)?;
 
-    let Some((was_visible, direction)) = ctx.core().state().model.client(found).map(|c| {
+    let Some((was_visible, direction)) = ctx.core().model().client(found).map(|c| {
         (
             c.is_scratchpad_visible(),
             c.scratchpad().and_then(|sp| sp.direction()),

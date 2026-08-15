@@ -648,7 +648,7 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
             w: 1,
             h: 1,
         })
-        .and_then(|mid| wm.core.monitor(mid))
+        .and_then(|mid| wm.core.model.monitor(mid))
         .map(|mon| {
             let bar_visible = monitor_bar_visible(wm, mon);
             let in_bar = bar_visible && mon.y_in_bar(root.y);
@@ -779,6 +779,7 @@ fn update_hover_resize_state(
 
     let selected_floating = wm
         .core
+        .model
         .selected_win()
         .and_then(|win| {
             wm.core
@@ -787,7 +788,8 @@ fn update_hover_resize_state(
                 .map(|c| (win, c.mode().is_normal_floating()))
         })
         .is_some_and(|(_, is_floating)| is_floating);
-    let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.core.selected_win());
+    let hovered_is_selected =
+        hovered_win.is_some_and(|win| Some(win) == wm.core.model.selected_win());
 
     let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {

@@ -25,7 +25,7 @@ impl WaylandState {
                 .monitors
                 .find_monitor_at_pointer(request.anchor)
                 .or_else(|| globals.model.selected_monitor().map(|monitor| monitor.id()))?;
-            let monitor = globals.monitor(monitor_id)?;
+            let monitor = globals.model.monitor(monitor_id)?;
             Some((monitor_id, monitor.selected_tags(), monitor.work_rect()))
         }) else {
             return Err(surface);

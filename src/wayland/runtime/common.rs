@@ -231,6 +231,7 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
     };
     let opening_view_is_current = wm
         .core
+        .model
         .monitor(active.monitor_id)
         .is_some_and(|monitor| monitor.selected_tags() == active.opened_tags);
     let item_still_exists = match &wm.backend {
@@ -773,7 +774,7 @@ fn apply_wayland_surface_policy(
         if let Some(client) = state.model.client_mut(win) {
             client.set_placement(crate::types::ClientPlacement::Floating);
         }
-        state.raise_client_in_z_order(win);
+        state.model.raise_client_in_z_order(win);
     }
 
     if let Some(toplevel) = element.and_then(|element| element.toplevel()) {

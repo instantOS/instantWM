@@ -545,48 +545,6 @@ fn cross_axis_distance(current: Point, candidate: Point, side: crate::layouts::t
     }
 }
 
-impl CoreState {
-    pub fn selected_win(&self) -> Option<WindowId> {
-        self.model.selected_win()
-    }
-    pub fn selected_monitor_id(&self) -> MonitorId {
-        self.model.selected_monitor_id()
-    }
-    pub fn set_selected_monitor(&mut self, id: MonitorId) {
-        self.model.set_selected_monitor(id);
-    }
-    pub fn selected_monitor(&self) -> Option<&Monitor> {
-        self.model.selected_monitor()
-    }
-    pub fn expect_selected_monitor(&self) -> &Monitor {
-        self.model.expect_selected_monitor()
-    }
-    pub fn expect_selected_monitor_mut(&mut self) -> &mut Monitor {
-        self.model.expect_selected_monitor_mut()
-    }
-    pub fn selected_monitor_mut(&mut self) -> Option<&mut Monitor> {
-        self.model.selected_monitor_mut()
-    }
-    pub fn monitor(&self, id: MonitorId) -> Option<&Monitor> {
-        self.model.monitor(id)
-    }
-    pub fn monitor_mut(&mut self, id: MonitorId) -> Option<&mut Monitor> {
-        self.model.monitor_mut(id)
-    }
-    pub fn monitors_iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
-        self.model.monitors_iter()
-    }
-    pub fn monitors_iter_all(&self) -> impl Iterator<Item = &Monitor> {
-        self.model.monitors_iter_all()
-    }
-    pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
-        self.model.monitors_iter_all_mut()
-    }
-    pub fn raise_client_in_z_order(&mut self, win: WindowId) {
-        self.model.raise_client_in_z_order(win);
-    }
-}
-
 impl Clone for RuntimeConfig {
     fn clone(&self) -> Self {
         Self {

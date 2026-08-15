@@ -320,7 +320,7 @@ mod view_selection_tests {
         let result = commit_view_selection(&mut state.model.monitors, tag2);
         assert_eq!(result, Some(MonitorId::from_raw(0)));
 
-        let mon = state.monitor(MonitorId::from_raw(0)).unwrap();
+        let mon = state.model.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon.selected_tags(), tag2);
     }
 
@@ -365,14 +365,14 @@ mod view_selection_tests {
         // tag1 (bit 0) has first_tag() = Some(1), tag2 (bit 1) has first_tag() = Some(2)
         // prev_tag should become Some(1) (the previous current_tag_number)
         let _ = commit_view_selection(&mut state.model.monitors, tag2);
-        let mon = state.monitor(MonitorId::from_raw(0)).unwrap();
+        let mon = state.model.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon.prev_tag, Some(1));
 
         // Second change: tag2 -> tag3
         // prev_tag should become Some(2) (the previous current_tag_number)
         let tag3 = TagMask::single(3).unwrap();
         let _ = commit_view_selection(&mut state.model.monitors, tag3);
-        let mon_after = state.monitor(MonitorId::from_raw(0)).unwrap();
+        let mon_after = state.model.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon_after.prev_tag, Some(2));
     }
 
@@ -389,7 +389,7 @@ mod view_selection_tests {
         let result = commit_view_selection(&mut state.model.monitors, tag3);
         assert!(result.is_some());
 
-        let mon = state.monitor(MonitorId::from_raw(0)).unwrap();
+        let mon = state.model.monitor(MonitorId::from_raw(0)).unwrap();
         // current_tag_number was None (multi-tag), now Some(3) (single tag 3)
         // Since previous_current_tag was None, the guard `let Some(previous_current_tag) = previous_current_tag`
         // fails, so prev_tag is NOT updated

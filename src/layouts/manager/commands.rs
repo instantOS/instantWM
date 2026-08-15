@@ -444,7 +444,7 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
 pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let window_count = ctx
         .core()
-        .state()
+        .model()
         .expect_selected_monitor()
         .tiled_client_count(&ctx.core().model().clients);
     if window_count == 0 || delta == 0 {

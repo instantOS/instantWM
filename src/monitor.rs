@@ -399,14 +399,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
-    let c_win = match ctx
-        .core_mut()
-        .state_mut()
-        .model
-        .monitors
-        .selected_monitor()
-        .and_then(|m| m.selected)
-    {
+    let c_win = match ctx.core().model().selected_win() {
         Some(w) => w,
         None => return,
     };
@@ -419,11 +412,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
         .client(c_win)
         .map(|client| client.monitor_id)
     {
-        ctx.core_mut()
-            .state_mut()
-            .model
-            .monitors
-            .set_selected(monitor_id);
+        ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
     }
 
     focus(ctx, Some(c_win));
@@ -632,7 +621,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
 
     // Drain old monitors into a pool. They keep their stable ids + workspace
     // state; matched ones are reused, the rest are dropped after the rebuild.
-    let old_monitors = ctx.core_mut().state_mut().model.monitors.drain();
+    let old_monitors = ctx.core_mut().model_mut().monitors.drain();
     let mut pool: Vec<Option<Monitor>> = old_monitors.into_iter().map(Some).collect();
 
     let mut new_monitors = Vec::with_capacity(outputs.len());
@@ -649,7 +638,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
             }
             None => {
                 changed = true;
-                let id = ctx.core_mut().state_mut().model.monitors.allocate_id();
+                let id = ctx.core_mut().model_mut().monitors.allocate_id();
                 let mut m = Monitor::new_with_values(show_bar);
                 m.show_bottom_bar = show_bottom_bar;
                 m.monitor_id = id;
@@ -678,7 +667,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
 
     // Re-home any clients whose monitor was removed onto the first survivor.
     if let Some(survivor) = ctx.core().model().monitors.first() {
-        rehome_orphaned_clients(&mut ctx.core_mut().state_mut().model, survivor);
+        rehome_orphaned_clients(ctx.core_mut().model_mut(), survivor);
     }
 
     notify_monitor_layout_changed(ctx, changed);
@@ -777,12 +766,12 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.set_bar_height(bar_height);
     }
-    ctx.core_mut().state_mut().model.monitors.set_selected(id);
+    ctx.core_mut().model_mut().set_selected_monitor(id);
     true
 }
 
 fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
-    let first_id = match ctx.core().state().model.monitors.first() {
+    let first_id = match ctx.core().model().monitors.first() {
         Some(id) => id,
         None => return false,
     };

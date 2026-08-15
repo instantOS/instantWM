@@ -39,7 +39,7 @@ pub fn grab_keys(
         globals.config.bindings.keys.as_slice(),
         globals.config.bindings.desktop_keybinds.as_slice(),
         &globals.config.bindings.modes,
-        globals.selected_win(),
+        globals.model.selected_win(),
         &globals.behavior.current_mode,
     );
 

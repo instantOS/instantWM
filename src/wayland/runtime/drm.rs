@@ -1049,13 +1049,18 @@ fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) ->
 }
 
 fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
-    let Some(mon) = wm.core.monitors_iter_all().find(|m| m.name == output_name) else {
+    let Some(mon) = wm
+        .core
+        .model
+        .monitors_iter_all()
+        .find(|m| m.name == output_name)
+    else {
         return false;
     };
     if matches!(
         wm.core.behavior.current_mode,
         crate::core_state::ActiveWmMode::Overview
-    ) && wm.core.selected_monitor_id() == mon.id()
+    ) && wm.core.model.selected_monitor_id() == mon.id()
     {
         return false;
     }

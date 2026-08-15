@@ -180,7 +180,7 @@ pub fn update_ewmh_desktop_props(
 }
 
 fn current_desktop(globals: &crate::core_state::CoreState) -> Option<u32> {
-    let mon = globals.expect_selected_monitor();
+    let mon = globals.model.expect_selected_monitor();
     let tag = mon.selected_tags().first_tag().unwrap_or(1);
     desktop_for_monitor_tag(globals, mon.id(), tag)
 }
@@ -188,7 +188,7 @@ fn current_desktop(globals: &crate::core_state::CoreState) -> Option<u32> {
 fn desktop_names(globals: &crate::core_state::CoreState) -> Vec<u8> {
     let mut names = Vec::new();
 
-    for (pos, (_monitor_id, monitor)) in globals.monitors_iter().enumerate() {
+    for (pos, (_monitor_id, monitor)) in globals.model.monitors_iter().enumerate() {
         for tag_index in 1..=globals.model.tags.count().max(1) {
             let tag_name = monitor
                 .tags
@@ -212,7 +212,7 @@ fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
     let tag_count = globals.model.tags.count().max(1);
     let mut workarea = Vec::with_capacity(globals.model.monitors.len().max(1) * tag_count * 4);
 
-    for (_monitor_id, monitor) in globals.monitors_iter() {
+    for (_monitor_id, monitor) in globals.model.monitors_iter() {
         for _tag_index in 1..=tag_count {
             workarea.extend_from_slice(&[
                 monitor.work_rect().x.max(0) as u32,
@@ -270,7 +270,7 @@ pub fn update_client_list(
     let conn = x11.conn;
     let _ = conn.delete_property(x11_runtime.root, x11_runtime.netatom.client_list);
 
-    for mon in globals.monitors_iter_all() {
+    for mon in globals.model.monitors_iter_all() {
         for &cur_win in &mon.clients {
             let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(

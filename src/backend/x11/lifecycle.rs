@@ -623,7 +623,7 @@ pub fn cleanup(wm: &mut Wm) {
 
     let _grab = ServerGrab::new(conn);
 
-    for (_monitor_id, monitor) in wm.core.monitors_iter() {
+    for (_monitor_id, monitor) in wm.core.model.monitors_iter() {
         for (window, _client) in monitor.iter_clients(&wm.core.model.clients) {
             let Some(&original_border_width) = x11_runtime.original_border_widths.get(&window)
             else {

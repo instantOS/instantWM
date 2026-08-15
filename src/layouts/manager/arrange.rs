@@ -105,7 +105,7 @@ impl ArrangePlan {
 
         if let Some(selected) = ctx
             .core()
-            .state()
+            .model()
             .monitor(monitor_id)
             .filter(|monitor| monitor.current_layout().is_maximized())
             .and_then(|monitor| monitor.selected)

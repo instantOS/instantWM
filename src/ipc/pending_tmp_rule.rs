@@ -70,7 +70,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                 && !wm
                     .ctx()
                     .core()
-                    .state()
+                    .model()
                     .monitors_iter()
                     .any(|(_, m)| m.num == num)
             {

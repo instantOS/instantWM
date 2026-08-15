@@ -36,7 +36,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
 }
 
 fn list_monitors(wm: &Wm) -> Response {
-    let selected_id = wm.core.selected_monitor_id();
+    let selected_id = wm.core.model.selected_monitor_id();
     let output_info: HashMap<_, _> = wm
         .backend
         .get_outputs()
@@ -46,6 +46,7 @@ fn list_monitors(wm: &Wm) -> Response {
 
     let monitors: Vec<crate::ipc_types::MonitorInfo> = wm
         .core
+        .model
         .monitors_iter()
         .enumerate()
         .map(|(pos, (id, m))| crate::ipc_types::MonitorInfo {
@@ -97,7 +98,7 @@ fn set_monitor_config(
     config: crate::config::config_toml::MonitorConfig,
 ) -> Response {
     let resolved_id = if identifier == "focused" {
-        let name = wm.core.expect_selected_monitor().name.clone();
+        let name = wm.core.model.expect_selected_monitor().name.clone();
         if name.is_empty() {
             "*".to_string()
         } else {
@@ -116,7 +117,7 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
     // Determine which displays to query
     let display_names: Vec<String> = match identifier.as_deref() {
         Some("focused") | None => {
-            let name = wm.core.expect_selected_monitor().name.clone();
+            let name = wm.core.model.expect_selected_monitor().name.clone();
             if name.is_empty() {
                 // List all displays
                 match &wm.backend {
@@ -124,6 +125,7 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
                     crate::backend::Backend::X11(_) => {
                         // For X11, get names from monitor list
                         wm.core
+                            .model
                             .monitors_iter()
                             .map(|(_, m)| m.name.clone())
                             .filter(|n| !n.is_empty())

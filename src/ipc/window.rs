@@ -54,7 +54,7 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
 }
 
 fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| wm.core.selected_win());
+    let target = parsed_id.or_else(|| wm.core.model.selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
@@ -63,7 +63,7 @@ fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
 }
 
 fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| wm.core.selected_win());
+    let target = parsed_id.or_else(|| wm.core.model.selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
@@ -90,7 +90,7 @@ fn resize_window(
     monitor_arg: Option<String>,
     requested_rect: Rect,
 ) -> Response {
-    let target = parsed_id.or_else(|| wm.core.selected_win());
+    let target = parsed_id.or_else(|| wm.core.model.selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
@@ -107,7 +107,11 @@ fn resize_window(
             Ok(id) => id,
             Err(msg) => return Response::err(msg),
         };
-    let Some(target_monitor_rect) = wm.core.monitor(target_monitor_id).map(|m| m.monitor_rect)
+    let Some(target_monitor_rect) = wm
+        .core
+        .model
+        .monitor(target_monitor_id)
+        .map(|m| m.monitor_rect)
     else {
         return Response::err("monitor not found");
     };
@@ -160,7 +164,7 @@ fn resolve_resize_monitor(
 ) -> Result<crate::types::MonitorId, String> {
     match monitor_arg {
         None => Ok(current_monitor_id),
-        Some("focused") => Ok(wm.core.selected_monitor_id()),
+        Some("focused") => Ok(wm.core.model.selected_monitor_id()),
         Some(raw) => {
             let pos = raw
                 .parse::<usize>()

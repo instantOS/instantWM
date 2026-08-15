@@ -379,7 +379,7 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
 
 fn sync_bar_config_to_monitors(wm: &mut Wm) {
     let show_bar = wm.core.config.bar.show;
-    for monitor in wm.core.monitors_iter_all_mut() {
+    for monitor in wm.core.model.monitors_iter_all_mut() {
         monitor.show_bar = show_bar;
         for state in monitor.per_tag.values_mut() {
             state.show_bar = show_bar;
@@ -742,6 +742,7 @@ mod tests {
 
         let monitor = wm
             .core
+            .model
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert_eq!(monitor.bar_height, 32);
@@ -761,6 +762,7 @@ mod tests {
         assert!(matches!(do_set(&mut wm, "bar.show", "false"), Response::Ok));
         let monitor = wm
             .core
+            .model
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert!(!monitor.show_bar);
@@ -769,6 +771,7 @@ mod tests {
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
         let monitor = wm
             .core
+            .model
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert!(monitor.show_bar);

@@ -129,7 +129,7 @@ pub fn resize_bar_win(
     // The systray width calculation only needs immutable access.
     let bar_height = globals.config.derived.bar_height;
     let showsystray = globals.config.systray.show;
-    let is_selmon = globals.expect_selected_monitor().num == m.num;
+    let is_selmon = globals.model.expect_selected_monitor().num == m.num;
 
     let mut w = m.work_rect().w as u32;
     if showsystray && is_selmon {
@@ -205,7 +205,7 @@ pub fn update_bars(
         let status_bg: u32 = globals.config.colors.status_bar.bg.into();
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
-        let selected_monitor_id = globals.selected_monitor_id();
+        let selected_monitor_id = globals.model.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: HashMap<MonitorId, u32> = HashMap::new();
@@ -217,7 +217,7 @@ pub fn update_bars(
         }
 
         let mut bar_configs = Vec::new();
-        for (i, m) in globals.monitors_iter() {
+        for (i, m) in globals.model.monitors_iter() {
             if m.bar_win != WindowId::default() {
                 continue;
             }
@@ -278,7 +278,7 @@ pub fn update_bars(
     // They select no input events, so button events propagate to the root,
     // where the WM classifies and swallows presses inside the strip.
     let mut bottom_created: Vec<(MonitorId, u32)> = Vec::new();
-    for (i, m) in globals.monitors_iter() {
+    for (i, m) in globals.model.monitors_iter() {
         if m.bottom_bar_win != WindowId::default() {
             continue;
         }
@@ -311,7 +311,7 @@ pub fn update_bars(
 
     // Create a white indicator child window for each newly-created bottom bar.
     for (i, bottom_id) in &bottom_created {
-        let m = globals.monitor(*i).unwrap();
+        let m = globals.model.monitor(*i).unwrap();
         let indicator = m.bottom_bar_indicator_rect();
         let ind_win = conn
             .generate_id()
@@ -332,24 +332,24 @@ pub fn update_bars(
                 .background_pixel(0xffffff),
         );
         let _ = conn.map_window(ind_win);
-        if let Some(mon) = globals.monitor_mut(*i) {
+        if let Some(mon) = globals.model.monitor_mut(*i) {
             mon.bottom_bar_indicator_win = WindowId::from(ind_win);
         }
     }
 
     for (i, win_id) in created {
-        if let Some(mon) = globals.monitor_mut(i) {
+        if let Some(mon) = globals.model.monitor_mut(i) {
             mon.bar_win = WindowId::from(win_id);
         }
     }
     // Assign bottom windows, then refresh every existing bottom window's
     // geometry/background (reloads, monitor moves, config color changes).
     for (i, win_id) in bottom_created {
-        if let Some(mon) = globals.monitor_mut(i) {
+        if let Some(mon) = globals.model.monitor_mut(i) {
             mon.bottom_bar_win = WindowId::from(win_id);
         }
     }
-    for (_, m) in globals.monitors_iter() {
+    for (_, m) in globals.model.monitors_iter() {
         if m.bottom_bar_win != WindowId::default() {
             resize_bottom_bar_win(globals, x11, x11_runtime, m);
         }
