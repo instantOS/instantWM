@@ -12,13 +12,13 @@ use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Transform};
 use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
-use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
+use crate::backend::wayland::compositor::{
+    PointerFocusTarget, TOUCH_POINTER_BUTTON_CODE, WaylandState,
+};
+use crate::backend::wayland::input::focus::focus_managed_target;
+use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::MouseButton;
-use crate::wayland::common::modifiers_to_x11_mask;
-use crate::wayland::input::focus::focus_managed_target;
 use crate::wm::Wm;
-
-const TOUCH_BUTTON_CODE: u32 = 0x110;
 
 /// Coordinate space used for an absolute touch device.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,11 +121,11 @@ pub fn handle_touch_down(
             {
                 state.runtime.wm_gesture_touch_slot = Some(event.slot);
                 let modifiers = clean_modifier_state(state);
-                crate::wayland::input::bar::handle_bar_click(
+                crate::backend::wayland::input::bar::handle_bar_click(
                     wm,
                     state,
                     position,
-                    TOUCH_BUTTON_CODE,
+                    TOUCH_POINTER_BUTTON_CODE,
                     crate::types::InteractionSource::Touch(event.slot.into()),
                     root,
                     modifiers,
@@ -236,7 +236,7 @@ pub fn handle_touch_down(
         pointer.button(
             state,
             &smithay::input::pointer::ButtonEvent {
-                button: TOUCH_BUTTON_CODE,
+                button: TOUCH_POINTER_BUTTON_CODE,
                 state: smithay::backend::input::ButtonState::Pressed,
                 serial,
                 time: event.time_msec,
@@ -312,7 +312,7 @@ pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, t
         pointer.button(
             state,
             &smithay::input::pointer::ButtonEvent {
-                button: TOUCH_BUTTON_CODE,
+                button: TOUCH_POINTER_BUTTON_CODE,
                 state: smithay::backend::input::ButtonState::Released,
                 serial,
                 time: time_msec,
@@ -340,25 +340,8 @@ pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
     if state.runtime.wm_gesture_touch_slot.take().is_some() {
         cancel_wm_gesture_touch(wm, state);
     }
-    cancel_pointer_emulation(state, 0);
+    state.cancel_touch_pointer_emulation(0);
     state.touch.clone().cancel(state);
-}
-
-pub(crate) fn cancel_pointer_emulation(state: &mut WaylandState, time_msec: u32) {
-    if state.runtime.pointer_touch_slot.take().is_none() {
-        return;
-    }
-    let pointer = state.pointer.clone();
-    pointer.button(
-        state,
-        &smithay::input::pointer::ButtonEvent {
-            button: TOUCH_BUTTON_CODE,
-            state: smithay::backend::input::ButtonState::Released,
-            serial: SERIAL_COUNTER.next_serial(),
-            time: time_msec,
-        },
-    );
-    pointer.frame(state);
 }
 
 fn supports_native_touch(state: &WaylandState, target: &PointerFocusTarget) -> bool {
@@ -647,8 +630,7 @@ mod tests {
 
     #[test]
     fn compositor_seat_advertises_native_touch() {
-        let (_event_loop, state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let (_event_loop, state) = crate::backend::wayland::compositor::new_event_loop_and_state();
         assert!(state.seat.get_touch().is_some());
     }
 }

@@ -8,15 +8,17 @@ use crate::backend::wayland::commands::PointerMotionCommand;
 use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::backend::wayland::compositor::window::hit_test::{PointerContents, SurfaceFocus};
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
+use crate::backend::wayland::input::bar::update_bar_hit_state;
+use crate::backend::wayland::input::modifiers_to_x11_mask;
+use crate::backend::wayland::input::pointer::constraints::{
+    ActivePointerConstraint, activate_under,
+};
+use crate::backend::wayland::input::pointer::drag::active_drag_window;
 use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at, update_sidebar_offer_at};
 use crate::types::BarPosition;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
-use crate::wayland::common::modifiers_to_x11_mask;
-use crate::wayland::input::bar::update_bar_hit_state;
-use crate::wayland::input::pointer::constraints::{ActivePointerConstraint, activate_under};
-use crate::wayland::input::pointer::drag::active_drag_window;
 use crate::wm::Wm;
 
 fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
@@ -150,7 +152,7 @@ mod tests {
     #[test]
     fn sidebar_hover_still_advances_smithay_pointer_location() {
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.config.derived.display.width = 1920;
         wm.core.config.derived.display.height = 1080;
@@ -185,7 +187,7 @@ mod tests {
     fn active_drag_batch_reuses_current_hit_and_scene_snapshot() {
         const MOTIONS: usize = 48;
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(1);

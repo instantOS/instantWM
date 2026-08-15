@@ -8,13 +8,13 @@ use smithay::utils::{Point, SERIAL_COUNTER};
 use crate::backend::wayland::commands::PointerButtonCommand;
 use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
+use crate::backend::wayland::input::focus::focus_managed_target;
+use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::mouse::pointer::PointerRegion;
 use crate::types::{MouseButton, Point as RootPoint};
-use crate::wayland::common::modifiers_to_x11_mask;
-use crate::wayland::input::focus::focus_managed_target;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::handle_bar_click;
+use crate::backend::wayland::input::bar::handle_bar_click;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PointerButtonInput {
@@ -250,7 +250,7 @@ fn handle_button_press(
 }
 
 fn close_bar_systray_menu(wm: &mut Wm, state: &mut WaylandState) {
-    if crate::wayland::input::bar::close_systray_menu(wm) {
+    if crate::backend::wayland::input::bar::close_systray_menu(wm) {
         state.request_bar_redraw();
     }
 }

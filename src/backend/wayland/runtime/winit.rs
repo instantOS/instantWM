@@ -18,15 +18,16 @@ use crate::backend::wayland::commands::{
     PointerAxis, PointerAxisCommand, PointerButtonCommand, PointerMotionCommand, WmCommand,
 };
 use crate::backend::wayland::compositor::WaylandState;
-use crate::monitor::refresh_monitor_layout;
-use crate::types::Size;
-use crate::wayland::common::sanitize_size;
-use crate::wayland::input::touch::{
+use crate::backend::wayland::input::sanitize_size;
+use crate::backend::wayland::input::touch::{
     NormalizedTouchPosition, TouchMappingTarget, TouchPointEvent, handle_touch_cancel,
     handle_touch_down, handle_touch_frame, handle_touch_motion, handle_touch_up,
 };
-use crate::wayland::input::{apply_pending_warp, handle_keyboard};
-use crate::wayland::render::winit::render_frame;
+use crate::backend::wayland::input::{apply_pending_warp, handle_keyboard};
+use crate::backend::wayland::render::scene::SceneCache;
+use crate::backend::wayland::render::winit::render_frame;
+use crate::monitor::refresh_monitor_layout;
+use crate::types::Size;
 
 fn normalized_winit_touch_position(
     x: f64,
@@ -38,18 +39,19 @@ fn normalized_winit_touch_position(
 
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
-    let mut wm = super::common::create_wayland_wm_boxed();
-    let (mut event_loop, mut state) = super::common::new_wayland_event_loop_and_state();
+    let mut wm = super::bootstrap::create_wayland_wm_boxed();
+    let (mut event_loop, mut state) =
+        crate::backend::wayland::compositor::new_event_loop_and_state();
     let loop_handle = event_loop.handle();
     state.attach_wm(&mut wm);
-    super::common::attach_backend_state(&mut wm, &mut state);
+    super::bootstrap::attach_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
     let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
-    super::common::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
+    super::bootstrap::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
 
     let output_size = backend.window_size();
     let initial_size = sanitize_size(Size::new(output_size.w, output_size.h));
@@ -75,9 +77,9 @@ pub fn run() -> ! {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
-    super::common::setup_listen_socket(&loop_handle, &state, &mut wm);
+    super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
-    let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &wm);
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle
@@ -123,14 +125,15 @@ pub fn run() -> ! {
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let animation_interval = crate::runtime::animation_frame_interval(host_refresh_millihertz);
     let loop_handle_for_timer = event_loop.handle();
-    let frame_callback_timers = super::common::FrameCallbackTimerGuard::<()>::default();
+    let frame_callback_timers = super::engine::FrameCallbackTimerGuard::<()>::default();
+    let mut scene_cache = SceneCache::default();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(None, &mut state, move |state| {
             // ── 1. Process buffered winit resize/close ──────────────────
             if let Some(size) = state.runtime.pending_winit_resize.take() {
-                crate::wayland::input::handle_resize(&mut wm, state, &output, size);
+                crate::backend::wayland::input::handle_resize(&mut wm, state, &output, size);
             }
             if state.runtime.winit_close_requested {
                 loop_signal.stop();
@@ -138,7 +141,7 @@ pub fn run() -> ! {
             }
 
             // ── 2. Shared tick: layout, IPC, monitor config ─────────────
-            super::common::event_loop_tick_and_request_render(&mut wm, state, &mut ipc_server);
+            super::engine::event_loop_tick_and_request_render(&mut wm, state, &mut ipc_server);
             process_output_configurations(state, &output);
             let outputs_changed = state.project_completed_output_transactions();
             if outputs_changed {
@@ -151,7 +154,7 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             wm.work.input_config = false;
 
-            super::common::process_animations_and_request_render(state);
+            super::engine::process_animations_and_request_render(state);
 
             // The async bar renderer wakes us with a bare render ping after a
             // result is ready.  While the bar is dirty, consume that wakeup by
@@ -201,6 +204,7 @@ pub fn run() -> ! {
                     &mut backend,
                     &output,
                     &mut damage_tracker,
+                    &mut scene_cache,
                     start_time,
                 );
 
@@ -385,7 +389,7 @@ fn dispatch_winit_input(
 #[cfg(test)]
 mod touch_tests {
     use super::normalized_winit_touch_position;
-    use crate::wayland::input::touch::NormalizedTouchPosition;
+    use crate::backend::wayland::input::touch::NormalizedTouchPosition;
 
     #[test]
     fn touch_coordinates_use_each_window_dimension() {

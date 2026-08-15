@@ -18,13 +18,13 @@ use smithay::input::pointer::{
 use smithay::utils::SERIAL_COUNTER;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::config::config_toml::InputConfig;
-use crate::config::config_toml::{AccelProfile, ToggleSetting};
-use crate::wayland::input::handle_keyboard;
-use crate::wayland::input::touch::{
+use crate::backend::wayland::input::handle_keyboard;
+use crate::backend::wayland::input::touch::{
     NormalizedTouchPosition, TouchMappingTarget, TouchPointEvent, handle_touch_cancel,
     handle_touch_down, handle_touch_frame, handle_touch_motion, handle_touch_up,
 };
+use crate::config::config_toml::InputConfig;
+use crate::config::config_toml::{AccelProfile, ToggleSetting};
 use crate::wm::Wm;
 use std::collections::HashMap;
 

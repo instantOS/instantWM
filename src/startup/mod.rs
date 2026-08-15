@@ -95,7 +95,7 @@ pub fn run() {
 
     match backend {
         CliBackend::X11 => crate::backend::x11::startup::run(),
-        CliBackend::Nested => crate::wayland::runtime::winit::run(),
-        CliBackend::Drm => crate::wayland::runtime::drm::run(),
+        CliBackend::Nested => crate::backend::wayland::runtime::winit::run(),
+        CliBackend::Drm => crate::backend::wayland::runtime::drm::run(),
     }
 }

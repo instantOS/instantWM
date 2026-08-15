@@ -351,7 +351,7 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
                 crate::backend::x11::startup::init_drw_and_schemes(wm);
             }
             if let crate::backend::Backend::Wayland(data) = &mut wm.backend {
-                crate::wayland::common::apply_bar_metrics(&mut wm.core, data);
+                crate::backend::wayland::bootstrap::apply_bar_metrics(&mut wm.core, data);
             }
             let mut ctx = wm.ctx();
             ctx.request_bar_update();

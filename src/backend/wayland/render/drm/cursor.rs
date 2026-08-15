@@ -22,7 +22,7 @@ use smithay::utils::{Physical, Point, Transform};
 use xcursor::CursorTheme;
 use xcursor::parser::{Image, parse_xcursor};
 
-use crate::wayland::common::CursorPresentation;
+use crate::backend::wayland::render::cursor::CursorPresentation;
 
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("cursor.rgba");
 

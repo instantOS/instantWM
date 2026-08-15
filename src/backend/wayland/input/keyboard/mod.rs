@@ -6,7 +6,7 @@ use smithay::wayland::input_method::InputMethodSeat;
 
 use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
-use crate::wayland::common::modifiers_to_x11_mask;
+use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
 use smithay::utils::SERIAL_COUNTER;
@@ -63,7 +63,7 @@ pub fn handle_keyboard<B: InputBackend>(
             let raw_keysym = keysym.raw_syms().first().map_or(0, |ks| ks.raw());
             if raw_keysym == crate::config::keysyms::XK_ESCAPE {
                 let closed_native = data.dismiss_native_systray_menu();
-                let closed_hosted = crate::wayland::input::bar::close_systray_menu(wm);
+                let closed_hosted = crate::backend::wayland::input::bar::close_systray_menu(wm);
                 if closed_hosted {
                     data.request_bar_redraw();
                 }

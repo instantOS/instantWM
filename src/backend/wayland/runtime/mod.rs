@@ -4,9 +4,11 @@
 //! - Winit (nested) backend
 //! - DRM/KMS (standalone) backend
 //!
-//! Shared per-tick logic lives in `common`; each backend only adds
+//! Shared per-tick logic lives in `engine`; each backend only adds
 //! minimal backend-specific match arms.
 
-pub mod common;
+pub mod bootstrap;
+mod dispatch;
 pub mod drm;
+pub mod engine;
 pub mod winit;

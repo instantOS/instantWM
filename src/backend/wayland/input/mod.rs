@@ -11,11 +11,13 @@ pub mod bar;
 pub mod drm;
 mod focus;
 pub mod keyboard;
+mod modifiers;
 pub mod pointer;
 pub mod touch;
 
 // Re-export public APIs
 pub use keyboard::handle_keyboard;
+pub use modifiers::modifiers_to_x11_mask;
 
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
@@ -23,6 +25,12 @@ use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
 use smithay::utils::Transform;
+
+/// Clamp output dimensions so Smithay never sees a zero-sized surface.
+pub fn sanitize_size(size: Size) -> Size {
+    const WAYLAND_MIN_DIM: i32 = 64;
+    Size::new(size.w.max(WAYLAND_MIN_DIM), size.h.max(WAYLAND_MIN_DIM))
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport
@@ -59,7 +67,7 @@ pub fn apply_pending_warp(
     };
 
     let time_msec = Clock::<Monotonic>::new().now().as_millis();
-    crate::wayland::input::pointer::motion::process_pointer_motion_command(
+    crate::backend::wayland::input::pointer::motion::process_pointer_motion_command(
         wm,
         state,
         pointer_handle,
@@ -84,7 +92,7 @@ pub fn handle_resize(
     output: &Output,
     size: Size,
 ) {
-    let safe_size = crate::wayland::common::sanitize_size(size);
+    let safe_size = sanitize_size(size);
     let mode = OutputMode {
         size: (safe_size.w, safe_size.h).into(),
         refresh: 60_000,

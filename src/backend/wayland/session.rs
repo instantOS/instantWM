@@ -1,0 +1,265 @@
+//! Wayland session environment, socket, and XWayland lifecycle.
+
+use std::env;
+use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::time::Duration;
+
+use smithay::reexports::calloop::LoopHandle;
+use smithay::wayland::socket::ListeningSocketSource;
+use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
+
+use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session environment
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Set the standard environment variables that tell toolkit clients how to
+/// connect to this compositor.
+///
+/// Called after the Wayland socket name is known.  Both the nested backend
+/// (which merely exports `WAYLAND_DISPLAY` into the nested environment) and
+/// the standalone DRM backend (which is the actual session compositor) use the
+/// same set of variables.
+pub fn apply_session_env(socket_name: &str) {
+    unsafe {
+        env::set_var("WAYLAND_DISPLAY", socket_name);
+        env::set_var("XDG_SESSION_TYPE", "wayland");
+        env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
+        env::set_var("XDG_SESSION_DESKTOP", "instantwm");
+        env::set_var("DESKTOP_SESSION", "instantwm");
+        env::remove_var("DISPLAY");
+        env::set_var("GDK_BACKEND", "wayland");
+        env::set_var("QT_QPA_PLATFORM", "wayland");
+        env::set_var("SDL_VIDEODRIVER", "wayland");
+        env::set_var("CLUTTER_BACKEND", "wayland");
+    }
+}
+
+pub fn ensure_dbus_session() {
+    if env::var("DBUS_SESSION_BUS_ADDRESS").is_ok() {
+        return;
+    }
+
+    let Ok(output) = Command::new("dbus-daemon")
+        .arg("--session")
+        .arg("--fork")
+        .arg("--print-address=1")
+        .arg("--nopidfile")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+    else {
+        log::warn!("dbus-daemon not found, D-Bus session bus unavailable");
+        return;
+    };
+
+    let addr = String::from_utf8_lossy(&output.stdout);
+    let addr = addr.trim();
+    if !addr.is_empty() {
+        unsafe { env::set_var("DBUS_SESSION_BUS_ADDRESS", addr) };
+        log::info!("Started D-Bus session bus: {addr}");
+    }
+}
+
+/// Import the Wayland session environment into the D-Bus activation environment.
+///
+/// Portals and other D-Bus-activated services need these variables to discover
+/// the compositor socket and desktop identity. This mirrors the environment
+/// import step commonly done by compositor session wrappers.
+pub fn import_env_into_dbus_activation() {
+    let mut attempted = false;
+
+    if let Ok(status) = Command::new("dbus-update-activation-environment")
+        .arg("--systemd")
+        .arg("WAYLAND_DISPLAY")
+        .arg("XDG_CURRENT_DESKTOP")
+        .arg("XDG_SESSION_DESKTOP")
+        .arg("DESKTOP_SESSION")
+        .status()
+    {
+        attempted = true;
+        if !status.success() {
+            log::debug!(
+                "dbus-update-activation-environment exited with status {}",
+                status
+            );
+        }
+    }
+
+    // Fall back to the non-systemd import path when systemd integration is
+    // unavailable.
+    if !attempted {
+        match Command::new("dbus-update-activation-environment")
+            .arg("WAYLAND_DISPLAY")
+            .arg("XDG_CURRENT_DESKTOP")
+            .arg("XDG_SESSION_DESKTOP")
+            .arg("DESKTOP_SESSION")
+            .status()
+        {
+            Ok(status) if !status.success() => log::debug!(
+                "dbus-update-activation-environment exited with status {}",
+                status
+            ),
+            Ok(_) => {}
+            Err(err) => log::debug!("dbus-update-activation-environment unavailable: {}", err),
+        }
+    }
+}
+
+/// Announce a standalone instantWM session to systemd user services.
+///
+/// Services such as portals and clipboard managers bind themselves to
+/// `graphical-session.target`. Display managers do not universally start that
+/// target for custom compositor desktop files, so the session compositor owns
+/// the lifecycle explicitly.
+pub fn start_graphical_session_target() {
+    if env::var("INSTANTWM_BACKEND").ok().as_deref() != Some("wayland-drm") {
+        return;
+    }
+    match Command::new("systemctl")
+        .args(["--user", "start", "instantwm-session.target"])
+        .status()
+    {
+        Ok(status) if !status.success() => {
+            log::warn!("Failed to start instantwm-session.target: {status}");
+        }
+        Err(error) => log::debug!("systemctl unavailable for graphical session startup: {error}"),
+        Ok(_) => {}
+    }
+}
+
+/// End the systemd graphical-session lifecycle on a clean compositor exit.
+pub fn stop_graphical_session_target() {
+    if env::var("INSTANTWM_BACKEND").ok().as_deref() != Some("wayland-drm") {
+        return;
+    }
+    match Command::new("systemctl")
+        .args([
+            "--user",
+            "stop",
+            "instantwm-session.target",
+            "graphical-session.target",
+        ])
+        .status()
+    {
+        Ok(status) if !status.success() => {
+            log::warn!("Failed to stop graphical-session.target: {status}");
+        }
+        Err(error) => log::debug!("systemctl unavailable for graphical session shutdown: {error}"),
+        Ok(_) => {}
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wayland socket
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Create an auto-named Wayland listening socket, register it with the calloop
+/// event loop so that new client connections are accepted automatically, and
+/// apply the session environment.
+///
+/// Returns the socket name (e.g. `"wayland-1"`) so callers can log it or pass
+/// it to child processes.
+pub fn setup_socket(
+    loop_handle: &LoopHandle<'static, WaylandState>,
+    state: &WaylandState,
+) -> String {
+    let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
+    let socket_name = listening_socket
+        .socket_name()
+        .to_string_lossy()
+        .into_owned();
+
+    apply_session_env(&socket_name);
+    import_env_into_dbus_activation();
+    start_graphical_session_target();
+
+    loop_handle
+        .insert_source(listening_socket, |client, _, data| {
+            let _ = data
+                .display_handle
+                .insert_client(client, Arc::new(WaylandClientState::default()));
+        })
+        .expect("listening socket source");
+
+    let _ = state; // reserved for future use (e.g. security policy)
+    socket_name
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// XWayland
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Spawn XWayland and wire its calloop source into the event loop.
+///
+/// On success, `DISPLAY` is immediately set to the pre-assigned display number
+/// so that any autostart processes that check the environment see it right away.
+/// The definitive `DISPLAY` value is set again inside the `XWaylandEvent::Ready`
+/// callback once XWayland confirms its display number.
+///
+/// Errors are logged and silently swallowed: a missing XWayland is non-fatal
+/// (pure Wayland clients still work).
+pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, WaylandState>) {
+    match XWayland::spawn(
+        &state.display_handle,
+        None,
+        std::iter::empty::<(String, String)>(),
+        std::iter::empty::<String>(),
+        true,
+        Stdio::null(),
+        Stdio::null(),
+        |_| (),
+    ) {
+        Ok((xwayland, client)) => {
+            unsafe { env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
+            let handle_for_wm = loop_handle.clone();
+            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
+            {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    data.xdisplay = Some(display_number);
+                    unsafe { env::set_var("DISPLAY", format!(":{display_number}")) };
+                    match X11Wm::start_wm(
+                        handle_for_wm.clone(),
+                        &data.display_handle,
+                        x11_socket,
+                        client.clone(),
+                    ) {
+                        Ok(wm) => data.xwm = Some(wm),
+                        Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
+                    }
+                }
+                XWaylandEvent::Error => {
+                    log::error!("XWayland failed to start");
+                }
+            }) {
+                log::error!("failed to insert XWayland source: {err}");
+            }
+        }
+        Err(err) => {
+            log::warn!("failed to spawn XWayland: {err}");
+        }
+    }
+}
+
+/// Spawn a lightweight test window a short time after startup.
+///
+/// This gives the compositor something visible to display immediately after
+/// launch during development / smoke-testing. Set
+/// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
+pub fn spawn_smoke_window() {
+    if env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
+        return;
+    }
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(800));
+        let _ = Command::new("sh")
+            .arg("-lc")
+            .arg("for app in gtk3-demo thunar xmessage; do command -v \"$app\" >/dev/null 2>&1 && exec \"$app\"; done; exit 0")
+            .spawn();
+    });
+}

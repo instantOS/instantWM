@@ -42,9 +42,23 @@ mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub(crate) use state::PendingRenderTargets;
+pub(crate) use state::TOUCH_POINTER_BUTTON_CODE;
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::delegate_dispatch2;
+
+/// Construct the calloop event loop and Smithay compositor state shared by
+/// production runtimes and compositor tests.
+pub(crate) fn new_event_loop_and_state() -> (
+    smithay::reexports::calloop::EventLoop<'static, WaylandState>,
+    WaylandState,
+) {
+    let event_loop = smithay::reexports::calloop::EventLoop::try_new().expect("wayland event loop");
+    let loop_handle = event_loop.handle();
+    let display = smithay::reexports::wayland_server::Display::new().expect("wayland display");
+    let state = WaylandState::new(display, &loop_handle);
+    (event_loop, state)
+}
 
 // ---------------------------------------------------------------------------
 // Dispatch delegation — this MUST be at module level

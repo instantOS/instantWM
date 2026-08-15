@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn delayed_floating_commit_cannot_recreate_an_older_resize_request() {
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let _ = state.take_space_sync_pending();
         let win = WindowId(17);
         let older = (800, 600);
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn same_sized_requests_do_not_alias() {
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let _ = state.take_space_sync_pending();
         let win = WindowId(19);
         let size = (800, 600);
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn current_constrained_commit_schedules_one_protocol_convergence() {
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let _ = state.take_space_sync_pending();
         let win = WindowId(18);
         let requested = (1200, 900);
@@ -412,7 +412,7 @@ mod tests {
     #[test]
     fn layout_owned_current_commit_settles_without_touching_configure_state() {
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let _ = state.take_space_sync_pending();
         let win = WindowId(20);
         let configured = (1200, 900);
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn stale_commit_during_authoritative_transition_still_prods_a_retry() {
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let _ = state.take_space_sync_pending();
         let win = WindowId(21);
         let restore_size = (800, 600);

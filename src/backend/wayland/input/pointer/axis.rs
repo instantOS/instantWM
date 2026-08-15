@@ -6,12 +6,12 @@ use smithay::utils::Point;
 
 use crate::backend::wayland::commands::PointerAxisCommand;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::Point as RootPoint;
 use crate::util::clean_mask;
-use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{handle_bar_scroll, update_bar_hit_state};
+use crate::backend::wayland::input::bar::{handle_bar_scroll, update_bar_hit_state};
 
 /// Resolve the effective scroll factor from input configuration.
 ///
@@ -198,7 +198,7 @@ mod tests {
     fn scroll_during_a_captured_gesture_leaves_bar_hover_untouched() {
         let (mut wm, monitor_id, _first, second) = wm_with_title_strip();
         let (_event_loop, mut state) =
-            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+            crate::backend::wayland::compositor::new_event_loop_and_state();
         let (Some(pointer), Some(keyboard)) = (state.seat.get_pointer(), state.seat.get_keyboard())
         else {
             panic!("test seat must provide pointer and keyboard handles");

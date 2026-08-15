@@ -30,17 +30,18 @@ use crate::backend::output::{
     OutputTransactionKind,
 };
 use crate::backend::wayland::compositor::WaylandState;
-use crate::config::config_toml::CursorConfig;
-use crate::config::config_toml::VrrMode;
-use crate::wayland::common::{
-    CursorPresentation, build_shared_scene_elements, poll_systray, resolve_cursor_presentation,
-};
-use crate::wayland::init::drm::init_gpu;
-use crate::wayland::input::apply_pending_warp;
-use crate::wayland::render::drm::{
+use crate::backend::wayland::init::drm::init_gpu;
+use crate::backend::wayland::input::apply_pending_warp;
+use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor_presentation};
+use crate::backend::wayland::render::drm::{
     CursorManager, ManagedDrmOutputManager, OutputHitRegion, OutputSurfaceEntry, RenderOutcome,
     build_output_surfaces, create_output_manager, render_drm_output,
 };
+use crate::backend::wayland::render::scene::{
+    SceneCache, build_shared_scene_elements, poll_systray,
+};
+use crate::config::config_toml::CursorConfig;
+use crate::config::config_toml::VrrMode;
 use crate::wm::Wm;
 
 #[derive(Debug)]
@@ -49,15 +50,15 @@ struct DrmLayoutState {
     output_hit_regions: Vec<OutputHitRegion>,
 }
 
-#[derive(Debug)]
 struct DrmLoopState {
     session_active: bool,
     render_flags: HashMap<crtc::Handle, bool>,
     taken_render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
-    frame_callback_timers: super::common::FrameCallbackTimerGuard<crtc::Handle>,
+    frame_callback_timers: super::engine::FrameCallbackTimerGuard<crtc::Handle>,
     presentation_seq: HashMap<crtc::Handle, u64>,
     last_bar_update_seq: u64,
+    scene_cache: SceneCache,
 }
 
 impl DrmLoopState {
@@ -71,12 +72,13 @@ impl DrmLoopState {
             render_flags,
             taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
-            frame_callback_timers: super::common::FrameCallbackTimerGuard::default(),
+            frame_callback_timers: super::engine::FrameCallbackTimerGuard::default(),
             presentation_seq: output_surfaces
                 .iter()
                 .map(|entry| (entry.crtc, 0))
                 .collect(),
             last_bar_update_seq: 0,
+            scene_cache: SceneCache::default(),
         }
     }
 
@@ -132,15 +134,15 @@ enum DrmRuntimeEvent {
 // Hours spent on this: ~3h
 pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
-    let mut wm = super::common::create_wayland_wm_boxed();
-    let (event_loop, mut state) = super::common::new_wayland_event_loop_and_state();
+    let mut wm = super::bootstrap::create_wayland_wm_boxed();
+    let (event_loop, mut state) = crate::backend::wayland::compositor::new_event_loop_and_state();
     let loop_handle = event_loop.handle();
 
     let (mut session, notifier) = LibSeatSession::new().expect("libseat session");
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
-    super::common::attach_backend_state(&mut wm, &mut state);
+    super::bootstrap::attach_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
@@ -155,7 +157,7 @@ pub fn run() -> ! {
     ) = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
-    super::common::attach_gles_renderer_and_protocols(
+    super::bootstrap::attach_gles_renderer_and_protocols(
         &mut state,
         &mut renderer,
         Some(&egl_display),
@@ -203,7 +205,7 @@ pub fn run() -> ! {
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
-    super::common::setup_listen_socket(&loop_handle, &state, &mut wm);
+    super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
@@ -226,14 +228,14 @@ pub fn run() -> ! {
             let old_pointer_x = state.runtime.pointer_location.x as i32;
             let outcome = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
-                crate::wayland::input::drm::dispatch_libinput_event(
+                crate::backend::wayland::input::drm::dispatch_libinput_event(
                     event, state, wm, total_w, total_h,
                 )
             } else {
-                crate::wayland::input::drm::LibinputEventOutcome::Ignored
+                crate::backend::wayland::input::drm::LibinputEventOutcome::Ignored
             };
 
-            use crate::wayland::input::drm::LibinputEventOutcome;
+            use crate::backend::wayland::input::drm::LibinputEventOutcome;
             match outcome {
                 LibinputEventOutcome::Ignored => {}
                 LibinputEventOutcome::Activity => state.notify_activity(),
@@ -257,7 +259,7 @@ pub fn run() -> ! {
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
 
-    let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &wm);
 
     // One-shot wakeup for the initial frame. Later render failures use a
     // bounded timer instead of an immediate self-ping loop.
@@ -313,7 +315,7 @@ pub fn run() -> ! {
         runtime_event_rx,
     );
 
-    crate::wayland::common::stop_graphical_session_target();
+    crate::backend::wayland::session::stop_graphical_session_target();
     exit(0);
 }
 
@@ -337,12 +339,12 @@ fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::ty
         .iter()
         .map(|surface| surface.rect.x + surface.rect.w)
         .max()
-        .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_WIDTH);
+        .unwrap_or(crate::backend::wayland::render::drm::DEFAULT_SCREEN_WIDTH);
     let total_height = output_surfaces
         .iter()
         .map(|surface| surface.rect.h)
         .max()
-        .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_HEIGHT);
+        .unwrap_or(crate::backend::wayland::render::drm::DEFAULT_SCREEN_HEIGHT);
     crate::types::Size::new(total_width, total_height)
 }
 
@@ -426,7 +428,7 @@ fn setup_session_handlers(
                 log::info!("Session paused (VT switch away) - suspending rendering");
                 if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                     let wm = unsafe { &mut *wm_ptr };
-                    crate::wayland::input::touch::handle_touch_cancel(wm, state);
+                    crate::backend::wayland::input::touch::handle_touch_cancel(wm, state);
                 }
                 session_libinput.suspend();
                 session_output_manager.lock().unwrap().pause();
@@ -532,7 +534,7 @@ fn run_event_loop(
                 output_surfaces,
                 start_time,
             );
-            super::common::event_loop_tick_and_request_render(wm, state, ipc_server);
+            super::engine::event_loop_tick_and_request_render(wm, state, ipc_server);
             process_output_configurations(
                 state,
                 output_surfaces,
@@ -555,7 +557,7 @@ fn run_event_loop(
                     layout_state,
                 );
             }
-            super::common::process_animations_and_request_render(state);
+            super::engine::process_animations_and_request_render(state);
             process_commit_redraws(state, loop_state, output_surfaces);
             let bar_update_seq = wm.bar.update_seq();
             if loop_state.last_bar_update_seq != bar_update_seq {
@@ -565,7 +567,7 @@ fn run_event_loop(
 
             if wm.work.input_config {
                 wm.work.input_config = false;
-                crate::wayland::input::drm::reconfigure_all_devices(
+                crate::backend::wayland::input::drm::reconfigure_all_devices(
                     &mut state.runtime.tracked_devices,
                     &wm.core.config.input,
                 );
@@ -881,7 +883,7 @@ fn process_output_configurations(
 
     let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
         GlesRenderer,
-        crate::wayland::render::drm::DrmExtras,
+        crate::backend::wayland::render::drm::DrmExtras,
     >::default();
     let capabilities = output_capabilities(output_surfaces);
 
@@ -1174,7 +1176,11 @@ fn render_outputs(
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
         let shared_scene = if needs_any_render && !state.is_locked() {
             poll_systray(wm);
-            Some(build_shared_scene_elements(wm, state))
+            Some(build_shared_scene_elements(
+                wm,
+                state,
+                &mut loop_state.scene_cache,
+            ))
         } else {
             None
         };
@@ -1193,7 +1199,10 @@ fn render_outputs(
             }
             apply_output_vrr_policy(wm, state, entry);
             let suppress_upper_layers =
-                crate::wayland::common::output_has_real_fullscreen(wm, &entry.output);
+                crate::backend::wayland::render::scene::output_has_real_fullscreen(
+                    wm,
+                    &entry.output,
+                );
             let rendered = render_drm_output(
                 state,
                 renderer,

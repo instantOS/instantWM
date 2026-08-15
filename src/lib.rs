@@ -34,5 +34,4 @@ mod tags;
 mod toggles;
 pub mod types;
 mod util;
-mod wayland;
 mod wm;

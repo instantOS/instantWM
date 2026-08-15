@@ -31,7 +31,7 @@ impl SessionLockHandler for WaylandState {
         // event. Cancel it before exposing lock surfaces so a pre-lock client
         // can never retain touch focus while the session is locked.
         self.touch.clone().cancel(self);
-        crate::wayland::input::touch::cancel_pointer_emulation(self, 0);
+        self.cancel_touch_pointer_emulation(0);
         self.runtime.wm_gesture_touch_slot = None;
 
         let lock = confirmation.ext_session_lock().clone();
@@ -50,7 +50,7 @@ impl SessionLockHandler for WaylandState {
         // Do not let a sequence focused on the lock client survive after its
         // surfaces are removed.
         self.touch.clone().cancel(self);
-        crate::wayland::input::touch::cancel_pointer_emulation(self, 0);
+        self.cancel_touch_pointer_emulation(0);
         self.lock_state = SessionLockState::Unlocked;
         self.lock_surfaces.clear();
         self.restore_focus_after_overlay();

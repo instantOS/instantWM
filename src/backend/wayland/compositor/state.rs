@@ -322,11 +322,6 @@ pub struct WaylandRuntimeState {
     pub winit_close_requested: bool,
     pub output_transactions: crate::backend::output::OutputTransactionService,
     pub intercepted_key_releases: HashSet<Keycode>,
-    pub shared_scene_cache: Option<(
-        u64,
-        u64,
-        std::rc::Rc<crate::wayland::common::SharedSceneElements>,
-    )>,
 }
 
 impl Default for WaylandRuntimeState {
@@ -356,12 +351,31 @@ impl Default for WaylandRuntimeState {
             winit_close_requested: false,
             output_transactions: crate::backend::output::OutputTransactionService::default(),
             intercepted_key_releases: HashSet::new(),
-            shared_scene_cache: None,
         }
     }
 }
 
+pub(crate) const TOUCH_POINTER_BUTTON_CODE: u32 = 0x110;
+
 impl WaylandState {
+    /// Release a pointer button synthesized from a touch sequence, if active.
+    pub(crate) fn cancel_touch_pointer_emulation(&mut self, time_msec: u32) {
+        if self.runtime.pointer_touch_slot.take().is_none() {
+            return;
+        }
+        let pointer = self.pointer.clone();
+        pointer.button(
+            self,
+            &smithay::input::pointer::ButtonEvent {
+                button: TOUCH_POINTER_BUTTON_CODE,
+                state: smithay::backend::input::ButtonState::Released,
+                serial: smithay::utils::SERIAL_COUNTER.next_serial(),
+                time: time_msec,
+            },
+        );
+        pointer.frame(self);
+    }
+
     pub(crate) fn take_expected_systray_menu_toplevel(
         &mut self,
         client_pid: Option<u32>,

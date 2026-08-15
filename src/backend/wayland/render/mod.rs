@@ -6,7 +6,10 @@
 //! - Window borders (shared)
 
 pub mod borders;
+pub mod cursor;
 pub mod drm;
+pub mod frame;
+pub mod scene;
 pub mod winit;
 
 /// Assemble render elements in front-to-back order from shared scene elements,

@@ -32,7 +32,7 @@ pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
 
-// Re-export modifier key constants (used by wayland/common.rs via crate::config::*).
+// Re-export modifier key constants (used by backend/wayland/input/modifiers.rs via crate::config::*).
 pub use crate::types::{EdgeDirection, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 

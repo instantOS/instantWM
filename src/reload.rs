@@ -39,7 +39,7 @@ fn reload_wayland(
     state: &mut crate::core_state::CoreState,
     data: &mut crate::backend::WaylandBackendData,
 ) {
-    crate::wayland::common::apply_bar_metrics(state, data);
+    crate::backend::wayland::bootstrap::apply_bar_metrics(state, data);
 }
 
 fn reload_x11(wm: &mut Wm) {

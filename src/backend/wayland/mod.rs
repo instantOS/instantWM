@@ -1,22 +1,30 @@
 //! Wayland compositor backend using Smithay.
 //!
 //! This module implements the Wayland side of instantWM's dual-backend
-//! architecture.  It lets instantWM run as a standalone Wayland compositor
-//! (with XWayland support for legacy X11 clients).
+//! architecture. It provides nested and standalone DRM/KMS compositor modes,
+//! with XWayland support for legacy X11 clients. Both modes ship alongside
+//! the X11 window manager and are selected at runtime.
 //!
 //! # Architecture
 //!
-//! Smithay is a *library*, not a framework.  Our compositor state struct
-//! (`WaylandState`) stores all the Smithay protocol state objects and
-//! implements the corresponding handler traits.  The calloop event loop
-//! drives everything:
+//! Smithay is a *library*, not a framework. The backend is divided by
+//! responsibility:
+//!
+//! - [`compositor`] owns Smithay protocol state and handler implementations.
+//! - [`input`] translates winit/libinput events into compositor and WM input.
+//! - [`render`] builds scenes and submits nested or DRM frames.
+//! - [`runtime`] owns startup, queued-command dispatch, and event loops.
+//! - [`session`] owns the socket, environment, systemd, and XWayland lifecycle.
+//! - [`bootstrap`] initializes backend-neutral WM state for Wayland.
+//!
+//! The calloop event loop drives everything:
 //!
 //! ```text
 //! calloop EventLoop
 //!  ├─ ListeningSocketSource   → accept new Wayland clients
 //!  ├─ Generic(Display)        → dispatch protocol messages
 //!  ├─ XWayland source         → spawn / manage XWayland
-//!  └─ (future) backend source → DRM/udev or nested winit
+//!  └─ backend sources         → DRM/udev/libinput or nested winit
 //! ```
 //!
 //! # Smithay Quick Reference (for future implementors)
@@ -44,13 +52,17 @@
 //!
 //! ## Rendering
 //!
-//! Rendering is NOT handled here.  A future `renderer` module will abstract
-//! over software (pixman) and hardware (GL/Vulkan) renderers.  The bar will
-//! need a Wayland-native renderer path (layer-shell surface or custom
-//! rendering).
+//! [`render`] shares cursor, scene, and frame-callback policy while keeping
+//! nested-winit and DRM/KMS submission mechanics separate.
 
+pub mod bootstrap;
 pub mod commands;
 pub mod compositor;
+pub mod init;
+pub mod input;
+pub mod render;
+pub mod runtime;
+pub mod session;
 
 use crate::backend::{InteractiveResizeOps, OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};

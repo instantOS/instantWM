@@ -1,256 +1,15 @@
-//! Shared Wayland runtime setup and per-tick logic for all backends.
-//!
-//! Bootstrap uses [`create_wayland_wm_boxed`] and [`new_wayland_event_loop_and_state`], then
-//! [`attach_backend_state`], [`attach_gles_renderer_and_protocols`], and the socket /
-//! autostart helpers. DRM inserts session/GPU/libinput between socket setup and autostart.
-//!
-//! Per-tick logic lives here as well so DRM and winit share scheduling policy.
+//! Translation of queued Wayland protocol and input commands into WM operations.
 
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::rc::Rc;
-use std::time::{Duration, Instant};
-
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
-use smithay::backend::egl::EGLDisplay;
-use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::output::Output;
-use smithay::reexports::calloop::{EventLoop, LoopHandle};
-use smithay::reexports::wayland_server::Display;
 use smithay::wayland::seat::WaylandFocus;
 
-/// Coalesces callback-only surface commits and delivers them at output refresh
-/// cadence without forcing either rendering backend to submit an empty frame.
-#[derive(Debug)]
-pub(crate) struct FrameCallbackTimerGuard<K> {
-    armed: Rc<RefCell<HashMap<K, u64>>>,
-    next_generation: Cell<u64>,
-}
-
-impl<K> Default for FrameCallbackTimerGuard<K> {
-    fn default() -> Self {
-        Self {
-            armed: Rc::new(RefCell::new(HashMap::new())),
-            next_generation: Cell::new(0),
-        }
-    }
-}
-
-impl<K> FrameCallbackTimerGuard<K>
-where
-    K: Clone + Debug + Eq + Hash + 'static,
-{
-    pub(crate) fn arm(
-        &self,
-        key: K,
-        loop_handle: &LoopHandle<'_, WaylandState>,
-        output: &Output,
-        start_time: Instant,
-    ) {
-        if self.armed.borrow().contains_key(&key) {
-            return;
-        }
-
-        let generation = self.next_generation.get().wrapping_add(1);
-        self.next_generation.set(generation);
-        self.armed.borrow_mut().insert(key.clone(), generation);
-
-        let output = output.clone();
-        let delay = output_frame_callback_delay(&output);
-        let armed_for_timer = Rc::clone(&self.armed);
-        let timer_key = key.clone();
-        if let Err(err) = loop_handle.insert_source(
-            smithay::reexports::calloop::timer::Timer::from_duration(delay),
-            move |_, _, state| {
-                let is_current = armed_for_timer
-                    .borrow()
-                    .get(&timer_key)
-                    .is_some_and(|current| *current == generation);
-                if is_current {
-                    armed_for_timer.borrow_mut().remove(&timer_key);
-                    crate::wayland::common::send_frame_callbacks(
-                        state,
-                        &output,
-                        start_time.elapsed(),
-                    );
-                }
-                smithay::reexports::calloop::timer::TimeoutAction::Drop
-            },
-        ) {
-            let is_current = self
-                .armed
-                .borrow()
-                .get(&key)
-                .is_some_and(|current| *current == generation);
-            if is_current {
-                self.armed.borrow_mut().remove(&key);
-            }
-            log::warn!("failed to arm frame-callback timer for {key:?}: {err}");
-        }
-    }
-
-    pub(crate) fn disarm(&self, key: &K) {
-        self.armed.borrow_mut().remove(key);
-    }
-}
-
-fn output_frame_callback_delay(output: &Output) -> Duration {
-    output
-        .current_mode()
-        .and_then(|mode| {
-            let refresh = u64::try_from(mode.refresh).ok()?;
-            (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
-        })
-        .unwrap_or_else(|| Duration::from_millis(16))
-}
-
-/// D-Bus session, boxed [`Wm`] with Wayland backend, and [`crate::wayland::common::init_globals`].
-pub(crate) fn create_wayland_wm_boxed() -> Box<Wm> {
-    crate::wayland::common::ensure_dbus_session();
-    let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
-    if let Some(wayland) = wm.backend.wayland_data_mut() {
-        crate::wayland::common::init_globals(&mut wm.core, wayland);
-    }
-    wm
-}
-
-/// Calloop [`EventLoop`], Wayland [`Display`], and [`WaylandState`].
-pub(crate) fn new_wayland_event_loop_and_state() -> (EventLoop<'static, WaylandState>, WaylandState)
-{
-    let event_loop = EventLoop::try_new().expect("wayland event loop");
-    let loop_handle = event_loop.handle();
-    let display = Display::new().expect("wayland display");
-    let state = WaylandState::new(display, &loop_handle);
-    (event_loop, state)
-}
-
-/// Attach GLES renderer, dmabuf global, and screencopy protocol (winit and DRM).
-pub fn attach_gles_renderer_and_protocols(
-    state: &mut WaylandState,
-    renderer: &mut GlesRenderer,
-    egl_display: Option<&EGLDisplay>,
-) {
-    state.attach_renderer(renderer);
-    let egl_for_dmabuf = egl_display.or_else(|| Some(renderer.egl_context().display()));
-    state.init_dmabuf_global(
-        ImportDma::dmabuf_formats(renderer).into_iter().collect(),
-        egl_for_dmabuf,
-    );
-    state.init_screencopy_manager();
-}
-
-/// Wire the Smithay compositor state into [`WaylandBackend`].
-pub fn attach_backend_state(wm: &mut Box<Wm>, state: &mut WaylandState) {
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.backend.attach_state(state);
-    }
-}
-
-/// Listening socket, XWayland spawn, and StatusNotifier systray thread — shared by both runtimes.
-pub fn setup_listen_socket(
-    loop_handle: &LoopHandle<'static, WaylandState>,
-    state: &WaylandState,
-    wm: &mut Box<Wm>,
-) {
-    let _socket_name = crate::wayland::common::setup_socket(loop_handle, state);
-    crate::wayland::common::spawn_xwayland(state, loop_handle);
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.status_notifier_runtime = Some(
-            crate::systray::status_notifier::StatusNotifierRuntime::start(std::sync::Arc::clone(
-                &state.runtime.pending_systray_menu,
-            )),
-        );
-    }
-}
-
-/// Startup commands, smoke window, IPC listener registration, and status-bar ping source.
-pub fn autostart_ipc_status_ping(
-    loop_handle: &LoopHandle<'static, WaylandState>,
-    wm: &crate::wm::Wm,
-) -> Option<crate::ipc::IpcServer> {
-    crate::runtime::run_startup_commands(wm);
-    crate::wayland::common::spawn_smoke_window();
-    let ipc_server = crate::ipc::IpcServer::bind().ok();
-    crate::runtime::register_ipc_source(loop_handle, &ipc_server);
-    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
-    crate::bar::status::set_internal_status_ping(status_ping);
-    loop_handle
-        .insert_source(status_ping_source, |_, _, _| {})
-        .expect("failed to insert status ping source");
-    ipc_server
-}
-
-/// Run the shared Wayland tick and convert model changes into one compositor
-/// redraw request. DRM and winit then consume that request using their own
-/// output submission machinery.
-pub(crate) fn event_loop_tick_and_request_render(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-) {
-    drain_command_queue(wm, state);
-    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(state);
-    let tick = crate::runtime::event_loop_tick_with_options(
-        wm,
-        ipc_server,
-        crate::runtime::TickOptions {
-            defer_layout_while_animations_active: true,
-            animations_active: state.has_active_window_animations(),
-        },
-    );
-    // Moving surfaces under a stationary pointer must update Wayland pointer
-    // protocol focus in every mode. The synthetic source is kept distinct so
-    // only `force` may turn that protocol refresh into keyboard focus.
-    if tick.layout_applied
-        && let (Some(pointer), Some(keyboard)) =
-            (state.seat.get_pointer(), state.seat.get_keyboard())
-    {
-        crate::wayland::input::pointer::motion::process_pointer_motion_command(
-            wm,
-            state,
-            &pointer,
-            &keyboard,
-            crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
-        );
-    }
-    dismiss_invalid_native_systray_menu(wm, state);
-    if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
-        state.request_render();
-    }
-}
-
-fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
-    let Some(active) = state.active_systray_menu().cloned() else {
-        return;
-    };
-    let opening_view_is_current = wm
-        .core
-        .model
-        .monitor(active.monitor_id)
-        .is_some_and(|monitor| monitor.selected_tags() == active.opened_tags);
-    let item_still_exists = match &wm.backend {
-        WmBackend::Wayland(data) => data
-            .status_notifier_tray
-            .items
-            .iter()
-            .any(|item| item.service == active.service && item.path == active.path),
-        _ => false,
-    };
-    if !wm.core.config.systray.show || !opening_view_is_current || !item_still_exists {
-        state.dismiss_native_systray_menu();
-    }
-}
-
-fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
+pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     use crate::backend::wayland::commands::WmCommand;
-    use crate::wayland::input::pointer::axis::{PointerAxisInput, handle_pointer_axis};
-    use crate::wayland::input::pointer::button::{PointerButtonInput, handle_pointer_button};
+    use crate::backend::wayland::input::pointer::axis::{PointerAxisInput, handle_pointer_axis};
+    use crate::backend::wayland::input::pointer::button::{
+        PointerButtonInput, handle_pointer_button,
+    };
 
     let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
     let mut commands = commands.into_iter().peekable();
@@ -279,7 +38,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                         next_is_pointer_motion,
                     );
                     pointer_hit_cache = Some(
-                        crate::wayland::input::pointer::motion::process_pointer_motion_command_cached(
+                        crate::backend::wayland::input::pointer::motion::process_pointer_motion_command_cached(
                             wm,
                             state,
                             &pointer,
@@ -528,6 +287,143 @@ fn handle_set_fullscreen(
     state.sync_window_presentation(win);
     state.request_space_sync();
     state.request_render();
+}
+#[cfg(test)]
+mod tests {
+    use super::{
+        apply_committed_window_size, handle_update_xwayland_policy, should_update_active_drag,
+    };
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn only_the_last_consecutive_motion_updates_an_active_drag() {
+        assert!(!should_update_active_drag(true, true));
+        assert!(should_update_active_drag(true, false));
+        assert!(should_update_active_drag(false, true));
+        assert!(should_update_active_drag(false, false));
+    }
+
+    #[test]
+    fn initial_fullscreen_intent_is_applied_after_window_creation() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(72);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        });
+
+        wm.core.model.apply_initial_presentation_intent(
+            win,
+            crate::client::mode::InitialPresentationIntent {
+                fullscreen: true,
+                maximized: false,
+            },
+        );
+
+        assert!(
+            wm.core
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_true_fullscreen()
+        );
+    }
+
+    #[test]
+    fn initial_maximize_becomes_the_fullscreen_restore_mode() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(73);
+        let mut client = Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        };
+        client.set_placement(ClientPlacement::Floating);
+        wm.core.model.insert_client(client);
+
+        wm.core.model.apply_initial_presentation_intent(
+            win,
+            crate::client::mode::InitialPresentationIntent {
+                fullscreen: true,
+                maximized: true,
+            },
+        );
+        let mode = wm.core.model.client(win).unwrap().mode();
+
+        assert!(mode.is_true_fullscreen());
+        assert_eq!(mode.restored(), ClientMode::tiled());
+    }
+
+    #[test]
+    fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(70);
+        let geo = Rect::new(20, 30, 800, 600);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            geo,
+            mode: ClientMode::tiled(),
+            ..Client::default()
+        });
+        wm.work.layout.clear();
+        let bar_seq = wm.bar.update_seq();
+
+        let update = || crate::backend::x11::policy::XWaylandPolicyUpdate {
+            hints: None,
+            size_hints: None,
+            is_fullscreen: true,
+            is_maximized: false,
+            is_hidden: false,
+            is_above: true,
+        };
+        handle_update_xwayland_policy(&mut wm, win, update());
+
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.mode().is_true_fullscreen());
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+        assert_eq!(client.mode().restored(), ClientMode::floating());
+        assert_eq!(client.saved_floating_rect(), Some(geo));
+        assert!(wm.work.layout.is_pending());
+        assert_ne!(wm.bar.update_seq(), bar_seq);
+
+        wm.work.layout.clear();
+        let bar_seq = wm.bar.update_seq();
+        handle_update_xwayland_policy(&mut wm, win, update());
+        assert!(!wm.work.layout.is_pending());
+        assert_eq!(wm.bar.update_seq(), bar_seq);
+    }
+
+    #[test]
+    fn stale_wayland_commit_does_not_override_scratchpad_geometry() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(71);
+        let geo = Rect::new(480, 216, 960, 648);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo,
+            mode: ClientMode::floating(),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("insmenu", None, 1920, 1080)
+            .unwrap();
+        wm.core.model.insert_client(client);
+
+        apply_committed_window_size(&mut wm, win, 1920, 1080);
+
+        assert_eq!(wm.core.model.client(win).unwrap().geo, geo);
+    }
 }
 
 fn handle_set_minimized(wm: &mut Wm, win: crate::types::WindowId, minimized: bool) {
@@ -969,162 +865,4 @@ fn handle_set_maximized(
     state.sync_window_presentation(win);
     state.request_space_sync();
     state.request_render();
-}
-
-/// Run compositor-space sync and animation progression in one place, then
-/// preserve the resulting redraw in the shared Wayland scheduler.
-pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
-    let space_synced = if state.take_space_sync_pending() {
-        state.sync_space_from_globals();
-        true
-    } else {
-        false
-    };
-    if state.has_active_animations() {
-        state.tick_animations();
-    }
-
-    // Animation ticks enqueue output-local redraws themselves. Space sync can
-    // affect arbitrary windows, so it remains conservatively global.
-    if space_synced {
-        state.request_render();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        apply_committed_window_size, handle_update_xwayland_policy, should_update_active_drag,
-    };
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
-    use crate::wm::Wm;
-
-    #[test]
-    fn only_the_last_consecutive_motion_updates_an_active_drag() {
-        assert!(!should_update_active_drag(true, true));
-        assert!(should_update_active_drag(true, false));
-        assert!(should_update_active_drag(false, true));
-        assert!(should_update_active_drag(false, false));
-    }
-
-    #[test]
-    fn initial_fullscreen_intent_is_applied_after_window_creation() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(72);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            ..Client::default()
-        });
-
-        wm.core.model.apply_initial_presentation_intent(
-            win,
-            crate::client::mode::InitialPresentationIntent {
-                fullscreen: true,
-                maximized: false,
-            },
-        );
-
-        assert!(
-            wm.core
-                .model
-                .client(win)
-                .unwrap()
-                .mode()
-                .is_true_fullscreen()
-        );
-    }
-
-    #[test]
-    fn initial_maximize_becomes_the_fullscreen_restore_mode() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(73);
-        let mut client = Client {
-            win,
-            monitor_id,
-            ..Client::default()
-        };
-        client.set_placement(ClientPlacement::Floating);
-        wm.core.model.insert_client(client);
-
-        wm.core.model.apply_initial_presentation_intent(
-            win,
-            crate::client::mode::InitialPresentationIntent {
-                fullscreen: true,
-                maximized: true,
-            },
-        );
-        let mode = wm.core.model.client(win).unwrap().mode();
-
-        assert!(mode.is_true_fullscreen());
-        assert_eq!(mode.restored(), ClientMode::tiled());
-    }
-
-    #[test]
-    fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(70);
-        let geo = Rect::new(20, 30, 800, 600);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            geo,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-        wm.work.layout.clear();
-        let bar_seq = wm.bar.update_seq();
-
-        let update = || crate::backend::x11::policy::XWaylandPolicyUpdate {
-            hints: None,
-            size_hints: None,
-            is_fullscreen: true,
-            is_maximized: false,
-            is_hidden: false,
-            is_above: true,
-        };
-        handle_update_xwayland_policy(&mut wm, win, update());
-
-        let client = wm.core.model.client(win).unwrap();
-        assert!(client.mode().is_true_fullscreen());
-        assert_eq!(client.placement(), ClientPlacement::Floating);
-        assert_eq!(client.mode().restored(), ClientMode::floating());
-        assert_eq!(client.saved_floating_rect(), Some(geo));
-        assert!(wm.work.layout.is_pending());
-        assert_ne!(wm.bar.update_seq(), bar_seq);
-
-        wm.work.layout.clear();
-        let bar_seq = wm.bar.update_seq();
-        handle_update_xwayland_policy(&mut wm, win, update());
-        assert!(!wm.work.layout.is_pending());
-        assert_eq!(wm.bar.update_seq(), bar_seq);
-    }
-
-    #[test]
-    fn stale_wayland_commit_does_not_override_scratchpad_geometry() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(71);
-        let geo = Rect::new(480, 216, 960, 648);
-        let mut client = Client {
-            win,
-            monitor_id,
-            geo,
-            mode: ClientMode::floating(),
-            ..Client::default()
-        };
-        client
-            .promote_to_scratchpad("insmenu", None, 1920, 1080)
-            .unwrap();
-        wm.core.model.insert_client(client);
-
-        apply_committed_window_size(&mut wm, win, 1920, 1080);
-
-        assert_eq!(wm.core.model.client(win).unwrap().geo, geo);
-    }
 }

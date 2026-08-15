@@ -34,13 +34,16 @@ use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::image_capture::PendingImageCapture;
-use crate::config::config_toml::VrrMode;
-use crate::wayland::common::{
-    CursorPresentation, SharedSceneElements, build_common_scene_elements_from_shared,
-    count_upper_layer_render_elements, get_render_element_counts,
-    remove_duplicate_overlay_elements, resolve_cursor_presentation, send_frame_callbacks,
-    update_primary_scanout_output, window_overlaps_output,
+use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor_presentation};
+use crate::backend::wayland::render::frame::{
+    send_frame_callbacks, update_primary_scanout_output, window_overlaps_output,
 };
+use crate::backend::wayland::render::scene::{
+    SharedSceneElements, build_common_scene_elements_from_shared,
+    count_upper_layer_render_elements, get_render_element_counts,
+    remove_duplicate_overlay_elements,
+};
+use crate::config::config_toml::VrrMode;
 use std::rc::Rc;
 
 mod cursor;

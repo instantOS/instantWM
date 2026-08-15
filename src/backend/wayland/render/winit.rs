@@ -8,11 +8,12 @@ use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::wayland::common::{
-    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
+use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor_presentation};
+use crate::backend::wayland::render::frame::{send_frame_callbacks, update_primary_scanout_output};
+use crate::backend::wayland::render::scene::{
+    SceneCache, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, output_has_real_fullscreen, poll_systray,
-    remove_duplicate_overlay_elements, resolve_cursor_presentation, send_frame_callbacks,
-    update_primary_scanout_output,
+    remove_duplicate_overlay_elements,
 };
 use crate::wm::Wm;
 
@@ -31,6 +32,7 @@ pub fn render_frame(
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
+    scene_cache: &mut SceneCache,
     start_time: std::time::Instant,
 ) -> bool {
     // Backend-specific: apply cursor via window API
@@ -70,7 +72,7 @@ pub fn render_frame(
     } else {
         poll_systray(wm);
         // Shared: build scene elements
-        let scene = build_common_scene_elements(wm, state, renderer, output);
+        let scene = build_common_scene_elements(wm, state, scene_cache, renderer, output);
 
         // Shared: get space render elements
         let mut space_render_elements =
