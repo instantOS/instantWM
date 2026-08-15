@@ -1,9 +1,8 @@
 //! Wayland compositor backend using Smithay.
 //!
 //! This module implements the Wayland side of instantWM's dual-backend
-//! architecture.  When compiled with `--features wayland_backend`, instantWM
-//! can run as a standalone Wayland compositor (with XWayland support for
-//! legacy X11 clients).
+//! architecture.  It lets instantWM run as a standalone Wayland compositor
+//! (with XWayland support for legacy X11 clients).
 //!
 //! # Architecture
 //!
