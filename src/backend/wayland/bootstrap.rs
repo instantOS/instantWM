@@ -8,20 +8,6 @@ use crate::core_state::CoreState;
 // WM globals initialisation
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Initialise all WM globals that are shared between the nested and standalone
-/// Wayland backends.
-///
-/// Reads `config.toml`, applies tag/key configuration, sets bar metrics, and
-/// calls `update_geom` so that monitor layout is valid before the first frame.
-///
-/// The caller is responsible for setting `wm.core.config.screen_width` /
-/// `screen_height` to the actual output dimensions afterwards (e.g. from the
-/// winit window size or DRM connector mode).  The values written here
-/// Wayland-specific globals initialization.
-///
-/// Sets up config, tags, and bar painter font size. This is called before
-/// the Wayland compositor is fully initialized, so monitor geometry is not
-/// available yet - that will be done via update_geom later.
 /// Apply font-derived bar metrics to the runtime config and bar painter.
 ///
 /// Computes `bar_height` and `horizontal_padding` from the font config and
@@ -39,6 +25,12 @@ pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
     state.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
+/// Initialize WM configuration shared by nested and DRM/KMS Wayland modes.
+///
+/// Loads and applies the Wayland configuration, seeds fallback display
+/// dimensions for pre-output initialization, and configures bar metrics.
+/// Output discovery replaces the fallback dimensions and establishes monitor
+/// geometry after the compositor backend is ready.
 pub fn init_globals(state: &mut CoreState, wayland: &mut WaylandBackendData) {
     let cfg = init_config(crate::backend::BackendKind::Wayland);
     state.config.derived.display.width = 1280;
@@ -47,6 +39,4 @@ pub fn init_globals(state: &mut CoreState, wayland: &mut WaylandBackendData) {
     state.config.bar.show = true;
 
     apply_bar_metrics(state, wayland);
-
-    // Monitor geometry will be set up after the compositor is ready via update_geom
 }

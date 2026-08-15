@@ -96,7 +96,6 @@ cargo build --quiet --bin instantwm --bin instantwmctl
 
 INSTANTWM_SOCKET_BIND="$SOCKET_PATH" \
 INSTANTWM_AUTOSTART=0 \
-INSTANTWM_WL_AUTOSTART=0 \
 INSTANTWM_WL_AUTOSPAWN=0 \
 INSTANTWM_TEST=1 \
   setsid --wait timeout 45s ./target/debug/instantwm --backend wayland >"$WM_LOG" 2>&1 &

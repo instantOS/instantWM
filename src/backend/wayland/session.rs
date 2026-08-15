@@ -252,7 +252,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
 /// launch during development / smoke-testing. Set
 /// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
 pub fn spawn_smoke_window() {
-    if env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
+    if env::var("INSTANTWM_WL_AUTOSPAWN").ok().as_deref() == Some("0") {
         return;
     }
     std::thread::spawn(|| {
