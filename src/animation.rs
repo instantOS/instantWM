@@ -93,7 +93,34 @@ pub struct AnimationTick {
     pub done: bool,
 }
 
+/// Interpolate a rectangle using the animation system's easing and rounding.
+pub(crate) fn interpolate_rect(from: Rect, to: Rect, linear_progress: f64) -> Rect {
+    let eased = ease_out_cubic(linear_progress.clamp(0.0, 1.0));
+    let interpolate =
+        |start: i32, end: i32| (f64::from(start) + f64::from(end - start) * eased).round() as i32;
+
+    Rect::new(
+        interpolate(from.x, to.x),
+        interpolate(from.y, to.y),
+        interpolate(from.w, to.w),
+        interpolate(from.h, to.h),
+    )
+}
+
 impl WindowAnimation {
+    /// Sample the transition at an explicit linear progress value.
+    ///
+    /// Keeping interpolation here ensures animation playback and policy code
+    /// that probes a future frame use exactly the same easing and rounding.
+    pub fn sample(&self, linear_progress: f64) -> AnimationTick {
+        let progress = linear_progress.clamp(0.0, 1.0);
+        AnimationTick {
+            rect: interpolate_rect(self.from, self.to, progress),
+            progress,
+            done: progress >= 1.0,
+        }
+    }
+
     pub fn tick(&self, now: Instant) -> AnimationTick {
         let elapsed = now.saturating_duration_since(self.started_at);
         let raw_t = if self.duration.is_zero() {
@@ -101,23 +128,7 @@ impl WindowAnimation {
         } else {
             (elapsed.as_secs_f64() / self.duration.as_secs_f64()).clamp(0.0, 1.0)
         };
-        let eased = ease_out_cubic(raw_t);
-
-        let x = self.from.x as f64 + (self.to.x - self.from.x) as f64 * eased;
-        let y = self.from.y as f64 + (self.to.y - self.from.y) as f64 * eased;
-        let w = self.from.w as f64 + (self.to.w - self.from.w) as f64 * eased;
-        let h = self.from.h as f64 + (self.to.h - self.from.h) as f64 * eased;
-
-        AnimationTick {
-            rect: Rect {
-                x: x.round() as i32,
-                y: y.round() as i32,
-                w: w.round() as i32,
-                h: h.round() as i32,
-            },
-            progress: raw_t,
-            done: raw_t >= 1.0,
-        }
+        self.sample(raw_t)
     }
 }
 
