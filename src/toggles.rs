@@ -176,9 +176,11 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{toggle_mode_name, toggled_bool};
+    use super::{toggle_mode_name, toggled_bool, unhide_all};
+    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::core_state::ActiveWmMode;
-    use crate::types::ToggleAction;
+    use crate::types::{Client, Monitor, ToggleAction, WindowId};
+    use crate::wm::Wm;
 
     #[test]
     fn toggled_bool_applies_toggle_action() {
@@ -198,5 +200,41 @@ mod tests {
             toggle_mode_name(&ActiveWmMode::Named("resize".to_string()), "resize"),
             ActiveWmMode::Default
         );
+    }
+
+    #[test]
+    fn unhide_all_reveals_hidden_windows_without_moving_focus() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let focused = WindowId(1);
+        let hidden = WindowId(2);
+        let also_hidden = WindowId(3);
+        for (win, is_hidden) in [(focused, false), (hidden, true), (also_hidden, true)] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                is_hidden,
+                ..Client::default()
+            });
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .clients
+                .push(win);
+        }
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(focused));
+
+        unhide_all(&mut wm.ctx());
+
+        assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
+        assert!(!wm.core.model.client(also_hidden).unwrap().is_hidden);
+        assert_eq!(wm.core.model.selected_win(), Some(focused));
     }
 }

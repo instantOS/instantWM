@@ -670,6 +670,8 @@ fn reconcile_monitor_model(
         }
     }
 
+    // Collect the orphaned monitors' bar windows as cleanup work for the
+    // caller. The default id is the "no bar" placeholder, not a real window.
     let removed_bar_windows = pool
         .into_iter()
         .flatten()

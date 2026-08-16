@@ -1,6 +1,7 @@
 use crate::actions::ActionMeta;
 use crate::client::fullscreen::toggle_fake_fullscreen;
 use crate::client::{kill_client, shut_kill, zoom};
+use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
@@ -33,6 +34,7 @@ use crate::types::{
     ToggleAction, VerticalDirection,
 };
 use crate::util::spawn;
+use std::collections::HashMap;
 
 macro_rules! define_named_actions {
     ($(
@@ -165,7 +167,7 @@ fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), Stri
 }
 
 fn validate_mode_name(
-    configured_modes: &std::collections::HashMap<String, crate::config::ModeConfig>,
+    configured_modes: &HashMap<String, ModeConfig>,
     name: &str,
 ) -> Result<(), String> {
     if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {

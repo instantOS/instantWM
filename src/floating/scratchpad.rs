@@ -499,7 +499,10 @@ pub(crate) fn scratchpad_show_name_with_options(
     options: ScratchpadShowOptions,
 ) -> Result<String, String> {
     let found = find_live_scratchpad(ctx, name)?;
-    let shown = show_scratchpad_window_with_options(ctx, found, options)?;
+    // The window-level helper cannot name the scratchpad (the transfer path
+    // has no name to give); re-attach it here for user-facing errors.
+    let shown = show_scratchpad_window_with_options(ctx, found, options)
+        .map_err(|error| format!("scratchpad '{}': {}", name, error))?;
     if shown {
         Ok(format!("shown scratchpad '{}'", name))
     } else {
