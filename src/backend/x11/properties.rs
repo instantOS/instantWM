@@ -118,8 +118,8 @@ pub fn update_ewmh_desktop_props(
     let names = desktop_names(globals);
     let viewport = vec![0u32; count as usize * 2];
     let geometry = [
-        globals.config.derived.display.width.max(1) as u32,
-        globals.config.derived.display.height.max(1) as u32,
+        globals.derived.display.width.max(1) as u32,
+        globals.derived.display.height.max(1) as u32,
     ];
     let workarea = desktop_workarea(globals);
     let utf8_atom = conn
@@ -227,8 +227,8 @@ fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
         workarea.extend_from_slice(&[
             0,
             0,
-            globals.config.derived.display.width.max(1) as u32,
-            globals.config.derived.display.height.max(1) as u32,
+            globals.derived.display.width.max(1) as u32,
+            globals.derived.display.height.max(1) as u32,
         ]);
     }
 

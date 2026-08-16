@@ -144,7 +144,7 @@ fn apply_rules_impl(
     }
 
     let tag_mask = state.model.tags.mask();
-    let bar_height = state.config.derived.bar_height;
+    let bar_height = state.derived.bar_height;
 
     // Pending tmp rules are tried before config rules, only on initial
     // application (not on property refreshes). On a match the rule is

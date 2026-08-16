@@ -90,7 +90,7 @@ pub fn manage(
     let (monitor_work_rect, monitor_rect) = monitor_rects_for_client(ctx.core.model(), window);
     clamp_client_to_work_area(ctx.core.model_mut(), window, monitor_work_rect);
     let is_maximized = is_maximized_on_client_monitor(ctx.core.model(), window);
-    let bar_height = ctx.core.config().derived.bar_height;
+    let bar_height = ctx.core.derived().bar_height;
     configure_client_border(
         ctx.core.model_mut(),
         bar_height,
@@ -380,7 +380,7 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, window: WindowId) {
         .client(window)
         .map(|client| {
             (
-                ctx.core().config().derived.display.width,
+                ctx.core().derived().display.width,
                 client.geo.x,
                 client.geo.y,
                 client.geo.w,

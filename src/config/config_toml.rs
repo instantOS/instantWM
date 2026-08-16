@@ -30,7 +30,7 @@ pub struct ModeSpec {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ThemeConfig {
+pub struct UserConfig {
     /// Built-in colour theme used as the base for `[colors]` overrides.
     pub theme: ColorTheme,
     pub includes: Vec<IncludeConfig>,
@@ -56,6 +56,8 @@ pub struct ThemeConfig {
     pub layout: LayoutConfig,
     /// Animation timing configuration.
     pub animations: AnimationConfig,
+    /// Status bar visibility and geometry.
+    pub bar: BarConfig,
     /// Raise a floating window when its client area is left-clicked.
     ///
     /// Disabled by default so focus-follows-mouse and click-to-focus do not
@@ -64,12 +66,6 @@ pub struct ThemeConfig {
     /// Window rules.
     #[serde(default)]
     pub rules: Vec<Rule>,
-    /// Bar height in logical pixels. 0 = auto (derive from font metrics).
-    #[serde(default)]
-    pub bar_height: u32,
-    /// Show the bottom gesture strip (plain status-bar background, no
-    /// contents, no input handling). Same height as the top bar.
-    pub show_bottom_bar: bool,
     /// Commands to execute once at startup (like sway `exec` / Hyprland `exec-once`).
     #[serde(default)]
     pub exec_once: Vec<String>,
@@ -78,7 +74,7 @@ pub struct ThemeConfig {
     pub exec: Vec<String>,
 }
 
-impl Default for ThemeConfig {
+impl Default for UserConfig {
     fn default() -> Self {
         Self {
             theme: ColorTheme::default(),
@@ -95,16 +91,54 @@ impl Default for ThemeConfig {
             cursor: CursorConfig::default(),
             layout: LayoutConfig::default(),
             animations: AnimationConfig::default(),
+            bar: BarConfig::default(),
             raise_floating_on_click: false,
             rules: Vec::new(),
-            bar_height: 0,
-            // Disabled by default — opt in via config or `ToggleBottomBar`
-            // (Super+Shift+B). When enabled the strip renders a thin white
-            // gesture handle and reacts to the BottomBarDrag mouse binding.
-            show_bottom_bar: false,
             exec_once: Vec::new(),
             exec: Vec::new(),
         }
+    }
+}
+
+/// Status bar settings shared by the user schema and effective configuration.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct BarConfig {
+    pub show: bool,
+    /// Show the bottom gesture strip (plain background, no contents).
+    pub show_bottom: bool,
+    /// Bar height in logical pixels. `0` derives it from font metrics.
+    pub height: i32,
+    /// Width of the start-menu hit target in logical pixels.
+    pub startmenu_size: i32,
+}
+
+impl Default for BarConfig {
+    fn default() -> Self {
+        Self {
+            show: true,
+            show_bottom: false,
+            height: 0,
+            startmenu_size: 30,
+        }
+    }
+}
+
+impl BarConfig {
+    pub fn validated(self) -> Result<Self, String> {
+        if self.height < 0 {
+            return Err(format!(
+                "bar.height must be non-negative, got {}",
+                self.height
+            ));
+        }
+        if self.startmenu_size < 0 {
+            return Err(format!(
+                "bar.startmenu_size must be non-negative, got {}",
+                self.startmenu_size
+            ));
+        }
+        Ok(self)
     }
 }
 
@@ -294,6 +328,53 @@ impl Default for LayoutConfig {
             pointer_edge_fraction: 0.34,
             new_window_placement: NewWindowPlacement::default(),
         }
+    }
+}
+
+impl LayoutConfig {
+    /// Validate the invariants expected by layout code without silently
+    /// changing user input.
+    pub fn validated(self) -> Result<Self, String> {
+        fn validate_fraction(
+            field: &str,
+            value: f64,
+            minimum: f64,
+            maximum: f64,
+        ) -> Result<(), String> {
+            if !value.is_finite() || !(minimum..=maximum).contains(&value) {
+                return Err(format!(
+                    "layout.{field} must be finite and between {minimum} and {maximum}, got {value}"
+                ));
+            }
+            Ok(())
+        }
+
+        if self.inner_gap < 0 {
+            return Err(format!(
+                "layout.inner_gap must be non-negative, got {}",
+                self.inner_gap
+            ));
+        }
+        if self.outer_gap < 0 {
+            return Err(format!(
+                "layout.outer_gap must be non-negative, got {}",
+                self.outer_gap
+            ));
+        }
+        validate_fraction(
+            "keyboard_resize_step",
+            self.keyboard_resize_step,
+            0.001,
+            0.5,
+        )?;
+        validate_fraction("minimum_weight", self.minimum_weight, 0.001, 0.49)?;
+        validate_fraction(
+            "pointer_edge_fraction",
+            self.pointer_edge_fraction,
+            0.05,
+            0.49,
+        )?;
+        Ok(self)
     }
 }
 
@@ -497,29 +578,21 @@ impl Default for ColorConfig {
     }
 }
 
-pub fn load_config_file() -> ThemeConfig {
+pub fn load_config_file() -> Result<UserConfig, String> {
     let path = match dirs::config_dir() {
         Some(dir) => dir.join("instantwm").join("config.toml"),
-        None => return ThemeConfig::default(),
+        None => return Ok(UserConfig::default()),
     };
 
     if !path.exists() {
-        return ThemeConfig::default();
+        return Ok(UserConfig::default());
     }
 
     let mut visited = HashSet::new();
-    match load_and_merge_config(&path, &mut visited) {
-        Ok(merged_value) => match resolve_theme_colors(merged_value)
-            .and_then(|v| v.try_into::<ThemeConfig>().map_err(|e| e.to_string()))
-        {
-            Ok(file) => file,
-            Err(e) => {
-                eprintln!("instantwm: config parse error, using defaults: {e}");
-                ThemeConfig::default()
-            }
-        },
-        Err(_) => ThemeConfig::default(),
-    }
+    let merged = load_and_merge_config(&path, &mut visited)?;
+    resolve_theme_colors(merged)?
+        .try_into::<UserConfig>()
+        .map_err(|error| format!("config parse error in {}: {error}", path.display()))
 }
 
 fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> {
@@ -529,7 +602,7 @@ fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> 
             Ok(theme) => theme,
             Err(_) => {
                 eprintln!("instantwm: unknown theme {value}, falling back to the default theme");
-                // Drop the bad key so ThemeConfig deserialisation succeeds;
+                // Drop the bad key so UserConfig deserialisation succeeds;
                 // the struct is `#[serde(default)]`, so the field resolves to
                 // the default theme and every other setting still loads.
                 if let Some(table) = config.as_table_mut() {
@@ -558,7 +631,7 @@ fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> 
 /// - Users can see what options are available
 /// - Defaults are not baked in, so they track upstream changes
 pub fn generate_commented_config() -> String {
-    let config = ThemeConfig::default();
+    let config = UserConfig::default();
     let full = toml::to_string_pretty(&config).expect("failed to serialize default config");
 
     let mut out = String::new();
@@ -590,24 +663,30 @@ pub fn generate_commented_config() -> String {
     out
 }
 
-fn load_and_merge_config(path: &Path, visited: &mut HashSet<PathBuf>) -> Result<toml::Value, ()> {
-    let canonical_path = path.canonicalize().map_err(|e| {
-        eprintln!("instantwm: could not canonicalize path {:?}: {e}", path);
+fn load_and_merge_config(
+    path: &Path,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<toml::Value, String> {
+    let canonical_path = path.canonicalize().map_err(|error| {
+        format!(
+            "could not canonicalize config path {}: {error}",
+            path.display()
+        )
     })?;
 
     if visited.contains(&canonical_path) {
-        eprintln!("instantwm: circular include detected: {:?}", canonical_path);
-        return Err(());
+        return Err(format!(
+            "circular config include detected at {}",
+            canonical_path.display()
+        ));
     }
     visited.insert(canonical_path.clone());
 
-    let contents = fs::read_to_string(path).map_err(|e| {
-        eprintln!("instantwm: could not read config file {:?}: {e}", path);
-    })?;
+    let contents = fs::read_to_string(path)
+        .map_err(|error| format!("could not read config file {}: {error}", path.display()))?;
 
-    let value: toml::Value = toml::from_str(&contents).map_err(|e| {
-        eprintln!("instantwm: config parse error in {:?}: {e}", path);
-    })?;
+    let value: toml::Value = toml::from_str(&contents)
+        .map_err(|error| format!("config parse error in {}: {error}", path.display()))?;
 
     let mut merged_base = toml::Value::Table(toml::Table::new());
 
@@ -623,16 +702,14 @@ fn load_and_merge_config(path: &Path, visited: &mut HashSet<PathBuf>) -> Result<
                 };
 
                 if !include_path.exists() {
-                    eprintln!(
-                        "instantwm: warning: included config file {:?} does not exist",
-                        include_path
-                    );
-                    continue;
+                    return Err(format!(
+                        "included config file {} does not exist",
+                        include_path.display()
+                    ));
                 }
 
-                if let Ok(included_value) = load_and_merge_config(&include_path, visited) {
-                    merge_toml_values(&mut merged_base, included_value);
-                }
+                let included_value = load_and_merge_config(&include_path, visited)?;
+                merge_toml_values(&mut merged_base, included_value);
             }
         }
     }
@@ -680,12 +757,51 @@ fn merge_toml_values(base: &mut toml::Value, over: toml::Value) {
 mod theme_tests {
     use super::*;
 
-    fn parse(source: &str) -> ThemeConfig {
+    fn parse(source: &str) -> UserConfig {
         let value = toml::from_str(source).unwrap();
         resolve_theme_colors(value)
             .unwrap()
-            .try_into::<ThemeConfig>()
+            .try_into::<UserConfig>()
             .unwrap()
+    }
+
+    #[test]
+    fn layout_validation_reports_the_invalid_field() {
+        for (config, field) in [
+            (
+                LayoutConfig {
+                    inner_gap: -4,
+                    ..LayoutConfig::default()
+                },
+                "layout.inner_gap",
+            ),
+            (
+                LayoutConfig {
+                    keyboard_resize_step: f64::INFINITY,
+                    ..LayoutConfig::default()
+                },
+                "layout.keyboard_resize_step",
+            ),
+            (
+                LayoutConfig {
+                    minimum_weight: 0.9,
+                    ..LayoutConfig::default()
+                },
+                "layout.minimum_weight",
+            ),
+            (
+                LayoutConfig {
+                    pointer_edge_fraction: 0.0,
+                    ..LayoutConfig::default()
+                },
+                "layout.pointer_edge_fraction",
+            ),
+        ] {
+            let error = config.validated().unwrap_err();
+            assert!(error.contains(field), "{error}");
+        }
+
+        assert!(LayoutConfig::default().validated().is_ok());
     }
 
     #[test]
@@ -720,8 +836,21 @@ mod theme_tests {
     fn bottom_bar_is_off_by_default_and_explicitly_opt_in() {
         // Disabled by default — the bottom bar is a gesture surface the user
         // must enable via config, IPC toggle, or `Super+Shift+B`.
-        assert!(!parse("").show_bottom_bar);
-        assert!(parse("show_bottom_bar = true").show_bottom_bar);
+        assert!(!parse("").bar.show_bottom);
+        assert!(parse("[bar]\nshow_bottom = true").bar.show_bottom);
+    }
+
+    #[test]
+    fn bar_settings_have_one_user_visible_source() {
+        let bar = parse("[bar]\nshow = false\nheight = 32\nstartmenu_size = 44")
+            .bar
+            .validated()
+            .unwrap();
+
+        assert!(!bar.show);
+        assert_eq!(bar.height, 32);
+        assert_eq!(bar.startmenu_size, 44);
+        assert!(BarConfig { height: -1, ..bar }.validated().is_err());
     }
 
     #[test]
@@ -752,7 +881,7 @@ mod theme_tests {
             let value = toml::from_str(&source).unwrap();
             let resolved = resolve_theme_colors(value).unwrap();
             assert!(
-                resolved.try_into::<ThemeConfig>().is_err(),
+                resolved.try_into::<UserConfig>().is_err(),
                 "accepted {speed}"
             );
         }

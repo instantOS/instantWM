@@ -55,8 +55,8 @@ pub fn run() -> ! {
 
     let output_size = backend.window_size();
     let initial_size = sanitize_size(Size::new(output_size.w, output_size.h));
-    wm.core.config.derived.display.width = initial_size.w;
-    wm.core.config.derived.display.height = initial_size.h;
+    wm.core.derived.display.width = initial_size.w;
+    wm.core.derived.display.height = initial_size.h;
     refresh_monitor_layout(&mut wm.ctx());
     state.push_command(WmCommand::SyncLayerExclusiveZones);
 

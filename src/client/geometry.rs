@@ -330,7 +330,8 @@ pub(crate) struct SizeHintsOutcome {
 
 pub fn apply_size_hints(
     model: &WmModel,
-    config: &crate::core_state::RuntimeConfig,
+    config: &crate::core_state::EffectiveConfig,
+    derived: &crate::core_state::DerivedState,
     win: WindowId,
     rect: &mut Rect,
     interact: bool,
@@ -357,7 +358,7 @@ pub fn apply_size_hints(
 
     // Phase 2: Clamp position to keep window visible.
     clamp_position_to_bounds(
-        &config.derived.display,
+        &derived.display,
         rect,
         Some(view.monitor.work_rect()),
         interact,
@@ -366,7 +367,7 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = config.derived.bar_height;
+    let bar_height = derived.bar_height;
     rect.enforce_minimum(bar_height, bar_height);
 
     SizeHintsOutcome {

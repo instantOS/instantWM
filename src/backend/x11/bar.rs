@@ -28,7 +28,7 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
         return;
     }
     let work_rect_w = monitor.work_rect().w;
-    let bar_height = core.config().derived.bar_height;
+    let bar_height = core.derived().bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
@@ -90,7 +90,7 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
             Some(m) => m.work_rect().w,
             None => continue,
         };
-        let bar_height = core.config().derived.bar_height;
+        let bar_height = core.derived().bar_height;
         if work_rect_w <= 0 || bar_height <= 0 {
             continue;
         }
@@ -127,14 +127,15 @@ pub fn resize_bar_win(
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
-    let bar_height = globals.config.derived.bar_height;
+    let bar_height = globals.derived.bar_height;
     let showsystray = globals.config.systray.show;
     let is_selmon = globals.model.expect_selected_monitor().num == m.num;
 
     let mut w = m.work_rect().w as u32;
     if showsystray && is_selmon {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
-            &globals.config,
+            &globals.config.systray,
+            globals.derived.bar_height,
             systray,
         ));
     }
@@ -200,7 +201,7 @@ pub fn update_bars(
     systray: Option<&XEmbedTray>,
 ) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = globals.config.derived.bar_height;
+        let bar_height = globals.derived.bar_height;
         let showsystray = globals.config.systray.show;
         let status_bg: u32 = globals.config.colors.status_bar.bg.into();
         let xlibdisplay = x11_runtime.xlibdisplay.0;
@@ -212,7 +213,11 @@ pub fn update_bars(
         if showsystray {
             systray_widths.insert(
                 selected_monitor_id,
-                crate::backend::x11::systray::get_systray_width(&globals.config, systray),
+                crate::backend::x11::systray::get_systray_width(
+                    &globals.config.systray,
+                    globals.derived.bar_height,
+                    systray,
+                ),
             );
         }
 

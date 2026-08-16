@@ -30,6 +30,7 @@ pub fn set_theme(wm: &mut Wm, theme: ColorTheme) -> Response {
     wm.core.config.colors.close_button = colors.close_button;
     wm.core.config.colors.border = colors.border;
     wm.core.config.colors.status_bar = colors.status;
+    wm.core.config.tag_colors = colors.tag.clone();
     wm.core.model.tags.colors = colors.tag;
     wm.core.config.theme = theme;
     config::recolor(wm);

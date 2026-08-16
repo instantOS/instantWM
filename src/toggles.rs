@@ -109,7 +109,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         tmp_no_anim = true;
     }
 
-    let bar_height = ctx.core().config().derived.bar_height;
+    let bar_height = ctx.core().derived().bar_height;
     let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     selected_monitor.per_tag_state().show_bar = !selected_monitor.per_tag_state().show_bar;
     selected_monitor.show_bar = selected_monitor.per_tag_state().show_bar;

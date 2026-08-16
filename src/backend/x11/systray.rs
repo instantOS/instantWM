@@ -110,10 +110,11 @@ fn layout_xembed_icons(
 }
 
 pub fn get_systray_width(
-    config: &crate::core_state::RuntimeConfig,
+    config: &crate::core_state::SystrayConfig,
+    bar_height: i32,
     systray: Option<&XEmbedTray>,
 ) -> u32 {
-    if !config.systray.show {
+    if !config.show {
         return 0;
     }
 
@@ -124,8 +125,8 @@ pub fn get_systray_width(
                 .filter(|icon| icon.mapped)
                 .map(|icon| icon.size.w)
         }),
-        config.derived.bar_height,
-        config.systray.spacing,
+        bar_height,
+        config.spacing,
     )
     .width
 }
@@ -243,7 +244,7 @@ pub fn update_systray(
 
     if systray.is_none() {
         let root = x11_runtime.root;
-        let bar_height = core.config().derived.bar_height;
+        let bar_height = core.derived().bar_height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
@@ -331,7 +332,7 @@ pub fn update_systray(
         .expect("tray manager creation must initialize owned XEmbed state");
     let (systray_win, icons) = (tray.win, tray.icons.clone());
 
-    let bar_height = core.config().derived.bar_height;
+    let bar_height = core.derived().bar_height;
     let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, Size)> = icons

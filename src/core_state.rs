@@ -4,7 +4,6 @@ use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
 use std::collections::{BTreeSet, HashMap, VecDeque};
-use std::env;
 
 mod hot_corner;
 mod interactions;
@@ -16,7 +15,7 @@ pub use keyboard_state::*;
 pub use mode::*;
 
 // ---------------------------------------------------------------------------
-// Sub-structs for RuntimeConfig
+// Effective configuration
 // ---------------------------------------------------------------------------
 
 /// Display/screen dimensions.
@@ -27,7 +26,7 @@ pub struct DisplayConfig {
 }
 
 /// Window behaviour settings.
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WindowConfig {
     pub border_width_px: i32,
     pub snap_threshold: i32,
@@ -43,49 +42,28 @@ pub struct WindowConfig {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            border_width_px: 1,
+            border_width_px: crate::config::mod_consts::BORDER_PX,
             snap_threshold: 32,
             resize_hints: true,
-            decor_hints: false,
+            decor_hints: true,
             raise_floating_on_click: false,
         }
     }
 }
 
-/// Status bar settings.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BarConfig {
-    pub show: bool,
-    /// Show the bottom gesture strip (plain background, no contents).
-    pub show_bottom: bool,
-    pub height: i32,
-    pub startmenu_size: i32,
-}
-
-impl Default for BarConfig {
-    fn default() -> Self {
-        Self {
-            show: true,
-            // Disabled by default — the bottom strip is a gesture surface that
-            // the user opts into via `Super+Shift+B` (`ToggleBottomBar`), IPC
-            // toggle, or by setting `show_bottom_bar = true` in the config.
-            show_bottom: false,
-            height: 0,
-            startmenu_size: 0,
-        }
-    }
-}
-
-/// Backend-derived runtime configuration / state.
+/// Measurements derived from the active backend and rendering resources.
+///
+/// These values are runtime state rather than user configuration, so config
+/// replacement must not copy or preserve them specially.
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct BackendDerived {
+pub struct DerivedState {
     pub display: DisplayConfig,
     pub bar_height: i32,
     pub bar_horizontal_padding: i32,
 }
 
 /// System tray settings.
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SystrayConfig {
     pub show: bool,
     pub pinning: usize,
@@ -97,7 +75,7 @@ impl Default for SystrayConfig {
         Self {
             show: true,
             pinning: 0,
-            spacing: 2,
+            spacing: 0,
         }
     }
 }
@@ -250,11 +228,11 @@ mod font_config_tests {
     }
 }
 
-/// Runtime configuration - composed from sub-structs.
-pub struct RuntimeConfig {
-    pub derived: BackendDerived,
+/// Fully resolved, validated configuration consumed by core and backends.
+#[derive(Clone)]
+pub struct EffectiveConfig {
     pub window: WindowConfig,
-    pub bar: BarConfig,
+    pub bar: crate::config::config_toml::BarConfig,
     pub systray: SystrayConfig,
     pub layout: crate::config::config_toml::LayoutConfig,
     pub animations: crate::config::config_toml::AnimationConfig,
@@ -266,6 +244,10 @@ pub struct RuntimeConfig {
     pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::monitor::TagNames>,
+    pub tag_colors: TagColorConfigs,
+    /// Resolved keyboard settings. The current layout index remains runtime
+    /// interaction state in [`KeyboardLayoutState`].
+    pub keyboard: crate::config::config_toml::KeyboardConfig,
     pub input: HashMap<String, crate::config::config_toml::InputConfig>,
     pub monitors: HashMap<String, crate::config::config_toml::MonitorConfig>,
     pub status_command: Option<String>,
@@ -274,28 +256,9 @@ pub struct RuntimeConfig {
     pub exec: Vec<String>,
 }
 
-impl Default for RuntimeConfig {
+impl Default for EffectiveConfig {
     fn default() -> Self {
-        Self {
-            derived: BackendDerived::default(),
-            window: WindowConfig::default(),
-            bar: BarConfig::default(),
-            systray: SystrayConfig::default(),
-            layout: crate::config::config_toml::LayoutConfig::default(),
-            animations: crate::config::config_toml::AnimationConfig::default(),
-            colors: ColorConfig::default(),
-            theme: crate::config::config_toml::ColorTheme::default(),
-            bindings: BindingConfig::default(),
-            fonts: FontConfig::default(),
-            external_commands: crate::config::commands::default_commands(),
-            tag_template: Vec::new(),
-            input: HashMap::new(),
-            monitors: HashMap::new(),
-            status_command: None,
-            cursor: crate::config::config_toml::CursorConfig::default(),
-            exec_once: Vec::new(),
-            exec: Vec::new(),
-        }
+        crate::config::default_config(crate::backend::BackendKind::Wayland)
     }
 }
 
@@ -308,7 +271,8 @@ impl Default for RuntimeConfig {
 #[derive(Default)]
 pub struct CoreState {
     pub model: WmModel,
-    pub config: RuntimeConfig,
+    pub config: EffectiveConfig,
+    pub derived: DerivedState,
     pub behavior: WmBehavior,
     pub drag: DragState,
     pub hot_corner: HotCornerState,
@@ -545,31 +509,6 @@ fn cross_axis_distance(current: Point, candidate: Point, side: crate::layouts::t
     }
 }
 
-impl Clone for RuntimeConfig {
-    fn clone(&self) -> Self {
-        Self {
-            derived: self.derived.clone(),
-            window: self.window.clone(),
-            bar: self.bar.clone(),
-            systray: self.systray.clone(),
-            layout: self.layout,
-            animations: self.animations,
-            colors: self.colors.clone(),
-            theme: self.theme,
-            bindings: self.bindings.clone(),
-            fonts: self.fonts.clone(),
-            external_commands: self.external_commands.clone(),
-            tag_template: self.tag_template.clone(),
-            input: self.input.clone(),
-            monitors: self.monitors.clone(),
-            status_command: self.status_command.clone(),
-            cursor: self.cursor.clone(),
-            exec_once: self.exec_once.clone(),
-            exec: self.exec.clone(),
-        }
-    }
-}
-
 /// Runtime behaviour toggles and transient WM mode state.
 #[derive(Debug, Clone)]
 pub struct WmBehavior {
@@ -734,156 +673,44 @@ impl PendingWork {
     }
 }
 
-/// Build and atomically install runtime configuration.
+/// Atomically install a fully resolved configuration.
 ///
-/// The complete value is assembled off to the side so readers never observe
-/// a partially-applied reload. Display geometry is backend-derived and is
-/// therefore preserved across config replacement.
-pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
-    let finite_clamp = |value: f64, minimum: f64, maximum: f64, fallback: f64| {
-        if value.is_finite() {
-            value.clamp(minimum, maximum)
-        } else {
-            fallback
-        }
-    };
-    let config = &mut state.config;
-    let derived = config.derived.clone();
-    let mut next = RuntimeConfig {
-        derived,
-        ..RuntimeConfig::default()
-    };
-    next.window.border_width_px = cfg.border_px;
-    next.input = cfg.input.clone();
-    next.monitors = cfg.monitors.clone();
-    next.window.snap_threshold = cfg.snap_threshold;
-    next.bar.startmenu_size = cfg.startmenu_size;
-    next.systray.pinning = cfg.systray_pinning;
-    next.systray.spacing = cfg.systray_spacing;
-    next.systray.show = cfg.show_systray;
-    next.bar.show = cfg.show_bar;
-    next.bar.show_bottom = cfg.show_bottom_bar;
-    next.bar.height = cfg.bar_height;
-    next.window.resize_hints = cfg.resize_hints;
-    next.window.decor_hints = cfg.decor_hints;
-    next.window.raise_floating_on_click = cfg.raise_floating_on_click;
-    next.layout = crate::config::config_toml::LayoutConfig {
-        inner_gap: cfg.layout.inner_gap.max(0),
-        outer_gap: cfg.layout.outer_gap.max(0),
-        smart_gaps: cfg.layout.smart_gaps,
-        maximized_gaps: cfg.layout.maximized_gaps,
-        keyboard_resize_step: finite_clamp(cfg.layout.keyboard_resize_step, 0.001, 0.5, 0.05),
-        minimum_weight: finite_clamp(cfg.layout.minimum_weight, 0.001, 0.49, 0.15),
-        pointer_edge_fraction: finite_clamp(cfg.layout.pointer_edge_fraction, 0.05, 0.49, 0.34),
-        new_window_placement: cfg.layout.new_window_placement,
-    };
-    next.animations = cfg.animations;
-
-    next.colors.window = cfg.window_colors.clone();
-    next.colors.close_button = cfg.closebuttoncolors.clone();
-    next.colors.border = cfg.border_colors;
-    next.colors.status_bar = cfg.statusbarcolors;
-    next.theme = cfg.theme;
-
-    next.bindings.keys = cfg.keys.clone();
-    next.bindings.desktop_keybinds = cfg.desktop_keybinds.clone();
-    next.bindings.modes = cfg.modes.clone();
-    next.bindings.buttons = cfg.buttons.clone();
-    next.bindings.rules = cfg.rules.clone();
-    next.fonts.fonts = cfg.fonts.clone();
-    next.external_commands = cfg.external_commands.clone();
-    next.status_command = cfg.status_command.clone();
-    next.cursor = cfg.cursor.clone();
-    next.exec_once = cfg.exec_once.clone();
-    next.exec = cfg.exec.clone();
-
-    // Initialize keyboard layout state from config
-    let mut layouts: Vec<KeyboardLayout> = cfg
-        .keyboard_layouts
+/// Parsing, default resolution and validation happen before this boundary.
+/// Installation only replaces policy and synchronizes model/interaction state
+/// that intentionally mirrors part of that policy.
+pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
+    let layouts: Vec<KeyboardLayout> = next
+        .keyboard
+        .layouts
         .iter()
         .map(|c| KeyboardLayout {
             name: c.name.clone(),
             variant: c.variant.clone(),
         })
         .collect();
-
-    if layouts.is_empty() {
-        // Fallback to environment variables (standard Wayland convention)
-        let layout = env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
-        if !layout.is_empty() {
-            let variant = env::var("XKB_DEFAULT_VARIANT").ok();
-            layouts.push(KeyboardLayout {
-                name: layout,
-                variant,
-            });
-        } else {
-            // Last resort: standard US layout
-            layouts.push(KeyboardLayout::new("us"));
-        }
-    }
-
-    let options = cfg
-        .keyboard_options
-        .clone()
-        .or_else(|| env::var("XKB_DEFAULT_OPTIONS").ok());
-    let model = cfg
-        .keyboard_model
-        .clone()
-        .or_else(|| env::var("XKB_DEFAULT_MODEL").ok());
-
-    state.keyboard_layout = KeyboardLayoutState {
+    let keyboard_layout = KeyboardLayoutState {
         layouts,
-        options,
-        model,
-        swap_escape: cfg.keyboard_swapescape,
+        options: next.keyboard.options.clone(),
+        model: next.keyboard.model.clone(),
+        swap_escape: next.keyboard.swapescape,
         current: 0,
     };
+    let show_bottom_bar = next.bar.show_bottom;
+    let tag_template = next.tag_template.clone();
+    let tag_colors = next.tag_colors.clone();
 
-    // Rebuild tag template so monitor creation picks up any config changes.
-    next.tag_template = build_tag_template(cfg);
-    *config = next;
+    state.config = next;
+    state.keyboard_layout = keyboard_layout;
+    state.model.tags.colors = tag_colors;
+    state.model.tags.num_tags = tag_template.len();
+
     // The file setting is global. Reloading it resets interactive per-tag
     // overrides so existing outputs immediately match newly created outputs.
     for (_id, monitor) in state.model.monitors_iter_mut() {
-        monitor.show_bottom_bar = cfg.show_bottom_bar;
+        monitor.show_bottom_bar = show_bottom_bar;
         for per_tag in monitor.per_tag.values_mut() {
-            per_tag.show_bottom_bar = cfg.show_bottom_bar;
+            per_tag.show_bottom_bar = show_bottom_bar;
         }
-    }
-    apply_tags_config(&mut state.model, &mut state.config, cfg);
-}
-
-/// Build the canonical tag template from config.
-///
-/// Returns a `Vec<TagNames>` that every monitor should clone into its own
-/// `tags` field via `Monitor::init_tags`.
-pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::monitor::TagNames> {
-    let num_tags = cfg.num_tags;
-    let mut template = Vec::with_capacity(num_tags);
-    for i in 0..num_tags {
-        let name = cfg
-            .tag_names
-            .get(i)
-            .cloned()
-            .unwrap_or_else(|| format!("{}", i + 1));
-        let alt_name = cfg.tag_alt_names.get(i).cloned().unwrap_or_default();
-        template.push(crate::types::monitor::TagNames { name, alt_name });
-    }
-    template
-}
-
-/// Apply tag configuration.
-fn apply_tags_config(
-    model: &mut crate::model::WmModel,
-    config: &mut RuntimeConfig,
-    cfg: &crate::config::Config,
-) {
-    let template = build_tag_template(cfg);
-    model.tags.colors = cfg.tag_colors.clone();
-    model.tags.num_tags = cfg.num_tags;
-    config.tag_template = template.clone();
-    // Initialise any monitors that already exist (re-init on config reload).
-    for (_i, mon) in model.monitors_iter_mut() {
-        mon.init_tags(&template);
+        monitor.init_tags(&tag_template);
     }
 }

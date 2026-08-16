@@ -4,10 +4,10 @@ use crate::contexts::WmCtx;
 use crate::wm::Wm;
 
 pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
-    let cfg = config::init_config(wm.backend.kind());
+    let cfg = config::load_config(wm.backend.kind())?;
     let previous_status_command = wm.core.config.status_command.clone();
 
-    crate::core_state::apply_config(&mut wm.core, &cfg);
+    crate::core_state::apply_config(&mut wm.core, cfg);
     wm.core
         .behavior
         .normalize_current_mode(&wm.core.config.bindings.modes);
@@ -30,7 +30,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     }
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
-    crate::startup::autostart::run_exec_commands(&cfg.exec);
+    crate::startup::autostart::run_exec_commands(&wm.core.config.exec);
 
     Ok(())
 }
@@ -93,15 +93,27 @@ mod tests {
         reload_config(&mut wm).unwrap();
 
         assert!(
-            wm.core.config.derived.bar_height > 0,
+            wm.core.derived.bar_height > 0,
             "bar_height should be computed from font metrics, got {}",
-            wm.core.config.derived.bar_height
+            wm.core.derived.bar_height
         );
         assert!(
-            wm.core.config.derived.bar_horizontal_padding > 0,
+            wm.core.derived.bar_horizontal_padding > 0,
             "horizontal_padding should be set from font height, got {}",
-            wm.core.config.derived.bar_horizontal_padding
+            wm.core.derived.bar_horizontal_padding
         );
+    }
+
+    #[test]
+    fn reload_does_not_replace_backend_derived_display_state() {
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+        wm.core.derived.display.width = 3440;
+        wm.core.derived.display.height = 1440;
+
+        reload_config(&mut wm).unwrap();
+
+        assert_eq!(wm.core.derived.display.width, 3440);
+        assert_eq!(wm.core.derived.display.height, 1440);
     }
 
     #[test]

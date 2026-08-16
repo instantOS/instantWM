@@ -107,8 +107,8 @@ pub(super) fn tree_slot_outer_rect(
     let mut content = placement.client_rect(slot, border);
     let available = content.size();
     content.enforce_minimum(
-        ctx.core().config().derived.bar_height,
-        ctx.core().config().derived.bar_height,
+        ctx.core().derived().bar_height,
+        ctx.core().derived().bar_height,
     );
     if ctx.core().config().window.resize_hints {
         let constrained =

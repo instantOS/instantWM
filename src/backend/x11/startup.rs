@@ -9,7 +9,7 @@ use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
 use crate::backend::x11::draw::DrawContext;
-use crate::config::init_config;
+use crate::config::load_startup_config;
 use crate::types::*;
 use crate::wm::Wm;
 
@@ -96,16 +96,16 @@ fn wm_init(wm: &mut Wm) {
 }
 
 fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Screen) {
-    let cfg = init_config(BackendKind::X11);
+    let cfg = load_startup_config(BackendKind::X11);
 
     // X11-specific runtime initialization
     if let Some(data) = wm.backend.x11_data_mut() {
         data.x11_runtime.root = root;
     }
-    wm.core.config.derived.display.width = screen.width_in_pixels as i32;
-    wm.core.config.derived.display.height = screen.height_in_pixels as i32;
+    wm.core.derived.display.width = screen.width_in_pixels as i32;
+    wm.core.derived.display.height = screen.height_in_pixels as i32;
 
-    crate::core_state::apply_config(&mut wm.core, &cfg);
+    crate::core_state::apply_config(&mut wm.core, cfg);
 
     if !wm.core.config.monitors.is_empty() {
         let mut ctx = wm.ctx();
@@ -242,8 +242,8 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
     data.x11_runtime.draw = Some(drw);
-    wm.core.config.derived.bar_height = metrics.height;
-    wm.core.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
+    wm.core.derived.bar_height = metrics.height;
+    wm.core.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
 fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut DrawContext) {

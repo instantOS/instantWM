@@ -78,7 +78,7 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let plan = {
         let globals = ctx.core_mut().state_mut();
-        let bar_height = globals.config.derived.bar_height;
+        let bar_height = globals.derived.bar_height;
         let animated = globals.behavior.animated;
         let layout_cfg = globals.config.layout;
         let resize_hints = globals.config.window.resize_hints;

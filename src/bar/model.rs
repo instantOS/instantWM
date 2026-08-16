@@ -142,7 +142,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
         mon.presentation_for_mask(mon.selected_tags()).symbol()
     };
     let bar_layout_symbol_width =
-        layout_symbol.len() as i32 * 8 + core.config().derived.bar_horizontal_padding;
+        layout_symbol.len() as i32 * 8 + core.derived().bar_horizontal_padding;
     let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────

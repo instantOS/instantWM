@@ -154,8 +154,8 @@ mod tests {
         let (_event_loop, mut state) =
             crate::backend::wayland::compositor::new_event_loop_and_state();
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        wm.core.config.derived.display.width = 1920;
-        wm.core.config.derived.display.height = 1080;
+        wm.core.derived.display.width = 1920;
+        wm.core.derived.display.height = 1080;
         wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
             available_rect: Rect::new(0, 0, 1920, 1080),
@@ -384,8 +384,8 @@ fn handle_pointer_motion(
 ) -> PointerMotionCache {
     state.runtime.cursor_hidden_by_touch = false;
 
-    let output_width = wm.core.config.derived.display.width;
-    let output_height = wm.core.config.derived.display.height;
+    let output_width = wm.core.derived.display.width;
+    let output_height = wm.core.derived.display.height;
 
     let current_location = state.runtime.pointer_location;
 

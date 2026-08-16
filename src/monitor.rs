@@ -5,7 +5,7 @@
 
 use crate::backend::BackendOutputInfo;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::core_state::RuntimeConfig;
+use crate::core_state::{DerivedState, EffectiveConfig};
 use crate::focus::{focus, refresh_focus, unfocus_win};
 use crate::types::*;
 use std::collections::HashMap;
@@ -454,22 +454,8 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 
     // Final fallback to single monitor
-    let sw = ctx
-        .core_mut()
-        .state_mut()
-        .config
-        .derived
-        .display
-        .width
-        .max(1);
-    let sh = ctx
-        .core_mut()
-        .state_mut()
-        .config
-        .derived
-        .display
-        .height
-        .max(1);
+    let sw = ctx.core_mut().state_mut().derived.display.width.max(1);
+    let sh = ctx.core_mut().state_mut().derived.display.height.max(1);
 
     if ctx.core_mut().model_mut().monitors.is_empty() {
         init_single_monitor(ctx, sw, sh)
@@ -494,10 +480,10 @@ fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Size {
     Size::new(width, height)
 }
 
-fn sync_runtime_screen_size(cfg: &mut RuntimeConfig, layout_size: Size) -> bool {
-    if cfg.derived.display.width != layout_size.w || cfg.derived.display.height != layout_size.h {
-        cfg.derived.display.width = layout_size.w;
-        cfg.derived.display.height = layout_size.h;
+fn sync_runtime_screen_size(derived: &mut DerivedState, layout_size: Size) -> bool {
+    if derived.display.width != layout_size.w || derived.display.height != layout_size.h {
+        derived.display.width = layout_size.w;
+        derived.display.height = layout_size.h;
         true
     } else {
         false
@@ -606,12 +592,12 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let show_bottom_bar = ctx.core().config().bar.show_bottom;
 
     let layout_size = output_layout_extent(&outputs);
-    let mut changed = sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_size);
+    let mut changed = sync_runtime_screen_size(ctx.core_mut().derived_mut(), layout_size);
 
     // Pre-compute per-output UI metrics while we hold an immutable config borrow.
     let metrics: Vec<(i32, i32, i32)> = outputs
         .iter()
-        .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), o.scale))
+        .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), o.scale))
         .collect();
 
     let old_count = ctx.core().model().monitors.len();
@@ -686,10 +672,14 @@ fn scaled_i32(value: i32, scale: f64) -> i32 {
     ((value as f64) * scale).round() as i32
 }
 
-fn scaled_monitor_ui_metrics(config: &RuntimeConfig, scale: f64) -> (i32, i32, i32) {
+fn scaled_monitor_ui_metrics(
+    config: &EffectiveConfig,
+    derived: &DerivedState,
+    scale: f64,
+) -> (i32, i32, i32) {
     (
-        scaled_i32(config.derived.bar_height, scale).max(1),
-        scaled_i32(config.derived.bar_horizontal_padding, scale).max(1),
+        scaled_i32(derived.bar_height, scale).max(1),
+        scaled_i32(derived.bar_horizontal_padding, scale).max(1),
         scaled_i32(config.bar.startmenu_size, scale).max(1),
     )
 }
@@ -752,7 +742,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     mon.init_tags(&template);
     let id = ctx.core_mut().model_mut().monitors.push(mon);
     let (bar_height, horizontal_padding, startmenu_size) =
-        scaled_monitor_ui_metrics(ctx.core().config(), 1.0);
+        scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
     if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(id) {
         m.num = 0;
         let rect = Rect {
@@ -776,7 +766,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         None => return false,
     };
     let (bar_height, horizontal_padding, startmenu_size) =
-        scaled_monitor_ui_metrics(ctx.core().config(), 1.0);
+        scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
     let needs_update = ctx
         .core()
         .state()

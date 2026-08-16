@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use crate::backend::BackendKind;
-use crate::config::config_toml::ThemeConfig;
+use crate::config::config_toml::UserConfig;
 use crate::config::keybind_config::{
     ActionSpec, KeybindSpec, StructuredAction, merge_keybinds, parse_keysym, parse_modifiers,
 };
@@ -28,7 +28,7 @@ pub struct DefaultKeybinds {
     pub desktop_keybinds: Vec<Key>,
 }
 
-pub fn build_default_keybinds(backend: BackendKind, theme: &ThemeConfig) -> DefaultKeybinds {
+pub fn build_default_keybinds(backend: BackendKind, theme: &UserConfig) -> DefaultKeybinds {
     let generated_keys = build_generated_keybind_specs(backend, &theme.keybinds);
 
     DefaultKeybinds {
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn generated_super_enter_is_skipped_when_user_overrides_it() {
-        let mut theme = ThemeConfig::default();
+        let mut theme = UserConfig::default();
         theme.keybinds.push(KeybindSpec {
             modifiers: vec!["super".to_string()],
             key: "return".to_string(),
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn generated_super_space_depends_on_backend() {
-        let x11 = build_default_keybinds(BackendKind::X11, &ThemeConfig::default());
-        let wayland = build_default_keybinds(BackendKind::Wayland, &ThemeConfig::default());
+        let x11 = build_default_keybinds(BackendKind::X11, &UserConfig::default());
+        let wayland = build_default_keybinds(BackendKind::Wayland, &UserConfig::default());
 
         assert_eq!(
             spawn_args_for(&x11.keys, MODKEY, XK_SPACE),
@@ -218,8 +218,8 @@ mod tests {
 
     #[test]
     fn generated_lockscreen_binds_super_ctrl_l() {
-        let x11 = build_default_keybinds(BackendKind::X11, &ThemeConfig::default());
-        let wayland = build_default_keybinds(BackendKind::Wayland, &ThemeConfig::default());
+        let x11 = build_default_keybinds(BackendKind::X11, &UserConfig::default());
+        let wayland = build_default_keybinds(BackendKind::Wayland, &UserConfig::default());
 
         assert!(spawn_args_for(&x11.keys, MODKEY | CONTROL, XK_L).is_some());
         assert!(spawn_args_for(&wayland.keys, MODKEY | CONTROL, XK_L).is_some());

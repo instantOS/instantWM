@@ -296,7 +296,7 @@ pub(super) fn selected_tiling_constraints(
         &tiled,
         &ctx.core().model().clients,
         ctx.core().config().window.resize_hints,
-        ctx.core().config().derived.bar_height,
+        ctx.core().derived().bar_height,
     );
     Some((placement, minimums))
 }
@@ -477,7 +477,7 @@ pub fn preview_tree_at_point(
         &tiled,
         &ctx.core().model().clients,
         ctx.core().config().window.resize_hints,
-        ctx.core().config().derived.bar_height,
+        ctx.core().derived().bar_height,
     );
     let tree = monitor.per_tag()?.layout_tree.clone();
     let layout_rect = placement.work_rect();

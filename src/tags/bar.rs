@@ -25,7 +25,7 @@ pub(crate) fn visible_tags<'a>(
     monitor: &'a Monitor,
     occupied: TagMask,
 ) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = globals.config.derived.bar_horizontal_padding;
+    let horizontal_padding = globals.derived.bar_horizontal_padding;
     let show_alt = globals.model.tags.show_alternative_names;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 

@@ -19,7 +19,7 @@
 //! - **Change colors** → [`appearance::palette`]
 //! - **Add an external command** → [`commands`] (add field + `Cmd` variant)
 //! - **Change a window rule** → [`rules`]
-//! - **Tune WM parameters** (border width, gaps, …) → [`Config`] defaults below
+//! - **Tune WM parameters** (border width, gaps, …) → [`EffectiveConfig`] defaults below
 
 pub mod appearance;
 pub mod buttons;
@@ -36,9 +36,7 @@ pub mod rules;
 pub use crate::types::{EdgeDirection, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 
-use commands::{ExternalCommands, default_commands};
-use mod_consts::BORDER_PX;
-
+use commands::default_commands;
 // ---------------------------------------------------------------------------
 // Module-level constants
 // ---------------------------------------------------------------------------
@@ -94,14 +92,15 @@ pub fn get_tags_alt() -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Config struct
+// Effective configuration resolution
 // ---------------------------------------------------------------------------
 
-use crate::types::{
-    BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
-    TagColorConfigs, WindowColorConfigs,
+use crate::core_state::{
+    BindingConfig, ColorConfig, EffectiveConfig, FontConfig, SystrayConfig, WindowConfig,
 };
+use crate::types::Key;
 use std::collections::HashMap;
+use std::env;
 
 use generated_keybinds::build_default_keybinds;
 
@@ -116,111 +115,42 @@ pub struct ModeConfig {
     pub keybinds: Vec<Key>,
 }
 
-/// All WM configuration in one place.
+// ---------------------------------------------------------------------------
+// Loading and resolution
+// ---------------------------------------------------------------------------
+
+/// Load the user-facing schema and resolve it into the one configuration type
+/// consumed by the running window manager.
 ///
-/// Built by [`init_config`] and converted atomically into runtime configuration
-/// by `core_state::apply_config`.
-#[derive(Debug, Clone)]
-pub struct Config {
-    // --- Window geometry ---
-    /// Border width in pixels.
-    pub border_px: i32,
-    /// Snap-to-edge distance in pixels.
-    pub snap_threshold: i32,
-
-    // --- Bar / systray ---
-    /// Start menu button width in pixels.
-    pub startmenu_size: i32,
-    /// Index of monitor to pin the systray to (0 = primary).
-    pub systray_pinning: usize,
-    /// Desired breathing room around tray icons, kept inside contiguous input
-    /// cells so padding never creates dead click regions.
-    pub systray_spacing: i32,
-    /// Whether to show the systray.
-    pub show_systray: bool,
-    /// Whether to show the bar by default.
-    pub show_bar: bool,
-    /// Whether to show the bottom gesture strip by default.
-    pub show_bottom_bar: bool,
-    /// Override bar height (0 = derive from font metrics).
-    pub bar_height: i32,
-
-    // --- Tiling ---
-    /// Respect size hints for tiled clients.
-    pub resize_hints: bool,
-    /// Respect decoration hints.
-    pub decor_hints: bool,
-    /// Raise a floating window when its client area is left-clicked.
-    pub raise_floating_on_click: bool,
-    /// Tiled layout gap configuration.
-    pub layout: config_toml::LayoutConfig,
-    /// Animation timing configuration.
-    pub animations: config_toml::AnimationConfig,
-
-    // --- Tags ---
-    pub tag_names: Vec<String>,
-    pub tag_alt_names: Vec<String>,
-    /// Color table for tag buttons: `[hover][SchemeTag]`
-    pub tag_colors: TagColorConfigs,
-    pub num_tags: usize,
-
-    // --- Color tables ---
-    /// Active built-in colour theme (the base the `*_colors` tables derive from).
-    pub theme: config_toml::ColorTheme,
-    /// `[hover][SchemeWin]`
-    pub window_colors: WindowColorConfigs,
-    /// `[hover][SchemeClose]`
-    pub closebuttoncolors: CloseButtonColorConfigs,
-    /// `[SchemeBorder as usize]`
-    pub border_colors: BorderColorConfig,
-    /// Status bar colors (fg, bg, detail)
-    pub statusbarcolors: StatusColorConfig,
-
-    // --- Bindings ---
-    pub keys: Vec<Key>,
-    pub desktop_keybinds: Vec<Key>,
-    pub modes: HashMap<String, ModeConfig>,
-    pub buttons: Vec<Button>,
-    pub rules: Vec<Rule>,
-    pub fonts: Vec<String>,
-
-    // --- External commands ---
-    pub external_commands: ExternalCommands,
-
-    // --- Keyboard layouts ---
-    /// XKB keyboard layouts.
-    pub keyboard_layouts: Vec<config_toml::KeyboardLayoutConfig>,
-    /// XKB options string.
-    pub keyboard_options: Option<String>,
-    /// XKB model string.
-    pub keyboard_model: Option<String>,
-    /// Swap Caps Lock and Escape.
-    pub keyboard_swapescape: bool,
-
-    // --- Input configuration ---
-    pub input: HashMap<String, config_toml::InputConfig>,
-    /// Monitor configuration.
-    pub monitors: HashMap<String, config_toml::MonitorConfig>,
-    pub status_command: Option<String>,
-    pub cursor: config_toml::CursorConfig,
-
-    // --- Exec commands ---
-    /// Commands to execute once at startup.
-    pub exec_once: Vec<String>,
-    /// Commands to execute at startup and on every config reload.
-    pub exec: Vec<String>,
+/// Used by both backends at startup and by the shared reload path.
+pub fn load_config(backend: crate::backend::BackendKind) -> Result<EffectiveConfig, String> {
+    resolve_config(config_toml::load_config_file()?, backend)
 }
 
-// ---------------------------------------------------------------------------
-// init_config
-// ---------------------------------------------------------------------------
+/// Resolve built-in defaults for startup fallback and default-constructed core
+/// state. Built-in values are invariants and therefore must always validate.
+pub fn default_config(backend: crate::backend::BackendKind) -> EffectiveConfig {
+    resolve_config(config_toml::UserConfig::default(), backend)
+        .expect("built-in configuration must be valid")
+}
 
-/// Build the default [`Config`].
-///
-/// Called once from `init_globals` in `backend::x11::startup`.  All values here are the
-/// compile-time defaults; TOML config overrides the appearance fields when present.
-pub fn init_config(backend: crate::backend::BackendKind) -> Config {
-    let theme = config_toml::load_config_file();
+/// Load configuration for initial startup. Unlike reload, startup has no
+/// previous valid snapshot to retain, so a reported error falls back to the
+/// built-in configuration and allows the WM to start.
+pub fn load_startup_config(backend: crate::backend::BackendKind) -> EffectiveConfig {
+    load_config(backend).unwrap_or_else(|error| {
+        eprintln!("instantwm: {error}; using built-in configuration");
+        default_config(backend)
+    })
+}
+
+/// Resolve a parsed user configuration into the complete effective snapshot.
+/// This is the sole user-to-runtime conversion boundary.
+pub fn resolve_config(
+    theme: config_toml::UserConfig,
+    backend: crate::backend::BackendKind,
+) -> Result<EffectiveConfig, String> {
+    let layout = theme.layout.validated()?;
     let defaults = build_default_keybinds(backend, &theme);
 
     // Merge TOML keybinds over compiled defaults
@@ -306,65 +236,109 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         );
     }
 
-    Config {
-        // --- Window geometry ---
-        border_px: BORDER_PX,
-        snap_threshold: 32,
+    let bar = theme.bar.validated()?;
+    let mut keyboard = theme.keyboard;
+    if keyboard.layouts.is_empty() {
+        let layout = env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
+        if layout.is_empty() {
+            keyboard.layouts.push(config_toml::KeyboardLayoutConfig {
+                name: "us".to_string(),
+                variant: None,
+            });
+        } else {
+            keyboard.layouts.push(config_toml::KeyboardLayoutConfig {
+                name: layout,
+                variant: env::var("XKB_DEFAULT_VARIANT").ok(),
+            });
+        }
+    }
+    keyboard.options = keyboard
+        .options
+        .or_else(|| env::var("XKB_DEFAULT_OPTIONS").ok());
+    keyboard.model = keyboard
+        .model
+        .or_else(|| env::var("XKB_DEFAULT_MODEL").ok());
 
-        // --- Bar / systray ---
-        startmenu_size: 30,
-        systray_pinning: 0,
-        systray_spacing: 0,
-        show_systray: true,
-        show_bar: true,
-        show_bottom_bar: theme.show_bottom_bar,
-        bar_height: theme.bar_height as i32,
+    let tag_alt_names = get_tags_alt();
+    let tag_template = get_tags()
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| crate::types::monitor::TagNames {
+            name,
+            alt_name: tag_alt_names.get(index).cloned().unwrap_or_default(),
+        })
+        .collect();
 
-        // --- Tiling ---
-        resize_hints: true,
-        decor_hints: true,
-        raise_floating_on_click: theme.raise_floating_on_click,
-        layout: theme.layout,
+    Ok(EffectiveConfig {
+        window: WindowConfig {
+            raise_floating_on_click: theme.raise_floating_on_click,
+            ..WindowConfig::default()
+        },
+        bar,
+        systray: SystrayConfig::default(),
+        layout,
         animations: theme.animations,
-
-        // --- Tags ---
-        tag_names: get_tags(),
-        tag_alt_names: get_tags_alt(),
-        num_tags: MAX_TAGS,
-
-        // --- Appearance (from TOML if present, else palette defaults) ---
-        fonts: theme.fonts,
+        colors: ColorConfig {
+            window: theme.colors.window,
+            close_button: theme.colors.close_button,
+            border: theme.colors.border,
+            status_bar: theme.colors.status,
+        },
         theme: theme.theme,
-        tag_colors: theme.colors.tag,
-        window_colors: theme.colors.window,
-        closebuttoncolors: theme.colors.close_button,
-        border_colors: theme.colors.border,
-        statusbarcolors: theme.colors.status,
-
-        // --- Bindings (merged with TOML overrides) ---
-        keys,
-        desktop_keybinds,
-        modes,
-        buttons: buttons::get_buttons(),
-        rules: rules::merge_rules(rules::get_rules(), theme.rules),
-
-        // --- External commands ---
+        bindings: BindingConfig {
+            keys,
+            desktop_keybinds,
+            modes,
+            buttons: buttons::get_buttons(),
+            rules: rules::merge_rules(rules::get_rules(), theme.rules),
+        },
+        fonts: FontConfig {
+            fonts: theme.fonts,
+            ..FontConfig::default()
+        },
         external_commands: default_commands(),
+        tag_template,
+        tag_colors: theme.colors.tag,
+        keyboard,
+        input: theme.input,
+        monitors: theme.monitors,
+        status_command: theme.status_command,
+        cursor: theme.cursor,
+        exec_once: theme.exec_once,
+        exec: theme.exec,
+    })
+}
 
-        // --- Keyboard layouts ---
-        keyboard_layouts: theme.keyboard.layouts.clone(),
-        keyboard_options: theme.keyboard.options.clone(),
-        keyboard_model: theme.keyboard.model.clone(),
-        keyboard_swapescape: theme.keyboard.swapescape,
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
 
-        // --- Input configuration ---
-        input: theme.input.clone(),
-        monitors: theme.monitors.clone(),
-        status_command: theme.status_command.clone(),
-        cursor: theme.cursor.clone(),
+    #[test]
+    fn resolution_rejects_invalid_layout_before_building_effective_config() {
+        let mut user = config_toml::UserConfig::default();
+        user.layout.inner_gap = -10;
 
-        // --- Exec commands ---
-        exec_once: theme.exec_once.clone(),
-        exec: theme.exec.clone(),
+        let error = match resolve_config(user, crate::backend::BackendKind::Wayland) {
+            Ok(_) => panic!("invalid layout must be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("layout.inner_gap"));
+    }
+
+    #[test]
+    fn valid_resolution_produces_a_complete_effective_config() {
+        let mut user = config_toml::UserConfig::default();
+        user.keyboard.layouts = vec![config_toml::KeyboardLayoutConfig {
+            name: "de".to_string(),
+            variant: Some("nodeadkeys".to_string()),
+        }];
+
+        let effective = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
+
+        assert_eq!(effective.keyboard.layouts[0].name, "de");
+        assert_eq!(effective.tag_template.len(), MAX_TAGS);
+        assert_eq!(effective.window, WindowConfig::default());
+        assert_eq!(effective.systray, SystrayConfig::default());
     }
 }

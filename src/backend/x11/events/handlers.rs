@@ -265,8 +265,8 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
         return;
     };
 
-    ctx.core.config_mut().derived.display.width = e.width as i32;
-    ctx.core.config_mut().derived.display.height = e.height as i32;
+    ctx.core.derived_mut().display.width = e.width as i32;
+    ctx.core.derived_mut().display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
     crate::backend::x11::update_ewmh_desktop_props(ctx.core.state, &ctx.x11, ctx.x11_runtime);
@@ -295,7 +295,7 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             },
         );
         crate::backend::x11::systray::update_systray_icon_geom(
-            ctx.core.config().derived.bar_height,
+            ctx.core.derived().bar_height,
             ctx.xembed_tray.as_mut(),
             event_win,
             requested_size,
@@ -481,7 +481,7 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
         (
             mon.monitor_id,
             mon.monitor_rect.y,
-            ctx.core.config().derived.bar_height,
+            ctx.core.derived().bar_height,
         )
     };
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
@@ -608,7 +608,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
         event_win,
     ) {
         crate::backend::x11::systray::update_systray_icon_geom(
-            ctx.core.config().derived.bar_height,
+            ctx.core.derived().bar_height,
             ctx.xembed_tray.as_mut(),
             event_win,
             crate::types::Size::new(e.width as i32, e.height as i32),
@@ -708,7 +708,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     );
 
     crate::backend::x11::systray::update_systray_icon_geom(
-        ctx.core.config().derived.bar_height,
+        ctx.core.derived().bar_height,
         ctx.xembed_tray.as_mut(),
         icon_win,
         geo.size(),

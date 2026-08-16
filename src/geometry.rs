@@ -261,6 +261,7 @@ fn apply_resize_policies(
             let outcome = crate::client::geometry::apply_size_hints(
                 x11_ctx.core.model(),
                 x11_ctx.core.config(),
+                x11_ctx.core.derived(),
                 win,
                 &mut adjusted,
                 interact,
@@ -279,6 +280,7 @@ fn apply_resize_policies(
             let outcome = crate::client::geometry::apply_size_hints(
                 wl_ctx.core.model(),
                 wl_ctx.core.config(),
+                wl_ctx.core.derived(),
                 win,
                 &mut adjusted,
                 interact,

@@ -149,9 +149,13 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
     let state = &mut wm.core;
     let result = match section {
         RuntimeConfigSection::Window => parse_then_set(&mut state.config.window, rest, value),
-        RuntimeConfigSection::Bar => parse_then_set(&mut state.config.bar, rest, value),
+        RuntimeConfigSection::Bar => set_field_from_raw(&state.config.bar, rest, value)
+            .and_then(crate::config::config_toml::BarConfig::validated)
+            .map(|candidate| state.config.bar = candidate),
         RuntimeConfigSection::Systray => parse_then_set(&mut state.config.systray, rest, value),
-        RuntimeConfigSection::Layout => parse_then_set(&mut state.config.layout, rest, value),
+        RuntimeConfigSection::Layout => set_field_from_raw(&state.config.layout, rest, value)
+            .and_then(crate::config::config_toml::LayoutConfig::validated)
+            .map(|candidate| state.config.layout = candidate),
         RuntimeConfigSection::Animations => {
             parse_then_set(&mut state.config.animations, rest, value)
         }
@@ -433,7 +437,7 @@ mod tests {
     fn get_returns_value_and_handles_bad_keys() {
         let mut wm = test_wm();
         match do_get(&mut wm, "window.border_width_px") {
-            Response::ConfigValue(v) => assert_eq!(v, "1"),
+            Response::ConfigValue(v) => assert_eq!(v, "3"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         assert!(matches!(
@@ -474,6 +478,38 @@ mod tests {
             Response::ConfigValue(v) => assert_eq!(v, "42"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn invalid_layout_updates_are_rejected_without_changing_config() {
+        let mut wm = test_wm();
+        let original = wm.core.config.layout;
+        assert!(matches!(
+            do_set(&mut wm, "layout.inner_gap", "-12"),
+            Response::Err(message) if message.contains("layout.inner_gap")
+        ));
+        assert_eq!(wm.core.config.layout.inner_gap, original.inner_gap);
+
+        assert!(matches!(
+            do_set(&mut wm, "layout.minimum_weight", "0.8"),
+            Response::Err(message) if message.contains("layout.minimum_weight")
+        ));
+        assert_eq!(
+            wm.core.config.layout.minimum_weight,
+            original.minimum_weight
+        );
+    }
+
+    #[test]
+    fn invalid_bar_geometry_is_rejected_without_changing_config() {
+        let mut wm = test_wm();
+        let original = wm.core.config.bar.clone();
+
+        assert!(matches!(
+            do_set(&mut wm, "bar.startmenu_size", "-1"),
+            Response::Err(message) if message.contains("bar.startmenu_size")
+        ));
+        assert_eq!(wm.core.config.bar, original);
     }
 
     #[test]

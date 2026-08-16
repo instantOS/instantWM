@@ -9,7 +9,8 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::core_state::{
-    CoreState, DragState, KeyboardLayoutState, PendingWork, RuntimeConfig, WmBehavior,
+    CoreState, DerivedState, DragState, EffectiveConfig, KeyboardLayoutState, PendingWork,
+    WmBehavior,
 };
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
@@ -64,12 +65,20 @@ impl<'a> CoreCtx<'a> {
         self.state
     }
 
-    pub fn config(&self) -> &RuntimeConfig {
+    pub fn config(&self) -> &EffectiveConfig {
         &self.state.config
     }
 
-    pub fn config_mut(&mut self) -> &mut RuntimeConfig {
+    pub fn config_mut(&mut self) -> &mut EffectiveConfig {
         &mut self.state.config
+    }
+
+    pub fn derived(&self) -> &DerivedState {
+        &self.state.derived
+    }
+
+    pub fn derived_mut(&mut self) -> &mut DerivedState {
+        &mut self.state.derived
     }
 
     pub fn behavior(&self) -> &WmBehavior {

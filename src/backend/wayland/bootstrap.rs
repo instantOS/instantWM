@@ -1,7 +1,7 @@
 //! Backend-neutral Wayland WM initialization.
 
 use crate::backend::WaylandBackendData;
-use crate::config::init_config;
+use crate::config::load_startup_config;
 use crate::core_state::CoreState;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,8 +21,8 @@ pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
     data.bar_painter.set_font_size(font_size);
     data.bar_painter.set_font_families(&font_families);
 
-    state.config.derived.bar_height = metrics.height;
-    state.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
+    state.derived.bar_height = metrics.height;
+    state.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
 /// Initialize WM configuration shared by nested and DRM/KMS Wayland modes.
@@ -32,11 +32,9 @@ pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
 /// Output discovery replaces the fallback dimensions and establishes monitor
 /// geometry after the compositor backend is ready.
 pub fn init_globals(state: &mut CoreState, wayland: &mut WaylandBackendData) {
-    let cfg = init_config(crate::backend::BackendKind::Wayland);
-    state.config.derived.display.width = 1280;
-    state.config.derived.display.height = 800;
-    crate::core_state::apply_config(state, &cfg);
-    state.config.bar.show = true;
-
+    let cfg = load_startup_config(crate::backend::BackendKind::Wayland);
+    state.derived.display.width = 1280;
+    state.derived.display.height = 800;
+    crate::core_state::apply_config(state, cfg);
     apply_bar_metrics(state, wayland);
 }
