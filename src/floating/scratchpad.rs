@@ -187,8 +187,8 @@ fn sync_scratchpad_backend_projection(ctx: &mut WmCtx<'_>, win: WindowId) {
     }
 }
 
-fn prepare_scratchpad_for_show(ctx: &mut WmCtx<'_>, win: WindowId, monitor_id: MonitorId) {
-    attach_client_to_monitor_top(ctx.core_mut().model_mut(), win, monitor_id);
+fn prepare_scratchpad_for_show(model: &mut WmModel, win: WindowId, monitor_id: MonitorId) {
+    attach_client_to_monitor_top(model, win, monitor_id);
 }
 
 fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
@@ -415,6 +415,7 @@ pub(crate) fn scratchpad_restore_window(
 
     if was_hidden {
         crate::client::show_window(ctx, window);
+        crate::focus::focus(ctx, Some(window));
     }
     arrange(ctx, Some(source_monitor));
     if target_monitor != source_monitor {
@@ -497,25 +498,37 @@ pub(crate) fn scratchpad_show_name_with_options(
     name: &str,
     options: ScratchpadShowOptions,
 ) -> Result<String, String> {
+    let found = find_live_scratchpad(ctx, name)?;
+    let shown = show_scratchpad_window_with_options(ctx, found, options)?;
+    if shown {
+        Ok(format!("shown scratchpad '{}'", name))
+    } else {
+        Ok(format!("scratchpad '{}' is already visible", name))
+    }
+}
+
+fn show_scratchpad_window_with_options(
+    ctx: &mut WmCtx,
+    found: WindowId,
+    options: ScratchpadShowOptions,
+) -> Result<bool, String> {
     if ctx.core().model().monitor(options.monitor_id).is_none() {
         return Err(format!(
             "target monitor {:?} does not exist",
             options.monitor_id
         ));
     }
-    let found = find_live_scratchpad(ctx, name)?;
 
-    let Some((was_visible, direction)) = ctx.core().model().client(found).map(|c| {
-        (
-            c.is_scratchpad_visible(),
-            c.scratchpad().and_then(|sp| sp.direction()),
-        )
+    let Some((was_visible, direction)) = ctx.core().model().client(found).and_then(|client| {
+        client
+            .scratchpad()
+            .map(|scratchpad| (client.is_scratchpad_visible(), scratchpad.direction()))
     }) else {
-        return Err(format!("scratchpad '{}' disappeared", name));
+        return Err(format!("window {} is not a managed scratchpad", found.0));
     };
 
     if was_visible {
-        return Ok(format!("scratchpad '{}' is already visible", name));
+        return Ok(false);
     }
 
     let target_monitor = options.monitor_id;
@@ -525,7 +538,7 @@ pub(crate) fn scratchpad_show_name_with_options(
         .monitor(target_monitor)
         .and_then(|monitor| monitor.selected)
         .filter(|&selected| selected != found);
-    prepare_scratchpad_for_show(ctx, found, target_monitor);
+    prepare_scratchpad_for_show(ctx.core_mut().model_mut(), found, target_monitor);
     if let Some(client) = ctx.core_mut().model_mut().client_mut(found)
         && let Some(scratchpad) = client.scratchpad_mut()
     {
@@ -574,7 +587,33 @@ pub(crate) fn scratchpad_show_name_with_options(
         ctx.warp_cursor_to_client(found);
     }
 
-    Ok(format!("shown scratchpad '{}'", name))
+    Ok(true)
+}
+
+/// Show a scratchpad after its model ownership has moved to another monitor.
+///
+/// A transfer must not change the globally selected monitor or steal focus;
+/// those are governed by the transfer's explicit focus policy. The target is
+/// therefore passed directly instead of being inferred from global selection.
+pub(crate) fn show_transferred_scratchpad(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) {
+    if ctx
+        .core()
+        .model()
+        .client(win)
+        .is_none_or(|client| !client.is_scratchpad() || client.is_scratchpad_visible())
+    {
+        return;
+    }
+
+    let _ = show_scratchpad_window_with_options(
+        ctx,
+        win,
+        ScratchpadShowOptions {
+            monitor_id,
+            focus: false,
+            warp_pointer: false,
+        },
+    );
 }
 
 pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
@@ -829,7 +868,7 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 mod tests {
     use super::{
         EdgeSlideRects, name_from_window_identity, regular_scratchpad_rect,
-        scratchpad_restore_window, set_scratchpad_direction,
+        scratchpad_restore_window, set_scratchpad_direction, show_transferred_scratchpad,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -939,6 +978,58 @@ mod tests {
         assert_eq!(client.geo, original_geo);
         assert_eq!(client.border_width, 3);
         assert!(!client.is_locked);
+    }
+
+    #[test]
+    fn transferred_scratchpad_targets_a_monitor_without_stealing_selection() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let source = wm.core.model.monitors.push(Monitor::default());
+        let target = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(source);
+
+        let focused = WindowId(80);
+        wm.core.model.insert_client(Client {
+            win: focused,
+            monitor_id: source,
+            ..Client::default()
+        });
+        wm.core
+            .model
+            .monitor_mut(source)
+            .unwrap()
+            .clients
+            .push(focused);
+        wm.core
+            .model
+            .monitor_mut(source)
+            .unwrap()
+            .set_selected(Some(focused));
+
+        let scratchpad = WindowId(81);
+        let mut client = Client {
+            win: scratchpad,
+            monitor_id: target,
+            is_hidden: true,
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("transfer", None, 1920, 1080)
+            .unwrap();
+        wm.core.model.insert_client(client);
+        wm.core
+            .model
+            .monitor_mut(target)
+            .unwrap()
+            .clients
+            .push(scratchpad);
+
+        show_transferred_scratchpad(&mut wm.ctx(), scratchpad, target);
+
+        assert_eq!(wm.core.model.selected_monitor_id(), source);
+        assert_eq!(wm.core.model.selected_win(), Some(focused));
+        let client = wm.core.model.client(scratchpad).unwrap();
+        assert_eq!(client.monitor_id, target);
+        assert!(client.is_scratchpad_visible());
     }
 
     #[test]

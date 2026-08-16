@@ -164,11 +164,14 @@ fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), Stri
     }
 }
 
-fn validate_mode_name(ctx: &WmCtx<'_>, name: &str) -> Result<(), String> {
+fn validate_mode_name(
+    configured_modes: &std::collections::HashMap<String, crate::config::ModeConfig>,
+    name: &str,
+) -> Result<(), String> {
     if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
         return Err("mode 'placement' can only be entered by begin_tree_placement".to_string());
     }
-    if ctx.core().config().bindings.modes.contains_key(name)
+    if configured_modes.contains_key(name)
         || matches!(
             crate::core_state::ActiveWmMode::from_name(name),
             crate::core_state::ActiveWmMode::Default | crate::core_state::ActiveWmMode::Overview
@@ -392,7 +395,7 @@ define_named_actions!(
         };
         ctx.with_behavior_mut(|behavior| behavior.set_focus_follows_mouse(mode));
     } },
-    ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { validate_mode_name(ctx, &args[0])?; toggle_mode(ctx, &args[0]); } },
+    ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { validate_mode_name(&ctx.core().config().bindings.modes, &args[0])?; toggle_mode(ctx, &args[0]); } },
     UnhideAll => { name: "unhide_all", arg_example: None, doc: "show all hidden windows", run: |ctx, _args| { unhide_all(ctx); } },
     Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::client::hide_for_user(ctx, win); } } },
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen", run: |ctx, _args| { toggle_fake_fullscreen(ctx); } },
@@ -418,7 +421,7 @@ define_named_actions!(
     NextKeyboardLayout => { name: "next_keyboard_layout", arg_example: None, doc: "cycle to next keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Next); } },
     PrevKeyboardLayout => { name: "prev_keyboard_layout", arg_example: None, doc: "cycle to previous keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
     KeyboardLayout => { name: "keyboard_layout", arg_example: Some("us(intl)"), doc: "set keyboard layout", run: |ctx, args| { if let Some(name) = args.first() { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name); } } },
-    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { validate_mode_name(ctx, &args[0])?; ctx.set_current_mode(args[0].clone()); } },
+    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { validate_mode_name(&ctx.core().config().bindings.modes, &args[0])?; ctx.set_current_mode(args[0].clone()); } },
     Spawn => { name: "spawn", arg_example: Some("COMMAND [ARG ...]"), doc: "spawn a command without shell expansion", run: |ctx, args| { spawn(ctx, args)?; } },
     SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { let Some(layout) = LayoutCommand::from_name(&args[0]) else { return Err(format!("invalid layout '{}'", args[0])); }; set_layout(ctx, layout); } },
     FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { let Some(direction) = StackDirection::from_name(&args[0]) else { return Err(format!("invalid stack direction '{}'", args[0])); }; focus_stack(ctx, direction); } },

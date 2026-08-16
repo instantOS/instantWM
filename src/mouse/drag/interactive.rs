@@ -193,47 +193,7 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
 
     match drag.operation() {
         crate::core_state::DragOperationRef::Move => {
-            let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
-            let edge = crate::mouse::drag::move_drop::check_edge_snap(ctx.core().model(), root);
-
-            if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, drag.win()) {
-                crate::mouse::drag::move_drop::update_tiled_drag_preview(
-                    ctx,
-                    drag.win(),
-                    root,
-                    on_bar,
-                    edge,
-                );
-                return true;
-            }
-
-            ctx.update_layout_preview(None);
-            let mut new_pos = Point::new(
-                drag.win_start_geo().x + (root.x - drag.start_point().x),
-                drag.win_start_geo().y + (root.y - drag.start_point().y),
-            );
-
-            if on_bar {
-                let mon = ctx.core().model().expect_selected_monitor();
-                new_pos.y = mon.bar_y() + mon.bar_height;
-            }
-
-            crate::mouse::drag::snap_window_to_monitor_edges(
-                ctx.core().state(),
-                drag.win(),
-                drag.win_start_geo().size(),
-                &mut new_pos,
-            );
-            ctx.move_resize(
-                drag.win(),
-                Rect::new(
-                    new_pos.x,
-                    new_pos.y,
-                    drag.win_start_geo().w.max(1),
-                    drag.win_start_geo().h.max(1),
-                ),
-                MoveResizeOptions::hinted_immediate(true),
-            );
+            apply_move_drag_motion(ctx, &drag, root);
             true
         }
         crate::core_state::DragOperationRef::TreeResize { direction, origin } => {
@@ -247,45 +207,102 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
             )
         }
         crate::core_state::DragOperationRef::Resize(dir) => {
-            // Core geometry uses an outer origin and content size on both
-            // backends. Account for the modelled border so dragging an end
-            // edge keeps that edge under the input position.
-            let border_width = ctx
-                .core()
-                .model()
-                .client(drag.win())
-                .map_or(0, |client| client.border_width.max(0));
-            let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
-            let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
-                root.x,
-                drag.win_start_geo().x,
-                drag.win_start_geo().right(),
-                border_width,
-                affects_left,
-                affects_right,
-            );
-            let (new_y, new_h) = crate::mouse::resize::compute_axis_resize(
-                root.y,
-                drag.win_start_geo().y,
-                drag.win_start_geo().bottom(),
-                border_width,
-                affects_top,
-                affects_bottom,
-            );
-            let (new_w, new_h) = match drag.resize_policy() {
-                crate::core_state::ResizePolicy::Free => (new_w, new_h),
-                crate::core_state::ResizePolicy::PreserveAspect => {
-                    crate::mouse::resize::constrain_aspect_size(ctx, drag.win(), new_w, new_h)
-                }
-            };
-            ctx.move_resize(
-                drag.win(),
-                Rect::new(new_x, new_y, new_w, new_h),
-                MoveResizeOptions::hinted_immediate(true),
-            );
+            apply_resize_drag_motion(ctx, &drag, dir, root);
             true
         }
     }
+}
+
+fn apply_move_drag_motion(
+    ctx: &mut WmCtx<'_>,
+    drag: &crate::core_state::DragInteraction,
+    root: Point,
+) {
+    let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
+    let edge = crate::mouse::drag::move_drop::check_edge_snap(ctx.core().model(), root);
+
+    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), drag.win())
+    {
+        crate::mouse::drag::move_drop::update_tiled_drag_preview(
+            ctx,
+            drag.win(),
+            root,
+            on_bar,
+            edge,
+        );
+        return;
+    }
+
+    ctx.update_layout_preview(None);
+    let mut new_pos = Point::new(
+        drag.win_start_geo().x + (root.x - drag.start_point().x),
+        drag.win_start_geo().y + (root.y - drag.start_point().y),
+    );
+
+    if on_bar {
+        let mon = ctx.core().model().expect_selected_monitor();
+        new_pos.y = mon.bar_y() + mon.bar_height;
+    }
+
+    crate::mouse::drag::snap_window_to_monitor_edges(
+        ctx.core().state(),
+        drag.win(),
+        drag.win_start_geo().size(),
+        &mut new_pos,
+    );
+    ctx.move_resize(
+        drag.win(),
+        Rect::new(
+            new_pos.x,
+            new_pos.y,
+            drag.win_start_geo().w.max(1),
+            drag.win_start_geo().h.max(1),
+        ),
+        MoveResizeOptions::hinted_immediate(true),
+    );
+}
+
+fn apply_resize_drag_motion(
+    ctx: &mut WmCtx<'_>,
+    drag: &crate::core_state::DragInteraction,
+    direction: crate::types::ResizeDirection,
+    root: Point,
+) {
+    // Core geometry uses an outer origin and content size on both backends.
+    // Account for the modelled border so an end edge remains under the input.
+    let border_width = ctx
+        .core()
+        .model()
+        .client(drag.win())
+        .map_or(0, |client| client.border_width.max(0));
+    let (affects_left, affects_right, affects_top, affects_bottom) = direction.affected_edges();
+    let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
+        root.x,
+        drag.win_start_geo().x,
+        drag.win_start_geo().right(),
+        border_width,
+        affects_left,
+        affects_right,
+    );
+    let (new_y, new_h) = crate::mouse::resize::compute_axis_resize(
+        root.y,
+        drag.win_start_geo().y,
+        drag.win_start_geo().bottom(),
+        border_width,
+        affects_top,
+        affects_bottom,
+    );
+    let (new_w, new_h) = match drag.resize_policy() {
+        crate::core_state::ResizePolicy::Free => (new_w, new_h),
+        crate::core_state::ResizePolicy::PreserveAspect => {
+            crate::mouse::resize::constrain_aspect_size(ctx, drag.win(), new_w, new_h)
+        }
+    };
+    ctx.move_resize(
+        drag.win(),
+        Rect::new(new_x, new_y, new_w, new_h),
+        MoveResizeOptions::hinted_immediate(true),
+    );
 }
 
 /// Finish the active window interaction using backend protocol capabilities.
@@ -371,5 +388,25 @@ mod tests {
             Point::new(710, 250)
         ));
         assert_eq!(wm.core.model.client(win).unwrap().geo.w, 601);
+    }
+
+    #[test]
+    fn invalid_tree_resize_motion_reports_not_applied() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let win = WindowId(99);
+        wm.core
+            .drag
+            .begin_tree_resize(crate::core_state::TreeResizeParams {
+                win,
+                button: MouseButton::Right,
+                source: InteractionSource::Pointer,
+                direction: ResizeDirection::Right,
+                start: Point::new(10, 10),
+                geometry: Rect::new(0, 0, 100, 100),
+                origin: crate::layouts::tree::LayoutTree::default(),
+            })
+            .unwrap();
+
+        assert!(!apply_active_drag_motion(&mut wm.ctx(), Point::new(20, 10)));
     }
 }

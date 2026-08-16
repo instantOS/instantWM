@@ -115,7 +115,7 @@ fn begin_move_drag(
     }
 
     let position = input.position();
-    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
+    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), win) {
         let geo = ctx.client_geo(win)?;
         Some((geo, start_point))
     } else {
@@ -149,7 +149,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     let is_right_click = btn == MouseButton::Right;
 
     if is_right_click {
-        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
+        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), win) {
             // Bar-title resizing retains its established bottom-right handle;
             // Super+right-drag uses the pointer's quadrant instead.
             let point = if suppress_click_action {

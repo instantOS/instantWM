@@ -71,6 +71,11 @@ pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
     }
 }
 
+/// Make a managed client visible without changing keyboard focus.
+///
+/// Focus is a separate policy decision. Callers that represent explicit user
+/// activation must request it through `crate::focus` after revealing the
+/// client.
 pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
         if !c.is_hidden {
@@ -86,7 +91,6 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
         crate::backend::x11::visibility::show(ctx_x11, win);
     }
 
-    crate::focus::focus(ctx, Some(win));
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
@@ -170,9 +174,11 @@ fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
 
 #[cfg(test)]
 mod tests {
-    use super::visibility_plan;
+    use super::{show_window, visibility_plan};
+    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::model::WmModel;
     use crate::types::*;
+    use crate::wm::Wm;
 
     fn make_client(
         win: WindowId,
@@ -196,6 +202,39 @@ mod tests {
             },
             ..Client::default()
         }
+    }
+
+    #[test]
+    fn showing_a_window_does_not_change_focus() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(monitor_id);
+        let focused = WindowId(1);
+        let hidden = WindowId(2);
+        for (win, is_hidden) in [(focused, false), (hidden, true)] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                is_hidden,
+                ..Client::default()
+            });
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .clients
+                .push(win);
+        }
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(focused));
+
+        show_window(&mut wm.ctx(), hidden);
+
+        assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
+        assert_eq!(wm.core.model.selected_win(), Some(focused));
     }
 
     /// Build a single monitor with given selected tags and client list.

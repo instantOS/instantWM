@@ -34,10 +34,13 @@ fn top_right_zones(monitor: Rect) -> HotCornerZones {
     }
 }
 
-fn corner_at(ctx: &WmCtx<'_>, root: Point) -> Option<(MonitorId, HotCornerZones)> {
+fn corner_at(
+    monitors: &crate::monitor::MonitorManager,
+    root: Point,
+) -> Option<(MonitorId, HotCornerZones)> {
     let point = Rect::new(root.x, root.y, 1, 1);
-    let monitor_id = ctx.core().model().monitors.id_intersecting_rect(point)?;
-    let monitor = ctx.core().model().monitor(monitor_id)?;
+    let monitor_id = monitors.id_intersecting_rect(point)?;
+    let monitor = monitors.get(monitor_id)?;
     Some((monitor_id, top_right_zones(monitor.monitor_rect)))
 }
 
@@ -55,7 +58,7 @@ pub fn update_overlay_hot_corner(ctx: &mut WmCtx<'_>, root: Point) -> bool {
         return false;
     }
 
-    let corner = corner_at(ctx, root);
+    let corner = corner_at(&ctx.core().model().monitors, root);
     let (monitor_id, inside_activation, inside_keep) = match corner {
         Some((monitor_id, zones)) => (
             Some(monitor_id),

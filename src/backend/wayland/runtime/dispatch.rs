@@ -291,7 +291,8 @@ fn handle_set_fullscreen(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_committed_window_size, handle_update_xwayland_policy, should_update_active_drag,
+        apply_committed_window_size, handle_set_minimized, handle_update_xwayland_policy,
+        should_update_active_drag,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -304,6 +305,40 @@ mod tests {
         assert!(should_update_active_drag(true, false));
         assert!(should_update_active_drag(false, true));
         assert!(should_update_active_drag(false, false));
+    }
+
+    #[test]
+    fn unminimizing_reveals_without_activating() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(monitor_id);
+        let focused = WindowId(80);
+        let minimized = WindowId(81);
+
+        for (win, is_hidden) in [(focused, false), (minimized, true)] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                is_hidden,
+                ..Client::default()
+            });
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .clients
+                .push(win);
+        }
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(focused));
+
+        handle_set_minimized(&mut wm, minimized, false);
+
+        assert!(!wm.core.model.client(minimized).unwrap().is_hidden);
+        assert_eq!(wm.core.model.selected_win(), Some(focused));
     }
 
     #[test]

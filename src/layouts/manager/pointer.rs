@@ -114,14 +114,17 @@ pub(super) fn manual_tree_pointer_interaction_allowed(
 /// A lone tiled client has no meaningful tree relationship to manipulate, and
 /// maximized presentation deliberately hides those relationships. Both cases
 /// therefore use the ordinary floating drag behavior.
-pub(crate) fn uses_manual_tree_pointer_interaction(ctx: &WmCtx<'_>, window: WindowId) -> bool {
-    let Some(view) = ctx.core().model().client_view(window) else {
+pub(crate) fn uses_manual_tree_pointer_interaction(
+    model: &crate::model::WmModel,
+    window: WindowId,
+) -> bool {
+    let Some(view) = model.client_view(window) else {
         return false;
     };
     manual_tree_pointer_interaction_allowed(
         view.monitor.current_layout(),
         view.client.mode().is_normal_tiling(),
-        view.monitor.tiled_client_count(&ctx.core().model().clients),
+        view.monitor.tiled_client_count(&model.clients),
     )
 }
 

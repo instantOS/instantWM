@@ -1,3 +1,4 @@
+use crate::backend::OutputOps;
 use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, focus_n_mon};
 use crate::types::MonitorDirection;

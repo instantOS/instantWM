@@ -262,13 +262,6 @@ impl Backend {
         }
     }
 
-    pub fn get_outputs(&self) -> Vec<BackendOutputInfo> {
-        match self {
-            Self::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
-            Self::Wayland(data) => data.backend.get_outputs(),
-        }
-    }
-
     pub fn kind(&self) -> BackendKind {
         match self {
             Self::X11(_) => BackendKind::X11,

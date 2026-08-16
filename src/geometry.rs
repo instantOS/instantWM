@@ -189,8 +189,11 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
     })
 }
 
-fn animation_duration(ctx: &WmCtx<'_>, duration: Duration) -> Duration {
-    ctx.core().config().animations.scale_duration(duration)
+fn animation_duration(
+    config: crate::config::config_toml::AnimationConfig,
+    duration: Duration,
+) -> Duration {
+    config.scale_duration(duration)
 }
 
 fn enqueue_window_animation(
@@ -200,7 +203,7 @@ fn enqueue_window_animation(
     to: Rect,
     duration: Duration,
 ) {
-    let duration = animation_duration(ctx, duration);
+    let duration = animation_duration(ctx.core().config().animations, duration);
     match ctx {
         WmCtx::X11(x11) => {
             let mut wmctx = crate::contexts::WmCtx::X11(x11.reborrow());
