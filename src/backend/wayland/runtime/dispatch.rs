@@ -288,178 +288,6 @@ fn handle_set_fullscreen(
     state.request_space_sync();
     state.request_render();
 }
-#[cfg(test)]
-mod tests {
-    use super::{
-        apply_committed_window_size, handle_set_minimized, handle_update_xwayland_policy,
-        should_update_active_drag,
-    };
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
-    use crate::wm::Wm;
-
-    #[test]
-    fn only_the_last_consecutive_motion_updates_an_active_drag() {
-        assert!(!should_update_active_drag(true, true));
-        assert!(should_update_active_drag(true, false));
-        assert!(should_update_active_drag(false, true));
-        assert!(should_update_active_drag(false, false));
-    }
-
-    #[test]
-    fn unminimizing_reveals_without_activating() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        wm.core.model.monitors.set_selected(monitor_id);
-        let focused = WindowId(80);
-        let minimized = WindowId(81);
-
-        for (win, is_hidden) in [(focused, false), (minimized, true)] {
-            wm.core.model.insert_client(Client {
-                win,
-                monitor_id,
-                is_hidden,
-                ..Client::default()
-            });
-            wm.core
-                .model
-                .monitor_mut(monitor_id)
-                .unwrap()
-                .clients
-                .push(win);
-        }
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .set_selected(Some(focused));
-
-        handle_set_minimized(&mut wm, minimized, false);
-
-        assert!(!wm.core.model.client(minimized).unwrap().is_hidden);
-        assert_eq!(wm.core.model.selected_win(), Some(focused));
-    }
-
-    #[test]
-    fn initial_fullscreen_intent_is_applied_after_window_creation() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(72);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            ..Client::default()
-        });
-
-        wm.core.model.apply_initial_presentation_intent(
-            win,
-            crate::client::mode::InitialPresentationIntent {
-                fullscreen: true,
-                maximized: false,
-            },
-        );
-
-        assert!(
-            wm.core
-                .model
-                .client(win)
-                .unwrap()
-                .mode()
-                .is_true_fullscreen()
-        );
-    }
-
-    #[test]
-    fn initial_maximize_becomes_the_fullscreen_restore_mode() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(73);
-        let mut client = Client {
-            win,
-            monitor_id,
-            ..Client::default()
-        };
-        client.set_placement(ClientPlacement::Floating);
-        wm.core.model.insert_client(client);
-
-        wm.core.model.apply_initial_presentation_intent(
-            win,
-            crate::client::mode::InitialPresentationIntent {
-                fullscreen: true,
-                maximized: true,
-            },
-        );
-        let mode = wm.core.model.client(win).unwrap().mode();
-
-        assert!(mode.is_true_fullscreen());
-        assert_eq!(mode.restored(), ClientMode::tiled());
-    }
-
-    #[test]
-    fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(70);
-        let geo = Rect::new(20, 30, 800, 600);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            geo,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-        wm.work.layout.clear();
-        let bar_seq = wm.bar.update_seq();
-
-        let update = || crate::backend::x11::policy::XWaylandPolicyUpdate {
-            hints: None,
-            size_hints: None,
-            is_fullscreen: true,
-            is_maximized: false,
-            is_hidden: false,
-            is_above: true,
-        };
-        handle_update_xwayland_policy(&mut wm, win, update());
-
-        let client = wm.core.model.client(win).unwrap();
-        assert!(client.mode().is_true_fullscreen());
-        assert_eq!(client.placement(), ClientPlacement::Floating);
-        assert_eq!(client.mode().restored(), ClientMode::floating());
-        assert_eq!(client.saved_floating_rect(), Some(geo));
-        assert!(wm.work.layout.is_pending());
-        assert_ne!(wm.bar.update_seq(), bar_seq);
-
-        wm.work.layout.clear();
-        let bar_seq = wm.bar.update_seq();
-        handle_update_xwayland_policy(&mut wm, win, update());
-        assert!(!wm.work.layout.is_pending());
-        assert_eq!(wm.bar.update_seq(), bar_seq);
-    }
-
-    #[test]
-    fn stale_wayland_commit_does_not_override_scratchpad_geometry() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        let win = WindowId(71);
-        let geo = Rect::new(480, 216, 960, 648);
-        let mut client = Client {
-            win,
-            monitor_id,
-            geo,
-            mode: ClientMode::floating(),
-            ..Client::default()
-        };
-        client
-            .promote_to_scratchpad("insmenu", None, 1920, 1080)
-            .unwrap();
-        wm.core.model.insert_client(client);
-
-        apply_committed_window_size(&mut wm, win, 1920, 1080);
-
-        assert_eq!(wm.core.model.client(win).unwrap().geo, geo);
-    }
-}
 
 fn handle_set_minimized(wm: &mut Wm, win: crate::types::WindowId, minimized: bool) {
     let mut ctx = wm.ctx();
@@ -900,4 +728,176 @@ fn handle_set_maximized(
     state.sync_window_presentation(win);
     state.request_space_sync();
     state.request_render();
+}
+#[cfg(test)]
+mod tests {
+    use super::{
+        apply_committed_window_size, handle_set_minimized, handle_update_xwayland_policy,
+        should_update_active_drag,
+    };
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn only_the_last_consecutive_motion_updates_an_active_drag() {
+        assert!(!should_update_active_drag(true, true));
+        assert!(should_update_active_drag(true, false));
+        assert!(should_update_active_drag(false, true));
+        assert!(should_update_active_drag(false, false));
+    }
+
+    #[test]
+    fn unminimizing_reveals_without_activating() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(monitor_id);
+        let focused = WindowId(80);
+        let minimized = WindowId(81);
+
+        for (win, is_hidden) in [(focused, false), (minimized, true)] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                is_hidden,
+                ..Client::default()
+            });
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .clients
+                .push(win);
+        }
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(focused));
+
+        handle_set_minimized(&mut wm, minimized, false);
+
+        assert!(!wm.core.model.client(minimized).unwrap().is_hidden);
+        assert_eq!(wm.core.model.selected_win(), Some(focused));
+    }
+
+    #[test]
+    fn initial_fullscreen_intent_is_applied_after_window_creation() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(72);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        });
+
+        wm.core.model.apply_initial_presentation_intent(
+            win,
+            crate::client::mode::InitialPresentationIntent {
+                fullscreen: true,
+                maximized: false,
+            },
+        );
+
+        assert!(
+            wm.core
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_true_fullscreen()
+        );
+    }
+
+    #[test]
+    fn initial_maximize_becomes_the_fullscreen_restore_mode() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(73);
+        let mut client = Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        };
+        client.set_placement(ClientPlacement::Floating);
+        wm.core.model.insert_client(client);
+
+        wm.core.model.apply_initial_presentation_intent(
+            win,
+            crate::client::mode::InitialPresentationIntent {
+                fullscreen: true,
+                maximized: true,
+            },
+        );
+        let mode = wm.core.model.client(win).unwrap().mode();
+
+        assert!(mode.is_true_fullscreen());
+        assert_eq!(mode.restored(), ClientMode::tiled());
+    }
+
+    #[test]
+    fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(70);
+        let geo = Rect::new(20, 30, 800, 600);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            geo,
+            mode: ClientMode::tiled(),
+            ..Client::default()
+        });
+        wm.work.layout.clear();
+        let bar_seq = wm.bar.update_seq();
+
+        let update = || crate::backend::x11::policy::XWaylandPolicyUpdate {
+            hints: None,
+            size_hints: None,
+            is_fullscreen: true,
+            is_maximized: false,
+            is_hidden: false,
+            is_above: true,
+        };
+        handle_update_xwayland_policy(&mut wm, win, update());
+
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.mode().is_true_fullscreen());
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+        assert_eq!(client.mode().restored(), ClientMode::floating());
+        assert_eq!(client.saved_floating_rect(), Some(geo));
+        assert!(wm.work.layout.is_pending());
+        assert_ne!(wm.bar.update_seq(), bar_seq);
+
+        wm.work.layout.clear();
+        let bar_seq = wm.bar.update_seq();
+        handle_update_xwayland_policy(&mut wm, win, update());
+        assert!(!wm.work.layout.is_pending());
+        assert_eq!(wm.bar.update_seq(), bar_seq);
+    }
+
+    #[test]
+    fn stale_wayland_commit_does_not_override_scratchpad_geometry() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(71);
+        let geo = Rect::new(480, 216, 960, 648);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo,
+            mode: ClientMode::floating(),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("insmenu", None, 1920, 1080)
+            .unwrap();
+        wm.core.model.insert_client(client);
+
+        apply_committed_window_size(&mut wm, win, 1920, 1080);
+
+        assert_eq!(wm.core.model.client(win).unwrap().geo, geo);
+    }
 }

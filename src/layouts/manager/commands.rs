@@ -209,13 +209,11 @@ pub fn swap_bar_titles(
         return changed;
     }
 
-    let changed = ctx
-        .core_mut()
+    ctx.core_mut()
         .model_mut()
         .monitor_mut(monitor_id)
         .expect("validated monitor must remain present")
-        .swap_clients_in_stack(first, second);
-    changed
+        .swap_clients_in_stack(first, second)
 }
 
 pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
