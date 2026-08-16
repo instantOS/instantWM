@@ -14,7 +14,7 @@ pub(crate) struct PointerPlacementPreviewCache {
     tags: TagMask,
     edge_fraction: f64,
     placement: LayoutPlacement,
-    resolver: crate::layouts::tree::PointerPlacementCache,
+    session: crate::layouts::tree::TreePlacementSession,
 }
 
 impl PointerPlacementPreviewCache {
@@ -304,28 +304,35 @@ pub(super) fn selected_tiling_constraints(
     Some((placement, minimums))
 }
 
+fn selected_tree_placement_session(
+    ctx: &WmCtx<'_>,
+    source: WindowId,
+) -> Option<(LayoutPlacement, crate::layouts::tree::TreePlacementSession)> {
+    let (placement, minimums) = selected_tiling_constraints(ctx)?;
+    let tree = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .per_tag()?
+        .layout_tree
+        .clone();
+    let session = crate::layouts::tree::TreePlacementSession::new(
+        tree,
+        source,
+        placement.work_rect(),
+        ctx.core().config().layout.pointer_edge_fraction,
+        minimums,
+    );
+    Some((placement, session))
+}
+
 pub(crate) fn tree_placement_targets(
     ctx: &WmCtx<'_>,
     source: WindowId,
 ) -> Vec<crate::layouts::tree::PlacementTarget> {
-    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
-        return Vec::new();
-    };
-    let Some(tree) = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .per_tag()
-        .map(|state| &state.layout_tree)
-    else {
-        return Vec::new();
-    };
-    tree.soft_constrained_placement_targets(
-        source,
-        placement.work_rect(),
-        ctx.core().config().layout.pointer_edge_fraction,
-        &minimums,
-    )
+    selected_tree_placement_session(ctx, source)
+        .map(|(_, session)| session.targets())
+        .unwrap_or_default()
 }
 
 pub(crate) fn preview_tree_target(
@@ -333,23 +340,9 @@ pub(crate) fn preview_tree_target(
     source: WindowId,
     target: crate::layouts::tree::PlacementTarget,
 ) -> Option<(LayoutPlacement, Rect)> {
-    let (placement, minimums) = selected_tiling_constraints(ctx)?;
-    let mut candidate = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .per_tag()?
-        .layout_tree
-        .clone();
-    if !candidate.apply_placement_target(source, target) {
-        return None;
-    }
-    let slot = candidate
-        .soft_constrained_bounds(placement.work_rect(), &minimums)
-        .0
-        .get(&source)
-        .copied()?;
-    Some((placement, slot))
+    let (placement, session) = selected_tree_placement_session(ctx, source)?;
+    let plan = session.plan_target(target)?;
+    Some((placement, plan.source_slot()))
 }
 
 pub(crate) fn apply_tree_target(
@@ -357,23 +350,17 @@ pub(crate) fn apply_tree_target(
     source: WindowId,
     target: crate::layouts::tree::PlacementTarget,
 ) -> bool {
-    let Some(mut candidate) = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .per_tag()
-        .map(|state| state.layout_tree.clone())
-    else {
+    let Some((_, session)) = selected_tree_placement_session(ctx, source) else {
         return false;
     };
-    if !candidate.apply_placement_target(source, target) {
+    let Some(plan) = session.plan_target(target) else {
         return false;
-    }
+    };
     ctx.core_mut()
         .model_mut()
         .expect_selected_monitor_mut()
         .per_tag_state()
-        .layout_tree = candidate;
+        .layout_tree = plan.into_tree();
     true
 }
 
@@ -390,41 +377,44 @@ pub fn place_tree_at_point(
     {
         return false;
     }
-    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
-        return false;
-    };
+    let monitor = ctx.core().model().expect_selected_monitor();
+    let monitor_id = monitor.id();
+    let tags = monitor.selected_tags();
     let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
-    let Some(tree) = ctx
+    let cache_matches = ctx
         .core()
-        .model()
-        .expect_selected_monitor()
-        .per_tag()
-        .map(|state| state.layout_tree.clone())
-    else {
-        return false;
-    };
-    let layout_rect = placement.work_rect();
-    let mut resolver = crate::layouts::tree::PointerPlacementCache::new(
-        tree.clone(),
-        window,
-        layout_rect,
-        edge_fraction,
-        minimums,
-    );
-    let Some(resolution) = resolver.resolve_at_point(point) else {
-        return false;
-    };
-    let mut candidate = tree;
-    let changed = candidate.apply_placement_target(window, resolution.target);
-    if changed {
+        .state()
+        .pointer_placement_cache
+        .as_ref()
+        .is_some_and(|cache| cache.matches(window, monitor_id, tags, edge_fraction));
+    let cached_plan = if cache_matches {
         ctx.core_mut()
-            .model_mut()
-            .expect_selected_monitor_mut()
-            .per_tag_state()
-            .layout_tree = candidate;
-        finish_layout_change(ctx);
-    }
-    changed
+            .state_mut()
+            .pointer_placement_cache
+            .as_mut()
+            .and_then(|cache| cache.session.plan_point(point))
+    } else {
+        None
+    };
+    let plan = match cached_plan {
+        Some(plan) => plan,
+        None => {
+            let Some((_, mut session)) = selected_tree_placement_session(ctx, window) else {
+                return false;
+            };
+            let Some(plan) = session.plan_point(point) else {
+                return false;
+            };
+            plan
+        }
+    };
+    ctx.core_mut()
+        .model_mut()
+        .expect_selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree = plan.into_tree();
+    finish_layout_change(ctx);
+    true
 }
 
 /// Compute the exact final outer rectangle for a tiled pointer drop without
@@ -460,7 +450,7 @@ pub fn preview_tree_at_point(
                 .state_mut()
                 .pointer_placement_cache
                 .as_mut()?;
-            (cache.placement, cache.resolver.preview_at_point(point)?)
+            (cache.placement, cache.session.preview_point(point)?)
         };
         return crate::layouts::keyboard_placement::tree_slot_outer_rect(
             ctx, window, placement, slot,
@@ -483,22 +473,21 @@ pub fn preview_tree_at_point(
         ctx.core().derived().bar_height,
     );
     let tree = monitor.per_tag()?.layout_tree.clone();
-    let layout_rect = placement.work_rect();
-    let mut resolver = crate::layouts::tree::PointerPlacementCache::new(
+    let mut session = crate::layouts::tree::TreePlacementSession::new(
         tree,
         window,
-        layout_rect,
+        placement.work_rect(),
         edge_fraction,
         minimums,
     );
-    let slot = resolver.preview_at_point(point);
+    let slot = session.preview_point(point);
     ctx.core_mut().state_mut().pointer_placement_cache = Some(PointerPlacementPreviewCache {
         source: window,
         monitor_id,
         tags,
         edge_fraction,
         placement,
-        resolver,
+        session,
     });
     let slot = slot?;
     crate::layouts::keyboard_placement::tree_slot_outer_rect(ctx, window, placement, slot)

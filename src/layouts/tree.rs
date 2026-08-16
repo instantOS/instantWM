@@ -22,7 +22,7 @@ mod geometry;
 mod insertion;
 mod placement;
 mod placement_ops;
-mod pointer_cache;
+mod placement_session;
 mod presets;
 mod resize_commands;
 mod resize_ops;
@@ -271,13 +271,33 @@ struct ResolvedPlacementTarget {
     candidate: LayoutTree,
 }
 
-/// One viable, normalized pointer outcome. Keeping its original semantic
-/// target beside the constrained preview slot makes hover and release use the
-/// same structural candidate.
+/// A fully materialized placement outcome. Preview reads `source_slot`; apply
+/// commits `candidate`, so both operations necessarily describe the same tree.
+#[derive(Debug, Clone)]
+pub(crate) struct PlacementPlan {
+    target: PlacementTarget,
+    candidate: LayoutTree,
+    source_slot: Rect,
+}
+
+impl PlacementPlan {
+    pub(crate) fn target(&self) -> PlacementTarget {
+        self.target
+    }
+
+    pub(crate) fn source_slot(&self) -> Rect {
+        self.source_slot
+    }
+
+    pub(crate) fn into_tree(self) -> LayoutTree {
+        self.candidate
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PointerPlacementResolution {
-    pub(crate) target: PlacementTarget,
-    pub(crate) slot: Rect,
+struct PlacementResolution {
+    target: PlacementTarget,
+    source_slot: Rect,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -485,23 +505,21 @@ pub struct LayoutTree {
     untouched_force_windows: Vec<WindowId>,
 }
 
-/// Lazily memoized pointer-placement previews for one stable layout snapshot.
+/// Canonical placement engine for one stable layout snapshot.
 ///
-/// Pointer motion still resolves the exact target and trigger band on every
-/// sample, but each target edge's structural candidates and constrained slots
-/// are materialized at most once for the lifetime of this cache. Invalid
-/// candidates and weight-only variants of the same canonical topology are
-/// removed before the surviving outcomes divide the edge trigger zone.
+/// Keyboard selection and pointer hit-testing both produce `PlacementPlan`s.
+/// Edge candidates are materialized lazily because pointer motion repeatedly
+/// queries the same target while dragging.
 #[derive(Debug, Clone)]
-pub(crate) struct PointerPlacementCache {
+pub(crate) struct TreePlacementSession {
     tree: LayoutTree,
     source: WindowId,
     layout_rect: Rect,
     edge_fraction: f64,
     minimums: HashMap<WindowId, Size>,
-    bounds: HashMap<WindowId, Rect>,
-    center_slots: HashMap<WindowId, Option<PointerPlacementResolution>>,
-    edge_slots: HashMap<(WindowId, Side), Vec<PointerPlacementResolution>>,
+    bounds: Option<HashMap<WindowId, Rect>>,
+    center_resolutions: HashMap<WindowId, Option<PlacementResolution>>,
+    edge_resolutions: HashMap<(WindowId, Side), Vec<PlacementResolution>>,
 }
 
 impl Default for LayoutTree {

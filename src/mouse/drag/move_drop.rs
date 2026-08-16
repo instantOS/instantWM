@@ -316,17 +316,16 @@ pub fn complete_move_drop(
     pointer_override: Option<Point>,
     modifiers: u32,
 ) {
-    // Hide the speculative frame before applying the authoritative drop. This
-    // also covers release outside every valid tree target.
-    ctx.update_layout_preview(None);
     let pointer = pointer_override.or_else(|| ctx.pointer_backend().pointer_location());
     let edge =
         edge_hint.or_else(|| pointer.and_then(|root| check_edge_snap(ctx.core().model(), root)));
     let handled_edge = pointer
         .map(|root| apply_edge_drop(ctx, win, edge, root))
         .unwrap_or(false);
-    if !handled_edge {
-        let handled_tree = pointer.is_some_and(|root| {
+    let handled_tree = if handled_edge {
+        false
+    } else {
+        pointer.is_some_and(|root| {
             !point_is_on_bar(ctx.core().model(), root)
                 && ctx
                     .core()
@@ -334,10 +333,15 @@ pub fn complete_move_drop(
                     .client(win)
                     .is_some_and(|client| client.mode().is_normal_tiling())
                 && crate::layouts::place_tree_at_point(ctx, win, root)
-        });
-        if handled_tree {
-            return;
-        }
+        })
+    };
+    // Clear the speculative frame after tree placement has had a chance to
+    // commit its already-materialized preview plan.
+    ctx.update_layout_preview(None);
+    if handled_tree {
+        return;
+    }
+    if !handled_edge {
         handle_bar_drop(ctx, win, grab_start_rect, pointer, modifiers);
         handle_client_monitor_switch(ctx, win);
     }

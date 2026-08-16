@@ -88,18 +88,6 @@ impl LayoutTree {
         true
     }
 
-    fn edge_candidates(
-        &self,
-        source: WindowId,
-        target: WindowId,
-        side: Side,
-    ) -> Vec<EdgeCandidate> {
-        self.resolved_edge_candidates(source, target, side)
-            .into_iter()
-            .map(|(candidate, _)| candidate)
-            .collect()
-    }
-
     pub(super) fn resolved_edge_candidates(
         &self,
         source: WindowId,
@@ -283,97 +271,12 @@ impl LayoutTree {
             .collect()
     }
 
-    /// Enumerate structurally distinct placement results. Raw hit regions can
-    /// describe one canonical topology in several ways (for example, either
-    /// side of a shared seam); only the first deterministic representative is
-    /// exposed.
-    pub fn placement_targets(
-        &self,
-        source: WindowId,
-        layout_rect: Rect,
-        edge_fraction: f64,
-    ) -> Vec<PlacementTarget> {
-        self.normalized_placement_candidates(source, layout_rect, edge_fraction)
-            .into_iter()
-            .map(|(target, _)| target)
-            .collect()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn constrained_placement_targets(
-        &self,
-        source: WindowId,
-        layout_rect: Rect,
-        edge_fraction: f64,
-        minimums: &HashMap<WindowId, Size>,
-    ) -> Vec<PlacementTarget> {
-        Self::normalized_constrained_candidates(
-            source,
-            layout_rect,
-            minimums,
-            self.raw_resolved_placement_targets(source, layout_rect, edge_fraction),
-        )
-        .into_iter()
-        .map(|resolution| resolution.target)
-        .collect()
-    }
-
-    pub(crate) fn soft_constrained_placement_targets(
-        &self,
-        source: WindowId,
-        layout_rect: Rect,
-        edge_fraction: f64,
-        minimums: &HashMap<WindowId, Size>,
-    ) -> Vec<PlacementTarget> {
-        Self::normalized_soft_constrained_candidates(
-            source,
-            layout_rect,
-            minimums,
-            self.raw_resolved_placement_targets(source, layout_rect, edge_fraction),
-        )
-        .into_iter()
-        .map(|resolution| resolution.target)
-        .collect()
-    }
-
-    #[cfg(test)]
-    pub(super) fn normalized_constrained_candidates(
-        source: WindowId,
-        layout_rect: Rect,
-        minimums: &HashMap<WindowId, Size>,
-        candidates: impl IntoIterator<Item = ResolvedPlacementTarget>,
-    ) -> Vec<PointerPlacementResolution> {
-        // Viability must be established first. Otherwise an infeasible early
-        // representative can suppress an equivalent candidate that actually
-        // satisfies minimum sizes.
-        let viable = candidates
-            .into_iter()
-            .filter_map(|resolved| {
-                let Some(slot) = resolved
-                    .candidate
-                    .constrained_bounds(layout_rect, minimums)
-                    .and_then(|bounds| bounds.get(&source).copied())
-                else {
-                    return None;
-                };
-                Some((resolved, slot))
-            })
-            .collect();
-        topology_representatives(viable)
-            .into_iter()
-            .map(|(resolved, slot)| PointerPlacementResolution {
-                target: resolved.target,
-                slot,
-            })
-            .collect()
-    }
-
     pub(super) fn normalized_soft_constrained_candidates(
         source: WindowId,
         layout_rect: Rect,
         minimums: &HashMap<WindowId, Size>,
         candidates: impl IntoIterator<Item = ResolvedPlacementTarget>,
-    ) -> Vec<PointerPlacementResolution> {
+    ) -> Vec<PlacementPlan> {
         let resolved = candidates
             .into_iter()
             .filter_map(|candidate| {
@@ -388,28 +291,12 @@ impl LayoutTree {
             .collect();
         topology_representatives(resolved)
             .into_iter()
-            .map(|(resolved, slot)| PointerPlacementResolution {
+            .map(|(resolved, source_slot)| PlacementPlan {
                 target: resolved.target,
-                slot,
+                candidate: resolved.candidate,
+                source_slot,
             })
             .collect()
-    }
-
-    fn normalized_placement_candidates(
-        &self,
-        source: WindowId,
-        layout_rect: Rect,
-        edge_fraction: f64,
-    ) -> Vec<(PlacementTarget, LayoutTree)> {
-        topology_representatives(
-            self.raw_resolved_placement_targets(source, layout_rect, edge_fraction)
-                .into_iter()
-                .map(|resolved| (resolved, ()))
-                .collect(),
-        )
-        .into_iter()
-        .map(|(resolved, ())| (resolved.target, resolved.candidate))
-        .collect()
     }
 
     pub(super) fn raw_resolved_placement_targets(
@@ -482,53 +369,6 @@ impl LayoutTree {
             }
         }
         output
-    }
-
-    pub fn apply_placement_target(&mut self, source: WindowId, target: PlacementTarget) -> bool {
-        let Some(side) = target.side else {
-            return self.swap_windows(source, target.target);
-        };
-        let candidates = self.edge_candidates(source, target.target, side);
-        if candidates.is_empty() {
-            return self.move_beside(source, target.target, side);
-        }
-        let Some(candidate) = candidates.get(target.candidate_index) else {
-            return false;
-        };
-        self.move_to_scope(source, target.target, side, candidate.scope.clone())
-    }
-
-    /// Return the source slot produced by a semantic target without mutating
-    /// the authoritative tree.
-    pub fn preview_placement_target(
-        &self,
-        source: WindowId,
-        target: PlacementTarget,
-        layout_rect: Rect,
-    ) -> Option<Rect> {
-        let mut preview = self.clone();
-        preview
-            .apply_placement_target(source, target)
-            .then(|| preview.bounds(layout_rect).get(&source).copied())
-            .flatten()
-    }
-
-    /// Return the source slot produced by dropping at `point`, without
-    /// mutating the authoritative tree. This deliberately calls
-    /// [`Self::place_at_point`] on a clone so pointer previews and releases
-    /// cannot drift into subtly different target-resolution rules.
-    pub fn preview_placement_at_point(
-        &self,
-        source: WindowId,
-        point: Point,
-        layout_rect: Rect,
-        edge_fraction: f64,
-    ) -> Option<Rect> {
-        let mut preview = self.clone();
-        preview
-            .place_at_point(source, point, layout_rect, edge_fraction)
-            .then(|| preview.bounds(layout_rect).get(&source).copied())
-            .flatten()
     }
 
     fn move_to_scope(
@@ -616,29 +456,6 @@ impl LayoutTree {
         self.root = Some(rebuilt);
         self.invalidate_force_provenance();
         true
-    }
-
-    /// Resolve a pointer drop into a semantic local edge placement. The centre
-    /// swaps slots; edge bands choose the corresponding side. This backend-free
-    /// operation is shared by the X11 and Wayland drag completion paths.
-    pub fn place_at_point(
-        &mut self,
-        source: WindowId,
-        point: Point,
-        layout_rect: Rect,
-        edge_fraction: f64,
-    ) -> bool {
-        let mut resolver = PointerPlacementCache::new(
-            self.clone(),
-            source,
-            layout_rect,
-            edge_fraction,
-            HashMap::new(),
-        );
-        let Some(resolution) = resolver.resolve_at_point(point) else {
-            return false;
-        };
-        self.apply_placement_target(source, resolution.target)
     }
 
     pub fn swap_windows(&mut self, first: WindowId, second: WindowId) -> bool {
