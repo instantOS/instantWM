@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/instantOS/instantWM/compare/v0.1.20...v0.1.21) - 2026-08-17
+
+### Other
+
+- remove redundant commands
+- Merge branch 'dev'
+- replace specialnext with tmp rules
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix pending rule bugs
+- fmt
+- init reordering drag feature
+- refactor interaction
+- fix window size flickering
+- bump
+- fix reorder flicker
+- refactor animations
+- dedupe ipc action system
+- clean up monitor access patterns
+- fix stale docs
+- refactor wayland backend file structure
+- remove old env var mess
+- refactor config
+- extract pure logic
+- fix error msg
+- refactor tree API thingy
+- refactor layout slots
+- remove redundant layouts
+- remove redundant tests
+- better layout IPC
+- make clippy happy
+- add keybind listing IPC
+- docs
+- add keyhelp binding
+
 ## [0.1.20](https://github.com/instantOS/instantWM/compare/v0.1.19...v0.1.20) - 2026-08-09
 
 ### Fixed
