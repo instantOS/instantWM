@@ -206,8 +206,10 @@ fn current_tag_index_is_derived_from_selected_tags() {
 
 #[test]
 fn all_tags_view_is_derived_from_selected_mask() {
-    let mut monitor = Monitor::default();
-    monitor.tags = vec![TagNames::default(); 3];
+    let mut monitor = Monitor {
+        tags: vec![TagNames::default(); 3],
+        ..Monitor::default()
+    };
 
     monitor.set_selected_tags(TagMask::all(3));
     assert!(monitor.is_all_tags_view());

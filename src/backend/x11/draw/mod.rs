@@ -9,7 +9,7 @@
 //! | [`color`]  | [`Color`] (color) and [`Cursor`] (cursor)              |
 //! | [`font`]   | [`Fnt`] font / fontset linked-list                     |
 //! |            |                                                       |
-//! | [`draw`]   | [`DrawContext`] drawing context — the main public type         |
+//! | [`context`] | [`DrawContext`] drawing context — the main public type        |
 //!
 //! # Typical usage
 //!
@@ -36,7 +36,7 @@
 pub(crate) mod ffi;
 
 mod color;
-mod draw;
+mod context;
 mod font;
 
 // ── Public re-exports ─────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ mod font;
 pub use color::{Color, Cursor};
 
 // The main drawing context.
-pub use draw::DrawContext;
+pub use context::DrawContext;
 
 // Raw FFI symbols used externally.
 pub use ffi::XFlush;

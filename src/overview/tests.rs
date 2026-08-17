@@ -229,8 +229,10 @@ fn selecting_another_overview_card_records_the_origin_tag() {
 fn overview_order_groups_windows_by_their_first_tag_stably() {
     let tag1 = TagMask::single(1).unwrap();
     let tag2 = TagMask::single(2).unwrap();
-    let mut monitor = Monitor::default();
-    monitor.clients = vec![WindowId(3), WindowId(1), WindowId(2)];
+    let monitor = Monitor {
+        clients: vec![WindowId(3), WindowId(1), WindowId(2)],
+        ..Monitor::default()
+    };
     let clients = HashMap::from([
         (
             WindowId(1),

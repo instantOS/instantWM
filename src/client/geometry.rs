@@ -489,9 +489,11 @@ mod tests {
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         globals.model.monitors.push(monitor);
 
-        let mut client = Client::default();
-        client.win = WindowId::from(1_u32);
-        client.monitor_id = MonitorId::default();
+        let mut client = Client {
+            win: WindowId::from(1_u32),
+            monitor_id: MonitorId::default(),
+            ..Client::default()
+        };
         client.set_tag_mask(TagMask::single(1).unwrap());
         client.set_placement(crate::types::ClientPlacement::Floating);
         client.border_width = border_width;
@@ -733,10 +735,12 @@ mod tests {
             2,
             Rect::new(0, 32, 1920, 1048),
         );
-        let mut parent = Client::default();
-        parent.win = WindowId::from(2_u32);
-        parent.monitor_id = MonitorId::default();
-        parent.geo = Rect::new(500, 300, 800, 600);
+        let parent = Client {
+            win: WindowId::from(2_u32),
+            monitor_id: MonitorId::default(),
+            geo: Rect::new(500, 300, 800, 600),
+            ..Client::default()
+        };
         globals.model.insert_client(parent);
 
         let rect = resolve_floating_placement(

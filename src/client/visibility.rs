@@ -239,8 +239,10 @@ mod tests {
 
     /// Build a single monitor with given selected tags and client list.
     fn make_monitor(id: usize, selected: TagMask, client_wins: Vec<WindowId>) -> Monitor {
-        let mut mon = Monitor::default();
-        mon.monitor_id = MonitorId::from_raw(id as u64);
+        let mut mon = Monitor {
+            monitor_id: MonitorId::from_raw(id as u64),
+            ..Monitor::default()
+        };
         mon.set_selected_tags(selected);
         mon.clients = client_wins;
         mon

@@ -301,8 +301,10 @@ mod view_selection_tests {
     fn make_globals_with_one_monitor(selected: TagMask) -> CoreState {
         let mut state = CoreState::default();
         let mut mmgr = MonitorManager::new();
-        let mut mon = Monitor::default();
-        mon.monitor_id = MonitorId::from_raw(0);
+        let mut mon = Monitor {
+            monitor_id: MonitorId::from_raw(0),
+            ..Monitor::default()
+        };
         mon.set_selected_tags(selected);
         mmgr.push(mon);
         mmgr.set_selected(MonitorId::from_raw(0));

@@ -67,12 +67,13 @@ impl XCursor {
 }
 
 type XCursorCache = HashMap<(CursorIcon, i32), Option<Rc<XCursor>>>;
+type CursorFrameCache = HashMap<(CursorIcon, i32), Rc<Vec<CursorFrame>>>;
 
 pub struct CursorManager {
     theme: CursorTheme,
     size: u8,
     named_cursor_cache: RefCell<XCursorCache>,
-    frame_cache: RefCell<HashMap<(CursorIcon, i32), Rc<Vec<CursorFrame>>>>,
+    frame_cache: RefCell<CursorFrameCache>,
 }
 
 impl CursorManager {
