@@ -34,7 +34,7 @@ pub fn get_buttons() -> Vec<Button> {
     vec![
         btn!(LayoutSymbol, 0, button:MouseButton::Left => ButtonAction::named(NamedAction::CycleLayoutPrev)),
         btn!(LayoutSymbol, 0, button:MouseButton::Right => ButtonAction::named(NamedAction::CycleLayoutNext)),
-        btn!(LayoutSymbol, 0, button:MouseButton::Middle => ButtonAction::named_args(NamedAction::SetLayout, &["tile"])),
+        btn!(LayoutSymbol, 0, button:MouseButton::Middle => ButtonAction::named(NamedAction::ResetLayout)),
         btn!(LayoutSymbol, MODKEY, button:MouseButton::Left => ButtonAction::named(NamedAction::EdgeScratchpadCreate)),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => ButtonAction::WindowTitleMouseHandler),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Middle => ButtonAction::CloseClickedTitleWindow),

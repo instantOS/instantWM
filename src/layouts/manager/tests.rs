@@ -6,8 +6,8 @@ use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
 use crate::types::{
-    Client, ClientMode, ClientPlacement, Monitor, Point, Rect, ResizeDirection, Size, TagMask,
-    WindowId,
+    Client, ClientMode, ClientPlacement, InteractionSource, Monitor, MouseButton, Point, Rect,
+    ResizeDirection, Size, TagMask, WindowId,
 };
 use std::collections::HashMap;
 
@@ -226,6 +226,57 @@ fn master_count_is_bounded_by_the_current_tiled_window_count() {
     assert_eq!(shifted_master_count(3, 1, 4), 4);
     assert_eq!(shifted_master_count(4, 1, 4), 4);
     assert_eq!(shifted_master_count(8, -1, 3), 2);
+}
+
+#[test]
+fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let monitor_id = add_tiled_monitor(&mut wm, first, Rect::new(0, 0, 800, 600));
+    let tags = TagMask::single(1).unwrap();
+    assert!(wm.core.model.insert_client(Client {
+        win: second,
+        monitor_id,
+        tags,
+        mode: ClientMode::tiled(),
+        ..Client::default()
+    }));
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.clients.push(second);
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::MasterStack, &[first, second], 1);
+    let origin = monitor.per_tag().unwrap().layout_tree.clone();
+
+    wm.core
+        .drag
+        .begin_tree_resize(crate::core_state::TreeResizeParams {
+            win: first,
+            button: MouseButton::Right,
+            source: InteractionSource::Pointer,
+            direction: ResizeDirection::Right,
+            start: Point::new(400, 300),
+            geometry: Rect::new(0, 0, 400, 600),
+            origin,
+        })
+        .unwrap();
+
+    super::inc_master_count_by(&mut wm.ctx(), 1);
+
+    assert_eq!(
+        wm.core
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .per_tag()
+            .unwrap()
+            .master_count,
+        1
+    );
 }
 
 fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
@@ -984,4 +1035,412 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
         monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
+}
+
+// ── Layout slot semantics ─────────────────────────────────────────────────────
+
+use crate::layouts::LayoutCommand;
+
+fn slotted_wm(windows: &[WindowId]) -> (crate::wm::Wm, crate::types::MonitorId) {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let tags = TagMask::single(1).unwrap();
+    let monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(0, 0, 1200, 800),
+        available_rect: Rect::new(0, 0, 1200, 800),
+        show_bar: false,
+        ..Monitor::default()
+    });
+    for &win in windows {
+        assert!(wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::tiled(),
+            ..Client::default()
+        }));
+    }
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.set_selected_tags(tags);
+    monitor.clients = windows.to_vec();
+    monitor.selected = windows.first().copied();
+    (wm, monitor_id)
+}
+
+fn slot_tree_bounds(
+    wm: &crate::wm::Wm,
+    monitor_id: crate::types::MonitorId,
+) -> HashMap<WindowId, Rect> {
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    monitor
+        .per_tag()
+        .unwrap()
+        .layout_tree
+        .bounds(monitor.available_rect)
+}
+
+fn slot_presentation(wm: &crate::wm::Wm, monitor_id: crate::types::MonitorId) -> PresentationMode {
+    wm.core.model.monitor(monitor_id).unwrap().current_layout()
+}
+
+#[test]
+fn switching_layouts_back_and_forth_restores_manual_edits() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right)
+    );
+    let adjusted = slot_tree_bounds(&wm, monitor_id);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Tile);
+    assert_ne!(slot_tree_bounds(&wm, monitor_id), adjusted);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), adjusted);
+}
+
+#[test]
+fn reactivating_the_visible_layout_resets_manual_edits() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    let stock = slot_tree_bounds(&wm, monitor_id);
+
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right)
+    );
+    assert_ne!(slot_tree_bounds(&wm, monitor_id), stock);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), stock);
+}
+
+#[test]
+fn first_activation_applies_the_rule_to_the_current_tree() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    // A manual arrangement with a non-stack leaf order.
+    {
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        let state = monitor.per_tag_state();
+        state
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &windows, 1);
+        assert!(state.layout_tree.swap_windows(WindowId(2), WindowId(3)));
+    }
+    let manual_order = wm
+        .core
+        .model
+        .monitor(monitor_id)
+        .unwrap()
+        .per_tag()
+        .unwrap()
+        .layout_tree
+        .leaves();
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let state = monitor.per_tag().unwrap();
+    assert_eq!(state.layout_tree.leaves(), manual_order);
+    assert_eq!(state.active_preset, Preset::Grid);
+    // Grid geometry, not master/stack: the first column is capped at two rows.
+    let bounds = state.layout_tree.bounds(monitor.available_rect);
+    assert_eq!(bounds[&WindowId(1)].h, 400);
+    assert_eq!(bounds[&WindowId(1)].w, bounds[&WindowId(2)].w);
+}
+
+#[test]
+fn layout_key_lifts_a_lens_without_resetting_the_slot() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right)
+    );
+    let adjusted = slot_tree_bounds(&wm, monitor_id);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Maximized);
+    assert_eq!(
+        slot_presentation(&wm, monitor_id),
+        PresentationMode::Maximized
+    );
+
+    // Pressing the hidden layout's key reveals the remembered tree untouched.
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), adjusted);
+
+    // Only the next press, with the layout visible tiled, resets it.
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert_ne!(slot_tree_bounds(&wm, monitor_id), adjusted);
+}
+
+#[test]
+fn never_activated_default_tree_seeds_instead_of_being_remembered() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    // The organically grown default tree is not a remembered tile slot.
+    wm.core
+        .model
+        .monitor_mut(monitor_id)
+        .unwrap()
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::MasterStack, &windows, 1);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    {
+        let state = wm
+            .core
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .per_tag()
+            .unwrap();
+        assert_eq!(state.active_preset, Preset::Grid);
+        assert!(state.stored_trees.is_empty());
+    }
+
+    // Tile's first activation seeds from the grid tree and applies its rule.
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Tile);
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let state = monitor.per_tag().unwrap();
+    assert_eq!(state.active_preset, Preset::MasterStack);
+    assert!(state.stored_trees.contains_key(&Preset::Grid));
+    let bounds = state.layout_tree.bounds(monitor.available_rect);
+    assert_eq!(bounds[&WindowId(1)].h, 800);
+}
+
+#[test]
+fn restored_slot_reconciles_windows_opened_and_closed_while_inactive() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Tile);
+
+    // Close one window and open another while the grid slot is inactive.
+    let tags = TagMask::single(1).unwrap();
+    {
+        let mut ctx = wm.ctx();
+        assert!(
+            ctx.core_mut()
+                .model_mut()
+                .remove_client(WindowId(4))
+                .is_some()
+        );
+        assert!(ctx.core_mut().model_mut().insert_client(Client {
+            win: WindowId(5),
+            monitor_id,
+            tags,
+            mode: ClientMode::tiled(),
+            ..Client::default()
+        }));
+    }
+    {
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.clients.retain(|&win| win != WindowId(4));
+        monitor.clients.push(WindowId(5));
+    }
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+
+    let leaves = wm
+        .core
+        .model
+        .monitor(monitor_id)
+        .unwrap()
+        .per_tag()
+        .unwrap()
+        .layout_tree
+        .leaves();
+    // Membership must match the visible set exactly; where the insertion
+    // policy places the newcomer is its own decision, not the slot's.
+    let mut membership = leaves.clone();
+    membership.sort_by_key(|win| win.0);
+    assert_eq!(
+        membership,
+        vec![WindowId(1), WindowId(2), WindowId(3), WindowId(5)]
+    );
+}
+
+#[test]
+fn maximized_reorder_edits_the_active_slot() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Maximized);
+    assert_eq!(
+        crate::layouts::reorder_maximized_stack(&mut wm.ctx(), crate::types::StackDirection::Next),
+        crate::layouts::MaximizedStackReorder::Reordered
+    );
+    let reordered = wm
+        .core
+        .model
+        .monitor(monitor_id)
+        .unwrap()
+        .per_tag()
+        .unwrap()
+        .layout_tree
+        .leaves();
+    assert_eq!(reordered, vec![WindowId(2), WindowId(1), WindowId(3)]);
+
+    // The order edit belongs to the grid slot and survives a slot round trip.
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Tile);
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert_eq!(
+        wm.core
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .per_tag()
+            .unwrap()
+            .layout_tree
+            .leaves(),
+        reordered
+    );
+}
+
+#[test]
+fn cycling_a_full_lap_restores_the_starting_layout_without_resetting_it() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right)
+    );
+    let adjusted = slot_tree_bounds(&wm, monitor_id);
+
+    // One step per cycle entry, lenses included: a complete lap.
+    for _ in 0..LayoutCommand::all().len() {
+        crate::layouts::cycle_layout_direction(&mut wm.ctx(), true);
+    }
+
+    let state = wm
+        .core
+        .model
+        .monitor(monitor_id)
+        .unwrap()
+        .per_tag()
+        .unwrap();
+    assert_eq!(state.active_preset, Preset::Grid);
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), adjusted);
+}
+
+#[test]
+fn cycling_visits_lenses_and_never_lands_on_the_current_state() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    let active_preset = |wm: &crate::wm::Wm| {
+        wm.core
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .per_tag()
+            .unwrap()
+            .active_preset
+    };
+
+    // Tile → Grid: a plain slot switch.
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), true);
+    assert_eq!(active_preset(&wm), Preset::Grid);
+    assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+
+    // Grid → Floating → Maximized: the lenses over the grid slot.
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), true);
+    assert_eq!(
+        slot_presentation(&wm, monitor_id),
+        PresentationMode::Floating
+    );
+    assert_eq!(active_preset(&wm), Preset::Grid);
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), true);
+    assert_eq!(
+        slot_presentation(&wm, monitor_id),
+        PresentationMode::Maximized
+    );
+
+    // Maximized → BottomStack: cycling off a lens lands on the next slot.
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), true);
+    assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+    assert_eq!(active_preset(&wm), Preset::BottomStack);
+
+    // Floating over the grid slot must step to maximized, never re-land on
+    // floating itself: a press that sometimes does nothing feels broken.
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Floating);
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), true);
+    assert_eq!(
+        slot_presentation(&wm, monitor_id),
+        PresentationMode::Maximized
+    );
+
+    // Stepping backward off floating reveals the underlying slot instead.
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), false);
+    assert_eq!(
+        slot_presentation(&wm, monitor_id),
+        PresentationMode::Floating
+    );
+    crate::layouts::cycle_layout_direction(&mut wm.ctx(), false);
+    assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+    assert_eq!(active_preset(&wm), Preset::Grid);
+}
+
+#[test]
+fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Grid);
+    let stock = slot_tree_bounds(&wm, monitor_id);
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right)
+    );
+
+    // Hidden behind a lens, the reset still targets the active slot and
+    // lifts the lens so the stock layout is what the user sees.
+    crate::layouts::set_layout(&mut wm.ctx(), LayoutCommand::Maximized);
+    crate::layouts::reset_active_layout(&mut wm.ctx());
+    assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), stock);
 }

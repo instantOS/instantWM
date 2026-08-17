@@ -139,7 +139,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let layout_symbol = if core.model().is_overview_active_on(mon) {
         "OVR"
     } else {
-        mon.presentation_for_mask(mon.selected_tags()).symbol()
+        mon.layout_symbol_for_mask(mon.selected_tags())
     };
     let bar_layout_symbol_width =
         layout_symbol.len() as i32 * 8 + core.derived().bar_horizontal_padding;

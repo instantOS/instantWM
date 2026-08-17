@@ -12,12 +12,24 @@
 //! | `keyboard_placement` | Keyboard placement-session orchestration |
 //! | [`manager`] | Arrange application, z-order, pointer interaction, and layout commands |
 //!
-//! ## Layout commands and presentation state
+//! ## Layout commands, presentation state, and layout slots
 //!
 //! [`PresentationMode`] is persistent per tag. [`LayoutCommand`] is an
-//! imperative request: it either changes that presentation or rewrites the
-//! manual tree using a preset. Keeping these types separate prevents a
-//! one-shot preset such as grid from becoming bogus persistent state.
+//! imperative request: it either changes that presentation or activates a
+//! layout slot for the tag.
+//!
+//! Every tiling layout owns a remembered tree slot per tag. Activating a
+//! layout for the first time seeds its slot from the current tree and then
+//! applies the preset rule to it. Switching to another layout stashes the
+//! outgoing slot — manual edits included — and switching back restores it.
+//! Activating the layout that is already visible tiled reapplies the preset,
+//! resetting manual edits to stock geometry.
+//!
+//! The preset is never an active algorithm: after activation the tree is the
+//! only authority, so later manual edits survive until the layout is
+//! explicitly reactivated. [`LayoutCommand::Floating`] and
+//! [`LayoutCommand::Maximized`] own no slots; they are lens presentations
+//! over the active slot's tree and never modify it.
 //!
 //! ```text
 //! Tile      "+"    master/stack tiling
@@ -108,9 +120,12 @@ pub struct ArrangePlan {
 
 /// Layout command accepted by configuration and IPC.
 ///
-/// `Floating` and `Maximized` are persistent presentation modes. Every other
-/// variant is a one-shot command which rewrites the manual tree; it is not an
-/// active algorithm that will overwrite later edits during arrange.
+/// `Floating` and `Maximized` are persistent lens presentations. Every other
+/// variant activates a tiling layout slot: the first activation applies the
+/// preset to a copy of the current tree, re-activation of the visible layout
+/// reapplies it (resetting manual edits), and switching back to a remembered
+/// slot restores its tree untouched. No variant is an active algorithm that
+/// will overwrite later edits during arrange.
 #[derive(
     Debug,
     Clone,
@@ -199,13 +214,13 @@ impl LayoutCommand {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::Tile => "Rewrite the manual tree as a master/stack",
-            Self::Grid => "Rewrite the manual tree as an even grid",
+            Self::Tile => "Activate master/stack tiling (press again to reset)",
+            Self::Grid => "Activate grid tiling (press again to reset)",
             Self::Floating => "Windows can be freely moved and resized",
             Self::Maximized => "Stack tiled windows at full work-area size",
-            Self::BottomStack => "Rewrite the tree with the master group on top",
-            Self::HorizGrid => "Rewrite the tree as a rows-first grid",
-            Self::BStackHoriz => "Rewrite the tree as a horizontal bottom stack",
+            Self::BottomStack => "Activate bottom-stack tiling (press again to reset)",
+            Self::HorizGrid => "Activate rows-first grid tiling (press again to reset)",
+            Self::BStackHoriz => "Activate horizontal bottom-stack tiling (press again to reset)",
         }
     }
 
@@ -232,6 +247,10 @@ impl LayoutCommand {
 
     /// Canonical commands shown by the CLI and visited by layout cycling.
     ///
+    /// Cycling derives its position from the full presentation state (a lens
+    /// entry while lensed, the active slot otherwise), so every step moves to
+    /// an adjacent, visibly different state and a complete lap restores each
+    /// remembered tree instead of reactivating — and thereby resetting — it.
     pub fn all() -> &'static [LayoutCommand] {
         &[
             Self::Tile,
@@ -271,8 +290,8 @@ pub use keyboard_placement::{
 pub use manager::{
     MaximizedStackReorder, apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor,
     inc_master_count_by, place_tree_at_point, preview_tree_at_point, promote_tree,
-    reorder_maximized_stack, resize_tree, resize_tree_smart, set_layout, swap_bar_titles,
-    swap_tree_neighbor, sync_monitor_z_order, toggle_floating_presentation,
+    reorder_maximized_stack, reset_active_layout, resize_tree, resize_tree_smart, set_layout,
+    swap_bar_titles, swap_tree_neighbor, sync_monitor_z_order, toggle_floating_presentation,
     toggle_tiling_maximized,
 };
 

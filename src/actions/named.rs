@@ -15,7 +15,7 @@ use crate::layouts::tree::Side;
 use crate::layouts::{
     LayoutCommand, MaximizedStackReorder, begin_tree_placement, center_keyboard_tree_placement,
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
-    focus_tree_neighbor, inc_master_count_by, reorder_maximized_stack,
+    focus_tree_neighbor, inc_master_count_by, reorder_maximized_stack, reset_active_layout,
     resize_keyboard_tree_placement, resize_tree, resize_tree_smart, set_layout,
     step_keyboard_tree_placement, swap_keyboard_tree_placement, swap_tree_neighbor,
     toggle_floating_presentation, toggle_tiling_maximized,
@@ -426,6 +426,7 @@ define_named_actions!(
     SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { validate_mode_name(&ctx.core().config().bindings.modes, &args[0])?; ctx.set_current_mode(args[0].clone()); } },
     Spawn => { name: "spawn", arg_example: Some("COMMAND [ARG ...]"), doc: "spawn a command without shell expansion", run: |ctx, args| { spawn(ctx, args)?; } },
     SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { let Some(layout) = LayoutCommand::from_name(&args[0]) else { return Err(format!("invalid layout '{}'", args[0])); }; set_layout(ctx, layout); } },
+    ResetLayout => { name: "reset_layout", arg_example: None, doc: "reset the active layout to stock geometry", run: |ctx, _args| { reset_active_layout(ctx); } },
     FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { let Some(direction) = StackDirection::from_name(&args[0]) else { return Err(format!("invalid stack direction '{}'", args[0])); }; focus_stack(ctx, direction); } },
     ViewTag => { name: "view_tag", arg_example: Some("NUMBER"), doc: "view a tag by its 1-based number", run: |ctx, args| {
         let number = args[0].parse::<usize>().map_err(|_| format!("invalid tag number '{}'", args[0]))?;

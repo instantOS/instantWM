@@ -453,9 +453,7 @@ pub(crate) fn build_monitor_snapshots(
             layout_symbol: if core.model().is_overview_active_on(mon) {
                 "OVR".to_string()
             } else {
-                mon.presentation_for_mask(selected_tags)
-                    .symbol()
-                    .to_string()
+                mon.layout_symbol_for_mask(selected_tags).to_string()
             },
             tags,
             show_shutdown: mon.selected.is_none(),

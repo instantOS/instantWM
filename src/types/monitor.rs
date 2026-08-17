@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::layouts::LayoutCommand;
 use crate::layouts::PresentationMode;
 use crate::types::MonitorId;
 use crate::types::TagMask;
@@ -77,7 +78,7 @@ pub struct Monitor {
     /// predictably when closed. Tiled focus is derived from this history rather
     /// than maintained as a second cache that can lose its predecessor.
     pub(crate) focus_history: HashMap<TagMask, Vec<WindowId>>,
-    /// Per-tag runtime presentation, tree, preset cursor, and bar state.
+    /// Per-tag runtime presentation, active layout slot, and bar state.
     pub per_tag: HashMap<TagMask, PerTagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
@@ -690,10 +691,36 @@ impl Monitor {
         }
     }
 
+    /// Active layout slot identity for the given tag mask.
+    ///
+    /// Defaults to master/stack: a tag that never received a layout command
+    /// grows its tree organically, which is the tile layout.
+    pub fn active_preset_for_mask(&self, mask: TagMask) -> crate::layouts::tree::Preset {
+        self.per_tag
+            .get(&mask)
+            .map_or(crate::layouts::tree::Preset::MasterStack, |state| {
+                state.active_preset
+            })
+    }
+
+    /// Get the layout symbol shown in the bar for the given tag mask.
+    ///
+    /// Lens presentations show their own symbol; tiled tags show the symbol
+    /// of the active layout slot.
+    pub fn layout_symbol_for_mask(&self, mask: TagMask) -> &'static str {
+        match self.presentation_for_mask(mask) {
+            PresentationMode::Tiled => {
+                LayoutCommand::from_tree_preset(self.active_preset_for_mask(mask))
+                    .unwrap_or(LayoutCommand::Tile)
+                    .symbol()
+            }
+            presentation => presentation.symbol(),
+        }
+    }
+
     /// Get the current layout symbol for this monitor.
     pub fn layout_symbol(&self) -> String {
-        self.presentation_for_mask(self.selected_tags())
-            .symbol()
+        self.layout_symbol_for_mask(self.selected_tags())
             .to_string()
     }
 

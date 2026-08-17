@@ -1,8 +1,27 @@
 use crate::contexts::WmCtx;
 use crate::layouts::{LayoutCommand, PresentationMode};
-use crate::types::{StackDirection, WindowId};
+use crate::types::{Monitor, StackDirection, WindowId};
 
 use super::arrange::arrange;
+
+/// Whether keyboard tree commands may edit the manual tree.
+///
+/// Maximized presentation hides tree geometry behind a uniform stack, so a
+/// resize, swap, or promote there would mutate an invisible layout. Pointer
+/// interaction enforces the same rule via `manual_tree_interaction_allowed`.
+/// Maximized's own order commands (`reorder_maximized_stack`,
+/// maximized `swap_bar_titles`) are exempt on purpose: they are its native
+/// way of editing the underlying tree.
+fn tree_commands_allowed(monitor: &Monitor) -> bool {
+    monitor.current_layout() == PresentationMode::Tiled
+}
+
+fn tree_preset_changes_allowed(ctx: &WmCtx<'_>) -> bool {
+    !ctx.core()
+        .drag_state()
+        .active_interaction()
+        .is_some_and(|drag| matches!(drag.drag_type(), crate::core_state::DragType::TreeResize(_)))
+}
 
 /// Result of trying to reorder the selected maximized-stack entry.
 ///
@@ -30,10 +49,44 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
         return;
     };
 
+    // Pressing the key of the layout hidden behind a lens presentation
+    // (maximized/floating) lifts the lens and shows the remembered tree.
+    // Only a second press, with the layout already visible tiled, resets it.
+    let reveal_only = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .per_tag()
+        .is_some_and(|state| {
+            state.presentation != PresentationMode::Tiled && state.active_preset == preset
+        });
+    if reveal_only {
+        let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+        monitor.per_tag_state().presentation = PresentationMode::Tiled;
+        finish_layout_change(ctx);
+        return;
+    }
+
     apply_tree_preset(ctx, preset);
 }
 
+/// Activate `preset` on the selected monitor's tag.
+///
+/// Layout slots are remembered per tag: switching to a previously activated
+/// layout restores its stored tree (manual edits included), activating a
+/// fresh layout seeds its slot from the current tree and then applies the
+/// imperative preset rule, and activating the already visible layout reapplies
+/// that rule, resetting manual edits to stock geometry.
+///
+/// Ignored while a pointer tree resize is dragging: its motion events replay
+/// an origin snapshot of the tree, so a slot exchange underneath would let
+/// the drag clobber the freshly restored slot. Keyboard placement mode is
+/// inherently safe — unbound keys cancel it before any command runs.
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
+    if !tree_preset_changes_allowed(ctx) {
+        return;
+    }
+
     let (windows, master_count) = {
         let monitor = ctx.core().model().expect_selected_monitor();
         let windows = monitor
@@ -52,18 +105,42 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
     let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     let state = monitor.per_tag_state();
     state.presentation = PresentationMode::Tiled;
-    state.preset_cycle_cursor = preset;
     state.master_count = master_count;
-    state
-        .layout_tree
-        .apply_preset(preset, &windows, master_count);
+
+    if state.active_preset == preset {
+        // Reactivation of the visible layout: rerun the imperative rule. The
+        // preset preserves the tree's own leaf order while resetting geometry.
+        state
+            .layout_tree
+            .apply_preset(preset, &windows, master_count);
+    } else {
+        // Leaving an explicitly chosen slot remembers its tree, manual edits
+        // included. The never-activated default tree is not a remembered slot;
+        // it simply becomes the seed of the layout being activated.
+        if state.preset_activated {
+            state
+                .stored_trees
+                .insert(state.active_preset, state.layout_tree.clone());
+        }
+        state.active_preset = preset;
+        if let Some(stored) = state.stored_trees.remove(&preset) {
+            state.layout_tree = stored;
+            // The restored slot's force-insertion era ended when it was left.
+            state.layout_tree.clear_insertion_provenance();
+        } else {
+            state
+                .layout_tree
+                .apply_preset(preset, &windows, master_count);
+        }
+    }
+    state.preset_activated = true;
     finish_layout_change(ctx);
 }
 
 pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     let neighbor = {
         let monitor = ctx.core().model().expect_selected_monitor();
-        if !monitor.is_tiling_layout() {
+        if !tree_commands_allowed(monitor) {
             return false;
         }
         let Some(selected) = monitor.selected else {
@@ -81,12 +158,7 @@ pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side
 }
 
 pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-    {
+    if !tree_commands_allowed(ctx.core().model().expect_selected_monitor()) {
         return false;
     }
     let Some(selected) = ctx.core().model().selected_win() else {
@@ -217,12 +289,7 @@ pub fn swap_bar_titles(
 }
 
 pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-    {
+    if !tree_commands_allowed(ctx.core().model().expect_selected_monitor()) {
         return false;
     }
     let Some(selected) = ctx.core().model().selected_win() else {
@@ -250,12 +317,7 @@ pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> boo
 }
 
 pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
-    if !ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-    {
+    if !tree_commands_allowed(ctx.core().model().expect_selected_monitor()) {
         return false;
     }
     let Some(selected) = ctx.core().model().selected_win() else {
@@ -285,7 +347,7 @@ pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
 pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     let eligible = ctx.core().model().client_view(window).is_some_and(|view| {
         view.monitor.id() == ctx.core().model().selected_monitor_id()
-            && view.monitor.is_tiling_layout()
+            && tree_commands_allowed(view.monitor)
             && view.client.mode().is_normal_tiling()
     });
     if !eligible {
@@ -410,6 +472,15 @@ pub(crate) fn finish_layout_change_for_monitor(
     }
 }
 
+/// Step to the neighbouring entry of the layout cycle.
+///
+/// The cycle runs through every command, lenses included. Its position is
+/// derived from the full presentation state — a lens entry while lensed, the
+/// active slot otherwise — so a single step always lands somewhere visibly
+/// different: stepping off a lens reveals or switches the slot, stepping onto
+/// one overlays it, and stepping between slots restores remembered trees. A
+/// complete lap therefore never reactivates the starting layout, which would
+/// reset its manual edits.
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     let current_layout = {
         let monitor = ctx.core().model().expect_selected_monitor();
@@ -418,7 +489,7 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
             PresentationMode::Maximized => LayoutCommand::Maximized,
             PresentationMode::Tiled => monitor
                 .per_tag()
-                .and_then(|state| LayoutCommand::from_tree_preset(state.preset_cycle_cursor))
+                .and_then(|state| LayoutCommand::from_tree_preset(state.active_preset))
                 .unwrap_or(LayoutCommand::Tile),
         }
     };
@@ -439,7 +510,29 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     set_layout(ctx, all_layouts[candidate]);
 }
 
+/// Re-apply the imperative rule of the active layout slot.
+///
+/// Explicit reset for the bar indicator's middle button: manual edits return
+/// to stock geometry, and a lens presentation is dropped so the result is
+/// visible rather than silently rewriting a hidden tree.
+pub fn reset_active_layout(ctx: &mut WmCtx<'_>) {
+    let preset = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .per_tag()
+        .map_or(crate::layouts::tree::Preset::MasterStack, |state| {
+            state.active_preset
+        });
+    apply_tree_preset(ctx, preset);
+}
+
 pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
+    // Applying the new count rebuilds the master-stack preset. Reject the
+    // command before touching per-tag state when that rebuild is unsafe.
+    if !tree_preset_changes_allowed(ctx) {
+        return;
+    }
     let window_count = ctx
         .core()
         .model()

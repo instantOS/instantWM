@@ -546,6 +546,13 @@ impl LayoutTree {
         self.untouched_force_windows.clear();
     }
 
+    /// Drop force-insertion provenance, e.g. when a tree is restored from a
+    /// layout slot: its "consecutive force insertion" era ended when the slot
+    /// was left, so later insertions must not repack those leaves.
+    pub fn clear_insertion_provenance(&mut self) {
+        self.invalidate_force_provenance();
+    }
+
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
     }
