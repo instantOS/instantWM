@@ -724,6 +724,22 @@ impl Monitor {
             .to_string()
     }
 
+    /// The layout-cycle entry matching this monitor's full presentation
+    /// state: the active lens while lensed, the active slot otherwise.
+    ///
+    /// This is the single source of truth for "which layout is the user in"
+    /// shared by layout cycling and layout IPC queries.
+    pub fn current_layout_command(&self) -> LayoutCommand {
+        match self.current_layout() {
+            PresentationMode::Floating => LayoutCommand::Floating,
+            PresentationMode::Maximized => LayoutCommand::Maximized,
+            PresentationMode::Tiled => self
+                .per_tag()
+                .and_then(|state| LayoutCommand::from_tree_preset(state.active_preset))
+                .unwrap_or(LayoutCommand::Tile),
+        }
+    }
+
     /// Check if the current layout is a tiling layout.
     pub fn is_tiling_layout(&self) -> bool {
         self.presentation_for_mask(self.selected_tags()).is_tiling()

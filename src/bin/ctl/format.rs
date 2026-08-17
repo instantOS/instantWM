@@ -1,6 +1,6 @@
 use instantwm::ipc_types::{
-    ActionInfo, DisplayModes, KeyboardLayoutInfo, ModeInfo, MonitorInfo, Response, ScratchpadInfo,
-    TagInfo, WindowInfo, WindowProtocol, WmStatusInfo,
+    ActionInfo, DisplayModes, KeyboardLayoutInfo, LayoutInfo, LayoutStatusInfo, ModeInfo,
+    MonitorInfo, Response, ScratchpadInfo, TagInfo, WindowInfo, WindowProtocol, WmStatusInfo,
 };
 
 pub fn format_response(response: &Response, json: bool) {
@@ -16,6 +16,8 @@ pub fn format_response(response: &Response, json: bool) {
         Response::MonitorModes(modes) => format_monitor_modes(modes, json),
         Response::ScratchpadList(scratchpads) => format_scratchpad_list(scratchpads, json),
         Response::ModeList(modes) => format_mode_list(modes, json),
+        Response::LayoutList(layouts) => format_layout_list(layouts, json),
+        Response::LayoutStatus(status) => format_layout_status(status, json),
         Response::Status(status) => format_status(status, json),
         Response::KeyboardLayoutList(layouts) => format_keyboard_layout_list(layouts, json),
         Response::TagList(tags) => format_tag_list(tags, json),
@@ -347,6 +349,30 @@ fn format_mode_list(modes: &[ModeInfo], json: bool) {
             let desc = m.description.as_deref().unwrap_or("(no description)");
             println!("{} {} - {}", marker, m.name, desc);
         }
+    }
+}
+
+fn format_layout_list(layouts: &[LayoutInfo], json: bool) {
+    if json {
+        println!("{}", serde_json::to_string_pretty(layouts).unwrap());
+    } else {
+        for layout in layouts {
+            let marker = if layout.is_active { "*" } else { " " };
+            println!(
+                "{} {} ({}) - {}",
+                marker, layout.name, layout.symbol, layout.label
+            );
+        }
+    }
+}
+
+fn format_layout_status(status: &LayoutStatusInfo, json: bool) {
+    if json {
+        println!("{}", serde_json::to_string_pretty(status).unwrap());
+    } else {
+        println!("layout: {} ({})", status.layout.name, status.layout.symbol);
+        println!("presentation: {}", status.presentation);
+        println!("monitor: {}", status.monitor_id);
     }
 }
 

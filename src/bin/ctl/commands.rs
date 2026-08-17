@@ -85,6 +85,20 @@ pub enum MonitorAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum LayoutAction {
+    /// List every layout, marking the selected monitor's active one.
+    List,
+    /// Show the selected monitor's full layout state.
+    Status,
+    /// Activate a layout (repeat to reset it to stock geometry).
+    Set { name: String },
+    /// Step to the next layout in the cycle.
+    Next,
+    /// Step to the previous layout in the cycle.
+    Prev,
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum KeyboardAction {
     /// List configured keyboard layouts.
     List {
@@ -479,8 +493,11 @@ pub enum CommandKind {
         #[arg(default_value = "next")]
         direction: MonitorDirection,
     },
-    /// Set or list the current layout.
-    Layout { name: Option<String> },
+    /// Query or set the window layout.
+    Layout {
+        #[command(subcommand)]
+        action: LayoutAction,
+    },
     /// Get or set the colour theme. With no argument, prints the current theme.
     /// Pass a theme name (e.g. `nord`) to switch, or `--list`/`-l` to list them.
     Theme {
@@ -856,10 +873,13 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::FollowMon { direction } => {
                 run_action("follow_mon", vec![direction_arg(direction)])
             }
-            CommandKind::Layout { name } => run_action(
-                "set_layout",
-                vec![name.expect("layout name required (use 'layout list' to see layouts)")],
-            ),
+            CommandKind::Layout { action } => match action {
+                LayoutAction::List => Self::LayoutList,
+                LayoutAction::Status => Self::LayoutStatus,
+                LayoutAction::Set { name } => run_action("set_layout", vec![name]),
+                LayoutAction::Next => run_action("cycle_layout_next", Vec::new()),
+                LayoutAction::Prev => run_action("cycle_layout_prev", Vec::new()),
+            },
             CommandKind::Theme { name, list } => {
                 if list {
                     Self::ListThemes

@@ -15,6 +15,7 @@ pub mod config;
 pub mod general;
 pub mod input;
 pub mod keyboard;
+pub mod layout;
 pub mod mode;
 pub mod monitor;
 pub mod pending_tmp_rule;
@@ -255,6 +256,8 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd),
         IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(wm, cmd),
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),
+        IpcCommand::LayoutList => layout::list_layouts(wm),
+        IpcCommand::LayoutStatus => layout::layout_status(wm),
         IpcCommand::ListModes => mode::list_modes(wm),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
         IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
@@ -311,6 +314,8 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         )
         | IpcCommand::Wallpaper(_)
         | IpcCommand::Input(_)
+        | IpcCommand::LayoutList
+        | IpcCommand::LayoutStatus
         | IpcCommand::ListModes
         | IpcCommand::Config(_)
         | IpcCommand::Test(_)

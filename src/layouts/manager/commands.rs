@@ -482,17 +482,11 @@ pub(crate) fn finish_layout_change_for_monitor(
 /// complete lap therefore never reactivates the starting layout, which would
 /// reset its manual edits.
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = {
-        let monitor = ctx.core().model().expect_selected_monitor();
-        match monitor.current_layout() {
-            PresentationMode::Floating => LayoutCommand::Floating,
-            PresentationMode::Maximized => LayoutCommand::Maximized,
-            PresentationMode::Tiled => monitor
-                .per_tag()
-                .and_then(|state| LayoutCommand::from_tree_preset(state.active_preset))
-                .unwrap_or(LayoutCommand::Tile),
-        }
-    };
+    let current_layout = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .current_layout_command();
     let all_layouts = LayoutCommand::all();
     let layouts_len = all_layouts.len();
     let current_idx = all_layouts

@@ -12,20 +12,30 @@ populated branch, alternating axes.
 
 ## Commands and default keys
 
-Most old layout names now describe one-shot transformations:
+Most old layout names now select per-tag layout slots. A tag remembers which
+tiled layout it uses and keeps a separate tree for each one: switching layouts
+stores the current tree and restores the remembered tree of the new layout,
+seeding it fresh if none exists. Reactivating the active layout resets its tree
+to stock geometry:
 
 - `layout_tile` rewrites the current tree as master/stack.
-- `layout_grid` and `layout_horiz_grid` rewrite it as column-first and
-  row-first grids.
-- `layout_bottom_stack` and `layout_bstack_horiz` create bottom-stack trees.
+- `layout_grid` rewrites it as a column-first grid.
+- `layout_bottom_stack` creates a bottom-stack tree.
 - `layout_maximized` is a persistent presentation mode: every tiled window
   fills the work area and the focused tiled window is stacked on top. The
   underlying manual tree is preserved and reconciled while the mode is active.
 - `layout_float` remains a persistent floating mode.
 
+`Super+Ctrl+,` and `Super+Ctrl+.` step backward and forward through the layout
+cycle (tile, grid, floating, maximized, bottom-stack). Left and right clicks on
+the bar's layout symbol do the same; a middle click resets the active layout.
+
 After a transformation, manual swaps, resizes, spawns, and pointer placements
 remain in effect. A later arrange does not run the transformation again. The
-same applies to `instantwmctl layout <name>`.
+same applies to `instantwmctl layout set <name>`; `instantwmctl layout list`
+shows every layout with the selected monitor's active one marked, and
+`instantwmctl layout status` reports the active entry, its presentation, and
+the monitor.
 
 The default Super bindings use the tree whenever the focused window is tiled:
 

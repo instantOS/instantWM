@@ -334,6 +334,10 @@ pub enum IpcCommand {
     Window(WindowCommand),
     Wallpaper(String),
     Input(InputCommand),
+    /// List every window layout, marking the selected monitor's active one.
+    LayoutList,
+    /// Show the selected monitor's full layout state.
+    LayoutStatus,
     ListModes,
     Config(ConfigCommand),
     Test(TestCommand),
@@ -562,6 +566,25 @@ pub struct ActionInfo {
     pub arg_example: Option<String>,
 }
 
+/// One window-layout entry as reported by layout queries.
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub struct LayoutInfo {
+    pub name: String,
+    pub label: String,
+    pub symbol: String,
+    pub is_active: bool,
+}
+
+/// The selected monitor's full layout state.
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub struct LayoutStatusInfo {
+    pub monitor_id: u64,
+    /// "tiled", "floating", or "maximized".
+    pub presentation: String,
+    /// The active cycle entry: the lens while lensed, the slot otherwise.
+    pub layout: LayoutInfo,
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum Response {
     Ok,
@@ -572,6 +595,8 @@ pub enum Response {
     MonitorModes(Vec<DisplayModes>),
     ScratchpadList(Vec<ScratchpadInfo>),
     ModeList(Vec<ModeInfo>),
+    LayoutList(Vec<LayoutInfo>),
+    LayoutStatus(LayoutStatusInfo),
     Status(WmStatusInfo),
     KeyboardLayoutList(Vec<KeyboardLayoutInfo>),
     TagList(Vec<TagInfo>),

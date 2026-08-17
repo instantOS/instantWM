@@ -3,7 +3,6 @@ mod ctl;
 use clap::Parser;
 use ctl::{Cli, IpcClient, format_response, get_default_socket};
 use instantwm::ipc_types::{IpcCommand, Response};
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
@@ -28,7 +27,7 @@ mod tests {
                 vec!["on"],
             ),
             (
-                vec!["instantwmctl", "layout", "grid"],
+                vec!["instantwmctl", "layout", "set", "grid"],
                 "set_layout",
                 vec!["grid"],
             ),
@@ -73,6 +72,21 @@ mod tests {
         let cli = Cli::parse_from(["instantwmctl", "mode", "list"]);
         let command: IpcCommand = cli.command.into();
         assert!(matches!(command, IpcCommand::ListModes));
+    }
+
+    #[test]
+    fn layout_queries_are_structured_and_cycling_maps_to_actions() {
+        let cli = Cli::parse_from(["instantwmctl", "layout", "list"]);
+        assert!(matches!(cli.command.into(), IpcCommand::LayoutList));
+
+        let cli = Cli::parse_from(["instantwmctl", "layout", "status"]);
+        assert!(matches!(cli.command.into(), IpcCommand::LayoutStatus));
+
+        let cli = Cli::parse_from(["instantwmctl", "layout", "prev"]);
+        assert!(matches!(
+            cli.command.into(),
+            IpcCommand::RunAction { name, .. } if name == "cycle_layout_prev"
+        ));
     }
 
     #[test]
@@ -622,28 +636,6 @@ fn main() {
     }
 
     let command = match &cli.command {
-        ctl::CommandKind::Layout { name } if name.as_deref() == Some("list") => {
-            print_layout_list(cli.json);
-            return;
-        }
-        ctl::CommandKind::Layout { name } => {
-            let Some(name) = name else {
-                eprintln!(
-                    "instantwmctl: layout name required (use 'instantwmctl layout list' to see layouts)"
-                );
-                std::process::exit(1);
-            };
-            let Ok(layout) = instantwm::layouts::LayoutCommand::from_str(name) else {
-                eprintln!(
-                    "instantwmctl: invalid layout '{name}' (use 'instantwmctl layout list' to see layouts)"
-                );
-                std::process::exit(1);
-            };
-            IpcCommand::RunAction {
-                name: "set_layout".to_string(),
-                args: vec![layout.name().to_string()],
-            }
-        }
         ctl::CommandKind::Config {
             action: ctl::commands::ConfigAction::Default,
         } => {
@@ -962,34 +954,6 @@ fn filter_config_list(response: Response, prefix: &str) -> Response {
             Response::ConfigList(filtered)
         }
         other => other,
-    }
-}
-
-fn print_layout_list(json: bool) {
-    let layouts: Vec<_> = instantwm::layouts::LayoutCommand::all()
-        .iter()
-        .map(|layout| {
-            serde_json::json!({
-                "name": layout.name(),
-                "label": layout.label(),
-                "description": layout.description(),
-                "symbol": layout.symbol(),
-                "tiling": layout.results_in_tiling(),
-            })
-        })
-        .collect();
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&layouts).unwrap());
-    } else {
-        for layout in instantwm::layouts::LayoutCommand::all() {
-            println!(
-                "{:<13} {:<14} {}",
-                layout.name(),
-                layout.symbol(),
-                layout.description()
-            );
-        }
     }
 }
 
