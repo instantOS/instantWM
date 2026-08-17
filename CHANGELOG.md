@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/instantOS/instantWM/compare/v0.1.20...v0.1.21) - 2026-08-17
+
+### Other
+
+- remove redundant commands
+- Merge branch 'dev'
+- replace specialnext with tmp rules
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix pending rule bugs
+- fmt
+
 ## [0.1.20](https://github.com/instantOS/instantWM/compare/v0.1.19...v0.1.20) - 2026-08-09
 
 ### Fixed
