@@ -511,18 +511,22 @@ mod tests {
             Some(LayoutCommand::Floating)
         );
         assert_eq!(
-            LayoutCommand::from_name("horiz-grid"),
-            Some(LayoutCommand::HorizGrid)
-        );
-        assert_eq!(
-            LayoutCommand::from_name("bstack-horiz"),
-            Some(LayoutCommand::BStackHoriz)
-        );
-        assert_eq!(
             LayoutCommand::from_name("maximized"),
             Some(LayoutCommand::Maximized)
         );
-        for alias in ["tiling", "float", "monocle", "deck", "gaplessgrid"] {
+        assert_eq!(
+            LayoutCommand::from_name("bottom-stack"),
+            Some(LayoutCommand::BottomStack)
+        );
+        for alias in [
+            "tiling",
+            "float",
+            "monocle",
+            "deck",
+            "gaplessgrid",
+            "horiz-grid",
+            "bstack-horiz",
+        ] {
             assert_eq!(LayoutCommand::from_name(alias), None);
         }
         assert_eq!(LayoutCommand::from_name("bad"), None);

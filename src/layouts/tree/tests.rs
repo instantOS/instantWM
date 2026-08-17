@@ -1572,15 +1572,37 @@ fn resize_axis_reports_only_structural_runs() {
 }
 
 #[test]
+fn stock_presets_build_their_signature_geometries() {
+    // 1200x800 divides evenly for every group count below, so each preset's
+    // stock bounds are exactly predictable.
+    let layout = Rect::new(0, 0, 1200, 800);
+    let wins = windows(5);
+
+    // Grid: columns-first, two full columns before the remainder column.
+    let mut grid = LayoutTree::default();
+    grid.apply_preset(Preset::Grid, &wins, 1);
+    let rects = grid.bounds(layout);
+    assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 400, 400));
+    assert_eq!(rects[&WindowId(2)], Rect::new(0, 400, 400, 400));
+    assert_eq!(rects[&WindowId(3)], Rect::new(400, 0, 400, 400));
+    assert_eq!(rects[&WindowId(4)], Rect::new(400, 400, 400, 400));
+    assert_eq!(rects[&WindowId(5)], Rect::new(800, 0, 400, 800));
+
+    // BottomStack: two masters side by side on the top row, stack below.
+    let mut bottom_stack = LayoutTree::default();
+    bottom_stack.apply_preset(Preset::BottomStack, &wins, 2);
+    let rects = bottom_stack.bounds(layout);
+    assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 600, 400));
+    assert_eq!(rects[&WindowId(2)], Rect::new(600, 0, 600, 400));
+    assert_eq!(rects[&WindowId(3)], Rect::new(0, 400, 400, 400));
+    assert_eq!(rects[&WindowId(4)], Rect::new(400, 400, 400, 400));
+    assert_eq!(rects[&WindowId(5)], Rect::new(800, 400, 400, 400));
+}
+
+#[test]
 fn every_public_mutation_preserves_canonical_invariants() {
     let wins = windows(7);
-    for preset in [
-        Preset::MasterStack,
-        Preset::Grid,
-        Preset::HorizontalGrid,
-        Preset::BottomStack,
-        Preset::BottomStackHorizontal,
-    ] {
+    for preset in [Preset::MasterStack, Preset::Grid, Preset::BottomStack] {
         let mut tree = LayoutTree::default();
         tree.apply_preset(preset, &wins, 2);
         assert_canonical(&tree);

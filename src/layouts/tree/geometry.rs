@@ -94,10 +94,8 @@ impl LayoutTree {
         self.invalidate_force_provenance();
         let master_ratio = match preset {
             Preset::MasterStack => self.root_leading_ratio(Axis::Vertical),
-            Preset::BottomStack | Preset::BottomStackHorizontal => {
-                self.root_leading_ratio(Axis::Horizontal)
-            }
-            Preset::Grid | Preset::HorizontalGrid => 0.5,
+            Preset::BottomStack => self.root_leading_ratio(Axis::Horizontal),
+            Preset::Grid => 0.5,
         };
         let wanted = ordered_windows.iter().copied().collect::<HashSet<_>>();
         for stale in self
@@ -140,11 +138,7 @@ impl LayoutTree {
                 Axis::Horizontal,
                 &mut allocate,
             ),
-            Preset::Grid => build_grid(&windows, false, &mut allocate),
-            Preset::HorizontalGrid => build_grid(&windows, true, &mut allocate),
-            Preset::BottomStackHorizontal => {
-                build_master_stack(&windows, 1, master_ratio, Axis::Horizontal, &mut allocate)
-            }
+            Preset::Grid => build_grid(&windows, &mut allocate),
         };
     }
 

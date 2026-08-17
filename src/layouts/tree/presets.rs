@@ -25,6 +25,11 @@ pub(super) fn equal_run(
     }
 }
 
+/// Build a master-area-over-stack-area split.
+///
+/// The two areas are divided along `outer_axis`; their members run along the
+/// orthogonal axis (a master column beside a stacked column for tile, a
+/// master row over a side-by-side row for bottom-stack).
 pub(super) fn build_master_stack(
     windows: &[WindowId],
     requested_master_count: usize,
@@ -32,15 +37,16 @@ pub(super) fn build_master_stack(
     outer_axis: Axis,
     allocate: &mut impl FnMut() -> SplitId,
 ) -> Option<Node> {
+    let inner_axis = outer_axis.other();
     if windows.len() <= 1 {
         return windows.first().copied().map(Node::Window);
     }
     let master_count = requested_master_count.min(windows.len());
     if master_count == 0 || master_count == windows.len() {
-        return equal_run(windows, outer_axis.other(), allocate);
+        return equal_run(windows, inner_axis, allocate);
     }
-    let masters = equal_run(&windows[..master_count], outer_axis.other(), allocate)?;
-    let stack = equal_run(&windows[master_count..], outer_axis.other(), allocate)?;
+    let masters = equal_run(&windows[..master_count], inner_axis, allocate)?;
+    let stack = equal_run(&windows[master_count..], inner_axis, allocate)?;
     let id = allocate();
     make_split(
         id,
@@ -58,9 +64,10 @@ pub(super) fn build_master_stack(
     )
 }
 
+/// Build a columns-first grid: `ceil(sqrt(n))` equal columns, each a
+/// top-to-bottom run, with the final column soaking up the remainder.
 pub(super) fn build_grid(
     windows: &[WindowId],
-    rows_first: bool,
     allocate: &mut impl FnMut() -> SplitId,
 ) -> Option<Node> {
     if windows.len() <= 1 {
@@ -68,32 +75,18 @@ pub(super) fn build_grid(
     }
     let columns = (windows.len() as f64).sqrt().ceil() as usize;
     let rows = windows.len().div_ceil(columns);
-    let (outer_axis, group_count) = if rows_first {
-        (Axis::Horizontal, rows)
-    } else {
-        (Axis::Vertical, columns)
-    };
     let mut groups = Vec::new();
-    for group in 0..group_count {
-        let members: Vec<_> = if rows_first {
-            windows
-                .iter()
-                .skip(group * columns)
-                .take(columns)
-                .copied()
-                .collect()
-        } else {
-            windows
-                .iter()
-                .skip(group * rows)
-                .take(rows)
-                .copied()
-                .collect()
-        };
-        if let Some(node) = equal_run(&members, outer_axis.other(), allocate) {
+    for group in 0..columns {
+        let members: Vec<_> = windows
+            .iter()
+            .skip(group * rows)
+            .take(rows)
+            .copied()
+            .collect();
+        if let Some(node) = equal_run(&members, Axis::Horizontal, allocate) {
             groups.push(WeightedNode { node, weight: 1.0 });
         }
     }
     let id = allocate();
-    make_split(id, outer_axis, groups)
+    make_split(id, Axis::Vertical, groups)
 }

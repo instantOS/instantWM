@@ -32,11 +32,11 @@
 //! over the active slot's tree and never modify it.
 //!
 //! ```text
-//! Tile      "+"    master/stack tiling
-//! Grid      "#"    square grid
-//! Floating  "-"    free floating (no tiling)
-//! Maximized "[M]"  focused full-work-area tiled stack
-//! BottomStack "TTT" bottom-stack (horizontal master row)
+//! Tile        "[]"   master/stack tiling
+//! Grid        "#"    square grid
+//! Floating    "-"    free floating (no tiling)
+//! Maximized   "[M]"  focused full-work-area tiled stack
+//! BottomStack "TTT"  master row over a side-by-side stack
 //! ```
 //!
 //! ## Public API surface
@@ -151,10 +151,6 @@ pub enum LayoutCommand {
     Maximized,
     /// Bottom-stack layout (`TTT`).
     BottomStack,
-    /// Horizontal grid layout (`###`).
-    HorizGrid,
-    /// Bottom-stack horizontal layout (`===`).
-    BStackHoriz,
 }
 
 impl LayoutCommand {
@@ -162,9 +158,7 @@ impl LayoutCommand {
         match self {
             Self::Floating => PresentationMode::Floating,
             Self::Maximized => PresentationMode::Maximized,
-            Self::Tile | Self::Grid | Self::BottomStack | Self::HorizGrid | Self::BStackHoriz => {
-                PresentationMode::Tiled
-            }
+            Self::Tile | Self::Grid | Self::BottomStack => PresentationMode::Tiled,
         }
     }
 
@@ -172,9 +166,7 @@ impl LayoutCommand {
         match self {
             Self::Tile => Some(tree::Preset::MasterStack),
             Self::Grid => Some(tree::Preset::Grid),
-            Self::HorizGrid => Some(tree::Preset::HorizontalGrid),
             Self::BottomStack => Some(tree::Preset::BottomStack),
-            Self::BStackHoriz => Some(tree::Preset::BottomStackHorizontal),
             Self::Floating | Self::Maximized => None,
         }
     }
@@ -183,9 +175,7 @@ impl LayoutCommand {
         match preset {
             tree::Preset::MasterStack => Some(Self::Tile),
             tree::Preset::Grid => Some(Self::Grid),
-            tree::Preset::HorizontalGrid => Some(Self::HorizGrid),
             tree::Preset::BottomStack => Some(Self::BottomStack),
-            tree::Preset::BottomStackHorizontal => Some(Self::BStackHoriz),
         }
     }
     pub fn name(self) -> &'static str {
@@ -195,8 +185,6 @@ impl LayoutCommand {
             Self::Floating => "floating",
             Self::Maximized => "maximized",
             Self::BottomStack => "bottom-stack",
-            Self::HorizGrid => "horiz-grid",
-            Self::BStackHoriz => "bstack-horiz",
         }
     }
 
@@ -207,8 +195,6 @@ impl LayoutCommand {
             Self::Floating => "Floating",
             Self::Maximized => "Maximized",
             Self::BottomStack => "Bottom Stack",
-            Self::HorizGrid => "Horizontal Grid",
-            Self::BStackHoriz => "Bottom Stack Horizontal",
         }
     }
 
@@ -219,8 +205,6 @@ impl LayoutCommand {
             Self::Floating => "Windows can be freely moved and resized",
             Self::Maximized => "Stack tiled windows at full work-area size",
             Self::BottomStack => "Activate bottom-stack tiling (press again to reset)",
-            Self::HorizGrid => "Activate rows-first grid tiling (press again to reset)",
-            Self::BStackHoriz => "Activate horizontal bottom-stack tiling (press again to reset)",
         }
     }
 
@@ -235,8 +219,6 @@ impl LayoutCommand {
             Self::Floating => "-",
             Self::Maximized => "[M]",
             Self::BottomStack => "TTT",
-            Self::HorizGrid => "###",
-            Self::BStackHoriz => "===",
         }
     }
 
@@ -258,8 +240,6 @@ impl LayoutCommand {
             Self::Floating,
             Self::Maximized,
             Self::BottomStack,
-            Self::HorizGrid,
-            Self::BStackHoriz,
         ]
     }
 }
@@ -274,8 +254,6 @@ impl FromStr for LayoutCommand {
             "floating" => Ok(Self::Floating),
             "maximized" => Ok(Self::Maximized),
             "bottom-stack" => Ok(Self::BottomStack),
-            "horiz-grid" => Ok(Self::HorizGrid),
-            "bstack-horiz" => Ok(Self::BStackHoriz),
             _ => Err(()),
         }
     }
@@ -328,13 +306,7 @@ mod command_tests {
 
     #[test]
     fn canonical_presets_map_back_to_cycle_commands() {
-        for preset in [
-            Preset::MasterStack,
-            Preset::Grid,
-            Preset::HorizontalGrid,
-            Preset::BottomStack,
-            Preset::BottomStackHorizontal,
-        ] {
+        for preset in [Preset::MasterStack, Preset::Grid, Preset::BottomStack] {
             let command = LayoutCommand::from_tree_preset(preset).unwrap();
             assert_eq!(command.tree_preset(), Some(preset));
         }

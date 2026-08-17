@@ -66,9 +66,7 @@ impl Side {
 pub enum Preset {
     MasterStack,
     Grid,
-    HorizontalGrid,
     BottomStack,
-    BottomStackHorizontal,
 }
 
 /// Opaque semantic target shared by pointer and keyboard placement.
