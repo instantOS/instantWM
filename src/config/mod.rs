@@ -36,6 +36,7 @@ pub mod rules;
 pub use crate::types::{EdgeDirection, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 
+use crate::types::KeybindOrigin;
 use commands::default_commands;
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -157,12 +158,16 @@ pub fn resolve_config(
     let keys = if theme.keybinds.is_empty() {
         defaults.keys
     } else {
-        keybind_config::merge_keybinds(defaults.keys, &theme.keybinds)
+        keybind_config::merge_keybinds(defaults.keys, &theme.keybinds, KeybindOrigin::User)
     };
     let desktop_keybinds = if theme.desktop_keybinds.is_empty() {
         defaults.desktop_keybinds
     } else {
-        keybind_config::merge_keybinds(defaults.desktop_keybinds, &theme.desktop_keybinds)
+        keybind_config::merge_keybinds(
+            defaults.desktop_keybinds,
+            &theme.desktop_keybinds,
+            KeybindOrigin::User,
+        )
     };
 
     let mut modes = HashMap::new();
@@ -174,7 +179,11 @@ pub fn resolve_config(
                       default_keybinds: Vec<Key>|
      -> ModeConfig {
         if let Some(spec) = spec {
-            let keybinds = keybind_config::merge_keybinds(default_keybinds, &spec.keybinds);
+            let keybinds = keybind_config::merge_keybinds(
+                default_keybinds,
+                &spec.keybinds,
+                KeybindOrigin::User,
+            );
             ModeConfig {
                 description: spec
                     .description
@@ -225,7 +234,8 @@ pub fn resolve_config(
         {
             continue;
         }
-        let keybinds = keybind_config::merge_keybinds(Vec::new(), &spec.keybinds);
+        let keybinds =
+            keybind_config::merge_keybinds(Vec::new(), &spec.keybinds, KeybindOrigin::User);
         modes.insert(
             name.clone(),
             ModeConfig {

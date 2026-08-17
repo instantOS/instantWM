@@ -344,6 +344,10 @@ pub enum IpcCommand {
     GetTheme,
     SetTheme(crate::config::config_toml::ColorTheme),
     ListThemes,
+    /// List every active keybinding (global, desktop, and per-mode).
+    ///
+    /// Each entry is a single key + modifier combo, not a multi-key chord.
+    ListKeybinds,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -566,6 +570,21 @@ pub struct ActionInfo {
     pub arg_example: Option<String>,
 }
 
+/// One keybinding as reported by `instantwmctl keybinds`.
+///
+/// Bindings are rendered as human-friendly strings (`Super + Shift + S`)
+/// rather than raw masks so the consumer (a help menu, a settings UI) can
+/// display them directly. `origin` distinguishes compiled defaults from the
+/// user's config.toml.
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub struct KeybindInfo {
+    pub modifiers: String,
+    pub key: String,
+    pub action: String,
+    pub mode: Option<String>,
+    pub origin: crate::types::KeybindOrigin,
+}
+
 /// One window-layout entry as reported by layout queries.
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct LayoutInfo {
@@ -601,6 +620,7 @@ pub enum Response {
     KeyboardLayoutList(Vec<KeyboardLayoutInfo>),
     TagList(Vec<TagInfo>),
     ActionList(Vec<ActionInfo>),
+    KeybindList(Vec<KeybindInfo>),
     ConfigValue(String),
     ConfigList(Vec<(String, String)>),
     Message(String),

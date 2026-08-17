@@ -10,7 +10,7 @@ use crate::config::keybind_config::{
 };
 use crate::config::keybindings::{CONTROL, MODKEY, get_desktop_keybinds, get_keys};
 use crate::config::keysyms::{XK_L, XK_RETURN, XK_SPACE};
-use crate::types::Key;
+use crate::types::{Key, KeybindOrigin};
 
 const TERMINAL_CANDIDATES: &[&str] = &["kitty", "ghostty", "wezterm", "xterm", "st"];
 const WAYLAND_LOCKSCREEN_CANDIDATES: &[&str] = &[
@@ -32,7 +32,7 @@ pub fn build_default_keybinds(backend: BackendKind, theme: &UserConfig) -> Defau
     let generated_keys = build_generated_keybind_specs(backend, &theme.keybinds);
 
     DefaultKeybinds {
-        keys: merge_keybinds(get_keys(), &generated_keys),
+        keys: merge_keybinds(get_keys(), &generated_keys, KeybindOrigin::CompiledDefault),
         desktop_keybinds: get_desktop_keybinds(),
     }
 }
@@ -223,5 +223,23 @@ mod tests {
 
         assert!(spawn_args_for(&x11.keys, MODKEY | CONTROL, XK_L).is_some());
         assert!(spawn_args_for(&wayland.keys, MODKEY | CONTROL, XK_L).is_some());
+    }
+
+    #[test]
+    fn generated_bindings_keep_compiled_default_origin() {
+        let defaults = build_default_keybinds(BackendKind::Wayland, &UserConfig::default());
+
+        for (mod_mask, keysym) in [
+            (MODKEY, XK_RETURN),
+            (MODKEY, XK_SPACE),
+            (MODKEY | CONTROL, XK_L),
+        ] {
+            let key = defaults
+                .keys
+                .iter()
+                .find(|key| key.mod_mask == mod_mask && key.keysym == keysym)
+                .expect("missing generated default keybinding");
+            assert_eq!(key.origin, KeybindOrigin::CompiledDefault);
+        }
     }
 }

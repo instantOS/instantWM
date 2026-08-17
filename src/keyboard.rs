@@ -290,11 +290,13 @@ mod tests {
             mod_mask: 1,
             keysym: 42,
             action: KeyAction::named(NamedAction::FocusNext),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_key = Key {
             mod_mask: 1,
             keysym: 42,
             action: KeyAction::named(NamedAction::FocusPrev),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let mut modes = HashMap::new();
         modes.insert(
@@ -331,11 +333,13 @@ mod tests {
             mod_mask: 0,
             keysym: 42,
             action: KeyAction::named(NamedAction::PlacementLeft),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_key = Key {
             mod_mask: 0,
             keysym: 43,
             action: KeyAction::named(NamedAction::FocusNext),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_keys = [global_key];
         let mut modes = HashMap::new();
@@ -371,6 +375,7 @@ mod tests {
             mod_mask: 0,
             keysym: 9,
             action: KeyAction::named(NamedAction::ToggleBar),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
 
         let resolved = resolve_key_action(
@@ -396,6 +401,7 @@ mod tests {
                 mod_mask: 0,
                 keysym: 9,
                 action: KeyAction::named(NamedAction::ToggleBar),
+                origin: crate::types::KeybindOrigin::CompiledDefault,
             }],
             &HashMap::new(),
             Some(WindowId(1)),
@@ -415,11 +421,13 @@ mod tests {
             mod_mask: 1,
             keysym: 42,
             action: KeyAction::named(NamedAction::FocusPrev),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_key = Key {
             mod_mask: 1,
             keysym: 42,
             action: KeyAction::named(NamedAction::FocusNext),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let mut modes = HashMap::new();
         modes.insert(
@@ -474,16 +482,19 @@ mod tests {
             mod_mask: crate::config::keybindings::MODKEY,
             keysym: 1,
             action: KeyAction::named(NamedAction::FocusNext),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let desktop = Key {
             mod_mask: 0,
             keysym: crate::config::keysyms::XK_L,
             action: KeyAction::named(NamedAction::ScrollRight),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let inactive_mode = Key {
             mod_mask: 0,
             keysym: crate::config::keysyms::XK_SPACE,
             action: KeyAction::named(NamedAction::PlacementCenter),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let mut modes = HashMap::new();
         modes.insert(
@@ -518,16 +529,19 @@ mod tests {
             mod_mask: 1,
             keysym: 1,
             action: KeyAction::named(NamedAction::FocusNext),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let desktop = Key {
             mod_mask: 0,
             keysym: 2,
             action: KeyAction::named(NamedAction::ScrollRight),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let mode_key = Key {
             mod_mask: 0,
             keysym: 3,
             action: KeyAction::named(NamedAction::FocusPrev),
+            origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let mut modes = HashMap::new();
         modes.insert(

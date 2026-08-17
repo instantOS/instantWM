@@ -2,7 +2,7 @@
 
 use crate::actions::{KeyAction, NamedAction};
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, screenshot};
-use crate::types::Key;
+use crate::types::{Key, KeybindOrigin};
 
 use super::keysyms::*;
 
@@ -17,6 +17,7 @@ macro_rules! key {
             mod_mask: $mods,
             keysym: $sym,
             action: $action,
+            origin: KeybindOrigin::CompiledDefault,
         }
     };
 }

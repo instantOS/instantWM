@@ -14,6 +14,7 @@ const PENDING_CLIENT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 pub mod config;
 pub mod general;
 pub mod input;
+pub mod keybinds;
 pub mod keyboard;
 pub mod layout;
 pub mod mode;
@@ -258,6 +259,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),
         IpcCommand::LayoutList => layout::list_layouts(wm),
         IpcCommand::LayoutStatus => layout::layout_status(wm),
+        IpcCommand::ListKeybinds => keybinds::list_keybinds(wm),
         IpcCommand::ListModes => mode::list_modes(wm),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
         IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
@@ -322,7 +324,8 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         | IpcCommand::PendingTmpRule(_)
         | IpcCommand::GetTheme
         | IpcCommand::SetTheme(_)
-        | IpcCommand::ListThemes => None,
+        | IpcCommand::ListThemes
+        | IpcCommand::ListKeybinds => None,
     }
 }
 

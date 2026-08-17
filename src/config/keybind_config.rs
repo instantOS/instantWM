@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::actions::{ActionMeta, KeyAction, NamedAction, get_action_metadata, parse_named_action};
 use crate::config::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::config::keysyms::*;
-use crate::types::Key;
+use crate::types::{Key, KeybindOrigin};
 
 /// A single keybind entry from the TOML config.
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -66,11 +66,24 @@ pub fn parse_keysym(name: &str) -> Option<u32> {
     let lower = name.to_ascii_lowercase();
     if lower.len() == 1 {
         let ch = lower.chars().next().unwrap();
-        return match ch {
-            'a'..='z' => Some(XK_A + (ch as u32 - 'a' as u32)),
-            '0'..='9' => Some(XK_0 + (ch as u32 - '0' as u32)),
-            _ => None,
-        };
+        match ch {
+            'a'..='z' => return Some(XK_A + (ch as u32 - 'a' as u32)),
+            '0'..='9' => return Some(XK_0 + (ch as u32 - '0' as u32)),
+            '-' => return Some(XK_MINUS),
+            '+' => return Some(XK_PLUS),
+            ',' => return Some(XK_COMMA),
+            '.' => return Some(XK_PERIOD),
+            '/' => return Some(XK_SLASH),
+            ';' => return Some(XK_SEMICOLON),
+            ':' => return Some(XK_COLON),
+            '=' => return Some(XK_EQUAL),
+            '[' => return Some(XK_BRACKET_LEFT),
+            ']' => return Some(XK_BRACKET_RIGHT),
+            '\\' => return Some(XK_BACKSLASH),
+            '`' => return Some(XK_GRAVE),
+            '\'' => return Some(XK_APOSTROPHE),
+            _ => {}
+        }
     }
 
     match lower.as_str() {
@@ -263,7 +276,11 @@ fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
     }
 }
 
-pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
+pub fn merge_keybinds(
+    defaults: Vec<Key>,
+    specs: &[KeybindSpec],
+    origin: KeybindOrigin,
+) -> Vec<Key> {
     let mut keys: Vec<Option<Key>> = defaults.into_iter().map(Some).collect();
     let mut index: HashMap<(u32, u32), usize> = HashMap::new();
     for (i, k) in keys.iter().enumerate() {
@@ -304,6 +321,7 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
                         mod_mask,
                         keysym,
                         action,
+                        origin,
                     };
                     if let Some(&idx) = index.get(&combo) {
                         keys[idx] = Some(new_key);
@@ -318,6 +336,103 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
     }
 
     keys.into_iter().flatten().collect()
+}
+
+// ---------------------------------------------------------------------------
+// Reverse maps: render a (mod_mask, keysym) pair as the user would type it.
+//
+// These are the inverses of `parse_modifiers` / `parse_keysym`, used by
+// `instantwmctl keybinds` to show chords readably. They deliberately mirror the
+// accepted input names so what the user types in config.toml is what they see
+// back.
+// ---------------------------------------------------------------------------
+
+/// Render a modifier mask as `Super + Ctrl + Shift` (empty when no modifiers).
+pub fn format_modifiers(mask: u32) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if mask & MODKEY != 0 {
+        parts.push("Super");
+    }
+    if mask & CONTROL != 0 {
+        parts.push("Ctrl");
+    }
+    if mask & SHIFT != 0 {
+        parts.push("Shift");
+    }
+    if mask & MOD1 != 0 {
+        parts.push("Alt");
+    }
+    parts.join(" + ")
+}
+
+/// Render a keysym as a short, human-friendly key name.
+pub fn format_keysym(keysym: u32) -> String {
+    // Letter keysyms are lowercase-only (`XK_A` is 0x61), so the printable
+    // ASCII branches below cover `a`-`z` and `0`-`9`; there is no uppercase
+    // keysym range.
+    if (b'a' as u32..=b'z' as u32).contains(&keysym) {
+        return (keysym as u8 as char).to_string();
+    }
+    if (b'0' as u32..=b'9' as u32).contains(&keysym) {
+        return (keysym as u8 as char).to_string();
+    }
+
+    let name = match keysym {
+        XK_RETURN => "Return",
+        XK_BACKSPACE => "Backspace",
+        XK_TAB => "Tab",
+        XK_ESCAPE => "Esc",
+        XK_DELETE => "Delete",
+        XK_HOME => "Home",
+        XK_END => "End",
+        XK_INSERT => "Insert",
+        XK_LEFT => "Left",
+        XK_UP => "Up",
+        XK_RIGHT => "Right",
+        XK_DOWN => "Down",
+        XK_PAGE_UP => "PageUp",
+        XK_PAGE_DOWN => "PageDown",
+        XK_SPACE => "Space",
+        XK_MINUS => "-",
+        XK_PLUS => "+",
+        XK_COMMA => ",",
+        XK_PERIOD => ".",
+        XK_SLASH => "/",
+        XK_SEMICOLON => ";",
+        XK_COLON => ":",
+        XK_EQUAL => "=",
+        XK_BRACKET_LEFT => "[",
+        XK_BRACKET_RIGHT => "]",
+        XK_BACKSLASH => "\\",
+        XK_GRAVE => "`",
+        XK_APOSTROPHE => "'",
+        XK_DEAD_CIRCUMFLEX => "DeadCircumflex",
+        XK_PRINT => "Print",
+        XK_F1 => "F1",
+        XK_F2 => "F2",
+        XK_F3 => "F3",
+        XK_F4 => "F4",
+        XK_F5 => "F5",
+        XK_F6 => "F6",
+        XK_F7 => "F7",
+        XK_F8 => "F8",
+        XK_F9 => "F9",
+        XK_F10 => "F10",
+        XK_F11 => "F11",
+        XK_F12 => "F12",
+        XF86XK_MON_BRIGHTNESS_UP => "BrightnessUp",
+        XF86XK_MON_BRIGHTNESS_DOWN => "BrightnessDown",
+        XF86XK_AUDIO_LOWER_VOLUME => "VolumeDown",
+        XF86XK_AUDIO_MUTE => "Mute",
+        XF86XK_AUDIO_MIC_MUTE => "MicMute",
+        XF86XK_AUDIO_RAISE_VOLUME => "VolumeUp",
+        XF86XK_AUDIO_PLAY => "AudioPlay",
+        XF86XK_AUDIO_PAUSE => "AudioPause",
+        XF86XK_AUDIO_NEXT => "AudioNext",
+        XF86XK_AUDIO_PREV => "AudioPrev",
+        _ => return format!("0x{keysym:04X}"),
+    };
+    name.to_string()
 }
 
 #[cfg(test)]
@@ -342,6 +457,7 @@ mod tests {
                 action: NamedAction::None,
                 args: Vec::new(),
             },
+            origin: KeybindOrigin::CompiledDefault,
         }];
 
         let specs = vec![KeybindSpec {
@@ -350,7 +466,7 @@ mod tests {
             action: ActionSpec::Named("none".to_string()),
         }];
 
-        let merged = merge_keybinds(defaults, &specs);
+        let merged = merge_keybinds(defaults, &specs, KeybindOrigin::User);
         assert_eq!(merged.len(), 0);
     }
 
@@ -363,6 +479,7 @@ mod tests {
                 action: NamedAction::None,
                 args: Vec::new(),
             },
+            origin: KeybindOrigin::CompiledDefault,
         }];
 
         let specs = vec![KeybindSpec {
@@ -371,7 +488,7 @@ mod tests {
             action: ActionSpec::Structured(StructuredAction::None),
         }];
 
-        let merged = merge_keybinds(defaults, &specs);
+        let merged = merge_keybinds(defaults, &specs, KeybindOrigin::User);
         assert_eq!(merged.len(), 0);
     }
 
@@ -384,6 +501,7 @@ mod tests {
                 action: NamedAction::None,
                 args: Vec::new(),
             },
+            origin: KeybindOrigin::CompiledDefault,
         }];
 
         let specs = vec![
@@ -399,10 +517,11 @@ mod tests {
             },
         ];
 
-        let merged = merge_keybinds(defaults, &specs);
+        let merged = merge_keybinds(defaults, &specs, KeybindOrigin::User);
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].keysym, XK_P);
         assert_eq!(merged[1].keysym, XK_O);
+        assert!(merged.iter().all(|key| key.origin == KeybindOrigin::User));
     }
 
     #[test]
@@ -419,7 +538,7 @@ mod tests {
             "#,
         );
 
-        let merged = merge_keybinds(Vec::new(), &[spec]);
+        let merged = merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User);
         let [key] = merged.as_slice() else {
             panic!("expected one compiled keybinding");
         };
@@ -463,8 +582,8 @@ mod tests {
             "#,
         );
 
-        assert!(merge_keybinds(Vec::new(), &[empty]).is_empty());
-        assert!(merge_keybinds(Vec::new(), &[containing_none]).is_empty());
+        assert!(merge_keybinds(Vec::new(), &[empty], KeybindOrigin::User).is_empty());
+        assert!(merge_keybinds(Vec::new(), &[containing_none], KeybindOrigin::User).is_empty());
     }
 
     #[test]
@@ -484,10 +603,53 @@ mod tests {
             "#,
         );
 
-        let merged = merge_keybinds(Vec::new(), &[spec]);
+        let merged = merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User);
         let KeyAction::Sequence(actions) = &merged[0].action else {
             panic!("expected a sequence action");
         };
         assert!(matches!(actions.get(1), Some(KeyAction::Sequence(inner)) if inner.len() == 2));
+    }
+
+    #[test]
+    fn supported_dead_circumflex_keysym_formats_by_name() {
+        let keysym = parse_keysym("dead_circumflex").expect("supported keysym");
+
+        assert_eq!(format_keysym(keysym), "DeadCircumflex");
+    }
+
+    #[test]
+    fn modifier_formatting_matches_combinations() {
+        assert_eq!(format_modifiers(0), "");
+        assert_eq!(format_modifiers(MODKEY), "Super");
+        assert_eq!(format_modifiers(MODKEY | SHIFT), "Super + Shift");
+        assert_eq!(
+            format_modifiers(MODKEY | CONTROL | SHIFT | MOD1),
+            "Super + Ctrl + Shift + Alt"
+        );
+    }
+
+    #[test]
+    fn punctuation_keysyms_parse_and_format_bidirectionally() {
+        let symbols = [
+            ("-", "minus", XK_MINUS),
+            ("+", "plus", XK_PLUS),
+            (",", "comma", XK_COMMA),
+            (".", "period", XK_PERIOD),
+            ("/", "slash", XK_SLASH),
+            (";", "semicolon", XK_SEMICOLON),
+            (":", "colon", XK_COLON),
+            ("=", "equal", XK_EQUAL),
+            ("[", "bracket_left", XK_BRACKET_LEFT),
+            ("]", "bracket_right", XK_BRACKET_RIGHT),
+            ("\\", "backslash", XK_BACKSLASH),
+            ("`", "grave", XK_GRAVE),
+            ("'", "apostrophe", XK_APOSTROPHE),
+        ];
+
+        for (sym, name, expected_keysym) in symbols {
+            assert_eq!(parse_keysym(sym), Some(expected_keysym));
+            assert_eq!(parse_keysym(name), Some(expected_keysym));
+            assert_eq!(format_keysym(expected_keysym), sym);
+        }
     }
 }

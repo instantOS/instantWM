@@ -99,6 +99,35 @@ impl KeyAction {
             args: argv(args),
         }
     }
+
+    /// Render this action as a short, human-readable string (e.g.
+    /// `spawn ins settings --gui`, `view_tag 4`, `sequence [...]`).
+    ///
+    /// This is display-only text; it is not meant to round-trip through the
+    /// TOML config parser (tag actions and sequences aren't config syntax).
+    /// Used by `instantwmctl keybinds` so a help menu can show what each chord
+    /// does without re-parsing the internal action tree.
+    pub fn describe(&self) -> String {
+        match self {
+            KeyAction::Named { action, args } => {
+                if args.is_empty() {
+                    action.name().to_string()
+                } else {
+                    format!("{} {}", action.name(), args.join(" "))
+                }
+            }
+            KeyAction::Sequence(actions) => {
+                let parts: Vec<String> = actions.iter().map(KeyAction::describe).collect();
+                format!("sequence [{}]", parts.join(", "))
+            }
+            KeyAction::ViewTag { tag_idx } => format!("view_tag {}", tag_idx + 1),
+            KeyAction::ToggleViewTag { tag_idx } => format!("toggle_view_tag {}", tag_idx + 1),
+            KeyAction::SetClientTag { tag_idx } => format!("set_tag {}", tag_idx + 1),
+            KeyAction::FollowClientTag { tag_idx } => format!("follow_tag {}", tag_idx + 1),
+            KeyAction::ToggleClientTag { tag_idx } => format!("toggle_tag {}", tag_idx + 1),
+            KeyAction::SwapTags { tag_idx } => format!("swap_tag {}", tag_idx + 1),
+        }
+    }
 }
 
 impl ButtonAction {
@@ -114,5 +143,42 @@ impl ButtonAction {
             action,
             args: argv(args),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_action_describe_formats_all_variants() {
+        assert_eq!(KeyAction::named(NamedAction::FocusNext).describe(), "focus_next");
+        assert_eq!(
+            KeyAction::named_args(NamedAction::Spawn, &["ins", "settings", "--gui"]).describe(),
+            "spawn ins settings --gui"
+        );
+        assert_eq!(
+            KeyAction::Sequence(vec![
+                KeyAction::named_args(NamedAction::SetMode, &["default"]),
+                KeyAction::named(NamedAction::Quit),
+            ])
+            .describe(),
+            "sequence [set_mode default, quit]"
+        );
+        assert_eq!(KeyAction::ViewTag { tag_idx: 0 }.describe(), "view_tag 1");
+        assert_eq!(
+            KeyAction::ToggleViewTag { tag_idx: 1 }.describe(),
+            "toggle_view_tag 2"
+        );
+        assert_eq!(KeyAction::SetClientTag { tag_idx: 2 }.describe(), "set_tag 3");
+        assert_eq!(
+            KeyAction::FollowClientTag { tag_idx: 3 }.describe(),
+            "follow_tag 4"
+        );
+        assert_eq!(
+            KeyAction::ToggleClientTag { tag_idx: 4 }.describe(),
+            "toggle_tag 5"
+        );
+        assert_eq!(KeyAction::SwapTags { tag_idx: 8 }.describe(), "swap_tag 9");
     }
 }

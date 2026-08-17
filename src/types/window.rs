@@ -52,6 +52,29 @@ impl ButtonArg {
     }
 }
 
+/// Provenance of a [`Key`] binding.
+///
+/// Compiled defaults ship with the WM; `User` entries come from the user's
+/// `~/.config/instantwm/config.toml` (or an included file, which the loader
+/// merges before deserialization, so individual-file attribution isn't
+/// preserved).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    bincode::Decode,
+    bincode::Encode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum KeybindOrigin {
+    CompiledDefault,
+    User,
+}
+
 /// A keyboard binding.
 #[derive(Clone)]
 pub struct Key {
@@ -61,6 +84,8 @@ pub struct Key {
     pub keysym: u32,
     /// Action to execute when key is pressed.
     pub action: KeyAction,
+    /// Provenance: compiled default or user config.
+    pub origin: KeybindOrigin,
 }
 
 impl Debug for Key {
@@ -69,6 +94,7 @@ impl Debug for Key {
             .field("mod_mask", &self.mod_mask)
             .field("keysym", &self.keysym)
             .field("action", &self.action)
+            .field("origin", &self.origin)
             .finish()
     }
 }

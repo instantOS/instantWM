@@ -551,6 +551,8 @@ pub enum CommandKind {
         #[command(subcommand)]
         action: TestAction,
     },
+    /// List active keybindings (global, desktop, and per-mode).
+    Keybinds,
     /// Exit the compositor.
     Quit,
 }
@@ -915,6 +917,7 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::UpdateStatus { text } => Self::UpdateStatus(text),
             CommandKind::Config { action } => Self::Config(action.into()),
             CommandKind::Test { action } => Self::Test(test_command(action)),
+            CommandKind::Keybinds => Self::ListKeybinds,
             CommandKind::Quit => run_action("quit", Vec::new()),
         }
     }

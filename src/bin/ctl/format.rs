@@ -1,7 +1,9 @@
 use instantwm::ipc_types::{
-    ActionInfo, DisplayModes, KeyboardLayoutInfo, LayoutInfo, LayoutStatusInfo, ModeInfo,
-    MonitorInfo, Response, ScratchpadInfo, TagInfo, WindowInfo, WindowProtocol, WmStatusInfo,
+    ActionInfo, DisplayModes, KeybindInfo, KeyboardLayoutInfo, LayoutInfo, LayoutStatusInfo,
+    ModeInfo, MonitorInfo, Response, ScratchpadInfo, TagInfo, WindowInfo, WindowProtocol,
+    WmStatusInfo,
 };
+use instantwm::types::KeybindOrigin;
 
 pub fn format_response(response: &Response, json: bool) {
     match response {
@@ -22,6 +24,7 @@ pub fn format_response(response: &Response, json: bool) {
         Response::KeyboardLayoutList(layouts) => format_keyboard_layout_list(layouts, json),
         Response::TagList(tags) => format_tag_list(tags, json),
         Response::ActionList(actions) => format_action_list(actions, json),
+        Response::KeybindList(keybinds) => format_keybind_list(keybinds, json),
         Response::ConfigValue(val) => format_config_value(val, json),
         Response::ConfigList(entries) => format_config_list(entries, json),
         Response::Message(msg) => print!("{}", msg),
@@ -426,6 +429,90 @@ fn format_action_list(actions: &[ActionInfo], json: bool) {
     }
 }
 
+fn format_keybind_list(keybinds: &[KeybindInfo], json: bool) {
+    if json {
+        println!("{}", serde_json::to_string_pretty(keybinds).unwrap());
+        return;
+    }
+    print!("{}", format_keybind_list_text(keybinds));
+}
+
+pub fn format_keybind_list_text(keybinds: &[KeybindInfo]) -> String {
+    if keybinds.is_empty() {
+        return "No keybindings configured\n".to_string();
+    }
+
+    let bind_width = keybinds
+        .iter()
+        .map(|k| binding_text(k).len())
+        .max()
+        .unwrap_or(0)
+        .max("BINDING".len());
+    let action_width = keybinds
+        .iter()
+        .map(|k| k.action.len())
+        .max()
+        .unwrap_or(0)
+        .max("ACTION".len());
+    let mode_width = keybinds
+        .iter()
+        .map(|k| k.mode.as_deref().unwrap_or("global").len())
+        .max()
+        .unwrap_or(0)
+        .max("MODE".len());
+
+    use std::fmt::Write;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "{:<bw$} | {:<aw$} | {:<mw$} | ORIGIN",
+        "BINDING",
+        "ACTION",
+        "MODE",
+        bw = bind_width,
+        aw = action_width,
+        mw = mode_width
+    );
+    let _ = writeln!(
+        out,
+        "{:-<bw$}-|-{:-<aw$}-|-{:-<mw$}-|------",
+        "",
+        "",
+        "",
+        bw = bind_width,
+        aw = action_width,
+        mw = mode_width
+    );
+
+    for k in keybinds {
+        let mode = k.mode.as_deref().unwrap_or("global");
+        let origin = match k.origin {
+            KeybindOrigin::CompiledDefault => "default",
+            KeybindOrigin::User => "config",
+        };
+        let _ = writeln!(
+            out,
+            "{:<bw$} | {:<aw$} | {:<mw$} | {}",
+            binding_text(k),
+            k.action,
+            mode,
+            origin,
+            bw = bind_width,
+            aw = action_width,
+            mw = mode_width
+        );
+    }
+    out
+}
+
+fn binding_text(k: &KeybindInfo) -> String {
+    if k.modifiers.is_empty() {
+        k.key.clone()
+    } else {
+        format!("{} + {}", k.modifiers, k.key)
+    }
+}
+
 fn format_monitor_modes(displays: &[DisplayModes], json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(displays).unwrap());
@@ -503,5 +590,50 @@ mod tests {
     #[test]
     fn short_multibyte_title_is_unchanged() {
         assert_eq!(truncate_with_ellipsis("Plüma – Datei", 50), "Plüma – Datei");
+    }
+
+    #[test]
+    fn keybind_table_formatting_aligns_columns_correctly() {
+        use super::format_keybind_list_text;
+        use instantwm::ipc_types::KeybindInfo;
+        use instantwm::types::KeybindOrigin;
+
+        let keybinds = vec![
+            KeybindInfo {
+                modifiers: "Super".to_string(),
+                key: "Return".to_string(),
+                action: "spawn terminal".to_string(),
+                mode: None,
+                origin: KeybindOrigin::CompiledDefault,
+            },
+            KeybindInfo {
+                modifiers: "".to_string(),
+                key: "F1".to_string(),
+                action: "quit".to_string(),
+                mode: Some("desktop".to_string()),
+                origin: KeybindOrigin::User,
+            },
+        ];
+
+        let text = format_keybind_list_text(&keybinds);
+        let lines: Vec<&str> = text.lines().collect();
+
+        assert_eq!(lines.len(), 4);
+        assert!(lines[0].starts_with("BINDING"));
+        assert!(lines[1].contains("-|-"));
+        assert!(lines[2].contains("Super + Return"));
+        assert!(lines[2].contains("spawn terminal"));
+        assert!(lines[2].contains("global"));
+        assert!(lines[2].contains("default"));
+        assert!(lines[3].contains("F1"));
+        assert!(lines[3].contains("quit"));
+        assert!(lines[3].contains("desktop"));
+        assert!(lines[3].contains("config"));
+    }
+
+    #[test]
+    fn keybind_table_formatting_empty_list() {
+        use super::format_keybind_list_text;
+        assert_eq!(format_keybind_list_text(&[]), "No keybindings configured\n");
     }
 }

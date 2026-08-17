@@ -463,6 +463,12 @@ mod tests {
     }
 
     #[test]
+    fn keybinds_listing_is_a_structured_query() {
+        let cli = Cli::parse_from(["instantwmctl", "keybinds"]);
+        assert!(matches!(cli.command.into(), IpcCommand::ListKeybinds));
+    }
+
+    #[test]
     fn layout_queries_are_structured_and_cycling_maps_to_actions() {
         let cli = Cli::parse_from(["instantwmctl", "layout", "list"]);
         assert!(matches!(cli.command.into(), IpcCommand::LayoutList));
