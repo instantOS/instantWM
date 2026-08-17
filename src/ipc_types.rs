@@ -576,6 +576,12 @@ pub struct ActionInfo {
 /// rather than raw masks so the consumer (a help menu, a settings UI) can
 /// display them directly. `origin` distinguishes compiled defaults from the
 /// user's config.toml.
+///
+/// `modifiers`/`key` are sent raw; the composed `Modifiers + Key` string is
+/// presentation logic owned by each renderer (instantWM's `binding_text` for
+/// the text table, instantCLI's `KeybindRow::binding` for the fzf UI). Keeping
+/// them separate is deliberate: the wire contract stays minimal and each side
+/// composes exactly once, at its own call site.
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct KeybindInfo {
     pub modifiers: String,

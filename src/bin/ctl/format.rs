@@ -505,6 +505,12 @@ pub fn format_keybind_list_text(keybinds: &[KeybindInfo]) -> String {
     out
 }
 
+/// Render a chord as the user would type it: empty modifiers → just the key,
+/// otherwise `Modifiers + Key`.
+///
+/// Sibling implementation: `instantCLI::keyhelp::KeybindRow::binding` composes
+/// the same string for the fzf UI. Keep them in sync — the wire contract
+/// deliberately sends raw `modifiers`/`key`, so each side derives this once.
 fn binding_text(k: &KeybindInfo) -> String {
     if k.modifiers.is_empty() {
         k.key.clone()
