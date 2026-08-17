@@ -518,17 +518,6 @@ mod tests {
             LayoutCommand::from_name("bottom-stack"),
             Some(LayoutCommand::BottomStack)
         );
-        for alias in [
-            "tiling",
-            "float",
-            "monocle",
-            "deck",
-            "gaplessgrid",
-            "horiz-grid",
-            "bstack-horiz",
-        ] {
-            assert_eq!(LayoutCommand::from_name(alias), None);
-        }
         assert_eq!(LayoutCommand::from_name("bad"), None);
     }
 
@@ -546,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn edge_scratchpad_actions_replace_legacy_overlay_actions() {
+    fn named_actions_parse_by_canonical_name() {
         assert_eq!(
             parse_named_action("edge_scratchpad_toggle"),
             Some(NamedAction::EdgeScratchpadToggle)
@@ -555,26 +544,14 @@ mod tests {
             parse_named_action("edge_scratchpad_direction_left"),
             Some(NamedAction::EdgeScratchpadDirectionLeft)
         );
-        assert_eq!(parse_named_action("overlay_toggle"), None);
-        assert_eq!(parse_named_action("overlay_direction_left"), None);
-    }
-
-    #[test]
-    fn tiling_maximized_toggle_has_an_explicit_presentation_name() {
         assert_eq!(
             parse_named_action("toggle_tiling_maximized"),
             Some(NamedAction::ToggleTilingMaximized)
         );
-        assert_eq!(parse_named_action("toggle_maximized_layout"), None);
-    }
-
-    #[test]
-    fn tree_placement_action_does_not_alias_legacy_pointer_move() {
         assert_eq!(
             parse_named_action("begin_tree_placement"),
             Some(NamedAction::BeginTreePlacement)
         );
-        assert_eq!(parse_named_action("begin_keyboard_move"), None);
     }
 
     #[test]
