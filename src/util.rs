@@ -128,7 +128,7 @@ pub(crate) fn record_spawned_child(
     pid
 }
 
-fn reap_child_async(child: Child) {
+pub(crate) fn reap_child_async(child: Child) {
     static CHILD_REAPER: OnceLock<mpsc::Sender<Child>> = OnceLock::new();
 
     let sender = CHILD_REAPER.get_or_init(|| {

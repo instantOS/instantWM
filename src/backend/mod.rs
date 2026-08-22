@@ -300,13 +300,23 @@ impl Backend {
                 .map(|_| ()),
             Self::Wayland(_) => {
                 let _ = Command::new("killall").arg("swaybg").status();
-                Command::new("swaybg")
+                let spawned = Command::new("swaybg")
                     .arg("-i")
                     .arg(path)
                     .arg("-m")
                     .arg("fill")
-                    .spawn()
-                    .map(|_| ())
+                    .spawn();
+                // Wayland has no SIGCHLD handler, so the replacement swaybg
+                // must be handed to the dedicated reaper thread (see
+                // [`BackendKind::reaps_children_via_signals`]) instead of
+                // accumulating as a zombie on every wallpaper change.
+                match spawned {
+                    Ok(child) if !self.kind().reaps_children_via_signals() => {
+                        crate::util::reap_child_async(child);
+                        Ok(())
+                    }
+                    result => result.map(|_| ()),
+                }
             }
         }
     }

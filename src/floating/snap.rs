@@ -63,11 +63,13 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 
     // Animate into place, keep the pointer inside the freshly snapped
     // window (snapping is keyboard-driven), and make the snapped window
-    // the focused client. Identical on both backends.
+    // the focused client. Identical on both backends. Size hints are
+    // respected so clients with a minimum size (e.g. terminal grids) are
+    // never configured below it by a small snap region.
     ctx.move_resize(
         win,
         rect,
-        MoveResizeOptions::animate_to(DEFAULT_ANIMATION_MILLIS),
+        MoveResizeOptions::animate_to(DEFAULT_ANIMATION_MILLIS).with_size_hints(),
     );
     ctx.pointer_backend().warp_to_point(rect.center());
     crate::focus::focus(ctx, Some(win));
@@ -75,10 +77,14 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 
 /// Resolve the geometry a snapped window should occupy.
 ///
-/// [`SnapPosition::None`] restores the saved floating geometry.
+/// [`SnapPosition::None`] restores the saved floating geometry — and the
+/// border width [`SnapPosition::Maximized`] zeroed.
 /// [`SnapPosition::Maximized`] saves the current border width and zeroes it
 /// so the window fills the work area edge to edge; every other position
 /// splits the monitor into halves or quarters around the normal border.
+///
+/// Border changes are pushed through [`WmCtx::set_border`] so backends apply
+/// them; [`WmCtx::move_resize`] never touches border widths.
 fn snap_target_rect(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
     let (snap_status, saved_geo) = {
         let c = ctx.core().model().client(win)?;
@@ -86,21 +92,26 @@ fn snap_target_rect(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> Op
     };
 
     if snap_status == SnapPosition::None {
+        let restored = {
+            let client = ctx.core_mut().model_mut().client_mut(win)?;
+            client.restore_border_width();
+            client.border_width
+        };
+        ctx.set_border(win, restored);
         return Some(saved_geo);
     }
 
     let border_width = {
         let client = ctx.core_mut().model_mut().client_mut(win)?;
         if snap_status == SnapPosition::Maximized {
-            if client.border_width != 0 {
-                client.save_border_width();
-                client.border_width = 0;
-            }
+            client.save_border_width();
+            client.border_width = 0;
         } else {
             client.restore_border_width();
         }
         client.border_width
     };
+    ctx.set_border(win, border_width);
     let work_rect = ctx.core().model().monitor(monitor_id)?.work_rect();
     snap_status.target_rect(border_width, work_rect)
 }
@@ -124,10 +135,17 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
 
     if is_floating || !tiling {
         ctx.raise_client(win);
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        let restored_border = {
+            let Some(client) = ctx.core_mut().model_mut().client_mut(win) else {
+                return;
+            };
             client.snap_status = SnapPosition::None;
             client.restore_border_width();
-        }
+            client.border_width
+        };
+        // Push the restored border to the backend; the move_resize in
+        // restore_floating_geometry never applies border widths.
+        ctx.set_border(win, restored_border);
         super::state::restore_floating_geometry(ctx, win);
     }
 }
