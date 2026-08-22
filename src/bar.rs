@@ -1,4 +1,3 @@
-pub mod color;
 pub(crate) mod model;
 pub mod paint;
 pub(crate) mod renderer;
@@ -210,7 +209,7 @@ pub fn resolve_bar_position_at_root(
 
     Some((
         monitor_id,
-        mon.bar_position_at_x(core, mon.local_work_point(root).x),
+        model::bar_position_at_x(mon, core, mon.local_work_point(root).x),
     ))
 }
 

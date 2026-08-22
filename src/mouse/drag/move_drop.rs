@@ -112,7 +112,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().expect_selected_monitor();
-            mon.bar_position_at_x(core, mon.local_work_point(root).x)
+            crate::bar::model::bar_position_at_x(mon, core, mon.local_work_point(root).x)
                 .to_gesture()
         };
         let monitor_id = ctx.core().model().selected_monitor_id();
@@ -167,7 +167,7 @@ pub fn handle_bar_drop(
     let position = {
         let core = ctx.core();
         let mon = core.model().expect_selected_monitor();
-        mon.bar_position_at_x(core, mon.local_work_point(root).x)
+        crate::bar::model::bar_position_at_x(mon, core, mon.local_work_point(root).x)
     };
 
     // Remember whether the window was floating *before* any state change so

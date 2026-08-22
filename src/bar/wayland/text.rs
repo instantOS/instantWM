@@ -147,7 +147,7 @@ impl TextRasterizer {
         canvas_size: Size,
         bounds: Rect,
         text: &str,
-        color: crate::bar::color::Rgba,
+        color: crate::types::color::Rgba,
     ) {
         if text.is_empty() || !bounds.size().is_positive() {
             return;

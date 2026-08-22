@@ -8,9 +8,8 @@ use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::DrawContext;
+use crate::backend::x11::draw::{BorderScheme, ColorScheme, DrawContext, StatusScheme};
 use crate::config::load_startup_config;
-use crate::types::*;
 use crate::wm::Wm;
 
 const XC_LEFT_PTR: u32 = 68;
@@ -272,7 +271,7 @@ fn init_schemes(
     drw: &mut DrawContext,
     bordercolors: &crate::types::BorderColorConfig,
     statusbarcolors: &crate::types::StatusColorConfig,
-    close_color: crate::bar::color::Rgba,
+    close_color: crate::types::color::Rgba,
 ) {
     let normal = drw
         .clr_create(&bordercolors.normal.to_string())

@@ -1,5 +1,4 @@
-use crate::bar::color::Rgba;
-use crate::types::{ColorSchemeRgba, Rect};
+use crate::types::{ColorSchemeRgba, Rect, Rgba};
 
 #[derive(Clone, Debug)]
 pub struct BarScheme {

@@ -12,11 +12,10 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::x11::draw::{Cursor, DrawContext};
+use crate::backend::x11::draw::{BorderScheme, Cursor, DrawContext, StatusScheme};
 use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
-use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::{Point, Rect, WindowId};
 
 #[derive(Clone, Copy)]

@@ -3,10 +3,9 @@
 //! Backends consume the resolved, typed colour tables. Theme selection and
 //! user overrides are handled while loading TOML, before runtime state exists.
 
-use crate::bar::color::Rgba;
 use crate::config::config_toml::{ColorConfig, ColorTheme};
 use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba,
+    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba, Rgba,
     StatusColorConfig, TagColorConfigs, TagColorSet, WindowColorConfigs, WindowColorSet,
 };
 

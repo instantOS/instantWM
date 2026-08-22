@@ -6,7 +6,7 @@
 //! | Sub-module | Contents                                               |
 //! |------------|--------------------------------------------------------|
 //! | [`ffi`]    | Raw `extern "C"` bindings (X11, Xft, Fontconfig)      |
-//! | [`color`]  | [`Color`] (color) and [`Cursor`] (cursor)              |
+//! | [`color`]  | [`Color`] (color), [`Cursor`] (cursor), X11 color schemes |
 //! | [`font`]   | [`Fnt`] font / fontset linked-list                     |
 //! |            |                                                       |
 //! | [`context`] | [`DrawContext`] drawing context — the main public type        |
@@ -22,7 +22,7 @@
 //!
 //! // Allocate a color scheme and activate it.
 //! let scheme = drw.scm_create(&["#eeeeee", "#222222", "#005577"])?;
-//! drw.set_scheme(ColorScheme::from_vec(scheme));
+//! drw.set_scheme(scheme);
 //!
 //! // Draw text into the off-screen pixmap…
 //! drw.text(Rect::new(0, 0, 200, bar_height as i32), horizontal_padding as u32 / 2, "Hello, world!", false, 0);
@@ -45,8 +45,8 @@ mod font;
 // should import from `crate::backend::x11::draw::*` rather than from the sub-modules
 // directly.
 
-// Color / cursor types.
-pub use color::{Color, Cursor};
+// Color / cursor types and X11 color schemes.
+pub use color::{BorderScheme, ColorScheme, Cursor, StatusScheme};
 
 // The main drawing context.
 pub use context::DrawContext;

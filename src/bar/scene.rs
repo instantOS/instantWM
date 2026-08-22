@@ -235,7 +235,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub font_families: Vec<String>,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
-    pub status_hover_color: crate::bar::color::Rgba,
+    pub status_hover_color: crate::types::color::Rgba,
     pub startmenu_size: i32,
     pub horizontal_padding: i32,
     pub gesture: Gesture,
@@ -833,7 +833,7 @@ pub(crate) fn render_monitor_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bar::color::Rgba;
+    use crate::types::color::Rgba;
     use crate::model::WmModel;
     use crate::types::{
         Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,

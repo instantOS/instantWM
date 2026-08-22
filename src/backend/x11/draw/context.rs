@@ -27,7 +27,7 @@ use x11rb::protocol::xproto::{Drawable, Point, Window};
 use std::cmp::min;
 use std::collections::VecDeque;
 
-use super::color::{Color, Cursor};
+use super::color::{Color, ColorScheme, Cursor};
 use super::ffi::{
     FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE, FcCharSetAddChar, FcCharSetCreate,
     FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute, FcInit, FcNameParse, FcPattern,
@@ -42,7 +42,7 @@ use super::ffi::{
 };
 use super::font::Fnt;
 
-use crate::types::{ColorScheme, Rect as WmRect};
+use crate::types::Rect as WmRect;
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
 /// find a fallback font for the same unrenderable character.
@@ -362,7 +362,7 @@ impl DrawContext {
         Ok(Color { color })
     }
 
-    pub fn clr_create_rgba(&self, rgba: crate::bar::color::Rgba) -> Color {
+    pub fn clr_create_rgba(&self, rgba: crate::types::color::Rgba) -> Color {
         let clamp = |v: f32| -> u16 {
             let v = v.clamp(0.0, 1.0);
             (v * 65535.0).round() as u16

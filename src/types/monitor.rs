@@ -935,31 +935,6 @@ impl Monitor {
         }
         occupied.without_scratchpad()
     }
-
-    /// Compute which logical bar region the cursor's **monitor-local** x coordinate
-    /// falls in.
-    pub fn bar_position_at_x(
-        &self,
-        core: &crate::contexts::CoreCtx,
-        local_x: i32,
-    ) -> crate::types::BarPosition {
-        use crate::bar::model::{build_fallback_hit_cache, hit_test};
-
-        let is_selmon = core.model().expect_selected_monitor().num == self.num;
-
-        // Prefer the pre-built hit cache populated during rendering; fall back to
-        // computing a temporary one from the same utility functions.
-        let owned;
-        let hit: &crate::bar::MonitorHitCache = match core.bar.monitor_hit_cache(self.id()) {
-            Some(h) => h,
-            None => {
-                owned = build_fallback_hit_cache(self, core);
-                &owned
-            }
-        };
-
-        hit_test(hit, self, core.config().systray.show, is_selmon, local_x)
-    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,5 @@
-use crate::backend::x11::draw::DrawContext;
+use crate::backend::x11::draw::{ColorScheme, DrawContext};
 use crate::bar::paint::{BarPainter, BarScheme};
-use crate::types::ColorScheme;
 use crate::types::Rect;
 use std::collections::HashMap;
 

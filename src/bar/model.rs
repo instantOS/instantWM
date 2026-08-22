@@ -124,6 +124,24 @@ pub(crate) fn hit_test(
     BarPosition::Root
 }
 
+/// Resolve the logical bar region for `local_x` on `monitor`.
+///
+/// Prefers the pre-built hit cache populated during rendering; falls back to
+/// computing a temporary one from the same utility functions.
+pub(crate) fn bar_position_at_x(monitor: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
+    let is_selmon = core.model().expect_selected_monitor().num == monitor.num;
+    let owned;
+    let hit: &MonitorHitCache = match core.bar.monitor_hit_cache(monitor.id()) {
+        Some(h) => h,
+        None => {
+            owned = build_fallback_hit_cache(monitor, core);
+            &owned
+        }
+    };
+
+    hit_test(hit, monitor, core.config().systray.show, is_selmon, local_x)
+}
+
 /// Return the title-cell index at `local_x`, independent of the window
 /// identity captured in the render snapshot.
 pub(crate) fn title_hit_slot(hit: &MonitorHitCache, local_x: i32) -> Option<usize> {

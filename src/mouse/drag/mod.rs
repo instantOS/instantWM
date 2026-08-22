@@ -53,7 +53,7 @@ pub(crate) fn bar_position_on_monitor(
     let local_x = bar_local_x_on_monitor(ctx, monitor_id, root)?;
     let core = ctx.core();
     let monitor = core.model().monitor(monitor_id)?;
-    Some(monitor.bar_position_at_x(core, local_x))
+    Some(crate::bar::model::bar_position_at_x(&monitor, core, local_x))
 }
 
 /// Validate a root-space point against one monitor's visible bar and return

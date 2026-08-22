@@ -45,7 +45,7 @@ impl WindowBorderInfo {
         &self,
         is_focused: bool,
         colors: &BorderColorConfig,
-    ) -> crate::bar::color::Rgba {
+    ) -> crate::types::color::Rgba {
         if is_focused {
             if self.is_floating || !self.is_tiling_layout {
                 colors.float_focus
@@ -89,7 +89,7 @@ impl BorderScene {
     pub fn cache_key(
         &self,
         colors: &BorderColorConfig,
-        close_color: crate::bar::color::Rgba,
+        close_color: crate::types::color::Rgba,
     ) -> u64 {
         use std::hash::{Hash, Hasher};
 
@@ -100,7 +100,7 @@ impl BorderScene {
             rect.h.hash(hasher);
         }
 
-        fn hash_color(color: crate::bar::color::Rgba, hasher: &mut impl Hasher) {
+        fn hash_color(color: crate::types::color::Rgba, hasher: &mut impl Hasher) {
             for component in color.into_array() {
                 component.to_bits().hash(hasher);
             }
@@ -133,7 +133,7 @@ impl BorderScene {
     pub fn render(
         &self,
         colors: &BorderColorConfig,
-        close_color: crate::bar::color::Rgba,
+        close_color: crate::types::color::Rgba,
     ) -> Vec<SolidColorRenderElement> {
         render_border_scene(self, colors, close_color)
     }
@@ -337,7 +337,7 @@ fn visible_close_outline_parts(scene: &BorderScene, scratch: &mut Vec<Rect>) -> 
 fn render_border_scene(
     scene: &BorderScene,
     colors: &BorderColorConfig,
-    close_color: crate::bar::color::Rgba,
+    close_color: crate::types::color::Rgba,
 ) -> Vec<SolidColorRenderElement> {
     let windows = &scene.windows;
     let mut elements = Vec::new();
@@ -370,7 +370,7 @@ fn render_border_scene(
 pub fn append_layout_preview(
     out: &mut Vec<SolidColorRenderElement>,
     preview: Option<Rect>,
-    color: crate::bar::color::Rgba,
+    color: crate::types::color::Rgba,
 ) {
     let Some(preview) = preview else {
         return;
@@ -383,7 +383,7 @@ pub fn append_layout_preview(
     }
 }
 
-fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::bar::color::Rgba) {
+fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::types::color::Rgba) {
     if !rect.size().is_positive() {
         return;
     }
@@ -400,7 +400,7 @@ fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bar::color::Rgba;
+    use crate::types::color::Rgba;
 
     fn window_at(displayed_rect: Rect) -> WindowBorderInfo {
         WindowBorderInfo {

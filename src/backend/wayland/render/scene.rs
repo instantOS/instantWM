@@ -110,7 +110,7 @@ pub fn poll_systray(wm: &mut Wm) {
 pub struct SharedSceneElements {
     pub bar_buffers: Rc<Vec<(MemoryRenderBuffer, crate::types::Point)>>,
     pub borders: Vec<SolidColorRenderElement>,
-    pub layout_preview_color: crate::bar::color::Rgba,
+    pub layout_preview_color: crate::types::color::Rgba,
 }
 
 /// Renderer-owned cache shared across consecutive frames.

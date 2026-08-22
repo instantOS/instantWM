@@ -2,9 +2,8 @@ use super::TEXT_PADDING;
 use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
-use crate::bar::color::Rgba;
 use crate::bar::paint::{BarPainter, BarScheme};
-use crate::types::{Point, Rect};
+use crate::types::{Point, Rect, Rgba};
 
 const HOVER_INDICATOR_HEIGHT: i32 = 3;
 
@@ -716,7 +715,7 @@ mod tests {
     }
 
     fn scheme() -> BarScheme {
-        use crate::bar::color::Rgba;
+        use crate::types::Rgba;
         BarScheme {
             foreground: Rgba::new(1.0, 1.0, 1.0, 1.0),
             background: Rgba::rgb(0.0, 0.0, 0.0),
