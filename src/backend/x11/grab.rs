@@ -19,8 +19,9 @@
 //! ```
 
 use crate::backend::BackendEvent;
+use crate::backend::PointerOps;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
-use crate::contexts::WmCtxX11;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{AltCursor, MouseButton, Point};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -312,6 +313,53 @@ where
 ///
 /// X11 alone needs a native pointer grab and a synchronous adapter. Gesture
 /// semantics remain in `mouse::interaction`, alongside Wayland pointer/touch.
+/// Commit the current hover-resize offer to a move, resize, or close
+/// operation.
+///
+/// X11 commits offers through its modal grab loop; the shared mouse module
+/// owns only the offer model. Returns `false` when there is no resize offer
+/// or the button is not a valid commit button for hover resize.
+pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
+    let Some((win, _)) = ctx.core.drag_state().hover_offer.resize_target() else {
+        return false;
+    };
+    if btn == MouseButton::Middle {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::mouse::clear_hover_offer(&mut wm_ctx);
+        if wm_ctx.core().model().selected_win() != Some(win) {
+            crate::focus::focus(&mut wm_ctx, Some(win));
+        }
+        crate::client::kill::close_win(&mut wm_ctx, win);
+        return true;
+    }
+    if btn != MouseButton::Left && btn != MouseButton::Right {
+        return false;
+    }
+    let start = ctx
+        .x11
+        .pointer_location()
+        .or_else(|| {
+            ctx.core
+                .model()
+                .client(win)
+                .map(|client| client.geo.center())
+        })
+        .unwrap_or_default();
+    let started = {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        if wm_ctx.core().model().selected_win() != Some(win) {
+            crate::focus::focus(&mut wm_ctx, Some(win));
+        }
+        crate::mouse::drag::hover_drag_begin(
+            &mut wm_ctx,
+            start,
+            btn,
+            crate::types::InteractionSource::Pointer,
+        )
+    };
+    started && drive_wm_interaction(ctx, btn)
+}
+
 pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     if ctx.core.drag_state().captured_button() != Some(btn)
         || ctx.core.drag_state().captured_source() != Some(crate::types::InteractionSource::Pointer)

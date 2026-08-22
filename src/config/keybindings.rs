@@ -10,6 +10,12 @@ pub const MODKEY: u32 = 1 << 6;
 pub const CONTROL: u32 = 1 << 2;
 pub const SHIFT: u32 = 1 << 0;
 pub const MOD1: u32 = 1 << 3;
+/// X-protocol modifier bit for Mod2 (usually Num Lock).
+pub const MOD2: u32 = 1 << 4;
+/// X-protocol modifier bit for Mod3.
+pub const MOD3: u32 = 1 << 5;
+/// X-protocol modifier bit for Mod5.
+pub const MOD5: u32 = 1 << 7;
 
 macro_rules! key {
     ($mods:expr, $sym:expr => $action:expr) => {

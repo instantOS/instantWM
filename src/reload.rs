@@ -1,6 +1,4 @@
-use crate::backend::Backend;
 use crate::config;
-use crate::contexts::WmCtx;
 use crate::wm::Wm;
 
 pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
@@ -26,38 +24,23 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     // rebuild, Wayland bar-metric recompute). The choreography is owned by
     // `Wm::reinit_bar_resources` so runtime updates and full reloads cannot drift.
     wm.reinit_bar_resources();
-    if matches!(&wm.backend, Backend::X11(_)) {
-        reload_x11(wm);
+
+    // Per-backend config projection: X11 re-renders bars/status from the new
+    // DrawContext and refreshes its passive grabs; Wayland needs nothing
+    // beyond `reinit_bar_resources` above.
+    {
+        let mut ctx = wm.ctx();
+        ctx.refresh_bar_content();
+        ctx.refresh_status_content();
+        ctx.update_ewmh_desktop_props();
+        ctx.refresh_key_grabs();
+        crate::focus::focus(&mut ctx, None);
     }
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
     crate::startup::autostart::run_exec_commands(&wm.core.config.exec);
 
     Ok(())
-}
-
-fn reload_x11(wm: &mut Wm) {
-    let ctx = wm.ctx();
-    if let WmCtx::X11(mut x11_ctx) = ctx {
-        crate::backend::x11::bar::update_bars(
-            x11_ctx.core.state_mut(),
-            &x11_ctx.x11,
-            x11_ctx.x11_runtime,
-            x11_ctx.xembed_tray.as_ref(),
-        );
-        crate::backend::x11::bar::update_status(
-            &mut x11_ctx.core,
-            &x11_ctx.x11,
-            x11_ctx.x11_runtime,
-            x11_ctx.xembed_tray,
-        );
-        let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
-        wm_ctx.update_ewmh_desktop_props();
-        if let WmCtx::X11(x11) = &mut wm_ctx {
-            crate::backend::x11::keyboard::grab_keys(x11.core.state(), &x11.x11, x11.x11_runtime);
-        }
-        crate::focus::focus(&mut wm_ctx, None);
-    }
 }
 
 #[cfg(test)]

@@ -107,7 +107,10 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
 pub fn draw_window(ctx: &mut WmCtx) {
-    if ctx.is_wayland() {
+    // instantslop selects a region by drawing through the X server. There is
+    // no Wayland counterpart yet; the capability query documents that gap in
+    // one place instead of silently no-oping per call site.
+    if !ctx.backend_kind().supports_x_selection_tools() {
         return;
     }
     let Some(win) = ctx.core().model().selected_win() else {

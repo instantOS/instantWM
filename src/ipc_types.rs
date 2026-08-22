@@ -79,21 +79,6 @@ pub enum Transform {
     Flipped270,
 }
 
-impl From<Transform> for smithay::utils::Transform {
-    fn from(transform: Transform) -> Self {
-        match transform {
-            Transform::Normal => smithay::utils::Transform::Normal,
-            Transform::_90 => smithay::utils::Transform::_90,
-            Transform::_180 => smithay::utils::Transform::_180,
-            Transform::_270 => smithay::utils::Transform::_270,
-            Transform::Flipped => smithay::utils::Transform::Flipped,
-            Transform::Flipped90 => smithay::utils::Transform::Flipped90,
-            Transform::Flipped180 => smithay::utils::Transform::Flipped180,
-            Transform::Flipped270 => smithay::utils::Transform::Flipped270,
-        }
-    }
-}
-
 impl std::fmt::Display for Transform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

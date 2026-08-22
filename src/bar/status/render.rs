@@ -147,16 +147,16 @@ pub(crate) fn modifiers_from_mask(mask: u32) -> Vec<String> {
     if mask & crate::config::keybindings::MOD1 != 0 {
         modifiers.push("Mod1".to_string());
     }
-    if mask & u32::from(x11rb::protocol::xproto::ModMask::M2) != 0 {
+    if mask & crate::config::keybindings::MOD2 != 0 {
         modifiers.push("Mod2".to_string());
     }
-    if mask & u32::from(x11rb::protocol::xproto::ModMask::M3) != 0 {
+    if mask & crate::config::keybindings::MOD3 != 0 {
         modifiers.push("Mod3".to_string());
     }
     if mask & crate::config::keybindings::MODKEY != 0 {
         modifiers.push("Mod4".to_string());
     }
-    if mask & u32::from(x11rb::protocol::xproto::ModMask::M5) != 0 {
+    if mask & crate::config::keybindings::MOD5 != 0 {
         modifiers.push("Mod5".to_string());
     }
 

@@ -62,7 +62,7 @@ pub fn build_bar_buffers(
 
         data.bar_painter
             .set_render_ping(state.runtime.render_ping.clone());
-        crate::bar::wayland::render_bar_buffers(
+        crate::backend::wayland::bar::render_bar_buffers(
             &mut core,
             &mut data.bar_painter,
             smithay::utils::Scale::from(1.0),
@@ -72,7 +72,9 @@ pub fn build_bar_buffers(
     };
 
     if show_bottom {
-        buffers.extend(crate::bar::wayland::build_bottom_bar_buffers(&mut core));
+        buffers.extend(crate::backend::wayland::bar::build_bottom_bar_buffers(
+            &mut core,
+        ));
     }
 
     buffers

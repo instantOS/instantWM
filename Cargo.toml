@@ -2,10 +2,10 @@
 name = "instantwm"
 version = "0.1.20"
 edition = "2024"
-description = "A tiling window manager for X11 - Rust port"
+description = "Hybrid tiling window manager for X11 and Wayland"
 license = "MIT"
 authors = ["instantWM contributors"]
-keywords = ["window-manager", "x11", "tiling"]
+keywords = ["window-manager", "x11", "wayland", "tiling"]
 categories = ["gui"]
 publish = false
 

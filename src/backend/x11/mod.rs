@@ -110,6 +110,46 @@ impl X11RuntimeConfig {
     ) -> Option<crate::animation::WindowAnimation> {
         self.window_animations.remove(&win)
     }
+
+    pub(crate) fn take_current_window_animation_rect(
+        &mut self,
+        win: WindowId,
+        now: std::time::Instant,
+    ) -> Option<Rect> {
+        self.take_window_animation(win)
+            .map(|animation| animation.tick(now).rect)
+    }
+
+    pub(crate) fn cancel_window_animation(&mut self, win: WindowId) {
+        let _ = self.take_window_animation(win);
+    }
+
+    pub(crate) fn window_animation_targets(&self, win: WindowId, target: Rect) -> bool {
+        self.window_animations
+            .get(&win)
+            .is_some_and(|animation| animation.to == target)
+    }
+
+    pub(crate) fn begin_window_animation(
+        &mut self,
+        x11: &X11BackendRef<'_>,
+        win: WindowId,
+        from: Rect,
+        to: Rect,
+        duration: std::time::Duration,
+    ) {
+        x11.resize_window(win, from);
+        x11.flush();
+        self.insert_or_replace_window_animation(
+            win,
+            crate::animation::WindowAnimation {
+                from,
+                to,
+                started_at: std::time::Instant::now(),
+                duration,
+            },
+        );
+    }
 }
 
 pub mod bar;
@@ -338,6 +378,10 @@ impl PointerOps for X11BackendRef<'_> {
 }
 
 impl OutputOps for X11BackendRef<'_> {
+    fn query_fallback_outputs(&self) -> Option<Vec<crate::backend::BackendOutputInfo>> {
+        crate::backend::x11::monitor_helpers::xinerama_outputs(self)
+    }
+
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         let root = self.conn.setup().roots[self.screen_num].root;
         randr::set_monitor_config(self.conn, root, name, config);

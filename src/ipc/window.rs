@@ -141,14 +141,12 @@ fn resize_window(
         arrange(&mut ctx, Some(current_monitor_id));
     }
 
-    if !ctx.is_wayland() {
-        let _ = transfer_client(
-            &mut ctx,
-            win,
-            target_monitor_id,
-            TransferFocus::FollowWindow,
-        );
-    }
+    let _ = transfer_client(
+        &mut ctx,
+        win,
+        target_monitor_id,
+        TransferFocus::FollowWindow,
+    );
     ctx.move_resize(
         win,
         rect,

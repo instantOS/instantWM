@@ -4,7 +4,7 @@
 //! for monitor-related operations.
 
 use crate::backend::BackendOutputInfo;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::core_state::{DerivedState, EffectiveConfig};
 use crate::focus::{focus, refresh_focus, unfocus_win};
 use crate::types::*;
@@ -309,9 +309,7 @@ pub fn transfer_client(
         .model_mut()
         .move_client_to_monitor(win, target_mon)?;
 
-    if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::set_client_tag_prop(x11.core.state(), &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.sync_client_tag_props(win);
 
     match transfer_focus_effect(
         focus_policy,
@@ -440,17 +438,16 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
 }
 
 pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
-    // Try the backend's get_outputs first (uses XRandR on X11, native on Wayland)
+    // Try the backend's primary output discovery first (XRandR on X11,
+    // native protocol state on Wayland).
     let outputs = ctx.output_backend().get_outputs();
     if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
         return sync_monitors_from_outputs(ctx, outputs);
     }
 
-    // Fall back to Xinerama for X11
-    if let WmCtx::X11(x11) = ctx
-        && let Some(result) = update_from_xinerama(x11)
-    {
-        return result;
+    // Legacy fallback discovery (Xinerama on X11; None elsewhere).
+    if let Some(outputs) = ctx.output_backend().query_fallback_outputs() {
+        return sync_monitors_from_outputs(ctx, outputs);
     }
 
     // Final fallback to single monitor
@@ -611,7 +608,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     changed |= reconciliation.changed;
 
     for bar_win in reconciliation.removed_bar_windows {
-        crate::backend::x11::monitor_helpers::destroy_monitor_bar(ctx, bar_win);
+        ctx.destroy_monitor_bar_window(bar_win);
     }
 
     notify_monitor_layout_changed(ctx, changed);
@@ -779,14 +776,6 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         m.set_bar_height(bar_height);
     }
     true
-}
-
-fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
-    let outputs = crate::backend::x11::monitor_helpers::xinerama_outputs(&x11.x11)?;
-    Some(sync_monitors_from_outputs(
-        &mut WmCtx::X11(x11.reborrow()),
-        outputs,
-    ))
 }
 
 #[cfg(test)]

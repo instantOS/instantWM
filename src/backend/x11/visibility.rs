@@ -54,7 +54,7 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
         let geo = entry.rect;
         let is_visible = entry.visible;
         let mode = entry.mode;
-        crate::animation::drop_x11_animation(ctx.x11_runtime, win);
+        let _ = ctx.x11_runtime.take_window_animation(win);
 
         if is_visible {
             let Rect { x, y, w, h } = geo;

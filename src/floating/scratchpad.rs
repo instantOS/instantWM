@@ -182,9 +182,7 @@ fn attach_client_to_monitor_top(model: &mut WmModel, win: WindowId, monitor_id: 
 }
 
 fn sync_scratchpad_backend_projection(ctx: &mut WmCtx<'_>, win: WindowId) {
-    if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::set_client_tag_prop(x11.core.state(), &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.sync_client_tag_props(win);
 }
 
 fn prepare_scratchpad_for_show(model: &mut WmModel, win: WindowId, monitor_id: MonitorId) {

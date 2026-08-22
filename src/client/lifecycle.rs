@@ -38,14 +38,7 @@ pub(crate) fn remove_managed_client(
     crate::focus::refresh_focus(ctx, None);
     crate::layouts::arrange(ctx, Some(monitor_id));
     ctx.request_bar_update();
-
-    if let crate::contexts::WmCtx::X11(x11) = ctx {
-        crate::backend::x11::properties::update_client_list(
-            x11.core.state(),
-            &x11.x11,
-            x11.x11_runtime,
-        );
-    }
+    ctx.sync_client_list();
     Some(removed)
 }
 

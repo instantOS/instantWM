@@ -119,27 +119,6 @@ impl AltCursor {
             },
         }
     }
-
-    /// Convert cursor type to Wayland cursor icon (if an override is active).
-    pub fn to_wayland_icon(self) -> Option<smithay::input::pointer::CursorIcon> {
-        match self {
-            AltCursor::Default => None,
-            AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
-            AltCursor::VerticalAdjust => Some(smithay::input::pointer::CursorIcon::NsResize),
-            AltCursor::HorizontalAdjust => Some(smithay::input::pointer::CursorIcon::EwResize),
-            AltCursor::Close => Some(smithay::input::pointer::CursorIcon::NotAllowed),
-            AltCursor::Resize(dir) => Some(match dir {
-                ResizeDirection::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
-                ResizeDirection::Top => smithay::input::pointer::CursorIcon::NResize,
-                ResizeDirection::TopRight => smithay::input::pointer::CursorIcon::NeResize,
-                ResizeDirection::Right => smithay::input::pointer::CursorIcon::EResize,
-                ResizeDirection::BottomRight => smithay::input::pointer::CursorIcon::SeResize,
-                ResizeDirection::Bottom => smithay::input::pointer::CursorIcon::SResize,
-                ResizeDirection::BottomLeft => smithay::input::pointer::CursorIcon::SwResize,
-                ResizeDirection::Left => smithay::input::pointer::CursorIcon::WResize,
-            }),
-        }
-    }
 }
 
 /// Visual treatment for the shared compositor-owned outline overlay.
@@ -597,70 +576,29 @@ mod tests {
 
     #[test]
     fn alt_resize_cursor_uses_resize_direction_mapping() {
-        for (direction, expected_x11, expected_wayland) in [
-            (
-                ResizeDirection::TopLeft,
-                8,
-                smithay::input::pointer::CursorIcon::NwResize,
-            ),
-            (
-                ResizeDirection::Top,
-                4,
-                smithay::input::pointer::CursorIcon::NResize,
-            ),
-            (
-                ResizeDirection::TopRight,
-                9,
-                smithay::input::pointer::CursorIcon::NeResize,
-            ),
-            (
-                ResizeDirection::Right,
-                5,
-                smithay::input::pointer::CursorIcon::EResize,
-            ),
-            (
-                ResizeDirection::BottomRight,
-                7,
-                smithay::input::pointer::CursorIcon::SeResize,
-            ),
-            (
-                ResizeDirection::Bottom,
-                4,
-                smithay::input::pointer::CursorIcon::SResize,
-            ),
-            (
-                ResizeDirection::BottomLeft,
-                6,
-                smithay::input::pointer::CursorIcon::SwResize,
-            ),
-            (
-                ResizeDirection::Left,
-                5,
-                smithay::input::pointer::CursorIcon::WResize,
-            ),
+        for (direction, expected_x11) in [
+            (ResizeDirection::TopLeft, 8),
+            (ResizeDirection::Top, 4),
+            (ResizeDirection::TopRight, 9),
+            (ResizeDirection::Right, 5),
+            (ResizeDirection::BottomRight, 7),
+            (ResizeDirection::Bottom, 4),
+            (ResizeDirection::BottomLeft, 6),
+            (ResizeDirection::Left, 5),
         ] {
             let alt: AltCursor = direction.into();
             assert_eq!(alt.to_x11_index(), expected_x11);
-            assert_eq!(alt.to_wayland_icon(), Some(expected_wayland));
         }
     }
 
     #[test]
-    fn vertical_adjust_cursor_is_vertical_on_both_backends() {
+    fn vertical_adjust_cursor_is_vertical() {
         assert_eq!(AltCursor::VerticalAdjust.to_x11_index(), 4);
-        assert_eq!(
-            AltCursor::VerticalAdjust.to_wayland_icon(),
-            Some(smithay::input::pointer::CursorIcon::NsResize)
-        );
     }
 
     #[test]
-    fn close_cursor_is_destructive_on_both_backends() {
+    fn close_cursor_is_destructive() {
         assert_eq!(AltCursor::Close.to_x11_index(), 1);
-        assert_eq!(
-            AltCursor::Close.to_wayland_icon(),
-            Some(smithay::input::pointer::CursorIcon::NotAllowed)
-        );
     }
 
     #[test]

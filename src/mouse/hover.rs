@@ -7,19 +7,21 @@
 //! a right-click always starts a move; a middle-click closes the window.
 //! Moving further away deactivates the mode.
 //!
+//! The hover-offer *model* is shared; committing it to an interaction is a
+//! backend concern (X11 commits through its modal grab loop in
+//! `backend/x11/grab.rs`, Wayland through implicit pointer grabs).
+//!
 //! ## Entry points
 //!
 //! | Function                                      | Called from          | Purpose                                    |
 //! |-----------------------------------------------|----------------------|--------------------------------------------|
 //! | [`update_floating_resize_offer_at`]           | `motion_notify`      | Update resize offer and cursor feedback    |
 //! | [`update_selected_resize_offer_at`]           | Wayland motion       | Update selected-window resize offer        |
-//! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 
-use crate::backend::PointerOps;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
 use crate::model::WmModel;
-use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, WindowId};
+use crate::types::{AltCursor, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
 
@@ -53,51 +55,6 @@ pub fn clear_hover_offer(ctx: &mut WmCtx) {
     if ctx.core_mut().drag_state_mut().clear_hover_offer() {
         ctx.set_cursor_style(AltCursor::Default);
     }
-}
-
-/// Commit the current X11 resize offer to a move, resize, or close operation.
-///
-/// Returns `false` when there is no resize offer or the mouse button is not a
-/// valid commit button for hover resize.
-pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
-    let Some((win, _)) = ctx.core.drag_state().hover_offer.resize_target() else {
-        return false;
-    };
-    if btn == MouseButton::Middle {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        clear_hover_offer(&mut wm_ctx);
-        if wm_ctx.core().model().selected_win() != Some(win) {
-            crate::focus::focus(&mut wm_ctx, Some(win));
-        }
-        crate::client::kill::close_win(&mut wm_ctx, win);
-        return true;
-    }
-    if btn != MouseButton::Left && btn != MouseButton::Right {
-        return false;
-    }
-    let start = ctx
-        .x11
-        .pointer_location()
-        .or_else(|| {
-            ctx.core
-                .model()
-                .client(win)
-                .map(|client| client.geo.center())
-        })
-        .unwrap_or_default();
-    let started = {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        if wm_ctx.core().model().selected_win() != Some(win) {
-            crate::focus::focus(&mut wm_ctx, Some(win));
-        }
-        crate::mouse::drag::hover_drag_begin(
-            &mut wm_ctx,
-            start,
-            btn,
-            crate::types::InteractionSource::Pointer,
-        )
-    };
-    started && crate::backend::x11::grab::drive_wm_interaction(ctx, btn)
 }
 
 fn resize_target_for_window(

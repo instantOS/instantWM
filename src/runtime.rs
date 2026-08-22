@@ -42,7 +42,7 @@ pub struct TickResult {
 /// 3. IPC command dispatch
 /// 4. monitor configuration work
 /// 5. layout work
-/// 6. backend-specific bar draw (X11 only)
+/// 6. dirty-bar redraw (backend-routed)
 pub fn event_loop_tick_with_options(
     wm: &mut Wm,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
@@ -54,7 +54,10 @@ pub fn event_loop_tick_with_options(
     let work = process_pending_work(wm, options);
     crate::bar::status::sync_visibility(wm);
 
-    draw_x11_bars_if_dirty(wm);
+    {
+        let mut ctx = wm.ctx();
+        ctx.redraw_bars_if_dirty();
+    }
     TickResult {
         ipc_handled: ipc_handled || status_handled,
         monitor_config_applied: work.monitor_config_applied,
@@ -119,17 +122,6 @@ fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
             }
             true
         }
-    }
-}
-
-pub fn draw_x11_bars_if_dirty(wm: &mut Wm) {
-    if !matches!(wm.backend, crate::backend::Backend::X11(_)) || !wm.bar.needs_redraw() {
-        return;
-    }
-
-    let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::backend::x11::bar::draw_bars(&mut x11_ctx.core, x11_ctx.x11_runtime);
     }
 }
 

@@ -3,7 +3,6 @@ pub mod paint;
 pub(crate) mod renderer;
 pub(crate) mod scene;
 pub mod status;
-pub mod wayland;
 
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::core_state::ActiveWmMode;

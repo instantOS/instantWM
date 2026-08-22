@@ -13,6 +13,7 @@ use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
+use std::process::Command;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Encode, Decode,
@@ -37,6 +38,27 @@ pub struct BackendOutputInfo {
 pub enum BackendKind {
     X11,
     Wayland,
+}
+
+impl BackendKind {
+    /// Whether external X-based screen-selection tools (`instantslop`) can
+    /// draw overlays usable by this backend.
+    ///
+    /// `instantslop` selects a region by drawing on the X root window, which
+    /// spans every output only under the native X11 backend. Under Wayland
+    /// the compositor owns the root; an equivalent would require a
+    /// layer-shell overlay and has not been built.
+    pub fn supports_x_selection_tools(self) -> bool {
+        matches!(self, Self::X11)
+    }
+
+    /// Whether this backend reaps child processes via a SIGCHLD handler on
+    /// its main-loop thread (`backend/x11/startup.rs`). Backends without one
+    /// must hand spawned children to the dedicated reaper thread instead,
+    /// or short-lived scripts accumulate as zombies.
+    pub fn reaps_children_via_signals(self) -> bool {
+        matches!(self, Self::X11)
+    }
 }
 
 #[derive(
@@ -163,6 +185,14 @@ pub trait OutputOps {
 
     /// Get current outputs from the backend.
     fn get_outputs(&self) -> Vec<BackendOutputInfo>;
+
+    /// Legacy fallback discovery when primary discovery reports a single
+    /// placeholder screen. X11 consults Xinerama; backends without a
+    /// secondary discovery protocol return `None`.
+    fn query_fallback_outputs(&self) -> Option<Vec<BackendOutputInfo>> {
+        let _ = self;
+        None
+    }
 }
 
 /// X11-specific backend data.
@@ -176,7 +206,7 @@ pub struct X11BackendData {
 /// Wayland-specific backend data.
 pub struct WaylandBackendData {
     pub backend: WaylandBackend,
-    pub bar_painter: crate::bar::wayland::WaylandBarPainter,
+    pub bar_painter: crate::backend::wayland::bar::WaylandBarPainter,
 }
 
 /// Owned backend implementation.
@@ -202,7 +232,7 @@ impl Backend {
     pub fn new_wayland(backend: WaylandBackend) -> Self {
         Self::Wayland(Box::new(WaylandBackendData {
             backend,
-            bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
+            bar_painter: crate::backend::wayland::bar::WaylandBarPainter::default(),
         }))
     }
 
@@ -253,6 +283,31 @@ impl Backend {
         match self {
             Self::X11(_) => Vec::new(),
             Self::Wayland(data) => data.backend.get_input_devices(),
+        }
+    }
+
+    /// Apply a desktop wallpaper by spawning the platform's setter tool.
+    ///
+    /// Wayland compositors have no root pixmap, so sessions delegate to
+    /// swaybg (restarting it if one is already running). X11 uses feh.
+    /// Fire-and-forget: the child outlives the call either way.
+    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
+        match self {
+            Self::X11(_) => Command::new("feh")
+                .arg("--bg-fill")
+                .arg(path)
+                .spawn()
+                .map(|_| ()),
+            Self::Wayland(_) => {
+                let _ = Command::new("killall").arg("swaybg").status();
+                Command::new("swaybg")
+                    .arg("-i")
+                    .arg(path)
+                    .arg("-m")
+                    .arg("fill")
+                    .spawn()
+                    .map(|_| ())
+            }
         }
     }
 
@@ -386,6 +441,15 @@ impl OutputOps for Backend {
         match self {
             Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
             Backend::Wayland(data) => data.backend.get_outputs(),
+        }
+    }
+
+    fn query_fallback_outputs(&self) -> Option<Vec<BackendOutputInfo>> {
+        match self {
+            Backend::X11(data) => {
+                X11BackendRef::new(&data.conn, data.screen_num).query_fallback_outputs()
+            }
+            Backend::Wayland(data) => data.backend.query_fallback_outputs(),
         }
     }
 }

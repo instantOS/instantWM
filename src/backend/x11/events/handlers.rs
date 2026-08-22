@@ -219,7 +219,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         && let Some(mon) = ctx.core.model().monitor(selmon_id)
         && mon.selected.is_some()
         && let Some(btn) = MouseButton::from_x11_detail(e.detail)
-        && crate::mouse::commit_x11_hover_offer(ctx, btn)
+        && crate::backend::x11::grab::commit_hover_offer(ctx, btn)
     {
         return;
     };

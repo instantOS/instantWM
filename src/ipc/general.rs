@@ -1,26 +1,10 @@
 use crate::ipc_types::Response;
 use crate::wm::Wm;
-use std::process::Command;
 
 pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
-    if wm.ctx().is_wayland() {
-        let _ = Command::new("killall").arg("swaybg").status();
-        let status = Command::new("swaybg")
-            .arg("-i")
-            .arg(&path)
-            .arg("-m")
-            .arg("fill")
-            .spawn();
-        match status {
-            Ok(_) => Response::Message(format!("Wallpaper set to {}", path)),
-            Err(e) => Response::err(format!("Failed to spawn swaybg: {}", e)),
-        }
-    } else {
-        let status = Command::new("feh").arg("--bg-fill").arg(&path).spawn();
-        match status {
-            Ok(_) => Response::Message(format!("Wallpaper set to {}", path)),
-            Err(e) => Response::err(format!("Failed to spawn feh: {}", e)),
-        }
+    match wm.backend.set_wallpaper(&path) {
+        Ok(()) => Response::Message(format!("Wallpaper set to {}", path)),
+        Err(e) => Response::err(format!("Failed to set wallpaper: {}", e)),
     }
 }
 
