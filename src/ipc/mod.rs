@@ -65,6 +65,7 @@ fn drain_pending_client(client: &mut PendingClient) -> PendingRead {
                     return PendingRead::RequestTooLarge;
                 }
             }
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                 return PendingRead::Pending;
             }
@@ -114,6 +115,7 @@ impl IpcServer {
                         });
                     }
                 }
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
                 Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
                 Err(_) => break,
             }
@@ -264,6 +266,7 @@ fn write_all_bounded(stream: &mut UnixStream, mut data: &[u8]) -> io::Result<()>
                 ));
             }
             Ok(n) => data = &data[n..],
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                 if Instant::now() >= deadline {
                     return Err(io::Error::new(
@@ -453,5 +456,17 @@ mod tests {
 
         assert!(server.process_pending(&mut wm));
         assert!(server.clients.is_empty());
+    }
+
+    #[test]
+    fn write_all_bounded_transfers_payload_on_nonblocking_stream() {
+        let (mut server_stream, mut client_stream) = UnixStream::pair().unwrap();
+        server_stream.set_nonblocking(true).unwrap();
+        let payload = vec![0x42; 8192];
+        write_all_bounded(&mut server_stream, &payload).unwrap();
+
+        let mut received = vec![0u8; 8192];
+        client_stream.read_exact(&mut received).unwrap();
+        assert_eq!(received, payload);
     }
 }
