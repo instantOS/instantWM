@@ -351,12 +351,7 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
     match section {
         RuntimeConfigSection::Bar => {
             sync_bar_config_to_monitors(wm);
-            if matches!(wm.backend, crate::backend::Backend::X11(_)) {
-                crate::backend::x11::startup::init_drw_and_schemes(wm);
-            }
-            if let crate::backend::Backend::Wayland(data) = &mut wm.backend {
-                crate::backend::wayland::bootstrap::apply_bar_metrics(&mut wm.core, data);
-            }
+            wm.reinit_bar_resources();
             let mut ctx = wm.ctx();
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
@@ -394,13 +389,10 @@ fn sync_bar_config_to_monitors(wm: &mut Wm) {
 /// Push colour/font changes to the screen after `wm.core.config.colors` (or the
 /// tag colours) have been mutated.
 ///
-/// X11 bakes schemes/fonts into the DrawContext at startup, so they must be rebuilt for
-/// the new values to show without a full reload. On Wayland the bar painter
-/// reads colours/fonts on every redraw, so marking the bar dirty is enough.
+/// Resource rebuilding is owned by [`Wm::reinit_bar_resources`]; on X11 the
+/// rebuilt schemes only take effect once the bar redraws, so mark it dirty.
 pub(crate) fn recolor(wm: &mut Wm) {
-    if matches!(wm.backend, crate::backend::Backend::X11(_)) {
-        crate::backend::x11::startup::init_drw_and_schemes(wm);
-    }
+    wm.reinit_bar_resources();
     wm.bar.mark_dirty();
     let mut ctx = wm.ctx();
     ctx.request_bar_update();

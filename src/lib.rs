@@ -22,6 +22,7 @@ pub mod ipc_types;
 mod keyboard;
 mod keyboard_layout;
 pub mod layouts;
+mod logging;
 mod model;
 mod monitor;
 mod mouse;

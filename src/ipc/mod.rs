@@ -226,6 +226,12 @@ fn get_available_socket_path() -> PathBuf {
     }
 }
 
+/// Upper bound on time spent waiting for a client to drain its socket while a
+/// response is written. Streams are nonblocking so a stuck client can never
+/// wedge the compositor event loop; this budget only rides out transient
+/// backpressure before the response is dropped (and logged).
+const RESPONSE_WRITE_MAX_STALL: Duration = Duration::from_millis(20);
+
 fn send_response(stream: &mut UnixStream, response: &Response) -> io::Result<()> {
     let data = bincode::encode_to_vec(response, bincode::config::standard()).unwrap_or_else(|_| {
         bincode::encode_to_vec(
@@ -234,8 +240,43 @@ fn send_response(stream: &mut UnixStream, response: &Response) -> io::Result<()>
         )
         .unwrap()
     });
-    stream.write_all(&data)?;
-    stream.flush()
+    match write_all_bounded(stream, &data) {
+        Ok(()) => stream.flush(),
+        Err(err) => {
+            log::warn!("dropping IPC response after write stall: {err}");
+            Err(err)
+        }
+    }
+}
+
+/// `write_all` for a nonblocking stream that tolerates transient
+/// `WouldBlock` backpressure up to [`RESPONSE_WRITE_MAX_STALL`] before giving
+/// up, so oversized responses survive slow-but-live readers without ever
+/// blocking the loop indefinitely.
+fn write_all_bounded(stream: &mut UnixStream, mut data: &[u8]) -> io::Result<()> {
+    let deadline = Instant::now() + RESPONSE_WRITE_MAX_STALL;
+    while !data.is_empty() {
+        match stream.write(data) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "client socket accepted no bytes",
+                ));
+            }
+            Ok(n) => data = &data[n..],
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "client stopped reading its socket",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(())
 }
 
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
@@ -270,6 +311,15 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
     }
 }
 
+/// Overview-exit policy for IPC commands that bypass the key/button action
+/// machinery. Everything routed through [`crate::actions`] instead follows the
+/// Preserve/Cancel/Confirm policy in [`crate::overview::prepare_key_action`]
+/// (and its button/named counterparts) — including `RunAction`, which returns
+/// `None` here precisely so it delegates to that machinery.
+///
+/// Keep the two policies aligned: workspace navigation cancels a projection,
+/// mutations confirm it, cosmetic queries preserve it. The match below must
+/// stay exhaustive over `IpcCommand` so new commands force an explicit decision.
 fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
     use crate::ipc_types::{MonitorCommand, ScratchpadCommand, WindowCommand};
     use crate::overview::ExitMode::{RestorePrevious, ToSelectedWindow};

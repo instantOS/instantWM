@@ -22,11 +22,12 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
         wm.core.config.status_command.as_deref(),
     );
 
+    // Backend-owned bar resources must track the new config (X11 DrawContext
+    // rebuild, Wayland bar-metric recompute). The choreography is owned by
+    // `Wm::reinit_bar_resources` so runtime updates and full reloads cannot drift.
+    wm.reinit_bar_resources();
     if matches!(&wm.backend, Backend::X11(_)) {
         reload_x11(wm);
-    }
-    if let Backend::Wayland(data) = &mut wm.backend {
-        reload_wayland(&mut wm.core, data);
     }
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
@@ -35,16 +36,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     Ok(())
 }
 
-fn reload_wayland(
-    state: &mut crate::core_state::CoreState,
-    data: &mut crate::backend::WaylandBackendData,
-) {
-    crate::backend::wayland::bootstrap::apply_bar_metrics(state, data);
-}
-
 fn reload_x11(wm: &mut Wm) {
-    crate::backend::x11::startup::init_drw_and_schemes(wm);
-
     let ctx = wm.ctx();
     if let WmCtx::X11(mut x11_ctx) = ctx {
         crate::backend::x11::bar::update_bars(

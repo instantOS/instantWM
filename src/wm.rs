@@ -53,6 +53,26 @@ impl Wm {
         self.running = false;
     }
 
+    /// Rebuild backend-owned bar resources after config changes.
+    ///
+    /// X11 bakes schemes/fonts into the DrawContext at startup, so they must be
+    /// rebuilt for new values to show without a restart. Wayland recomputes the
+    /// derived bar metrics (height, padding) from font state. Callers decide
+    /// what happens next: immediate arrange, deferred work flags, or both.
+    ///
+    /// This is the single owner of that choreography — used by full config
+    /// reloads ([`crate::reload`]) and incremental `config set` side effects
+    /// ([`crate::ipc::config`]) alike. When adding a backend re-init step for
+    /// bar resources, add it here rather than at a call site.
+    pub fn reinit_bar_resources(&mut self) {
+        if matches!(self.backend, Backend::X11(_)) {
+            crate::backend::x11::startup::init_drw_and_schemes(self);
+        }
+        if let Backend::Wayland(data) = &mut self.backend {
+            crate::backend::wayland::bootstrap::apply_bar_metrics(&mut self.core, data);
+        }
+    }
+
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let core = CoreCtx::new(
             &mut self.core,

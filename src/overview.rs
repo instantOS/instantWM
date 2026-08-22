@@ -22,6 +22,13 @@ enum ActionTransition {
     Cancel,
 }
 
+/// Shared transition policy: how an incoming action interacts with an active
+/// overview projection.
+///
+/// This owns the policy for all key/button/named actions (see
+/// `prepare_key_action`, `prepare_button_action`, `prepare_named_action`
+/// below). IPC commands that bypass the action machinery have their
+/// counterpart table in `crate::ipc::ipc_overview_exit` — keep them aligned.
 fn prepare_action(ctx: &mut WmCtx<'_>, transition: ActionTransition) {
     if !ctx.core().model().is_overview_active() {
         return;

@@ -85,7 +85,7 @@ echo "profile: recording ${DURATION}s into $PROFILE_DIR"
 INSTANTWM_AUTOSTART=0 \
 INSTANTWM_WL_AUTOSPAWN=0 \
 INSTANTWM_TEST=1 \
-RUST_LOG="${RUST_LOG:-warn}" \
+INSTANTWM_LOG="${INSTANTWM_LOG:-warn}" \
 "$PERF_BIN" record \
   --all-user \
   --event cpu-clock:u \
