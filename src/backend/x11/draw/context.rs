@@ -405,10 +405,20 @@ impl DrawContext {
                 return;
             }
 
+            // Core-protocol PutImage requires the GC to match the destination
+            // depth. `self.gc` belongs to the default visual (usually 24-bit),
+            // so using it on a depth-32 pixmap is a BadMatch that would take
+            // down the process; this upload needs its own depth-32 GC.
+            let gc32 = XCreateGC(self.display, pixmap, 0, std::ptr::null_mut());
+            if gc32.is_null() {
+                XDestroyImage(image);
+                XFreePixmap(self.display, pixmap);
+                return;
+            }
             XPutImage(
                 self.display,
                 pixmap,
-                self.gc,
+                gc32,
                 image,
                 0,
                 0,
@@ -417,6 +427,7 @@ impl DrawContext {
                 bounds.w as u32,
                 bounds.h as u32,
             );
+            XFreeGC(self.display, gc32);
             XDestroyImage(image);
 
             let argb_format = XRenderFindStandardFormat(self.display, PICT_STANDARD_ARGB32);
