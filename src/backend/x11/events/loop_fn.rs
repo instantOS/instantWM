@@ -54,6 +54,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .insert_source(status_ping_source, |_, _, _| {})
         .expect("failed to insert status ping source");
 
+    // ── StatusNotifier worker ───────────────────────────────────────────
+    // Items position their own menus under X11, so no native-menu slot is
+    // provided; the wake ping makes icon changes render while idle.
+    wm.start_systray(None, crate::runtime::make_wake_ping(&loop_handle));
+
     // ── Animation timer (on-demand, not persistent) ─────────────────────
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();

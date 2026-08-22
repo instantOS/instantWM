@@ -210,6 +210,103 @@ unsafe extern "C" {
     pub fn XCreateFontCursor(display: *mut libc::c_void, shape: u32) -> c_ulong;
     pub fn XFreeCursor(display: *mut libc::c_void, cursor: c_ulong);
 
+    /// Allocate an `XImage`. The returned struct is heap-allocated by Xlib and
+    /// must be released with [`XDestroyImage`]. With `bytes_per_line == 0`,
+    /// Xlib computes the stride as tightly packed rows.
+    pub fn XCreateImage(
+        display: *mut libc::c_void,
+        visual: *mut libc::c_void,
+        depth: u32,
+        format: c_int,
+        offset: c_int,
+        data: *mut u8,
+        width: u32,
+        height: u32,
+        bitmap_pad: c_int,
+        bytes_per_line: c_int,
+    ) -> *mut XImage;
+
+    pub fn XPutImage(
+        display: *mut libc::c_void,
+        d: Drawable,
+        gc: XlibGc,
+        image: *mut XImage,
+        src_x: c_int,
+        src_y: c_int,
+        dest_x: c_int,
+        dest_y: c_int,
+        width: u32,
+        height: u32,
+    );
+
+    /// Destroy an [`XImage`] created by [`XCreateImage`]. Frees the pixel
+    /// data (which must come from `libc::malloc`) and then the struct itself.
+    pub fn XDestroyImage(ximage: *mut XImage) -> c_int;
+
+}
+
+/// Opaque `XImage` handle returned by [`XCreateImage`].
+#[repr(C)]
+pub struct XImage {
+    _private: [u8; 0],
+}
+
+/// `ZPixmap` format for [`XCreateImage`] / [`XPutImage`].
+pub const Z_PIXMAP: c_int = 2;
+
+// ── XRender (`libXrender`) ────────────────────────────────────────────────────
+
+/// Opaque `XRenderPictFormat` handle.
+#[repr(C)]
+pub struct XRenderPictFormat {
+    _private: [u8; 0],
+}
+
+/// Render `Picture` XID.
+pub type XRenderPicture = c_ulong;
+
+/// `PictStandardARGB32` — standard 32-bit premultiplied ARGB format.
+pub const PICT_STANDARD_ARGB32: c_int = 0;
+/// `PictOpOver` — source-over alpha compositing.
+pub const PICT_OP_OVER: c_int = 3;
+
+#[link(name = "Xrender")]
+unsafe extern "C" {
+    pub fn XRenderFindVisualFormat(
+        display: *mut libc::c_void,
+        visual: *const libc::c_void,
+    ) -> *mut XRenderPictFormat;
+
+    pub fn XRenderFindStandardFormat(
+        display: *mut libc::c_void,
+        kind: c_int,
+    ) -> *mut XRenderPictFormat;
+
+    pub fn XRenderCreatePicture(
+        display: *mut libc::c_void,
+        drawable: Drawable,
+        format: *const XRenderPictFormat,
+        valuemask: c_ulong,
+        attributes: *const libc::c_void,
+    ) -> XRenderPicture;
+
+    pub fn XRenderFreePicture(display: *mut libc::c_void, picture: XRenderPicture);
+
+    pub fn XRenderComposite(
+        display: *mut libc::c_void,
+        op: c_int,
+        src: XRenderPicture,
+        mask: XRenderPicture,
+        dst: XRenderPicture,
+        src_x: c_int,
+        src_y: c_int,
+        mask_x: c_int,
+        mask_y: c_int,
+        dst_x: c_int,
+        dst_y: c_int,
+        width: u32,
+        height: u32,
+    );
 }
 
 // ── Xft (`libXft`) ────────────────────────────────────────────────────────────

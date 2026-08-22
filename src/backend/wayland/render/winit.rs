@@ -12,8 +12,7 @@ use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor
 use crate::backend::wayland::render::frame::{send_frame_callbacks, update_primary_scanout_output};
 use crate::backend::wayland::render::scene::{
     SceneCache, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, output_has_real_fullscreen, poll_systray,
-    remove_duplicate_overlay_elements,
+    get_render_element_counts, output_has_real_fullscreen, remove_duplicate_overlay_elements,
 };
 use crate::wm::Wm;
 
@@ -70,7 +69,6 @@ pub fn render_frame(
             }
         }
     } else {
-        poll_systray(wm);
         // Shared: build scene elements
         let scene = build_common_scene_elements(wm, state, scene_cache, renderer, output);
 

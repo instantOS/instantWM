@@ -263,8 +263,6 @@ pub(crate) struct MonitorRenderOutputWithId {
 
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
-    status_notifier_tray: Option<&crate::systray::StatusNotifierTray>,
-    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
     include_status_items: bool,
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
@@ -412,23 +410,33 @@ pub(crate) fn build_monitor_snapshots(
                 StatusPresentation::Hidden
             },
             overlay: if is_selected_monitor {
-                tray_menu.cloned().map(BarOverlay::TrayMenu)
+                core.bar
+                    .systray_host
+                    .menu
+                    .presentation()
+                    .map(BarOverlay::TrayMenu)
             } else {
                 None
             },
         };
 
+        let tray_menu = presentation.tray_menu().cloned();
         let systray = if show_systray && is_selected_monitor {
-            status_notifier_tray.map(|items| SystraySnapshot {
-                items: items.clone(),
+            let items = core.bar.systray_host.tray.clone();
+            let layout = crate::systray::layout(
+                &items,
+                tray_menu.as_ref().map(|menu| &menu.view),
+                mon.work_rect().w,
+                mon.bar_height,
+                systray_spacing,
+                // Compositor-rendered icons sit left of any externally
+                // rendered tray strip (XEmbed windows on X11).
+                external_right_width.max(0),
+            );
+            Some(SystraySnapshot {
+                items,
                 base_scheme: status_scheme(&core.config().colors.status_bar),
-                layout: crate::systray::layout(
-                    items,
-                    tray_menu.map(|menu| &menu.view),
-                    mon.work_rect().w,
-                    mon.bar_height,
-                    systray_spacing,
-                ),
+                layout,
             })
         } else {
             None
@@ -823,6 +831,7 @@ pub(crate) fn render_monitor_snapshot(
 
     draw_titles_section(painter, snapshot, x, title_width, bar_height, &mut hit);
     record_systray_hits(snapshot, &mut hit);
+    draw_systray_section(painter, snapshot);
 
     MonitorRenderOutput {
         hit_cache: hit,
@@ -830,11 +839,56 @@ pub(crate) fn render_monitor_snapshot(
     }
 }
 
+/// Paint compositor-rendered tray icons and any hosted tray menu.
+///
+/// Shared by every backend through [`BarPainter`] so X11 and Wayland bars
+/// render StatusNotifier items identically.
+fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnapshot) {
+    let Some(systray) = &snapshot.systray else {
+        return;
+    };
+    let layout = &systray.layout;
+    let bar_height = snapshot.rect.h;
+
+    painter.set_scheme(systray.base_scheme.clone());
+    if layout.total_width > 0 {
+        painter.rect(
+            Rect::new(layout.start_x, 0, layout.total_width, bar_height),
+            true,
+            true,
+        );
+    }
+    if layout.menu.width > 0 {
+        painter.rect(
+            Rect::new(layout.menu.start_x, 0, layout.menu.width, bar_height),
+            true,
+            true,
+        );
+    }
+
+    for cell in &layout.cells {
+        let Some(item) = systray.items.items.get(cell.idx) else {
+            continue;
+        };
+        painter.blit_rgba(cell.icon, item.icon_size, &item.icon_rgba);
+    }
+
+    if let Some(menu) = snapshot.presentation.tray_menu() {
+        crate::systray::render::draw_menu(
+            painter,
+            &menu.view,
+            &layout.menu.cells,
+            &systray.base_scheme,
+            bar_height,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::color::Rgba;
     use crate::model::WmModel;
+    use crate::types::color::Rgba;
     use crate::types::{
         Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,
         SchemeTag, SchemeWin, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs,

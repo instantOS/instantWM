@@ -10,7 +10,6 @@ use std::hash::Hash;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
 use smithay::output::Output;
@@ -134,7 +133,11 @@ pub(crate) fn event_loop_tick_and_request_render(
         );
     }
     dismiss_invalid_native_systray_menu(wm, state);
-    if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
+    if tick.ipc_handled
+        || tick.monitor_config_applied
+        || tick.layout_applied
+        || tick.systray_updated
+    {
         state.request_render();
     }
 }
@@ -148,14 +151,13 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
         .model
         .monitor(active.monitor_id)
         .is_some_and(|monitor| monitor.selected_tags() == active.opened_tags);
-    let item_still_exists = match &wm.backend {
-        WmBackend::Wayland(data) => data
-            .status_notifier_tray
-            .items
-            .iter()
-            .any(|item| item.service == active.service && item.path == active.path),
-        _ => false,
-    };
+    let item_still_exists = wm
+        .bar
+        .systray_host
+        .tray
+        .items
+        .iter()
+        .any(|item| item.service == active.service && item.path == active.path);
     if !wm.core.config.systray.show || !opening_view_is_current || !item_still_exists {
         state.dismiss_native_systray_menu();
     }

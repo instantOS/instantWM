@@ -158,6 +158,30 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     }
     let button_target = region.binding_target();
 
+    // A press on a hosted tray-menu entry activates it (left only). Any other
+    // press first dismisses an open hosted menu, then a press on a tray icon
+    // is forwarded to its StatusNotifierItem. Both mirror the Wayland click
+    // path; without this, bar clicks would fall through to bindings.
+    if let Some(ButtonTarget::Bar(BarPosition::SystrayMenuItem(idx))) = button_target {
+        if MouseButton::from_x11_detail(e.detail) == Some(MouseButton::Left) {
+            crate::systray::activate_menu_entry(&mut ctx.core, idx);
+        }
+        return;
+    }
+    crate::systray::close_menu(&mut ctx.core);
+
+    if let Some(ButtonTarget::Bar(BarPosition::SystrayItem(idx))) = button_target {
+        if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
+            crate::systray::press_icon(
+                &mut ctx.core,
+                idx,
+                btn,
+                crate::types::Point::new(e.root_x as i32, e.root_y as i32),
+            );
+        }
+        return;
+    }
+
     if button_target == Some(ButtonTarget::Bar(BarPosition::StatusText)) {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         crate::bar::handle_status_text_click(

@@ -47,7 +47,6 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
-    let tray_menu = wm.tray_menu.presentation();
     let mut core = CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
@@ -67,8 +66,6 @@ pub fn build_bar_buffers(
             &mut core,
             &mut data.bar_painter,
             smithay::utils::Scale::from(1.0),
-            &data.status_notifier_tray,
-            tray_menu.as_ref(),
         )
     } else {
         Vec::new()
@@ -79,27 +76,6 @@ pub fn build_bar_buffers(
     }
 
     buffers
-}
-
-/// Poll Wayland systray events once and mark the bar dirty when icons changed.
-pub fn poll_systray(wm: &mut Wm) {
-    let core = CoreCtx::new(
-        &mut wm.core,
-        &mut wm.work,
-        &mut wm.running,
-        &mut wm.bar,
-        &mut wm.focus,
-    );
-    let Backend::Wayland(data) = &mut wm.backend else {
-        return;
-    };
-
-    if let Some(runtime) = data.status_notifier_runtime.as_mut() {
-        let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut wm.tray_menu);
-        if dirty {
-            core.bar.mark_dirty();
-        }
-    }
 }
 
 /// Shared render elements captured once and reused across output renders in

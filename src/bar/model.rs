@@ -186,10 +186,27 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.config().systray.show && is_selmon {
-        core.bar.runtime.systray_width
+    // Mirrors the render path's reservation: compositor-rendered StatusNotifier
+    // icons plus the external XEmbed strip.
+    let tray_shown = core.config().systray.show && is_selmon;
+    let external_tray_width = if tray_shown {
+        core.bar.runtime.external_tray_width.max(0)
     } else {
         0
+    };
+    let systray_w = if tray_shown && !core.bar.systray_host.tray.items.is_empty() {
+        crate::systray::layout(
+            &core.bar.systray_host.tray,
+            None,
+            mon.work_rect().w,
+            mon.bar_height,
+            core.config().systray.spacing,
+            external_tray_width,
+        )
+        .total_width
+            + external_tray_width
+    } else {
+        external_tray_width
     };
     let status_hit_x = mon.work_rect().w - systray_w;
 

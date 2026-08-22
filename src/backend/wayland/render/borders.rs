@@ -383,7 +383,11 @@ pub fn append_layout_preview(
     }
 }
 
-fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::types::color::Rgba) {
+fn push_solid(
+    out: &mut Vec<SolidColorRenderElement>,
+    rect: Rect,
+    color: crate::types::color::Rgba,
+) {
     if !rect.size().is_positive() {
         return;
     }

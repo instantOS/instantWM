@@ -8,7 +8,6 @@ mod async_render;
 mod buffer;
 mod hash;
 mod pixels;
-mod systray;
 mod text;
 
 use smithay::backend::allocator::Fourcc;
@@ -136,16 +135,6 @@ impl WaylandBarPainter {
             .map(|buffer| (buffer.buffer, buffer.position))
             .collect()
     }
-
-    pub fn blit_rgba_bgra(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
-        pixels::blit_rgba_scaled(
-            &mut self.pixels,
-            self.surface_rect.size(),
-            destination,
-            source_size,
-            src_rgba,
-        );
-    }
 }
 
 impl BarPainter for WaylandBarPainter {
@@ -215,24 +204,24 @@ impl BarPainter for WaylandBarPainter {
         }
         bounds.right()
     }
+
+    fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
+        pixels::blit_rgba_scaled(
+            &mut self.pixels,
+            self.surface_rect.size(),
+            destination,
+            source_size,
+            src_rgba,
+        );
+    }
 }
 
 pub fn render_bar_buffers(
     core: &mut CoreCtx,
     painter: &mut WaylandBarPainter,
     scale: Scale<f64>,
-    status_notifier_tray: &crate::systray::StatusNotifierTray,
-    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
-    let snapshots =
-        scene::build_monitor_snapshots(core, Some(status_notifier_tray), tray_menu, false, 0);
-    // Cache the systray width so status bar layout can account for it.
-    core.bar.runtime.systray_width = snapshots
-        .iter()
-        .find(|snapshot| snapshot.is_selected_monitor)
-        .and_then(|snapshot| snapshot.systray.as_ref())
-        .map(|systray| systray.layout.total_width)
-        .unwrap_or(0);
+    let snapshots = scene::build_monitor_snapshots(core, false, 0);
     let _ = scale;
 
     let key = hash::render_key(

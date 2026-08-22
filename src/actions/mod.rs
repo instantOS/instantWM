@@ -152,7 +152,10 @@ mod tests {
 
     #[test]
     fn key_action_describe_formats_all_variants() {
-        assert_eq!(KeyAction::named(NamedAction::FocusNext).describe(), "focus_next");
+        assert_eq!(
+            KeyAction::named(NamedAction::FocusNext).describe(),
+            "focus_next"
+        );
         assert_eq!(
             KeyAction::named_args(NamedAction::Spawn, &["ins", "settings", "--gui"]).describe(),
             "spawn ins settings --gui"
@@ -170,7 +173,10 @@ mod tests {
             KeyAction::ToggleViewTag { tag_idx: 1 }.describe(),
             "toggle_view_tag 2"
         );
-        assert_eq!(KeyAction::SetClientTag { tag_idx: 2 }.describe(), "set_tag 3");
+        assert_eq!(
+            KeyAction::SetClientTag { tag_idx: 2 }.describe(),
+            "set_tag 3"
+        );
         assert_eq!(
             KeyAction::FollowClientTag { tag_idx: 3 }.describe(),
             "follow_tag 4"

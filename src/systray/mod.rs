@@ -7,13 +7,110 @@
 
 use std::sync::Arc;
 
-use crate::types::{Point, Rect, Size};
+use crate::contexts::CoreCtx;
+use crate::types::{MouseButton, Point, Rect, Size};
 
 pub(crate) mod render;
 pub(crate) mod status_notifier;
 
+pub(crate) use status_notifier::{NativeMenuRequestSlot, StatusNotifierRuntime};
+
 const MIN_VISUAL_PADDING: i32 = 2;
 const MIN_MENU_CELL_WIDTH: i32 = 24;
+
+/// Session-side StatusNotifier integration owned by the bar subsystem.
+///
+/// Groups the worker handle with the model the bar renders and hit-tests so
+/// every backend reaches tray state through [`crate::contexts::CoreCtx`] and
+/// none of it lives in backend-specific storage.
+#[derive(Default)]
+pub(crate) struct SystrayHost {
+    /// Worker handle. `None` until [`SystrayHost::start`] is called; starting
+    /// is idempotent so both backends can invoke it during bootstrap.
+    pub(crate) runtime: Option<StatusNotifierRuntime>,
+    /// Items currently exported through the StatusNotifier protocol.
+    pub(crate) tray: StatusNotifierTray,
+    /// Session state of a bar-hosted DBusMenu.
+    pub(crate) menu: TrayMenuState,
+}
+impl SystrayHost {
+    pub(crate) fn start(
+        &mut self,
+        native_menu_request: Option<NativeMenuRequestSlot>,
+        wake: Option<calloop::ping::Ping>,
+    ) {
+        if self.runtime.is_none() {
+            self.runtime = Some(StatusNotifierRuntime::start(native_menu_request, wake));
+        }
+    }
+
+    /// Drain worker events into the tray model. Returns `true` when visible
+    /// content changed and the bar must be redrawn.
+    pub(crate) fn poll(&mut self) -> bool {
+        match self.runtime.as_mut() {
+            Some(runtime) => runtime.poll_events(&mut self.tray, &mut self.menu),
+            None => false,
+        }
+    }
+}
+
+/// Close the bar-hosted DBusMenu, returning whether one was open.
+///
+/// Shared by both backends: any click outside the tray must dismiss an open
+/// menu before the press reaches its regular binding.
+pub(crate) fn close_menu(core: &mut CoreCtx) -> bool {
+    let Some(session_id) = core.bar.systray_host.menu.close() else {
+        return false;
+    };
+    if let Some(runtime) = core.bar.systray_host.runtime.as_ref() {
+        runtime.close_menu(session_id);
+    }
+    core.bar.mark_dirty();
+    true
+}
+
+/// Activate a hosted-menu entry in response to a left press.
+///
+/// Returns `false` when there is no open menu or the entry is not activatable;
+/// the caller then treats the position as consumed-but-inert (parity with the
+/// original Wayland-only implementation).
+pub(crate) fn activate_menu_entry(core: &mut CoreCtx, idx: usize) -> bool {
+    let Some(presentation) = core.bar.systray_host.menu.presentation() else {
+        return false;
+    };
+    let Some(entry) = presentation.view.entries.get(idx) else {
+        return false;
+    };
+    if !entry.enabled || entry.separator {
+        return false;
+    }
+    let Some(runtime) = core.bar.systray_host.runtime.as_ref() else {
+        return false;
+    };
+    runtime.dispatch_menu_action(presentation.session_id, entry.action);
+    true
+}
+
+/// Forward a pointer press on tray icon `idx` to its StatusNotifierItem.
+///
+/// Left activates, middle secondary-activates, right opens the context menu
+/// (hosted DBusMenu when available). Marks the bar dirty when a hosted menu
+/// session starts.
+pub(crate) fn press_icon(core: &mut CoreCtx, idx: usize, button: MouseButton, root: Point) {
+    let Some(item) = core.bar.systray_host.tray.items.get(idx) else {
+        return;
+    };
+    let service = item.service.clone();
+    let path = item.path.clone();
+    let Some(runtime) = core.bar.systray_host.runtime.as_ref() else {
+        return;
+    };
+    if let Some(session_id) = runtime.dispatch_click_item(service, path, button, root)
+        && core.bar.systray_host.menu.begin(session_id)
+    {
+        core.bar.mark_dirty();
+    }
+}
 
 /// Place a native context-menu toplevel next to its root-coordinate anchor.
 /// Prefer opening leftward (tray icons normally live at the right edge) and
@@ -141,10 +238,6 @@ impl TrayMenuState {
             view,
         })
     }
-
-    pub fn current(&self) -> Option<TrayMenuPresentation> {
-        self.presentation()
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -187,13 +280,20 @@ pub(crate) fn cell_width(icon_width: i32, bar_height: i32, padding: i32) -> i32 
         .max(icon_width.max(1) + 2 * padding.max(0))
 }
 
+/// Lay out compositor-rendered tray icons.
+///
+/// `right_inset` reserves space at the right edge for content rendered outside
+/// this layout (legacy XEmbed icon windows on X11), so both tray protocols can
+/// coexist: SNI cells sit immediately left of the reserved strip.
 pub(crate) fn layout(
     tray: &StatusNotifierTray,
     menu: Option<&MenuView>,
     monitor_width: i32,
     bar_height: i32,
     configured_padding: i32,
+    right_inset: i32,
 ) -> TrayLayout {
+    let right_inset = right_inset.max(0);
     let bar_height = bar_height.max(1);
     let padding = visual_padding(bar_height, configured_padding);
     let max_icon_height = (bar_height - 2 * padding).max(1);
@@ -208,7 +308,7 @@ pub(crate) fn layout(
         })
         .collect();
     let total_width = dimensions.iter().map(|(cell_width, _)| cell_width).sum();
-    let start_x = monitor_width - total_width;
+    let start_x = monitor_width - right_inset - total_width;
 
     let mut x = start_x;
     let cells = dimensions
@@ -371,7 +471,7 @@ mod tests {
         let tray = StatusNotifierTray {
             items: vec![item(16, 16)],
         };
-        let layout = layout(&tray, None, 1920, 30, 0);
+        let layout = layout(&tray, None, 1920, 30, 0, 0);
 
         assert_eq!(layout.total_width, 30);
         assert_eq!(layout.start_x, 1890);
@@ -383,11 +483,25 @@ mod tests {
     }
 
     #[test]
+    fn right_inset_shifts_cells_left_of_reserved_space() {
+        let tray = StatusNotifierTray {
+            items: vec![item(16, 16)],
+        };
+        let layout = layout(&tray, None, 1920, 30, 0, 60);
+
+        assert_eq!(layout.total_width, 30);
+        assert_eq!(layout.start_x, 1830);
+        assert_eq!(layout.cells[0].hit_start, 1830);
+        assert_eq!(layout.cells[0].hit_end, 1860);
+        assert_eq!(layout.cells[0].icon, Rect::new(1837, 7, 16, 16));
+    }
+
+    #[test]
     fn adjacent_cells_have_no_dead_input_space() {
         let tray = StatusNotifierTray {
             items: vec![item(16, 16), item(24, 12)],
         };
-        let layout = layout(&tray, None, 100, 30, 4);
+        let layout = layout(&tray, None, 100, 30, 4, 0);
 
         assert_eq!(layout.cells[0].hit_end, layout.cells[1].hit_start);
         assert!(layout.cells.iter().all(|cell| cell.icon.y > 0));
@@ -404,7 +518,7 @@ mod tests {
         let tray = StatusNotifierTray {
             items: vec![item(64, 64), item(8, 8)],
         };
-        let layout = layout(&tray, None, 100, 30, 2);
+        let layout = layout(&tray, None, 100, 30, 2, 0);
 
         assert_eq!((layout.cells[0].icon.w, layout.cells[0].icon.h), (26, 26));
         assert_eq!((layout.cells[1].icon.w, layout.cells[1].icon.h), (8, 8));
@@ -491,7 +605,7 @@ mod tests {
                 })
                 .collect(),
         };
-        let layout = layout(&tray, Some(&menu), 230, 30, 2);
+        let layout = layout(&tray, Some(&menu), 230, 30, 2, 0);
 
         assert_eq!(layout.menu.start_x, 0);
         assert_eq!(layout.menu.width, 200);
@@ -514,7 +628,7 @@ mod tests {
                 .collect(),
         };
 
-        let layout = layout(&StatusNotifierTray::default(), Some(&menu), 3, 30, 2);
+        let layout = layout(&StatusNotifierTray::default(), Some(&menu), 3, 30, 2, 0);
 
         assert_eq!(layout.menu.start_x, 0);
         assert_eq!(layout.menu.width, 3);

@@ -11,7 +11,6 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::systray::StatusNotifierTray;
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 
@@ -178,9 +177,6 @@ pub struct X11BackendData {
 pub struct WaylandBackendData {
     pub backend: WaylandBackend,
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
-    pub(crate) status_notifier_tray: StatusNotifierTray,
-    pub(crate) status_notifier_runtime:
-        Option<crate::systray::status_notifier::StatusNotifierRuntime>,
 }
 
 /// Owned backend implementation.
@@ -207,8 +203,6 @@ impl Backend {
         Self::Wayland(Box::new(WaylandBackendData {
             backend,
             bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
-            status_notifier_tray: StatusNotifierTray::default(),
-            status_notifier_runtime: None,
         }))
     }
 

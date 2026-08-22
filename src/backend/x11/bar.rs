@@ -47,10 +47,8 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
     let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
     let snapshots = crate::bar::scene::build_monitor_snapshots(
         core,
-        None,
-        None,
         true,
-        core.bar.runtime.systray_width,
+        core.bar.runtime.external_tray_width,
     );
     let Some(snapshot) = snapshots
         .iter()
@@ -67,10 +65,8 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
     let snapshots = crate::bar::scene::build_monitor_snapshots(
         core,
-        None,
-        None,
         true,
-        core.bar.runtime.systray_width,
+        core.bar.runtime.external_tray_width,
     );
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots

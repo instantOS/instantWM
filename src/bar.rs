@@ -16,8 +16,9 @@ pub struct BarRuntime {
     pub status_text: String,
     /// Whether the active i3bar protocol stream advertised click events.
     pub status_click_events: bool,
-    /// Cached systray width (pixels), updated before rendering.
-    pub systray_width: i32,
+    /// Width reserved at the right edge of the selected monitor's bar for
+    /// content rendered outside the scene (legacy XEmbed icon windows).
+    pub external_tray_width: i32,
 }
 
 #[derive(Default)]
@@ -31,6 +32,9 @@ pub struct BarState {
     status_cache_parsed: bool,
     pub runtime: BarRuntime,
     pub hover: BarHoverState,
+    /// StatusNotifier tray integration: worker handle plus the item and
+    /// hosted-menu models the scene renders and the click paths dispatch to.
+    pub(crate) systray_host: crate::systray::SystrayHost,
 }
 
 /// Pointer hover presentation for the built-in bar.

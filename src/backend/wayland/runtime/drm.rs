@@ -37,9 +37,7 @@ use crate::backend::wayland::render::drm::{
     CursorManager, ManagedDrmOutputManager, OutputHitRegion, OutputSurfaceEntry, RenderOutcome,
     build_output_surfaces, create_output_manager, render_drm_output,
 };
-use crate::backend::wayland::render::scene::{
-    SceneCache, build_shared_scene_elements, poll_systray,
-};
+use crate::backend::wayland::render::scene::{SceneCache, build_shared_scene_elements};
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::wm::Wm;
@@ -1175,7 +1173,6 @@ fn render_outputs(
             .iter()
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
         let shared_scene = if needs_any_render && !state.is_locked() {
-            poll_systray(wm);
             Some(build_shared_scene_elements(
                 wm,
                 state,

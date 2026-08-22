@@ -376,7 +376,7 @@ pub fn update_systray(
     let tray_x = tray_right - manager_width as i32;
     let bar_width = full_bar_width.saturating_sub(reserved_width as i32).max(1) as u32;
 
-    core.bar.runtime.systray_width = reserved_width as i32;
+    core.bar.runtime.external_tray_width = reserved_width as i32;
     core.bar.mark_dirty();
 
     let conn = x11.conn;

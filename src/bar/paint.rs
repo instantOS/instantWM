@@ -1,4 +1,4 @@
-use crate::types::{ColorSchemeRgba, Rect, Rgba};
+use crate::types::{ColorSchemeRgba, Rect, Rgba, Size};
 
 #[derive(Clone, Debug)]
 pub struct BarScheme {
@@ -57,4 +57,8 @@ pub trait BarPainter {
         invert: bool,
         detail_height: i32,
     ) -> i32;
+    /// Blit non-premultiplied RGBA8 pixels (row-major, 4 bytes per pixel)
+    /// scaled to exactly fill `destination`. Used for compositor-rendered
+    /// tray icons; alpha is blended over existing content.
+    fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]);
 }

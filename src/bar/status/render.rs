@@ -670,7 +670,7 @@ fn draw_separator(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Insets;
+    use crate::types::{Insets, Size};
 
     #[derive(Default)]
     struct RecordingPainter {
@@ -711,6 +711,15 @@ mod tests {
             self.texts.push(text.to_string());
             self.text_bounds.push(bounds);
             bounds.x + bounds.w
+        }
+
+        fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
+            assert!(
+                src_rgba.len() >= (source_size.w as usize) * (source_size.h as usize) * 4,
+                "blit_rgba requires enough source pixels"
+            );
+            self.rectangles
+                .push((destination, Rgba::rgb(1.0, 1.0, 1.0)));
         }
     }
 
