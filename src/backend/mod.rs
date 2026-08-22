@@ -41,15 +41,20 @@ pub enum BackendKind {
 }
 
 impl BackendKind {
-    /// Whether external X-based screen-selection tools (`instantslop`) can
-    /// draw overlays usable by this backend.
+    /// External tool that lets the user drag out a screen rectangle, used by
+    /// the `draw_window` action.
     ///
-    /// `instantslop` selects a region by drawing on the X root window, which
-    /// spans every output only under the native X11 backend. Under Wayland
-    /// the compositor owns the root; an equivalent would require a
-    /// layer-shell overlay and has not been built.
-    pub fn supports_x_selection_tools(self) -> bool {
-        matches!(self, Self::X11)
+    /// Both tools are spawned with `-f x%xx%yx%wx%hx`, whose output
+    /// [`crate::mouse::slop::parse_slop_output`] understands. X11 draws the
+    /// selection through the instantOS helper on the root window; Wayland
+    /// uses slurp's layer-shell overlay, which spans every output because
+    /// the compositor implements wlr-layer-shell. Selection runs
+    /// asynchronously — see [`crate::mouse::slop::spawn_region_selection`].
+    pub fn region_selection_command(self) -> Option<Command> {
+        match self {
+            Self::X11 => Some(Command::new("instantslop")),
+            Self::Wayland => Some(Command::new("slurp")),
+        }
     }
 
     /// Whether this backend reaps child processes via a SIGCHLD handler on

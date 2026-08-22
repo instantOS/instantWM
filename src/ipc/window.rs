@@ -144,12 +144,7 @@ fn resize_window(
     // A geometry command must not steal keyboard focus or switch the
     // selected monitor; Preserve keeps focus where it is and only hands
     // the moved window's focus to a replacement if it was focused.
-    let _ = transfer_client(
-        &mut ctx,
-        win,
-        target_monitor_id,
-        TransferFocus::Preserve,
-    );
+    let _ = transfer_client(&mut ctx, win, target_monitor_id, TransferFocus::Preserve);
     ctx.move_resize(
         win,
         rect,

@@ -515,3 +515,55 @@ impl OutputManagementHandler for WaylandState {
 // `OutputManagementState::new`, `add_heads`, etc. are not satisfied when
 // `D = WaylandState`.
 crate::delegate_output_management!(WaylandState);
+
+// ---------------------------------------------------------------------------
+// wlr-foreign-toplevel-management-unstable-v1 handler
+// ---------------------------------------------------------------------------
+
+impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelHandler
+    for WaylandState
+{
+    fn foreign_toplevel_state(
+        &mut self,
+    ) -> &mut crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState
+    {
+        &mut self.foreign_toplevel_management_state
+    }
+
+    fn foreign_toplevel_snapshot(
+        &self,
+        window: crate::types::WindowId,
+    ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
+    {
+        self.foreign_toplevel_snapshot(window)
+    }
+
+    fn foreign_toplevel_request(
+        &mut self,
+        window: crate::types::WindowId,
+        request: crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelRequest,
+    ) {
+        use crate::backend::wayland::commands::WmCommand;
+        use crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelRequest;
+
+        let command = match request {
+            ForeignToplevelRequest::Activate => WmCommand::FocusWindow(window),
+            ForeignToplevelRequest::Close => WmCommand::CloseWindow(window),
+            ForeignToplevelRequest::SetMaximized(maximized) => WmCommand::SetMaximized {
+                win: window,
+                maximized,
+            },
+            ForeignToplevelRequest::SetMinimized(minimized) => WmCommand::SetMinimized {
+                win: window,
+                minimized,
+            },
+            ForeignToplevelRequest::SetFullscreen(fullscreen) => WmCommand::SetFullscreen {
+                win: window,
+                fullscreen,
+            },
+        };
+        self.push_command(command);
+    }
+}
+
+crate::delegate_foreign_toplevel_management!(WaylandState);

@@ -15,7 +15,7 @@ use crate::backend::wayland::input::pointer::constraints::{
 };
 use crate::backend::wayland::input::pointer::drag::active_drag_window;
 use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at, update_sidebar_offer_at};
+use crate::mouse::{clear_hover_offer, update_sidebar_offer_at};
 use crate::types::BarPosition;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
@@ -597,8 +597,7 @@ fn dispatch_pointer_motion(
 
     if !sidebar_offer_active {
         // Phase 5: Update hover resize state for floating windows
-        let suppress_hover_focus =
-            update_hover_resize_state(wm, root, hovered_win, wm.core.drag.has_capture());
+        let suppress_hover_focus = update_hover_resize_state(wm, root, wm.core.drag.has_capture());
 
         // Phase 6: Update pointer focus based on drag state. An exclusive layer
         // surface (for example slurp) temporarily owns keyboard focus; moving the
@@ -763,13 +762,13 @@ fn handle_bar_motion(
 }
 
 /// Update hover resize state for floating windows.
-/// Returns whether to suppress hover focus.
-fn update_hover_resize_state(
-    wm: &mut Wm,
-    root: RootPoint,
-    hovered_win: Option<crate::types::WindowId>,
-    drag_active: bool,
-) -> bool {
+///
+/// Hover focus is suppressed only while a resize-border offer is actually
+/// held: the pointer then sits in the border strip of a floating window, and
+/// yanking focus to whatever lies beneath would fight the offered gesture.
+/// Without an offer, hover focus applies normally (focus-follows-mouse,
+/// unfocus when hovering the root).
+fn update_hover_resize_state(wm: &mut Wm, root: RootPoint, drag_active: bool) -> bool {
     if wm.core.model.is_overview_active() {
         let mut ctx = wm.ctx();
         clear_hover_offer(&mut ctx);
@@ -779,40 +778,17 @@ fn update_hover_resize_state(
         return false;
     }
 
-    let selected_floating = wm
-        .core
-        .model
-        .selected_win()
-        .and_then(|win| {
-            wm.core
-                .model
-                .client(win)
-                .map(|c| (win, c.mode().is_normal_floating()))
-        })
-        .is_some_and(|(_, is_floating)| is_floating);
-    let hovered_is_selected =
-        hovered_win.is_some_and(|win| Some(win) == wm.core.model.selected_win());
-
     let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
 
-    if !selected_floating {
-        let _ = update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root);
-        return false;
-    }
-
-    let mut suppress_hover_focus = !hovered_is_selected;
-    let selected_offer =
-        update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root).is_some();
-    if selected_offer {
-        suppress_hover_focus = true;
-    } else if !hovered_is_selected {
-        suppress_hover_focus = false;
-    }
-
-    suppress_hover_focus
+    // Offer resize near any visible floating window's border (X11 parity).
+    crate::mouse::update_any_floating_resize_offer_at(
+        &mut WmCtx::Wayland(ctx.reborrow()),
+        root,
+    )
+    .is_some()
 }
 
 /// Update pointer focus based on drag state.

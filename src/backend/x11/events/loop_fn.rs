@@ -54,6 +54,13 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .insert_source(status_ping_source, |_, _, _| {})
         .expect("failed to insert status ping source");
 
+    // ── Region-selection ping source ───────────────────────────────────
+    let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");
+    crate::mouse::slop::set_region_selection_ping(slop_ping);
+    loop_handle
+        .insert_source(slop_ping_source, |_, _, _| {})
+        .expect("failed to insert region-selection ping source");
+
     // ── StatusNotifier worker ───────────────────────────────────────────
     // Items position their own menus under X11, so no native-menu slot is
     // provided; the wake ping makes icon changes render while idle.

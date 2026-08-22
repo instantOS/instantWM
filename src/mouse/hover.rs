@@ -15,8 +15,8 @@
 //!
 //! | Function                                      | Called from          | Purpose                                    |
 //! |-----------------------------------------------|----------------------|--------------------------------------------|
-//! | [`update_floating_resize_offer_at`]           | `motion_notify`      | Update resize offer and cursor feedback    |
-//! | [`update_selected_resize_offer_at`]           | Wayland motion       | Update selected-window resize offer        |
+//! | [`update_floating_resize_offer_at`]           | X11 motion           | Update resize offer + cursor, may focus    |
+//! | [`update_any_floating_resize_offer_at`]       | Wayland motion       | Any-window offer + cursor, focus untouched |
 
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
@@ -98,8 +98,12 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTar
         return None;
     }
     let mon = model.expect_selected_monitor();
-    mon.iter_clients(&model.clients)
-        .find_map(|(win, _)| resize_target_for_window(model, win, root))
+    // Topmost first: the border the user *sees* must win the offer even when
+    // focus order disagrees with the visible stacking. Stale ids are skipped
+    // by the per-window visibility lookup.
+    mon.z_order
+        .iter_top_to_bottom()
+        .find_map(|win| resize_target_for_window(model, win, root))
 }
 
 pub fn selected_hover_resize_target_at(
@@ -155,11 +159,16 @@ pub fn update_floating_resize_offer_at(ctx: &mut WmCtx, root: Point) -> bool {
     false
 }
 
-/// Update the resize offer for the currently selected window.
+/// Update the resize offer scanning every visible floating window.
 ///
-/// This is the backend-neutral hover-resize path used by Wayland motion events.
-pub fn update_selected_resize_offer_at(ctx: &mut WmCtx, position: Point) -> Option<WindowId> {
-    let Some(target) = selected_hover_resize_target_at(ctx.core().model(), position) else {
+/// This is the Wayland motion path: hovering just outside *any* floating
+/// window's border arms the resize offer and projects the matching cursor —
+/// X11 parity for `update_floating_resize_offer_at`, minus its focus side
+/// effects (Wayland decides hover focus separately).
+///
+/// Returns the window whose border is being offered, if any.
+pub fn update_any_floating_resize_offer_at(ctx: &mut WmCtx, position: Point) -> Option<WindowId> {
+    let Some(target) = hover_resize_target_at(ctx.core().model(), position) else {
         clear_hover_offer(ctx);
         return None;
     };
@@ -213,4 +222,55 @@ pub fn update_sidebar_offer_at(
         .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core().model(), root))
         .flatten();
     set_sidebar_offer(ctx, target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::types::{Client, ClientMode, Monitor, TagMask, WindowId};
+    use crate::wm::Wm;
+
+    /// Two floating windows whose top border zones overlap: the visually
+    /// topmost one must win the offer even when focus order puts the other
+    /// window first.
+    #[test]
+    fn border_scan_prefers_the_topmost_window_over_focus_order() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let bottom = WindowId(1);
+        let top = WindowId(2);
+
+        let mut monitor = Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            show_bar: false,
+            ..Monitor::default()
+        };
+        monitor.set_selected_tags(tags);
+        // Focus order: `bottom` is the focused window.
+        monitor.clients = vec![bottom, top];
+        // Persistent z-order: `top` stacks above `bottom`.
+        monitor.z_order.attach_top(bottom);
+        monitor.z_order.attach_top(top);
+        let monitor_id = wm.core.model.monitors.push(monitor);
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        for (win, y) in [(bottom, 100), (top, 90)] {
+            let mut client = Client {
+                win,
+                monitor_id,
+                tags,
+                geo: Rect::new(100, y, 600, 400),
+                mode: ClientMode::floating(),
+                ..Client::default()
+            };
+            client.set_placement(crate::types::ClientPlacement::Floating);
+            wm.core.model.insert_client(client);
+        }
+
+        // Inside both windows' top border zones (30 px band above each edge).
+        let target = hover_resize_target_at(&wm.core.model, Point::new(300, 85));
+        assert_eq!(target.map(|target| target.win), Some(top));
+    }
 }

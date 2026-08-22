@@ -50,6 +50,9 @@ pub fn event_loop_tick_with_options(
 ) -> TickResult {
     let systray_updated = wm.poll_systray();
     let status_handled = crate::bar::status::drain_internal_status_updates(wm);
+    // A finished region selection may resize a window, so it drains before
+    // pending work to let the same tick apply the resulting layout.
+    let region_selection_applied = crate::mouse::slop::drain_region_selection(wm);
     let ipc_handled = process_ipc_commands(ipc_server, wm);
     let work = process_pending_work(wm, options);
     crate::bar::status::sync_visibility(wm);
@@ -59,7 +62,7 @@ pub fn event_loop_tick_with_options(
         ctx.redraw_bars_if_dirty();
     }
     TickResult {
-        ipc_handled: ipc_handled || status_handled,
+        ipc_handled: ipc_handled || status_handled || region_selection_applied,
         monitor_config_applied: work.monitor_config_applied,
         layout_applied: work.layout_applied,
         systray_updated,

@@ -11,7 +11,7 @@
 //!   - [`drag::gesture`] — root-window gestures
 //! - [`interaction`] — normalized pointer/touch update, end, and cancel events
 //! - [`resize`]     — shared corner, aspect, and hover-resize policy
-//! - [`slop`]       — slop-based `draw_window`, geometry validation, `apply_window_resize`
+//! - [`slop`]       — region selection (`instantslop`/`slurp`) for `draw_window`, geometry validation, `apply_window_resize`
 //! - [`monitor`]    — monitor-crossing detection after a drag/resize
 //!
 //! # Typical call flow
@@ -57,8 +57,8 @@ pub use drag::{
 
 pub use hot_corner::update_overlay_hot_corner;
 pub use hover::{
-    SidebarOfferUpdate, clear_hover_offer, set_sidebar_offer, update_floating_resize_offer_at,
-    update_selected_resize_offer_at, update_sidebar_offer_at,
+    SidebarOfferUpdate, clear_hover_offer, set_sidebar_offer, update_any_floating_resize_offer_at,
+    update_floating_resize_offer_at, update_sidebar_offer_at,
 };
 
 // ── resize ────────────────────────────────────────────────────────────────────

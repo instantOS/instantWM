@@ -168,12 +168,21 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
 pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     let space_synced = if state.take_space_sync_pending() {
         state.sync_space_from_globals();
+        // Output membership for foreign-toplevel clients must be computed
+        // from post-arrange geometry: this is the point in the tick where
+        // pending layouts have been applied and the space reconciled.
+        state.refresh_all_foreign_toplevels();
         true
     } else {
         false
     };
     if state.has_active_animations() {
         state.tick_animations();
+        // A retarget that just settled moves windows between outputs after
+        // the refresh above already ran; catch up once animations drain.
+        if !state.has_active_animations() {
+            state.refresh_all_foreign_toplevels();
+        }
     }
 
     // Animation ticks enqueue output-local redraws themselves. Space sync can

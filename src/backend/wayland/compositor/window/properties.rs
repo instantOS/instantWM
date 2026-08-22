@@ -98,6 +98,55 @@ impl WaylandState {
         if let Some(handle) = self.foreign_toplevel_handles.remove(&window) {
             self.foreign_toplevel_list_state.remove_toplevel(&handle);
         }
+        self.foreign_toplevel_management_state
+            .remove_toplevel::<Self>(window);
+    }
+
+    /// Compute the protocol-visible presentation of a managed window for
+    /// wlr-foreign-toplevel-management. `None` while the window is not yet in
+    /// the managed model (freshly registered surface awaiting its map work).
+    pub(crate) fn foreign_toplevel_snapshot(
+        &self,
+        window: WindowId,
+    ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
+    {
+        use crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot;
+
+        let core = self.globals()?;
+        let client = core.model.client(window)?;
+        Some(ToplevelSnapshot {
+            title: self.window_title(window).unwrap_or_default(),
+            app_id: self.window_app_id(window).unwrap_or_default(),
+            activated: core.model.selected_win() == Some(window),
+            minimized: client.is_minimized(),
+            maximized: client.mode().is_maximized(),
+            fullscreen: client.mode().is_true_fullscreen(),
+            outputs: self
+                .find_window(window)
+                .map(|element| self.outputs_for_window_geometry(element))
+                .unwrap_or_default(),
+        })
+    }
+
+    /// Push the current presentation of one window to managing clients
+    /// (advertises it on first sight; diffs afterwards). Cheap when nothing
+    /// changed.
+    pub fn refresh_foreign_toplevel(&mut self, window: WindowId) {
+        if !self.foreign_toplevel_handles.contains_key(&window) {
+            return;
+        }
+        if let Some(snapshot) = self.foreign_toplevel_snapshot(window) {
+            self.foreign_toplevel_management_state
+                .sync_toplevel::<Self>(window, &snapshot);
+        }
+    }
+
+    /// Refresh every managed window's advertised presentation.
+    pub fn refresh_all_foreign_toplevels(&mut self) {
+        let windows: Vec<WindowId> = self.foreign_toplevel_handles.keys().copied().collect();
+        for window in windows {
+            self.refresh_foreign_toplevel(window);
+        }
     }
 
     /// Get properties for rule matching.

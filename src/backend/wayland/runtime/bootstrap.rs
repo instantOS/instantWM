@@ -73,5 +73,10 @@ pub fn autostart_ipc_status_ping(
     loop_handle
         .insert_source(status_ping_source, |_, _, _| {})
         .expect("failed to insert status ping source");
+    let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");
+    crate::mouse::slop::set_region_selection_ping(slop_ping);
+    loop_handle
+        .insert_source(slop_ping_source, |_, _, _| {})
+        .expect("failed to insert region-selection ping source");
     ipc_server
 }

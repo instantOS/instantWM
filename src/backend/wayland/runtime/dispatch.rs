@@ -14,6 +14,12 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
     let mut commands = commands.into_iter().peekable();
     let mut pointer_hit_cache = None;
+    // Selection as last advertised to foreign-toplevel clients. Compared
+    // after every command below: whichever command moves focus (explicit
+    // focus, activate, minimize of the focused window, scratchpad show,
+    // hover focus during pointer motion, ...), both the old and the new
+    // selection get their `activated` state refreshed.
+    let mut advertised_selection = wm.core.model.selected_win();
 
     while let Some(command) = commands.next() {
         let next_is_pointer_motion = matches!(commands.peek(), Some(WmCommand::PointerMotion(_)));
@@ -28,7 +34,12 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::MapWindow(params) => handle_map_window(wm, state, params),
             WmCommand::UnmapWindow(_) => {}
             WmCommand::UnmanageWindow(win) => handle_unmanage_window(wm, win),
-            WmCommand::ActivateWindow(win) => handle_activate_window(wm, win),
+            WmCommand::ActivateWindow(win) => {
+                // Selection refresh is handled by the post-command diff
+                // below; activating an invisible window only marks it
+                // urgent, which is not part of the advertised snapshot.
+                handle_activate_window(wm, win);
+            }
             WmCommand::PointerMotion(motion) => {
                 if let (Some(pointer), Some(keyboard)) =
                     (state.seat.get_pointer(), state.seat.get_keyboard())
@@ -91,6 +102,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::CancelInteractiveDrag(reason) => cancel_interactive_drag(wm, reason),
             WmCommand::UpdateProperties { win, properties } => {
                 handle_update_properties(wm, win, &properties);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::UpdateTransientFor { win, parent } => {
                 handle_update_transient_for(wm, win, parent);
@@ -108,12 +120,21 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::SetMaximized { win, maximized } => {
                 handle_set_maximized(wm, state, win, maximized);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::SetFullscreen { win, fullscreen } => {
                 handle_set_fullscreen(wm, state, win, fullscreen);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::SetMinimized { win, minimized } => {
                 handle_set_minimized(wm, win, minimized);
+                state.refresh_foreign_toplevel(win);
+            }
+            WmCommand::CloseWindow(win) => {
+                let mut ctx = wm.ctx();
+                // Same funnel as IPC and keybindings: a locked window refuses
+                // to close, no matter which client asks.
+                crate::client::close_win(&mut ctx, win);
             }
             WmCommand::ShowScratchpad(name) => {
                 let mut ctx = wm.ctx();
@@ -124,6 +145,11 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::RequestSpaceSync => {
                 wm.work.layout.mark_all();
+                // Output membership for foreign-toplevel clients is
+                // refreshed *after* the pending layout has been applied and
+                // the space synced (see
+                // `engine::process_animations_and_request_render`); doing it
+                // here would advertise pre-arrange geometry.
                 state.request_space_sync();
             }
             WmCommand::RequestBarRedraw => {
@@ -147,6 +173,20 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             } => {
                 handle_select_tag(wm, &monitor_name, tag_index);
             }
+        }
+
+        // Selection moved by whichever command ran (or by pointer hover focus
+        // inside it): refresh both windows' advertised `activated` state.
+        // Refreshing an unmanaged window is a no-op.
+        let selected = wm.core.model.selected_win();
+        if selected != advertised_selection {
+            if let Some(previous) = advertised_selection {
+                state.refresh_foreign_toplevel(previous);
+            }
+            if let Some(current) = selected {
+                state.refresh_foreign_toplevel(current);
+            }
+            advertised_selection = selected;
         }
     }
 }
@@ -394,6 +434,7 @@ fn handle_map_window(
         wl_state.request_window_focus(win);
     }
     wl_state.sync_window_presentation(win);
+    wl_state.refresh_foreign_toplevel(win);
     wl_state.request_space_sync();
 }
 
