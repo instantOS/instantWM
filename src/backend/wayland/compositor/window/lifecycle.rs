@@ -8,6 +8,22 @@ use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
 
 impl WaylandState {
+    /// Forget state that only describes the current on-screen presentation.
+    ///
+    /// Protocol/configure state deliberately survives this operation because
+    /// tag visibility is independent from the lifetime of the client surface.
+    fn clear_window_presentation_state(&mut self, window: WindowId) {
+        self.drop_window_animation(window);
+        self.placed_border.remove(&window);
+    }
+
+    /// Forget state whose lifetime is tied to a managed client surface.
+    fn clear_window_protocol_state(&mut self, window: WindowId) {
+        self.last_configured_size.remove(&window);
+        self.pending_size_configure.remove(&window);
+        self.pending_authoritative_sizes.remove(&window);
+    }
+
     pub(crate) fn setup_managed_window(&mut self, surface: ToplevelSurface) -> WindowId {
         let window_id = self.register_toplevel(surface, false);
         self.create_foreign_toplevel(window_id);
@@ -162,11 +178,14 @@ impl WaylandState {
         // Invalidate its old outputs before removing the geometry from Space.
         self.request_visible_window_render(&element);
         self.space.unmap_elem(&element);
-        self.drop_window_animation(window);
-        self.placed_border.remove(&window);
-        self.last_configured_size.remove(&window);
-        self.pending_size_configure.remove(&window);
-        self.pending_authoritative_sizes.remove(&window);
+        self.clear_window_presentation_state(window);
+
+        // Hiding a tag is presentation-only. Keep the latest configured size
+        // and outstanding protocol transactions alive: the client may commit
+        // in response to a configure after it has left Space, and remapping
+        // must be able to present that retained buffer without forcing another
+        // resize/configure round trip. Full protocol cleanup belongs exclusively
+        // to `remove_window_tracking`.
         self.clear_seat_focus_if_focused(window);
         self.request_space_sync();
     }
@@ -187,11 +206,8 @@ impl WaylandState {
         self.window_index.remove(&window);
         self.native_size_hints.remove(&window);
         self.active_resizes.remove(&window);
-        self.drop_window_animation(window);
-        self.placed_border.remove(&window);
-        self.last_configured_size.remove(&window);
-        self.pending_size_configure.remove(&window);
-        self.pending_authoritative_sizes.remove(&window);
+        self.clear_window_presentation_state(window);
+        self.clear_window_protocol_state(window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
         self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
@@ -211,5 +227,53 @@ impl WaylandState {
             return true;
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::Serial;
+
+    use crate::types::WindowId;
+
+    #[test]
+    fn presentation_hide_preserves_protocol_transactions() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let win = WindowId(42);
+        let configured = (1280, 720);
+        let serial = Serial::from(17);
+
+        state.last_configured_size.insert(win, configured);
+        state.pending_size_configure.insert(win, serial);
+        state.pending_authoritative_sizes.insert(win, configured);
+        state.placed_border.insert(win, 2);
+
+        state.clear_window_presentation_state(win);
+
+        assert_eq!(state.last_configured_size.get(&win), Some(&configured));
+        assert_eq!(state.pending_size_configure.get(&win), Some(&serial));
+        assert_eq!(
+            state.pending_authoritative_sizes.get(&win),
+            Some(&configured)
+        );
+        assert!(!state.placed_border.contains_key(&win));
+    }
+
+    #[test]
+    fn protocol_state_is_cleared_only_at_end_of_lifecycle() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let win = WindowId(42);
+
+        state.last_configured_size.insert(win, (1280, 720));
+        state.pending_size_configure.insert(win, Serial::from(17));
+        state.pending_authoritative_sizes.insert(win, (1280, 720));
+
+        state.clear_window_protocol_state(win);
+
+        assert!(!state.last_configured_size.contains_key(&win));
+        assert!(!state.pending_size_configure.contains_key(&win));
+        assert!(!state.pending_authoritative_sizes.contains_key(&win));
     }
 }
