@@ -18,7 +18,8 @@ fn tree_commands_allowed(monitor: &Monitor) -> bool {
 
 fn tree_preset_changes_allowed(ctx: &WmCtx<'_>) -> bool {
     !ctx.core()
-        .interaction().drag
+        .interaction()
+        .drag
         .active_interaction()
         .is_some_and(|drag| matches!(drag.drag_type(), crate::core_state::DragType::TreeResize(_)))
 }

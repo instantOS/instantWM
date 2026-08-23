@@ -19,10 +19,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
-use crate::core_state::{
-    CoreState, DerivedState, EffectiveConfig, PendingWork,
-    WmBehavior,
-};
+use crate::core_state::{CoreState, DerivedState, EffectiveConfig, PendingWork, WmBehavior};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
 use crate::types::{MonitorId, Rect, WindowId, XEmbedTray};
@@ -373,7 +370,10 @@ impl<'a> WmCtx<'a> {
             return;
         }
         if rect.is_none() {
-            self.core_mut().state_mut().interaction.pointer_placement_cache = None;
+            self.core_mut()
+                .state_mut()
+                .interaction
+                .pointer_placement_cache = None;
         }
         // Keyboard navigation changes a discrete virtual target and benefits
         // from interpolation. Pointer previews must track motion immediately.

@@ -362,7 +362,8 @@ pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
 
 pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     if ctx.core.interaction().drag.captured_button() != Some(btn)
-        || ctx.core.interaction().drag.captured_source() != Some(crate::types::InteractionSource::Pointer)
+        || ctx.core.interaction().drag.captured_source()
+            != Some(crate::types::InteractionSource::Pointer)
     {
         return false;
     }

@@ -207,7 +207,9 @@ mod tests {
         let scroll_root = Point::new(title_cell_center(&mut wm, second), 10);
 
         // An active tag drag owns the bar hover for its whole capture.
-        wm.core.interaction.drag
+        wm.core
+            .interaction
+            .drag
             .begin_tag_drag(crate::core_state::TagDragState {
                 initial_tag: TagMask::single(1).unwrap(),
                 start: scroll_root,
@@ -239,7 +241,9 @@ mod tests {
         // Control: without the capture the same scroll runs the ordinary hover
         // update and highlights the scrolled-over title.
         assert!(
-            wm.core.interaction.drag
+            wm.core
+                .interaction
+                .drag
                 .finish_tag_drag(crate::types::MouseButton::Left)
                 .is_some()
         );

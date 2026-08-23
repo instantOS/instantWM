@@ -252,7 +252,9 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
         .apply_preset(Preset::MasterStack, &[first, second], 1);
     let origin = monitor.per_tag().unwrap().layout_tree.clone();
 
-    wm.core.interaction.drag
+    wm.core
+        .interaction
+        .drag
         .begin_tree_resize(crate::core_state::TreeResizeParams {
             win: first,
             button: MouseButton::Right,

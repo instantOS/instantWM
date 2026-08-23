@@ -85,7 +85,11 @@ pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
 /// If the name matches one of the configured layouts, switch to it.
 /// Returns `true` if the layout was found and applied.
 pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
-    let index = ctx.core().interaction().keyboard_layout.find_layout_index(name);
+    let index = ctx
+        .core()
+        .interaction()
+        .keyboard_layout
+        .find_layout_index(name);
     match index {
         Some(idx) => {
             set_keyboard_layout(ctx, idx);
@@ -120,7 +124,9 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
 /// This allows IPC clients to reconfigure layouts without editing the TOML file.
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
     ctx.core_mut()
-        .state_mut().interaction.keyboard_layout
+        .state_mut()
+        .interaction
+        .keyboard_layout
         .reset_layouts(layouts);
     if !ctx.core().interaction().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
@@ -175,7 +181,9 @@ pub fn get_all_keyboard_layouts() -> Vec<String> {
 pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<(), String> {
     let new_index = ctx
         .core_mut()
-        .state_mut().interaction.keyboard_layout
+        .state_mut()
+        .interaction
+        .keyboard_layout
         .add_layout(layout)?;
 
     // Switch to the new layout
@@ -216,7 +224,9 @@ pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), Strin
     let index = index.ok_or_else(|| format!("layout '{}' not found", layout))?;
 
     ctx.core_mut()
-        .state_mut().interaction.keyboard_layout
+        .state_mut()
+        .interaction
+        .keyboard_layout
         .remove_layout(index)?;
 
     let current = ctx.core().interaction().keyboard_layout.current;

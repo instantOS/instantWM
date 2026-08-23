@@ -103,7 +103,8 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
         }
         Some(CapturedInteraction::Tag(_)) => {
             ctx.core_mut()
-                .interaction_mut().drag
+                .interaction_mut()
+                .drag
                 .tag_drag_mut()
                 .expect("tag capture remained active")
                 .last_motion = Some((event.root, event.modifiers));
@@ -158,16 +159,24 @@ fn finish(
 
 fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
     let cancelled_interactive = match ctx {
-        WmCtx::X11(x11) => {
-            crate::mouse::drag::lifecycle::cancel(&mut x11.core.interaction_mut().drag, &x11.x11, reason)
-        }
-        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::cancel(&mut wayland.core.interaction_mut().drag,
+        WmCtx::X11(x11) => crate::mouse::drag::lifecycle::cancel(
+            &mut x11.core.interaction_mut().drag,
+            &x11.x11,
+            reason,
+        ),
+        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::cancel(
+            &mut wayland.core.interaction_mut().drag,
             wayland.wayland,
             reason,
         ),
     }
     .is_some();
-    let cancelled_other = ctx.core_mut().interaction_mut().drag.cancel_capture().is_some();
+    let cancelled_other = ctx
+        .core_mut()
+        .interaction_mut()
+        .drag
+        .cancel_capture()
+        .is_some();
     if cancelled_interactive || cancelled_other {
         ctx.core_mut().bar.hover.clear();
         ctx.set_cursor_style(crate::types::AltCursor::Default);
@@ -209,7 +218,9 @@ mod tests {
         monitor.set_selected_tags(tags);
         monitor.clients = vec![win];
         monitor.selected = Some(win);
-        wm.core.interaction.drag
+        wm.core
+            .interaction
+            .drag
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -258,12 +269,16 @@ mod tests {
         );
         assert_eq!(
             pointer_wm
-                .core.interaction.drag
+                .core
+                .interaction
+                .drag
                 .active_interaction()
                 .unwrap()
                 .last_root_point(),
             touch_wm
-                .core.interaction.drag
+                .core
+                .interaction
+                .drag
                 .active_interaction()
                 .unwrap()
                 .last_root_point()

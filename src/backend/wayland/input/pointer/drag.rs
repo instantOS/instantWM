@@ -5,7 +5,11 @@ use crate::wm::Wm;
 
 /// Get the active drag window (if any).
 pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
-    wm.core.interaction.drag.active_interaction().map(|drag| drag.win())
+    wm.core
+        .interaction
+        .drag
+        .active_interaction()
+        .map(|drag| drag.win())
 }
 
 #[cfg(test)]
@@ -61,7 +65,9 @@ mod tests {
 
         let source = windows[0];
         let source_geo = bounds[&source];
-        wm.core.interaction.drag
+        wm.core
+            .interaction
+            .drag
             .begin_move(
                 source,
                 MouseButton::Left,
@@ -148,7 +154,11 @@ mod tests {
             }
             let started = Instant::now();
             let updates = black_box(run_samples(&mut wm, clear_cache_each_sample, batch_size));
-            (started.elapsed(), updates, wm.core.interaction.layout_preview)
+            (
+                started.elapsed(),
+                updates,
+                wm.core.interaction.layout_preview,
+            )
         }
 
         fn median(mut samples: Vec<Duration>) -> Duration {

@@ -247,7 +247,8 @@ pub fn begin_card_gesture(
     let threshold = (monitor.monitor_rect.h / 30).max(1);
     let started = ctx
         .core_mut()
-        .interaction_mut().drag
+        .interaction_mut()
+        .drag
         .begin_overview_card(crate::core_state::OverviewCardDrag::new(
             window, button, source, root, threshold,
         ))
@@ -263,7 +264,11 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
         Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window(),
         _ => return false,
     };
-    let transition = ctx.core_mut().interaction_mut().drag.update_overview_card(root);
+    let transition = ctx
+        .core_mut()
+        .interaction_mut()
+        .drag
+        .update_overview_card(root);
     if let Some(close_armed) = transition {
         ctx.set_cursor_style(if close_armed {
             crate::types::AltCursor::Close
@@ -280,7 +285,12 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
 }
 
 pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::MouseButton) -> bool {
-    let Some(action) = ctx.core_mut().interaction_mut().drag.finish_overview_card(button) else {
+    let Some(action) = ctx
+        .core_mut()
+        .interaction_mut()
+        .drag
+        .finish_overview_card(button)
+    else {
         return false;
     };
     ctx.update_close_preview(None, None);

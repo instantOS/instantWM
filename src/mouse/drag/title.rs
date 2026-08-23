@@ -70,7 +70,8 @@ pub fn title_drag_begin(
         .client(win)
         .is_some_and(|client| client.is_hidden);
     ctx.core_mut()
-        .interaction_mut().drag
+        .interaction_mut()
+        .drag
         .arm_title_drag(crate::core_state::ArmedDragParams {
             win,
             button: btn,
@@ -186,13 +187,15 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         };
 
         let activated = match ctx {
-            WmCtx::X11(x11) => activate_armed_resize(&mut x11.core.interaction_mut().drag,
+            WmCtx::X11(x11) => activate_armed_resize(
+                &mut x11.core.interaction_mut().drag,
                 &x11.x11,
                 dir,
                 warp_point,
                 current_geo,
             ),
-            WmCtx::Wayland(wayland) => activate_armed_resize(&mut wayland.core.interaction_mut().drag,
+            WmCtx::Wayland(wayland) => activate_armed_resize(
+                &mut wayland.core.interaction_mut().drag,
                 wayland.wayland,
                 dir,
                 warp_point,
@@ -215,7 +218,8 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 
     if ctx
         .core_mut()
-        .interaction_mut().drag
+        .interaction_mut()
+        .drag
         .activate_armed(crate::core_state::ArmedDragType::Move, start, current_geo)
         .is_err()
     {
@@ -239,7 +243,8 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
 
     if root.manhattan_distance(&armed.start_point()) <= DRAG_THRESHOLD {
         ctx.core_mut()
-            .interaction_mut().drag
+            .interaction_mut()
+            .drag
             .record_interactive_motion(root);
         return false;
     }
@@ -302,7 +307,8 @@ fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Op
 fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> bool {
     if ctx
         .core_mut()
-        .interaction_mut().drag
+        .interaction_mut()
+        .drag
         .begin_title_reorder(crate::core_state::TitleReorderDrag::new(monitor_id))
         .is_err()
     {
@@ -338,7 +344,8 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let source = drag.source();
     let start_point = drag.start_point();
     ctx.core_mut()
-        .interaction_mut().drag
+        .interaction_mut()
+        .drag
         .record_interactive_motion(root);
 
     match title_strip_target(ctx, monitor_id, root) {
@@ -381,7 +388,8 @@ fn convert_reorder_to_move(
     };
     if ctx
         .core_mut()
-        .interaction_mut().drag
+        .interaction_mut()
+        .drag
         .activate_reordering_as_move(start, current_geo)
         .is_err()
     {

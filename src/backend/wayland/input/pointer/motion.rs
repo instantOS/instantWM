@@ -211,7 +211,9 @@ mod tests {
             geo,
             ..Client::default()
         });
-        wm.core.interaction.drag
+        wm.core
+            .interaction
+            .drag
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -492,7 +494,9 @@ fn retain_snapshot_during_active_drag(
     wm: &Wm,
     snapshot: Option<Vec<(smithay::desktop::Window, WindowType)>>,
 ) -> Option<Vec<(smithay::desktop::Window, WindowType)>> {
-    wm.core.interaction.drag
+    wm.core
+        .interaction
+        .drag
         .active_interaction()
         .is_some()
         .then_some(snapshot)
@@ -595,7 +599,8 @@ fn dispatch_pointer_motion(
 
     if !sidebar_offer_active {
         // Phase 5: Update hover resize state for floating windows
-        let suppress_hover_focus = update_hover_resize_state(wm, root, wm.core.interaction.drag.has_capture());
+        let suppress_hover_focus =
+            update_hover_resize_state(wm, root, wm.core.interaction.drag.has_capture());
 
         // Phase 6: Update pointer focus based on drag state. An exclusive layer
         // surface (for example slurp) temporarily owns keyboard focus; moving the
@@ -651,8 +656,9 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
         .map(|mon| {
             let bar_visible = monitor_bar_visible(wm, mon);
             let in_bar = bar_visible && mon.y_in_bar(root.y);
-            let in_guard =
-                bar_visible && !wm.core.interaction.drag.has_capture() && mon.y_in_guard_band(root.y);
+            let in_guard = bar_visible
+                && !wm.core.interaction.drag.has_capture()
+                && mon.y_in_guard_band(root.y);
             (in_bar, in_guard)
         })
         .unwrap_or((false, false))
