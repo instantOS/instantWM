@@ -626,7 +626,7 @@ fn reconcile_monitor_model(
     model: &mut crate::model::WmModel,
     outputs: &[BackendOutputInfo],
     metrics: &[(i32, i32, i32)],
-    tag_template: &[crate::types::monitor::TagNames],
+    tag_template: &[crate::types::Tag],
     show_bar: bool,
     show_bottom_bar: bool,
 ) -> MonitorReconciliation {

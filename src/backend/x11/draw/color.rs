@@ -67,6 +67,10 @@ pub struct ColorScheme {
 }
 
 impl ColorScheme {
+    pub fn new(fg: Color, bg: Color, detail: Color) -> Self {
+        Self { fg, bg, detail }
+    }
+
     /// Create a color scheme from a single color (replicated to fg, bg, detail).
     ///
     /// Useful for things like borders that only need one color.
@@ -103,24 +107,6 @@ pub struct BorderScheme {
     pub snap: ColorScheme,
     /// Destructive overview gesture threshold feedback.
     pub close: ColorScheme,
-}
-
-/// Color scheme for status bar elements.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct StatusScheme {
-    /// Foreground color.
-    pub fg: Color,
-    /// Background color.
-    pub bg: Color,
-    /// Detail/accent color.
-    pub detail: Color,
-}
-
-impl StatusScheme {
-    /// Create a new status scheme.
-    pub fn new(fg: Color, bg: Color, detail: Color) -> Self {
-        Self { fg, bg, detail }
-    }
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────

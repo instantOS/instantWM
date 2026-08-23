@@ -192,22 +192,22 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
         .record_interactive_motion(root);
 
     match drag.operation() {
-        crate::core_state::DragOperationRef::Move => {
+        crate::core_state::DragOperation::Move => {
             apply_move_drag_motion(ctx, &drag, root);
             true
         }
-        crate::core_state::DragOperationRef::TreeResize { direction, origin } => {
+        crate::core_state::DragOperation::TreeResize { direction, origin } => {
             crate::layouts::manager::update_pointer_tree_resize(
                 ctx,
                 drag.win(),
                 origin,
-                direction,
+                *direction,
                 drag.start_point(),
                 root,
             )
         }
-        crate::core_state::DragOperationRef::Resize(dir) => {
-            apply_resize_drag_motion(ctx, &drag, dir, root);
+        crate::core_state::DragOperation::Resize(dir) => {
+            apply_resize_drag_motion(ctx, &drag, *dir, root);
             true
         }
     }

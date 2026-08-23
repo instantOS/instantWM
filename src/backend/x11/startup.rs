@@ -8,7 +8,7 @@ use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::{BorderScheme, ColorScheme, DrawContext, StatusScheme};
+use crate::backend::x11::draw::{BorderScheme, ColorScheme, DrawContext};
 use crate::config::load_startup_config;
 use crate::wm::Wm;
 
@@ -306,5 +306,5 @@ fn init_schemes(
         .expect("Failed to create status bar colors");
 
     x11_runtime.border_scheme = borderscheme;
-    x11_runtime.status_scheme = StatusScheme::new(status.fg, status.bg, status.detail);
+    x11_runtime.status_scheme = ColorScheme::new(status.fg, status.bg, status.detail);
 }

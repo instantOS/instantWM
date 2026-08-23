@@ -9,37 +9,6 @@ use std::process;
 
 const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 
-#[derive(Debug, Clone)]
-pub struct KeyboardLayoutArg {
-    name: String,
-    variant: Option<String>,
-}
-
-impl From<String> for KeyboardLayoutArg {
-    fn from(s: String) -> Self {
-        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
-            Self {
-                name: name.to_string(),
-                variant: Some(variant.to_string()),
-            }
-        } else {
-            Self {
-                name: s,
-                variant: None,
-            }
-        }
-    }
-}
-
-impl From<KeyboardLayoutArg> for KeyboardLayout {
-    fn from(arg: KeyboardLayoutArg) -> Self {
-        KeyboardLayout {
-            name: arg.name,
-            variant: arg.variant,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Subcommand)]
 pub enum MonitorAction {
     /// List connected monitors and their current configuration.
@@ -693,14 +662,10 @@ fn keyboard_command(action: KeyboardAction) -> IpcCommand {
             }
         }
         KeyboardAction::Status => KeyboardCommand::Status,
-        KeyboardAction::Set { layouts } => KeyboardCommand::Set(
-            layouts
-                .into_iter()
-                .map(KeyboardLayoutArg::from)
-                .map(KeyboardLayout::from)
-                .collect(),
-        ),
-        KeyboardAction::Add { name } => KeyboardCommand::Add(KeyboardLayoutArg::from(name).into()),
+        KeyboardAction::Set { layouts } => {
+            KeyboardCommand::Set(layouts.into_iter().map(KeyboardLayout::from).collect())
+        }
+        KeyboardAction::Add { name } => KeyboardCommand::Add(KeyboardLayout::from(name)),
         KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
         KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
     };

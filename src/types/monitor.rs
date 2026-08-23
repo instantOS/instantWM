@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use crate::layouts::LayoutCommand;
 use crate::layouts::PresentationMode;
 use crate::types::MonitorId;
+use crate::types::Tag;
 use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, OrderedClients, TiledClientInfo};
@@ -15,7 +16,7 @@ use crate::types::input::StackDirection;
 
 mod tag_state;
 mod z_order;
-pub use tag_state::{PerTagState, TagNames};
+pub use tag_state::PerTagState;
 pub use z_order::ClientZOrder;
 
 /// Internal state of a monitor (screen) in the window manager.
@@ -67,7 +68,7 @@ pub struct Monitor {
     /// Previously selected single tag index.
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
-    pub tags: Vec<TagNames>,
+    pub tags: Vec<Tag>,
     /// Client list (focus order).
     pub clients: Vec<WindowId>,
     /// Currently selected client.
@@ -271,7 +272,7 @@ impl Monitor {
     }
 
     /// Initialize tags from a template.
-    pub fn init_tags(&mut self, template: &[TagNames]) {
+    pub fn init_tags(&mut self, template: &[Tag]) {
         self.tags = template.to_vec();
     }
 
@@ -667,12 +668,12 @@ impl Monitor {
     }
 
     /// Get the name data for a given tag index (1-based).
-    pub fn tag_name(&self, tag_index: usize) -> Option<&TagNames> {
+    pub fn tag_name(&self, tag_index: usize) -> Option<&Tag> {
         tag_index.checked_sub(1).and_then(|i| self.tags.get(i))
     }
 
     /// Get the current tag name data for this monitor.
-    pub fn current_tag(&self) -> Option<&TagNames> {
+    pub fn current_tag(&self) -> Option<&Tag> {
         let idx = self.current_tag_number()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&self.tags[idx - 1])
@@ -682,7 +683,7 @@ impl Monitor {
     }
 
     /// Get a mutable reference to the current tag name data.
-    pub fn current_tag_mut(&mut self) -> Option<&mut TagNames> {
+    pub fn current_tag_mut(&mut self) -> Option<&mut Tag> {
         let idx = self.current_tag_number()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&mut self.tags[idx - 1])

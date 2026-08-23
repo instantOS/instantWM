@@ -12,7 +12,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::x11::draw::{BorderScheme, Cursor, DrawContext, StatusScheme};
+use crate::backend::x11::draw::{BorderScheme, ColorScheme, Cursor, DrawContext};
 use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
@@ -40,7 +40,7 @@ pub struct X11RuntimeConfig {
     /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
     pub border_scheme: BorderScheme,
     /// X11 color scheme for status bar.
-    pub status_scheme: StatusScheme,
+    pub status_scheme: ColorScheme,
     /// X11 cursors for different cursor states.
     pub cursors: [Option<Cursor>; 10],
     /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
@@ -73,7 +73,7 @@ impl Default for X11RuntimeConfig {
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             draw: None,
             border_scheme: BorderScheme::default(),
-            status_scheme: StatusScheme::default(),
+            status_scheme: ColorScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor: None,
             active_pointer_grab: None,

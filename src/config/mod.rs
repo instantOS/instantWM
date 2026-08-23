@@ -251,12 +251,11 @@ pub fn resolve_config(
     if keyboard.layouts.is_empty() {
         let layout = env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
         if layout.is_empty() {
-            keyboard.layouts.push(config_toml::KeyboardLayoutConfig {
-                name: "us".to_string(),
-                variant: None,
-            });
+            keyboard
+                .layouts
+                .push(crate::types::KeyboardLayout::new("us"));
         } else {
-            keyboard.layouts.push(config_toml::KeyboardLayoutConfig {
+            keyboard.layouts.push(crate::types::KeyboardLayout {
                 name: layout,
                 variant: env::var("XKB_DEFAULT_VARIANT").ok(),
             });
@@ -273,7 +272,7 @@ pub fn resolve_config(
     let tag_template = get_tags()
         .into_iter()
         .enumerate()
-        .map(|(index, name)| crate::types::monitor::TagNames {
+        .map(|(index, name)| crate::types::Tag {
             name,
             alt_name: tag_alt_names.get(index).cloned().unwrap_or_default(),
         })
@@ -339,7 +338,7 @@ mod resolution_tests {
     #[test]
     fn valid_resolution_produces_a_complete_effective_config() {
         let mut user = config_toml::UserConfig::default();
-        user.keyboard.layouts = vec![config_toml::KeyboardLayoutConfig {
+        user.keyboard.layouts = vec![crate::types::KeyboardLayout {
             name: "de".to_string(),
             variant: Some("nodeadkeys".to_string()),
         }];

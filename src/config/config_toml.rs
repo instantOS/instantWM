@@ -1,8 +1,8 @@
 use crate::config::appearance::get_fonts;
 use crate::config::keybind_config::KeybindSpec;
 use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, Rule, StatusColorConfig, TagColorConfigs,
-    WindowColorConfigs,
+    BorderColorConfig, CloseButtonColorConfigs, KeyboardLayout, Rule, StatusColorConfig,
+    TagColorConfigs, WindowColorConfigs,
 };
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -526,17 +526,6 @@ impl std::fmt::Display for InputConfig {
 }
 
 /// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
-#[derive(Debug, Deserialize, Clone, Serialize, Default)]
-#[serde(default)]
-pub struct KeyboardLayoutConfig {
-    /// Layout name (e.g., "us", "de", "fr").
-    pub name: String,
-    /// Optional variant (e.g., "nodeadkeys", "colemak").
-    #[serde(default)]
-    pub variant: Option<String>,
-}
-
-/// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
 ///
 /// ```toml
 /// [keyboard]
@@ -553,7 +542,7 @@ pub struct KeyboardLayoutConfig {
 pub struct KeyboardConfig {
     /// XKB layout configurations.
     #[serde(default)]
-    pub layouts: Vec<KeyboardLayoutConfig>,
+    pub layouts: Vec<KeyboardLayout>,
     /// XKB options string, e.g. `"grp:alt_shift_toggle,compose:ralt"`.
     pub options: Option<String>,
     /// XKB model, e.g. `"pc105"`. Defaults to system default if unset.

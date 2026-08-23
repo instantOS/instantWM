@@ -243,7 +243,7 @@ pub struct EffectiveConfig {
     pub fonts: FontConfig,
     pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
-    pub tag_template: Vec<crate::types::monitor::TagNames>,
+    pub tag_template: Vec<crate::types::Tag>,
     pub tag_colors: TagColorConfigs,
     /// Resolved keyboard settings. The current layout index remains runtime
     /// interaction state in [`KeyboardLayoutState`].
@@ -679,17 +679,8 @@ impl PendingWork {
 /// Installation only replaces policy and synchronizes model/interaction state
 /// that intentionally mirrors part of that policy.
 pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
-    let layouts: Vec<KeyboardLayout> = next
-        .keyboard
-        .layouts
-        .iter()
-        .map(|c| KeyboardLayout {
-            name: c.name.clone(),
-            variant: c.variant.clone(),
-        })
-        .collect();
     let keyboard_layout = KeyboardLayoutState {
-        layouts,
+        layouts: next.keyboard.layouts.clone(),
         options: next.keyboard.options.clone(),
         model: next.keyboard.model.clone(),
         swap_escape: next.keyboard.swapescape,

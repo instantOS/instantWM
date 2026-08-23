@@ -46,7 +46,7 @@ mod font;
 // directly.
 
 // Color / cursor types and X11 color schemes.
-pub use color::{BorderScheme, ColorScheme, Cursor, StatusScheme};
+pub use color::{BorderScheme, ColorScheme, Cursor};
 
 // The main drawing context.
 pub use context::DrawContext;

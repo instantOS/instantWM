@@ -109,7 +109,7 @@ pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
     // Project transition geometry first. Native Wayland can then advertise
     // the cleared state and restored size in one final configure instead of
     // briefly advertising an unmaximized, maximized-sized window.
-    apply_maximized_transition(ctx, win, left.transition);
+    apply_maximized_transition(ctx, win, left);
 
     sync_client_maximized_signal(ctx, win);
 
