@@ -270,7 +270,7 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
         let [r, g, b, a] = bg.to_rgba8();
         let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
         // Fill background, premultiplying alpha for GL compositing.
-        for chunk in pixels.chunks_exact_mut(4) {
+        for chunk in pixels.as_chunks_mut::<4>().0 {
             let (pr, pg, pb, pa) = if a == 255 {
                 (b, g, r, 255)
             } else {

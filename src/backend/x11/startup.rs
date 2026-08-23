@@ -88,7 +88,7 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-        crate::backend::x11::keyboard::update_num_lock_mask(&ctx.x11, ctx.x11_runtime);
+        crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime);
         crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
         crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
     }
@@ -126,41 +126,90 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         crate::backend::Backend::X11(data) => (&mut data.conn, &mut data.x11_runtime),
         crate::backend::Backend::Wayland(_) => return,
     };
-    let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
-    let wm_delete = intern_atom(conn, "WM_DELETE_WINDOW", false);
-    let wm_state = intern_atom(conn, "WM_STATE", false);
-    let wm_take_focus = intern_atom(conn, "WM_TAKE_FOCUS", false);
-
-    let net_active_window = intern_atom(conn, "_NET_ACTIVE_WINDOW", false);
-    let net_supported = intern_atom(conn, "_NET_SUPPORTED", false);
-    let net_system_tray = intern_atom(conn, "_NET_SYSTEM_TRAY_S0", false);
-    let net_system_tray_op = intern_atom(conn, "_NET_SYSTEM_TRAY_OPCODE", false);
-    let net_system_tray_orientation = intern_atom(conn, "_NET_SYSTEM_TRAY_ORIENTATION", false);
-    let net_system_tray_orientation_horz =
-        intern_atom(conn, "_NET_SYSTEM_TRAY_ORIENTATION_HORZ", false);
-    let net_wm_name = intern_atom(conn, "_NET_WM_NAME", false);
-    let net_wm_state = intern_atom(conn, "_NET_WM_STATE", false);
-    let net_wm_check = intern_atom(conn, "_NET_SUPPORTING_WM_CHECK", false);
-    let net_wm_fullscreen = intern_atom(conn, "_NET_WM_STATE_FULLSCREEN", false);
-    let net_wm_maximized_vert = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_VERT", false);
-    let net_wm_maximized_horz = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_HORZ", false);
-    let net_wm_window_type = intern_atom(conn, "_NET_WM_WINDOW_TYPE", false);
-    let net_wm_window_type_dialog = intern_atom(conn, "_NET_WM_WINDOW_TYPE_DIALOG", false);
-    let net_client_list = intern_atom(conn, "_NET_CLIENT_LIST", false);
-    let net_client_info = intern_atom(conn, "_NET_CLIENT_INFO", false);
-    let net_number_of_desktops = intern_atom(conn, "_NET_NUMBER_OF_DESKTOPS", false);
-    let net_current_desktop = intern_atom(conn, "_NET_CURRENT_DESKTOP", false);
-    let net_desktop_names = intern_atom(conn, "_NET_DESKTOP_NAMES", false);
-    let net_desktop_viewport = intern_atom(conn, "_NET_DESKTOP_VIEWPORT", false);
-    let net_desktop_geometry = intern_atom(conn, "_NET_DESKTOP_GEOMETRY", false);
-    let net_workarea = intern_atom(conn, "_NET_WORKAREA", false);
-    let net_wm_desktop = intern_atom(conn, "_NET_WM_DESKTOP", false);
-
-    let motifatom = intern_atom(conn, "_MOTIF_WM_HINTS", false);
-
-    let xembed_manager = intern_atom(conn, "MANAGER", false);
-    let xembed = intern_atom(conn, "_XEMBED", false);
-    let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
+    const ATOM_NAMES: &[&str] = &[
+        "WM_PROTOCOLS",
+        "WM_DELETE_WINDOW",
+        "WM_STATE",
+        "WM_TAKE_FOCUS",
+        "_NET_ACTIVE_WINDOW",
+        "_NET_SUPPORTED",
+        "_NET_SYSTEM_TRAY_S0",
+        "_NET_SYSTEM_TRAY_OPCODE",
+        "_NET_SYSTEM_TRAY_ORIENTATION",
+        "_NET_SYSTEM_TRAY_ORIENTATION_HORZ",
+        "_NET_WM_NAME",
+        "_NET_WM_STATE",
+        "_NET_SUPPORTING_WM_CHECK",
+        "_NET_WM_STATE_FULLSCREEN",
+        "_NET_WM_STATE_MAXIMIZED_VERT",
+        "_NET_WM_STATE_MAXIMIZED_HORZ",
+        "_NET_WM_WINDOW_TYPE",
+        "_NET_WM_WINDOW_TYPE_DIALOG",
+        "_NET_CLIENT_LIST",
+        "_NET_CLIENT_INFO",
+        "_NET_NUMBER_OF_DESKTOPS",
+        "_NET_CURRENT_DESKTOP",
+        "_NET_DESKTOP_NAMES",
+        "_NET_DESKTOP_VIEWPORT",
+        "_NET_DESKTOP_GEOMETRY",
+        "_NET_WORKAREA",
+        "_NET_WM_DESKTOP",
+        "_MOTIF_WM_HINTS",
+        "MANAGER",
+        "_XEMBED",
+        "_XEMBED_INFO",
+        "UTF8_STRING",
+        "_NET_STARTUP_ID",
+        "_NET_WM_PID",
+    ];
+    // Queue every request first: atom setup now takes one round trip instead
+    // of one round trip per atom.
+    let requests: Vec<_> = ATOM_NAMES
+        .iter()
+        .map(|name| conn.intern_atom(false, name.as_bytes()))
+        .collect();
+    let mut atoms = requests.into_iter().map(|request| {
+        request
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| reply.atom)
+            .unwrap_or(0)
+    });
+    let mut next_atom = || atoms.next().unwrap_or(0);
+    let wm_protocols = next_atom();
+    let wm_delete = next_atom();
+    let wm_state = next_atom();
+    let wm_take_focus = next_atom();
+    let net_active_window = next_atom();
+    let net_supported = next_atom();
+    let net_system_tray = next_atom();
+    let net_system_tray_op = next_atom();
+    let net_system_tray_orientation = next_atom();
+    let net_system_tray_orientation_horz = next_atom();
+    let net_wm_name = next_atom();
+    let net_wm_state = next_atom();
+    let net_wm_check = next_atom();
+    let net_wm_fullscreen = next_atom();
+    let net_wm_maximized_vert = next_atom();
+    let net_wm_maximized_horz = next_atom();
+    let net_wm_window_type = next_atom();
+    let net_wm_window_type_dialog = next_atom();
+    let net_client_list = next_atom();
+    let net_client_info = next_atom();
+    let net_number_of_desktops = next_atom();
+    let net_current_desktop = next_atom();
+    let net_desktop_names = next_atom();
+    let net_desktop_viewport = next_atom();
+    let net_desktop_geometry = next_atom();
+    let net_workarea = next_atom();
+    let net_wm_desktop = next_atom();
+    let motifatom = next_atom();
+    let xembed_manager = next_atom();
+    let xembed = next_atom();
+    let xembed_info = next_atom();
+    let utf8_string = next_atom();
+    let net_startup_id = next_atom();
+    let net_wm_pid = next_atom();
 
     x11_runtime.wmatom = crate::types::WmAtoms {
         protocols: wm_protocols,
@@ -198,17 +247,10 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         manager: xembed_manager,
         xembed,
         xembed_info,
+        utf8_string,
+        net_startup_id,
+        net_wm_pid,
     };
-}
-
-fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
-    match conn.intern_atom(only_if_exists, name.as_bytes()) {
-        Ok(cookie) => match cookie.reply() {
-            Ok(reply) => reply.atom,
-            Err(_) => 0,
-        },
-        Err(_) => 0,
-    }
 }
 
 pub fn init_drw_and_schemes(wm: &mut Wm) {

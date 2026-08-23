@@ -195,7 +195,6 @@ unsafe extern "C" {
         dest_y: c_int,
     );
 
-    pub fn XSync(display: *mut libc::c_void, discard: c_int);
     pub fn XFlush(display: *mut libc::c_void);
 
     pub fn XSetLineAttributes(

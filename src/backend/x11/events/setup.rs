@@ -106,12 +106,7 @@ pub fn setup_root(wm: &mut Wm) {
     );
 
     // Set _NET_WM_NAME on the check window.
-    let utf8_atom = conn
-        .intern_atom(false, b"UTF8_STRING")
-        .ok()
-        .and_then(|c| c.reply().ok())
-        .map(|r| r.atom)
-        .unwrap_or(AtomEnum::STRING.into());
+    let utf8_atom = data.x11_runtime.xatom.utf8_string;
     let _ = conn.change_property8(
         PropMode::REPLACE,
         wmcheckwin,

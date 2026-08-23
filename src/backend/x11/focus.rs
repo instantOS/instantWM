@@ -43,7 +43,6 @@ pub fn configure(globals: &crate::core_state::CoreState, x11: &X11BackendRef, wi
     };
 
     let _ = conn.send_event(false, x11_win, EventMask::STRUCTURE_NOTIFY, event);
-    let _ = conn.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -71,9 +70,10 @@ pub fn send_event(
     let wmatom_delete = x11_runtime.wmatom.delete;
 
     let (exists, message_type) = if proto == wmatom_take_focus || proto == wmatom_delete {
-        let supported = read_wm_protocols(conn, x11_win, x11_runtime.wmatom.protocols)
-            .into_iter()
-            .any(|p| p == proto);
+        let supported = x11_runtime
+            .client_protocols
+            .get(&win)
+            .is_some_and(|protocols| protocols.contains(&proto));
         (supported, wmatom_protocols)
     } else {
         (true, proto)
@@ -89,7 +89,6 @@ pub fn send_event(
             data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
         };
         let _ = conn.send_event(false, x11_win, EventMask::from(mask), event);
-        let _ = conn.flush();
     }
 
     exists
@@ -361,7 +360,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-fn read_wm_protocols(
+pub(crate) fn read_wm_protocols(
     conn: &x11rb::rust_connection::RustConnection,
     win: Window,
     protocols_atom: u32,

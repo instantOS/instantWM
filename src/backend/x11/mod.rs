@@ -32,6 +32,8 @@ pub struct X11RuntimeConfig {
     pub xatom: XAtoms,
     pub motifatom: Atom,
     pub numlockmask: u32,
+    /// Server keyboard mapping, refreshed on `MappingNotify`.
+    pub keyboard_mapping: X11KeyboardMapping,
     pub root: Window,
     /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
     pub wm_check_win: Window,
@@ -58,6 +60,8 @@ pub struct X11RuntimeConfig {
     pub window_animations: crate::animation::WindowAnimations,
     /// Border widths to restore when X11 windows leave WM management.
     pub original_border_widths: HashMap<WindowId, u32>,
+    /// Cached WM_PROTOCOLS for managed clients, refreshed on PropertyNotify.
+    pub client_protocols: HashMap<WindowId, Vec<u32>>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -68,6 +72,7 @@ impl Default for X11RuntimeConfig {
             xatom: XAtoms::default(),
             motifatom: 0,
             numlockmask: 0,
+            keyboard_mapping: X11KeyboardMapping::default(),
             root: 0,
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
@@ -83,7 +88,33 @@ impl Default for X11RuntimeConfig {
             layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
+            client_protocols: HashMap::new(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct X11KeyboardMapping {
+    pub min_keycode: u8,
+    pub keysyms_per_keycode: u8,
+    pub keysyms: Vec<u32>,
+}
+
+impl X11KeyboardMapping {
+    pub fn keysym(&self, keycode: u8, index: usize) -> u32 {
+        if index >= self.keysyms_per_keycode as usize {
+            return 0;
+        }
+        let Some(offset) = keycode.checked_sub(self.min_keycode) else {
+            return 0;
+        };
+        let Some(index) = (offset as usize)
+            .checked_mul(self.keysyms_per_keycode as usize)
+            .and_then(|base| base.checked_add(index))
+        else {
+            return 0;
+        };
+        self.keysyms.get(index).copied().unwrap_or(0)
     }
 }
 
@@ -139,7 +170,6 @@ impl X11RuntimeConfig {
         duration: std::time::Duration,
     ) {
         x11.resize_window(win, from);
-        x11.flush();
         self.insert_or_replace_window_animation(
             win,
             crate::animation::WindowAnimation {
@@ -245,17 +275,6 @@ impl Drop for ServerGrab<'_> {
         let _ = self.conn.ungrab_server();
         let _ = self.conn.flush();
     }
-}
-
-/// Query the current geometry of an X11 window via `GetGeometry`.
-pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
-    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
-    Some(Rect {
-        x: reply.x as i32,
-        y: reply.y as i32,
-        w: reply.width as i32,
-        h: reply.height as i32,
-    })
 }
 
 impl WindowOps for X11BackendRef<'_> {

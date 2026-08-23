@@ -2,7 +2,7 @@
 
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::contexts::WmCtxX11;
-use crate::types::{AltCursor, WindowId};
+use crate::types::{AltCursor, Point, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
 
@@ -72,23 +72,35 @@ impl crate::backend::CursorOps for WmCtxX11<'_> {
     }
 }
 
-pub fn cursor_client_win(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerSnapshot {
+    pub root: Point,
+    pub child: Option<WindowId>,
+}
+
+/// Read position and root child together. QueryPointer already returns both;
+/// keeping them together prevents a second round trip in hover handling.
+pub fn pointer_snapshot(
     globals: &crate::core_state::CoreState,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,
-) -> Option<WindowId> {
+) -> Option<PointerSnapshot> {
     let reply = conn.query_pointer(root).ok()?.reply().ok()?;
+    Some(PointerSnapshot {
+        root: Point::new(reply.root_x as i32, reply.root_y as i32),
+        child: managed_window(globals, reply.child),
+    })
+}
 
-    if reply.child == x11rb::NONE {
+pub fn managed_window(
+    globals: &crate::core_state::CoreState,
+    window: x11rb::protocol::xproto::Window,
+) -> Option<WindowId> {
+    if window == x11rb::NONE {
         return None;
     }
-
-    let win = WindowId::from(reply.child);
-    if globals.model.client(win).is_some() {
-        Some(win)
-    } else {
-        None
-    }
+    let window = WindowId::from(window);
+    globals.model.client(window).is_some().then_some(window)
 }
 
 #[cfg(test)]

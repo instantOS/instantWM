@@ -35,12 +35,12 @@ use super::ffi::{
     PICT_STANDARD_ARGB32, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreateImage,
     XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen,
     XDefaultVisual, XDestroyImage, XDrawArc, XDrawRectangle, XFillArc, XFillPolygon,
-    XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay, XPutImage,
+    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay, XPutImage,
     XRenderColor, XRenderComposite, XRenderCreatePicture, XRenderFindStandardFormat,
-    XRenderFindVisualFormat, XRenderFreePicture, XSetForeground, XSetLineAttributes, XSync,
-    XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate,
-    XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName,
-    XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
+    XRenderFindVisualFormat, XRenderFreePicture, XSetForeground, XSetLineAttributes, XftCharExists,
+    XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate, XftDrawDestroy,
+    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
+    XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
 };
 use super::font::Fnt;
 
@@ -311,7 +311,7 @@ impl DrawContext {
                 bounds.x,
                 bounds.y,
             );
-            XSync(self.display, 0);
+            XFlush(self.display);
         }
     }
 

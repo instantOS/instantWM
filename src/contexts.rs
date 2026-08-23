@@ -437,19 +437,17 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(_) => {
                 if apply_mode == GeometryApplyMode::VisualOnly {
                     self.window_backend().resize_window(win, rect);
-                    self.window_backend().flush();
                     return;
                 }
 
-                // X11 clients may ignore or adjust resize requests (size hints).
-                // Query the actual geometry back and sync that into WM state.
+                // ConfigureWindow is authoritative for managed clients. Size
+                // hints have already been applied by shared geometry policy,
+                // so reading geometry back here only stalls the event loop.
                 self.window_backend().resize_window(win, rect);
-                self.window_backend().flush();
                 let WmCtx::X11(x11) = self else {
                     unreachable!()
                 };
-                let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
-                crate::client::sync_client_geometry(x11.core.model_mut(), win, actual);
+                crate::client::sync_client_geometry(x11.core.model_mut(), win, rect);
 
                 crate::backend::x11::focus::configure(x11.core.state, &x11.x11, win);
             }

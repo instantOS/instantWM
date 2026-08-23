@@ -66,7 +66,7 @@ pub struct NetAtoms {
     pub wm_desktop: u32,
 }
 
-/// Named struct for XEmbed / ICCCM atoms (replaces `xatom: [u32; 3]`).
+/// Named struct for non-EWMH X11 atoms.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct XAtoms {
     /// MANAGER atom for XEmbed.
@@ -75,4 +75,10 @@ pub struct XAtoms {
     pub xembed: u32,
     /// _XEMBED_INFO atom.
     pub xembed_info: u32,
+    /// UTF8_STRING property type.
+    pub utf8_string: u32,
+    /// Freedesktop startup-notification identifier.
+    pub net_startup_id: u32,
+    /// Process id supplied by clients.
+    pub net_wm_pid: u32,
 }

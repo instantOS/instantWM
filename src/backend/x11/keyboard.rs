@@ -54,26 +54,8 @@ pub fn grab_keys(
         (numlockmask as u16) | ModMask::LOCK.bits(),
     ];
 
-    let mapping = match conn
-        .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-    {
-        Some(mapping) => mapping,
-        None => return,
-    };
-
-    let get_keysym = |keycode: u8| -> u32 {
-        let index = (keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-        if index < mapping.keysyms.len() {
-            mapping.keysyms[index]
-        } else {
-            0
-        }
-    };
-
     for keycode in keycode_min..=keycode_max {
-        let keysym = get_keysym(keycode);
+        let keysym = x11_runtime.keyboard_mapping.keysym(keycode, 0);
         if keysym == 0 {
             continue;
         }
@@ -262,59 +244,46 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
     }
 }
 
-/// Update the cached numlock modifier mask from the X11 server.
-pub fn update_num_lock_mask(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
-    let new_numlockmask = {
-        let conn = x11.conn;
-        let Ok(cookie) = conn.get_modifier_mapping() else {
-            return;
-        };
-        let Ok(reply) = cookie.reply() else {
-            return;
-        };
-        let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
-        let mapping = match conn
-            .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-        {
-            Some(mapping) => mapping,
-            None => return,
-        };
+/// Refresh keyboard state after startup or `MappingNotify`.
+///
+/// Both requests are issued before either reply is awaited, so this costs one
+/// server round trip and keeps key-event handling entirely local afterwards.
+pub fn refresh_keyboard_mapping(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
+    let conn = x11.conn;
+    let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
+    let Ok(modifier_cookie) = conn.get_modifier_mapping() else {
+        return;
+    };
+    let Ok(mapping_cookie) = conn.get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
+    else {
+        return;
+    };
+    let Ok(reply) = modifier_cookie.reply() else {
+        return;
+    };
+    let Ok(mapping) = mapping_cookie.reply() else {
+        return;
+    };
 
-        let mut new_numlockmask: u32 = 0;
-        for (i, keycode) in reply.keycodes.iter().enumerate() {
-            if *keycode >= keycode_min && *keycode <= keycode_max {
-                let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-                let keysym = if idx < mapping.keysyms.len() {
-                    mapping.keysyms[idx]
-                } else {
-                    0
-                };
-                if keysym == 0xff7f {
-                    let mod_index = i / reply.keycodes_per_modifier() as usize;
-                    if mod_index < 8 {
-                        new_numlockmask = 1 << mod_index;
-                    }
+    let mut new_numlockmask: u32 = 0;
+    for (i, keycode) in reply.keycodes.iter().enumerate() {
+        if *keycode >= keycode_min && *keycode <= keycode_max {
+            let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
+            if mapping.keysyms.get(idx).copied().unwrap_or(0) == 0xff7f {
+                let mod_index = i / reply.keycodes_per_modifier() as usize;
+                if mod_index < 8 {
+                    new_numlockmask = 1 << mod_index;
                 }
             }
         }
-
-        new_numlockmask
-    };
+    }
 
     x11_runtime.numlockmask = new_numlockmask;
-}
-
-/// Convert an X11 keycode to a keysym using the server's keyboard mapping.
-pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> u32 {
-    if let Ok(cookie) = conn.get_keyboard_mapping(keycode, 1)
-        && let Ok(reply) = cookie.reply()
-        && index < reply.keysyms_per_keycode as usize
-    {
-        return reply.keysyms[index];
-    }
-    0
+    x11_runtime.keyboard_mapping = crate::backend::x11::X11KeyboardMapping {
+        min_keycode: keycode_min,
+        keysyms_per_keycode: mapping.keysyms_per_keycode,
+        keysyms: mapping.keysyms,
+    };
 }
 
 /// Handle an X11 `KeyPress` event: convert the keycode to a keysym and dispatch
@@ -322,10 +291,41 @@ pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> 
 pub fn key_press(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
-    let keysym = keycode_to_keysym(ctx.x11.conn, keycode, 0);
+    let keysym = ctx.x11_runtime.keyboard_mapping.keysym(keycode, 0);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     let _ = crate::keyboard::handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
 }
 
 /// Handle an X11 `KeyRelease` event (currently a no‑op).
 pub fn key_release() {}
+
+#[cfg(test)]
+mod mapping_tests {
+    use crate::backend::x11::X11KeyboardMapping;
+
+    #[test]
+    fn cached_mapping_resolves_columns_without_server_access() {
+        let mapping = X11KeyboardMapping {
+            min_keycode: 8,
+            keysyms_per_keycode: 2,
+            keysyms: vec![10, 11, 20, 21],
+        };
+        assert_eq!(mapping.keysym(8, 0), 10);
+        assert_eq!(mapping.keysym(8, 1), 11);
+        assert_eq!(mapping.keysym(9, 0), 20);
+        assert_eq!(mapping.keysym(9, 1), 21);
+    }
+
+    #[test]
+    fn cached_mapping_rejects_out_of_range_keycodes_and_columns() {
+        let mapping = X11KeyboardMapping {
+            min_keycode: 8,
+            keysyms_per_keycode: 1,
+            keysyms: vec![42, 84],
+        };
+        assert_eq!(mapping.keysym(7, 0), 0);
+        assert_eq!(mapping.keysym(8, 1), 0);
+        assert_eq!(mapping.keysym(9, 0), 84);
+        assert_eq!(mapping.keysym(10, 0), 0);
+    }
+}
