@@ -334,8 +334,8 @@ fn handle_button_release(
 }
 
 fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
-    wm.core.drag.captured_source() == Some(crate::types::InteractionSource::Pointer)
-        && wm.core.drag.captured_button() == released_btn
+    wm.core.interaction.drag.captured_source() == Some(crate::types::InteractionSource::Pointer)
+        && wm.core.interaction.drag.captured_button() == released_btn
 }
 
 fn consume_pointer_binding(

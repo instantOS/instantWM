@@ -172,7 +172,7 @@ pub fn handle_touch_down(
                     0,
                     crate::mouse::bindings::MatchPolicy::All,
                 );
-                if wm.core.drag.captured_source() == Some(source) {
+                if wm.core.interaction.drag.captured_source() == Some(source) {
                     state.runtime.wm_gesture_touch_slot = Some(event.slot);
                     return;
                 }

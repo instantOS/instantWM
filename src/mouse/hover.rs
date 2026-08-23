@@ -41,8 +41,7 @@ pub struct HoverResizeTarget {
 /// Activate a resize hover offer and apply the matching cursor.
 fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
     ctx.core_mut()
-        .state_mut()
-        .drag
+        .state_mut().interaction.drag
         .set_hover_offer(HoverOffer::Resize {
             win: target.win,
             dir: target.dir,
@@ -52,7 +51,7 @@ fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
 
 /// Clear any active hover offer and reset the cursor if the state changed.
 pub fn clear_hover_offer(ctx: &mut WmCtx) {
-    if ctx.core_mut().drag_state_mut().clear_hover_offer() {
+    if ctx.core_mut().interaction_mut().drag.clear_hover_offer() {
         ctx.set_cursor_style(AltCursor::Default);
     }
 }
@@ -195,8 +194,7 @@ pub fn set_sidebar_offer(
 ) -> SidebarOfferUpdate {
     if let Some(target) = target {
         ctx.core_mut()
-            .state_mut()
-            .drag
+            .state_mut().interaction.drag
             .set_hover_offer(HoverOffer::Sidebar(target));
         // Always project the cursor. Gesture completion can leave the same
         // logical offer in place while changing the active cursor override.
@@ -204,7 +202,7 @@ pub fn set_sidebar_offer(
         return SidebarOfferUpdate::Active;
     }
 
-    if ctx.core().drag_state().hover_offer.is_sidebar() {
+    if ctx.core().interaction().drag.hover_offer.is_sidebar() {
         clear_hover_offer(ctx);
         return SidebarOfferUpdate::Cleared;
     }

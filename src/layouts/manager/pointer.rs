@@ -383,14 +383,12 @@ pub fn place_tree_at_point(
     let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
     let cache_matches = ctx
         .core()
-        .state()
-        .pointer_placement_cache
+        .state().interaction.pointer_placement_cache
         .as_ref()
         .is_some_and(|cache| cache.matches(window, monitor_id, tags, edge_fraction));
     let cached_plan = if cache_matches {
         ctx.core_mut()
-            .state_mut()
-            .pointer_placement_cache
+            .state_mut().interaction.pointer_placement_cache
             .as_mut()
             .and_then(|cache| cache.session.plan_point(point))
     } else {
@@ -439,16 +437,14 @@ pub fn preview_tree_at_point(
     let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
     let cache_matches = ctx
         .core()
-        .state()
-        .pointer_placement_cache
+        .state().interaction.pointer_placement_cache
         .as_ref()
         .is_some_and(|cache| cache.matches(window, monitor_id, tags, edge_fraction));
     if cache_matches {
         let (placement, slot) = {
             let cache = ctx
                 .core_mut()
-                .state_mut()
-                .pointer_placement_cache
+                .state_mut().interaction.pointer_placement_cache
                 .as_mut()?;
             (cache.placement, cache.session.preview_point(point)?)
         };
@@ -481,7 +477,7 @@ pub fn preview_tree_at_point(
         minimums,
     );
     let slot = session.preview_point(point);
-    ctx.core_mut().state_mut().pointer_placement_cache = Some(PointerPlacementPreviewCache {
+    ctx.core_mut().state_mut().interaction.pointer_placement_cache = Some(PointerPlacementPreviewCache {
         source: window,
         monitor_id,
         tags,

@@ -70,7 +70,7 @@ pub fn title_drag_begin(
         .client(win)
         .is_some_and(|client| client.is_hidden);
     ctx.core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .arm_title_drag(crate::core_state::ArmedDragParams {
             win,
             button: btn,
@@ -116,7 +116,7 @@ fn begin_move_drag(
 
     let position = input.position();
     if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), win) {
-        let geo = ctx.client_geo(win)?;
+        let geo = ctx.core().client_geo(win)?;
         Some((geo, start_point))
     } else {
         let intent = FloatingPlacementIntent::PreservePointerAnchor(position);
@@ -135,7 +135,7 @@ fn begin_move_drag(
 /// Handle the transition from an armed click to an active shared drag.
 fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     let (win, btn, source, start_point, suppress_click_action) = {
-        let Some(drag) = ctx.core().drag_state().armed_interaction() else {
+        let Some(drag) = ctx.core().interaction().drag.armed_interaction() else {
             return false;
         };
         (
@@ -161,7 +161,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
             // Tree resize owns an initial tree snapshot, so replace the armed
             // click with the authoritative resize interaction after the drag
             // threshold has been crossed.
-            let _ = ctx.core_mut().drag_state_mut().finish_armed();
+            let _ = ctx.core_mut().interaction_mut().drag.finish_armed();
             resize_from_point(ctx, win, btn, source, point);
             return true;
         }
@@ -186,15 +186,13 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         };
 
         let activated = match ctx {
-            WmCtx::X11(x11) => activate_armed_resize(
-                x11.core.drag_state_mut(),
+            WmCtx::X11(x11) => activate_armed_resize(&mut x11.core.interaction_mut().drag,
                 &x11.x11,
                 dir,
                 warp_point,
                 current_geo,
             ),
-            WmCtx::Wayland(wayland) => activate_armed_resize(
-                wayland.core.drag_state_mut(),
+            WmCtx::Wayland(wayland) => activate_armed_resize(&mut wayland.core.interaction_mut().drag,
                 wayland.wayland,
                 dir,
                 warp_point,
@@ -217,7 +215,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 
     if ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .activate_armed(crate::core_state::ArmedDragType::Move, start, current_geo)
         .is_err()
     {
@@ -235,13 +233,13 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// the window anchor and never warps or consults the compositor pointer.
 pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     let root = input.position();
-    let Some(armed) = ctx.core().drag_state().armed_interaction() else {
+    let Some(armed) = ctx.core().interaction().drag.armed_interaction() else {
         return false;
     };
 
     if root.manhattan_distance(&armed.start_point()) <= DRAG_THRESHOLD {
         ctx.core_mut()
-            .drag_state_mut()
+            .interaction_mut().drag
             .record_interactive_motion(root);
         return false;
     }
@@ -304,7 +302,7 @@ fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Op
 fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> bool {
     if ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .begin_title_reorder(crate::core_state::TitleReorderDrag::new(monitor_id))
         .is_err()
     {
@@ -332,7 +330,7 @@ fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> b
 /// Returns `true` when a reorder is in progress; the caller should consider
 /// the interaction consumed.
 pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
-    let Some((drag, reorder)) = ctx.core().drag_state().reordering_interaction() else {
+    let Some((drag, reorder)) = ctx.core().interaction().drag.reordering_interaction() else {
         return false;
     };
     let win = drag.win();
@@ -340,7 +338,7 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let source = drag.source();
     let start_point = drag.start_point();
     ctx.core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .record_interactive_motion(root);
 
     match title_strip_target(ctx, monitor_id, root) {
@@ -375,7 +373,7 @@ fn convert_reorder_to_move(
     let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point) else {
         // The window cannot start a move drag (e.g. an edge scratchpad); end
         // the interaction instead of leaving the capture dangling.
-        let _ = ctx.core_mut().drag_state_mut().finish_reordering();
+        let _ = ctx.core_mut().interaction_mut().drag.finish_reordering();
         ctx.set_cursor_style(AltCursor::Default);
         ctx.core_mut().bar.hover.clear();
         ctx.request_bar_update();
@@ -383,7 +381,7 @@ fn convert_reorder_to_move(
     };
     if ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .activate_reordering_as_move(start, current_geo)
         .is_err()
     {
@@ -402,13 +400,13 @@ fn convert_reorder_to_move(
 /// Order changes were already committed by the motion handler. No click action
 /// fires: the drag threshold was crossed.
 pub fn title_reorder_finish(ctx: &mut WmCtx) {
-    let Some((drag, reorder)) = ctx.core().drag_state().reordering_interaction() else {
+    let Some((drag, reorder)) = ctx.core().interaction().drag.reordering_interaction() else {
         return;
     };
     let root = drag.last_root_point();
     let monitor_id = reorder.monitor_id();
     let position = super::bar_position_on_monitor(ctx, monitor_id, root);
-    ctx.core_mut().drag_state_mut().finish_reordering();
+    ctx.core_mut().interaction_mut().drag.finish_reordering();
     ctx.set_cursor_style(AltCursor::Default);
 
     // Leave the bar in its ordinary hover state. Clearing it unconditionally
@@ -430,7 +428,7 @@ pub fn title_reorder_finish(ctx: &mut WmCtx) {
 /// Once the drag threshold promotes the interaction to `Active`, the unified
 /// the shared interaction transport handles the drop instead.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
-    let Some(drag) = ctx.core_mut().drag_state_mut().finish_armed() else {
+    let Some(drag) = ctx.core_mut().interaction_mut().drag.finish_armed() else {
         return;
     };
     let win = drag.win();
@@ -581,7 +579,7 @@ mod tests {
             &mut wm.ctx(),
             DragInput::Absolute(Point::new(press.x + 20, press.y))
         ));
-        let active = wm.core.drag.active_interaction().unwrap();
+        let active = wm.core.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.source(), InteractionSource::Pointer);
         assert!(matches!(
             active.drag_type(),
@@ -686,10 +684,10 @@ mod tests {
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(
-            wm.core.drag.reordering_interaction().is_some(),
+            wm.core.interaction.drag.reordering_interaction().is_some(),
             "threshold crossing inside the strip must engage a reorder"
         );
-        assert!(wm.core.drag.owns_bar_hover());
+        assert!(wm.core.interaction.drag.owns_bar_hover());
         // Focus activation may have queued unrelated work. Isolate the swap's
         // own invalidation contract below.
         wm.work.layout.clear();
@@ -726,9 +724,9 @@ mod tests {
             &mut wm.ctx(),
             Point::new(second_x, 200)
         ));
-        assert!(wm.core.drag.reordering_interaction().is_none());
-        assert!(!wm.core.drag.owns_bar_hover());
-        let active = wm.core.drag.active_interaction().unwrap();
+        assert!(wm.core.interaction.drag.reordering_interaction().is_none());
+        assert!(!wm.core.interaction.drag.owns_bar_hover());
+        let active = wm.core.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.win(), first);
         assert_eq!(active.drag_type(), crate::core_state::DragType::Move);
     }
@@ -786,10 +784,10 @@ mod tests {
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(
-            wm.core.drag.reordering_interaction().is_none(),
+            wm.core.interaction.drag.reordering_interaction().is_none(),
             "a Super+client drag must keep taking the move path"
         );
-        assert!(wm.core.drag.active_interaction().is_some());
+        assert!(wm.core.interaction.drag.active_interaction().is_some());
     }
 
     #[test]

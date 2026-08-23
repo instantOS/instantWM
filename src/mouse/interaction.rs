@@ -70,7 +70,7 @@ impl InteractionOutcome {
 
 pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
     if !matches!(event.phase, InteractionPhase::Cancel { .. })
-        && ctx.core().drag_state().captured_source() != Some(event.source)
+        && ctx.core().interaction().drag.captured_source() != Some(event.source)
     {
         return InteractionOutcome::Ignored;
     }
@@ -82,7 +82,7 @@ pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcom
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
-    match ctx.core().drag_state().capture() {
+    match ctx.core().interaction().drag.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::update_card_gesture(ctx, event.root);
         }
@@ -103,7 +103,7 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
         }
         Some(CapturedInteraction::Tag(_)) => {
             ctx.core_mut()
-                .drag_state_mut()
+                .interaction_mut().drag
                 .tag_drag_mut()
                 .expect("tag capture remained active")
                 .last_motion = Some((event.root, event.modifiers));
@@ -126,10 +126,10 @@ fn finish(
     button: MouseButton,
     time_msec: u32,
 ) -> InteractionOutcome {
-    if ctx.core().drag_state().captured_button() != Some(button) {
+    if ctx.core().interaction().drag.captured_button() != Some(button) {
         return InteractionOutcome::Ignored;
     }
-    match ctx.core().drag_state().capture() {
+    match ctx.core().interaction().drag.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::finish_card_gesture(ctx, button);
         }
@@ -159,16 +159,15 @@ fn finish(
 fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
     let cancelled_interactive = match ctx {
         WmCtx::X11(x11) => {
-            crate::mouse::drag::lifecycle::cancel(x11.core.drag_state_mut(), &x11.x11, reason)
+            crate::mouse::drag::lifecycle::cancel(&mut x11.core.interaction_mut().drag, &x11.x11, reason)
         }
-        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::cancel(
-            wayland.core.drag_state_mut(),
+        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::cancel(&mut wayland.core.interaction_mut().drag,
             wayland.wayland,
             reason,
         ),
     }
     .is_some();
-    let cancelled_other = ctx.core_mut().drag_state_mut().cancel_capture().is_some();
+    let cancelled_other = ctx.core_mut().interaction_mut().drag.cancel_capture().is_some();
     if cancelled_interactive || cancelled_other {
         ctx.core_mut().bar.hover.clear();
         ctx.set_cursor_style(crate::types::AltCursor::Default);
@@ -210,8 +209,7 @@ mod tests {
         monitor.set_selected_tags(tags);
         monitor.clients = vec![win];
         monitor.selected = Some(win);
-        wm.core
-            .drag
+        wm.core.interaction.drag
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -260,14 +258,12 @@ mod tests {
         );
         assert_eq!(
             pointer_wm
-                .core
-                .drag
+                .core.interaction.drag
                 .active_interaction()
                 .unwrap()
                 .last_root_point(),
             touch_wm
-                .core
-                .drag
+                .core.interaction.drag
                 .active_interaction()
                 .unwrap()
                 .last_root_point()
@@ -373,7 +369,7 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(!wm.core.drag.bottom_bar_gesture_active());
+        assert!(!wm.core.interaction.drag.bottom_bar_gesture_active());
     }
 
     #[test]
@@ -449,12 +445,12 @@ mod tests {
         // completes the gesture.
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         end_bottom_bar_drag_at(&mut wm, begin_root, 0);
-        assert!(!wm.core.drag.bottom_bar_gesture_active());
+        assert!(!wm.core.interaction.drag.bottom_bar_gesture_active());
 
         // A long hold (no movement, duration >= 400ms) fires `hold`.
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         end_bottom_bar_drag_at(&mut wm, begin_root, 500);
-        assert!(!wm.core.drag.bottom_bar_gesture_active());
+        assert!(!wm.core.interaction.drag.bottom_bar_gesture_active());
 
         // A swipe still takes precedence over click/hold regardless of duration:
         // even after holding 600ms, the latched direction wins.
@@ -528,6 +524,6 @@ mod tests {
             ),
             InteractionOutcome::Ignored
         );
-        assert!(wm.core.drag.active_interaction().is_some());
+        assert!(wm.core.interaction.drag.active_interaction().is_some());
     }
 }

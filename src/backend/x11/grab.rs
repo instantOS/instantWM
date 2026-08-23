@@ -320,7 +320,7 @@ where
 /// owns only the offer model. Returns `false` when there is no resize offer
 /// or the button is not a valid commit button for hover resize.
 pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    let Some((win, _)) = ctx.core.drag_state().hover_offer.resize_target() else {
+    let Some((win, _)) = ctx.core.interaction().drag.hover_offer.resize_target() else {
         return false;
     };
     if btn == MouseButton::Middle {
@@ -361,12 +361,12 @@ pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
 }
 
 pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    if ctx.core.drag_state().captured_button() != Some(btn)
-        || ctx.core.drag_state().captured_source() != Some(crate::types::InteractionSource::Pointer)
+    if ctx.core.interaction().drag.captured_button() != Some(btn)
+        || ctx.core.interaction().drag.captured_source() != Some(crate::types::InteractionSource::Pointer)
     {
         return false;
     }
-    let cursor = match ctx.core.drag_state().capture() {
+    let cursor = match ctx.core.interaction().drag.capture() {
         Some(crate::core_state::CapturedInteraction::SidebarVolume(_)) => AltCursor::VerticalAdjust,
         Some(crate::core_state::CapturedInteraction::BottomBar(_)) => AltCursor::HorizontalAdjust,
         Some(crate::core_state::CapturedInteraction::Window(state)) => match state {

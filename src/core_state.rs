@@ -268,12 +268,14 @@ impl Default for EffectiveConfig {
 /// and transient interaction state are deliberately kept alongside it rather
 /// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
 /// a single borrow boundary without mixing backend resources into core state.
-#[derive(Default)]
-pub struct CoreState {
-    pub model: WmModel,
-    pub config: EffectiveConfig,
-    pub derived: DerivedState,
-    pub behavior: WmBehavior,
+/// Ephemeral pointer/keyboard/outline state that changes at input frequency.
+///
+/// Grouping it separately from `model`/`config`/`derived` makes the
+/// god-object boundary explicit: `model` is the persistent client graph,
+/// `interaction` is per-frame input state. New transient fields (e.g. future
+/// gesture previews) belong here, not as flat `CoreState` fields.
+#[derive(Default, Debug, Clone)]
+pub struct InteractionState {
     pub drag: DragState,
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
@@ -286,6 +288,15 @@ pub struct CoreState {
     /// source, monitor, tag view, and edge policy are checked before reuse.
     pub(crate) pointer_placement_cache:
         Option<crate::layouts::manager::PointerPlacementPreviewCache>,
+}
+
+#[derive(Default)]
+pub struct CoreState {
+    pub model: WmModel,
+    pub config: EffectiveConfig,
+    pub derived: DerivedState,
+    pub behavior: WmBehavior,
+    pub interaction: InteractionState,
     pub pending_launches: VecDeque<PendingLaunch>,
 }
 
@@ -691,7 +702,7 @@ pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
     let tag_colors = next.tag_colors.clone();
 
     state.config = next;
-    state.keyboard_layout = keyboard_layout;
+    state.interaction.keyboard_layout = keyboard_layout;
     state.model.tags.colors = tag_colors;
     state.model.tags.num_tags = tag_template.len();
 

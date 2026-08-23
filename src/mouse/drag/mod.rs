@@ -96,7 +96,7 @@ pub fn drag_move_finish(
     pointer_override: Option<Point>,
     modifiers: u32,
 ) {
-    debug_assert!(!ctx.core().drag_state().has_capture());
+    debug_assert!(!ctx.core().interaction().drag.has_capture());
     ctx.set_cursor_style(crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
     complete_move_drop(
@@ -115,7 +115,7 @@ pub fn drag_move_finish(
 /// re-raises the client. The caller must finish the interaction lifecycle
 /// before invoking this cleanup.
 pub fn drag_resize_finish(ctx: &mut WmCtx, win: WindowId) {
-    debug_assert!(!ctx.core().drag_state().has_capture());
+    debug_assert!(!ctx.core().interaction().drag.has_capture());
     ctx.set_cursor_style(crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);

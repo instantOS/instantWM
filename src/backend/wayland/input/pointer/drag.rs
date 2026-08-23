@@ -5,7 +5,7 @@ use crate::wm::Wm;
 
 /// Get the active drag window (if any).
 pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
-    wm.core.drag.active_interaction().map(|drag| drag.win())
+    wm.core.interaction.drag.active_interaction().map(|drag| drag.win())
 }
 
 #[cfg(test)]
@@ -61,8 +61,7 @@ mod tests {
 
         let source = windows[0];
         let source_geo = bounds[&source];
-        wm.core
-            .drag
+        wm.core.interaction.drag
             .begin_move(
                 source,
                 MouseButton::Left,
@@ -99,7 +98,7 @@ mod tests {
             let last = (batch_start + batch_size).min(SAMPLE_COUNT) - 1;
             if clear_cache_each_sample {
                 for index in batch_start..=last {
-                    wm.core.pointer_placement_cache = None;
+                    wm.core.interaction.pointer_placement_cache = None;
                     process_drag_sample(wm, sample_point(index));
                     updates += 1;
                 }
@@ -120,8 +119,8 @@ mod tests {
         let coalesced_update_count = run_samples(&mut coalesced, false, HIGH_RATE_BATCH_SIZE);
 
         assert_eq!(
-            every_sample.core.layout_preview,
-            coalesced.core.layout_preview
+            every_sample.core.interaction.layout_preview,
+            coalesced.core.interaction.layout_preview
         );
         assert_eq!(every_update_count, SAMPLE_COUNT);
         assert_eq!(
@@ -149,7 +148,7 @@ mod tests {
             }
             let started = Instant::now();
             let updates = black_box(run_samples(&mut wm, clear_cache_each_sample, batch_size));
-            (started.elapsed(), updates, wm.core.layout_preview)
+            (started.elapsed(), updates, wm.core.interaction.layout_preview)
         }
 
         fn median(mut samples: Vec<Duration>) -> Duration {

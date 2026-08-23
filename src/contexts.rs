@@ -20,7 +20,7 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::core_state::{
-    CoreState, DerivedState, DragState, EffectiveConfig, KeyboardLayoutState, PendingWork,
+    CoreState, DerivedState, EffectiveConfig, PendingWork,
     WmBehavior,
 };
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
@@ -101,20 +101,12 @@ impl<'a> CoreCtx<'a> {
         &mut self.state.behavior
     }
 
-    pub fn drag_state(&self) -> &DragState {
-        &self.state.drag
+    pub fn interaction(&self) -> &crate::core_state::InteractionState {
+        &self.state.interaction
     }
 
-    pub fn drag_state_mut(&mut self) -> &mut DragState {
-        &mut self.state.drag
-    }
-
-    pub fn keyboard_layout(&self) -> &KeyboardLayoutState {
-        &self.state.keyboard_layout
-    }
-
-    pub fn keyboard_layout_mut(&mut self) -> &mut KeyboardLayoutState {
-        &mut self.state.keyboard_layout
+    pub fn interaction_mut(&mut self) -> &mut crate::core_state::InteractionState {
+        &mut self.state.interaction
     }
 
     pub fn pending_launches_mut(
@@ -286,10 +278,6 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn quit(&mut self) {
-        self.core_mut().quit();
-    }
-
     pub fn window_backend(&self) -> &dyn crate::backend::WindowOps {
         match self {
             WmCtx::X11(ctx) => &ctx.x11,
@@ -302,12 +290,6 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(ctx) => &ctx.x11,
             WmCtx::Wayland(ctx) => ctx.wayland,
         }
-    }
-
-    /// Return a managed client's current logical geometry.
-    #[inline]
-    pub fn client_geo(&self, win: WindowId) -> Option<Rect> {
-        self.core().client_geo(win)
     }
 
     /// Project a cursor style through the active backend.
@@ -385,13 +367,13 @@ impl<'a> WmCtx<'a> {
         style: crate::types::InteractionOutlineStyle,
         target: Option<WindowId>,
     ) {
-        let previous = self.core().state().layout_preview;
-        let previous_style = self.core().state().layout_preview_style;
+        let previous = self.core().state().interaction.layout_preview;
+        let previous_style = self.core().state().interaction.layout_preview_style;
         if previous == rect && (rect.is_none() || previous_style == style) {
             return;
         }
         if rect.is_none() {
-            self.core_mut().state_mut().pointer_placement_cache = None;
+            self.core_mut().state_mut().interaction.pointer_placement_cache = None;
         }
         // Keyboard navigation changes a discrete virtual target and benefits
         // from interpolation. Pointer previews must track motion immediately.
@@ -399,8 +381,8 @@ impl<'a> WmCtx<'a> {
             && rect.is_some()
             && self.core().behavior().animated
             && self.current_mode().tree_placement().is_some();
-        self.core_mut().state_mut().layout_preview = rect;
-        self.core_mut().state_mut().layout_preview_style = style;
+        self.core_mut().state_mut().interaction.layout_preview = rect;
+        self.core_mut().state_mut().interaction.layout_preview_style = style;
         let duration =
             self.core()
                 .config()
@@ -689,7 +671,7 @@ impl<'a> WmCtx<'a> {
     /// containment as an early return: after changing tags, the same screen
     /// coordinates may belong to an entirely different visible window.
     pub fn warp_cursor_to_client_center(&mut self, win: WindowId) {
-        let Some(rect) = self.client_geo(win) else {
+        let Some(rect) = self.core().client_geo(win) else {
             return;
         };
         self.pointer_backend().warp_to_point(rect.center());
@@ -1057,7 +1039,7 @@ mod mode_transition_tests {
         )
         .expect("valid placement");
         wm.core.behavior.current_mode = ActiveWmMode::TreePlacement(placement);
-        wm.core.layout_preview = Some(Rect::new(0, 0, 100, 100));
+        wm.core.interaction.layout_preview = Some(Rect::new(0, 0, 100, 100));
 
         wm.ctx()
             .set_current_mode(ActiveWmMode::Named("resize".to_string()));
@@ -1066,6 +1048,6 @@ mod mode_transition_tests {
             wm.core.behavior.current_mode,
             ActiveWmMode::Named("resize".to_string())
         );
-        assert_eq!(wm.core.layout_preview, None);
+        assert_eq!(wm.core.interaction.layout_preview, None);
     }
 }

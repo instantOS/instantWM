@@ -349,7 +349,7 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
         Point::new(900, 300),
     ));
     assert_eq!(
-        wm.core.drag.captured_source(),
+        wm.core.interaction.drag.captured_source(),
         Some(crate::types::InteractionSource::Pointer)
     );
     // Press alone must neither leave overview nor focus the client.
@@ -367,7 +367,7 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
         wm.core.model.expect_selected_monitor().selected_tags(),
         tag2
     );
-    assert_eq!(wm.core.drag.captured_source(), None);
+    assert_eq!(wm.core.interaction.drag.captured_source(), None);
 }
 
 #[test]
@@ -393,7 +393,7 @@ fn non_upward_overview_drag_is_consumed_without_selecting() {
 
     assert!(wm.core.model.is_overview_active());
     assert_eq!(wm.core.model.selected_win(), Some(first));
-    assert_eq!(wm.core.drag.captured_source(), None);
+    assert_eq!(wm.core.interaction.drag.captured_source(), None);
 }
 
 #[test]
@@ -410,27 +410,27 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
         crate::types::InteractionSource::Pointer,
         Point::new(500, 400),
     ));
-    assert_eq!(wm.core.layout_preview, None);
+    assert_eq!(wm.core.interaction.layout_preview, None);
 
     assert!(update_card_gesture(&mut wm.ctx(), Point::new(510, 350)));
     let client = wm.core.model.client(win).unwrap();
     assert_eq!(
-        wm.core.layout_preview,
+        wm.core.interaction.layout_preview,
         Some(client.geo.with_borders(client.border_width))
     );
     assert_eq!(
-        wm.core.layout_preview_style,
+        wm.core.interaction.layout_preview_style,
         crate::types::InteractionOutlineStyle::Close
     );
 
     assert!(update_card_gesture(&mut wm.ctx(), Point::new(500, 395)));
-    assert_eq!(wm.core.layout_preview, None);
+    assert_eq!(wm.core.interaction.layout_preview, None);
 
     assert!(finish_card_gesture(
         &mut wm.ctx(),
         crate::types::MouseButton::Left,
     ));
-    assert_eq!(wm.core.layout_preview, None);
+    assert_eq!(wm.core.interaction.layout_preview, None);
 }
 
 #[test]

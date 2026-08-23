@@ -420,7 +420,7 @@ mod tests {
             wm.core.behavior.current_mode,
             crate::core_state::ActiveWmMode::Default
         ));
-        assert_eq!(wm.core.layout_preview, None);
+        assert_eq!(wm.core.interaction.layout_preview, None);
     }
 
     #[test]

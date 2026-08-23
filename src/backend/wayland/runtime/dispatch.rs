@@ -39,7 +39,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                     (state.seat.get_pointer(), state.seat.get_keyboard())
                 {
                     let update_active_drag = should_update_active_drag(
-                        wm.core.drag.active_interaction().is_some(),
+                        wm.core.interaction.drag.active_interaction().is_some(),
                         next_is_pointer_motion,
                     );
                     pointer_hit_cache = Some(
@@ -623,7 +623,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
     let cancelled_drag = if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
         crate::mouse::drag::lifecycle::cancel_window(
-            wl_ctx.core.drag_state_mut(),
+            &mut wl_ctx.core.interaction_mut().drag,
             wl_ctx.wayland,
             win,
             crate::core_state::DragCancelReason::WindowDestroyed,
@@ -684,7 +684,7 @@ fn handle_begin_resize(
             return;
         };
         if crate::mouse::drag::lifecycle::begin_resize(
-            wl_ctx.core.drag_state_mut(),
+            &mut wl_ctx.core.interaction_mut().drag,
             wl_ctx.wayland,
             crate::mouse::drag::lifecycle::ResizeDragParams {
                 win,

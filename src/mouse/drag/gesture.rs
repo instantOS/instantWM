@@ -36,7 +36,7 @@ fn begin_sidebar_gesture(
         .unwrap_or_else(|| (target.rect.h / 30).max(1));
     if ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .begin_sidebar_volume(crate::core_state::SidebarVolumeDrag::new(
             btn,
             source,
@@ -54,18 +54,18 @@ fn begin_sidebar_gesture(
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
-    let Some(monitor_id) = ctx.core().drag_state().sidebar_volume_monitor() else {
+    let Some(monitor_id) = ctx.core().interaction().drag.sidebar_volume_monitor() else {
         return;
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
-        ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
+        ctx.core_mut().interaction_mut().drag.cancel_sidebar_volume();
         ctx.set_cursor_style(AltCursor::Default);
         return;
     }
 
     let steps = ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .update_sidebar_volume(root_y)
         .unwrap_or(0);
     if steps == 0 {
@@ -93,10 +93,10 @@ pub fn sidebar_gesture_finish(
     btn: MouseButton,
     hover_target: Option<SidebarTarget>,
 ) -> bool {
-    if ctx.core().drag_state().sidebar_volume_button() != Some(btn) {
+    if ctx.core().interaction().drag.sidebar_volume_button() != Some(btn) {
         return false;
     }
-    ctx.core_mut().drag_state_mut().finish_sidebar_volume(btn);
+    ctx.core_mut().interaction_mut().drag.finish_sidebar_volume(btn);
     ctx.set_cursor_style(AltCursor::Default);
     let _ = crate::mouse::set_sidebar_offer(ctx, hover_target);
     true
@@ -129,7 +129,7 @@ pub fn bottom_bar_gesture_begin(
         .unwrap_or(1);
     if ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut().drag
         .begin_bottom_bar(crate::core_state::BottomBarDrag::new(
             btn,
             source,
@@ -156,15 +156,15 @@ pub fn bottom_bar_gesture_begin(
 const BOTTOM_BAR_HOLD_MS: u32 = 400;
 
 pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
-    let Some(monitor_id) = ctx.core().drag_state().bottom_bar_monitor() else {
+    let Some(monitor_id) = ctx.core().interaction().drag.bottom_bar_monitor() else {
         return;
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
-        ctx.core_mut().drag_state_mut().cancel_bottom_bar();
+        ctx.core_mut().interaction_mut().drag.cancel_bottom_bar();
         ctx.set_cursor_style(AltCursor::Default);
         return;
     }
-    if let Some(direction) = ctx.core_mut().drag_state_mut().update_bottom_bar(root) {
+    if let Some(direction) = ctx.core_mut().interaction_mut().drag.update_bottom_bar(root) {
         // Reflect the latched direction in the cursor for tactile feedback.
         let style = match direction {
             crate::core_state::SwipeDirection::Up => AltCursor::VerticalAdjust,
@@ -180,11 +180,11 @@ pub fn bottom_bar_gesture_finish(
     root: Point,
     time_msec: u32,
 ) -> bool {
-    if ctx.core().drag_state().bottom_bar_button() != Some(btn) {
+    if ctx.core().interaction().drag.bottom_bar_button() != Some(btn) {
         return false;
     }
     let (source, action) = {
-        let Some(drag) = ctx.core().drag_state().bottom_bar_drag() else {
+        let Some(drag) = ctx.core().interaction().drag.bottom_bar_drag() else {
             return false;
         };
         let action = match drag.latched_direction() {
@@ -203,7 +203,7 @@ pub fn bottom_bar_gesture_finish(
         };
         (drag.source(), action)
     };
-    ctx.core_mut().drag_state_mut().finish_bottom_bar(btn);
+    ctx.core_mut().interaction_mut().drag.finish_bottom_bar(btn);
     ctx.set_cursor_style(AltCursor::Default);
     if let Some(action) = action {
         let arg = crate::types::ButtonArg {

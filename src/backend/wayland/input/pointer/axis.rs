@@ -52,7 +52,7 @@ pub(crate) fn handle_pointer_axis(
     // updates here as well: scrolling mid-drag would race the gesture's
     // highlight state exactly like the motion path does.
     let scroll_delta = input.event.vertical.v120.or(input.event.vertical.amount);
-    let bar_pos = if wm.core.drag.owns_bar_hover() {
+    let bar_pos = if wm.core.interaction.drag.owns_bar_hover() {
         None
     } else {
         update_bar_hit_state(wm, root, true)
@@ -207,8 +207,7 @@ mod tests {
         let scroll_root = Point::new(title_cell_center(&mut wm, second), 10);
 
         // An active tag drag owns the bar hover for its whole capture.
-        wm.core
-            .drag
+        wm.core.interaction.drag
             .begin_tag_drag(crate::core_state::TagDragState {
                 initial_tag: TagMask::single(1).unwrap(),
                 start: scroll_root,
@@ -240,8 +239,7 @@ mod tests {
         // Control: without the capture the same scroll runs the ordinary hover
         // update and highlights the scrolled-over title.
         assert!(
-            wm.core
-                .drag
+            wm.core.interaction.drag
                 .finish_tag_drag(crate::types::MouseButton::Left)
                 .is_some()
         );
