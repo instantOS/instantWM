@@ -132,6 +132,10 @@ pub(crate) fn event_loop_tick_and_request_render(
             crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
         );
     }
+    // Commit external protocol projections only after every shared and
+    // Wayland-specific operation belonging to this tick has completed.
+    let selection_transition = wm.focus.take_pending_selection();
+    state.reconcile_foreign_toplevel_selection(selection_transition);
     dismiss_invalid_native_systray_menu(wm, state);
     if tick.ipc_handled
         || tick.monitor_config_applied

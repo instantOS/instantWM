@@ -166,6 +166,12 @@ impl WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.clear_seat_focus());
     }
 
+    /// Project the core focus transaction into the surface's activated state.
+    pub(crate) fn set_window_activated(&self, window: WindowId, activated: bool) {
+        let _ = self
+            .with_state(|state: &mut WaylandState| state.set_window_activated(window, activated));
+    }
+
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
             if state.cursor_icon_override == icon {

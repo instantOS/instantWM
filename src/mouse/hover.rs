@@ -62,8 +62,9 @@ fn resize_target_for_window(
     win: WindowId,
     root: Point,
 ) -> Option<HoverResizeTarget> {
-    let c = model.client(win)?;
-    let mon = model.expect_selected_monitor();
+    let view = model.client_view(win)?;
+    let c = view.client;
+    let mon = view.monitor;
     let selected_tags = mon.visible_tags();
     let has_tiling = mon.is_tiling_layout();
 
@@ -85,19 +86,16 @@ fn resize_target_for_window(
     })
 }
 
-fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
-    let mon = model.expect_selected_monitor();
-    mon.bar_contains_y(&model.clients, root_y)
-}
-
 // ── Border detection ─────────────────────────────────────────────────────────
 
 /// Return the floating window + direction currently targeted by hover-resize.
 fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTarget> {
-    if pointer_in_bar(model, root.y) {
+    let point = Rect::new(root.x, root.y, 1, 1);
+    let monitor_id = model.monitors.id_intersecting_rect(point)?;
+    let mon = model.monitor(monitor_id)?;
+    if mon.bar_contains_y(&model.clients, root.y) {
         return None;
     }
-    let mon = model.expect_selected_monitor();
     // Topmost first: the border the user *sees* must win the offer even when
     // focus order disagrees with the visible stacking. Stale ids are skipped
     // by the per-window visibility lookup.
@@ -111,7 +109,8 @@ pub fn selected_hover_resize_target_at(
     position: Point,
 ) -> Option<HoverResizeTarget> {
     let win = model.selected_win()?;
-    if pointer_in_bar(model, position.y) {
+    let monitor = model.client_view(win)?.monitor;
+    if monitor.bar_contains_y(&model.clients, position.y) {
         return None;
     }
     resize_target_for_window(model, win, position)
@@ -272,5 +271,44 @@ mod tests {
         // Inside both windows' top border zones (30 px band above each edge).
         let target = hover_resize_target_at(&wm.core.model, Point::new(300, 85));
         assert_eq!(target.map(|target| target.win), Some(top));
+    }
+
+    #[test]
+    fn border_scan_uses_the_monitor_under_the_pointer() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let left_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        let right_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(1920, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(left_id);
+        wm.core
+            .model
+            .monitor_mut(right_id)
+            .unwrap()
+            .set_selected_tags(tags);
+
+        let win = WindowId(3);
+        let mut client = Client {
+            win,
+            monitor_id: right_id,
+            tags,
+            geo: Rect::new(2000, 100, 600, 400),
+            mode: ClientMode::floating(),
+            ..Client::default()
+        };
+        client.set_placement(crate::types::ClientPlacement::Floating);
+        wm.core.model.insert_client(client);
+        let right = wm.core.model.monitor_mut(right_id).unwrap();
+        right.clients.push(win);
+        right.z_order.attach_top(win);
+
+        let target = hover_resize_target_at(&wm.core.model, Point::new(2200, 95));
+        assert_eq!(target.map(|target| target.win), Some(win));
+        assert_eq!(wm.core.model.selected_monitor_id(), left_id);
     }
 }

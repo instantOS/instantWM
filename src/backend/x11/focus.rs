@@ -316,7 +316,7 @@ pub fn clear_urgency_hint(x11: &X11BackendRef, win: WindowId) {
 // X11FocusBackend – implements `FocusBackendOps` for the X11 path
 // ---------------------------------------------------------------------------
 
-use crate::focus::FocusBackendOps;
+use crate::focus::{FocusBackendOps, FocusProjection};
 /// X11 implementation of `FocusBackendOps`.
 pub struct X11FocusBackend<'a> {
     pub x11: &'a X11BackendRef<'a>,
@@ -324,37 +324,32 @@ pub struct X11FocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
-    fn unfocus_current(&self, state: &CoreState, current: WindowId) {
-        unfocus_win(state, self.x11, &*self.x11_runtime, current, false);
-    }
-
-    fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId) {
-        let is_urgent = ctx
-            .state()
-            .model
-            .client(win)
-            .map(|c| c.is_urgent)
-            .unwrap_or(false);
-        if is_urgent {
-            if let Some(c) = ctx.model_mut().client_mut(win) {
-                c.clear_urgency();
-            }
-            clear_urgency_hint(self.x11, win);
+    fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection) {
+        if projection.previous != projection.current
+            && let Some(previous) = projection.previous
+        {
+            unfocus_win(ctx.state(), self.x11, &*self.x11_runtime, previous, false);
         }
-        set_focus(ctx.state_mut(), self.x11, &*self.x11_runtime, win);
-    }
-
-    fn focus_none(&self) {
-        let _ = self.x11.conn.set_input_focus(
-            InputFocus::POINTER_ROOT,
-            self.x11_runtime.root,
-            CURRENT_TIME,
-        );
-        let _ = self.x11.conn.delete_property(
-            self.x11_runtime.root,
-            self.x11_runtime.netatom.active_window,
-        );
-        let _ = self.x11.conn.flush();
+        if let Some(current) = projection.current {
+            if ctx.model().client(current).is_some_and(|c| c.is_urgent) {
+                if let Some(client) = ctx.model_mut().client_mut(current) {
+                    client.clear_urgency();
+                }
+                clear_urgency_hint(self.x11, current);
+            }
+            set_focus(ctx.state_mut(), self.x11, &*self.x11_runtime, current);
+        } else {
+            let _ = self.x11.conn.set_input_focus(
+                InputFocus::POINTER_ROOT,
+                self.x11_runtime.root,
+                CURRENT_TIME,
+            );
+            let _ = self.x11.conn.delete_property(
+                self.x11_runtime.root,
+                self.x11_runtime.netatom.active_window,
+            );
+            let _ = self.x11.conn.flush();
+        }
     }
 
     fn on_desktop_binding_state_changed(&self, state: &CoreState) {

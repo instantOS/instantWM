@@ -784,11 +784,8 @@ fn update_hover_resize_state(wm: &mut Wm, root: RootPoint, drag_active: bool) ->
     };
 
     // Offer resize near any visible floating window's border (X11 parity).
-    crate::mouse::update_any_floating_resize_offer_at(
-        &mut WmCtx::Wayland(ctx.reborrow()),
-        root,
-    )
-    .is_some()
+    crate::mouse::update_any_floating_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root)
+        .is_some()
 }
 
 /// Update pointer focus based on drag state.

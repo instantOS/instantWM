@@ -14,12 +14,6 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
     let mut commands = commands.into_iter().peekable();
     let mut pointer_hit_cache = None;
-    // Selection as last advertised to foreign-toplevel clients. Compared
-    // after every command below: whichever command moves focus (explicit
-    // focus, activate, minimize of the focused window, scratchpad show,
-    // hover focus during pointer motion, ...), both the old and the new
-    // selection get their `activated` state refreshed.
-    let mut advertised_selection = wm.core.model.selected_win();
 
     while let Some(command) = commands.next() {
         let next_is_pointer_motion = matches!(commands.peek(), Some(WmCommand::PointerMotion(_)));
@@ -175,20 +169,6 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 handle_select_tag(wm, &monitor_name, tag_index);
             }
         }
-
-        // Selection moved by whichever command ran (or by pointer hover focus
-        // inside it): refresh both windows' advertised `activated` state.
-        // Refreshing an unmanaged window is a no-op.
-        let selected = wm.core.model.selected_win();
-        if selected != advertised_selection {
-            if let Some(previous) = advertised_selection {
-                state.refresh_foreign_toplevel(previous);
-            }
-            if let Some(current) = selected {
-                state.refresh_foreign_toplevel(current);
-            }
-            advertised_selection = selected;
-        }
     }
 }
 
@@ -227,7 +207,10 @@ fn handle_update_properties(
     properties: &crate::client::WindowProperties,
 ) {
     let mut ctx = wm.ctx();
-    crate::client::update_window_properties(ctx.core_mut(), win, properties);
+    let previous_focus = ctx.core().model().selected_win();
+    if crate::client::update_window_properties(ctx.core_mut(), win, properties) {
+        crate::focus::refresh_focus_after_selection(&mut ctx, previous_focus, None);
+    }
 }
 
 fn handle_update_transient_for(

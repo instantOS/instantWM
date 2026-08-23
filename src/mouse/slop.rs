@@ -325,10 +325,7 @@ fn region_selection_ping() -> Option<calloop::ping::Ping> {
 /// Non-zero exit status is how both tools report cancellation (Escape);
 /// parsing empty output already yields `None`, the status only refines the
 /// log line.
-fn watch_region_selection(
-    slot: &Mutex<ActiveSelection>,
-    generation: u64,
-) -> Option<Rect> {
+fn watch_region_selection(slot: &Mutex<ActiveSelection>, generation: u64) -> Option<Rect> {
     let stdout = {
         let Ok(mut active) = slot.lock() else {
             return None;
@@ -370,6 +367,7 @@ fn watch_region_selection(
         && !status.success()
     {
         log::debug!("region selection cancelled or failed ({status})");
+        return None;
     }
 
     parse_slop_output(&output)
@@ -479,6 +477,21 @@ mod tests {
         assert_eq!(parse_slop_output("cancelled\n"), None);
         assert_eq!(parse_slop_output("x10x20xbadx600x"), None);
         assert_eq!(parse_slop_output("x10x20"), None);
+    }
+
+    #[test]
+    fn failed_selector_discards_formatted_stdout() {
+        let child = std::process::Command::new("sh")
+            .args(["-c", "printf x100x200x800x600x; exit 1"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let slot = Mutex::new(ActiveSelection {
+            generation: 1,
+            child: Some(child),
+        });
+
+        assert_eq!(watch_region_selection(&slot, 1), None);
     }
 
     #[test]

@@ -175,6 +175,44 @@ impl<'a> CoreCtx<'a> {
         self.work
     }
 
+    /// Run a model transaction and record any resulting global-selection
+    /// transition. All production mutations that can affect selection cross
+    /// this boundary, including indirect removal/reassignment effects.
+    pub fn mutate_selection<R>(&mut self, mutation: impl FnOnce(&mut WmModel) -> R) -> R {
+        self.mutate_state_selection(|state| mutation(&mut state.model))
+    }
+
+    pub fn mutate_state_selection<R>(&mut self, mutation: impl FnOnce(&mut CoreState) -> R) -> R {
+        let previous = self.state.model.selected_win();
+        let result = mutation(self.state);
+        let current = self.state.model.selected_win();
+        self.focus.record_selection(previous, current);
+        result
+    }
+
+    pub fn select_monitor(&mut self, monitor_id: MonitorId) -> bool {
+        self.mutate_selection(|model| {
+            if model.monitor(monitor_id).is_none() || model.selected_monitor_id() == monitor_id {
+                return false;
+            }
+            model.set_selected_monitor(monitor_id);
+            true
+        })
+    }
+
+    pub fn select_on_monitor(&mut self, monitor_id: MonitorId, selected: Option<WindowId>) -> bool {
+        self.mutate_selection(|model| {
+            let Some(monitor) = model.monitor_mut(monitor_id) else {
+                return false;
+            };
+            if monitor.selected == selected {
+                return false;
+            }
+            monitor.set_selected(selected);
+            true
+        })
+    }
+
     pub fn reborrow(&mut self) -> CoreCtx<'_> {
         CoreCtx {
             state: self.state,

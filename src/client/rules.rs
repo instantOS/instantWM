@@ -240,9 +240,16 @@ fn apply_property_change(
 ///
 /// Backends should use this entry point rather than applying rules and
 /// remembering layout/bar invalidation independently.
-pub fn update_window_properties(core: &mut CoreCtx<'_>, win: WindowId, props: &WindowProperties) {
-    let Some(outcome) = apply_property_change(core.state_mut(), win, props) else {
-        return;
+pub fn update_window_properties(
+    core: &mut CoreCtx<'_>,
+    win: WindowId,
+    props: &WindowProperties,
+) -> bool {
+    let previous_selection = core.model().selected_win();
+    let Some(outcome) =
+        core.mutate_state_selection(|state| apply_property_change(state, win, props))
+    else {
+        return false;
     };
 
     if outcome.layout_changed {
@@ -252,6 +259,7 @@ pub fn update_window_properties(core: &mut CoreCtx<'_>, win: WindowId, props: &W
     if outcome.bar_changed {
         core.bar.mark_dirty();
     }
+    core.model().selected_win() != previous_selection
 }
 
 /// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry

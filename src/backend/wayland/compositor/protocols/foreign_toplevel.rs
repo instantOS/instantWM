@@ -80,6 +80,9 @@ pub struct ForeignToplevelManagementState {
     /// order. Kept independently of instances so a late-binding client can be
     /// replayed from [`ForeignToplevelHandler::foreign_toplevel_snapshot`].
     windows: Vec<WindowId>,
+    /// Core selection whose activated/deactivated projection has been
+    /// reconciled with every live manager instance.
+    advertised_selection: Option<WindowId>,
 }
 
 /// One bound `zwlr_foreign_toplevel_manager_v1`.
@@ -174,7 +177,16 @@ impl ForeignToplevelManagementState {
             dh: dh.clone(),
             instances: Vec::new(),
             windows: Vec::new(),
+            advertised_selection: None,
         }
+    }
+
+    pub(crate) fn advertised_selection(&self) -> Option<WindowId> {
+        self.advertised_selection
+    }
+
+    pub(crate) fn set_advertised_selection(&mut self, selected: Option<WindowId>) {
+        self.advertised_selection = selected;
     }
 
     /// Advertise or refresh a window on every manager instance.

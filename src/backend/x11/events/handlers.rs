@@ -619,7 +619,14 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         {
             let props =
                 crate::backend::x11::window_properties(&ctx.x11, ctx.x11_runtime, event_win);
-            crate::client::update_window_properties(&mut ctx.core, event_win, &props);
+            let previous_focus = ctx.core.model().selected_win();
+            if crate::client::update_window_properties(&mut ctx.core, event_win, &props) {
+                crate::focus::refresh_focus_after_selection(
+                    &mut WmCtx::X11(ctx.reborrow()),
+                    previous_focus,
+                    None,
+                );
+            }
         }
     };
 }
@@ -891,20 +898,27 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     }
 
     let old_mon = ctx.core.model().client(win).map(|client| client.monitor_id);
-    {
-        let globals = &mut ctx.core.state;
-        if let Some(client) = globals.model.client_mut(win) {
+    let previous_focus = ctx.core.model().selected_win();
+    let reassigned = ctx.core.mutate_selection(|model| {
+        if let Some(client) = model.client_mut(win) {
             client.is_sticky = false;
             client.set_tag_mask(target_tags);
         } else {
-            return;
+            return false;
         }
-        let reassigned = globals.model.reassign_client_monitor(win, target_mon);
-        debug_assert!(reassigned, "validated EWMH monitor transfer must succeed");
+        model.reassign_client_monitor(win, target_mon)
+    });
+    debug_assert!(reassigned, "validated EWMH monitor transfer must succeed");
+    if !reassigned {
+        return;
     }
 
     crate::backend::x11::set_client_tag_prop(ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
-    crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
+    crate::focus::refresh_focus_after_selection(
+        &mut WmCtx::X11(ctx.reborrow()),
+        previous_focus,
+        None,
+    );
 
     if old_mon == Some(target_mon) {
         ctx.core.queue_layout_for_monitor_urgent(target_mon);

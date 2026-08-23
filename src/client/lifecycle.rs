@@ -19,7 +19,10 @@ pub(crate) fn remove_managed_client(
     ctx: &mut crate::contexts::WmCtx<'_>,
     win: WindowId,
 ) -> Option<crate::types::Client> {
-    let removed = ctx.core_mut().model_mut().remove_client(win)?;
+    let previous_focus = ctx.core().model().selected_win();
+    let removed = ctx
+        .core_mut()
+        .mutate_selection(|model| model.remove_client(win))?;
     let monitor_id = removed.monitor_id;
 
     let overview_became_empty = ctx
@@ -35,7 +38,7 @@ pub(crate) fn remove_managed_client(
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
     }
 
-    crate::focus::refresh_focus(ctx, None);
+    crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     crate::layouts::arrange(ctx, Some(monitor_id));
     ctx.request_bar_update();
     ctx.sync_client_list();

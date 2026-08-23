@@ -150,6 +150,44 @@ impl WaylandState {
         }
     }
 
+    /// Reconcile the protocol's activated projection after a complete core
+    /// runtime tick.
+    pub fn reconcile_foreign_toplevel_selection(
+        &mut self,
+        transition: Option<crate::client::focus::SelectionTransition>,
+    ) {
+        let selected = self.globals().and_then(|core| core.model.selected_win());
+        debug_assert!(
+            transition.is_none_or(|change| change.current == selected),
+            "core selection changed outside the focus transaction boundary"
+        );
+        let advertised = self
+            .foreign_toplevel_management_state
+            .advertised_selection();
+        if selected == advertised {
+            return;
+        }
+
+        // The core transition is the normal source of dirty windows. The
+        // protocol checkpoint remains a correctness boundary when a manager
+        // binds late or lifecycle teardown has already removed a model node.
+        let transitioned_from = transition.and_then(|change| change.previous);
+        let mut previous_windows = Vec::with_capacity(2);
+        for candidate in [transitioned_from, advertised].into_iter().flatten() {
+            if Some(candidate) != selected && !previous_windows.contains(&candidate) {
+                previous_windows.push(candidate);
+            }
+        }
+        for previous in previous_windows {
+            self.refresh_foreign_toplevel(previous);
+        }
+        if let Some(selected) = selected {
+            self.refresh_foreign_toplevel(selected);
+        }
+        self.foreign_toplevel_management_state
+            .set_advertised_selection(selected);
+    }
+
     /// Get properties for rule matching.
     pub fn window_properties(&self, window: WindowId) -> crate::client::WindowProperties {
         crate::client::WindowProperties {
@@ -328,5 +366,64 @@ impl WaylandState {
         } else {
             self.send_toplevel_configure(&window, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::types::{Client, Monitor, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn foreign_toplevel_selection_reconciles_across_tick_boundaries() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let mut wm = Box::new(Wm::new(Backend::new_wayland(WaylandBackend::new())));
+        state.attach_wm(&mut wm);
+
+        let first = WindowId(1);
+        let second = WindowId(2);
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(monitor_id);
+        for win in [first, second] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.clients = vec![first, second];
+        monitor.set_selected(Some(first));
+
+        state.reconcile_foreign_toplevel_selection(None);
+        assert_eq!(
+            state
+                .foreign_toplevel_management_state
+                .advertised_selection(),
+            Some(first)
+        );
+
+        // This mutation represents a direct keyboard/IPC focus action between
+        // compositor queue drains. The next synchronization must still know
+        // which previously advertised window needs deactivation.
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(second));
+        let transition = crate::client::focus::SelectionTransition {
+            previous: Some(first),
+            current: Some(second),
+        };
+        state.reconcile_foreign_toplevel_selection(Some(transition));
+        assert_eq!(
+            state
+                .foreign_toplevel_management_state
+                .advertised_selection(),
+            Some(second)
+        );
     }
 }

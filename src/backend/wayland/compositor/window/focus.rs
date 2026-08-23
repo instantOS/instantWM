@@ -59,25 +59,9 @@ impl WaylandState {
 
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
-        // Get the previously focused window from WM state (mon.sel)
-        let previously_focused = self
-            .globals()
-            .and_then(|state| state.model.selected_win())
-            .filter(|&old_id| old_id != window);
-
-        // Deactivate the previously focused window
-        if let Some(old_id) = previously_focused
-            && let Some(old_window) = self.window_index.get(&old_id).cloned()
-            && old_window.set_activated(false)
-        {
-            self.send_toplevel_configure(&old_window, None);
-        }
-
         // Activate the new window and set keyboard focus
         if let Some(new_window) = focus_window {
-            if new_window.set_activated(true) {
-                self.send_toplevel_configure(&new_window, None);
-            }
+            self.set_window_activated(window, true);
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
                 let new_focus = KeyboardFocusTarget::Window(new_window.clone());
@@ -137,6 +121,20 @@ impl WaylandState {
                     }
                 }
             }
+        }
+    }
+
+    /// Set one surface's xdg/XWayland activated projection.
+    ///
+    /// The core focus transaction supplies the previous window explicitly;
+    /// deriving it here is too late because `mon.selected` has already been
+    /// committed before backend projection begins.
+    pub(crate) fn set_window_activated(&mut self, window: WindowId, activated: bool) {
+        let Some(element) = self.window_index.get(&window).cloned() else {
+            return;
+        };
+        if element.set_activated(activated) {
+            self.send_toplevel_configure(&element, None);
         }
     }
 

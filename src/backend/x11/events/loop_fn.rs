@@ -84,6 +84,10 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
             crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
 
+            // X11 focus is projected synchronously. End the shared selection
+            // transaction here so changes from separate ticks never coalesce.
+            let _ = wm.focus.take_pending_selection();
+
             // ── 3. Arm animation timer if needed ────────────────────────
             let has_animations = has_x11_animations(wm);
             anim_guard.ensure_armed_with_interval(
