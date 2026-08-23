@@ -121,6 +121,7 @@ impl WaylandState {
             minimized: client.is_minimized(),
             maximized: client.mode().is_maximized(),
             fullscreen: client.mode().is_true_fullscreen(),
+            parent: client.transient_for,
             outputs: self
                 .find_window(window)
                 .map(|element| self.outputs_for_window_geometry(element))

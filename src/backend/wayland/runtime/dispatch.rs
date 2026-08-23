@@ -106,6 +106,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::UpdateTransientFor { win, parent } => {
                 handle_update_transient_for(wm, win, parent);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(wm, win, update);

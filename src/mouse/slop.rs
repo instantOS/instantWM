@@ -250,16 +250,21 @@ pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowI
         }
     };
 
-    if let Some(previous) = active.child.take() {
-        log::debug!("superseding in-flight region selection; killing previous tool");
-        let mut previous = previous;
-        let _ = previous.kill();
-        let _ = previous.wait();
-    }
+    // Install the new child, then reap the previous tool outside the lock:
+    // kill()/wait() may block, and no thread may hold the lock across a
+    // blocking reap (watch_region_selection also waits after taking the
+    // child out, so the two can no longer stall on each other).
+    let previous = active.child.take();
     active.child = Some(child);
     active.generation += 1;
     let generation = active.generation;
     drop(active);
+
+    if let Some(mut previous) = previous {
+        log::debug!("superseding in-flight region selection; killing previous tool");
+        let _ = previous.kill();
+        let _ = previous.wait();
+    }
 
     let sender = runtime.sender.clone();
     let ping = region_selection_ping();
@@ -283,12 +288,20 @@ pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowI
         Ok(_) => true,
         Err(err) => {
             log::warn!("spawning region-selection watcher failed: {err}");
-            // The child already sits in the slot; clean it up there so no
-            // orphaned tool outlives its failed watcher.
-            if let Ok(mut active) = runtime.active.lock()
-                && active.generation == generation
-                && let Some(mut child) = active.child.take()
-            {
+            // The child already sits in the slot; clean it up so no
+            // orphaned tool outlives its failed watcher. Taken out under a
+            // short lock and reaped outside it, like the takeover path.
+            let cleanup = {
+                let Ok(mut active) = runtime.active.lock() else {
+                    return false;
+                };
+                if active.generation == generation {
+                    active.child.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(mut child) = cleanup {
                 let _ = child.kill();
                 let _ = child.wait();
             }
@@ -306,8 +319,9 @@ fn region_selection_ping() -> Option<calloop::ping::Ping> {
 /// Wait for one selection tool, read its stdout, and parse the rectangle.
 ///
 /// Called only from the watcher thread. The lock is never held across a
-/// blocking call: stdout is taken out under a short lock, then read to EOF
-/// (which happens when the tool exits — or when a takeover kills it).
+/// blocking call: stdout is taken out under a short lock, read to EOF
+/// (which happens when the tool exits — or when a takeover kills it), and
+/// the child is reaped after being taken out of the slot and released.
 /// Non-zero exit status is how both tools report cancellation (Escape);
 /// parsing empty output already yields `None`, the status only refines the
 /// log line.
@@ -334,18 +348,23 @@ fn watch_region_selection(
         log::debug!("reading region-selection output failed: {err}");
     }
 
-    // Reap the tool and release the slot — unless a newer selection has
-    // taken over, in which case the takeover owns both.
+    // Reap the tool — unless a newer selection has taken over, in which
+    // case the takeover owns the child and this rectangle is dropped: a
+    // stale rect from a superseded trigger must not resize the pinned
+    // window while the newer selection still runs. The child is taken out
+    // of the slot under a short lock and reaped outside it, so a blocked
+    // wait() never stalls takeover or the main thread.
     let status = {
         let Ok(mut active) = slot.lock() else {
-            return parse_slop_output(&output);
+            return None;
         };
         if active.generation != generation {
-            return parse_slop_output(&output);
+            // Superseded: the takeover already killed and reaped the tool.
+            return None;
         }
-        let status = active.child.as_mut().and_then(|child| child.wait().ok());
-        active.child = None;
-        status
+        let mut child = active.child.take()?;
+        drop(active);
+        child.wait().ok()
     };
     if let Some(status) = &status
         && !status.success()

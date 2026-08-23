@@ -50,6 +50,9 @@ pub struct ToplevelSnapshot {
     pub minimized: bool,
     pub maximized: bool,
     pub fullscreen: bool,
+    /// Managed parent, as advertised by `xdg_toplevel.set_parent` or
+    /// `WM_TRANSIENT_FOR`.
+    pub parent: Option<WindowId>,
     /// Outputs the window's geometry currently intersects.
     pub outputs: Vec<Output>,
 }
@@ -97,15 +100,21 @@ struct ManagerInstance {
 struct ToplevelInstance {
     obj: ZwlrForeignToplevelHandleV1,
     window: WindowId,
-    title: String,
-    app_id: String,
-    states_mask: u32,
+    title: Option<String>,
+    app_id: Option<String>,
+    states_mask: Option<u32>,
+    /// Last representable parent sent to the client. The outer option tracks
+    /// whether the mandatory initial value has been sent.
+    parent: Option<Option<WindowId>>,
     /// The client's own `wl_output` resources that were last announced with
     /// `output_enter` — what was actually *sent*, not the compositor-side
     /// output set. Diffing against the sent list means a client that binds
     /// `wl_output` late still receives its `output_enter` on the next
     /// refresh instead of both sides resolving to the same bindings.
     outputs: Vec<WlOutput>,
+    /// `closed` makes the protocol object inert until the client sends its
+    /// destructor request, as required by the protocol.
+    closed: bool,
 }
 
 impl ToplevelInstance {
@@ -189,8 +198,13 @@ impl ForeignToplevelManagementState {
             if instance.suppressed.contains(&window) {
                 continue;
             }
-            match instance.toplevels.iter_mut().find(|t| t.window == window) {
-                Some(entry) => update_entry(&self.dh, entry, snapshot),
+            let parent = parent_handle(instance, snapshot.parent);
+            match instance
+                .toplevels
+                .iter_mut()
+                .find(|t| t.window == window && !t.closed)
+            {
+                Some(entry) => update_entry(&self.dh, entry, snapshot, parent.as_ref()),
                 None => create_entry::<D>(&self.dh, instance, window, snapshot),
             }
         }
@@ -208,14 +222,12 @@ impl ForeignToplevelManagementState {
         self.windows.retain(|&w| w != window);
         for instance in &mut self.instances {
             instance.suppressed.retain(|&w| w != window);
-            instance.toplevels.retain(|entry| {
-                if entry.window == window {
+            for entry in &mut instance.toplevels {
+                if entry.window == window && !entry.closed {
                     entry.obj.closed();
-                    false
-                } else {
-                    true
+                    entry.closed = true;
                 }
-            });
+            }
         }
     }
 }
@@ -241,32 +253,52 @@ fn create_entry<D>(
     };
 
     instance.obj.toplevel(&obj);
+    let parent = parent_handle(instance, snapshot.parent);
     let mut entry = ToplevelInstance {
         obj,
         window,
-        title: String::new(),
-        app_id: String::new(),
-        states_mask: u32::MAX, // force first send
+        title: None,
+        app_id: None,
+        states_mask: None,
+        parent: None,
         outputs: Vec::new(),
+        closed: false,
     };
-    update_entry(dh, &mut entry, snapshot);
+    update_entry(dh, &mut entry, snapshot, parent.as_ref());
     instance.toplevels.push(entry);
+}
+
+fn parent_handle(
+    instance: &ManagerInstance,
+    parent: Option<WindowId>,
+) -> Option<ZwlrForeignToplevelHandleV1> {
+    let parent = parent?;
+    instance
+        .toplevels
+        .iter()
+        .find(|entry| entry.window == parent && !entry.closed)
+        .map(|entry| entry.obj.clone())
 }
 
 /// Diff `snapshot` against what was last sent and emit only changed events.
 ///
 /// Always ends with `done` when anything changed, per protocol contract.
-fn update_entry(dh: &DisplayHandle, entry: &mut ToplevelInstance, snapshot: &ToplevelSnapshot) {
+fn update_entry(
+    dh: &DisplayHandle,
+    entry: &mut ToplevelInstance,
+    snapshot: &ToplevelSnapshot,
+    parent: Option<&ZwlrForeignToplevelHandleV1>,
+) {
     let mut changed = false;
 
-    if entry.title != snapshot.title {
+    if entry.title.as_ref() != Some(&snapshot.title) {
         entry.obj.title(snapshot.title.clone());
-        entry.title = snapshot.title.clone();
+        entry.title = Some(snapshot.title.clone());
         changed = true;
     }
-    if entry.app_id != snapshot.app_id {
+    if entry.app_id.as_ref() != Some(&snapshot.app_id) {
         entry.obj.app_id(snapshot.app_id.clone());
-        entry.app_id = snapshot.app_id.clone();
+        entry.app_id = Some(snapshot.app_id.clone());
         changed = true;
     }
 
@@ -287,7 +319,7 @@ fn update_entry(dh: &DisplayHandle, entry: &mut ToplevelInstance, snapshot: &Top
     if snapshot.fullscreen && fullscreen_advertisable {
         mask |= ToplevelInstance::FULLSCREEN;
     }
-    if entry.states_mask != mask {
+    if entry.states_mask != Some(mask) {
         let mut states = Vec::new();
         // Wire order matches the spec enum: maximized=0, minimized=1,
         // activated=2, fullscreen=3. wl_array contents are host-endian.
@@ -304,8 +336,27 @@ fn update_entry(dh: &DisplayHandle, entry: &mut ToplevelInstance, snapshot: &Top
             states.extend(3u32.to_ne_bytes());
         }
         entry.obj.state(states);
-        entry.states_mask = mask;
+        entry.states_mask = Some(mask);
         changed = true;
+    }
+
+    if entry.obj.version() >= 3 {
+        // A client that destroyed the parent's handle must not receive a
+        // parent update solely because that resource disappeared. Defer the
+        // event until either the relationship is cleared or a live handle is
+        // available for the new parent.
+        let advertised_parent = match (snapshot.parent, parent) {
+            (None, _) => Some(None),
+            (Some(parent), Some(_)) => Some(Some(parent)),
+            (Some(_), None) => None,
+        };
+        if let Some(advertised_parent) = advertised_parent
+            && entry.parent != Some(advertised_parent)
+        {
+            entry.obj.parent(parent);
+            entry.parent = Some(advertised_parent);
+            changed = true;
+        }
     }
 
     // Resolve membership against the client's *current* wl_output bindings
@@ -436,6 +487,29 @@ where
     ) {
         use zwlr_foreign_toplevel_handle_v1::Request;
         let window = *data;
+        if matches!(request, Request::Destroy) {
+            let ft_state = state.foreign_toplevel_state();
+            forget_handle(ft_state, obj, window);
+            return;
+        }
+
+        // A handle becomes inert after `closed`; all requests except the
+        // destructor must then be ignored. It can also be absent because its
+        // manager was stopped or destroyed.
+        let active = state
+            .foreign_toplevel_state()
+            .instances
+            .iter()
+            .any(|instance| {
+                instance
+                    .toplevels
+                    .iter()
+                    .any(|entry| entry.obj == *obj && !entry.closed)
+            });
+        if !active {
+            return;
+        }
+
         match request {
             Request::Activate { .. } => {
                 state.foreign_toplevel_request(window, ForeignToplevelRequest::Activate)
@@ -462,10 +536,6 @@ where
             // Geometry hint for click-to-raise heuristics; instantWM resolves
             // focus itself, so the rectangle is accepted but unused.
             Request::SetRectangle { .. } => {}
-            Request::Destroy => {
-                let ft_state = state.foreign_toplevel_state();
-                forget_handle(ft_state, obj, window);
-            }
             _ => {}
         }
     }
@@ -494,10 +564,15 @@ fn forget_handle(
     obj: &ZwlrForeignToplevelHandleV1,
     window: WindowId,
 ) {
+    let window_is_managed = state.windows.contains(&window);
     for instance in &mut state.instances {
+        let was_active = instance
+            .toplevels
+            .iter()
+            .any(|entry| entry.obj == *obj && !entry.closed);
         if instance.toplevels.iter().any(|entry| entry.obj == *obj) {
             instance.toplevels.retain(|entry| entry.obj != *obj);
-            if !instance.suppressed.contains(&window) {
+            if was_active && window_is_managed && !instance.suppressed.contains(&window) {
                 instance.suppressed.push(window);
             }
         }
