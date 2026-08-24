@@ -261,15 +261,15 @@ pub fn refresh_keyboard_mapping(x11: &X11BackendRef, x11_runtime: &mut X11Runtim
     let modifier_cookie = conn.get_modifier_mapping();
 
     let mut mapping_refreshed = false;
-    if let Some(mapping) = mapping_cookie.ok().and_then(|cookie| cookie.reply().ok()) {
-        if !mapping.keysyms.is_empty() {
-            x11_runtime.keyboard_mapping = crate::backend::x11::X11KeyboardMapping {
-                min_keycode: keycode_min,
-                keysyms_per_keycode: mapping.keysyms_per_keycode,
-                keysyms: mapping.keysyms,
-            };
-            mapping_refreshed = true;
-        }
+    if let Some(mapping) = mapping_cookie.ok().and_then(|cookie| cookie.reply().ok())
+        && !mapping.keysyms.is_empty()
+    {
+        x11_runtime.keyboard_mapping = crate::backend::x11::X11KeyboardMapping {
+            min_keycode: keycode_min,
+            keysyms_per_keycode: mapping.keysyms_per_keycode,
+            keysyms: mapping.keysyms,
+        };
+        mapping_refreshed = true;
     }
 
     if let Some(reply) = modifier_cookie.ok().and_then(|cookie| cookie.reply().ok()) {

@@ -31,7 +31,7 @@
 use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::backend::x11::focus::grab_buttons;
+use crate::backend::x11::focus::{grab_buttons, ungrab_client_buttons};
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_motif_hints,
     update_window_type, update_wm_hints,
@@ -443,10 +443,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
                 x11_window,
                 &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
             );
-            let _ =
-                ctx.x11
-                    .conn
-                    .ungrab_button(ButtonIndex::from(0u8), x11_window, ModMask::from(0u16));
+            ungrab_client_buttons(&ctx.x11, ctx.x11_runtime, window);
             let _ = ctx
                 .x11
                 .conn

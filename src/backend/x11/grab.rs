@@ -181,6 +181,10 @@ where
         crate::backend::x11::events::handlers::expose(ctx, expose);
         return true;
     }
+    if let x11rb::protocol::Event::XinputTouchBegin(touch) = event {
+        crate::backend::x11::events::handlers::touch_begin(ctx, touch);
+        return true;
+    }
 
     if let Some(be) = event_to_backend(event) {
         on_event(ctx, &be)

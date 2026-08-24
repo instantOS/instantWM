@@ -70,6 +70,13 @@ fn should_xkill_client(delete_sent: bool, protocols_known: bool) -> bool {
     !delete_sent && protocols_known
 }
 
+impl crate::backend::WindowCloseOps for WmCtxX11<'_> {
+    fn close_window(&mut self, window: WindowId) {
+        let delete_atom = self.x11_runtime.wmatom.delete;
+        force_close(self, window, delete_atom);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::should_xkill_client;
@@ -80,12 +87,5 @@ mod tests {
         assert!(!should_xkill_client(true, false));
         assert!(!should_xkill_client(true, true));
         assert!(should_xkill_client(false, true));
-    }
-}
-
-impl crate::backend::WindowCloseOps for WmCtxX11<'_> {
-    fn close_window(&mut self, window: WindowId) {
-        let delete_atom = self.x11_runtime.wmatom.delete;
-        force_close(self, window, delete_atom);
     }
 }

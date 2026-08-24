@@ -32,6 +32,9 @@ pub struct X11RuntimeConfig {
     pub xatom: XAtoms,
     pub motifatom: Atom,
     pub numlockmask: u32,
+    /// Whether the server supports XI2.2 passive touch grabs. These let
+    /// click-to-focus observe a touch without degrading it to Button1.
+    pub xi2_touch_grabs: bool,
     /// Server keyboard mapping, refreshed on `MappingNotify`.
     pub keyboard_mapping: X11KeyboardMapping,
     pub root: Window,
@@ -72,6 +75,7 @@ impl Default for X11RuntimeConfig {
             xatom: XAtoms::default(),
             motifatom: 0,
             numlockmask: 0,
+            xi2_touch_grabs: false,
             keyboard_mapping: X11KeyboardMapping::default(),
             root: 0,
             wm_check_win: 0,

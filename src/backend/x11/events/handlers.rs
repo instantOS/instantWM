@@ -6,10 +6,33 @@ use crate::types::{
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
+use x11rb::protocol::xinput::{ConnectionExt as XInputConnectionExt, EventMode, TouchBeginEvent};
 use x11rb::protocol::xproto::*;
 
 use super::query_manageable_window_geometry;
 use super::setup::SYSTEM_TRAY_REQUEST_DOCK;
+
+/// Focus a client touched through instantWM's XI2 passive touch grab, then
+/// reject ownership so the native touch history continues to the application.
+/// This keeps core Button1 click-to-focus from converting browser scrolling
+/// into a mouse drag.
+pub fn touch_begin(ctx: &mut WmCtxX11<'_>, e: &TouchBeginEvent) {
+    let touched_window = WindowId::from(e.event);
+    if ctx.core.model().clients.contains_key(&touched_window)
+        && ctx.core.model().selected_win() != Some(touched_window)
+    {
+        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(touched_window));
+    }
+
+    let _ = ctx.x11.conn.xinput_xi_allow_events(
+        e.time,
+        e.deviceid,
+        EventMode::REJECT_TOUCH,
+        e.detail,
+        e.event,
+    );
+    let _ = ctx.x11.conn.flush();
+}
 
 pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
