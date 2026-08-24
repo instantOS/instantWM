@@ -43,6 +43,12 @@ pub fn grab_keys(
         &globals.behavior.current_mode,
     );
 
+    // Never discard working passive grabs when a refresh failed and no
+    // replacement mapping is available.
+    if x11_runtime.keyboard_mapping.keysyms.is_empty() {
+        return;
+    }
+
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
     let (keycode_min, keycode_max): (u8, u8) = (conn.setup().min_keycode, conn.setup().max_keycode);
@@ -248,42 +254,38 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
 ///
 /// Both requests are issued before either reply is awaited, so this costs one
 /// server round trip and keeps key-event handling entirely local afterwards.
-pub fn refresh_keyboard_mapping(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
+pub fn refresh_keyboard_mapping(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) -> bool {
     let conn = x11.conn;
     let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
-    let Ok(modifier_cookie) = conn.get_modifier_mapping() else {
-        return;
-    };
-    let Ok(mapping_cookie) = conn.get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-    else {
-        return;
-    };
-    let Ok(reply) = modifier_cookie.reply() else {
-        return;
-    };
-    let Ok(mapping) = mapping_cookie.reply() else {
-        return;
-    };
+    let mapping_cookie = conn.get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1);
+    let modifier_cookie = conn.get_modifier_mapping();
 
-    let mut new_numlockmask: u32 = 0;
-    for (i, keycode) in reply.keycodes.iter().enumerate() {
-        if *keycode >= keycode_min && *keycode <= keycode_max {
-            let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-            if mapping.keysyms.get(idx).copied().unwrap_or(0) == 0xff7f {
+    let mut mapping_refreshed = false;
+    if let Some(mapping) = mapping_cookie.ok().and_then(|cookie| cookie.reply().ok()) {
+        if !mapping.keysyms.is_empty() {
+            x11_runtime.keyboard_mapping = crate::backend::x11::X11KeyboardMapping {
+                min_keycode: keycode_min,
+                keysyms_per_keycode: mapping.keysyms_per_keycode,
+                keysyms: mapping.keysyms,
+            };
+            mapping_refreshed = true;
+        }
+    }
+
+    if let Some(reply) = modifier_cookie.ok().and_then(|cookie| cookie.reply().ok()) {
+        let mut new_numlockmask: u32 = 0;
+        for (i, keycode) in reply.keycodes.iter().enumerate() {
+            if x11_runtime.keyboard_mapping.keysym(*keycode, 0) == 0xff7f {
                 let mod_index = i / reply.keycodes_per_modifier() as usize;
                 if mod_index < 8 {
                     new_numlockmask = 1 << mod_index;
                 }
             }
         }
+        x11_runtime.numlockmask = new_numlockmask;
     }
 
-    x11_runtime.numlockmask = new_numlockmask;
-    x11_runtime.keyboard_mapping = crate::backend::x11::X11KeyboardMapping {
-        min_keycode: keycode_min,
-        keysyms_per_keycode: mapping.keysyms_per_keycode,
-        keysyms: mapping.keysyms,
-    };
+    mapping_refreshed
 }
 
 /// Handle an X11 `KeyPress` event: convert the keycode to a keysym and dispatch

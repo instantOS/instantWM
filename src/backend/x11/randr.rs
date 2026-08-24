@@ -61,14 +61,12 @@ pub fn get_outputs(conn: &RustConnection, root: Window) -> Vec<BackendOutputInfo
     }
 }
 
-/// Extract output info from already-fetched RandR resources.
-fn process_outputs(
+fn fetch_output_infos(
     conn: &RustConnection,
     output_ids: &[randr::Output],
     config_timestamp: u32,
-    modes: &[randr::ModeInfo],
-) -> Option<Vec<BackendOutputInfo>> {
-    let output_requests: Vec<_> = output_ids
+) -> Vec<(randr::Output, randr::GetOutputInfoReply)> {
+    let requests: Vec<_> = output_ids
         .iter()
         .filter_map(|output_id| {
             Some((
@@ -78,25 +76,49 @@ fn process_outputs(
             ))
         })
         .collect();
-    let output_infos: Vec<_> = output_requests
+    requests
         .into_iter()
-        .filter_map(|(output_id, request)| Some((output_id, request.reply().ok()?)))
-        .filter(|(_, info)| info.connection == randr::Connection::CONNECTED)
-        .collect();
-    let crtc_requests: Vec<_> = output_infos
+        .filter_map(|(id, request)| Some((id, request.reply().ok()?)))
+        .collect()
+}
+
+fn fetch_crtc_infos(
+    conn: &RustConnection,
+    crtc_ids: &[randr::Crtc],
+    config_timestamp: u32,
+) -> HashMap<randr::Crtc, randr::GetCrtcInfoReply> {
+    let requests: Vec<_> = crtc_ids
         .iter()
-        .filter(|(_, info)| info.crtc != 0)
-        .filter_map(|(_, info)| {
+        .filter_map(|crtc| {
             Some((
-                info.crtc,
-                conn.randr_get_crtc_info(info.crtc, config_timestamp).ok()?,
+                *crtc,
+                conn.randr_get_crtc_info(*crtc, config_timestamp).ok()?,
             ))
         })
         .collect();
-    let crtc_infos: HashMap<_, _> = crtc_requests
+    requests
         .into_iter()
-        .filter_map(|(crtc, request)| Some((crtc, request.reply().ok()?)))
+        .filter_map(|(id, request)| Some((id, request.reply().ok()?)))
+        .collect()
+}
+
+/// Extract output info from already-fetched RandR resources.
+fn process_outputs(
+    conn: &RustConnection,
+    output_ids: &[randr::Output],
+    config_timestamp: u32,
+    modes: &[randr::ModeInfo],
+) -> Option<Vec<BackendOutputInfo>> {
+    let output_infos: Vec<_> = fetch_output_infos(conn, output_ids, config_timestamp)
+        .into_iter()
+        .filter(|(_, info)| info.connection == randr::Connection::CONNECTED)
         .collect();
+    let crtc_ids: Vec<_> = output_infos
+        .iter()
+        .filter(|(_, info)| info.crtc != 0)
+        .map(|(_, info)| info.crtc)
+        .collect();
+    let crtc_infos = fetch_crtc_infos(conn, &crtc_ids, config_timestamp);
 
     let mut outputs = Vec::with_capacity(output_infos.len());
     for (_, output_info) in output_infos {
@@ -212,33 +234,8 @@ fn set_monitor_config_inner(
         )
     };
 
-    let output_requests: Vec<_> = output_ids
-        .iter()
-        .filter_map(|output_id| {
-            Some((
-                *output_id,
-                conn.randr_get_output_info(*output_id, config_timestamp)
-                    .ok()?,
-            ))
-        })
-        .collect();
-    let crtc_requests: Vec<_> = crtc_ids
-        .iter()
-        .filter_map(|crtc| {
-            Some((
-                *crtc,
-                conn.randr_get_crtc_info(*crtc, config_timestamp).ok()?,
-            ))
-        })
-        .collect();
-    let output_infos: Vec<_> = output_requests
-        .into_iter()
-        .filter_map(|(id, request)| Some((id, request.reply().ok()?)))
-        .collect();
-    let crtc_infos: HashMap<_, _> = crtc_requests
-        .into_iter()
-        .filter_map(|(id, request)| Some((id, request.reply().ok()?)))
-        .collect();
+    let output_infos = fetch_output_infos(conn, &output_ids, config_timestamp);
+    let crtc_infos = fetch_crtc_infos(conn, &crtc_ids, config_timestamp);
     let known_outputs = collect_output_rects(&output_infos, &crtc_infos, &modes);
     let mut claimed_crtcs = std::collections::HashSet::new();
 

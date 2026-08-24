@@ -35,12 +35,12 @@ use super::ffi::{
     PICT_STANDARD_ARGB32, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreateImage,
     XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen,
     XDefaultVisual, XDestroyImage, XDrawArc, XDrawRectangle, XFillArc, XFillPolygon,
-    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay, XPutImage,
-    XRenderColor, XRenderComposite, XRenderCreatePicture, XRenderFindStandardFormat,
-    XRenderFindVisualFormat, XRenderFreePicture, XSetForeground, XSetLineAttributes, XftCharExists,
-    XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate, XftDrawDestroy,
-    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
-    XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
+    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMoveResizeWindow,
+    XOpenDisplay, XPutImage, XRenderColor, XRenderComposite, XRenderCreatePicture,
+    XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture, XSetForeground,
+    XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw,
+    XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch,
+    XftFontOpenName, XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
 };
 use super::font::Fnt;
 
@@ -311,7 +311,26 @@ impl DrawContext {
                 bounds.x,
                 bounds.y,
             );
-            XFlush(self.display);
+            let _ = XFlush(self.display);
+        }
+    }
+
+    /// Configure an Xlib-owned presentation target. Bar geometry and bar
+    /// blits use this same connection, so their request order is explicit
+    /// without a blocking cross-connection synchronization.
+    pub fn move_resize_window(&self, window: Window, bounds: WmRect) {
+        if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
+            return;
+        }
+        unsafe {
+            let _ = XMoveResizeWindow(
+                self.display,
+                window,
+                bounds.x,
+                bounds.y,
+                bounds.w as u32,
+                bounds.h as u32,
+            );
         }
     }
 
@@ -468,8 +487,8 @@ impl DrawContext {
                 XRenderFreePicture(self.display, dst_picture);
             }
             XRenderFreePicture(self.display, src_picture);
-            // No XSync here on purpose: every bar draw ends with `map`, which
-            // syncs once, so all icon uploads pipeline into a single flush.
+            // Every bar draw ends with `map`, which flushes once, so all icon
+            // uploads pipeline into the same non-blocking presentation batch.
         }
     }
 }

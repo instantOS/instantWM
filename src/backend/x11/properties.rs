@@ -286,6 +286,23 @@ pub fn window_properties(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) -> WindowProperties {
+    read_window_properties(x11, x11_runtime, win, false).0
+}
+
+pub(crate) fn initial_window_properties(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) -> (WindowProperties, crate::backend::x11::X11ClientProtocols) {
+    read_window_properties(x11, x11_runtime, win, true)
+}
+
+fn read_window_properties(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+    include_protocols: bool,
+) -> (WindowProperties, crate::backend::x11::X11ClientProtocols) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     // These properties are an atomic-enough snapshot for rule matching. Queue
@@ -308,6 +325,16 @@ pub fn window_properties(
     );
     let legacy_title_cookie =
         conn.get_property(false, x11_win, AtomEnum::WM_NAME, AtomEnum::ANY, 0, 1024);
+    let protocols_cookie = include_protocols.then(|| {
+        conn.get_property(
+            false,
+            x11_win,
+            x11_runtime.wmatom.protocols,
+            AtomEnum::ATOM,
+            0,
+            1024,
+        )
+    });
     let (class_bytes, instance_bytes) = class_cookie
         .ok()
         .and_then(|cookie| cookie.reply().ok())
@@ -316,52 +343,42 @@ pub fn window_properties(
     let title = net_title_cookie
         .ok()
         .and_then(|cookie| cookie.reply().ok())
-        .and_then(parse_window_title)
+        .and_then(parse_string_property)
         .or_else(|| {
             legacy_title_cookie
                 .ok()
                 .and_then(|cookie| cookie.reply().ok())
-                .and_then(parse_window_title)
+                .and_then(parse_string_property)
         })
         .unwrap_or_else(|| BROKEN.to_string());
 
-    WindowProperties {
-        class: String::from_utf8_lossy(&class_bytes).into_owned(),
-        instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
-        title,
-        size_hints: None,
-    }
+    let protocols = protocols_cookie
+        .and_then(Result::ok)
+        .and_then(|cookie| cookie.reply().ok())
+        .map(parse_atom_property)
+        .map(crate::backend::x11::X11ClientProtocols::Known)
+        .unwrap_or_default();
+
+    (
+        WindowProperties {
+            class: String::from_utf8_lossy(&class_bytes).into_owned(),
+            instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
+            title,
+            size_hints: None,
+        },
+        protocols,
+    )
 }
 
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx_x11.x11.conn;
     let x11_win: Window = win.into();
-    let state_cookie = conn.get_property(
-        false,
+    let (state, wtype) = get_two_atom_props(
+        conn,
         x11_win,
         ctx_x11.x11_runtime.netatom.wm_state,
-        AtomEnum::ATOM,
-        0,
-        u32::MAX,
-    );
-    let type_cookie = conn.get_property(
-        false,
-        x11_win,
         ctx_x11.x11_runtime.netatom.wm_window_type,
-        AtomEnum::ATOM,
-        0,
-        u32::MAX,
     );
-    let state: Vec<u32> = state_cookie
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().map(|values| values.collect()))
-        .unwrap_or_default();
-    let wtype: Vec<u32> = type_cookie
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().map(|values| values.collect()))
-        .unwrap_or_default();
 
     let atom_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
     let atom_dialog = ctx_x11.x11_runtime.netatom.wm_window_type_dialog;
@@ -485,7 +502,35 @@ pub fn get_atom_props(
     conn.get_property(false, win, atom, AtomEnum::ATOM, 0, u32::MAX)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().map(|it| it.collect()))
+        .map(parse_atom_property)
+        .unwrap_or_default()
+}
+
+fn get_two_atom_props(
+    conn: &x11rb::rust_connection::RustConnection,
+    win: Window,
+    first: u32,
+    second: u32,
+) -> (Vec<u32>, Vec<u32>) {
+    let first = conn.get_property(false, win, first, AtomEnum::ATOM, 0, u32::MAX);
+    let second = conn.get_property(false, win, second, AtomEnum::ATOM, 0, u32::MAX);
+    let first = first
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(parse_atom_property)
+        .unwrap_or_default();
+    let second = second
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(parse_atom_property)
+        .unwrap_or_default();
+    (first, second)
+}
+
+pub(crate) fn parse_atom_property(reply: GetPropertyReply) -> Vec<u32> {
+    reply
+        .value32()
+        .map(|values| values.collect())
         .unwrap_or_default()
 }
 
@@ -504,7 +549,7 @@ pub fn write_net_wm_state_atoms(
     );
 }
 
-fn parse_window_title(reply: GetPropertyReply) -> Option<String> {
+pub(crate) fn parse_string_property(reply: GetPropertyReply) -> Option<String> {
     if reply.format != 8 || reply.value.is_empty() {
         return None;
     }

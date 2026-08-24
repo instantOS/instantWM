@@ -73,7 +73,7 @@ pub fn send_event(
         let supported = x11_runtime
             .client_protocols
             .get(&win)
-            .is_some_and(|protocols| protocols.contains(&proto));
+            .is_some_and(|protocols| protocols.supports(proto));
         (supported, wmatom_protocols)
     } else {
         (true, proto)
@@ -364,12 +364,11 @@ pub(crate) fn read_wm_protocols(
     conn: &x11rb::rust_connection::RustConnection,
     win: Window,
     protocols_atom: u32,
-) -> Vec<u32> {
+) -> Option<Vec<u32>> {
     conn.get_property(false, win, protocols_atom, AtomEnum::ATOM, 0, 1024)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().map(|it| it.collect()))
-        .unwrap_or_default()
+        .map(crate::backend::x11::properties::parse_atom_property)
 }
 
 fn ungrab_button(

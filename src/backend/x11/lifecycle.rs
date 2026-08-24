@@ -76,7 +76,10 @@ pub fn manage(
     ) {
         return;
     }
-    let Some(rule_placement) = insert_client_and_apply_rules(
+    // Subscribe before taking cached snapshots so a concurrent property
+    // mutation always produces an invalidation event after the snapshot.
+    subscribe_manage_events(&ctx.x11, window);
+    let Some((rule_placement, protocols)) = insert_client_and_apply_rules(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
@@ -89,14 +92,6 @@ pub fn manage(
     ctx.x11_runtime
         .original_border_widths
         .insert(window, original_border_width);
-    // Subscribe before taking cached snapshots so a concurrent property
-    // mutation always produces an invalidation event after the snapshot.
-    subscribe_manage_events(&ctx.x11, window);
-    let protocols = crate::backend::x11::focus::read_wm_protocols(
-        ctx.x11.conn,
-        window.into(),
-        ctx.x11_runtime.wmatom.protocols,
-    );
     ctx.x11_runtime.client_protocols.insert(window, protocols);
 
     apply_default_border(ctx.core.model_mut(), border_px, window);
@@ -162,20 +157,24 @@ fn insert_client_and_apply_rules(
     window: WindowId,
     mut client: Client,
     launch_context: Option<crate::client::LaunchContext>,
-) -> Option<crate::client::InitialRulePlacement> {
+) -> Option<(
+    crate::client::InitialRulePlacement,
+    crate::backend::x11::X11ClientProtocols,
+)> {
     client.is_hidden =
         crate::backend::x11::visibility::get_state(x11, x11_runtime.wmatom.state, window)
             == crate::backend::x11::constants::WM_STATE_ICONIC;
     if !core.model_mut().insert_client(client) {
         return None;
     }
-    let properties = crate::backend::x11::window_properties(x11, x11_runtime, window);
+    let (properties, protocols) =
+        crate::backend::x11::properties::initial_window_properties(x11, x11_runtime, window);
     let outcome =
         crate::client::apply_initial_rules(core.state_mut(), window, &properties, launch_context);
     if outcome.changed {
         core.queue_layout_for_client(window);
     }
-    Some(outcome.placement)
+    Some((outcome.placement, protocols))
 }
 
 fn read_launch_context(
@@ -204,24 +203,12 @@ fn read_launch_context(
     let startup_id = startup_cookie
         .ok()
         .and_then(|cookie| cookie.reply().ok())
-        .and_then(string_property_value);
+        .and_then(crate::backend::x11::properties::parse_string_property);
     let pid = pid_cookie
         .ok()
         .and_then(|cookie| cookie.reply().ok())
         .and_then(|reply| reply.value32()?.next());
     crate::client::take_pending_launch(pending_launches, pid, startup_id.as_deref())
-}
-
-fn string_property_value(reply: GetPropertyReply) -> Option<String> {
-    if reply.format != 8 || reply.value.is_empty() {
-        return None;
-    }
-    let len = reply
-        .value
-        .iter()
-        .position(|&b| b == 0)
-        .unwrap_or(reply.value.len());
-    Some(String::from_utf8_lossy(&reply.value[..len]).into_owned()).filter(|s| !s.is_empty())
 }
 
 fn apply_default_border(model: &mut crate::model::WmModel, border_px: i32, window: WindowId) {

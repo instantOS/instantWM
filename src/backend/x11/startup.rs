@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::exit;
 
 use x11rb::connection::Connection;
@@ -88,7 +89,13 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-        crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime);
+        if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
+            log::warn!("initial X11 keyboard mapping read failed; retrying once");
+            assert!(
+                crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime,),
+                "instantwm: failed to read the X11 keyboard mapping"
+            );
+        }
         crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
         crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
     }
@@ -162,95 +169,72 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         "_NET_STARTUP_ID",
         "_NET_WM_PID",
     ];
-    // Queue every request first: atom setup now takes one round trip instead
-    // of one round trip per atom.
-    let requests: Vec<_> = ATOM_NAMES
-        .iter()
-        .map(|name| conn.intern_atom(false, name.as_bytes()))
-        .collect();
-    let mut atoms = requests.into_iter().map(|request| {
-        request
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-            .map(|reply| reply.atom)
-            .unwrap_or(0)
-    });
-    let mut next_atom = || atoms.next().unwrap_or(0);
-    let wm_protocols = next_atom();
-    let wm_delete = next_atom();
-    let wm_state = next_atom();
-    let wm_take_focus = next_atom();
-    let net_active_window = next_atom();
-    let net_supported = next_atom();
-    let net_system_tray = next_atom();
-    let net_system_tray_op = next_atom();
-    let net_system_tray_orientation = next_atom();
-    let net_system_tray_orientation_horz = next_atom();
-    let net_wm_name = next_atom();
-    let net_wm_state = next_atom();
-    let net_wm_check = next_atom();
-    let net_wm_fullscreen = next_atom();
-    let net_wm_maximized_vert = next_atom();
-    let net_wm_maximized_horz = next_atom();
-    let net_wm_window_type = next_atom();
-    let net_wm_window_type_dialog = next_atom();
-    let net_client_list = next_atom();
-    let net_client_info = next_atom();
-    let net_number_of_desktops = next_atom();
-    let net_current_desktop = next_atom();
-    let net_desktop_names = next_atom();
-    let net_desktop_viewport = next_atom();
-    let net_desktop_geometry = next_atom();
-    let net_workarea = next_atom();
-    let net_wm_desktop = next_atom();
-    let motifatom = next_atom();
-    let xembed_manager = next_atom();
-    let xembed = next_atom();
-    let xembed_info = next_atom();
-    let utf8_string = next_atom();
-    let net_startup_id = next_atom();
-    let net_wm_pid = next_atom();
+    let atoms = intern_atoms(conn, ATOM_NAMES);
+    let atom = |name| atoms.get(name).copied().unwrap_or(0);
 
     x11_runtime.wmatom = crate::types::WmAtoms {
-        protocols: wm_protocols,
-        delete: wm_delete,
-        state: wm_state,
-        take_focus: wm_take_focus,
+        protocols: atom("WM_PROTOCOLS"),
+        delete: atom("WM_DELETE_WINDOW"),
+        state: atom("WM_STATE"),
+        take_focus: atom("WM_TAKE_FOCUS"),
     };
     x11_runtime.netatom = crate::types::NetAtoms {
-        active_window: net_active_window,
-        supported: net_supported,
-        system_tray: net_system_tray,
-        system_tray_op: net_system_tray_op,
-        system_tray_orientation: net_system_tray_orientation,
-        system_tray_orientation_horz: net_system_tray_orientation_horz,
-        wm_name: net_wm_name,
-        wm_state: net_wm_state,
-        wm_check: net_wm_check,
-        wm_fullscreen: net_wm_fullscreen,
-        wm_maximized_vert: net_wm_maximized_vert,
-        wm_maximized_horz: net_wm_maximized_horz,
-        wm_window_type: net_wm_window_type,
-        wm_window_type_dialog: net_wm_window_type_dialog,
-        client_list: net_client_list,
-        client_info: net_client_info,
-        number_of_desktops: net_number_of_desktops,
-        current_desktop: net_current_desktop,
-        desktop_names: net_desktop_names,
-        desktop_viewport: net_desktop_viewport,
-        desktop_geometry: net_desktop_geometry,
-        workarea: net_workarea,
-        wm_desktop: net_wm_desktop,
+        active_window: atom("_NET_ACTIVE_WINDOW"),
+        supported: atom("_NET_SUPPORTED"),
+        system_tray: atom("_NET_SYSTEM_TRAY_S0"),
+        system_tray_op: atom("_NET_SYSTEM_TRAY_OPCODE"),
+        system_tray_orientation: atom("_NET_SYSTEM_TRAY_ORIENTATION"),
+        system_tray_orientation_horz: atom("_NET_SYSTEM_TRAY_ORIENTATION_HORZ"),
+        wm_name: atom("_NET_WM_NAME"),
+        wm_state: atom("_NET_WM_STATE"),
+        wm_check: atom("_NET_SUPPORTING_WM_CHECK"),
+        wm_fullscreen: atom("_NET_WM_STATE_FULLSCREEN"),
+        wm_maximized_vert: atom("_NET_WM_STATE_MAXIMIZED_VERT"),
+        wm_maximized_horz: atom("_NET_WM_STATE_MAXIMIZED_HORZ"),
+        wm_window_type: atom("_NET_WM_WINDOW_TYPE"),
+        wm_window_type_dialog: atom("_NET_WM_WINDOW_TYPE_DIALOG"),
+        client_list: atom("_NET_CLIENT_LIST"),
+        client_info: atom("_NET_CLIENT_INFO"),
+        number_of_desktops: atom("_NET_NUMBER_OF_DESKTOPS"),
+        current_desktop: atom("_NET_CURRENT_DESKTOP"),
+        desktop_names: atom("_NET_DESKTOP_NAMES"),
+        desktop_viewport: atom("_NET_DESKTOP_VIEWPORT"),
+        desktop_geometry: atom("_NET_DESKTOP_GEOMETRY"),
+        workarea: atom("_NET_WORKAREA"),
+        wm_desktop: atom("_NET_WM_DESKTOP"),
     };
-    x11_runtime.motifatom = motifatom;
+    x11_runtime.motifatom = atom("_MOTIF_WM_HINTS");
     x11_runtime.xatom = crate::types::XAtoms {
-        manager: xembed_manager,
-        xembed,
-        xembed_info,
-        utf8_string,
-        net_startup_id,
-        net_wm_pid,
+        manager: atom("MANAGER"),
+        xembed: atom("_XEMBED"),
+        xembed_info: atom("_XEMBED_INFO"),
+        utf8_string: atom("UTF8_STRING"),
+        net_startup_id: atom("_NET_STARTUP_ID"),
+        net_wm_pid: atom("_NET_WM_PID"),
     };
+}
+
+fn intern_atoms(
+    conn: &RustConnection,
+    names: &'static [&'static str],
+) -> HashMap<&'static str, u32> {
+    // Queue every request first: atom setup takes one round trip, while the
+    // name remains attached to its reply so field assignment is not positional.
+    let requests: Vec<_> = names
+        .iter()
+        .map(|&name| (name, conn.intern_atom(false, name.as_bytes())))
+        .collect();
+    requests
+        .into_iter()
+        .map(|(name, request)| {
+            let atom = request
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|reply| reply.atom)
+                .unwrap_or(0);
+            (name, atom)
+        })
+        .collect()
 }
 
 pub fn init_drw_and_schemes(wm: &mut Wm) {

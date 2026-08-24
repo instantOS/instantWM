@@ -61,7 +61,7 @@ pub struct X11RuntimeConfig {
     /// Border widths to restore when X11 windows leave WM management.
     pub original_border_widths: HashMap<WindowId, u32>,
     /// Cached WM_PROTOCOLS for managed clients, refreshed on PropertyNotify.
-    pub client_protocols: HashMap<WindowId, Vec<u32>>,
+    pub client_protocols: HashMap<WindowId, X11ClientProtocols>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -98,6 +98,47 @@ pub struct X11KeyboardMapping {
     pub min_keycode: u8,
     pub keysyms_per_keycode: u8,
     pub keysyms: Vec<u32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum X11ClientProtocols {
+    /// The property has not been read successfully. Destructive operations
+    /// must retry instead of treating this as an empty protocol list.
+    #[default]
+    Unknown,
+    Known(Vec<u32>),
+}
+
+impl X11ClientProtocols {
+    pub fn supports(&self, protocol: u32) -> bool {
+        matches!(self, Self::Known(protocols) if protocols.contains(&protocol))
+    }
+
+    pub fn is_known(&self) -> bool {
+        matches!(self, Self::Known(_))
+    }
+}
+
+#[cfg(test)]
+mod protocol_cache_tests {
+    use super::X11ClientProtocols;
+
+    #[test]
+    fn unknown_protocol_state_is_not_equivalent_to_known_empty() {
+        let unknown = X11ClientProtocols::Unknown;
+        let empty = X11ClientProtocols::Known(Vec::new());
+        assert!(!unknown.is_known());
+        assert!(empty.is_known());
+        assert!(!unknown.supports(7));
+        assert!(!empty.supports(7));
+    }
+
+    #[test]
+    fn known_protocols_report_supported_atoms() {
+        let protocols = X11ClientProtocols::Known(vec![7, 9]);
+        assert!(protocols.supports(7));
+        assert!(!protocols.supports(8));
+    }
 }
 
 impl X11KeyboardMapping {

@@ -426,7 +426,10 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime);
+    if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
+        log::warn!("X11 keyboard mapping refresh failed; preserving existing passive grabs");
+        return;
+    }
     crate::backend::x11::keyboard::grab_keys(ctx.core.state, &ctx.x11, ctx.x11_runtime);
 }
 
@@ -572,7 +575,9 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                     ctx.x11.conn,
                     e.window,
                     ctx.x11_runtime.wmatom.protocols,
-                );
+                )
+                .map(crate::backend::x11::X11ClientProtocols::Known)
+                .unwrap_or_default();
                 ctx.x11_runtime
                     .client_protocols
                     .insert(event_win, protocols);
