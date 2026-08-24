@@ -89,7 +89,7 @@ const fn mix(color: Rgba, other: Rgba, other_weight: f32) -> Rgba {
 
 fn palette(theme: ColorTheme) -> ThemePalette {
     match theme {
-        ColorTheme::Instantos => ThemePalette {
+        ColorTheme::Classic => ThemePalette {
             background: hex("121212"),
             foreground: hex("dfdfdf"),
             foreground_on_accent: hex("000000"),
@@ -334,8 +334,8 @@ mod tests {
     }
 
     #[test]
-    fn instantos_primary_detail_is_a_muted_shadow() {
-        let primary = palette(ColorTheme::Instantos).primary;
+    fn classic_primary_detail_is_a_muted_shadow() {
+        let primary = palette(ColorTheme::Classic).primary;
         assert_ne!(primary.fill, primary.detail);
         assert!(primary.detail.r() < primary.fill.r());
         assert!(primary.detail.g() < primary.fill.g());

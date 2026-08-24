@@ -231,11 +231,11 @@ impl AnimationConfig {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColorTheme {
-    #[default]
-    Instantos,
+    Classic,
     CatppuccinLatte,
     CatppuccinFrappe,
     CatppuccinMacchiato,
+    #[default]
     CatppuccinMocha,
     Nord,
     Gruvbox,
@@ -244,7 +244,7 @@ pub enum ColorTheme {
 impl ColorTheme {
     /// All built-in themes, in the order shown by `instantwmctl theme --list`.
     pub const ALL: &[ColorTheme] = &[
-        ColorTheme::Instantos,
+        ColorTheme::Classic,
         ColorTheme::CatppuccinLatte,
         ColorTheme::CatppuccinFrappe,
         ColorTheme::CatppuccinMacchiato,
@@ -260,7 +260,7 @@ impl std::fmt::Display for ColorTheme {
         // delegates to serde, and `display_names_match_serde_names_for_every_variant`
         // exhaustively checks the mapping whenever a variant is added or renamed.
         let name = match self {
-            Self::Instantos => "instantos",
+            Self::Classic => "classic",
             Self::CatppuccinLatte => "catppuccin-latte",
             Self::CatppuccinFrappe => "catppuccin-frappe",
             Self::CatppuccinMacchiato => "catppuccin-macchiato",
@@ -895,7 +895,7 @@ mod theme_tests {
     #[test]
     fn every_documented_theme_name_deserializes() {
         for name in [
-            "instantos",
+            "classic",
             "catppuccin-latte",
             "catppuccin-frappe",
             "catppuccin-macchiato",
@@ -927,7 +927,7 @@ mod theme_tests {
         );
         // Bad theme name is a warning, not a hard error: it falls back to the
         // default theme…
-        assert_eq!(config.theme, ColorTheme::Instantos);
+        assert_eq!(config.theme, ColorTheme::default());
         // …and the rest of the config still loads.
         assert_eq!(config.layout.inner_gap, 7);
     }
