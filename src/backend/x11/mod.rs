@@ -32,6 +32,11 @@ pub struct X11RuntimeConfig {
     pub xatom: XAtoms,
     pub motifatom: Atom,
     pub numlockmask: u32,
+    /// Whether the server supports XI2.2 passive touch grabs. These let
+    /// click-to-focus observe a touch without degrading it to Button1.
+    pub xi2_touch_grabs: bool,
+    /// Server keyboard mapping, refreshed on `MappingNotify`.
+    pub keyboard_mapping: X11KeyboardMapping,
     pub root: Window,
     /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
     pub wm_check_win: Window,
@@ -58,6 +63,8 @@ pub struct X11RuntimeConfig {
     pub window_animations: crate::animation::WindowAnimations,
     /// Border widths to restore when X11 windows leave WM management.
     pub original_border_widths: HashMap<WindowId, u32>,
+    /// Cached WM_PROTOCOLS for managed clients, refreshed on PropertyNotify.
+    pub client_protocols: HashMap<WindowId, X11ClientProtocols>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -68,6 +75,8 @@ impl Default for X11RuntimeConfig {
             xatom: XAtoms::default(),
             motifatom: 0,
             numlockmask: 0,
+            xi2_touch_grabs: false,
+            keyboard_mapping: X11KeyboardMapping::default(),
             root: 0,
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
@@ -83,7 +92,74 @@ impl Default for X11RuntimeConfig {
             layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
+            client_protocols: HashMap::new(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct X11KeyboardMapping {
+    pub min_keycode: u8,
+    pub keysyms_per_keycode: u8,
+    pub keysyms: Vec<u32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum X11ClientProtocols {
+    /// The property has not been read successfully. Destructive operations
+    /// must retry instead of treating this as an empty protocol list.
+    #[default]
+    Unknown,
+    Known(Vec<u32>),
+}
+
+impl X11ClientProtocols {
+    pub fn supports(&self, protocol: u32) -> bool {
+        matches!(self, Self::Known(protocols) if protocols.contains(&protocol))
+    }
+
+    pub fn is_known(&self) -> bool {
+        matches!(self, Self::Known(_))
+    }
+}
+
+#[cfg(test)]
+mod protocol_cache_tests {
+    use super::X11ClientProtocols;
+
+    #[test]
+    fn unknown_protocol_state_is_not_equivalent_to_known_empty() {
+        let unknown = X11ClientProtocols::Unknown;
+        let empty = X11ClientProtocols::Known(Vec::new());
+        assert!(!unknown.is_known());
+        assert!(empty.is_known());
+        assert!(!unknown.supports(7));
+        assert!(!empty.supports(7));
+    }
+
+    #[test]
+    fn known_protocols_report_supported_atoms() {
+        let protocols = X11ClientProtocols::Known(vec![7, 9]);
+        assert!(protocols.supports(7));
+        assert!(!protocols.supports(8));
+    }
+}
+
+impl X11KeyboardMapping {
+    pub fn keysym(&self, keycode: u8, index: usize) -> u32 {
+        if index >= self.keysyms_per_keycode as usize {
+            return 0;
+        }
+        let Some(offset) = keycode.checked_sub(self.min_keycode) else {
+            return 0;
+        };
+        let Some(index) = (offset as usize)
+            .checked_mul(self.keysyms_per_keycode as usize)
+            .and_then(|base| base.checked_add(index))
+        else {
+            return 0;
+        };
+        self.keysyms.get(index).copied().unwrap_or(0)
     }
 }
 
@@ -139,7 +215,6 @@ impl X11RuntimeConfig {
         duration: std::time::Duration,
     ) {
         x11.resize_window(win, from);
-        x11.flush();
         self.insert_or_replace_window_animation(
             win,
             crate::animation::WindowAnimation {
@@ -245,17 +320,6 @@ impl Drop for ServerGrab<'_> {
         let _ = self.conn.ungrab_server();
         let _ = self.conn.flush();
     }
-}
-
-/// Query the current geometry of an X11 window via `GetGeometry`.
-pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
-    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
-    Some(Rect {
-        x: reply.x as i32,
-        y: reply.y as i32,
-        w: reply.width as i32,
-        h: reply.height as i32,
-    })
 }
 
 impl WindowOps for X11BackendRef<'_> {

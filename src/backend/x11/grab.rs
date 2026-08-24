@@ -135,6 +135,10 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     if ctx.core.bar.needs_redraw() {
         crate::backend::x11::bar::draw_bars(&mut ctx.core, ctx.x11_runtime);
     }
+    // This modal loop bypasses the normal calloop tick, which ordinarily
+    // flushes once after dispatch. Send the compressed motion batch now so
+    // interactive geometry never sits in x11rb's write buffer until ungrab.
+    let _ = ctx.x11.conn.flush();
 }
 
 /// Convert an X11 event to a backend-agnostic [`BackendEvent`].
@@ -175,6 +179,10 @@ where
     // following deferred-work pump will coalesce and render them.
     if let x11rb::protocol::Event::Expose(expose) = event {
         crate::backend::x11::events::handlers::expose(ctx, expose);
+        return true;
+    }
+    if let x11rb::protocol::Event::XinputTouchBegin(touch) = event {
+        crate::backend::x11::events::handlers::touch_begin(ctx, touch);
         return true;
     }
 
@@ -227,7 +235,7 @@ where
 
     let mut release = None;
     // Wait for at least one event (blocking) each iteration.
-    while let Some(mut event) = wait_event(&ctx.x11) {
+    'events: while let Some(mut event) = wait_event(&ctx.x11) {
         // If it's a motion event, compress it by eating all subsequent pending
         // motion events in the queue, keeping only the absolute latest.
         // This ensures zero-latency dragging without artificial 16ms FPS caps.
@@ -268,8 +276,9 @@ where
                             }
                             pump_deferred_work(ctx);
 
-                            // We've processed the peeking; continue the main `wait_event` loop.
-                            continue;
+                            // We've processed the peeked event; continue the
+                            // main loop without applying the motion twice.
+                            continue 'events;
                         }
                     }
                     Ok(None) => break,

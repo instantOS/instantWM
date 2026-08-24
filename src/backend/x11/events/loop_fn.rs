@@ -234,6 +234,7 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),
         x11rb::protocol::Event::XinputRawMotion(_) => handlers::raw_motion_notify(&mut ctx),
+        x11rb::protocol::Event::XinputTouchBegin(e) => handlers::touch_begin(&mut ctx, &e),
         x11rb::protocol::Event::PropertyNotify(e) => handlers::property_notify(&mut ctx, &e),
         x11rb::protocol::Event::ResizeRequest(e) => handlers::resize_request(&mut ctx, &e),
         x11rb::protocol::Event::UnmapNotify(e) => handlers::unmap_notify(&mut ctx, &e),

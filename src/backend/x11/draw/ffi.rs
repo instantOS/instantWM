@@ -195,8 +195,16 @@ unsafe extern "C" {
         dest_y: c_int,
     );
 
-    pub fn XSync(display: *mut libc::c_void, discard: c_int);
-    pub fn XFlush(display: *mut libc::c_void);
+    pub fn XMoveResizeWindow(
+        display: *mut libc::c_void,
+        window: Window,
+        x: c_int,
+        y: c_int,
+        width: u32,
+        height: u32,
+    ) -> c_int;
+
+    pub fn XFlush(display: *mut libc::c_void) -> c_int;
 
     pub fn XSetLineAttributes(
         display: *mut libc::c_void,

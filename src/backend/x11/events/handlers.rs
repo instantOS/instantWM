@@ -1,4 +1,3 @@
-use crate::backend::PointerOps;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::backend::x11::systray::XEmbedMessage;
 use crate::contexts::{WmCtx, WmCtxX11};
@@ -7,11 +6,33 @@ use crate::types::{
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
+use x11rb::protocol::xinput::{ConnectionExt as XInputConnectionExt, EventMode, TouchBeginEvent};
 use x11rb::protocol::xproto::*;
 
-use super::is_override_redirect;
-use super::query_initial_window_geometry;
+use super::query_manageable_window_geometry;
 use super::setup::SYSTEM_TRAY_REQUEST_DOCK;
+
+/// Focus a client touched through instantWM's XI2 passive touch grab, then
+/// reject ownership so the native touch history continues to the application.
+/// This keeps core Button1 click-to-focus from converting browser scrolling
+/// into a mouse drag.
+pub fn touch_begin(ctx: &mut WmCtxX11<'_>, e: &TouchBeginEvent) {
+    let touched_window = WindowId::from(e.event);
+    if ctx.core.model().clients.contains_key(&touched_window)
+        && ctx.core.model().selected_win() != Some(touched_window)
+    {
+        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(touched_window));
+    }
+
+    let _ = ctx.x11.conn.xinput_xi_allow_events(
+        e.time,
+        e.deviceid,
+        EventMode::REJECT_TOUCH,
+        e.detail,
+        e.event,
+    );
+    let _ = ctx.x11.conn.flush();
+}
 
 pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
@@ -379,11 +400,8 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         return;
     }
     let root = Point::new(e.root_x as i32, e.root_y as i32);
-    let hovered = crate::backend::x11::mouse::cursor_client_win(
-        ctx.core.state,
-        ctx.x11.conn,
-        ctx.x11_runtime.root,
-    );
+    let hovered = crate::backend::x11::mouse::managed_window(ctx.core.state, e.event)
+        .or_else(|| crate::backend::x11::mouse::managed_window(ctx.core.state, e.child));
     crate::focus::apply_hover_focus(
         &mut WmCtx::X11(ctx.reborrow()),
         hovered,
@@ -431,7 +449,10 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::backend::x11::keyboard::update_num_lock_mask(&ctx.x11, ctx.x11_runtime);
+    if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
+        log::warn!("X11 keyboard mapping refresh failed; preserving existing passive grabs");
+        return;
+    }
     crate::backend::x11::keyboard::grab_keys(ctx.core.state, &ctx.x11, ctx.x11_runtime);
 }
 
@@ -451,8 +472,8 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         return;
     };
 
-    if ctx.core.model().client(event_win).is_none() && !is_override_redirect(&ctx.x11, event_win) {
-        let Some(initial_geometry) = query_initial_window_geometry(&ctx.x11, event_win) else {
+    if ctx.core.model().client(event_win).is_none() {
+        let Some(initial_geometry) = query_manageable_window_geometry(&ctx.x11, event_win) else {
             return;
         };
         let mut tmp = ctx.reborrow();
@@ -473,20 +494,25 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         return;
     }
 
-    physical_pointer_motion(ctx, Point::new(e.root_x as i32, e.root_y as i32));
+    let hovered = crate::backend::x11::mouse::managed_window(ctx.core.state, e.child);
+    physical_pointer_motion(ctx, Point::new(e.root_x as i32, e.root_y as i32), hovered);
 }
 
 /// XI2 raw motion is the authoritative physical-motion signal on X11.
 /// Querying the root position here converts the device-independent signal into
 /// the same coordinates consumed by the backend-neutral hover policy.
 pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
-    let Some(root) = ctx.x11.pointer_location() else {
+    let Some(snapshot) = crate::backend::x11::mouse::pointer_snapshot(
+        ctx.core.state,
+        ctx.x11.conn,
+        ctx.x11_runtime.root,
+    ) else {
         return;
     };
-    physical_pointer_motion(ctx, root);
+    physical_pointer_motion(ctx, snapshot.root, snapshot.child);
 }
 
-fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
+fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<WindowId>) {
     // Handle focus-follows-mouse monitor switching
     if ctx.core.behavior().current_mode.tree_placement().is_none()
         && ctx.core.behavior().focus_follows_mouse.is_enabled()
@@ -511,11 +537,6 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 
     if root.y >= monitor_y + bar_height {
-        let hovered = crate::backend::x11::mouse::cursor_client_win(
-            ctx.core.state,
-            ctx.x11.conn,
-            ctx.x11_runtime.root,
-        );
         if crate::mouse::update_sidebar_offer_at(
             &mut WmCtx::X11(ctx.reborrow()),
             root,
@@ -572,6 +593,18 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
 
     if ctx.core.model().client(event_win).is_some() {
         match e.atom {
+            x if x == ctx.x11_runtime.wmatom.protocols => {
+                let protocols = crate::backend::x11::focus::read_wm_protocols(
+                    ctx.x11.conn,
+                    e.window,
+                    ctx.x11_runtime.wmatom.protocols,
+                )
+                .map(crate::backend::x11::X11ClientProtocols::Known)
+                .unwrap_or_default();
+                ctx.x11_runtime
+                    .client_protocols
+                    .insert(event_win, protocols);
+            }
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
                 if let Some(c) = ctx.core.model_mut().client_mut(event_win) {
                     c.size_hints_valid = false;
