@@ -62,12 +62,8 @@ impl WaylandBarPainter {
         }
     }
 
-    pub fn set_font_size(&mut self, font_size: f32) {
-        self.text.set_font_size(font_size);
-    }
-
-    pub fn set_font_families(&mut self, families: &[String]) {
-        self.text.set_font_families(families);
+    pub fn set_fonts(&mut self, fonts: &crate::core_state::FontConfig) {
+        self.text.set_fonts(fonts);
     }
 
     pub fn set_render_ping(
@@ -188,7 +184,7 @@ impl BarPainter for WaylandBarPainter {
             );
         }
         if !text.is_empty() {
-            let powerline = TextRasterizer::is_powerline_text(text);
+            let powerline = crate::bar::text::is_powerline_only(text);
             let bleed = if powerline { 2 } else { 0 };
             let text_x = bounds.x + lpad - bleed;
             let text_w = (bounds.w - lpad + bleed * 2).max(0);

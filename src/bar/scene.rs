@@ -231,8 +231,7 @@ impl BarPresentation {
 pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
-    pub font_size: f32,
-    pub font_families: Vec<String>,
+    pub fonts: crate::core_state::FontConfig,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
     pub status_hover_color: crate::types::color::Rgba,
@@ -269,8 +268,7 @@ pub(crate) fn build_monitor_snapshots(
     let selected_monitor_num = core.model().expect_selected_monitor().num;
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
-    let base_font_size = core.config().fonts.size();
-    let font_families = core.config().fonts.families();
+    let base_fonts = core.config().fonts.clone();
     let bar_hover = core.bar.hover;
     enum ModeStatus {
         Default,
@@ -348,7 +346,7 @@ pub(crate) fn build_monitor_snapshots(
         if !mon.bar_visible(&core.model().clients) {
             continue;
         }
-        let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
+        let fonts = base_fonts.scaled(mon.ui_scale as f32);
 
         let stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
 
@@ -450,8 +448,7 @@ pub(crate) fn build_monitor_snapshots(
                 mon.work_rect().w,
                 mon.bar_height,
             ),
-            font_size,
-            font_families: font_families.clone(),
+            fonts,
             is_selected_monitor,
             status_scheme: status_scheme(&core.config().colors.status_bar),
             status_hover_color: core.config().colors.status_bar.hover,

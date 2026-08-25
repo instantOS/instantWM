@@ -161,7 +161,9 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         }
         RuntimeConfigSection::Colors => parse_then_set(&mut state.config.colors, rest, value),
         RuntimeConfigSection::Cursor => parse_then_set(&mut state.config.cursor, rest, value),
-        RuntimeConfigSection::Fonts => parse_then_set(&mut state.config.fonts, rest, value),
+        RuntimeConfigSection::Fonts => set_field_from_raw(&state.config.fonts, rest, value)
+            .and_then(crate::core_state::FontConfig::validated)
+            .map(|candidate| state.config.fonts = candidate),
         RuntimeConfigSection::Input => {
             let resp = map_set(&mut state.config.input, section.name(), rest, value);
             if matches!(resp, Response::Ok) {
@@ -502,6 +504,26 @@ mod tests {
             Response::Err(message) if message.contains("bar.startmenu_size")
         ));
         assert_eq!(wm.core.config.bar, original);
+    }
+
+    #[test]
+    fn font_roles_roundtrip_and_invalid_sizes_are_rejected() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "fonts.icon_size", "18"),
+            Response::Ok
+        ));
+        assert_eq!(wm.core.config.fonts.icon_size, 18.0);
+        assert!(matches!(
+            do_get(&mut wm, "fonts.icon_size"),
+            Response::ConfigValue(value) if value == "18.0"
+        ));
+
+        assert!(matches!(
+            do_set(&mut wm, "fonts.icon_size", "0"),
+            Response::Err(message) if message.contains("fonts.icon_size")
+        ));
+        assert_eq!(wm.core.config.fonts.icon_size, 18.0);
     }
 
     #[test]

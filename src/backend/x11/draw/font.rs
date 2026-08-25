@@ -12,6 +12,7 @@
 //! original is dropped.
 
 use super::ffi::{FcPattern, FcPatternDestroy, XftFont, XftFontClose};
+use crate::bar::text::FontRole;
 
 // ── Fnt ──────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,8 @@ use super::ffi::{FcPattern, FcPatternDestroy, XftFont, XftFontClose};
 ///
 /// [`DrawContext`]: super::DrawContext
 pub struct Fnt {
+    /// Semantic role used to choose this face before generic fallback.
+    pub(super) role: FontRole,
     /// The Xlib display this font was loaded against.
     /// Stored here so `Drop` can call `XftFontClose` without needing a `DrawContext`.
     pub(super) display: *mut libc::c_void,
@@ -61,6 +64,7 @@ impl Clone for Fnt {
     /// them when dropped.
     fn clone(&self) -> Self {
         Self {
+            role: self.role,
             display: self.display,
             h: self.h,
             xfont: self.xfont,

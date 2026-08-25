@@ -294,13 +294,6 @@ impl From<ColorTheme> for ColorConfig {
     }
 }
 
-pub fn get_fonts() -> Vec<String> {
-    vec![
-        "Inter-Regular:size=12".into(),
-        "Fira Code Nerd Font:size=12".into(),
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

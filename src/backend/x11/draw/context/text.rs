@@ -232,6 +232,12 @@ impl DrawContext {
                         .as_ref()
                         .expect("font cache must be initialized before drawing")
                         .len();
+                    let wanted_role = crate::bar::text::role_for_char(
+                        char::from_u32(utf8codepoint).unwrap_or(char::REPLACEMENT_CHARACTER),
+                    );
+                    // Only consult the face assigned to this semantic role.
+                    // Missing glyphs proceed to Fontconfig fallback using that
+                    // role's pattern and therefore retain the intended size.
                     for cur_idx in 0..font_count {
                         let cur_font = self
                             .fonts
@@ -239,43 +245,46 @@ impl DrawContext {
                             .expect("font cache must be initialized before drawing")
                             .get(cur_idx)
                             .expect("font index out of bounds within font cache");
+                        if cur_font.role != wanted_role {
+                            continue;
+                        }
 
                         charexists = unsafe {
                             XftCharExists(self.display, cur_font.xfont, utf8codepoint) != 0
                         };
-
-                        if charexists {
-                            let slice_end = (text_pos + charlen).min(text_bytes.len());
-                            let glyph_bytes = &text_bytes[text_pos..slice_end];
-                            let tmpw = self.font_getexts(cur_font, glyph_bytes);
-
-                            // Update ellipsis position if there is still room.
-                            if ew + self.ellipsis_width <= w {
-                                ellipsis_x = x + ew as i32;
-                                ellipsis_w = w.saturating_sub(ew);
-                                ellipsis_len = utf8strlen;
-                            }
-
-                            if ew + tmpw > w {
-                                // This glyph would overflow — stop the run here.
-                                overflow = true;
-                                if !render {
-                                    x += tmpw as i32;
-                                } else {
-                                    utf8strlen = ellipsis_len;
-                                }
-                            } else if cur_idx == usedfont_idx {
-                                // Same font — extend the current run.
-                                utf8strlen += charlen;
-                                text_pos += charlen;
-                                ew += tmpw;
-                            } else {
-                                // Different font — end the current run; the
-                                // outer loop will start a new one.
-                                nextfont_idx = Some(cur_idx);
-                            }
-                            break;
+                        if !charexists {
+                            continue;
                         }
+                        let slice_end = (text_pos + charlen).min(text_bytes.len());
+                        let glyph_bytes = &text_bytes[text_pos..slice_end];
+                        let tmpw = self.font_getexts(cur_font, glyph_bytes);
+
+                        // Update ellipsis position if there is still room.
+                        if ew + self.ellipsis_width <= w {
+                            ellipsis_x = x + ew as i32;
+                            ellipsis_w = w.saturating_sub(ew);
+                            ellipsis_len = utf8strlen;
+                        }
+
+                        if ew + tmpw > w {
+                            // This glyph would overflow — stop the run here.
+                            overflow = true;
+                            if !render {
+                                x += tmpw as i32;
+                            } else {
+                                utf8strlen = ellipsis_len;
+                            }
+                        } else if cur_idx == usedfont_idx {
+                            // Same font — extend the current run.
+                            utf8strlen += charlen;
+                            text_pos += charlen;
+                            ew += tmpw;
+                        } else {
+                            // Different font — end the current run; the
+                            // outer loop will start a new one.
+                            nextfont_idx = Some(cur_idx);
+                        }
+                        break;
                     }
 
                     if !charexists {
@@ -388,11 +397,18 @@ impl DrawContext {
                 .fonts
                 .as_ref()
                 .expect("font cache must be initialized before fallback lookup");
-            if fonts_ref[0].pattern.is_null() {
-                panic!("draw: the first font in the cache must be loaded from a font name string.");
+            let wanted_role = crate::bar::text::role_for_char(
+                char::from_u32(codepoint).unwrap_or(char::REPLACEMENT_CHARACTER),
+            );
+            let base_font = fonts_ref
+                .iter()
+                .find(|font| font.role == wanted_role)
+                .unwrap_or(&fonts_ref[0]);
+            if base_font.pattern.is_null() {
+                panic!("draw: fallback base font must be loaded from a font name string.");
             }
 
-            let fcpattern = FcPatternDuplicate(fonts_ref[0].pattern);
+            let fcpattern = FcPatternDuplicate(base_font.pattern);
             FcPatternAddCharSet(fcpattern, FC_CHARSET.as_ptr(), fccharset);
             FcPatternAddBool(fcpattern, FC_SCALABLE.as_ptr(), FC_TRUE);
             FcConfigSubstitute(ptr::null_mut(), fcpattern, FC_MATCH_PATTERN);
@@ -414,7 +430,7 @@ impl DrawContext {
                 return;
             }
 
-            match self.xfont_create(None, Some(match_pattern)) {
+            match self.xfont_create(wanted_role, None, Some(match_pattern)) {
                 Ok(Some(new_font)) => {
                     if XftCharExists(self.display, new_font.xfont, codepoint) != 0 {
                         *usedfont_idx = self

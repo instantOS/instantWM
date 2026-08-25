@@ -246,8 +246,11 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
 
-    let font_patterns = wm.core.config.fonts.xft_pixel_patterns();
-    let fonts: Vec<&str> = font_patterns.iter().map(String::as_str).collect();
+    let font_patterns = xft_font_patterns(&wm.core.config.fonts);
+    let fonts: Vec<_> = font_patterns
+        .iter()
+        .map(|(role, pattern)| (*role, pattern.as_str()))
+        .collect();
     drw.fontset_create(&fonts)
         .unwrap_or_else(|error| panic!("instantwm: {error}"));
 
@@ -269,6 +272,18 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     data.x11_runtime.draw = Some(drw);
     wm.core.derived.bar_height = metrics.height;
     wm.core.derived.bar_horizontal_padding = metrics.horizontal_padding;
+}
+
+fn xft_font_patterns(
+    fonts: &crate::core_state::FontConfig,
+) -> Vec<(crate::bar::text::FontRole, String)> {
+    use crate::bar::text::FontRole;
+
+    let pattern = |family: &str, size: f32| format!("{family}:pixelsize={size}");
+    vec![
+        (FontRole::Text, pattern(&fonts.text_family, fonts.text_size)),
+        (FontRole::Icon, pattern(&fonts.icon_family, fonts.icon_size)),
+    ]
 }
 
 fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut DrawContext) {
@@ -333,4 +348,29 @@ fn init_schemes(
 
     x11_runtime.border_scheme = borderscheme;
     x11_runtime.status_scheme = ColorScheme::new(status.fg, status.bg, status.detail);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xft_font_patterns;
+    use crate::bar::text::FontRole;
+    use crate::core_state::FontConfig;
+
+    #[test]
+    fn xft_patterns_keep_roles_and_use_logical_pixel_sizes() {
+        let fonts = FontConfig {
+            text_family: "Inter".into(),
+            text_size: 12.0,
+            icon_family: "Symbols Nerd Font".into(),
+            icon_size: 16.0,
+        };
+
+        assert_eq!(
+            xft_font_patterns(&fonts),
+            [
+                (FontRole::Text, "Inter:pixelsize=12".to_string()),
+                (FontRole::Icon, "Symbols Nerd Font:pixelsize=16".to_string()),
+            ]
+        );
+    }
 }

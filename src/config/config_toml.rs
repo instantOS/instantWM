@@ -1,5 +1,5 @@
-use crate::config::appearance::get_fonts;
 use crate::config::keybind_config::KeybindSpec;
+use crate::core_state::FontConfig;
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, KeyboardLayout, Rule, StatusColorConfig,
     TagColorConfigs, WindowColorConfigs,
@@ -28,13 +28,13 @@ pub struct ModeSpec {
     pub keybinds: Vec<KeybindSpec>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct UserConfig {
     /// Built-in colour theme used as the base for `[colors]` overrides.
     pub theme: ColorTheme,
     pub includes: Vec<IncludeConfig>,
-    pub fonts: Vec<String>,
+    pub fonts: FontConfig,
     pub colors: ColorConfig,
     /// User-defined keybinds (override/extend defaults).
     pub keybinds: Vec<KeybindSpec>,
@@ -72,32 +72,6 @@ pub struct UserConfig {
     /// Commands to execute at startup and on every config reload (like sway `exec_always`).
     #[serde(default)]
     pub exec: Vec<String>,
-}
-
-impl Default for UserConfig {
-    fn default() -> Self {
-        Self {
-            theme: ColorTheme::default(),
-            includes: Vec::new(),
-            fonts: get_fonts(),
-            colors: ColorConfig::default(),
-            keybinds: Vec::new(),
-            desktop_keybinds: Vec::new(),
-            keyboard: KeyboardConfig::default(),
-            input: HashMap::new(),
-            monitors: HashMap::new(),
-            status_command: None,
-            modes: HashMap::new(),
-            cursor: CursorConfig::default(),
-            layout: LayoutConfig::default(),
-            animations: AnimationConfig::default(),
-            bar: BarConfig::default(),
-            raise_floating_on_click: false,
-            rules: Vec::new(),
-            exec_once: Vec::new(),
-            exec: Vec::new(),
-        }
-    }
 }
 
 /// Status bar settings shared by the user schema and effective configuration.
@@ -827,6 +801,31 @@ mod theme_tests {
         // must enable via config, IPC toggle, or `Super+Shift+B`.
         assert!(!parse("").bar.show_bottom);
         assert!(parse("[bar]\nshow_bottom = true").bar.show_bottom);
+    }
+
+    #[test]
+    fn font_roles_are_explicit_and_independently_sized() {
+        let config = parse(
+            r#"
+            [fonts]
+            text_family = "Iosevka"
+            icon_size = 18.0
+            "#,
+        );
+
+        assert_eq!(config.fonts.text_family, "Iosevka");
+        assert_eq!(config.fonts.text_size, 12.0);
+        assert_eq!(config.fonts.icon_family, "Symbols Nerd Font");
+        assert_eq!(config.fonts.icon_size, 18.0);
+    }
+
+    #[test]
+    fn legacy_ordered_font_array_is_rejected() {
+        let value = toml::from_str::<toml::Value>(
+            r#"fonts = ["Inter:size=12", "Fira Code Nerd Font:size=12"]"#,
+        )
+        .unwrap();
+        assert!(value.try_into::<UserConfig>().is_err());
     }
 
     #[test]

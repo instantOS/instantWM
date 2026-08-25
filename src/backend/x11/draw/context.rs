@@ -618,17 +618,20 @@ impl DrawContext {
 // ── Font / fontset management ─────────────────────────────────────────────────
 
 impl DrawContext {
-    /// Load a fontset from an ordered list of font name strings.
+    /// Load a fontset from role-tagged font name strings.
     ///
-    /// Fonts are stored in the order given; the first font is tried first when
-    /// rendering each glyph. Success guarantees a non-empty active fontset.
-    pub fn fontset_create(&mut self, font_names: &[&str]) -> Result<(), String> {
+    /// Role metadata survives missing faces, so the renderer never relies on
+    /// a fragile "second successfully loaded font is icons" convention.
+    pub(crate) fn fontset_create(
+        &mut self,
+        font_names: &[(crate::bar::text::FontRole, &str)],
+    ) -> Result<(), String> {
         if self.display.is_null() {
             return Err("cannot load fonts without an X11 display".to_string());
         }
         let mut fonts = Vec::new();
-        for &name in font_names {
-            if let Some(fnt) = self.load_font_by_name(name)? {
+        for &(role, name) in font_names {
+            if let Some(fnt) = self.load_font_by_name(role, name)? {
                 fonts.push(fnt);
             }
         }
@@ -640,8 +643,12 @@ impl DrawContext {
     }
 
     /// Load a single font by name string, returning a [`Fnt`].
-    fn load_font_by_name(&self, name: &str) -> Result<Option<Fnt>, String> {
-        self.xfont_create(Some(name), None)
+    fn load_font_by_name(
+        &self,
+        role: crate::bar::text::FontRole,
+        name: &str,
+    ) -> Result<Option<Fnt>, String> {
+        self.xfont_create(role, Some(name), None)
     }
 
     /// Core font-loading helper: either open by name or by Fontconfig pattern.
@@ -649,6 +656,7 @@ impl DrawContext {
     /// Exactly one of `fontname` / `fontpattern` must be `Some`.
     pub(super) fn xfont_create(
         &self,
+        role: crate::bar::text::FontRole,
         fontname: Option<&str>,
         fontpattern: Option<*mut FcPattern>,
     ) -> Result<Option<Fnt>, String> {
@@ -688,6 +696,7 @@ impl DrawContext {
         let (ascent, descent) = unsafe { ((*xfont).ascent, (*xfont).descent) };
 
         Ok(Some(Fnt {
+            role,
             display: self.display,
             h: (ascent + descent) as u32,
             xfont,

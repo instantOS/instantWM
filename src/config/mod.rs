@@ -5,7 +5,7 @@
 //!
 //! | Module            | What lives there                                        |
 //! |-------------------|---------------------------------------------------------|
-//! | [`appearance`]    | Color palette, per-scheme color tables, font list       |
+//! | [`appearance`]    | Color palette and per-scheme color tables                |
 //! | [`commands`]      | External commands (`ExternalCommands`, `Cmd` enum)      |
 //! | [`keybindings`]   | Normal-mode key bindings (`get_keys`, `get_desktop_keybinds`)      |
 //! | [`buttons`]       | Mouse button bindings (`get_buttons`)                   |
@@ -96,9 +96,7 @@ pub fn get_tags_alt() -> Vec<String> {
 // Effective configuration resolution
 // ---------------------------------------------------------------------------
 
-use crate::core_state::{
-    BindingConfig, ColorConfig, EffectiveConfig, FontConfig, SystrayConfig, WindowConfig,
-};
+use crate::core_state::{BindingConfig, ColorConfig, EffectiveConfig, SystrayConfig, WindowConfig};
 use crate::types::Key;
 use std::collections::HashMap;
 use std::env;
@@ -148,10 +146,11 @@ pub fn load_startup_config(backend: crate::backend::BackendKind) -> EffectiveCon
 /// Resolve a parsed user configuration into the complete effective snapshot.
 /// This is the sole user-to-runtime conversion boundary.
 pub fn resolve_config(
-    theme: config_toml::UserConfig,
+    mut theme: config_toml::UserConfig,
     backend: crate::backend::BackendKind,
 ) -> Result<EffectiveConfig, String> {
     let layout = theme.layout.validated()?;
+    theme.fonts = theme.fonts.validated()?;
     let defaults = build_default_keybinds(backend, &theme);
 
     // Merge TOML keybinds over compiled defaults
@@ -301,10 +300,7 @@ pub fn resolve_config(
             buttons: buttons::get_buttons(),
             rules: rules::merge_rules(rules::get_rules(), theme.rules),
         },
-        fonts: FontConfig {
-            fonts: theme.fonts,
-            ..FontConfig::default()
-        },
+        fonts: theme.fonts,
         external_commands: default_commands(),
         tag_template,
         tag_colors: theme.colors.tag,
