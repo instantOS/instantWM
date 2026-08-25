@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/instantOS/instantWM/compare/v0.1.21...v0.1.22) - 2026-08-25
+
+### Changed
+
+- make types layer backend- and bar-free
+
+### Fixed
+
+- hide/show windows immediately after switching tag, not just with window round trips
+
+### Other
+
+- make systray more backend agnostic
+- fix x11 drawing bug
+- harden IPC, fix logging
+- harden socket stuff
+- refactor some backend abstraction stuff
+- fix bugs
+- align x11 and wayland capabilities
+- slop bugfixes
+- rearchitecture some selection stuff
+- consolidate redundant structs
+- remove forwarding accessors
+- narrow stuff
+- bump deps
+- fix redundant X11 round trips
+- performance optimize the X11 backend
+- fix X11 bugs
+- init X11 touch screen support
+- change default color scheme
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- redo font rendering
+- new separator color field
+- Merge branch 'dev'
+
 ## [0.1.21](https://github.com/instantOS/instantWM/compare/v0.1.20...v0.1.21) - 2026-08-17
 
 ### Other
