@@ -10,7 +10,6 @@ use std::hash::Hash;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
 use smithay::output::Output;
@@ -133,8 +132,16 @@ pub(crate) fn event_loop_tick_and_request_render(
             crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
         );
     }
+    // Commit external protocol projections only after every shared and
+    // Wayland-specific operation belonging to this tick has completed.
+    let selection_transition = wm.focus.take_pending_selection();
+    state.reconcile_foreign_toplevel_selection(selection_transition);
     dismiss_invalid_native_systray_menu(wm, state);
-    if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
+    if tick.ipc_handled
+        || tick.monitor_config_applied
+        || tick.layout_applied
+        || tick.systray_updated
+    {
         state.request_render();
     }
 }
@@ -148,14 +155,13 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
         .model
         .monitor(active.monitor_id)
         .is_some_and(|monitor| monitor.selected_tags() == active.opened_tags);
-    let item_still_exists = match &wm.backend {
-        WmBackend::Wayland(data) => data
-            .status_notifier_tray
-            .items
-            .iter()
-            .any(|item| item.service == active.service && item.path == active.path),
-        _ => false,
-    };
+    let item_still_exists = wm
+        .bar
+        .systray_host
+        .tray
+        .items
+        .iter()
+        .any(|item| item.service == active.service && item.path == active.path);
     if !wm.core.config.systray.show || !opening_view_is_current || !item_still_exists {
         state.dismiss_native_systray_menu();
     }
@@ -166,12 +172,21 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
 pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     let space_synced = if state.take_space_sync_pending() {
         state.sync_space_from_globals();
+        // Output membership for foreign-toplevel clients must be computed
+        // from post-arrange geometry: this is the point in the tick where
+        // pending layouts have been applied and the space reconciled.
+        state.refresh_all_foreign_toplevels();
         true
     } else {
         false
     };
     if state.has_active_animations() {
         state.tick_animations();
+        // A retarget that just settled moves windows between outputs after
+        // the refresh above already ran; catch up once animations drain.
+        if !state.has_active_animations() {
+            state.refresh_all_foreign_toplevels();
+        }
     }
 
     // Animation ticks enqueue output-local redraws themselves. Space sync can

@@ -207,6 +207,9 @@ pub enum WmCommand {
     SetFullscreen { win: WindowId, fullscreen: bool },
     /// Request to change a window's minimized/hidden state.
     SetMinimized { win: WindowId, minimized: bool },
+    /// Gracefully close a window (WM-initiated, e.g. from
+    /// wlr-foreign-toplevel-management's `close` request).
+    CloseWindow(WindowId),
     /// Request to show a scratchpad by name.
     ShowScratchpad(String),
     /// Update a window's floating geometry.

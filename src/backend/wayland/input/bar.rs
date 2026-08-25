@@ -1,4 +1,3 @@
-use crate::backend::Backend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
@@ -26,61 +25,31 @@ pub fn handle_bar_click(
         return;
     };
 
-    if matches!(pos, BarPosition::SystrayMenuItem(_)) {
+    if let BarPosition::SystrayMenuItem(idx) = pos {
         state.dismiss_native_systray_menu();
-        let BarPosition::SystrayMenuItem(idx) = pos else {
-            return;
-        };
-        let menu = wm.tray_menu.current();
-        if button == MouseButton::Left
-            && let Some(menu) = menu
-            && let Some(entry) = menu.view.entries.get(idx)
-            && entry.enabled
-            && !entry.separator
-            && let Backend::Wayland(data) = &mut wm.backend
-            && let Some(runtime) = data.status_notifier_runtime.as_ref()
-        {
-            runtime.dispatch_menu_action(menu.session_id, entry.action);
+        // Non-left presses on a hosted menu entry are consumed but inert.
+        if button == MouseButton::Left {
+            let mut core = core_ctx(wm);
+            crate::systray::activate_menu_entry(&mut core, idx);
         }
         return;
     }
 
-    close_systray_menu(wm);
+    crate::systray::close_menu(&mut core_ctx(wm));
 
-    if matches!(pos, BarPosition::SystrayItem(_)) {
-        let BarPosition::SystrayItem(idx) = pos else {
-            return;
+    if let BarPosition::SystrayItem(idx) = pos {
+        // Right-pressing an item whose native menu is open toggles it closed
+        // instead of re-requesting it.
+        let toggled_closed = match (&wm.bar.systray_host.tray.items.get(idx), button) {
+            (Some(item), MouseButton::Right) => {
+                state.native_systray_menu_matches(&item.service, &item.path)
+            }
+            _ => false,
         };
-        let target = match &wm.backend {
-            Backend::Wayland(data) => data
-                .status_notifier_tray
-                .items
-                .get(idx)
-                .map(|item| (item.service.clone(), item.path.clone())),
-            _ => None,
-        };
-        let Some((service, path)) = target else {
-            return;
-        };
-
-        let toggled_closed =
-            button == MouseButton::Right && state.native_systray_menu_matches(&service, &path);
         state.dismiss_native_systray_menu();
-        if toggled_closed {
-            return;
-        }
-
-        let menu_session_id = match &mut wm.backend {
-            Backend::Wayland(data) => data
-                .status_notifier_runtime
-                .as_ref()
-                .and_then(|runtime| runtime.dispatch_click_item(service, path, button, root)),
-            _ => None,
-        };
-        if let Some(session_id) = menu_session_id
-            && wm.tray_menu.begin(session_id)
-        {
-            wm.bar.mark_dirty();
+        if !toggled_closed {
+            let mut core = core_ctx(wm);
+            crate::systray::press_icon(&mut core, idx, button, root);
         }
         return;
     }
@@ -102,16 +71,17 @@ pub fn handle_bar_click(
 
 /// Close the bar-hosted DBusMenu, returning whether a menu was open.
 pub fn close_systray_menu(wm: &mut Wm) -> bool {
-    let Some(session_id) = wm.tray_menu.close() else {
-        return false;
-    };
-    if let Backend::Wayland(data) = &mut wm.backend
-        && let Some(runtime) = data.status_notifier_runtime.as_ref()
-    {
-        runtime.close_menu(session_id);
-    }
-    wm.bar.mark_dirty();
-    true
+    crate::systray::close_menu(&mut core_ctx(wm))
+}
+
+fn core_ctx(wm: &mut Wm) -> crate::contexts::CoreCtx<'_> {
+    crate::contexts::CoreCtx::new(
+        &mut wm.core,
+        &mut wm.work,
+        &mut wm.running,
+        &mut wm.bar,
+        &mut wm.focus,
+    )
 }
 
 pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point, clean_state: u32) {

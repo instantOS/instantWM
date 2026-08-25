@@ -3,8 +3,6 @@ use crate::client::{
     record_pending_launch,
 };
 use crate::contexts::WmCtx;
-use smithay::wayland::seat::WaylandFocus;
-use smithay::wayland::xdg_activation::XdgActivationTokenData;
 use std::collections::VecDeque;
 use std::process::{Child, Command, Stdio};
 use std::sync::{OnceLock, mpsc};
@@ -33,7 +31,7 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> 
     let mut command = Command::new(primary_cmd);
     command.args(argv.iter().skip(1).map(|s| s.as_ref()));
     let metadata = prepare_spawn_command(ctx, &mut command);
-    let reap_child = matches!(ctx, WmCtx::Wayland(_));
+    let reap_child = !ctx.backend_kind().reaps_children_via_signals();
 
     match command.spawn() {
         Ok(child) => Ok(record_spawned_child(
@@ -89,38 +87,7 @@ pub(crate) fn prepare_spawn_command(ctx: &WmCtx, command: &mut Command) -> Spawn
     let context = current_launch_context(ctx.core().model());
     let startup_id = new_startup_id();
     command.env("DESKTOP_STARTUP_ID", &startup_id);
-
-    if let WmCtx::Wayland(wl) = ctx {
-        let selected_window = ctx.core().model().selected_win();
-        if let Some(token) = wl.wayland.with_state(|state| {
-            let source_surface = selected_window.and_then(|win| {
-                state
-                    .find_window(win)
-                    .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()))
-            });
-            let token_data = XdgActivationTokenData {
-                surface: source_surface,
-                ..Default::default()
-            };
-            let _ = token_data
-                .user_data
-                .insert_if_missing_threadsafe(|| context);
-            let (token, _) = state
-                .xdg_activation_state
-                .create_external_token(Some(token_data));
-            token.as_str().to_owned()
-        }) {
-            command.env("XDG_ACTIVATION_TOKEN", token);
-        }
-
-        // Ensure XWayland clients inherit the compositor-owned display. Keep
-        // the ambient value as a fallback while XWayland is still starting.
-        if let Some(display) = wl.wayland.xdisplay() {
-            command.env("DISPLAY", format!(":{display}"));
-        } else if let Ok(display) = std::env::var("DISPLAY") {
-            command.env("DISPLAY", display);
-        }
-    }
+    ctx.prepare_launch_environment(command, context);
 
     // Launched applications must not retain the compositor's terminal or log
     // pipes, and belong to their own process group.
@@ -161,7 +128,7 @@ pub(crate) fn record_spawned_child(
     pid
 }
 
-fn reap_child_async(child: Child) {
+pub(crate) fn reap_child_async(child: Child) {
     static CHILD_REAPER: OnceLock<mpsc::Sender<Child>> = OnceLock::new();
 
     let sender = CHILD_REAPER.get_or_init(|| {
@@ -202,15 +169,19 @@ fn reap_child_async(child: Child) {
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
-    let lock_mask: u32 = x11rb::protocol::xproto::ModMask::LOCK.bits() as u32;
-    mask & !(numlockmask | lock_mask)
-        & (x11rb::protocol::xproto::ModMask::SHIFT.bits() as u32
-            | x11rb::protocol::xproto::ModMask::CONTROL.bits() as u32
-            | x11rb::protocol::xproto::ModMask::M1.bits() as u32
-            | x11rb::protocol::xproto::ModMask::M2.bits() as u32
-            | x11rb::protocol::xproto::ModMask::M3.bits() as u32
-            | x11rb::protocol::xproto::ModMask::M4.bits() as u32
-            | x11rb::protocol::xproto::ModMask::M5.bits() as u32)
+    // X-protocol modifier wire masks. The keybind configuration format
+    // encodes modifiers with these bits, independent of the running backend.
+    const MOD_LOCK: u32 = 1 << 1;
+    const MOD_SHIFT: u32 = 1 << 0;
+    const MOD_CONTROL: u32 = 1 << 2;
+    const MOD_MOD1: u32 = 1 << 3;
+    const MOD_MOD2: u32 = 1 << 4;
+    const MOD_MOD3: u32 = 1 << 5;
+    const MOD_MOD4: u32 = 1 << 6;
+    const MOD_MOD5: u32 = 1 << 7;
+
+    mask & !(numlockmask | MOD_LOCK)
+        & (MOD_SHIFT | MOD_CONTROL | MOD_MOD1 | MOD_MOD2 | MOD_MOD3 | MOD_MOD4 | MOD_MOD5)
 }
 
 /// Helper macro for ignoring X11 errors in non-critical operations.

@@ -1,6 +1,7 @@
 use crate::backend::Backend;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::core_state::{CoreState, PendingWork};
+use crate::systray::NativeMenuRequestSlot;
 
 pub struct Wm {
     pub core: CoreState,
@@ -8,7 +9,6 @@ pub struct Wm {
     pub backend: Backend,
     pub running: bool,
     pub bar: crate::bar::BarState,
-    pub(crate) tray_menu: crate::systray::TrayMenuState,
     pub focus: crate::client::focus::FocusState,
 }
 
@@ -20,13 +20,57 @@ impl Wm {
             backend,
             running: true,
             bar: crate::bar::BarState::default(),
-            tray_menu: crate::systray::TrayMenuState::default(),
             focus: crate::client::focus::FocusState::default(),
         }
     }
 
+    /// Start the StatusNotifier worker if it is not already running.
+    ///
+    /// Called by both backends during bootstrap. `native_menu_request` is the
+    /// compositor-provided slot used to claim an item's native menu toplevel;
+    /// backends without that capability (X11, where items position their own
+    /// menus) pass `None`. `wake` pings the backend event loop whenever the
+    /// worker publishes updates.
+    pub(crate) fn start_systray(
+        &mut self,
+        native_menu_request: Option<NativeMenuRequestSlot>,
+        wake: Option<calloop::ping::Ping>,
+    ) {
+        self.bar.systray_host.start(native_menu_request, wake);
+    }
+
+    /// Drain StatusNotifier worker events. Returns `true` when tray content
+    /// changed and the bar must be redrawn.
+    pub fn poll_systray(&mut self) -> bool {
+        let changed = self.bar.systray_host.poll();
+        if changed {
+            self.bar.mark_dirty();
+        }
+        changed
+    }
+
     pub fn quit(&mut self) {
         self.running = false;
+    }
+
+    /// Rebuild backend-owned bar resources after config changes.
+    ///
+    /// X11 bakes schemes/fonts into the DrawContext at startup, so they must be
+    /// rebuilt for new values to show without a restart. Wayland recomputes the
+    /// derived bar metrics (height, padding) from font state. Callers decide
+    /// what happens next: immediate arrange, deferred work flags, or both.
+    ///
+    /// This is the single owner of that choreography — used by full config
+    /// reloads ([`crate::reload`]) and incremental `config set` side effects
+    /// ([`crate::ipc::config`]) alike. When adding a backend re-init step for
+    /// bar resources, add it here rather than at a call site.
+    pub fn reinit_bar_resources(&mut self) {
+        if matches!(self.backend, Backend::X11(_)) {
+            crate::backend::x11::startup::init_drw_and_schemes(self);
+        }
+        if let Backend::Wayland(data) = &mut self.backend {
+            crate::backend::wayland::bootstrap::apply_bar_metrics(&mut self.core, data);
+        }
     }
 
     pub fn ctx(&mut self) -> WmCtx<'_> {

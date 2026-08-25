@@ -56,7 +56,7 @@ pub enum ArmedDragType {
 /// In particular, a tree resize cannot exist without the tree snapshot from
 /// which pointer deltas are evaluated.
 #[derive(Debug, Clone)]
-pub(super) enum DragOperation {
+pub(crate) enum DragOperation {
     Move,
     Resize(ResizeDirection),
     TreeResize {
@@ -73,17 +73,6 @@ impl DragOperation {
             Self::TreeResize { direction, .. } => DragType::TreeResize(*direction),
         }
     }
-}
-
-/// Borrowed view of an interaction operation for motion handlers.
-#[derive(Debug, Clone, Copy)]
-pub enum DragOperationRef<'a> {
-    Move,
-    Resize(ResizeDirection),
-    TreeResize {
-        direction: ResizeDirection,
-        origin: &'a crate::layouts::tree::LayoutTree,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -167,15 +156,8 @@ impl DragInteraction {
         self.operation.kind()
     }
 
-    pub fn operation(&self) -> DragOperationRef<'_> {
-        match &self.operation {
-            DragOperation::Move => DragOperationRef::Move,
-            DragOperation::Resize(direction) => DragOperationRef::Resize(*direction),
-            DragOperation::TreeResize { direction, origin } => DragOperationRef::TreeResize {
-                direction: *direction,
-                origin,
-            },
-        }
+    pub(crate) fn operation(&self) -> &DragOperation {
+        &self.operation
     }
     pub fn win_start_geo(&self) -> Rect {
         self.win_start_geo

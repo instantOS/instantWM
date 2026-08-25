@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::exit;
 
 use x11rb::connection::Connection;
@@ -8,9 +9,8 @@ use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::DrawContext;
+use crate::backend::x11::draw::{BorderScheme, ColorScheme, DrawContext};
 use crate::config::load_startup_config;
-use crate::types::*;
 use crate::wm::Wm;
 
 const XC_LEFT_PTR: u32 = 68;
@@ -44,7 +44,7 @@ pub fn run() {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
     }
-    let mut ipc_server = crate::runtime::late_init_x11(&wm);
+    let mut ipc_server = crate::runtime::late_init_x11(&mut wm);
 
     crate::backend::x11::events::run(&mut wm, &mut ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);
@@ -89,7 +89,13 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-        crate::backend::x11::keyboard::update_num_lock_mask(&ctx.x11, ctx.x11_runtime);
+        if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
+            log::warn!("initial X11 keyboard mapping read failed; retrying once");
+            assert!(
+                crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime,),
+                "instantwm: failed to read the X11 keyboard mapping"
+            );
+        }
         crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
         crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
     }
@@ -127,89 +133,108 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         crate::backend::Backend::X11(data) => (&mut data.conn, &mut data.x11_runtime),
         crate::backend::Backend::Wayland(_) => return,
     };
-    let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
-    let wm_delete = intern_atom(conn, "WM_DELETE_WINDOW", false);
-    let wm_state = intern_atom(conn, "WM_STATE", false);
-    let wm_take_focus = intern_atom(conn, "WM_TAKE_FOCUS", false);
-
-    let net_active_window = intern_atom(conn, "_NET_ACTIVE_WINDOW", false);
-    let net_supported = intern_atom(conn, "_NET_SUPPORTED", false);
-    let net_system_tray = intern_atom(conn, "_NET_SYSTEM_TRAY_S0", false);
-    let net_system_tray_op = intern_atom(conn, "_NET_SYSTEM_TRAY_OPCODE", false);
-    let net_system_tray_orientation = intern_atom(conn, "_NET_SYSTEM_TRAY_ORIENTATION", false);
-    let net_system_tray_orientation_horz =
-        intern_atom(conn, "_NET_SYSTEM_TRAY_ORIENTATION_HORZ", false);
-    let net_wm_name = intern_atom(conn, "_NET_WM_NAME", false);
-    let net_wm_state = intern_atom(conn, "_NET_WM_STATE", false);
-    let net_wm_check = intern_atom(conn, "_NET_SUPPORTING_WM_CHECK", false);
-    let net_wm_fullscreen = intern_atom(conn, "_NET_WM_STATE_FULLSCREEN", false);
-    let net_wm_maximized_vert = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_VERT", false);
-    let net_wm_maximized_horz = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_HORZ", false);
-    let net_wm_window_type = intern_atom(conn, "_NET_WM_WINDOW_TYPE", false);
-    let net_wm_window_type_dialog = intern_atom(conn, "_NET_WM_WINDOW_TYPE_DIALOG", false);
-    let net_client_list = intern_atom(conn, "_NET_CLIENT_LIST", false);
-    let net_client_info = intern_atom(conn, "_NET_CLIENT_INFO", false);
-    let net_number_of_desktops = intern_atom(conn, "_NET_NUMBER_OF_DESKTOPS", false);
-    let net_current_desktop = intern_atom(conn, "_NET_CURRENT_DESKTOP", false);
-    let net_desktop_names = intern_atom(conn, "_NET_DESKTOP_NAMES", false);
-    let net_desktop_viewport = intern_atom(conn, "_NET_DESKTOP_VIEWPORT", false);
-    let net_desktop_geometry = intern_atom(conn, "_NET_DESKTOP_GEOMETRY", false);
-    let net_workarea = intern_atom(conn, "_NET_WORKAREA", false);
-    let net_wm_desktop = intern_atom(conn, "_NET_WM_DESKTOP", false);
-
-    let motifatom = intern_atom(conn, "_MOTIF_WM_HINTS", false);
-
-    let xembed_manager = intern_atom(conn, "MANAGER", false);
-    let xembed = intern_atom(conn, "_XEMBED", false);
-    let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
+    const ATOM_NAMES: &[&str] = &[
+        "WM_PROTOCOLS",
+        "WM_DELETE_WINDOW",
+        "WM_STATE",
+        "WM_TAKE_FOCUS",
+        "_NET_ACTIVE_WINDOW",
+        "_NET_SUPPORTED",
+        "_NET_SYSTEM_TRAY_S0",
+        "_NET_SYSTEM_TRAY_OPCODE",
+        "_NET_SYSTEM_TRAY_ORIENTATION",
+        "_NET_SYSTEM_TRAY_ORIENTATION_HORZ",
+        "_NET_WM_NAME",
+        "_NET_WM_STATE",
+        "_NET_SUPPORTING_WM_CHECK",
+        "_NET_WM_STATE_FULLSCREEN",
+        "_NET_WM_STATE_MAXIMIZED_VERT",
+        "_NET_WM_STATE_MAXIMIZED_HORZ",
+        "_NET_WM_WINDOW_TYPE",
+        "_NET_WM_WINDOW_TYPE_DIALOG",
+        "_NET_CLIENT_LIST",
+        "_NET_CLIENT_INFO",
+        "_NET_NUMBER_OF_DESKTOPS",
+        "_NET_CURRENT_DESKTOP",
+        "_NET_DESKTOP_NAMES",
+        "_NET_DESKTOP_VIEWPORT",
+        "_NET_DESKTOP_GEOMETRY",
+        "_NET_WORKAREA",
+        "_NET_WM_DESKTOP",
+        "_MOTIF_WM_HINTS",
+        "MANAGER",
+        "_XEMBED",
+        "_XEMBED_INFO",
+        "UTF8_STRING",
+        "_NET_STARTUP_ID",
+        "_NET_WM_PID",
+    ];
+    let atoms = intern_atoms(conn, ATOM_NAMES);
+    let atom = |name| atoms.get(name).copied().unwrap_or(0);
 
     x11_runtime.wmatom = crate::types::WmAtoms {
-        protocols: wm_protocols,
-        delete: wm_delete,
-        state: wm_state,
-        take_focus: wm_take_focus,
+        protocols: atom("WM_PROTOCOLS"),
+        delete: atom("WM_DELETE_WINDOW"),
+        state: atom("WM_STATE"),
+        take_focus: atom("WM_TAKE_FOCUS"),
     };
     x11_runtime.netatom = crate::types::NetAtoms {
-        active_window: net_active_window,
-        supported: net_supported,
-        system_tray: net_system_tray,
-        system_tray_op: net_system_tray_op,
-        system_tray_orientation: net_system_tray_orientation,
-        system_tray_orientation_horz: net_system_tray_orientation_horz,
-        wm_name: net_wm_name,
-        wm_state: net_wm_state,
-        wm_check: net_wm_check,
-        wm_fullscreen: net_wm_fullscreen,
-        wm_maximized_vert: net_wm_maximized_vert,
-        wm_maximized_horz: net_wm_maximized_horz,
-        wm_window_type: net_wm_window_type,
-        wm_window_type_dialog: net_wm_window_type_dialog,
-        client_list: net_client_list,
-        client_info: net_client_info,
-        number_of_desktops: net_number_of_desktops,
-        current_desktop: net_current_desktop,
-        desktop_names: net_desktop_names,
-        desktop_viewport: net_desktop_viewport,
-        desktop_geometry: net_desktop_geometry,
-        workarea: net_workarea,
-        wm_desktop: net_wm_desktop,
+        active_window: atom("_NET_ACTIVE_WINDOW"),
+        supported: atom("_NET_SUPPORTED"),
+        system_tray: atom("_NET_SYSTEM_TRAY_S0"),
+        system_tray_op: atom("_NET_SYSTEM_TRAY_OPCODE"),
+        system_tray_orientation: atom("_NET_SYSTEM_TRAY_ORIENTATION"),
+        system_tray_orientation_horz: atom("_NET_SYSTEM_TRAY_ORIENTATION_HORZ"),
+        wm_name: atom("_NET_WM_NAME"),
+        wm_state: atom("_NET_WM_STATE"),
+        wm_check: atom("_NET_SUPPORTING_WM_CHECK"),
+        wm_fullscreen: atom("_NET_WM_STATE_FULLSCREEN"),
+        wm_maximized_vert: atom("_NET_WM_STATE_MAXIMIZED_VERT"),
+        wm_maximized_horz: atom("_NET_WM_STATE_MAXIMIZED_HORZ"),
+        wm_window_type: atom("_NET_WM_WINDOW_TYPE"),
+        wm_window_type_dialog: atom("_NET_WM_WINDOW_TYPE_DIALOG"),
+        client_list: atom("_NET_CLIENT_LIST"),
+        client_info: atom("_NET_CLIENT_INFO"),
+        number_of_desktops: atom("_NET_NUMBER_OF_DESKTOPS"),
+        current_desktop: atom("_NET_CURRENT_DESKTOP"),
+        desktop_names: atom("_NET_DESKTOP_NAMES"),
+        desktop_viewport: atom("_NET_DESKTOP_VIEWPORT"),
+        desktop_geometry: atom("_NET_DESKTOP_GEOMETRY"),
+        workarea: atom("_NET_WORKAREA"),
+        wm_desktop: atom("_NET_WM_DESKTOP"),
     };
-    x11_runtime.motifatom = motifatom;
+    x11_runtime.motifatom = atom("_MOTIF_WM_HINTS");
     x11_runtime.xatom = crate::types::XAtoms {
-        manager: xembed_manager,
-        xembed,
-        xembed_info,
+        manager: atom("MANAGER"),
+        xembed: atom("_XEMBED"),
+        xembed_info: atom("_XEMBED_INFO"),
+        utf8_string: atom("UTF8_STRING"),
+        net_startup_id: atom("_NET_STARTUP_ID"),
+        net_wm_pid: atom("_NET_WM_PID"),
     };
 }
 
-fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
-    match conn.intern_atom(only_if_exists, name.as_bytes()) {
-        Ok(cookie) => match cookie.reply() {
-            Ok(reply) => reply.atom,
-            Err(_) => 0,
-        },
-        Err(_) => 0,
-    }
+fn intern_atoms(
+    conn: &RustConnection,
+    names: &'static [&'static str],
+) -> HashMap<&'static str, u32> {
+    // Queue every request first: atom setup takes one round trip, while the
+    // name remains attached to its reply so field assignment is not positional.
+    let requests: Vec<_> = names
+        .iter()
+        .map(|&name| (name, conn.intern_atom(false, name.as_bytes())))
+        .collect();
+    requests
+        .into_iter()
+        .map(|(name, request)| {
+            let atom = request
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|reply| reply.atom)
+                .unwrap_or(0);
+            (name, atom)
+        })
+        .collect()
 }
 
 pub fn init_drw_and_schemes(wm: &mut Wm) {
@@ -221,8 +246,11 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
 
-    let font_patterns = wm.core.config.fonts.xft_pixel_patterns();
-    let fonts: Vec<&str> = font_patterns.iter().map(String::as_str).collect();
+    let font_patterns = xft_font_patterns(&wm.core.config.fonts);
+    let fonts: Vec<_> = font_patterns
+        .iter()
+        .map(|(role, pattern)| (*role, pattern.as_str()))
+        .collect();
     drw.fontset_create(&fonts)
         .unwrap_or_else(|error| panic!("instantwm: {error}"));
 
@@ -244,6 +272,18 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     data.x11_runtime.draw = Some(drw);
     wm.core.derived.bar_height = metrics.height;
     wm.core.derived.bar_horizontal_padding = metrics.horizontal_padding;
+}
+
+fn xft_font_patterns(
+    fonts: &crate::core_state::FontConfig,
+) -> Vec<(crate::bar::text::FontRole, String)> {
+    use crate::bar::text::FontRole;
+
+    let pattern = |family: &str, size: f32| format!("{family}:pixelsize={size}");
+    vec![
+        (FontRole::Text, pattern(&fonts.text_family, fonts.text_size)),
+        (FontRole::Icon, pattern(&fonts.icon_family, fonts.icon_size)),
+    ]
 }
 
 fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut DrawContext) {
@@ -272,7 +312,7 @@ fn init_schemes(
     drw: &mut DrawContext,
     bordercolors: &crate::types::BorderColorConfig,
     statusbarcolors: &crate::types::StatusColorConfig,
-    close_color: crate::bar::color::Rgba,
+    close_color: crate::types::color::Rgba,
 ) {
     let normal = drw
         .clr_create(&bordercolors.normal.to_string())
@@ -307,5 +347,30 @@ fn init_schemes(
         .expect("Failed to create status bar colors");
 
     x11_runtime.border_scheme = borderscheme;
-    x11_runtime.status_scheme = StatusScheme::new(status.fg, status.bg, status.detail);
+    x11_runtime.status_scheme = ColorScheme::new(status.fg, status.bg, status.detail);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xft_font_patterns;
+    use crate::bar::text::FontRole;
+    use crate::core_state::FontConfig;
+
+    #[test]
+    fn xft_patterns_keep_roles_and_use_logical_pixel_sizes() {
+        let fonts = FontConfig {
+            text_family: "Inter".into(),
+            text_size: 12.0,
+            icon_family: "Symbols Nerd Font".into(),
+            icon_size: 16.0,
+        };
+
+        assert_eq!(
+            xft_font_patterns(&fonts),
+            [
+                (FontRole::Text, "Inter:pixelsize=12".to_string()),
+                (FontRole::Icon, "Symbols Nerd Font:pixelsize=16".to_string()),
+            ]
+        );
+    }
 }

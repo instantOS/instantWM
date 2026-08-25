@@ -11,9 +11,9 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::systray::StatusNotifierTray;
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
+use std::process::Command;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Encode, Decode,
@@ -38,6 +38,32 @@ pub struct BackendOutputInfo {
 pub enum BackendKind {
     X11,
     Wayland,
+}
+
+impl BackendKind {
+    /// External tool that lets the user drag out a screen rectangle, used by
+    /// the `draw_window` action.
+    ///
+    /// Both tools are spawned with `-f x%xx%yx%wx%hx`, whose output
+    /// [`crate::mouse::slop::parse_slop_output`] understands. X11 draws the
+    /// selection through the instantOS helper on the root window; Wayland
+    /// uses slurp's layer-shell overlay, which spans every output because
+    /// the compositor implements wlr-layer-shell. Selection runs
+    /// asynchronously — see [`crate::mouse::slop::spawn_region_selection`].
+    pub fn region_selection_command(self) -> Option<Command> {
+        match self {
+            Self::X11 => Some(Command::new("instantslop")),
+            Self::Wayland => Some(Command::new("slurp")),
+        }
+    }
+
+    /// Whether this backend reaps child processes via a SIGCHLD handler on
+    /// its main-loop thread (`backend/x11/startup.rs`). Backends without one
+    /// must hand spawned children to the dedicated reaper thread instead,
+    /// or short-lived scripts accumulate as zombies.
+    pub fn reaps_children_via_signals(self) -> bool {
+        matches!(self, Self::X11)
+    }
 }
 
 #[derive(
@@ -164,6 +190,14 @@ pub trait OutputOps {
 
     /// Get current outputs from the backend.
     fn get_outputs(&self) -> Vec<BackendOutputInfo>;
+
+    /// Legacy fallback discovery when primary discovery reports a single
+    /// placeholder screen. X11 consults Xinerama; backends without a
+    /// secondary discovery protocol return `None`.
+    fn query_fallback_outputs(&self) -> Option<Vec<BackendOutputInfo>> {
+        let _ = self;
+        None
+    }
 }
 
 /// X11-specific backend data.
@@ -177,10 +211,7 @@ pub struct X11BackendData {
 /// Wayland-specific backend data.
 pub struct WaylandBackendData {
     pub backend: WaylandBackend,
-    pub bar_painter: crate::bar::wayland::WaylandBarPainter,
-    pub(crate) status_notifier_tray: StatusNotifierTray,
-    pub(crate) status_notifier_runtime:
-        Option<crate::systray::status_notifier::StatusNotifierRuntime>,
+    pub bar_painter: crate::backend::wayland::bar::WaylandBarPainter,
 }
 
 /// Owned backend implementation.
@@ -206,9 +237,7 @@ impl Backend {
     pub fn new_wayland(backend: WaylandBackend) -> Self {
         Self::Wayland(Box::new(WaylandBackendData {
             backend,
-            bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
-            status_notifier_tray: StatusNotifierTray::default(),
-            status_notifier_runtime: None,
+            bar_painter: crate::backend::wayland::bar::WaylandBarPainter::default(),
         }))
     }
 
@@ -259,6 +288,41 @@ impl Backend {
         match self {
             Self::X11(_) => Vec::new(),
             Self::Wayland(data) => data.backend.get_input_devices(),
+        }
+    }
+
+    /// Apply a desktop wallpaper by spawning the platform's setter tool.
+    ///
+    /// Wayland compositors have no root pixmap, so sessions delegate to
+    /// swaybg (restarting it if one is already running). X11 uses feh.
+    /// Fire-and-forget: the child outlives the call either way.
+    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
+        match self {
+            Self::X11(_) => Command::new("feh")
+                .arg("--bg-fill")
+                .arg(path)
+                .spawn()
+                .map(|_| ()),
+            Self::Wayland(_) => {
+                let _ = Command::new("killall").arg("swaybg").status();
+                let spawned = Command::new("swaybg")
+                    .arg("-i")
+                    .arg(path)
+                    .arg("-m")
+                    .arg("fill")
+                    .spawn();
+                // Wayland has no SIGCHLD handler, so the replacement swaybg
+                // must be handed to the dedicated reaper thread (see
+                // [`BackendKind::reaps_children_via_signals`]) instead of
+                // accumulating as a zombie on every wallpaper change.
+                match spawned {
+                    Ok(child) if !self.kind().reaps_children_via_signals() => {
+                        crate::util::reap_child_async(child);
+                        Ok(())
+                    }
+                    result => result.map(|_| ()),
+                }
+            }
         }
     }
 
@@ -392,6 +456,15 @@ impl OutputOps for Backend {
         match self {
             Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
             Backend::Wayland(data) => data.backend.get_outputs(),
+        }
+    }
+
+    fn query_fallback_outputs(&self) -> Option<Vec<BackendOutputInfo>> {
+        match self {
+            Backend::X11(data) => {
+                X11BackendRef::new(&data.conn, data.screen_num).query_fallback_outputs()
+            }
+            Backend::Wayland(data) => data.backend.query_fallback_outputs(),
         }
     }
 }

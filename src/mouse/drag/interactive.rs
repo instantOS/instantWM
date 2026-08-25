@@ -14,10 +14,12 @@ fn begin_active_resize(
     params: ResizeDragParams,
 ) -> Result<(), crate::core_state::InteractionAlreadyActive> {
     match ctx {
-        WmCtx::X11(x11) => begin_resize(x11.core.drag_state_mut(), &x11.x11, params),
-        WmCtx::Wayland(wayland) => {
-            begin_resize(wayland.core.drag_state_mut(), wayland.wayland, params)
-        }
+        WmCtx::X11(x11) => begin_resize(&mut x11.core.interaction_mut().drag, &x11.x11, params),
+        WmCtx::Wayland(wayland) => begin_resize(
+            &mut wayland.core.interaction_mut().drag,
+            wayland.wayland,
+            params,
+        ),
     }
 }
 
@@ -87,7 +89,8 @@ pub fn tree_resize_begin(
 ) -> bool {
     if ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut()
+        .drag
         .begin_tree_resize(crate::core_state::TreeResizeParams {
             win,
             button: btn,
@@ -140,7 +143,8 @@ pub fn hover_drag_begin(
     let started = match drag_type {
         crate::core_state::DragType::Move => ctx
             .core_mut()
-            .drag_state_mut()
+            .interaction_mut()
+            .drag
             .begin_move(target.win, btn, source, position, target.geo),
         crate::core_state::DragType::Resize(direction) => begin_active_resize(
             ctx,
@@ -184,30 +188,31 @@ pub fn hover_drag_begin(
 /// not consumed); `true` when the sample was applied to the ongoing move,
 /// resize, or tree-resize.
 pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    let Some(drag) = ctx.core().drag_state().active_interaction().cloned() else {
+    let Some(drag) = ctx.core().interaction().drag.active_interaction().cloned() else {
         return false;
     };
     ctx.core_mut()
-        .drag_state_mut()
+        .interaction_mut()
+        .drag
         .record_interactive_motion(root);
 
     match drag.operation() {
-        crate::core_state::DragOperationRef::Move => {
+        crate::core_state::DragOperation::Move => {
             apply_move_drag_motion(ctx, &drag, root);
             true
         }
-        crate::core_state::DragOperationRef::TreeResize { direction, origin } => {
+        crate::core_state::DragOperation::TreeResize { direction, origin } => {
             crate::layouts::manager::update_pointer_tree_resize(
                 ctx,
                 drag.win(),
                 origin,
-                direction,
+                *direction,
                 drag.start_point(),
                 root,
             )
         }
-        crate::core_state::DragOperationRef::Resize(dir) => {
-            apply_resize_drag_motion(ctx, &drag, dir, root);
+        crate::core_state::DragOperation::Resize(dir) => {
+            apply_resize_drag_motion(ctx, &drag, *dir, root);
             true
         }
     }
@@ -308,11 +313,13 @@ fn apply_resize_drag_motion(
 /// Finish the active window interaction using backend protocol capabilities.
 pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32) -> bool {
     let finished = match ctx {
-        WmCtx::X11(x11) => {
-            crate::mouse::drag::lifecycle::finish(x11.core.drag_state_mut(), &x11.x11, btn)
-        }
+        WmCtx::X11(x11) => crate::mouse::drag::lifecycle::finish(
+            &mut x11.core.interaction_mut().drag,
+            &x11.x11,
+            btn,
+        ),
         WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::finish(
-            wayland.core.drag_state_mut(),
+            &mut wayland.core.interaction_mut().drag,
             wayland.wayland,
             btn,
         ),
@@ -372,6 +379,7 @@ mod tests {
             ..Client::default()
         });
         wm.core
+            .interaction
             .drag
             .begin_resize(
                 win,
@@ -395,6 +403,7 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let win = WindowId(99);
         wm.core
+            .interaction
             .drag
             .begin_tree_resize(crate::core_state::TreeResizeParams {
                 win,

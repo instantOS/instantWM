@@ -11,14 +11,14 @@
 //!      └─► change_snap(win, Direction::Left)
 //!               ├─ saves current float geometry (if entering snap for the first time)
 //!               ├─ looks up new position via snap_next()
-//!               └─ calls apply_snap → ctx.move_resize(AnimateTo)
+//!               └─ animates the window to the position's target rect
 //! ```
 //!
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
 use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 
 use crate::types::*;
@@ -57,70 +57,63 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 
     ctx.raise_client(win);
 
-    // Apply snap geometry (generic) and backend-specific extras.
-    match ctx {
-        WmCtx::X11(ctx_x11) => {
-            let Some(rect) = snap_target_rect(ctx_x11, win, monitor_id) else {
-                return;
-            };
-            apply_snap(ctx_x11, win, &rect);
-            let wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-            wm_ctx.pointer_backend().warp_to_point(rect.center());
-            crate::focus::focus(&mut WmCtx::X11(ctx_x11.reborrow()), Some(win));
-        }
-        WmCtx::Wayland(_) => {
-            // Wayland: use generic snap geometry (no animation)
-            let monitor = ctx.core().model().monitor(monitor_id).cloned().unwrap();
-            apply_snap_for_window(ctx, win, &monitor);
-            ctx.warp_cursor_to_client(win);
-        }
-    }
+    let Some(rect) = snap_target_rect(ctx, win, monitor_id) else {
+        return;
+    };
+
+    // Animate into place, keep the pointer inside the freshly snapped
+    // window (snapping is keyboard-driven), and make the snapped window
+    // the focused client. Identical on both backends. Size hints are
+    // respected so clients with a minimum size (e.g. terminal grids) are
+    // never configured below it by a small snap region.
+    ctx.move_resize(
+        win,
+        rect,
+        MoveResizeOptions::animate_to(DEFAULT_ANIMATION_MILLIS).with_size_hints(),
+    );
+    ctx.pointer_backend().warp_to_point(rect.center());
+    crate::focus::focus(ctx, Some(win));
 }
 
-/// Apply the window's current [`SnapPosition`] by animating it into the
-/// corresponding screen region on monitor `monitor_id`.
+/// Resolve the geometry a snapped window should occupy.
 ///
-/// - [`SnapPosition::None`] restores the saved floating geometry.
-/// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
-/// - All other positions split the monitor into halves or quarters.
-fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
+/// [`SnapPosition::None`] restores the saved floating geometry — and the
+/// border width [`SnapPosition::Maximized`] zeroed.
+/// [`SnapPosition::Maximized`] saves the current border width and zeroes it
+/// so the window fills the work area edge to edge; every other position
+/// splits the monitor into halves or quarters around the normal border.
+///
+/// Border changes are pushed through [`WmCtx::set_border`] so backends apply
+/// them; [`WmCtx::move_resize`] never touches border widths.
+fn snap_target_rect(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
     let (snap_status, saved_geo) = {
-        let c = ctx.core.model().client(win)?;
+        let c = ctx.core().model().client(win)?;
         (c.snap_status, c.saved_floating_rect().unwrap_or(c.geo))
     };
 
     if snap_status == SnapPosition::None {
+        let restored = {
+            let client = ctx.core_mut().model_mut().client_mut(win)?;
+            client.restore_border_width();
+            client.border_width
+        };
+        ctx.set_border(win, restored);
         return Some(saved_geo);
     }
 
     let border_width = {
-        let client = ctx.core.model_mut().client_mut(win)?;
+        let client = ctx.core_mut().model_mut().client_mut(win)?;
         if snap_status == SnapPosition::Maximized {
-            if client.border_width != 0 {
-                client.save_border_width();
-                client.border_width = 0;
-            }
+            client.save_border_width();
+            client.border_width = 0;
         } else {
             client.restore_border_width();
         }
         client.border_width
     };
-    let work_rect = ctx.core.model().monitor(monitor_id)?.work_rect();
+    ctx.set_border(win, border_width);
+    let work_rect = ctx.core().model().monitor(monitor_id)?.work_rect();
     snap_status.target_rect(border_width, work_rect)
-}
-
-/// Apply the window's current [`SnapPosition`] by animating it into the
-/// corresponding screen region on monitor `monitor_id`.
-pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
-    if ctx.core.model().client(win).is_none() {
-        return;
-    }
-
-    WmCtx::X11(ctx.reborrow()).move_resize(
-        win,
-        *rect,
-        MoveResizeOptions::animate_to(DEFAULT_ANIMATION_MILLIS),
-    );
 }
 
 /// Cancel the current snap and animate the window back to its saved floating
@@ -142,32 +135,17 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
 
     if is_floating || !tiling {
         ctx.raise_client(win);
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        let restored_border = {
+            let Some(client) = ctx.core_mut().model_mut().client_mut(win) else {
+                return;
+            };
             client.snap_status = SnapPosition::None;
             client.restore_border_width();
-        }
+            client.border_width
+        };
+        // Push the restored border to the backend; the move_resize in
+        // restore_floating_geometry never applies border widths.
+        ctx.set_border(win, restored_border);
         super::state::restore_floating_geometry(ctx, win);
     }
-}
-
-/// Compute and apply the geometry dictated by a client's [`SnapPosition`].
-///
-/// This is a pure geometry function: it reads `client.snap_status` and
-/// `client.border_width`, derives the target `Rect` from the monitor's
-/// `work_rect`, and applies it through `move_resize`. It does *not* modify
-/// `snap_status`.
-///
-/// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
-/// client window is not found.
-fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
-    let c = match ctx.core().model().client(win) {
-        Some(c) => c,
-        None => return,
-    };
-
-    let Some(rect) = c.snap_status.target_rect(c.border_width, m.work_rect()) else {
-        return;
-    };
-
-    ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
 }

@@ -1,4 +1,3 @@
-use crate::backend::x11::X11RuntimeConfig;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -132,36 +131,6 @@ impl WindowAnimation {
     }
 }
 
-/// Drop an in-flight X11 animation without applying its final target.
-pub fn drop_x11_animation(x11_runtime: &mut X11RuntimeConfig, win: WindowId) {
-    let _ = x11_runtime.take_window_animation(win);
-}
-
-/// Take an in-flight animation and return its current visual rectangle
-/// without snapping to the obsolete target — the correct starting point
-/// when a live interaction retargets a moving window.
-///
-/// The X11 arm ticks to `now`; the Wayland arm returns the last frame the
-/// compositor rendered (`displayed_frame`), since that is what is actually
-/// on screen. The `now` parameter is therefore live for X11 and unused on
-/// the Wayland path.
-pub(crate) fn take_current_animation_rect(
-    ctx: &mut WmCtx<'_>,
-    win: WindowId,
-    now: Instant,
-) -> Option<Rect> {
-    match ctx {
-        WmCtx::X11(x11) => x11
-            .x11_runtime
-            .take_window_animation(win)
-            .map(|animation| animation.tick(now).rect),
-        WmCtx::Wayland(wl) => wl
-            .wayland
-            .with_state(|state| state.take_current_window_animation_rect(win, now))
-            .flatten(),
-    }
-}
-
 /// Slide a newly managed window down into its arranged position.
 ///
 /// The caller must run the window's authoritative arrange first. This helper
@@ -194,9 +163,8 @@ pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
     // set_window_target_rect already no-ops unmapped surfaces.  For
     // non-animated mode this also covers the edge case where arrange's
     // move_resize short-circuited (from == target) without mapping.
-    if is_visible && let WmCtx::Wayland(_) = ctx {
-        ctx.window_backend().resize_window(window, target);
-        ctx.window_backend().flush();
+    if is_visible {
+        ctx.snap_deferred_spawn_geometry(window, target);
     }
 
     if !animated {

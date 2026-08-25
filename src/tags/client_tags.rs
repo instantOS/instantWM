@@ -38,9 +38,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     mon.record_focus(effective_mask, win);
 
-    if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::set_client_tag_prop(x11.core.state(), &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.sync_client_tag_props(win);
     crate::focus::focus(ctx, None);
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }

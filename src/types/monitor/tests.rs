@@ -207,7 +207,7 @@ fn current_tag_index_is_derived_from_selected_tags() {
 #[test]
 fn all_tags_view_is_derived_from_selected_mask() {
     let mut monitor = Monitor {
-        tags: vec![TagNames::default(); 3],
+        tags: vec![Tag::default(); 3],
         ..Monitor::default()
     };
 

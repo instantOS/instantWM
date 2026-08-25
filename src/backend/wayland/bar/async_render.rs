@@ -8,7 +8,6 @@ use crate::contexts::CoreCtx;
 
 use super::WaylandBarPainter;
 use super::buffer::RawBarBuffer;
-use super::systray;
 
 #[derive(Clone)]
 struct AsyncBarRenderRequest {
@@ -165,20 +164,9 @@ fn render_snapshot(
             mon.presentation.status.ensure_items_parsed();
         }
 
-        painter.set_font_size(mon.font_size);
-        painter.set_font_families(&mon.font_families);
+        painter.set_fonts(&mon.fonts);
         painter.begin(Scale::from(1.0), mon.rect);
         let output = scene::render_monitor_snapshot(&mon, painter);
-        let bar_height = mon.rect.h;
-        if let Some(systray) = &mon.systray {
-            systray::draw_snapshot(
-                painter,
-                systray,
-                mon.presentation.tray_menu(),
-                &systray.layout,
-                bar_height,
-            );
-        }
 
         if let Some(raw) = painter.finish_raw() {
             buffers.push(raw);

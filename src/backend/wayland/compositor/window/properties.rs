@@ -98,6 +98,94 @@ impl WaylandState {
         if let Some(handle) = self.foreign_toplevel_handles.remove(&window) {
             self.foreign_toplevel_list_state.remove_toplevel(&handle);
         }
+        self.foreign_toplevel_management_state
+            .remove_toplevel::<Self>(window);
+    }
+
+    /// Compute the protocol-visible presentation of a managed window for
+    /// wlr-foreign-toplevel-management. `None` while the window is not yet in
+    /// the managed model (freshly registered surface awaiting its map work).
+    pub(crate) fn foreign_toplevel_snapshot(
+        &self,
+        window: WindowId,
+    ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
+    {
+        use crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot;
+
+        let core = self.globals()?;
+        let client = core.model.client(window)?;
+        Some(ToplevelSnapshot {
+            title: self.window_title(window).unwrap_or_default(),
+            app_id: self.window_app_id(window).unwrap_or_default(),
+            activated: core.model.selected_win() == Some(window),
+            minimized: client.is_minimized(),
+            maximized: client.mode().is_maximized(),
+            fullscreen: client.mode().is_true_fullscreen(),
+            parent: client.transient_for,
+            outputs: self
+                .find_window(window)
+                .map(|element| self.outputs_for_window_geometry(element))
+                .unwrap_or_default(),
+        })
+    }
+
+    /// Push the current presentation of one window to managing clients
+    /// (advertises it on first sight; diffs afterwards). Cheap when nothing
+    /// changed.
+    pub fn refresh_foreign_toplevel(&mut self, window: WindowId) {
+        if !self.foreign_toplevel_handles.contains_key(&window) {
+            return;
+        }
+        if let Some(snapshot) = self.foreign_toplevel_snapshot(window) {
+            self.foreign_toplevel_management_state
+                .sync_toplevel::<Self>(window, &snapshot);
+        }
+    }
+
+    /// Refresh every managed window's advertised presentation.
+    pub fn refresh_all_foreign_toplevels(&mut self) {
+        let windows: Vec<WindowId> = self.foreign_toplevel_handles.keys().copied().collect();
+        for window in windows {
+            self.refresh_foreign_toplevel(window);
+        }
+    }
+
+    /// Reconcile the protocol's activated projection after a complete core
+    /// runtime tick.
+    pub fn reconcile_foreign_toplevel_selection(
+        &mut self,
+        transition: Option<crate::client::focus::SelectionTransition>,
+    ) {
+        let selected = self.globals().and_then(|core| core.model.selected_win());
+        debug_assert!(
+            transition.is_none_or(|change| change.current == selected),
+            "core selection changed outside the focus transaction boundary"
+        );
+        let advertised = self
+            .foreign_toplevel_management_state
+            .advertised_selection();
+        if selected == advertised {
+            return;
+        }
+
+        // The core transition is the normal source of dirty windows. The
+        // protocol checkpoint remains a correctness boundary when a manager
+        // binds late or lifecycle teardown has already removed a model node.
+        let transitioned_from = transition.and_then(|change| change.previous);
+        let mut previous_windows = Vec::with_capacity(2);
+        for candidate in [transitioned_from, advertised].into_iter().flatten() {
+            if Some(candidate) != selected && !previous_windows.contains(&candidate) {
+                previous_windows.push(candidate);
+            }
+        }
+        for previous in previous_windows {
+            self.refresh_foreign_toplevel(previous);
+        }
+        if let Some(selected) = selected {
+            self.refresh_foreign_toplevel(selected);
+        }
+        self.foreign_toplevel_management_state
+            .set_advertised_selection(selected);
     }
 
     /// Get properties for rule matching.
@@ -278,5 +366,64 @@ impl WaylandState {
         } else {
             self.send_toplevel_configure(&window, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::types::{Client, Monitor, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn foreign_toplevel_selection_reconciles_across_tick_boundaries() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let mut wm = Box::new(Wm::new(Backend::new_wayland(WaylandBackend::new())));
+        state.attach_wm(&mut wm);
+
+        let first = WindowId(1);
+        let second = WindowId(2);
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        wm.core.model.monitors.set_selected(monitor_id);
+        for win in [first, second] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.clients = vec![first, second];
+        monitor.set_selected(Some(first));
+
+        state.reconcile_foreign_toplevel_selection(None);
+        assert_eq!(
+            state
+                .foreign_toplevel_management_state
+                .advertised_selection(),
+            Some(first)
+        );
+
+        // This mutation represents a direct keyboard/IPC focus action between
+        // compositor queue drains. The next synchronization must still know
+        // which previously advertised window needs deactivation.
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(second));
+        let transition = crate::client::focus::SelectionTransition {
+            previous: Some(first),
+            current: Some(second),
+        };
+        state.reconcile_foreign_toplevel_selection(Some(transition));
+        assert_eq!(
+            state
+                .foreign_toplevel_management_state
+                .advertised_selection(),
+            Some(second)
+        );
     }
 }

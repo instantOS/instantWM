@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use calloop::ping::Ping;
 use zbus::blocking::{Connection, Proxy};
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::{OwnedValue, Value};
@@ -232,6 +233,28 @@ enum SystrayEvt {
     },
 }
 
+/// Event transport with an optional event-loop wake.
+///
+/// Worker threads push model updates through this handle. When the running
+/// backend registered a ping (see `crate::runtime::make_wake_ping`), every
+/// delivered event wakes the loop so tray changes render immediately instead
+/// of waiting for the next unrelated wakeup.
+#[derive(Clone)]
+struct SystrayEventTx {
+    tx: Sender<SystrayEvt>,
+    wake: Option<Ping>,
+}
+
+impl SystrayEventTx {
+    fn send(&self, event: SystrayEvt) -> bool {
+        let delivered = self.tx.send(event).is_ok();
+        if delivered && let Some(ping) = self.wake.as_ref() {
+            ping.ping();
+        }
+        delivered
+    }
+}
+
 struct DbusMenuSession {
     id: u64,
     service: String,
@@ -253,11 +276,15 @@ struct StatusNotifierWorker {
 }
 
 impl StatusNotifierWorker {
-    fn spawn(native_menu_request: NativeMenuRequestSlot) -> std::io::Result<Self> {
+    fn spawn(
+        native_menu_request: Option<NativeMenuRequestSlot>,
+        wake: Option<Ping>,
+    ) -> std::io::Result<Self> {
         let (cmd_tx, cmd_rx) = channel::<SystrayCmd>();
         let (evt_tx, evt_rx) = channel::<SystrayEvt>();
+        let evt_tx = SystrayEventTx { tx: evt_tx, wake };
         let thread = thread::Builder::new()
-            .name("instantwm-wayland-systray".to_string())
+            .name("instantwm-systray".to_string())
             .spawn(move || run_systray_thread(cmd_rx, evt_tx, native_menu_request))?;
         Ok(Self {
             cmd_tx,
@@ -272,19 +299,25 @@ pub(crate) struct StatusNotifierRuntime {
     restart_at: Option<Instant>,
     retry_delay: Duration,
     next_menu_session_id: AtomicU64,
-    native_menu_request: NativeMenuRequestSlot,
+    native_menu_request: Option<NativeMenuRequestSlot>,
+    wake: Option<Ping>,
 }
 
 impl StatusNotifierRuntime {
-    pub(crate) fn start(native_menu_request: NativeMenuRequestSlot) -> Self {
+    pub(crate) fn start(
+        native_menu_request: Option<NativeMenuRequestSlot>,
+        wake: Option<Ping>,
+    ) -> Self {
         let mut runtime = Self {
             worker: None,
             restart_at: None,
             retry_delay: WORKER_RETRY_MIN,
             next_menu_session_id: AtomicU64::new(1),
             native_menu_request,
+            wake,
         };
-        match StatusNotifierWorker::spawn(Arc::clone(&runtime.native_menu_request)) {
+        match StatusNotifierWorker::spawn(runtime.native_menu_request.clone(), runtime.wake.clone())
+        {
             Ok(worker) => runtime.worker = Some(worker),
             Err(error) => {
                 log::warn!("status notifier: failed to spawn thread: {error}");
@@ -371,7 +404,7 @@ impl StatusNotifierRuntime {
     }
 
     fn restart_worker(&mut self) {
-        match StatusNotifierWorker::spawn(Arc::clone(&self.native_menu_request)) {
+        match StatusNotifierWorker::spawn(self.native_menu_request.clone(), self.wake.clone()) {
             Ok(worker) => {
                 log::info!("status notifier: restarting worker");
                 self.worker = Some(worker);
@@ -451,8 +484,8 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
 
 fn run_systray_thread(
     cmd_rx: Receiver<SystrayCmd>,
-    evt_tx: Sender<SystrayEvt>,
-    native_menu_request: NativeMenuRequestSlot,
+    evt_tx: SystrayEventTx,
+    native_menu_request: Option<NativeMenuRequestSlot>,
 ) {
     let conn = match Connection::session() {
         Ok(c) => c,
@@ -487,7 +520,7 @@ fn run_systray_thread(
     let refresh_mode = mode.clone();
     let refresh_evt_tx = evt_tx.clone();
     let refresh_thread = match thread::Builder::new()
-        .name("instantwm-wayland-systray-refresh".to_string())
+        .name("instantwm-systray-refresh".to_string())
         .spawn(move || {
             run_item_refresh(
                 &refresh_conn,
@@ -499,7 +532,7 @@ fn run_systray_thread(
         Ok(thread) => Some(thread),
         Err(error) => {
             log::warn!("status notifier: failed to spawn refresh thread: {error}");
-            let _ = evt_tx.send(SystrayEvt::Ready);
+            evt_tx.send(SystrayEvt::Ready);
             None
         }
     };
@@ -520,9 +553,21 @@ fn run_systray_thread(
         };
         match command {
             Ok(cmd) => {
-                dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request);
+                dispatch_cmd(
+                    &conn,
+                    cmd,
+                    &evt_tx,
+                    &mut menu_session,
+                    native_menu_request.as_ref(),
+                );
                 while let Ok(cmd) = cmd_rx.try_recv() {
-                    dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request);
+                    dispatch_cmd(
+                        &conn,
+                        cmd,
+                        &evt_tx,
+                        &mut menu_session,
+                        native_menu_request.as_ref(),
+                    );
                 }
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -544,13 +589,13 @@ fn run_systray_thread(
 fn run_item_refresh(
     conn: &Connection,
     mode: &WatcherMode,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     stop_rx: Receiver<()>,
 ) {
     let mut known_ids = HashSet::new();
     let mut watching = HashSet::new();
     reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
-    if evt_tx.send(SystrayEvt::Ready).is_err() {
+    if !evt_tx.send(SystrayEvt::Ready) {
         return;
     }
 
@@ -635,11 +680,11 @@ fn watch_item_icon(conn: Connection, tx: Sender<(String, String)>, service: Stri
 }
 
 /// Fetch and re-publish one item's icon on demand (e.g. after `NewIcon`).
-fn refresh_item_icon(conn: &Connection, evt_tx: &Sender<SystrayEvt>, service: &str, path: &str) {
+fn refresh_item_icon(conn: &Connection, evt_tx: &SystrayEventTx, service: &str, path: &str) {
     let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, service, path) else {
         return;
     };
-    let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
+    evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
         service: service.to_string(),
         path: path.to_string(),
         icon_rgba,
@@ -699,7 +744,7 @@ fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
 fn reconcile_items_for_mode(
     conn: &Connection,
     mode: &WatcherMode,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
 ) {
     match mode {
@@ -716,7 +761,7 @@ fn reconcile_items_for_mode(
 fn reconcile_items_embedded(
     conn: &Connection,
     state: &Arc<Mutex<WatcherState>>,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
 ) {
     let registered = state.lock().unwrap().items.clone();
@@ -760,7 +805,7 @@ fn reconcile_items_embedded(
         if let Some((service, path)) = parse_sni_id(id)
             && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
         {
-            let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
+            evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
                 path,
                 icon_rgba,
@@ -771,7 +816,7 @@ fn reconcile_items_embedded(
 
     for removed in known_ids.difference(&seen) {
         if let Some((service, path)) = parse_sni_id(removed) {
-            let _ = evt_tx.send(SystrayEvt::ItemRemoved(service, path));
+            evt_tx.send(SystrayEvt::ItemRemoved(service, path));
         }
     }
     *known_ids = seen;
@@ -779,7 +824,7 @@ fn reconcile_items_embedded(
 
 fn reconcile_items(
     conn: &Connection,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
 ) -> zbus::Result<()> {
     let proxy = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
@@ -790,7 +835,7 @@ fn reconcile_items(
         if let Some((service, path)) = parse_sni_id(&id)
             && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
         {
-            let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
+            evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
                 path,
                 icon_rgba,
@@ -801,7 +846,7 @@ fn reconcile_items(
 
     for removed in known_ids.difference(&seen) {
         if let Some((service, path)) = parse_sni_id(removed) {
-            let _ = evt_tx.send(SystrayEvt::ItemRemoved(service, path));
+            evt_tx.send(SystrayEvt::ItemRemoved(service, path));
         }
     }
     *known_ids = seen;
@@ -811,9 +856,9 @@ fn reconcile_items(
 fn dispatch_cmd(
     conn: &Connection,
     cmd: SystrayCmd,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     menu_session: &mut Option<DbusMenuSession>,
-    native_menu_request: &NativeMenuRequestSlot,
+    native_menu_request: Option<&NativeMenuRequestSlot>,
 ) {
     match cmd {
         SystrayCmd::Activate {
@@ -844,7 +889,9 @@ fn dispatch_cmd(
             path,
             position,
         } => {
-            if let Ok(mut request) = native_menu_request.lock() {
+            if let Some(slot) = native_menu_request
+                && let Ok(mut request) = slot.lock()
+            {
                 *request = None;
             }
             match open_dbus_menu(conn, session_id, &service, &path) {
@@ -856,6 +903,9 @@ fn dispatch_cmd(
                 Ok(None) => {
                     *menu_session = None;
                     send_menu_changed(evt_tx, session_id, None);
+                    // Without a host slot there is no way to claim the item's
+                    // own menu toplevel; the item still opens it natively and
+                    // positions it itself (the X11 case).
                     record_native_menu_request(
                         conn,
                         native_menu_request,
@@ -911,11 +961,16 @@ fn dispatch_cmd(
 
 fn record_native_menu_request(
     conn: &Connection,
-    slot: &NativeMenuRequestSlot,
+    slot: Option<&NativeMenuRequestSlot>,
     position: Point,
     service: &str,
     path: &str,
 ) {
+    // Resolving the owner PID is only useful when the compositor will claim
+    // the item's menu toplevel by PID; skip the D-Bus round trip otherwise.
+    let Some(slot) = slot else {
+        return;
+    };
     let owner_pid = Proxy::new(
         conn,
         "org.freedesktop.DBus",
@@ -945,8 +1000,10 @@ fn set_native_menu_request(
     }
 }
 
-fn clear_native_menu_request(slot: &NativeMenuRequestSlot) {
-    if let Ok(mut request) = slot.lock() {
+fn clear_native_menu_request(slot: Option<&NativeMenuRequestSlot>) {
+    if let Some(slot) = slot
+        && let Ok(mut request) = slot.lock()
+    {
         *request = None;
     }
 }

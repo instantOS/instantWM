@@ -47,7 +47,6 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
-    let tray_menu = wm.tray_menu.presentation();
     let mut core = CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
@@ -63,43 +62,22 @@ pub fn build_bar_buffers(
 
         data.bar_painter
             .set_render_ping(state.runtime.render_ping.clone());
-        crate::bar::wayland::render_bar_buffers(
+        crate::backend::wayland::bar::render_bar_buffers(
             &mut core,
             &mut data.bar_painter,
             smithay::utils::Scale::from(1.0),
-            &data.status_notifier_tray,
-            tray_menu.as_ref(),
         )
     } else {
         Vec::new()
     };
 
     if show_bottom {
-        buffers.extend(crate::bar::wayland::build_bottom_bar_buffers(&mut core));
+        buffers.extend(crate::backend::wayland::bar::build_bottom_bar_buffers(
+            &mut core,
+        ));
     }
 
     buffers
-}
-
-/// Poll Wayland systray events once and mark the bar dirty when icons changed.
-pub fn poll_systray(wm: &mut Wm) {
-    let core = CoreCtx::new(
-        &mut wm.core,
-        &mut wm.work,
-        &mut wm.running,
-        &mut wm.bar,
-        &mut wm.focus,
-    );
-    let Backend::Wayland(data) = &mut wm.backend else {
-        return;
-    };
-
-    if let Some(runtime) = data.status_notifier_runtime.as_mut() {
-        let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut wm.tray_menu);
-        if dirty {
-            core.bar.mark_dirty();
-        }
-    }
 }
 
 /// Shared render elements captured once and reused across output renders in
@@ -110,7 +88,7 @@ pub fn poll_systray(wm: &mut Wm) {
 pub struct SharedSceneElements {
     pub bar_buffers: Rc<Vec<(MemoryRenderBuffer, crate::types::Point)>>,
     pub borders: Vec<SolidColorRenderElement>,
-    pub layout_preview_color: crate::bar::color::Rgba,
+    pub layout_preview_color: crate::types::color::Rgba,
 }
 
 /// Renderer-owned cache shared across consecutive frames.

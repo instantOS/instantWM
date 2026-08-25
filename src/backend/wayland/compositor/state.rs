@@ -161,6 +161,8 @@ pub struct WaylandState {
     pub session_lock_manager_state: SessionLockManagerState,
     pub ext_workspace_state: ExtWorkspaceManagerState,
     pub output_management_state: OutputManagementState,
+    pub foreign_toplevel_management_state:
+        crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState,
     /// Current session lock state.
     pub lock_state: SessionLockState,
     /// Lock surfaces per output (keyed by output name).
@@ -506,6 +508,8 @@ impl WaylandState {
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let ext_workspace_state = ExtWorkspaceManagerState::new(&dh);
         let output_management_state = OutputManagementState::new::<Self>(&dh);
+        let foreign_toplevel_management_state =
+            crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -561,6 +565,7 @@ impl WaylandState {
             session_lock_manager_state,
             ext_workspace_state,
             output_management_state,
+            foreign_toplevel_management_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
@@ -835,7 +840,10 @@ impl WaylandState {
         }
     }
 
-    fn outputs_for_window_geometry(&self, window: &Window) -> Vec<smithay::output::Output> {
+    pub(crate) fn outputs_for_window_geometry(
+        &self,
+        window: &Window,
+    ) -> Vec<smithay::output::Output> {
         let window_rect = self.space.element_location(window).map(|location| {
             let mut rect = window.bbox_with_popups();
             rect.loc += location - window.geometry().loc;

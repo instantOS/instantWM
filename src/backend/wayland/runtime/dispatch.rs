@@ -28,13 +28,18 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::MapWindow(params) => handle_map_window(wm, state, params),
             WmCommand::UnmapWindow(_) => {}
             WmCommand::UnmanageWindow(win) => handle_unmanage_window(wm, win),
-            WmCommand::ActivateWindow(win) => handle_activate_window(wm, win),
+            WmCommand::ActivateWindow(win) => {
+                // Selection refresh is handled by the post-command diff
+                // below; activating an invisible window only marks it
+                // urgent, which is not part of the advertised snapshot.
+                handle_activate_window(wm, win);
+            }
             WmCommand::PointerMotion(motion) => {
                 if let (Some(pointer), Some(keyboard)) =
                     (state.seat.get_pointer(), state.seat.get_keyboard())
                 {
                     let update_active_drag = should_update_active_drag(
-                        wm.core.drag.active_interaction().is_some(),
+                        wm.core.interaction.drag.active_interaction().is_some(),
                         next_is_pointer_motion,
                     );
                     pointer_hit_cache = Some(
@@ -91,9 +96,11 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::CancelInteractiveDrag(reason) => cancel_interactive_drag(wm, reason),
             WmCommand::UpdateProperties { win, properties } => {
                 handle_update_properties(wm, win, &properties);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::UpdateTransientFor { win, parent } => {
                 handle_update_transient_for(wm, win, parent);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(wm, win, update);
@@ -108,12 +115,21 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::SetMaximized { win, maximized } => {
                 handle_set_maximized(wm, state, win, maximized);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::SetFullscreen { win, fullscreen } => {
                 handle_set_fullscreen(wm, state, win, fullscreen);
+                state.refresh_foreign_toplevel(win);
             }
             WmCommand::SetMinimized { win, minimized } => {
                 handle_set_minimized(wm, win, minimized);
+                state.refresh_foreign_toplevel(win);
+            }
+            WmCommand::CloseWindow(win) => {
+                let mut ctx = wm.ctx();
+                // Same funnel as IPC and keybindings: a locked window refuses
+                // to close, no matter which client asks.
+                crate::client::close_win(&mut ctx, win);
             }
             WmCommand::ShowScratchpad(name) => {
                 let mut ctx = wm.ctx();
@@ -124,6 +140,11 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::RequestSpaceSync => {
                 wm.work.layout.mark_all();
+                // Output membership for foreign-toplevel clients is
+                // refreshed *after* the pending layout has been applied and
+                // the space synced (see
+                // `engine::process_animations_and_request_render`); doing it
+                // here would advertise pre-arrange geometry.
                 state.request_space_sync();
             }
             WmCommand::RequestBarRedraw => {
@@ -186,7 +207,10 @@ fn handle_update_properties(
     properties: &crate::client::WindowProperties,
 ) {
     let mut ctx = wm.ctx();
-    crate::client::update_window_properties(ctx.core_mut(), win, properties);
+    let previous_focus = ctx.core().model().selected_win();
+    if crate::client::update_window_properties(ctx.core_mut(), win, properties) {
+        crate::focus::refresh_focus_after_selection(&mut ctx, previous_focus, None);
+    }
 }
 
 fn handle_update_transient_for(
@@ -394,6 +418,7 @@ fn handle_map_window(
         wl_state.request_window_focus(win);
     }
     wl_state.sync_window_presentation(win);
+    wl_state.refresh_foreign_toplevel(win);
     wl_state.request_space_sync();
 }
 
@@ -598,7 +623,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
     let cancelled_drag = if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
         crate::mouse::drag::lifecycle::cancel_window(
-            wl_ctx.core.drag_state_mut(),
+            &mut wl_ctx.core.interaction_mut().drag,
             wl_ctx.wayland,
             win,
             crate::core_state::DragCancelReason::WindowDestroyed,
@@ -659,7 +684,7 @@ fn handle_begin_resize(
             return;
         };
         if crate::mouse::drag::lifecycle::begin_resize(
-            wl_ctx.core.drag_state_mut(),
+            &mut wl_ctx.core.interaction_mut().drag,
             wl_ctx.wayland,
             crate::mouse::drag::lifecycle::ResizeDragParams {
                 win,

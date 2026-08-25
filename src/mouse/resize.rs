@@ -148,7 +148,7 @@ pub fn resize_aspect_mouse(
     btn: MouseButton,
     source: InteractionSource,
 ) {
-    let Some(geo) = ctx.client_geo(win) else {
+    let Some(geo) = ctx.core().client_geo(win) else {
         return;
     };
 

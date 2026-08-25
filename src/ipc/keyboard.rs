@@ -6,11 +6,11 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
     let mut ctx = wm.ctx();
     match cmd {
         KeyboardCommand::Status => {
-            let status = ctx.core().keyboard_layout().status();
+            let status = ctx.core().interaction().keyboard_layout.status();
             Response::Message(status)
         }
         KeyboardCommand::List => {
-            let state = &ctx.core().keyboard_layout();
+            let state = &ctx.core().interaction().keyboard_layout;
             let layouts: Vec<KeyboardLayoutInfo> = state
                 .layouts
                 .iter()

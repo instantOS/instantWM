@@ -4,9 +4,9 @@
 //! for monitor-related operations.
 
 use crate::backend::BackendOutputInfo;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::core_state::{DerivedState, EffectiveConfig};
-use crate::focus::{focus, refresh_focus, unfocus_win};
+use crate::focus::refresh_focus_after_selection;
 use crate::types::*;
 use std::collections::HashMap;
 
@@ -306,12 +306,10 @@ pub fn transfer_client(
     let focused_before = ctx.core().model().selected_win();
     let outcome = ctx
         .core_mut()
-        .model_mut()
-        .move_client_to_monitor(win, target_mon)?;
+        .mutate_selection(|model| model.move_client_to_monitor(win, target_mon));
+    let outcome = outcome?;
 
-    if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::set_client_tag_prop(x11.core.state(), &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.sync_client_tag_props(win);
 
     match transfer_focus_effect(
         focus_policy,
@@ -321,30 +319,19 @@ pub fn transfer_client(
         win,
     ) {
         TransferFocusEffect::None => {}
-        TransferFocusEffect::FocusSourceReplacement { moved_window } => {
-            unfocus_win(ctx, moved_window, true);
-            refresh_focus(ctx, None);
+        TransferFocusEffect::FocusSourceReplacement { .. } => {
+            refresh_focus_after_selection(ctx, focused_before, None);
         }
         TransferFocusEffect::FocusTransferredWindow {
             previous_focus,
             target_monitor,
             moved_window,
         } => {
-            if let Some(previously_focused) = previous_focus {
-                unfocus_win(ctx, previously_focused, false);
-            }
-            let model = ctx.core_mut().model_mut();
-            model.set_selected_monitor(target_monitor);
-            model
-                .monitor_mut(target_monitor)
-                .expect("a completed transfer must retain its target monitor")
-                .set_selected(Some(moved_window));
+            ctx.core_mut().select_monitor(target_monitor);
+            ctx.core_mut()
+                .select_on_monitor(target_monitor, Some(moved_window));
             ctx.update_ewmh_desktop_props();
-            // Preselecting the transaction's target prevents `focus_generic`
-            // from treating the destination monitor's remembered selection as
-            // the previously focused window. `previous_focus` above is the
-            // actual backend focus and remains the authoritative history entry.
-            refresh_focus(ctx, Some(moved_window));
+            refresh_focus_after_selection(ctx, previous_focus, Some(moved_window));
         }
     }
 
@@ -406,16 +393,17 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     crate::tags::send_to_monitor(ctx, direction);
 
+    let previous_focus = ctx.core().model().selected_win();
     if let Some(monitor_id) = ctx
         .core()
         .model()
         .client(c_win)
         .map(|client| client.monitor_id)
     {
-        ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
+        ctx.core_mut().select_monitor(monitor_id);
     }
 
-    focus(ctx, Some(c_win));
+    refresh_focus_after_selection(ctx, previous_focus, Some(c_win));
 
     ctx.window_backend().raise_window_visual_only(c_win);
     ctx.warp_cursor_to_client(c_win);
@@ -440,17 +428,16 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
 }
 
 pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
-    // Try the backend's get_outputs first (uses XRandR on X11, native on Wayland)
+    // Try the backend's primary output discovery first (XRandR on X11,
+    // native protocol state on Wayland).
     let outputs = ctx.output_backend().get_outputs();
     if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
         return sync_monitors_from_outputs(ctx, outputs);
     }
 
-    // Fall back to Xinerama for X11
-    if let WmCtx::X11(x11) = ctx
-        && let Some(result) = update_from_xinerama(x11)
-    {
-        return result;
+    // Legacy fallback discovery (Xinerama on X11; None elsewhere).
+    if let Some(outputs) = ctx.output_backend().query_fallback_outputs() {
+        return sync_monitors_from_outputs(ctx, outputs);
     }
 
     // Final fallback to single monitor
@@ -527,7 +514,7 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     if let Some(ptr) = ctx.pointer_backend().pointer_location()
         && let Some(m) = ctx.core().model().monitors.find_monitor_at_pointer(ptr)
     {
-        ctx.core_mut().model_mut().monitors.set_selected(m);
+        ctx.core_mut().select_monitor(m);
     }
 }
 
@@ -586,6 +573,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     if outputs.is_empty() {
         return false;
     }
+    let previous_focus = ctx.core().model().selected_win();
 
     let template = ctx.core().config().tag_template.clone();
     let show_bar = ctx.core().config().bar.show;
@@ -600,21 +588,26 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), o.scale))
         .collect();
 
-    let reconciliation = reconcile_monitor_model(
-        ctx.core_mut().model_mut(),
-        &outputs,
-        &metrics,
-        &template,
-        show_bar,
-        show_bottom_bar,
-    );
+    let reconciliation = ctx.core_mut().mutate_selection(|model| {
+        reconcile_monitor_model(
+            model,
+            &outputs,
+            &metrics,
+            &template,
+            show_bar,
+            show_bottom_bar,
+        )
+    });
     changed |= reconciliation.changed;
 
     for bar_win in reconciliation.removed_bar_windows {
-        crate::backend::x11::monitor_helpers::destroy_monitor_bar(ctx, bar_win);
+        ctx.destroy_monitor_bar_window(bar_win);
     }
 
     notify_monitor_layout_changed(ctx, changed);
+    if ctx.core().model().selected_win() != previous_focus {
+        refresh_focus_after_selection(ctx, previous_focus, None);
+    }
     changed
 }
 
@@ -633,7 +626,7 @@ fn reconcile_monitor_model(
     model: &mut crate::model::WmModel,
     outputs: &[BackendOutputInfo],
     metrics: &[(i32, i32, i32)],
-    tag_template: &[crate::types::monitor::TagNames],
+    tag_template: &[crate::types::Tag],
     show_bar: bool,
     show_bottom_bar: bool,
 ) -> MonitorReconciliation {
@@ -742,7 +735,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.set_bar_height(bar_height);
     }
-    ctx.core_mut().model_mut().set_selected_monitor(id);
+    ctx.core_mut().select_monitor(id);
     true
 }
 
@@ -779,14 +772,6 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         m.set_bar_height(bar_height);
     }
     true
-}
-
-fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
-    let outputs = crate::backend::x11::monitor_helpers::xinerama_outputs(&x11.x11)?;
-    Some(sync_monitors_from_outputs(
-        &mut WmCtx::X11(x11.reborrow()),
-        outputs,
-    ))
 }
 
 #[cfg(test)]

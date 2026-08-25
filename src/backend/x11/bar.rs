@@ -47,10 +47,8 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
     let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
     let snapshots = crate::bar::scene::build_monitor_snapshots(
         core,
-        None,
-        None,
         true,
-        core.bar.runtime.systray_width,
+        core.bar.runtime.external_tray_width,
     );
     let Some(snapshot) = snapshots
         .iter()
@@ -67,10 +65,8 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
     let snapshots = crate::bar::scene::build_monitor_snapshots(
         core,
-        None,
-        None,
         true,
-        core.bar.runtime.systray_width,
+        core.bar.runtime.external_tray_width,
     );
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots
@@ -121,7 +117,7 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
 pub fn resize_bar_win(
     globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
-    _x11_runtime: &X11RuntimeConfig,
+    x11_runtime: &X11RuntimeConfig,
     systray: Option<&XEmbedTray>,
     m: &Monitor,
 ) {
@@ -140,16 +136,20 @@ pub fn resize_bar_win(
         ));
     }
 
-    let conn = x11.conn;
     let x11_bar_win: Window = m.bar_win.into();
-    let _ = conn.configure_window(
-        x11_bar_win,
-        &x11rb::protocol::xproto::ConfigureWindowAux::new()
-            .x(m.work_rect().x)
-            .y(m.bar_y())
-            .width(w)
-            .height(bar_height as u32),
-    );
+    let bounds = Rect::new(m.work_rect().x, m.bar_y(), w as i32, bar_height);
+    if let Some(draw) = x11_runtime.draw.as_ref() {
+        draw.move_resize_window(x11_bar_win, bounds);
+    } else {
+        let _ = x11.conn.configure_window(
+            x11_bar_win,
+            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .x(bounds.x)
+                .y(bounds.y)
+                .width(bounds.w as u32)
+                .height(bounds.h as u32),
+        );
+    }
 }
 
 /// Move/resize the bottom bar window to its current monitor strip and re-apply

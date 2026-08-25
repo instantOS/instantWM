@@ -43,18 +43,28 @@ pub fn get_state(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 
 
 pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
     let state = ctx.core.state();
-    let operations = crate::client::visibility::visibility_plan(&state.model);
+    let operations =
+        visibility_transaction_order(crate::client::visibility::visibility_plan(&state.model));
     let has_tiling = state
         .model
         .monitors_iter()
         .any(|(_, m)| m.is_tiling_layout());
+
+    // A tag switch is one visual transaction. Position every incoming window
+    // before parking any outgoing window, and keep other X clients (notably a
+    // compositing manager) from observing the intermediate requests. Direct
+    // per-window flushes are avoided; any same-connection round trips needed
+    // for floating size hints remain hidden by the grab. ServerGrab flushes
+    // the release when the complete visibility pass is done.
+    let conn = ctx.x11.conn;
+    let _grab = crate::backend::x11::ServerGrab::new(conn);
 
     for entry in operations {
         let win = entry.win;
         let geo = entry.rect;
         let is_visible = entry.visible;
         let mode = entry.mode;
-        crate::animation::drop_x11_animation(ctx.x11_runtime, win);
+        let _ = ctx.x11_runtime.take_window_animation(win);
 
         if is_visible {
             let Rect { x, y, w, h } = geo;
@@ -69,7 +79,6 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
                     .width(width)
                     .height(height),
             );
-            let _ = ctx.x11.conn.flush();
 
             let should_position = mode.is_free_positioned()
                 || mode.is_fake_fullscreen()
@@ -95,9 +104,20 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
                     .width(geo.w as u32)
                     .height(geo.h as u32),
             );
-            let _ = ctx.x11.conn.flush();
         }
     }
+}
+
+/// Stable transaction order for visibility changes.
+///
+/// Incoming windows must cover their destination before outgoing windows are
+/// parked off-screen; otherwise the root wallpaper can become the only visible
+/// content between two ConfigureWindow requests.
+fn visibility_transaction_order(
+    mut operations: Vec<crate::client::visibility::VisibilityEntry>,
+) -> Vec<crate::client::visibility::VisibilityEntry> {
+    operations.sort_by_key(|entry| !entry.visible);
+    operations
 }
 
 // ---------------------------------------------------------------------------
@@ -210,5 +230,37 @@ impl Drop for UnmapEventSuppression<'_> {
             );
         }
         let _ = self.conn.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::visibility_transaction_order;
+    use crate::client::visibility::VisibilityEntry;
+    use crate::types::{ClientMode, Rect, WindowId};
+
+    fn entry(win: u32, visible: bool) -> VisibilityEntry {
+        VisibilityEntry {
+            win: WindowId(win),
+            rect: Rect::new(0, 0, 100, 100),
+            border_width: 1,
+            mode: ClientMode::tiled(),
+            visible,
+        }
+    }
+
+    #[test]
+    fn visibility_transaction_positions_incoming_windows_before_parking_outgoing_ones() {
+        let ordered = visibility_transaction_order(vec![
+            entry(1, false),
+            entry(2, true),
+            entry(3, false),
+            entry(4, true),
+        ]);
+
+        assert_eq!(
+            ordered.iter().map(|entry| entry.win).collect::<Vec<_>>(),
+            vec![WindowId(2), WindowId(4), WindowId(1), WindowId(3)]
+        );
     }
 }

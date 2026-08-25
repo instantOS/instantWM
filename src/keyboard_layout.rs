@@ -15,7 +15,7 @@ use std::process::Command;
 /// This sets a single layout active (not the full list), which is the
 /// simplest and most portable approach across X11 and XWayland.
 fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
-    let state = &ctx.core().keyboard_layout();
+    let state = &ctx.core().interaction().keyboard_layout;
     let layout = state
         .layout(index)
         .ok_or_else(|| format!("layout index {index} out of range"))?
@@ -66,13 +66,13 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
         );
     }
 
-    ctx.core_mut().keyboard_layout_mut().current = index;
+    ctx.core_mut().interaction_mut().keyboard_layout.current = index;
     Ok(())
 }
 
 /// Switch to a specific keyboard layout by index (0-based).
 pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
-    if ctx.core().keyboard_layout().is_empty() {
+    if ctx.core().interaction().keyboard_layout.is_empty() {
         return;
     }
     if let Err(e) = apply_layout(ctx, index) {
@@ -85,7 +85,11 @@ pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
 /// If the name matches one of the configured layouts, switch to it.
 /// Returns `true` if the layout was found and applied.
 pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
-    let index = ctx.core().keyboard_layout().find_layout_index(name);
+    let index = ctx
+        .core()
+        .interaction()
+        .keyboard_layout
+        .find_layout_index(name);
     match index {
         Some(idx) => {
             set_keyboard_layout(ctx, idx);
@@ -98,7 +102,7 @@ pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
 /// Cycle to the next or previous keyboard layout.
 /// Returns the status string of the new layout, or an empty string if no layouts are configured.
 pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> String {
-    let state = &ctx.core().keyboard_layout();
+    let state = &ctx.core().interaction().keyboard_layout;
     if state.is_empty() {
         return String::new();
     }
@@ -112,7 +116,7 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
         current - 1
     };
     set_keyboard_layout(ctx, next);
-    ctx.core().keyboard_layout().status()
+    ctx.core().interaction().keyboard_layout.status()
 }
 
 /// Replace the configured keyboard layouts at runtime.
@@ -121,24 +125,25 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
     ctx.core_mut()
         .state_mut()
+        .interaction
         .keyboard_layout
         .reset_layouts(layouts);
-    if !ctx.core().keyboard_layout().is_empty() {
+    if !ctx.core().interaction().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
     }
 }
 
 pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
-    let current = ctx.core().keyboard_layout().current;
-    ctx.core_mut().keyboard_layout_mut().swap_escape = enabled;
-    if !ctx.core().keyboard_layout().is_empty() {
+    let current = ctx.core().interaction().keyboard_layout.current;
+    ctx.core_mut().interaction_mut().keyboard_layout.swap_escape = enabled;
+    if !ctx.core().interaction().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, current);
     }
 }
 
 /// Apply the initially configured keyboard layout (called during startup).
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
-    if !ctx.core().keyboard_layout().is_empty() {
+    if !ctx.core().interaction().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
     }
 }
@@ -177,6 +182,7 @@ pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<()
     let new_index = ctx
         .core_mut()
         .state_mut()
+        .interaction
         .keyboard_layout
         .add_layout(layout)?;
 
@@ -193,7 +199,7 @@ pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<()
 ///
 /// Returns an error if the layout doesn't exist or if it's the last layout.
 pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), String> {
-    let state = &ctx.core().keyboard_layout();
+    let state = &ctx.core().interaction().keyboard_layout;
 
     // Parse the layout argument
     let index = if let Some(stripped) = layout.strip_prefix('#') {
@@ -219,10 +225,11 @@ pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), Strin
 
     ctx.core_mut()
         .state_mut()
+        .interaction
         .keyboard_layout
         .remove_layout(index)?;
 
-    let current = ctx.core().keyboard_layout().current;
+    let current = ctx.core().interaction().keyboard_layout.current;
     set_keyboard_layout(ctx, current);
     Ok(())
 }

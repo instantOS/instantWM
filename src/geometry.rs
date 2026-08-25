@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use crate::animation::WindowAnimation;
 use crate::constants::animation::DISTANCE_THRESHOLD;
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
@@ -204,47 +203,7 @@ fn enqueue_window_animation(
     duration: Duration,
 ) {
     let duration = animation_duration(ctx.core().config().animations, duration);
-    match ctx {
-        WmCtx::X11(x11) => {
-            let mut wmctx = crate::contexts::WmCtx::X11(x11.reborrow());
-            wmctx.set_geometry_impl(win, from, GeometryApplyMode::VisualOnly);
-            x11.x11_runtime.insert_or_replace_window_animation(
-                win,
-                WindowAnimation {
-                    from,
-                    to,
-                    started_at: Instant::now(),
-                    duration,
-                },
-            );
-        }
-        WmCtx::Wayland(wl) => {
-            let _ = wl.wayland.with_state(|state| {
-                state.set_window_target_rect(
-                    win,
-                    to,
-                    crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateFrom {
-                        from,
-                        duration,
-                    },
-                );
-            });
-        }
-    }
-}
-
-fn should_preserve_inflight_animation(ctx: &WmCtx<'_>, win: WindowId, target: Rect) -> bool {
-    match ctx {
-        WmCtx::X11(x11) => x11
-            .x11_runtime
-            .window_animations
-            .get(&win)
-            .is_some_and(|anim| anim.to == target),
-        WmCtx::Wayland(wl) => wl
-            .wayland
-            .with_state(|state| state.animation_targets_outer_rect(win, target))
-            .unwrap_or(false),
-    }
+    ctx.begin_window_animation(win, from, to, duration);
 }
 
 fn apply_resize_policies(
@@ -259,48 +218,16 @@ fn apply_resize_policies(
 
     let mut adjusted = target;
     let interact = options.bounds == BoundsPolicy::Interactive;
-    let changed = match ctx {
-        WmCtx::X11(x11_ctx) => {
-            let outcome = crate::client::geometry::apply_size_hints(
-                x11_ctx.core.model(),
-                x11_ctx.core.config(),
-                x11_ctx.core.derived(),
-                win,
-                &mut adjusted,
-                interact,
-            );
-            if outcome.should_apply_client_hints {
-                crate::backend::x11::geometry::apply_icccm_size_hints(
-                    x11_ctx.core.model_mut(),
-                    &x11_ctx.x11,
-                    win,
-                    &mut adjusted,
-                );
-            }
-            crate::client::geometry::size_hints_changed(x11_ctx.core.model(), win, &adjusted)
-        }
-        WmCtx::Wayland(wl_ctx) => {
-            let outcome = crate::client::geometry::apply_size_hints(
-                wl_ctx.core.model(),
-                wl_ctx.core.config(),
-                wl_ctx.core.derived(),
-                win,
-                &mut adjusted,
-                interact,
-            );
-            if outcome.should_apply_client_hints
-                && let Some(client) = wl_ctx.core.model().client(win)
-            {
-                let constrained = client.size_hints.constrain_size(
-                    adjusted.size(),
-                    client.min_aspect,
-                    client.max_aspect,
-                );
-                adjusted = adjusted.with_size(constrained);
-            }
-            crate::client::geometry::size_hints_changed(wl_ctx.core.model(), win, &adjusted)
-        }
-    };
+    let outcome = crate::client::geometry::apply_size_hints(
+        ctx.core().model(),
+        ctx.core().config(),
+        ctx.core().derived(),
+        win,
+        &mut adjusted,
+        interact,
+    );
+    ctx.refine_size_hints(win, outcome.should_apply_client_hints, &mut adjusted);
+    let changed = crate::client::geometry::size_hints_changed(ctx.core().model(), win, &adjusted);
 
     let client_count = ctx.core().model().clients.len();
     if changed || client_count == 1 || options.bounds == BoundsPolicy::FloatingTransition {
@@ -337,25 +264,24 @@ pub(crate) fn move_resize(
 
     match options.mode {
         MoveResizeMode::Immediate => {
-            if !should_preserve_inflight_animation(ctx, win, final_rect) {
+            if !ctx.has_inflight_animation_to(win, final_rect) {
                 // The new immediate geometry supersedes the old target. Drop
                 // its presentation state without configuring the obsolete
                 // size first; set_geometry_impl applies the new target below.
-                let _ = crate::animation::take_current_animation_rect(ctx, win, Instant::now());
+                let _ = ctx.take_current_animation_rect(win, Instant::now());
             }
             ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
         }
         MoveResizeMode::AnimateTo | MoveResizeMode::AnimateFrom(_) => {
             let from = match options.mode {
-                MoveResizeMode::AnimateTo => {
-                    crate::animation::take_current_animation_rect(ctx, win, Instant::now())
-                        .unwrap_or(client_geometry.current_rect)
-                }
+                MoveResizeMode::AnimateTo => ctx
+                    .take_current_animation_rect(win, Instant::now())
+                    .unwrap_or(client_geometry.current_rect),
                 MoveResizeMode::Immediate => unreachable!(),
                 MoveResizeMode::AnimateFrom(from) => {
                     // The explicit starting frame supersedes any previous
                     // transition, so its target must not be committed first.
-                    let _ = crate::animation::take_current_animation_rect(ctx, win, Instant::now());
+                    let _ = ctx.take_current_animation_rect(win, Instant::now());
                     from
                 }
             };

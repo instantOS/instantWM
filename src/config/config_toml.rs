@@ -1,8 +1,8 @@
-use crate::config::appearance::get_fonts;
 use crate::config::keybind_config::KeybindSpec;
+use crate::core_state::FontConfig;
 use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, Rule, StatusColorConfig, TagColorConfigs,
-    WindowColorConfigs,
+    BorderColorConfig, CloseButtonColorConfigs, KeyboardLayout, Rule, StatusColorConfig,
+    TagColorConfigs, WindowColorConfigs,
 };
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -28,13 +28,13 @@ pub struct ModeSpec {
     pub keybinds: Vec<KeybindSpec>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct UserConfig {
     /// Built-in colour theme used as the base for `[colors]` overrides.
     pub theme: ColorTheme,
     pub includes: Vec<IncludeConfig>,
-    pub fonts: Vec<String>,
+    pub fonts: FontConfig,
     pub colors: ColorConfig,
     /// User-defined keybinds (override/extend defaults).
     pub keybinds: Vec<KeybindSpec>,
@@ -72,32 +72,6 @@ pub struct UserConfig {
     /// Commands to execute at startup and on every config reload (like sway `exec_always`).
     #[serde(default)]
     pub exec: Vec<String>,
-}
-
-impl Default for UserConfig {
-    fn default() -> Self {
-        Self {
-            theme: ColorTheme::default(),
-            includes: Vec::new(),
-            fonts: get_fonts(),
-            colors: ColorConfig::default(),
-            keybinds: Vec::new(),
-            desktop_keybinds: Vec::new(),
-            keyboard: KeyboardConfig::default(),
-            input: HashMap::new(),
-            monitors: HashMap::new(),
-            status_command: None,
-            modes: HashMap::new(),
-            cursor: CursorConfig::default(),
-            layout: LayoutConfig::default(),
-            animations: AnimationConfig::default(),
-            bar: BarConfig::default(),
-            raise_floating_on_click: false,
-            rules: Vec::new(),
-            exec_once: Vec::new(),
-            exec: Vec::new(),
-        }
-    }
 }
 
 /// Status bar settings shared by the user schema and effective configuration.
@@ -231,11 +205,11 @@ impl AnimationConfig {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColorTheme {
-    #[default]
-    Instantos,
+    Classic,
     CatppuccinLatte,
     CatppuccinFrappe,
     CatppuccinMacchiato,
+    #[default]
     CatppuccinMocha,
     Nord,
     Gruvbox,
@@ -244,7 +218,7 @@ pub enum ColorTheme {
 impl ColorTheme {
     /// All built-in themes, in the order shown by `instantwmctl theme --list`.
     pub const ALL: &[ColorTheme] = &[
-        ColorTheme::Instantos,
+        ColorTheme::Classic,
         ColorTheme::CatppuccinLatte,
         ColorTheme::CatppuccinFrappe,
         ColorTheme::CatppuccinMacchiato,
@@ -260,7 +234,7 @@ impl std::fmt::Display for ColorTheme {
         // delegates to serde, and `display_names_match_serde_names_for_every_variant`
         // exhaustively checks the mapping whenever a variant is added or renamed.
         let name = match self {
-            Self::Instantos => "instantos",
+            Self::Classic => "classic",
             Self::CatppuccinLatte => "catppuccin-latte",
             Self::CatppuccinFrappe => "catppuccin-frappe",
             Self::CatppuccinMacchiato => "catppuccin-macchiato",
@@ -526,17 +500,6 @@ impl std::fmt::Display for InputConfig {
 }
 
 /// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
-#[derive(Debug, Deserialize, Clone, Serialize, Default)]
-#[serde(default)]
-pub struct KeyboardLayoutConfig {
-    /// Layout name (e.g., "us", "de", "fr").
-    pub name: String,
-    /// Optional variant (e.g., "nodeadkeys", "colemak").
-    #[serde(default)]
-    pub variant: Option<String>,
-}
-
-/// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
 ///
 /// ```toml
 /// [keyboard]
@@ -553,7 +516,7 @@ pub struct KeyboardLayoutConfig {
 pub struct KeyboardConfig {
     /// XKB layout configurations.
     #[serde(default)]
-    pub layouts: Vec<KeyboardLayoutConfig>,
+    pub layouts: Vec<KeyboardLayout>,
     /// XKB options string, e.g. `"grp:alt_shift_toggle,compose:ralt"`.
     pub options: Option<String>,
     /// XKB model, e.g. `"pc105"`. Defaults to system default if unset.
@@ -823,7 +786,19 @@ mod theme_tests {
         );
         assert_eq!(config.colors.status.bg, "#123456".parse().unwrap());
         assert_eq!(config.colors.status.fg, "#4c4f69".parse().unwrap());
+        assert_eq!(config.colors.status.separator, "#ccd0da".parse().unwrap());
         assert_eq!(config.colors.border.tile_focus, "#1e66f5".parse().unwrap());
+    }
+
+    #[test]
+    fn status_separator_color_can_be_overridden() {
+        let config = parse(
+            r##"
+            [colors.status]
+            separator = "#445566"
+            "##,
+        );
+        assert_eq!(config.colors.status.separator, "#445566".parse().unwrap());
     }
 
     #[test]
@@ -838,6 +813,31 @@ mod theme_tests {
         // must enable via config, IPC toggle, or `Super+Shift+B`.
         assert!(!parse("").bar.show_bottom);
         assert!(parse("[bar]\nshow_bottom = true").bar.show_bottom);
+    }
+
+    #[test]
+    fn font_roles_are_explicit_and_independently_sized() {
+        let config = parse(
+            r#"
+            [fonts]
+            text_family = "Iosevka"
+            icon_size = 18.0
+            "#,
+        );
+
+        assert_eq!(config.fonts.text_family, "Iosevka");
+        assert_eq!(config.fonts.text_size, 12.0);
+        assert_eq!(config.fonts.icon_family, "Symbols Nerd Font");
+        assert_eq!(config.fonts.icon_size, 18.0);
+    }
+
+    #[test]
+    fn legacy_ordered_font_array_is_rejected() {
+        let value = toml::from_str::<toml::Value>(
+            r#"fonts = ["Inter:size=12", "Fira Code Nerd Font:size=12"]"#,
+        )
+        .unwrap();
+        assert!(value.try_into::<UserConfig>().is_err());
     }
 
     #[test]
@@ -906,7 +906,7 @@ mod theme_tests {
     #[test]
     fn every_documented_theme_name_deserializes() {
         for name in [
-            "instantos",
+            "classic",
             "catppuccin-latte",
             "catppuccin-frappe",
             "catppuccin-macchiato",
@@ -938,7 +938,7 @@ mod theme_tests {
         );
         // Bad theme name is a warning, not a hard error: it falls back to the
         // default theme…
-        assert_eq!(config.theme, ColorTheme::Instantos);
+        assert_eq!(config.theme, ColorTheme::default());
         // …and the rest of the config still loads.
         assert_eq!(config.layout.inner_gap, 7);
     }

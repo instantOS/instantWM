@@ -36,7 +36,7 @@ fn native_menu_request_handoff_records_and_clears_the_anchor() {
         Some(anchor)
     );
 
-    clear_native_menu_request(&slot);
+    clear_native_menu_request(Some(&slot));
     assert!(slot.lock().unwrap().is_none());
 }
 
@@ -149,7 +149,8 @@ fn stopped_worker_clears_stale_state_and_schedules_bounded_restart() {
         restart_at: None,
         retry_delay: WORKER_RETRY_MIN,
         next_menu_session_id: AtomicU64::new(1),
-        native_menu_request: Arc::new(Mutex::new(None)),
+        native_menu_request: Some(Arc::new(Mutex::new(None))),
+        wake: None,
     };
     let mut tray = StatusNotifierTray {
         items: vec![StatusNotifierItem {

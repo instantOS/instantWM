@@ -1,7 +1,6 @@
-use crate::backend::x11::draw::DrawContext;
+use crate::backend::x11::draw::{ColorScheme, DrawContext};
 use crate::bar::paint::{BarPainter, BarScheme};
-use crate::types::ColorScheme;
-use crate::types::Rect;
+use crate::types::{Rect, Size};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -83,5 +82,12 @@ impl BarPainter for X11BarPainter {
         }
         self.drw
             .text(bounds, lpad.max(0) as u32, text, invert, detail_height)
+    }
+
+    fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
+        if destination.w <= 0 || destination.h <= 0 {
+            return;
+        }
+        self.drw.blit_rgba(destination, source_size, src_rgba);
     }
 }

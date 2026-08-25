@@ -304,7 +304,7 @@ define_named_actions!(
     None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
     Kill => { name: "kill", arg_example: None, doc: "close focused window gracefully", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { kill_client(ctx, win); } } },
     ShutKill => { name: "shut_kill", arg_example: None, doc: "force kill focused window", run: |ctx, _args| { shut_kill(ctx); } },
-    Quit => { name: "quit", arg_example: None, doc: "quit instantwm", run: |ctx, _args| { ctx.quit(); } },
+    Quit => { name: "quit", arg_example: None, doc: "quit instantwm", run: |ctx, _args| { ctx.core_mut().quit(); } },
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },

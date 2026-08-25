@@ -44,10 +44,3 @@ impl PerTagState {
         }
     }
 }
-
-/// Per-tag name data. No runtime layout state.
-#[derive(Debug, Clone, Default)]
-pub struct TagNames {
-    pub name: String,
-    pub alt_name: String,
-}

@@ -50,13 +50,13 @@ pub fn setup_listen_socket(
 ) {
     let _socket_name = crate::backend::wayland::session::setup_socket(loop_handle, state);
     crate::backend::wayland::session::spawn_xwayland(state, loop_handle);
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.status_notifier_runtime = Some(
-            crate::systray::status_notifier::StatusNotifierRuntime::start(std::sync::Arc::clone(
-                &state.runtime.pending_systray_menu,
-            )),
-        );
-    }
+    // The compositor claims items' native menu toplevels by PID, so it hands
+    // the worker its request slot; see `WaylandState::take_expected_systray_menu_toplevel`.
+    let wake = crate::runtime::make_wake_ping(loop_handle);
+    wm.start_systray(
+        Some(std::sync::Arc::clone(&state.runtime.pending_systray_menu)),
+        wake,
+    );
 }
 
 /// Startup commands, smoke window, IPC listener registration, and status-bar ping source.
@@ -73,5 +73,10 @@ pub fn autostart_ipc_status_ping(
     loop_handle
         .insert_source(status_ping_source, |_, _, _| {})
         .expect("failed to insert status ping source");
+    let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");
+    crate::mouse::slop::set_region_selection_ping(slop_ping);
+    loop_handle
+        .insert_source(slop_ping_source, |_, _, _| {})
+        .expect("failed to insert region-selection ping source");
     ipc_server
 }

@@ -19,7 +19,10 @@ fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
 pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     let new_value = toggled_bool(ctx.core().model().tags.show_alternative_names, action);
 
-    ctx.core_mut().model_mut().tags.show_alternative_names = new_value;
+    ctx.core_mut()
+        .model_mut()
+        .tags
+        .set_alternative_names(new_value);
 
     ctx.request_bar_update();
 }
@@ -118,23 +121,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
     let selmon_idx = ctx.core().model().selected_monitor_id();
 
-    match ctx {
-        WmCtx::X11(x11) => {
-            if let Some(m) = x11.core.model().monitors.get(selmon_idx).cloned() {
-                crate::backend::x11::bar::resize_bar_win(
-                    x11.core.state(),
-                    &x11.x11,
-                    &*x11.x11_runtime,
-                    x11.xembed_tray.as_ref(),
-                    &m,
-                );
-            }
-            x11.core.bar.mark_dirty();
-        }
-        WmCtx::Wayland(_) => {
-            ctx.request_bar_update();
-        }
-    }
+    ctx.refresh_monitor_top_bar(selmon_idx);
 
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
 
@@ -154,22 +141,7 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
 
     let selmon_idx = ctx.core().model().selected_monitor_id();
 
-    match ctx {
-        WmCtx::X11(x11) => {
-            if let Some(m) = x11.core.model().monitors.get(selmon_idx).cloned() {
-                crate::backend::x11::bar::resize_bottom_bar_win(
-                    x11.core.state(),
-                    &x11.x11,
-                    &*x11.x11_runtime,
-                    &m,
-                );
-            }
-            x11.core.bar.mark_dirty();
-        }
-        WmCtx::Wayland(_) => {
-            ctx.request_bar_update();
-        }
-    }
+    ctx.refresh_monitor_bottom_bar(selmon_idx);
 
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
 }

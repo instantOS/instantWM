@@ -27,22 +27,24 @@ use x11rb::protocol::xproto::{Drawable, Point, Window};
 use std::cmp::min;
 use std::collections::VecDeque;
 
-use super::color::{Color, Cursor};
+use super::color::{Color, ColorScheme, Cursor};
 use super::ffi::{
     FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE, FcCharSetAddChar, FcCharSetCreate,
     FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute, FcInit, FcNameParse, FcPattern,
-    FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy, FcPatternDuplicate, XCloseDisplay,
-    XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap, XDefaultColormap, XDefaultDepth,
-    XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc, XDrawRectangle, XFillArc,
-    XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay,
-    XRenderColor, XSetForeground, XSetLineAttributes, XSync, XftCharExists, XftColor,
-    XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate, XftDrawDestroy,
-    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
-    XftInit, XftResult, XftTextExtentsUtf8, XlibGc,
+    FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy, FcPatternDuplicate, PICT_OP_OVER,
+    PICT_STANDARD_ARGB32, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreateImage,
+    XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen,
+    XDefaultVisual, XDestroyImage, XDrawArc, XDrawRectangle, XFillArc, XFillPolygon,
+    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMoveResizeWindow,
+    XOpenDisplay, XPutImage, XRenderColor, XRenderComposite, XRenderCreatePicture,
+    XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture, XSetForeground,
+    XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw,
+    XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch,
+    XftFontOpenName, XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
 };
 use super::font::Fnt;
 
-use crate::types::{ColorScheme, Rect as WmRect};
+use crate::types::Rect as WmRect;
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
 /// find a fallback font for the same unrenderable character.
@@ -309,7 +311,184 @@ impl DrawContext {
                 bounds.x,
                 bounds.y,
             );
-            XSync(self.display, 0);
+            let _ = XFlush(self.display);
+        }
+    }
+
+    /// Configure an Xlib-owned presentation target. Bar geometry and bar
+    /// blits use this same connection, so their request order is explicit
+    /// without a blocking cross-connection synchronization.
+    pub fn move_resize_window(&self, window: Window, bounds: WmRect) {
+        if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
+            return;
+        }
+        unsafe {
+            let _ = XMoveResizeWindow(
+                self.display,
+                window,
+                bounds.x,
+                bounds.y,
+                bounds.w as u32,
+                bounds.h as u32,
+            );
+        }
+    }
+
+    /// Composite non-premultiplied RGBA8 pixels over the off-screen pixmap.
+    ///
+    /// The source is scaled to exactly fill `bounds` (nearest neighbor, same
+    /// rule as the Wayland painter), uploaded to a temporary depth-32 pixmap
+    /// and alpha-composited with XRender `PictOpOver`. All temporaries are
+    /// freed before returning; tray icons are few and redraws infrequent, so
+    /// per-call allocation keeps the context free of cache invalidation logic.
+    pub fn blit_rgba(&self, bounds: WmRect, source_size: crate::types::Size, src_rgba: &[u8]) {
+        if self.display.is_null() || !bounds.size().is_positive() || !source_size.is_positive() {
+            return;
+        }
+        let needed = match (source_size.w as usize)
+            .checked_mul(source_size.h as usize)
+            .and_then(|pixels| pixels.checked_mul(4))
+        {
+            Some(needed) => needed,
+            None => return,
+        };
+        if src_rgba.len() < needed {
+            return;
+        }
+
+        // Scale to destination size and convert to premultiplied BGRA, the
+        // byte order of depth-32 ZPixmap pixels on little-endian hosts. The
+        // big-endian layout stores the same 0xAARRGGBB word most-significant
+        // byte first.
+        let premultiply =
+            |value: u8, alpha: u32| -> u8 { ((u16::from(value) * alpha as u16 + 127) / 255) as u8 };
+        let mut buffer = vec![0u8; bounds.w as usize * bounds.h as usize * 4];
+        for row in 0..bounds.h {
+            let src_y = (i64::from(row) * i64::from(source_size.h) / i64::from(bounds.h)) as usize;
+            for col in 0..bounds.w {
+                let src_x =
+                    (i64::from(col) * i64::from(source_size.w) / i64::from(bounds.w)) as usize;
+                let si = (src_y * source_size.w as usize + src_x) * 4;
+                let di = (row as usize * bounds.w as usize + col as usize) * 4;
+                let a = u32::from(src_rgba[si + 3]);
+                if cfg!(target_endian = "little") {
+                    buffer[di] = premultiply(src_rgba[si + 2], a);
+                    buffer[di + 1] = premultiply(src_rgba[si + 1], a);
+                    buffer[di + 2] = premultiply(src_rgba[si], a);
+                    buffer[di + 3] = src_rgba[si + 3];
+                } else {
+                    buffer[di] = src_rgba[si + 3];
+                    buffer[di + 1] = premultiply(src_rgba[si], a);
+                    buffer[di + 2] = premultiply(src_rgba[si + 1], a);
+                    buffer[di + 3] = premultiply(src_rgba[si + 2], a);
+                }
+            }
+        }
+
+        unsafe {
+            // The upload buffer must come from libc's allocator because the
+            // default XImage destructor calls `free` on it.
+            let data_ptr = libc::malloc(buffer.len());
+            if data_ptr.is_null() {
+                return;
+            }
+            std::ptr::copy_nonoverlapping(buffer.as_ptr(), data_ptr.cast(), buffer.len());
+
+            let pixmap = XCreatePixmap(
+                self.display,
+                self.root,
+                bounds.w as u32,
+                bounds.h as u32,
+                32,
+            );
+            if pixmap == 0 {
+                libc::free(data_ptr);
+                return;
+            }
+
+            let image = XCreateImage(
+                self.display,
+                self.visual,
+                32,
+                Z_PIXMAP,
+                0,
+                data_ptr.cast(),
+                bounds.w as u32,
+                bounds.h as u32,
+                32,
+                0,
+            );
+            if image.is_null() {
+                XFreePixmap(self.display, pixmap);
+                libc::free(data_ptr);
+                return;
+            }
+
+            // Core-protocol PutImage requires the GC to match the destination
+            // depth. `self.gc` belongs to the default visual (usually 24-bit),
+            // so using it on a depth-32 pixmap is a BadMatch that would take
+            // down the process; this upload needs its own depth-32 GC.
+            let gc32 = XCreateGC(self.display, pixmap, 0, std::ptr::null_mut());
+            if gc32.is_null() {
+                XDestroyImage(image);
+                XFreePixmap(self.display, pixmap);
+                return;
+            }
+            XPutImage(
+                self.display,
+                pixmap,
+                gc32,
+                image,
+                0,
+                0,
+                0,
+                0,
+                bounds.w as u32,
+                bounds.h as u32,
+            );
+            XFreeGC(self.display, gc32);
+            XDestroyImage(image);
+
+            let argb_format = XRenderFindStandardFormat(self.display, PICT_STANDARD_ARGB32);
+            if argb_format.is_null() {
+                XFreePixmap(self.display, pixmap);
+                return;
+            }
+            let src_picture =
+                XRenderCreatePicture(self.display, pixmap, argb_format, 0, std::ptr::null());
+            XFreePixmap(self.display, pixmap);
+            if src_picture == 0 {
+                return;
+            }
+
+            let dst_result = XRenderFindVisualFormat(self.display, self.visual);
+            if dst_result.is_null() {
+                XRenderFreePicture(self.display, src_picture);
+                return;
+            }
+            let dst_picture =
+                XRenderCreatePicture(self.display, self.drawable, dst_result, 0, std::ptr::null());
+            if dst_picture != 0 {
+                XRenderComposite(
+                    self.display,
+                    PICT_OP_OVER,
+                    src_picture,
+                    0,
+                    dst_picture,
+                    0,
+                    0,
+                    0,
+                    0,
+                    bounds.x,
+                    bounds.y,
+                    bounds.w as u32,
+                    bounds.h as u32,
+                );
+                XRenderFreePicture(self.display, dst_picture);
+            }
+            XRenderFreePicture(self.display, src_picture);
+            // Every bar draw ends with `map`, which flushes once, so all icon
+            // uploads pipeline into the same non-blocking presentation batch.
         }
     }
 }
@@ -362,7 +541,7 @@ impl DrawContext {
         Ok(Color { color })
     }
 
-    pub fn clr_create_rgba(&self, rgba: crate::bar::color::Rgba) -> Color {
+    pub fn clr_create_rgba(&self, rgba: crate::types::color::Rgba) -> Color {
         let clamp = |v: f32| -> u16 {
             let v = v.clamp(0.0, 1.0);
             (v * 65535.0).round() as u16
@@ -439,17 +618,20 @@ impl DrawContext {
 // ── Font / fontset management ─────────────────────────────────────────────────
 
 impl DrawContext {
-    /// Load a fontset from an ordered list of font name strings.
+    /// Load a fontset from role-tagged font name strings.
     ///
-    /// Fonts are stored in the order given; the first font is tried first when
-    /// rendering each glyph. Success guarantees a non-empty active fontset.
-    pub fn fontset_create(&mut self, font_names: &[&str]) -> Result<(), String> {
+    /// Role metadata survives missing faces, so the renderer never relies on
+    /// a fragile "second successfully loaded font is icons" convention.
+    pub(crate) fn fontset_create(
+        &mut self,
+        font_names: &[(crate::bar::text::FontRole, &str)],
+    ) -> Result<(), String> {
         if self.display.is_null() {
             return Err("cannot load fonts without an X11 display".to_string());
         }
         let mut fonts = Vec::new();
-        for &name in font_names {
-            if let Some(fnt) = self.load_font_by_name(name)? {
+        for &(role, name) in font_names {
+            if let Some(fnt) = self.load_font_by_name(role, name)? {
                 fonts.push(fnt);
             }
         }
@@ -461,8 +643,12 @@ impl DrawContext {
     }
 
     /// Load a single font by name string, returning a [`Fnt`].
-    fn load_font_by_name(&self, name: &str) -> Result<Option<Fnt>, String> {
-        self.xfont_create(Some(name), None)
+    fn load_font_by_name(
+        &self,
+        role: crate::bar::text::FontRole,
+        name: &str,
+    ) -> Result<Option<Fnt>, String> {
+        self.xfont_create(role, Some(name), None)
     }
 
     /// Core font-loading helper: either open by name or by Fontconfig pattern.
@@ -470,6 +656,7 @@ impl DrawContext {
     /// Exactly one of `fontname` / `fontpattern` must be `Some`.
     pub(super) fn xfont_create(
         &self,
+        role: crate::bar::text::FontRole,
         fontname: Option<&str>,
         fontpattern: Option<*mut FcPattern>,
     ) -> Result<Option<Fnt>, String> {
@@ -509,6 +696,7 @@ impl DrawContext {
         let (ascent, descent) = unsafe { ((*xfont).ascent, (*xfont).descent) };
 
         Ok(Some(Fnt {
+            role,
             display: self.display,
             h: (ascent + descent) as u32,
             xfont,

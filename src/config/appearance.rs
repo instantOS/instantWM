@@ -3,10 +3,9 @@
 //! Backends consume the resolved, typed colour tables. Theme selection and
 //! user overrides are handled while loading TOML, before runtime state exists.
 
-use crate::bar::color::Rgba;
 use crate::config::config_toml::{ColorConfig, ColorTheme};
 use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba,
+    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba, Rgba,
     StatusColorConfig, TagColorConfigs, TagColorSet, WindowColorConfigs, WindowColorSet,
 };
 
@@ -90,7 +89,7 @@ const fn mix(color: Rgba, other: Rgba, other_weight: f32) -> Rgba {
 
 fn palette(theme: ColorTheme) -> ThemePalette {
     match theme {
-        ColorTheme::Instantos => ThemePalette {
+        ColorTheme::Classic => ThemePalette {
             background: hex("121212"),
             foreground: hex("dfdfdf"),
             foreground_on_accent: hex("000000"),
@@ -289,17 +288,11 @@ impl From<ColorTheme> for ColorConfig {
                 fg: p.foreground,
                 bg: p.background,
                 detail: p.background,
+                separator: p.surface,
                 hover: p.primary.hover_fill,
             },
         }
     }
-}
-
-pub fn get_fonts() -> Vec<String> {
-    vec![
-        "Inter-Regular:size=12".into(),
-        "Fira Code Nerd Font:size=12".into(),
-    ]
 }
 
 #[cfg(test)]
@@ -335,8 +328,25 @@ mod tests {
     }
 
     #[test]
-    fn instantos_primary_detail_is_a_muted_shadow() {
-        let primary = palette(ColorTheme::Instantos).primary;
+    fn every_builtin_status_separator_is_muted_and_visible() {
+        for theme in ColorTheme::ALL {
+            let status = ColorConfig::from(*theme).status;
+            assert_ne!(
+                status.separator, status.bg,
+                "{} status separator must contrast with the bar background",
+                theme
+            );
+            assert_ne!(
+                status.separator, status.fg,
+                "{} status separator must be muted relative to foreground text",
+                theme
+            );
+        }
+    }
+
+    #[test]
+    fn classic_primary_detail_is_a_muted_shadow() {
+        let primary = palette(ColorTheme::Classic).primary;
         assert_ne!(primary.fill, primary.detail);
         assert!(primary.detail.r() < primary.fill.r());
         assert!(primary.detail.g() < primary.fill.g());

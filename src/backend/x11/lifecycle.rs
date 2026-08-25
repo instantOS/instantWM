@@ -30,8 +30,8 @@
 
 use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
-use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::backend::x11::focus::grab_buttons;
+use crate::backend::x11::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
+use crate::backend::x11::focus::{grab_buttons, ungrab_client_buttons};
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_motif_hints,
     update_window_type, update_wm_hints,
@@ -57,13 +57,17 @@ pub fn manage(
     original_border_width: u32,
 ) {
     let transient_for = get_transient_for_hint(&ctx.x11, window);
-    let x11_runtime = &*ctx.x11_runtime;
     let border_px = ctx.core.config().window.border_width_px;
-    let mut client = build_initial_client(&ctx.x11, x11_runtime, window, initial_geometry);
+    let mut client = build_initial_client(window, initial_geometry);
     client.border_width = border_px;
     client.old_border_width = border_px;
     client.transient_for = transient_for;
-    let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, window);
+    let launch_context = read_launch_context(
+        ctx.core.pending_launches_mut(),
+        &ctx.x11,
+        ctx.x11_runtime,
+        window,
+    );
     if !crate::client::lifecycle::assign_initial_monitor_and_tags(
         ctx.core.model(),
         &mut client,
@@ -72,7 +76,10 @@ pub fn manage(
     ) {
         return;
     }
-    let Some(rule_placement) = insert_client_and_apply_rules(
+    // Subscribe before taking cached snapshots so a concurrent property
+    // mutation always produces an invalidation event after the snapshot.
+    subscribe_manage_events(&ctx.x11, window);
+    let Some((rule_placement, protocols)) = insert_client_and_apply_rules(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
@@ -85,6 +92,7 @@ pub fn manage(
     ctx.x11_runtime
         .original_border_widths
         .insert(window, original_border_width);
+    ctx.x11_runtime.client_protocols.insert(window, protocols);
 
     apply_default_border(ctx.core.model_mut(), border_px, window);
     let (monitor_work_rect, monitor_rect) = monitor_rects_for_client(ctx.core.model(), window);
@@ -104,7 +112,6 @@ pub fn manage(
 
     let hinted_position_is_explicit = apply_manage_hints(ctx, window);
     let position_is_explicit = rule_placement.position_is_explicit(hinted_position_is_explicit);
-    subscribe_manage_events(&ctx.x11, window);
     grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, window, false);
 
     if initialize_floating_state(ctx.core.model_mut(), window, transient_for.is_some()) {
@@ -135,17 +142,11 @@ pub fn manage(
     crate::animation::run_spawn_animation(&mut WmCtx::X11(ctx.reborrow()), window);
 }
 
-fn build_initial_client(
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    window: WindowId,
-    initial_geometry: Rect,
-) -> Client {
+fn build_initial_client(window: WindowId, initial_geometry: Rect) -> Client {
     let mut client = Client::new(window);
     client.geo = initial_geometry;
     client.old_geo = client.geo;
     client.set_preferred_floating_size(initial_geometry.size());
-    client.name = crate::backend::x11::properties::read_window_title(x11, x11_runtime, window);
     client
 }
 
@@ -156,80 +157,58 @@ fn insert_client_and_apply_rules(
     window: WindowId,
     mut client: Client,
     launch_context: Option<crate::client::LaunchContext>,
-) -> Option<crate::client::InitialRulePlacement> {
+) -> Option<(
+    crate::client::InitialRulePlacement,
+    crate::backend::x11::X11ClientProtocols,
+)> {
     client.is_hidden =
         crate::backend::x11::visibility::get_state(x11, x11_runtime.wmatom.state, window)
             == crate::backend::x11::constants::WM_STATE_ICONIC;
     if !core.model_mut().insert_client(client) {
         return None;
     }
-    let properties = crate::backend::x11::window_properties(x11, x11_runtime, window);
+    let (properties, protocols) =
+        crate::backend::x11::properties::initial_window_properties(x11, x11_runtime, window);
     let outcome =
         crate::client::apply_initial_rules(core.state_mut(), window, &properties, launch_context);
     if outcome.changed {
         core.queue_layout_for_client(window);
     }
-    Some(outcome.placement)
+    Some((outcome.placement, protocols))
 }
 
 fn read_launch_context(
     pending_launches: &mut std::collections::VecDeque<crate::client::PendingLaunch>,
     x11: &X11BackendRef<'_>,
+    x11_runtime: &X11RuntimeConfig,
     window: WindowId,
 ) -> Option<crate::client::LaunchContext> {
-    let startup_id = read_string_prop(x11, window, "_NET_STARTUP_ID");
-    let pid = read_u32_prop(x11, window, "_NET_WM_PID");
+    let x11_window: Window = window.into();
+    let startup_cookie = x11.conn.get_property(
+        false,
+        x11_window,
+        x11_runtime.xatom.net_startup_id,
+        AtomEnum::ANY,
+        0,
+        1024,
+    );
+    let pid_cookie = x11.conn.get_property(
+        false,
+        x11_window,
+        x11_runtime.xatom.net_wm_pid,
+        AtomEnum::CARDINAL,
+        0,
+        1,
+    );
+    let startup_id = startup_cookie
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .and_then(crate::backend::x11::properties::parse_string_property);
+    let pid = pid_cookie
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .and_then(|reply| reply.value32()?.next());
     crate::client::take_pending_launch(pending_launches, pid, startup_id.as_deref())
-}
-
-fn read_string_prop(x11: &X11BackendRef<'_>, window: WindowId, atom_name: &str) -> Option<String> {
-    let atom = x11
-        .conn
-        .intern_atom(false, atom_name.as_bytes())
-        .ok()?
-        .reply()
-        .ok()?
-        .atom;
-    if atom == 0 {
-        return None;
-    }
-    let x11_window: Window = window.into();
-    let reply = x11
-        .conn
-        .get_property(false, x11_window, atom, AtomEnum::ANY, 0, 1024)
-        .ok()?
-        .reply()
-        .ok()?;
-    if reply.format != 8 || reply.value.is_empty() {
-        return None;
-    }
-    let len = reply
-        .value
-        .iter()
-        .position(|&b| b == 0)
-        .unwrap_or(reply.value.len());
-    Some(String::from_utf8_lossy(&reply.value[..len]).into_owned()).filter(|s| !s.is_empty())
-}
-
-fn read_u32_prop(x11: &X11BackendRef<'_>, window: WindowId, atom_name: &str) -> Option<u32> {
-    let atom = x11
-        .conn
-        .intern_atom(false, atom_name.as_bytes())
-        .ok()?
-        .reply()
-        .ok()?
-        .atom;
-    if atom == 0 {
-        return None;
-    }
-    let x11_window: Window = window.into();
-    x11.conn
-        .get_property(false, x11_window, atom, AtomEnum::CARDINAL, 0, 1)
-        .ok()?
-        .reply()
-        .ok()?
-        .value32()?
-        .next()
 }
 
 fn apply_default_border(model: &mut crate::model::WmModel, border_px: i32, window: WindowId) {
@@ -448,6 +427,7 @@ fn arrange_map_and_focus(ctx: &mut WmCtx, window: WindowId, initially_hidden: bo
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
     let original_border_width = ctx.x11_runtime.original_border_widths.remove(&window);
+    ctx.x11_runtime.client_protocols.remove(&window);
 
     if !destroyed {
         let x11_window: Window = window.into();
@@ -463,10 +443,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
                 x11_window,
                 &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
             );
-            let _ =
-                ctx.x11
-                    .conn
-                    .ungrab_button(ButtonIndex::from(0u8), x11_window, ModMask::from(0u16));
+            ungrab_client_buttons(&ctx.x11, ctx.x11_runtime, window);
             let _ = ctx
                 .x11
                 .conn
@@ -653,31 +630,6 @@ pub fn cleanup(wm: &mut Wm) {
     }
 
     let _ = conn.flush();
-}
-
-pub fn is_window_iconic(
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    window: WindowId,
-) -> bool {
-    let x11_window: Window = window.into();
-
-    let state_atom = x11_runtime.wmatom.state;
-    let Ok(cookie) = x11
-        .conn
-        .get_property(false, x11_window, state_atom, state_atom, 0, 2)
-    else {
-        return false;
-    };
-    let Ok(reply) = cookie.reply() else {
-        return false;
-    };
-
-    reply
-        .value32()
-        .and_then(|mut it| it.next())
-        .map(|state| state as i32 == WM_STATE_ICONIC)
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

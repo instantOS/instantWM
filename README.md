@@ -10,7 +10,7 @@ Tiled windows use a persistent manual tree on both X11 and Wayland. See the
 [manual layout guide](docs/manual-layout.md) for tree invariants, migrated
 layout commands, default Super bindings, pointer placement, and configuration.
 General configuration features, including ordered key action sequences, are
-documented in the [configuration guide](docs/configuration.md).
+documented in `instantwmctl config default` output and `docs/manual-layout.md`.
 
 ![img](https://github.com/instantOS/instantLOGO/blob/main/screeenshots/screenshot1.png)
 

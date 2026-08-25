@@ -1,5 +1,4 @@
-use crate::bar::color::Rgba;
-use crate::types::{Point, Rect, Size};
+use crate::types::{Point, Rect, Rgba, Size};
 
 pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, color: [u8; 4]) {
     let [r, g, b, a] = color;
@@ -57,7 +56,7 @@ pub(super) fn fill_rect(pixels: &mut [u8], canvas_size: Size, rect: Rect, color:
     }
 }
 
-pub(super) fn blit_rgba_scaled(
+pub(crate) fn blit_rgba_scaled(
     pixels: &mut [u8],
     canvas_size: Size,
     dst: Rect,

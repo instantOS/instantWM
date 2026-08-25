@@ -92,7 +92,6 @@ pub(crate) fn set_window_placement_from_policy(
             placement_client.restore_border_width();
             let restored_geometry =
                 resolve_floating_transition(&placement_client, work_area, intent);
-            let border_width = placement_client.border_width;
 
             if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
                 client.set_placement(ClientPlacement::Floating);
@@ -108,15 +107,7 @@ pub(crate) fn set_window_placement_from_policy(
             if !current_mode.is_normal_tiling() {
                 return WindowModeChange::ChangedToFloating { restored_geometry };
             }
-            if let WmCtx::X11(x11) = ctx {
-                x11.x11.set_border_width(win, 0);
-                x11.x11.set_border_width(win, border_width);
-                crate::backend::x11::floating::apply_floating_borderscheme(
-                    &x11.x11,
-                    win,
-                    x11.x11_runtime,
-                );
-            }
+            ctx.apply_floating_border_scheme(win);
 
             ctx.move_resize(
                 win,

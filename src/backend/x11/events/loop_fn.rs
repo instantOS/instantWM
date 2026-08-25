@@ -54,6 +54,18 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .insert_source(status_ping_source, |_, _, _| {})
         .expect("failed to insert status ping source");
 
+    // ── Region-selection ping source ───────────────────────────────────
+    let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");
+    crate::mouse::slop::set_region_selection_ping(slop_ping);
+    loop_handle
+        .insert_source(slop_ping_source, |_, _, _| {})
+        .expect("failed to insert region-selection ping source");
+
+    // ── StatusNotifier worker ───────────────────────────────────────────
+    // Items position their own menus under X11, so no native-menu slot is
+    // provided; the wake ping makes icon changes render while idle.
+    wm.start_systray(None, crate::runtime::make_wake_ping(&loop_handle));
+
     // ── Animation timer (on-demand, not persistent) ─────────────────────
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
@@ -71,6 +83,10 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
 
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
             crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
+
+            // X11 focus is projected synchronously. End the shared selection
+            // transaction here so changes from separate ticks never coalesce.
+            let _ = wm.focus.take_pending_selection();
 
             // ── 3. Arm animation timer if needed ────────────────────────
             let has_animations = has_x11_animations(wm);
@@ -218,6 +234,7 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),
         x11rb::protocol::Event::XinputRawMotion(_) => handlers::raw_motion_notify(&mut ctx),
+        x11rb::protocol::Event::XinputTouchBegin(e) => handlers::touch_begin(&mut ctx, &e),
         x11rb::protocol::Event::PropertyNotify(e) => handlers::property_notify(&mut ctx, &e),
         x11rb::protocol::Event::ResizeRequest(e) => handlers::resize_request(&mut ctx, &e),
         x11rb::protocol::Event::UnmapNotify(e) => handlers::unmap_notify(&mut ctx, &e),

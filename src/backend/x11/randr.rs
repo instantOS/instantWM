@@ -4,6 +4,7 @@ use crate::backend::BackendOutputInfo;
 use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::MonitorConfig;
 use crate::types::{MonitorPosition, Rect};
+use std::collections::HashMap;
 use x11rb::protocol::randr::{self, ConnectionExt as RandrExt};
 use x11rb::protocol::xproto::Window;
 use x11rb::rust_connection::RustConnection;
@@ -20,15 +21,18 @@ pub fn max_active_refresh_millihertz(conn: &RustConnection, root: Window) -> Opt
         .reply()
         .ok()?;
 
-    resources
+    let requests: Vec<_> = resources
         .crtcs
         .iter()
         .filter_map(|crtc| {
-            let crtc = conn
-                .randr_get_crtc_info(*crtc, resources.config_timestamp)
-                .ok()?
-                .reply()
-                .ok()?;
+            conn.randr_get_crtc_info(*crtc, resources.config_timestamp)
+                .ok()
+        })
+        .collect();
+    requests
+        .into_iter()
+        .filter_map(|request| {
+            let crtc = request.reply().ok()?;
             let mode = resources.modes.iter().find(|mode| mode.id == crtc.mode)?;
             mode_refresh_millihertz(mode.dot_clock, mode.htotal, mode.vtotal)
         })
@@ -57,6 +61,47 @@ pub fn get_outputs(conn: &RustConnection, root: Window) -> Vec<BackendOutputInfo
     }
 }
 
+fn fetch_output_infos(
+    conn: &RustConnection,
+    output_ids: &[randr::Output],
+    config_timestamp: u32,
+) -> Vec<(randr::Output, randr::GetOutputInfoReply)> {
+    let requests: Vec<_> = output_ids
+        .iter()
+        .filter_map(|output_id| {
+            Some((
+                *output_id,
+                conn.randr_get_output_info(*output_id, config_timestamp)
+                    .ok()?,
+            ))
+        })
+        .collect();
+    requests
+        .into_iter()
+        .filter_map(|(id, request)| Some((id, request.reply().ok()?)))
+        .collect()
+}
+
+fn fetch_crtc_infos(
+    conn: &RustConnection,
+    crtc_ids: &[randr::Crtc],
+    config_timestamp: u32,
+) -> HashMap<randr::Crtc, randr::GetCrtcInfoReply> {
+    let requests: Vec<_> = crtc_ids
+        .iter()
+        .filter_map(|crtc| {
+            Some((
+                *crtc,
+                conn.randr_get_crtc_info(*crtc, config_timestamp).ok()?,
+            ))
+        })
+        .collect();
+    requests
+        .into_iter()
+        .filter_map(|(id, request)| Some((id, request.reply().ok()?)))
+        .collect()
+}
+
 /// Extract output info from already-fetched RandR resources.
 fn process_outputs(
     conn: &RustConnection,
@@ -64,27 +109,23 @@ fn process_outputs(
     config_timestamp: u32,
     modes: &[randr::ModeInfo],
 ) -> Option<Vec<BackendOutputInfo>> {
-    let mut outputs = Vec::new();
+    let output_infos: Vec<_> = fetch_output_infos(conn, output_ids, config_timestamp)
+        .into_iter()
+        .filter(|(_, info)| info.connection == randr::Connection::CONNECTED)
+        .collect();
+    let crtc_ids: Vec<_> = output_infos
+        .iter()
+        .filter(|(_, info)| info.crtc != 0)
+        .map(|(_, info)| info.crtc)
+        .collect();
+    let crtc_infos = fetch_crtc_infos(conn, &crtc_ids, config_timestamp);
 
-    for output_id in output_ids {
-        let output_info = conn
-            .randr_get_output_info(*output_id, config_timestamp)
-            .ok()?
-            .reply()
-            .ok()?;
-
-        if output_info.connection != randr::Connection::CONNECTED {
-            continue;
-        }
-
+    let mut outputs = Vec::with_capacity(output_infos.len());
+    for (_, output_info) in output_infos {
         let name = String::from_utf8_lossy(&output_info.name).to_string();
 
         let rect = if output_info.crtc != 0 {
-            let crtc_info = conn
-                .randr_get_crtc_info(output_info.crtc, config_timestamp)
-                .ok()?
-                .reply()
-                .ok()?;
+            let crtc_info = crtc_infos.get(&output_info.crtc)?;
 
             let (w, h) = modes
                 .iter()
@@ -161,7 +202,7 @@ fn set_monitor_config_inner(
     config: &MonitorConfig,
     use_current: bool,
 ) -> bool {
-    let (output_ids, config_timestamp, modes) = if use_current {
+    let (output_ids, crtc_ids, config_timestamp, modes) = if use_current {
         let resources = match conn
             .randr_get_screen_resources_current(root)
             .ok()
@@ -172,6 +213,7 @@ fn set_monitor_config_inner(
         };
         (
             resources.outputs,
+            resources.crtcs,
             resources.config_timestamp,
             resources.modes,
         )
@@ -186,23 +228,18 @@ fn set_monitor_config_inner(
         };
         (
             resources.outputs,
+            resources.crtcs,
             resources.config_timestamp,
             resources.modes,
         )
     };
 
-    let known_outputs = collect_output_rects(conn, &output_ids, config_timestamp, &modes);
+    let output_infos = fetch_output_infos(conn, &output_ids, config_timestamp);
+    let crtc_infos = fetch_crtc_infos(conn, &crtc_ids, config_timestamp);
+    let known_outputs = collect_output_rects(&output_infos, &crtc_infos, &modes);
+    let mut claimed_crtcs = std::collections::HashSet::new();
 
-    for output_id in &output_ids {
-        let output_info = match conn
-            .randr_get_output_info(*output_id, config_timestamp)
-            .ok()
-            .and_then(|c| c.reply().ok())
-        {
-            Some(info) => info,
-            None => continue,
-        };
-
+    for (output_id, output_info) in &output_infos {
         let output_name = String::from_utf8_lossy(&output_info.name);
 
         if name != "*" && output_name != name {
@@ -213,16 +250,33 @@ fn set_monitor_config_inner(
             continue;
         }
 
+        let crtc = if output_info.crtc != 0 {
+            output_info.crtc
+        } else {
+            output_info
+                .crtcs
+                .iter()
+                .copied()
+                .find(|crtc| {
+                    !claimed_crtcs.contains(crtc)
+                        && crtc_infos
+                            .get(crtc)
+                            .is_some_and(|info| info.outputs.is_empty())
+                })
+                .unwrap_or(0)
+        };
+        if config.enable != Some(false) && crtc != 0 {
+            claimed_crtcs.insert(crtc);
+        }
         apply_output_config(
             conn,
-            root,
             *output_id,
-            &output_info,
+            output_info,
+            crtc,
             config,
             config_timestamp,
             &modes,
             &known_outputs,
-            use_current,
         );
     }
 
@@ -232,14 +286,13 @@ fn set_monitor_config_inner(
 /// Apply configuration to a specific output.
 fn apply_output_config(
     conn: &RustConnection,
-    root: Window,
     output_id: randr::Output,
     output_info: &randr::GetOutputInfoReply,
+    crtc: randr::Crtc,
     config: &MonitorConfig,
     config_timestamp: u32,
     modes: &[randr::ModeInfo],
     known_outputs: &[(String, Rect)],
-    use_current: bool,
 ) {
     if let Some(enable) = config.enable
         && !enable
@@ -284,12 +337,6 @@ fn apply_output_config(
             .unwrap_or_default()
     } else {
         crate::types::Point::default()
-    };
-
-    let crtc = if output_info.crtc != 0 {
-        output_info.crtc
-    } else {
-        find_available_crtc(conn, output_id, output_info, root, use_current)
     };
 
     if crtc == 0 {
@@ -348,33 +395,20 @@ fn parse_resolution(res: &str) -> Option<(u16, u16)> {
 }
 
 fn collect_output_rects(
-    conn: &RustConnection,
-    output_ids: &[randr::Output],
-    config_timestamp: u32,
+    output_infos: &[(randr::Output, randr::GetOutputInfoReply)],
+    crtc_infos: &HashMap<randr::Crtc, randr::GetCrtcInfoReply>,
     modes: &[randr::ModeInfo],
 ) -> Vec<(String, Rect)> {
     let mut outputs = Vec::new();
 
-    for output_id in output_ids {
-        let Some(output_info) = conn
-            .randr_get_output_info(*output_id, config_timestamp)
-            .ok()
-            .and_then(|c| c.reply().ok())
-        else {
-            continue;
-        };
-
+    for (_, output_info) in output_infos {
         if output_info.connection != randr::Connection::CONNECTED {
             continue;
         }
 
         let name = String::from_utf8_lossy(&output_info.name).to_string();
         let rect = if output_info.crtc != 0 {
-            let Some(crtc_info) = conn
-                .randr_get_crtc_info(output_info.crtc, config_timestamp)
-                .ok()
-                .and_then(|c| c.reply().ok())
-            else {
+            let Some(crtc_info) = crtc_infos.get(&output_info.crtc) else {
                 continue;
             };
 
@@ -386,7 +420,7 @@ fn collect_output_rects(
 
             Rect::new(crtc_info.x as i32, crtc_info.y as i32, w, h)
         } else {
-            let Some(mode) = find_preferred_mode(&output_info, modes) else {
+            let Some(mode) = find_preferred_mode(output_info, modes) else {
                 continue;
             };
             Rect::new(0, 0, mode.width as i32, mode.height as i32)
@@ -396,58 +430,6 @@ fn collect_output_rects(
     }
 
     outputs
-}
-
-/// Find an available CRTC.
-fn find_available_crtc(
-    conn: &RustConnection,
-    _output_id: randr::Output,
-    output_info: &randr::GetOutputInfoReply,
-    root: Window,
-    use_current: bool,
-) -> randr::Crtc {
-    if output_info.crtc != 0 {
-        return output_info.crtc;
-    }
-
-    let (crtcs, config_timestamp) = if use_current {
-        let resources = match conn
-            .randr_get_screen_resources_current(root)
-            .ok()
-            .and_then(|c| c.reply().ok())
-        {
-            Some(r) => r,
-            None => return 0,
-        };
-        (resources.crtcs, resources.config_timestamp)
-    } else {
-        let resources = match conn
-            .randr_get_screen_resources(root)
-            .ok()
-            .and_then(|c| c.reply().ok())
-        {
-            Some(r) => r,
-            None => return 0,
-        };
-        (resources.crtcs, resources.config_timestamp)
-    };
-
-    for crtc_id in &crtcs {
-        let crtc_info = match conn
-            .randr_get_crtc_info(*crtc_id, config_timestamp)
-            .ok()
-            .and_then(|c| c.reply().ok())
-        {
-            Some(info) => info,
-            None => continue,
-        };
-
-        if crtc_info.outputs.is_empty() {
-            return *crtc_id;
-        }
-    }
-
-    0
 }
 
 #[cfg(test)]

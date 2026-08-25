@@ -55,6 +55,7 @@
 //! [`render`] shares cursor, scene, and frame-callback policy while keeping
 //! nested-winit and DRM/KMS submission mechanics separate.
 
+pub mod bar;
 pub mod bootstrap;
 pub mod commands;
 pub mod compositor;
@@ -63,6 +64,7 @@ pub mod input;
 pub mod render;
 pub mod runtime;
 pub mod session;
+pub mod visibility;
 
 use crate::backend::{InteractiveResizeOps, OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
@@ -164,6 +166,12 @@ impl WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.clear_seat_focus());
     }
 
+    /// Project the core focus transaction into the surface's activated state.
+    pub(crate) fn set_window_activated(&self, window: WindowId, activated: bool) {
+        let _ = self
+            .with_state(|state: &mut WaylandState| state.set_window_activated(window, activated));
+    }
+
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
             if state.cursor_icon_override == icon {
@@ -245,6 +253,79 @@ impl WaylandBackend {
     pub(crate) fn sync_window_presentation(&self, window: WindowId) {
         let _ = self.with_state(|state| state.sync_window_presentation(window));
     }
+
+    pub(crate) fn take_current_window_animation_rect(
+        &self,
+        win: WindowId,
+        now: std::time::Instant,
+    ) -> Option<Rect> {
+        self.with_state(|state| state.take_current_window_animation_rect(win, now))
+            .flatten()
+    }
+
+    pub(crate) fn cancel_window_animation(&self, win: WindowId) {
+        let _ = self.with_state(|state| state.drop_window_animation(win));
+    }
+
+    pub(crate) fn window_animation_targets(&self, win: WindowId, target: Rect) -> bool {
+        self.with_state(|state| state.animation_targets_outer_rect(win, target))
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn begin_window_animation(
+        &self,
+        win: WindowId,
+        from: Rect,
+        to: Rect,
+        duration: std::time::Duration,
+    ) {
+        let _ = self.with_state(|state| {
+            state.set_window_target_rect(
+                win,
+                to,
+                crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateFrom {
+                    from,
+                    duration,
+                },
+            );
+        });
+    }
+
+    pub(crate) fn prepare_launch_environment(
+        &self,
+        command: &mut std::process::Command,
+        selected_window: Option<WindowId>,
+        context: crate::client::LaunchContext,
+    ) {
+        use smithay::wayland::seat::WaylandFocus;
+
+        if let Some(token) = self.with_state(|state| {
+            let source_surface = selected_window.and_then(|win| {
+                state
+                    .find_window(win)
+                    .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()))
+            });
+            let token_data = smithay::wayland::xdg_activation::XdgActivationTokenData {
+                surface: source_surface,
+                ..Default::default()
+            };
+            let _ = token_data
+                .user_data
+                .insert_if_missing_threadsafe(|| context);
+            let (token, _) = state
+                .xdg_activation_state
+                .create_external_token(Some(token_data));
+            token.as_str().to_owned()
+        }) {
+            command.env("XDG_ACTIVATION_TOKEN", token);
+        }
+
+        if let Some(display) = self.xdisplay() {
+            command.env("DISPLAY", format!(":{display}"));
+        } else if let Ok(display) = std::env::var("DISPLAY") {
+            command.env("DISPLAY", display);
+        }
+    }
 }
 
 impl Default for WaylandBackend {
@@ -306,10 +387,38 @@ impl PointerOps for WaylandBackend {
     }
 }
 
+/// Map the WM's cursor presentation onto Wayland cursor icons.
+///
+/// `None` means "no override" — the default cursor applies. This projection
+/// lives with the backend because it exists only for compositor-rendered
+/// cursors; X11 uses server cursor fonts instead (`AltCursor::to_x11_index`).
+fn wayland_cursor_icon(
+    style: crate::types::AltCursor,
+) -> Option<smithay::input::pointer::CursorIcon> {
+    use smithay::input::pointer::CursorIcon;
+    match style {
+        crate::types::AltCursor::Default => None,
+        crate::types::AltCursor::Move => Some(CursorIcon::Grabbing),
+        crate::types::AltCursor::VerticalAdjust => Some(CursorIcon::NsResize),
+        crate::types::AltCursor::HorizontalAdjust => Some(CursorIcon::EwResize),
+        crate::types::AltCursor::Close => Some(CursorIcon::NotAllowed),
+        crate::types::AltCursor::Resize(dir) => Some(match dir {
+            crate::types::ResizeDirection::TopLeft => CursorIcon::NwResize,
+            crate::types::ResizeDirection::Top => CursorIcon::NResize,
+            crate::types::ResizeDirection::TopRight => CursorIcon::NeResize,
+            crate::types::ResizeDirection::Right => CursorIcon::EResize,
+            crate::types::ResizeDirection::BottomRight => CursorIcon::SeResize,
+            crate::types::ResizeDirection::Bottom => CursorIcon::SResize,
+            crate::types::ResizeDirection::BottomLeft => CursorIcon::SwResize,
+            crate::types::ResizeDirection::Left => CursorIcon::WResize,
+        }),
+    }
+}
+
 impl crate::backend::CursorOps for crate::contexts::WmCtxWayland<'_> {
     fn apply_cursor_style(&mut self, style: crate::types::AltCursor) {
         self.wayland
-            .set_cursor_icon_override(style.to_wayland_icon());
+            .set_cursor_icon_override(wayland_cursor_icon(style));
     }
 }
 
@@ -395,9 +504,10 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
 
 #[cfg(test)]
 mod tests {
-    use super::WaylandBackend;
+    use super::{WaylandBackend, wayland_cursor_icon};
     use crate::backend::{WindowOps, WindowProtocol};
-    use crate::types::WindowId;
+    use crate::types::{AltCursor, ResizeDirection, WindowId};
+    use smithay::input::pointer::CursorIcon;
 
     #[test]
     fn window_protocol_trait_dispatch_delegates_to_inherent_query() {
@@ -405,5 +515,42 @@ mod tests {
         let ops: &dyn WindowOps = &backend;
 
         assert_eq!(ops.window_protocol(WindowId(1)), WindowProtocol::Unknown);
+    }
+
+    #[test]
+    fn cursor_projection_covers_shared_resize_directions() {
+        assert_eq!(wayland_cursor_icon(AltCursor::Default), None);
+        assert_eq!(
+            wayland_cursor_icon(AltCursor::Move),
+            Some(CursorIcon::Grabbing)
+        );
+        assert_eq!(
+            wayland_cursor_icon(AltCursor::VerticalAdjust),
+            Some(CursorIcon::NsResize)
+        );
+        assert_eq!(
+            wayland_cursor_icon(AltCursor::HorizontalAdjust),
+            Some(CursorIcon::EwResize)
+        );
+        assert_eq!(
+            wayland_cursor_icon(AltCursor::Close),
+            Some(CursorIcon::NotAllowed)
+        );
+
+        for (direction, expected) in [
+            (ResizeDirection::TopLeft, CursorIcon::NwResize),
+            (ResizeDirection::Top, CursorIcon::NResize),
+            (ResizeDirection::TopRight, CursorIcon::NeResize),
+            (ResizeDirection::Right, CursorIcon::EResize),
+            (ResizeDirection::BottomRight, CursorIcon::SeResize),
+            (ResizeDirection::Bottom, CursorIcon::SResize),
+            (ResizeDirection::BottomLeft, CursorIcon::SwResize),
+            (ResizeDirection::Left, CursorIcon::WResize),
+        ] {
+            assert_eq!(
+                wayland_cursor_icon(AltCursor::Resize(direction)),
+                Some(expected)
+            );
+        }
     }
 }

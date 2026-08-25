@@ -58,7 +58,8 @@ pub fn setup_root(wm: &mut Wm) {
     ];
 
     let conn = &data.conn;
-    let raw_pointer_motion = select_raw_pointer_motion(conn, root);
+    let (raw_pointer_motion, xi2_touch_grabs) = configure_xinput(conn, root);
+    data.x11_runtime.xi2_touch_grabs = xi2_touch_grabs;
     let mut mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
@@ -106,12 +107,7 @@ pub fn setup_root(wm: &mut Wm) {
     );
 
     // Set _NET_WM_NAME on the check window.
-    let utf8_atom = conn
-        .intern_atom(false, b"UTF8_STRING")
-        .ok()
-        .and_then(|c| c.reply().ok())
-        .map(|r| r.atom)
-        .unwrap_or(AtomEnum::STRING.into());
+    let utf8_atom = data.x11_runtime.xatom.utf8_string;
     let _ = conn.change_property8(
         PropMode::REPLACE,
         wmcheckwin,
@@ -156,13 +152,15 @@ pub fn setup_root(wm: &mut Wm) {
     }
 }
 
-fn select_raw_pointer_motion(conn: &RustConnection, root: Window) -> bool {
-    let Ok(version) = conn.xinput_xi_query_version(2, 0) else {
-        return false;
+fn configure_xinput(conn: &RustConnection, root: Window) -> (bool, bool) {
+    let Some(version) = conn
+        .xinput_xi_query_version(2, 2)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+    else {
+        return (false, false);
     };
-    if version.reply().is_err() {
-        return false;
-    }
+    let touch_grabs = supports_passive_touch_grabs(version.major_version, version.minor_version);
 
     let Ok(selection) = conn.xinput_xi_select_events(
         root,
@@ -172,7 +170,25 @@ fn select_raw_pointer_motion(conn: &RustConnection, root: Window) -> bool {
             mask: vec![XIEventMask::RAW_MOTION],
         }],
     ) else {
-        return false;
+        return (false, touch_grabs);
     };
-    selection.check().is_ok()
+    (selection.check().is_ok(), touch_grabs)
+}
+
+fn supports_passive_touch_grabs(major: u16, minor: u16) -> bool {
+    major > 2 || (major == 2 && minor >= 2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::supports_passive_touch_grabs;
+
+    #[test]
+    fn passive_touch_grabs_require_xinput_2_2() {
+        assert!(!supports_passive_touch_grabs(1, 99));
+        assert!(!supports_passive_touch_grabs(2, 1));
+        assert!(supports_passive_touch_grabs(2, 2));
+        assert!(supports_passive_touch_grabs(2, 4));
+        assert!(supports_passive_touch_grabs(3, 0));
+    }
 }

@@ -3,9 +3,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
-use crate::contexts::{WmCtx, WmCtxX11};
-use crate::geometry::MoveResizeOptions;
-use crate::types::{Rect, WindowId};
+use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -77,67 +75,4 @@ pub fn restore_border(x11: &X11BackendRef<'_>, model: &crate::model::WmModel, wi
         x11_win,
         &ConfigureWindowAux::new().border_width(restored_border),
     );
-}
-
-/// Toggle fake-fullscreen on the selected client (X11 backend).
-pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
-    let Some(win) = ctx_x11.core.model().selected_win() else {
-        return;
-    };
-
-    let Some((mode, monitor_id, old_border_width)) = ctx_x11
-        .core
-        .state()
-        .model
-        .client(win)
-        .map(|c| (c.mode(), c.monitor_id, c.old_border_width))
-    else {
-        return;
-    };
-
-    // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
-    // monitor and raise the window.
-    if mode.is_fake_fullscreen() {
-        let border_px = ctx_x11.core.config().window.border_width_px;
-
-        let Some(mon_rect) = ctx_x11
-            .core
-            .model()
-            .monitor(monitor_id)
-            .map(|m| m.monitor_rect)
-        else {
-            return;
-        };
-
-        let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-        wm_ctx.move_resize(
-            win,
-            Rect {
-                x: mon_rect.x + border_px,
-                y: mon_rect.y + border_px,
-                w: mon_rect.w - 2 * border_px,
-                h: mon_rect.h - 2 * border_px,
-            },
-            MoveResizeOptions::immediate(),
-        );
-
-        wm_ctx.window_backend().raise_window_visual_only(win);
-    }
-
-    // Restore the border width when leaving fake-fullscreen while still in
-    // the fullscreen state (real fullscreen removes the border, so we need to
-    // put it back before the layout re-runs).
-    if let Some(client) = ctx_x11.core.model_mut().client_mut(win) {
-        if client.mode().is_fake_fullscreen() {
-            client.enter_fullscreen();
-        } else {
-            client.enter_fake_fullscreen();
-        }
-        client.border_width = if client.mode().is_true_fullscreen() {
-            0
-        } else {
-            old_border_width
-        };
-    }
-    set_fullscreen_atoms(&ctx_x11.x11, ctx_x11.x11_runtime, win, true);
 }

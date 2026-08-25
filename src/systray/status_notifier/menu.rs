@@ -31,7 +31,7 @@ pub(super) fn open_dbus_menu(
 pub(super) fn handle_menu_action(
     conn: &Connection,
     action: MenuAction,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     session: &mut Option<DbusMenuSession>,
 ) {
     let Some(current) = session.as_mut() else {
@@ -83,7 +83,7 @@ pub(super) fn handle_menu_action(
 
 pub(super) fn refresh_menu_session(
     conn: &Connection,
-    evt_tx: &Sender<SystrayEvt>,
+    evt_tx: &SystrayEventTx,
     session: &mut Option<DbusMenuSession>,
 ) {
     let Some(current) = session.as_mut() else {
@@ -111,12 +111,8 @@ pub(super) fn refresh_menu_session(
     }
 }
 
-pub(super) fn send_menu_changed(
-    evt_tx: &Sender<SystrayEvt>,
-    session_id: u64,
-    view: Option<MenuView>,
-) {
-    let _ = evt_tx.send(SystrayEvt::MenuChanged { session_id, view });
+pub(super) fn send_menu_changed(evt_tx: &SystrayEventTx, session_id: u64, view: Option<MenuView>) {
+    evt_tx.send(SystrayEvt::MenuChanged { session_id, view });
 }
 
 fn notify_menu_about_to_show(conn: &Connection, service: &str, menu_path: &str, id: i32) {

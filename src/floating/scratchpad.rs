@@ -182,9 +182,7 @@ fn attach_client_to_monitor_top(model: &mut WmModel, win: WindowId, monitor_id: 
 }
 
 fn sync_scratchpad_backend_projection(ctx: &mut WmCtx<'_>, win: WindowId) {
-    if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::set_client_tag_prop(x11.core.state(), &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.sync_client_tag_props(win);
 }
 
 fn prepare_scratchpad_for_show(model: &mut WmModel, win: WindowId, monitor_id: MonitorId) {
@@ -404,10 +402,10 @@ pub(crate) fn scratchpad_restore_window(
     if explicit_destination {
         client.is_sticky = false;
     }
+    let previous_focus = ctx.core().model().selected_win();
     let reassigned = ctx
         .core_mut()
-        .model_mut()
-        .reassign_client_monitor(window, target_monitor);
+        .mutate_selection(|model| model.reassign_client_monitor(window, target_monitor));
     debug_assert!(
         reassigned,
         "validated restore monitor must accept the client"
@@ -415,7 +413,9 @@ pub(crate) fn scratchpad_restore_window(
 
     if was_hidden {
         crate::client::show_window(ctx, window);
-        crate::focus::focus(ctx, Some(window));
+        crate::focus::refresh_focus_after_selection(ctx, previous_focus, Some(window));
+    } else if ctx.core().model().selected_win() != previous_focus {
+        crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
     arrange(ctx, Some(source_monitor));
     if target_monitor != source_monitor {
@@ -541,7 +541,9 @@ fn show_scratchpad_window_with_options(
         .monitor(target_monitor)
         .and_then(|monitor| monitor.selected)
         .filter(|&selected| selected != found);
-    prepare_scratchpad_for_show(ctx.core_mut().model_mut(), found, target_monitor);
+    let previous_focus = ctx.core().model().selected_win();
+    ctx.core_mut()
+        .mutate_selection(|model| prepare_scratchpad_for_show(model, found, target_monitor));
     if let Some(client) = ctx.core_mut().model_mut().client_mut(found)
         && let Some(scratchpad) = client.scratchpad_mut()
     {
@@ -582,7 +584,9 @@ fn show_scratchpad_window_with_options(
     }
 
     if options.focus {
-        crate::focus::focus(ctx, Some(found));
+        crate::focus::refresh_focus_after_selection(ctx, previous_focus, Some(found));
+    } else if ctx.core().model().selected_win() != previous_focus {
+        crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
     ctx.window_backend().raise_window_visual_only(found);
 

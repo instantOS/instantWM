@@ -22,6 +22,13 @@ enum ActionTransition {
     Cancel,
 }
 
+/// Shared transition policy: how an incoming action interacts with an active
+/// overview projection.
+///
+/// This owns the policy for all key/button/named actions (see
+/// `prepare_key_action`, `prepare_button_action`, `prepare_named_action`
+/// below). IPC commands that bypass the action machinery have their
+/// counterpart table in `crate::ipc::ipc_overview_exit` — keep them aligned.
 fn prepare_action(ctx: &mut WmCtx<'_>, transition: ActionTransition) {
     if !ctx.core().model().is_overview_active() {
         return;
@@ -240,7 +247,8 @@ pub fn begin_card_gesture(
     let threshold = (monitor.monitor_rect.h / 30).max(1);
     let started = ctx
         .core_mut()
-        .drag_state_mut()
+        .interaction_mut()
+        .drag
         .begin_overview_card(crate::core_state::OverviewCardDrag::new(
             window, button, source, root, threshold,
         ))
@@ -252,11 +260,15 @@ pub fn begin_card_gesture(
 }
 
 pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    let window = match ctx.core().drag_state().capture() {
+    let window = match ctx.core().interaction().drag.capture() {
         Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window(),
         _ => return false,
     };
-    let transition = ctx.core_mut().drag_state_mut().update_overview_card(root);
+    let transition = ctx
+        .core_mut()
+        .interaction_mut()
+        .drag
+        .update_overview_card(root);
     if let Some(close_armed) = transition {
         ctx.set_cursor_style(if close_armed {
             crate::types::AltCursor::Close
@@ -273,7 +285,12 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
 }
 
 pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::MouseButton) -> bool {
-    let Some(action) = ctx.core_mut().drag_state_mut().finish_overview_card(button) else {
+    let Some(action) = ctx
+        .core_mut()
+        .interaction_mut()
+        .drag
+        .finish_overview_card(button)
+    else {
         return false;
     };
     ctx.update_close_preview(None, None);
@@ -338,7 +355,7 @@ fn enter(ctx: &mut WmCtx<'_>) {
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     // An external mode transition (keyboard, IPC, lock, etc.) invalidates any
     // card press that has not reached release yet.
-    if ctx.core_mut().drag_state_mut().cancel_overview_card() {
+    if ctx.core_mut().interaction_mut().drag.cancel_overview_card() {
         ctx.update_close_preview(None, None);
         ctx.set_cursor_style(crate::types::AltCursor::Default);
     }

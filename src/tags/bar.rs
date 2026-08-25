@@ -12,7 +12,7 @@ const MAX_BAR_SLOTS: usize = 9;
 pub(crate) struct VisibleTag<'a> {
     /// Slot index (0..MAX_BAR_SLOTS-1). Used for hover/gesture matching.
     pub slot: usize,
-    /// Actual tag index into `globals.model.tags.tags` / bitmask space.
+    /// Actual tag index into `monitor.tags` / bitmask space.
     pub tag_index: usize,
     /// Display label (regular or alt name).
     pub label: &'a str,
@@ -40,11 +40,7 @@ pub(crate) fn visible_tags<'a>(
         }
 
         let tag = &monitor.tags[tag_index];
-        let label = if show_alt && !tag.alt_name.is_empty() {
-            tag.alt_name.as_str()
-        } else {
-            tag.name.as_str()
-        };
+        let label = tag.display_name(show_alt);
         let width =
             ((label.chars().count() as i32) * 8 + horizontal_padding).max(horizontal_padding);
 

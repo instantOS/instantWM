@@ -124,12 +124,15 @@ impl CompositorHandler for WaylandState {
             root = parent;
         }
 
-        // Ask Smithay which outputs contain the root window rather than
-        // reconstructing that relationship from geometry in the runtime.
+        // Resolve protocol ownership from the complete managed-window index,
+        // not from Smithay Space. Tag visibility temporarily removes windows
+        // from Space, but clients may still acknowledge activation or size
+        // configures while hidden. Those commits must continue to refresh the
+        // Window cache and settle configure bookkeeping so the retained buffer
+        // is immediately presentable when its tag becomes visible again.
         let committed_window = self
-            .space
-            .elements()
-            .find(|w| w.wl_surface().as_deref() == Some(&root))
+            .window_id_for_surface(&root)
+            .and_then(|id| self.window_index.get(&id))
             .cloned();
         let committed_layer_output = super::layer_shell::layer_output_for_surface(self, &root);
 
@@ -225,14 +228,28 @@ fn service_surface_commit(
 ) {
     match service {
         SurfaceCommitService::Render => match window {
-            Some(window) => state.request_window_render(window),
+            Some(window) => {
+                // Hidden managed windows still commit protocol state, but have
+                // no pixels to invalidate. Mapping them later requests the
+                // first visible render explicitly.
+                if state.space.element_location(window).is_some() {
+                    state.request_window_render(window);
+                }
+            }
             None => match layer_output {
                 Some(output) => state.request_output_render(output),
                 None => state.request_render(),
             },
         },
         SurfaceCommitService::FrameCallbacks => match window {
-            Some(window) => state.request_window_frame_callbacks(window),
+            Some(window) => {
+                // A hidden surface is not being presented and must not be
+                // frame-driven. Its callbacks become eligible as soon as the
+                // remap render is submitted.
+                if state.space.element_location(window).is_some() {
+                    state.request_window_frame_callbacks(window);
+                }
+            }
             None => match layer_output {
                 Some(output) => state.request_output_frame_callbacks(output),
                 None => state.request_frame_callbacks(),
@@ -515,3 +532,55 @@ impl OutputManagementHandler for WaylandState {
 // `OutputManagementState::new`, `add_heads`, etc. are not satisfied when
 // `D = WaylandState`.
 crate::delegate_output_management!(WaylandState);
+
+// ---------------------------------------------------------------------------
+// wlr-foreign-toplevel-management-unstable-v1 handler
+// ---------------------------------------------------------------------------
+
+impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelHandler
+    for WaylandState
+{
+    fn foreign_toplevel_state(
+        &mut self,
+    ) -> &mut crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState
+    {
+        &mut self.foreign_toplevel_management_state
+    }
+
+    fn foreign_toplevel_snapshot(
+        &self,
+        window: crate::types::WindowId,
+    ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
+    {
+        self.foreign_toplevel_snapshot(window)
+    }
+
+    fn foreign_toplevel_request(
+        &mut self,
+        window: crate::types::WindowId,
+        request: crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelRequest,
+    ) {
+        use crate::backend::wayland::commands::WmCommand;
+        use crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelRequest;
+
+        let command = match request {
+            ForeignToplevelRequest::Activate => WmCommand::FocusWindow(window),
+            ForeignToplevelRequest::Close => WmCommand::CloseWindow(window),
+            ForeignToplevelRequest::SetMaximized(maximized) => WmCommand::SetMaximized {
+                win: window,
+                maximized,
+            },
+            ForeignToplevelRequest::SetMinimized(minimized) => WmCommand::SetMinimized {
+                win: window,
+                minimized,
+            },
+            ForeignToplevelRequest::SetFullscreen(fullscreen) => WmCommand::SetFullscreen {
+                win: window,
+                fullscreen,
+            },
+        };
+        self.push_command(command);
+    }
+}
+
+crate::delegate_foreign_toplevel_management!(WaylandState);

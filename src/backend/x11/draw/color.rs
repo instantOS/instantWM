@@ -50,6 +50,65 @@ impl Color {
     }
 }
 
+// ── Schemes ───────────────────────────────────────────────────────────────────
+
+/// A color scheme of allocated X11/Xft colors.
+///
+/// X11-runtime counterpart of [`crate::types::ColorSchemeRgba`]: colors are
+/// allocated against a display once and reused by pixel value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorScheme {
+    /// Foreground color.
+    pub fg: Color,
+    /// Background color.
+    pub bg: Color,
+    /// Detail/accent color.
+    pub detail: Color,
+}
+
+impl ColorScheme {
+    pub fn new(fg: Color, bg: Color, detail: Color) -> Self {
+        Self { fg, bg, detail }
+    }
+
+    /// Create a color scheme from a single color (replicated to fg, bg, detail).
+    ///
+    /// Useful for things like borders that only need one color.
+    pub fn from_single(color: Color) -> Self {
+        Self {
+            fg: color.clone(),
+            bg: color.clone(),
+            detail: color,
+        }
+    }
+}
+
+impl Default for ColorScheme {
+    fn default() -> Self {
+        let zero = Color::default();
+        Self {
+            fg: zero.clone(),
+            bg: zero.clone(),
+            detail: zero,
+        }
+    }
+}
+
+/// Color scheme variants for different border states.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct BorderScheme {
+    /// Normal/unfocused border colors.
+    pub normal: ColorScheme,
+    /// Focused tiled window border colors.
+    pub tile_focus: ColorScheme,
+    /// Focused floating window border colors.
+    pub float_focus: ColorScheme,
+    /// Snap indicator border colors.
+    pub snap: ColorScheme,
+    /// Destructive overview gesture threshold feedback.
+    pub close: ColorScheme,
+}
+
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
 /// A loaded X11 cursor (created via `XCreateFontCursor`).

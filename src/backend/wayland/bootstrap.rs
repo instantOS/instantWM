@@ -14,12 +14,9 @@ use crate::core_state::CoreState;
 /// applies them to the given `CoreState`. Also updates the bar painter's font
 /// size. Shared by both startup (`init_globals`) and reload.
 pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
-    let font_size = state.config.fonts.size();
-    let font_families = state.config.fonts.families();
     let metrics = state.config.fonts.bar_metrics(state.config.bar.height);
 
-    data.bar_painter.set_font_size(font_size);
-    data.bar_painter.set_font_families(&font_families);
+    data.bar_painter.set_fonts(&state.config.fonts);
 
     state.derived.bar_height = metrics.height;
     state.derived.bar_horizontal_padding = metrics.horizontal_padding;

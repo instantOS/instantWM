@@ -12,11 +12,10 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::x11::draw::{Cursor, DrawContext};
+use crate::backend::x11::draw::{BorderScheme, ColorScheme, Cursor, DrawContext};
 use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
-use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::{Point, Rect, WindowId};
 
 #[derive(Clone, Copy)]
@@ -33,6 +32,11 @@ pub struct X11RuntimeConfig {
     pub xatom: XAtoms,
     pub motifatom: Atom,
     pub numlockmask: u32,
+    /// Whether the server supports XI2.2 passive touch grabs. These let
+    /// click-to-focus observe a touch without degrading it to Button1.
+    pub xi2_touch_grabs: bool,
+    /// Server keyboard mapping, refreshed on `MappingNotify`.
+    pub keyboard_mapping: X11KeyboardMapping,
     pub root: Window,
     /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
     pub wm_check_win: Window,
@@ -41,7 +45,7 @@ pub struct X11RuntimeConfig {
     /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
     pub border_scheme: BorderScheme,
     /// X11 color scheme for status bar.
-    pub status_scheme: StatusScheme,
+    pub status_scheme: ColorScheme,
     /// X11 cursors for different cursor states.
     pub cursors: [Option<Cursor>; 10],
     /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
@@ -59,6 +63,8 @@ pub struct X11RuntimeConfig {
     pub window_animations: crate::animation::WindowAnimations,
     /// Border widths to restore when X11 windows leave WM management.
     pub original_border_widths: HashMap<WindowId, u32>,
+    /// Cached WM_PROTOCOLS for managed clients, refreshed on PropertyNotify.
+    pub client_protocols: HashMap<WindowId, X11ClientProtocols>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -69,12 +75,14 @@ impl Default for X11RuntimeConfig {
             xatom: XAtoms::default(),
             motifatom: 0,
             numlockmask: 0,
+            xi2_touch_grabs: false,
+            keyboard_mapping: X11KeyboardMapping::default(),
             root: 0,
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             draw: None,
             border_scheme: BorderScheme::default(),
-            status_scheme: StatusScheme::default(),
+            status_scheme: ColorScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor: None,
             active_pointer_grab: None,
@@ -84,7 +92,74 @@ impl Default for X11RuntimeConfig {
             layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
+            client_protocols: HashMap::new(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct X11KeyboardMapping {
+    pub min_keycode: u8,
+    pub keysyms_per_keycode: u8,
+    pub keysyms: Vec<u32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum X11ClientProtocols {
+    /// The property has not been read successfully. Destructive operations
+    /// must retry instead of treating this as an empty protocol list.
+    #[default]
+    Unknown,
+    Known(Vec<u32>),
+}
+
+impl X11ClientProtocols {
+    pub fn supports(&self, protocol: u32) -> bool {
+        matches!(self, Self::Known(protocols) if protocols.contains(&protocol))
+    }
+
+    pub fn is_known(&self) -> bool {
+        matches!(self, Self::Known(_))
+    }
+}
+
+#[cfg(test)]
+mod protocol_cache_tests {
+    use super::X11ClientProtocols;
+
+    #[test]
+    fn unknown_protocol_state_is_not_equivalent_to_known_empty() {
+        let unknown = X11ClientProtocols::Unknown;
+        let empty = X11ClientProtocols::Known(Vec::new());
+        assert!(!unknown.is_known());
+        assert!(empty.is_known());
+        assert!(!unknown.supports(7));
+        assert!(!empty.supports(7));
+    }
+
+    #[test]
+    fn known_protocols_report_supported_atoms() {
+        let protocols = X11ClientProtocols::Known(vec![7, 9]);
+        assert!(protocols.supports(7));
+        assert!(!protocols.supports(8));
+    }
+}
+
+impl X11KeyboardMapping {
+    pub fn keysym(&self, keycode: u8, index: usize) -> u32 {
+        if index >= self.keysyms_per_keycode as usize {
+            return 0;
+        }
+        let Some(offset) = keycode.checked_sub(self.min_keycode) else {
+            return 0;
+        };
+        let Some(index) = (offset as usize)
+            .checked_mul(self.keysyms_per_keycode as usize)
+            .and_then(|base| base.checked_add(index))
+        else {
+            return 0;
+        };
+        self.keysyms.get(index).copied().unwrap_or(0)
     }
 }
 
@@ -110,6 +185,45 @@ impl X11RuntimeConfig {
         win: WindowId,
     ) -> Option<crate::animation::WindowAnimation> {
         self.window_animations.remove(&win)
+    }
+
+    pub(crate) fn take_current_window_animation_rect(
+        &mut self,
+        win: WindowId,
+        now: std::time::Instant,
+    ) -> Option<Rect> {
+        self.take_window_animation(win)
+            .map(|animation| animation.tick(now).rect)
+    }
+
+    pub(crate) fn cancel_window_animation(&mut self, win: WindowId) {
+        let _ = self.take_window_animation(win);
+    }
+
+    pub(crate) fn window_animation_targets(&self, win: WindowId, target: Rect) -> bool {
+        self.window_animations
+            .get(&win)
+            .is_some_and(|animation| animation.to == target)
+    }
+
+    pub(crate) fn begin_window_animation(
+        &mut self,
+        x11: &X11BackendRef<'_>,
+        win: WindowId,
+        from: Rect,
+        to: Rect,
+        duration: std::time::Duration,
+    ) {
+        x11.resize_window(win, from);
+        self.insert_or_replace_window_animation(
+            win,
+            crate::animation::WindowAnimation {
+                from,
+                to,
+                started_at: std::time::Instant::now(),
+                duration,
+            },
+        );
     }
 }
 
@@ -206,17 +320,6 @@ impl Drop for ServerGrab<'_> {
         let _ = self.conn.ungrab_server();
         let _ = self.conn.flush();
     }
-}
-
-/// Query the current geometry of an X11 window via `GetGeometry`.
-pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
-    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
-    Some(Rect {
-        x: reply.x as i32,
-        y: reply.y as i32,
-        w: reply.width as i32,
-        h: reply.height as i32,
-    })
 }
 
 impl WindowOps for X11BackendRef<'_> {
@@ -339,6 +442,10 @@ impl PointerOps for X11BackendRef<'_> {
 }
 
 impl OutputOps for X11BackendRef<'_> {
+    fn query_fallback_outputs(&self) -> Option<Vec<crate::backend::BackendOutputInfo>> {
+        crate::backend::x11::monitor_helpers::xinerama_outputs(self)
+    }
+
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         let root = self.conn.setup().roots[self.screen_num].root;
         randr::set_monitor_config(self.conn, root, name, config);

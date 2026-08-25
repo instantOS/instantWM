@@ -231,11 +231,11 @@ impl BarPresentation {
 pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
-    pub font_size: f32,
-    pub font_families: Vec<String>,
+    pub fonts: crate::core_state::FontConfig,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
-    pub status_hover_color: crate::bar::color::Rgba,
+    pub status_separator_color: crate::types::color::Rgba,
+    pub status_hover_color: crate::types::color::Rgba,
     pub startmenu_size: i32,
     pub horizontal_padding: i32,
     pub gesture: Gesture,
@@ -263,16 +263,13 @@ pub(crate) struct MonitorRenderOutputWithId {
 
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
-    status_notifier_tray: Option<&crate::systray::StatusNotifierTray>,
-    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
     include_status_items: bool,
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().expect_selected_monitor().num;
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
-    let base_font_size = core.config().fonts.size();
-    let font_families = core.config().fonts.families();
+    let base_fonts = core.config().fonts.clone();
     let bar_hover = core.bar.hover;
     enum ModeStatus {
         Default,
@@ -350,7 +347,7 @@ pub(crate) fn build_monitor_snapshots(
         if !mon.bar_visible(&core.model().clients) {
             continue;
         }
-        let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
+        let fonts = base_fonts.scaled(mon.ui_scale as f32);
 
         let stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
 
@@ -412,23 +409,33 @@ pub(crate) fn build_monitor_snapshots(
                 StatusPresentation::Hidden
             },
             overlay: if is_selected_monitor {
-                tray_menu.cloned().map(BarOverlay::TrayMenu)
+                core.bar
+                    .systray_host
+                    .menu
+                    .presentation()
+                    .map(BarOverlay::TrayMenu)
             } else {
                 None
             },
         };
 
+        let tray_menu = presentation.tray_menu().cloned();
         let systray = if show_systray && is_selected_monitor {
-            status_notifier_tray.map(|items| SystraySnapshot {
-                items: items.clone(),
+            let items = core.bar.systray_host.tray.clone();
+            let layout = crate::systray::layout(
+                &items,
+                tray_menu.as_ref().map(|menu| &menu.view),
+                mon.work_rect().w,
+                mon.bar_height,
+                systray_spacing,
+                // Compositor-rendered icons sit left of any externally
+                // rendered tray strip (XEmbed windows on X11).
+                external_right_width.max(0),
+            );
+            Some(SystraySnapshot {
+                items,
                 base_scheme: status_scheme(&core.config().colors.status_bar),
-                layout: crate::systray::layout(
-                    items,
-                    tray_menu.map(|menu| &menu.view),
-                    mon.work_rect().w,
-                    mon.bar_height,
-                    systray_spacing,
-                ),
+                layout,
             })
         } else {
             None
@@ -442,10 +449,10 @@ pub(crate) fn build_monitor_snapshots(
                 mon.work_rect().w,
                 mon.bar_height,
             ),
-            font_size,
-            font_families: font_families.clone(),
+            fonts,
             is_selected_monitor,
             status_scheme: status_scheme(&core.config().colors.status_bar),
+            status_separator_color: core.config().colors.status_bar.separator,
             status_hover_color: core.config().colors.status_bar.hover,
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
@@ -688,6 +695,7 @@ fn draw_status_section(
             content.items.as_slice(),
             crate::bar::status::StatusRenderOptions {
                 base_scheme: snapshot.status_scheme.clone(),
+                separator_color: snapshot.status_separator_color,
                 hover,
                 edge_padding: snapshot.horizontal_padding / 2,
             },
@@ -823,6 +831,7 @@ pub(crate) fn render_monitor_snapshot(
 
     draw_titles_section(painter, snapshot, x, title_width, bar_height, &mut hit);
     record_systray_hits(snapshot, &mut hit);
+    draw_systray_section(painter, snapshot);
 
     MonitorRenderOutput {
         hit_cache: hit,
@@ -830,11 +839,56 @@ pub(crate) fn render_monitor_snapshot(
     }
 }
 
+/// Paint compositor-rendered tray icons and any hosted tray menu.
+///
+/// Shared by every backend through [`BarPainter`] so X11 and Wayland bars
+/// render StatusNotifier items identically.
+fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnapshot) {
+    let Some(systray) = &snapshot.systray else {
+        return;
+    };
+    let layout = &systray.layout;
+    let bar_height = snapshot.rect.h;
+
+    painter.set_scheme(systray.base_scheme.clone());
+    if layout.total_width > 0 {
+        painter.rect(
+            Rect::new(layout.start_x, 0, layout.total_width, bar_height),
+            true,
+            true,
+        );
+    }
+    if layout.menu.width > 0 {
+        painter.rect(
+            Rect::new(layout.menu.start_x, 0, layout.menu.width, bar_height),
+            true,
+            true,
+        );
+    }
+
+    for cell in &layout.cells {
+        let Some(item) = systray.items.items.get(cell.idx) else {
+            continue;
+        };
+        painter.blit_rgba(cell.icon, item.icon_size, &item.icon_rgba);
+    }
+
+    if let Some(menu) = snapshot.presentation.tray_menu() {
+        crate::systray::render::draw_menu(
+            painter,
+            &menu.view,
+            &layout.menu.cells,
+            &systray.base_scheme,
+            bar_height,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bar::color::Rgba;
     use crate::model::WmModel;
+    use crate::types::color::Rgba;
     use crate::types::{
         Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,
         SchemeTag, SchemeWin, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs,
@@ -852,6 +906,7 @@ mod tests {
             fg: Rgba::new(0.1, 0.1, 0.1, 1.0),
             bg: Rgba::new(0.2, 0.2, 0.2, 1.0),
             detail: Rgba::new(0.3, 0.3, 0.3, 1.0),
+            separator: Rgba::new(0.4, 0.4, 0.4, 1.0),
             hover: Rgba::ZERO,
         };
 

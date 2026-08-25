@@ -19,8 +19,9 @@
 //! ```
 
 use crate::backend::BackendEvent;
+use crate::backend::PointerOps;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
-use crate::contexts::WmCtxX11;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{AltCursor, MouseButton, Point};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -134,6 +135,10 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     if ctx.core.bar.needs_redraw() {
         crate::backend::x11::bar::draw_bars(&mut ctx.core, ctx.x11_runtime);
     }
+    // This modal loop bypasses the normal calloop tick, which ordinarily
+    // flushes once after dispatch. Send the compressed motion batch now so
+    // interactive geometry never sits in x11rb's write buffer until ungrab.
+    let _ = ctx.x11.conn.flush();
 }
 
 /// Convert an X11 event to a backend-agnostic [`BackendEvent`].
@@ -174,6 +179,10 @@ where
     // following deferred-work pump will coalesce and render them.
     if let x11rb::protocol::Event::Expose(expose) = event {
         crate::backend::x11::events::handlers::expose(ctx, expose);
+        return true;
+    }
+    if let x11rb::protocol::Event::XinputTouchBegin(touch) = event {
+        crate::backend::x11::events::handlers::touch_begin(ctx, touch);
         return true;
     }
 
@@ -226,7 +235,7 @@ where
 
     let mut release = None;
     // Wait for at least one event (blocking) each iteration.
-    while let Some(mut event) = wait_event(&ctx.x11) {
+    'events: while let Some(mut event) = wait_event(&ctx.x11) {
         // If it's a motion event, compress it by eating all subsequent pending
         // motion events in the queue, keeping only the absolute latest.
         // This ensures zero-latency dragging without artificial 16ms FPS caps.
@@ -267,8 +276,9 @@ where
                             }
                             pump_deferred_work(ctx);
 
-                            // We've processed the peeking; continue the main `wait_event` loop.
-                            continue;
+                            // We've processed the peeked event; continue the
+                            // main loop without applying the motion twice.
+                            continue 'events;
                         }
                     }
                     Ok(None) => break,
@@ -312,13 +322,61 @@ where
 ///
 /// X11 alone needs a native pointer grab and a synchronous adapter. Gesture
 /// semantics remain in `mouse::interaction`, alongside Wayland pointer/touch.
+/// Commit the current hover-resize offer to a move, resize, or close
+/// operation.
+///
+/// X11 commits offers through its modal grab loop; the shared mouse module
+/// owns only the offer model. Returns `false` when there is no resize offer
+/// or the button is not a valid commit button for hover resize.
+pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
+    let Some((win, _)) = ctx.core.interaction().drag.hover_offer.resize_target() else {
+        return false;
+    };
+    if btn == MouseButton::Middle {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::mouse::clear_hover_offer(&mut wm_ctx);
+        if wm_ctx.core().model().selected_win() != Some(win) {
+            crate::focus::focus(&mut wm_ctx, Some(win));
+        }
+        crate::client::kill::close_win(&mut wm_ctx, win);
+        return true;
+    }
+    if btn != MouseButton::Left && btn != MouseButton::Right {
+        return false;
+    }
+    let start = ctx
+        .x11
+        .pointer_location()
+        .or_else(|| {
+            ctx.core
+                .model()
+                .client(win)
+                .map(|client| client.geo.center())
+        })
+        .unwrap_or_default();
+    let started = {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        if wm_ctx.core().model().selected_win() != Some(win) {
+            crate::focus::focus(&mut wm_ctx, Some(win));
+        }
+        crate::mouse::drag::hover_drag_begin(
+            &mut wm_ctx,
+            start,
+            btn,
+            crate::types::InteractionSource::Pointer,
+        )
+    };
+    started && drive_wm_interaction(ctx, btn)
+}
+
 pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    if ctx.core.drag_state().captured_button() != Some(btn)
-        || ctx.core.drag_state().captured_source() != Some(crate::types::InteractionSource::Pointer)
+    if ctx.core.interaction().drag.captured_button() != Some(btn)
+        || ctx.core.interaction().drag.captured_source()
+            != Some(crate::types::InteractionSource::Pointer)
     {
         return false;
     }
-    let cursor = match ctx.core.drag_state().capture() {
+    let cursor = match ctx.core.interaction().drag.capture() {
         Some(crate::core_state::CapturedInteraction::SidebarVolume(_)) => AltCursor::VerticalAdjust,
         Some(crate::core_state::CapturedInteraction::BottomBar(_)) => AltCursor::HorizontalAdjust,
         Some(crate::core_state::CapturedInteraction::Window(state)) => match state {

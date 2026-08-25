@@ -280,7 +280,7 @@ mod tests {
         );
         assert!(matches!(
             active.operation(),
-            crate::core_state::DragOperationRef::TreeResize { .. }
+            crate::core_state::DragOperation::TreeResize { .. }
         ));
 
         let _ = finish(&mut interactions, &protocol, MouseButton::Right).unwrap();

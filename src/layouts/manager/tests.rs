@@ -150,10 +150,10 @@ fn arrange_invalidates_pointer_placement_candidates() {
         .apply_preset(Preset::Grid, &[source, target], 1);
 
     assert!(super::preview_tree_at_point(&mut wm.ctx(), source, Point::new(201, 150),).is_some());
-    assert!(wm.core.pointer_placement_cache.is_some());
+    assert!(wm.core.interaction.pointer_placement_cache.is_some());
 
     super::arrange(&mut wm.ctx(), Some(monitor_id));
-    assert!(wm.core.pointer_placement_cache.is_none());
+    assert!(wm.core.interaction.pointer_placement_cache.is_none());
 }
 
 #[test]
@@ -253,6 +253,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
     let origin = monitor.per_tag().unwrap().layout_tree.clone();
 
     wm.core
+        .interaction
         .drag
         .begin_tree_resize(crate::core_state::TreeResizeParams {
             win: first,

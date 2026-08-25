@@ -68,6 +68,8 @@ fn resolve_backend(cli: &Cli) -> CliBackend {
 pub fn run() {
     let cli = Cli::parse();
 
+    crate::logging::init();
+
     let backend = resolve_backend(&cli);
 
     // Set environment variables to identify instantWM

@@ -8,7 +8,10 @@ use std::collections::{BTreeSet, HashMap};
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     // Any authoritative arrange may reconcile the tree, constraints, gaps, or
     // monitor geometry. Pointer placement rebuilds lazily on the next sample.
-    ctx.core_mut().state_mut().pointer_placement_cache = None;
+    ctx.core_mut()
+        .state_mut()
+        .interaction
+        .pointer_placement_cache = None;
 
     if ctx.current_mode().tree_placement().is_some()
         && !ctx

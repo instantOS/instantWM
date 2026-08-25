@@ -8,7 +8,6 @@ mod async_render;
 mod buffer;
 mod hash;
 mod pixels;
-mod systray;
 mod text;
 
 use smithay::backend::allocator::Fourcc;
@@ -63,12 +62,8 @@ impl WaylandBarPainter {
         }
     }
 
-    pub fn set_font_size(&mut self, font_size: f32) {
-        self.text.set_font_size(font_size);
-    }
-
-    pub fn set_font_families(&mut self, families: &[String]) {
-        self.text.set_font_families(families);
+    pub fn set_fonts(&mut self, fonts: &crate::core_state::FontConfig) {
+        self.text.set_fonts(fonts);
     }
 
     pub fn set_render_ping(
@@ -136,16 +131,6 @@ impl WaylandBarPainter {
             .map(|buffer| (buffer.buffer, buffer.position))
             .collect()
     }
-
-    pub fn blit_rgba_bgra(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
-        pixels::blit_rgba_scaled(
-            &mut self.pixels,
-            self.surface_rect.size(),
-            destination,
-            source_size,
-            src_rgba,
-        );
-    }
 }
 
 impl BarPainter for WaylandBarPainter {
@@ -199,7 +184,7 @@ impl BarPainter for WaylandBarPainter {
             );
         }
         if !text.is_empty() {
-            let powerline = TextRasterizer::is_powerline_text(text);
+            let powerline = crate::bar::text::is_powerline_only(text);
             let bleed = if powerline { 2 } else { 0 };
             let text_x = bounds.x + lpad - bleed;
             let text_w = (bounds.w - lpad + bleed * 2).max(0);
@@ -215,24 +200,24 @@ impl BarPainter for WaylandBarPainter {
         }
         bounds.right()
     }
+
+    fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
+        pixels::blit_rgba_scaled(
+            &mut self.pixels,
+            self.surface_rect.size(),
+            destination,
+            source_size,
+            src_rgba,
+        );
+    }
 }
 
 pub fn render_bar_buffers(
     core: &mut CoreCtx,
     painter: &mut WaylandBarPainter,
     scale: Scale<f64>,
-    status_notifier_tray: &crate::systray::StatusNotifierTray,
-    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
-    let snapshots =
-        scene::build_monitor_snapshots(core, Some(status_notifier_tray), tray_menu, false, 0);
-    // Cache the systray width so status bar layout can account for it.
-    core.bar.runtime.systray_width = snapshots
-        .iter()
-        .find(|snapshot| snapshot.is_selected_monitor)
-        .and_then(|snapshot| snapshot.systray.as_ref())
-        .map(|systray| systray.layout.total_width)
-        .unwrap_or(0);
+    let snapshots = scene::build_monitor_snapshots(core, false, 0);
     let _ = scale;
 
     let key = hash::render_key(
@@ -281,7 +266,7 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
         let [r, g, b, a] = bg.to_rgba8();
         let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
         // Fill background, premultiplying alpha for GL compositing.
-        for chunk in pixels.chunks_exact_mut(4) {
+        for chunk in pixels.as_chunks_mut::<4>().0 {
             let (pr, pg, pb, pa) = if a == 255 {
                 (b, g, r, 255)
             } else {

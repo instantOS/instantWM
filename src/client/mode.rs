@@ -143,12 +143,6 @@ pub(crate) enum MaximizedChange {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[must_use = "leaving maximization requires backend state and geometry projection"]
-pub(crate) struct LeaveMaximizedTransition {
-    pub(crate) transition: MaximizedTransition,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "client maximize intent requires geometry, layout, and protocol projection"]
 pub(crate) struct ClientMaximizeIntentTransition {
     monitor_id: MonitorId,
@@ -574,7 +568,7 @@ impl WmModel {
     }
 
     /// Leave the client's maximized presentation.
-    pub(crate) fn leave_maximized(&mut self, win: WindowId) -> Option<LeaveMaximizedTransition> {
+    pub(crate) fn leave_maximized(&mut self, win: WindowId) -> Option<MaximizedTransition> {
         if !self.client(win)?.mode().is_maximized() {
             return None;
         }
@@ -591,7 +585,7 @@ impl WmModel {
         } else {
             self.set_maximized(win, false)?
         };
-        Some(LeaveMaximizedTransition { transition })
+        Some(transition)
     }
 }
 
@@ -916,7 +910,7 @@ mod tests {
         let left = model.leave_maximized(win).unwrap();
 
         assert!(matches!(
-            left.transition.change(),
+            left.change(),
             MaximizedChange::Exited {
                 restore_rect: Some(_)
             }

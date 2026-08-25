@@ -30,30 +30,42 @@ pub struct TickResult {
     pub ipc_handled: bool,
     pub monitor_config_applied: bool,
     pub layout_applied: bool,
+    /// StatusNotifier tray content changed; bar redraw / render required.
+    pub systray_updated: bool,
 }
 
 /// Shared per-tick housekeeping with backend-specific scheduler options.
 ///
 /// Processing order is backend-independent and deterministic:
-/// 1. IPC command dispatch
-/// 2. monitor configuration work
-/// 3. layout work
-/// 4. backend-specific bar draw (X11 only)
+/// 1. StatusNotifier tray events
+/// 2. internal status updates
+/// 3. IPC command dispatch
+/// 4. monitor configuration work
+/// 5. layout work
+/// 6. dirty-bar redraw (backend-routed)
 pub fn event_loop_tick_with_options(
     wm: &mut Wm,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     options: TickOptions,
 ) -> TickResult {
+    let systray_updated = wm.poll_systray();
     let status_handled = crate::bar::status::drain_internal_status_updates(wm);
+    // A finished region selection may resize a window, so it drains before
+    // pending work to let the same tick apply the resulting layout.
+    let region_selection_applied = crate::mouse::slop::drain_region_selection(wm);
     let ipc_handled = process_ipc_commands(ipc_server, wm);
     let work = process_pending_work(wm, options);
     crate::bar::status::sync_visibility(wm);
 
-    draw_x11_bars_if_dirty(wm);
+    {
+        let mut ctx = wm.ctx();
+        ctx.redraw_bars_if_dirty();
+    }
     TickResult {
-        ipc_handled: ipc_handled || status_handled,
+        ipc_handled: ipc_handled || status_handled || region_selection_applied,
         monitor_config_applied: work.monitor_config_applied,
         layout_applied: work.layout_applied,
+        systray_updated,
     }
 }
 
@@ -116,17 +128,6 @@ fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
     }
 }
 
-pub fn draw_x11_bars_if_dirty(wm: &mut Wm) {
-    if !matches!(wm.backend, crate::backend::Backend::X11(_)) || !wm.bar.needs_redraw() {
-        return;
-    }
-
-    let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::backend::x11::bar::draw_bars(&mut x11_ctx.core, x11_ctx.x11_runtime);
-    }
-}
-
 /// Process pending IPC commands.
 ///
 /// Returns `true` when at least one command was handled.
@@ -173,7 +174,9 @@ pub fn run_startup_commands(wm: &Wm) {
 /// X11 late startup sequence.
 ///
 /// Runs startup commands, binds the IPC socket, and spawns the status bar.
-pub fn late_init_x11(wm: &Wm) -> Option<crate::ipc::IpcServer> {
+/// The StatusNotifier worker starts later, from the calloop event loop, so it
+/// can receive a wake ping; see `backend::x11::events::run`.
+pub fn late_init_x11(wm: &mut Wm) -> Option<crate::ipc::IpcServer> {
     run_startup_commands(wm);
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     spawn_status_bar(wm);
@@ -181,6 +184,18 @@ pub fn late_init_x11(wm: &Wm) -> Option<crate::ipc::IpcServer> {
 }
 
 // ── Calloop source helpers ──────────────────────────────────────────────
+
+/// Register a no-op ping source and return its handle.
+///
+/// Cross-thread producers — currently the StatusNotifier worker — ping it to
+/// wake an otherwise idle event loop so polled state is drained promptly.
+pub fn make_wake_ping<T: 'static>(
+    handle: &calloop::LoopHandle<'_, T>,
+) -> Option<calloop::ping::Ping> {
+    let (ping, source) = calloop::ping::make_ping().ok()?;
+    handle.insert_source(source, |_, _, _| {}).ok()?;
+    Some(ping)
+}
 
 /// Register an IPC listener fd as a calloop source.
 ///
