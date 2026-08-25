@@ -786,7 +786,19 @@ mod theme_tests {
         );
         assert_eq!(config.colors.status.bg, "#123456".parse().unwrap());
         assert_eq!(config.colors.status.fg, "#4c4f69".parse().unwrap());
+        assert_eq!(config.colors.status.separator, "#ccd0da".parse().unwrap());
         assert_eq!(config.colors.border.tile_focus, "#1e66f5".parse().unwrap());
+    }
+
+    #[test]
+    fn status_separator_color_can_be_overridden() {
+        let config = parse(
+            r##"
+            [colors.status]
+            separator = "#445566"
+            "##,
+        );
+        assert_eq!(config.colors.status.separator, "#445566".parse().unwrap());
     }
 
     #[test]

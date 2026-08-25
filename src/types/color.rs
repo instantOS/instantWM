@@ -411,6 +411,8 @@ pub struct StatusColorConfig {
     pub bg: Rgba,
     /// Status bar detail/accent.
     pub detail: Rgba,
+    /// Separator between i3bar status blocks.
+    pub separator: Rgba,
     /// Accent used to identify the clickable i3bar block under the pointer.
     pub hover: Rgba,
 }

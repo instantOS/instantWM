@@ -15,6 +15,7 @@ pub(crate) struct StatusBlockHover {
 
 pub(crate) struct StatusRenderOptions {
     pub base_scheme: BarScheme,
+    pub separator_color: Rgba,
     pub hover: Option<StatusBlockHover>,
     pub edge_padding: i32,
 }
@@ -481,6 +482,7 @@ pub(crate) fn draw_status_items(
 ) -> StatusRenderOutput {
     let StatusRenderOptions {
         base_scheme,
+        separator_color,
         hover,
         edge_padding,
     } = options;
@@ -549,7 +551,13 @@ pub(crate) fn draw_status_items(
                 });
 
                 if let Some(separator_bounds) = separator_bounds {
-                    draw_separator(painter, separator_bounds, block.separator, &base_scheme);
+                    draw_separator(
+                        painter,
+                        separator_bounds,
+                        block.separator,
+                        separator_color,
+                        &base_scheme,
+                    );
                 }
             }
         }
@@ -653,6 +661,7 @@ fn draw_separator(
     painter: &mut dyn BarPainter,
     bounds: Rect,
     draw_line: bool,
+    separator_color: Rgba,
     base_scheme: &BarScheme,
 ) {
     painter.set_scheme(base_scheme.clone());
@@ -664,6 +673,11 @@ fn draw_separator(
     let line_height = (bounds.h - 8).max(1).min(bounds.h);
     let line_y = bounds.y + (bounds.h - line_height) / 2;
     let line_x = bounds.x + bounds.w / 2;
+    painter.set_scheme(BarScheme {
+        foreground: separator_color,
+        background: base_scheme.background,
+        detail: base_scheme.detail,
+    });
     painter.rect(Rect::new(line_x, line_y, 1, line_height), true, false);
 }
 
@@ -735,6 +749,7 @@ mod tests {
     fn render_options() -> StatusRenderOptions {
         StatusRenderOptions {
             base_scheme: scheme(),
+            separator_color: Rgba::new(0.25, 0.25, 0.25, 1.0),
             hover: None,
             edge_padding: 1,
         }
@@ -826,6 +841,25 @@ mod tests {
                 Point::new(first.x + first.w, first.y + 1),
             ),
             None
+        );
+    }
+
+    #[test]
+    fn separator_uses_its_dedicated_color() {
+        let separator_color = Rgba::rgb(0.25, 0.3, 0.35);
+        let mut painter = RecordingPainter::default();
+
+        draw_separator(
+            &mut painter,
+            Rect::new(10, 0, 9, 20),
+            true,
+            separator_color,
+            &scheme(),
+        );
+
+        assert_eq!(
+            painter.rectangles.last(),
+            Some(&(Rect::new(14, 4, 1, 12), separator_color))
         );
     }
 

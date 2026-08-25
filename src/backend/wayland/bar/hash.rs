@@ -31,6 +31,9 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.fonts.icon_size.to_bits().hash(hasher);
     snapshot.is_selected_monitor.hash(hasher);
     hash_scheme(hasher, &snapshot.status_scheme);
+    for value in snapshot.status_separator_color.into_array() {
+        value.to_bits().hash(hasher);
+    }
     for value in snapshot.status_hover_color.into_array() {
         value.to_bits().hash(hasher);
     }

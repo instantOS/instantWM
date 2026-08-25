@@ -234,6 +234,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub fonts: crate::core_state::FontConfig,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
+    pub status_separator_color: crate::types::color::Rgba,
     pub status_hover_color: crate::types::color::Rgba,
     pub startmenu_size: i32,
     pub horizontal_padding: i32,
@@ -451,6 +452,7 @@ pub(crate) fn build_monitor_snapshots(
             fonts,
             is_selected_monitor,
             status_scheme: status_scheme(&core.config().colors.status_bar),
+            status_separator_color: core.config().colors.status_bar.separator,
             status_hover_color: core.config().colors.status_bar.hover,
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
@@ -693,6 +695,7 @@ fn draw_status_section(
             content.items.as_slice(),
             crate::bar::status::StatusRenderOptions {
                 base_scheme: snapshot.status_scheme.clone(),
+                separator_color: snapshot.status_separator_color,
                 hover,
                 edge_padding: snapshot.horizontal_padding / 2,
             },
@@ -903,6 +906,7 @@ mod tests {
             fg: Rgba::new(0.1, 0.1, 0.1, 1.0),
             bg: Rgba::new(0.2, 0.2, 0.2, 1.0),
             detail: Rgba::new(0.3, 0.3, 0.3, 1.0),
+            separator: Rgba::new(0.4, 0.4, 0.4, 1.0),
             hover: Rgba::ZERO,
         };
 

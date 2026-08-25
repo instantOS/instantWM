@@ -288,6 +288,7 @@ impl From<ColorTheme> for ColorConfig {
                 fg: p.foreground,
                 bg: p.background,
                 detail: p.background,
+                separator: p.surface,
                 hover: p.primary.hover_fill,
             },
         }
@@ -321,6 +322,23 @@ mod tests {
             assert_ne!(
                 status.hover, status.bg,
                 "{} status hover must contrast with the bar background",
+                theme
+            );
+        }
+    }
+
+    #[test]
+    fn every_builtin_status_separator_is_muted_and_visible() {
+        for theme in ColorTheme::ALL {
+            let status = ColorConfig::from(*theme).status;
+            assert_ne!(
+                status.separator, status.bg,
+                "{} status separator must contrast with the bar background",
+                theme
+            );
+            assert_ne!(
+                status.separator, status.fg,
+                "{} status separator must be muted relative to foreground text",
                 theme
             );
         }
