@@ -313,6 +313,9 @@ pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::Mou
 }
 
 fn enter(ctx: &mut WmCtx<'_>) {
+    // Overview takes over pointer semantics; a hover-resize offer armed on
+    // the desktop must not keep its cursor, pointer borrow, or click claim.
+    crate::mouse::clear_hover_offer(ctx);
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
     let selected_window = ctx.core().model().selected_win();
     let all_tags = TagMask::all(ctx.core().model().tags.count());

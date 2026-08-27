@@ -299,6 +299,19 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Grant the active hover offer exclusive pointer ownership, or take it
+    /// back once the offer clears.
+    ///
+    /// Only X11 implements this: its offers cannot project cursors or receive
+    /// presses over client windows, so the backend lends them a non-modal
+    /// active pointer grab. Wayland owns the cursor surface and sees every
+    /// press already and ignores the request.
+    pub fn set_hover_pointer_grab(&mut self, active: bool) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::mouse::set_hover_pointer_grab(ctx, active);
+        }
+    }
+
     /// Ask the active backend to close a managed window gracefully, falling
     /// back to its forceful mechanism when the protocol requires it.
     pub fn close_window(&mut self, win: WindowId) {

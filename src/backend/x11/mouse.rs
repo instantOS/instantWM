@@ -1,7 +1,7 @@
 //! X11 mouse backend helpers.
 
-use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
-use crate::contexts::WmCtxX11;
+use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
+use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::types::{AltCursor, Point, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
@@ -72,6 +72,57 @@ impl crate::backend::CursorOps for WmCtxX11<'_> {
     }
 }
 
+/// Grant the active hover-resize offer pointer ownership, or take it back.
+///
+/// X11 alone needs this: its passive offer can only project the root cursor
+/// and observe presses on the root window, so a floating window's border zone
+/// overlapping another client loses both the cursor feedback and the
+/// committing click to the client beneath. A non-modal grab — the pointer
+/// counterpart of the modal loop this backend used to run — restores both for
+/// exactly as long as the offer is armed.
+pub fn set_hover_pointer_grab(ctx: &mut WmCtxX11<'_>, active: bool) {
+    if active {
+        arm_hover_pointer_grab(ctx);
+    } else {
+        release_hover_pointer_grab(ctx);
+    }
+}
+
+fn arm_hover_pointer_grab(ctx: &mut WmCtxX11<'_>) {
+    // A modal drag already owns the pointer; never clobber it.
+    if ctx.x11_runtime.active_pointer_grab.is_some() || hover_grab_blocked(&ctx.core) {
+        return;
+    }
+    let Some((_, dir)) = ctx.core.interaction().drag.hover_offer.resize_target() else {
+        return;
+    };
+    if crate::backend::x11::grab::grab_hover_offer_pointer(
+        &ctx.x11,
+        ctx.x11_runtime,
+        AltCursor::Resize(dir),
+    ) {
+        let _ = ctx.x11.conn.flush();
+    }
+}
+
+fn release_hover_pointer_grab(ctx: &mut WmCtxX11<'_>) {
+    let held_by_offer = ctx
+        .x11_runtime
+        .active_pointer_grab
+        .is_some_and(|grab| grab.kind == PointerGrabKind::HoverOffer);
+    if held_by_offer {
+        crate::backend::x11::grab::ungrab(&ctx.x11, ctx.x11_runtime);
+    }
+}
+
+/// Scenes that own pointer semantics in their own right must keep the offer
+/// from borrowing the pointer.
+fn hover_grab_blocked(core: &CoreCtx<'_>) -> bool {
+    core.model().is_overview_active()
+        || core.behavior().current_mode.tree_placement().is_some()
+        || core.interaction().drag.capture().is_some()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PointerSnapshot {
     pub root: Point,
@@ -106,12 +157,13 @@ pub fn managed_window(
 #[cfg(test)]
 mod cursor_tests {
     use super::{CursorUpdateTargets, cursor_update_targets};
-    use crate::backend::x11::ActivePointerGrab;
+    use crate::backend::x11::{ActivePointerGrab, PointerGrabKind};
     use crate::types::AltCursor;
     use x11rb::protocol::xproto::EventMask;
 
     fn active(cursor: AltCursor) -> ActivePointerGrab {
         ActivePointerGrab {
+            kind: PointerGrabKind::Drag,
             event_mask: EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             cursor,
         }

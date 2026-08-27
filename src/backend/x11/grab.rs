@@ -20,7 +20,7 @@
 
 use crate::backend::BackendEvent;
 use crate::backend::PointerOps;
-use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{AltCursor, MouseButton, Point};
 use x11rb::CURRENT_TIME;
@@ -46,7 +46,7 @@ pub fn grab_pointer(
 ) -> bool {
     let event_mask =
         EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
-    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask)
+    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask, PointerGrabKind::Drag)
 }
 
 /// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
@@ -59,7 +59,36 @@ pub fn grab_pointer_with_keys(
         | EventMask::BUTTON_RELEASE
         | EventMask::POINTER_MOTION
         | EventMask::KEY_PRESS;
-    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask)
+    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask, PointerGrabKind::Drag)
+}
+
+/// Lend the pointer to an armed hover-resize offer, without a modal loop.
+///
+/// The passive offer model only owns the root window: over any other window
+/// the client beneath owns the cursor and the button press. This grab carries
+/// the offer's resize cursor across those windows and routes the committing
+/// press to the root window, where [`commit_hover_offer`] picks it up. It is
+/// released by [`ungrab`] as soon as the offer clears.
+///
+/// The grab always selects its own `PointerMotion`: raw XI2 motion cannot be
+/// relied on while an active grab is held (servers stop delivering it), and
+/// without motion the offer could never observe the pointer leaving the
+/// border zone. Where raw events do keep flowing, the redundant delivery is
+/// harmless — offer state updates are idempotent position checks.
+pub fn grab_hover_offer_pointer(
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    cursor: AltCursor,
+) -> bool {
+    let event_mask =
+        EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
+    grab_pointer_with_mask(
+        x11,
+        x11_runtime,
+        cursor,
+        event_mask,
+        PointerGrabKind::HoverOffer,
+    )
 }
 
 fn grab_pointer_with_mask(
@@ -67,6 +96,7 @@ fn grab_pointer_with_mask(
     x11_runtime: &mut X11RuntimeConfig,
     cursor: AltCursor,
     event_mask: EventMask,
+    kind: PointerGrabKind,
 ) -> bool {
     let cursor_index = cursor.to_x11_index();
     let xcursor = x11_runtime
@@ -78,8 +108,11 @@ fn grab_pointer_with_mask(
 
     let grabbed = grab_pointer_impl(x11.conn, x11_runtime.root, xcursor, event_mask);
     if grabbed {
-        x11_runtime.active_pointer_grab =
-            Some(crate::backend::x11::ActivePointerGrab { event_mask, cursor });
+        x11_runtime.active_pointer_grab = Some(crate::backend::x11::ActivePointerGrab {
+            kind,
+            event_mask,
+            cursor,
+        });
     }
     grabbed
 }

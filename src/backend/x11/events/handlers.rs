@@ -537,17 +537,24 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 
     if root.y >= monitor_y + bar_height {
-        if crate::mouse::update_sidebar_offer_at(
-            &mut WmCtx::X11(ctx.reborrow()),
-            root,
-            hovered.is_some(),
-        )
-        .affects_pointer_handling()
-        {
-            return;
-        }
-        if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root) {
-            return;
+        // Overview owns pointer semantics wholesale; a border-zone offer
+        // armed before entering it must not keep borrowing the pointer.
+        if ctx.core.model().is_overview_active() {
+            crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
+        } else {
+            if crate::mouse::update_sidebar_offer_at(
+                &mut WmCtx::X11(ctx.reborrow()),
+                root,
+                hovered.is_some(),
+            )
+            .affects_pointer_handling()
+            {
+                return;
+            }
+            if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root)
+            {
+                return;
+            }
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         crate::focus::apply_hover_focus(
@@ -560,6 +567,9 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
         return;
     };
 
+    // The bar owns the pointer for its whole band; release any offer that is
+    // still armed from the desktop area below it (Wayland parity).
+    crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
     let pos = crate::bar::update_hover(&mut WmCtx::X11(ctx.reborrow()), root, false, false);
     if matches!(pos, Some(BarPosition::Root) | None) && current_gesture != Gesture::None {
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));

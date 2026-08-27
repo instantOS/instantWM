@@ -9,7 +9,11 @@
 //!
 //! The hover-offer *model* is shared; committing it to an interaction is a
 //! backend concern (X11 commits through its modal grab loop in
-//! `backend/x11/grab.rs`, Wayland through implicit pointer grabs).
+//! `backend/x11/grab.rs`, Wayland through implicit pointer grabs).  While the
+//! offer stands, X11 additionally holds a non-modal pointer grab
+//! ([`WmCtx::set_hover_pointer_grab`]) so the resize cursor and the
+//! committing click are not swallowed by whatever window the border zone
+//! happens to overlap; Wayland owns both already and ignores the grab.
 //!
 //! ## Entry points
 //!
@@ -49,6 +53,9 @@ fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
             dir: target.dir,
         });
     ctx.set_cursor_style(AltCursor::Resize(target.dir));
+    // X11 borrows the pointer for as long as the offer stands so both the
+    // cursor and the committing click survive overlap with other windows.
+    ctx.set_hover_pointer_grab(true);
 }
 
 /// Clear any active hover offer and reset the cursor if the state changed.
@@ -56,6 +63,9 @@ pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
     if ctx.core_mut().interaction_mut().drag.clear_hover_offer() {
         ctx.set_cursor_style(crate::types::AltCursor::Default);
     }
+    // Also release a pointer still borrowed by an offer that mutated state
+    // elsewhere (for example the sidebar replacing a resize offer).
+    ctx.set_hover_pointer_grab(false);
 }
 
 fn resize_target_for_window(
@@ -200,6 +210,9 @@ pub fn set_sidebar_offer(
             .interaction
             .drag
             .set_hover_offer(HoverOffer::Sidebar(target));
+        // Return a pointer borrowed by a resize offer before projecting the
+        // sidebar cursor, or the borrow would outlive its offer.
+        ctx.set_hover_pointer_grab(false);
         // Always project the cursor. Gesture completion can leave the same
         // logical offer in place while changing the active cursor override.
         ctx.set_cursor_style(AltCursor::VerticalAdjust);
