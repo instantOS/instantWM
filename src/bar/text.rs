@@ -13,9 +13,11 @@
 //! ```
 //!
 //! A single, text-size-relative gap is added at every direct text/icon
-//! transition. Whitespace already supplies separation, adjacent icons remain
-//! flush, and Powerline glyphs are excluded because their intentional ink
-//! overlap is what makes segments tile seamlessly.
+//! transition. A trailing icon safety gap is retained even when the next
+//! character is whitespace: patched glyph ink can consume that whitespace's
+//! advance before the following label begins. Adjacent icons remain flush, and
+//! Powerline glyphs are excluded because their intentional ink overlap is what
+//! makes segments tile seamlessly.
 //!
 //! Xft can insert the resulting integral pixel gap directly between font runs.
 //! cosmic-text expresses the same policy as trailing span spacing; preserving
@@ -127,9 +129,10 @@ pub fn icon_boundary_pad_px(text_size: f32) -> u32 {
 
 /// Whether a text→icon transition needs padding before the first icon glyph.
 ///
-/// Whitespace already separates neighbours, and powerline arrows tile through
-/// their neighbours, so neither case is padded. Both arguments are validated
-/// for their roles so plain text pairs can never synthesize a gap.
+/// Leading whitespace already separates a preceding label from the icon, and
+/// powerline arrows tile through their neighbours, so neither case is padded.
+/// Both arguments are validated for their roles so plain text pairs can never
+/// synthesize a gap.
 pub(crate) fn needs_gap_before_icon(prev: Option<char>, icon_first: char) -> bool {
     matches!(prev, Some(prev_char) if !prev_char.is_whitespace()
         && role_for_char(prev_char) == FontRole::Text)
@@ -139,13 +142,13 @@ pub(crate) fn needs_gap_before_icon(prev: Option<char>, icon_first: char) -> boo
 
 /// Whether an icon→text transition needs padding after the last icon glyph.
 ///
-/// Validates both arguments the same way [`needs_gap_before_icon`] does, so
-/// render loops asking about arbitrary character pairs stay gap-free.
+/// Unlike the leading rule, whitespace remains a text neighbour here. Nerd
+/// Font ink can consume its advance, so the icon needs its safety gap before
+/// that whitespace. Adjacent icons and string edges remain gap-free.
 pub(crate) fn needs_gap_after_icon(icon_last: char, next: Option<char>) -> bool {
     role_for_char(icon_last) == FontRole::Icon
         && !is_powerline_glyph(icon_last)
-        && matches!(next, Some(next_char) if !next_char.is_whitespace()
-            && role_for_char(next_char) == FontRole::Text)
+        && matches!(next, Some(next_char) if role_for_char(next_char) == FontRole::Text)
 }
 
 /// Whether a padding gap belongs *between* two adjacent characters.
@@ -248,7 +251,8 @@ pub(crate) struct GappedRun<'a> {
 /// identical pixels. Boundary graphemes are isolated onto their own span, and
 /// ligatures are disabled only in their boundary word, keeping the rest of
 /// each run free of letter tracking and adjacent icons flush with each other.
-/// Whitespace neighbours, string edges and powerline arrows stay unpadded (see
+/// Leading whitespace, string edges and powerline arrows stay unpadded;
+/// trailing whitespace keeps the icon safety gap (see
 /// [`needs_gap_before_icon`] / [`needs_gap_after_icon`]).
 pub(crate) fn gapped_runs(text: &str, text_size: f32, icon_size: f32) -> Vec<GappedRun<'_>> {
     /// Push `run_text`, splitting off its final grapheme onto a gapped span
@@ -443,9 +447,10 @@ mod tests {
         assert!(!needs_gap_before_icon(None, icon));
         assert!(!needs_gap_after_icon(icon, None));
 
-        // Whitespace neighbours already separate the glyph.
+        // Leading whitespace separates on its own; trailing whitespace keeps
+        // the safety advance before the following label.
         assert!(!needs_gap_before_icon(Some(' '), icon));
-        assert!(!needs_gap_after_icon(icon, Some(' ')));
+        assert!(needs_gap_after_icon(icon, Some(' ')));
 
         // An icon next to another icon stays flush.
         let other_icon = '\u{f015}';
@@ -535,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn gapped_runs_leave_whitespace_powerline_edges_and_icon_pairs_unpadded() {
+    fn gapped_runs_preserve_trailing_icon_safety_through_whitespace() {
         // A nested fn avoids the closure-lifetime knot around borrowing `text`.
         fn flatten(text: &str) -> Vec<(&str, Option<f32>)> {
             gapped_runs(text, 12.0, 16.0)
@@ -544,10 +549,15 @@ mod tests {
                 .collect()
         }
 
-        // Whitespace already separates neighbours.
+        // Leading whitespace needs no extra gap, but the icon keeps its
+        // trailing safety advance before the following whitespace.
         assert_eq!(
             flatten("a \u{f240} b"),
-            [("a ", None), ("\u{f240}", None), (" b", None)],
+            [
+                ("a ", None),
+                ("\u{f240}", Some(icon_gap_letter_spacing(16.0, 12.0))),
+                (" b", None)
+            ],
         );
 
         // Powerline arrows tile through their neighbours.
@@ -556,10 +566,14 @@ mod tests {
             [("a", None), ("\u{e0b0}", None), ("b", None)],
         );
 
-        // String edges have nothing to pad away from.
+        // The leading string edge adds nothing, while the icon's trailing
+        // safety advance survives the space used by status generators.
         assert_eq!(
             flatten("\u{f240} 50%"),
-            [("\u{f240}", None), (" 50%", None)],
+            [
+                ("\u{f240}", Some(icon_gap_letter_spacing(16.0, 12.0))),
+                (" 50%", None)
+            ],
         );
         // An edge only ever suppresses the half facing outward: a trailing
         // icon loses its own half while the text-side half still rides "t".
@@ -640,6 +654,18 @@ mod tests {
     }
 
     #[test]
+    fn battery_status_keeps_safety_advance_before_percentage() {
+        let segments = gapped_runs(" \u{f244} 87% ", 12.0, 16.0);
+        let battery = segments
+            .iter()
+            .find(|segment| segment.text == "\u{f244}")
+            .expect("battery icon segment");
+
+        assert_eq!(battery.role, FontRole::Icon);
+        assert_eq!(battery.gap_em, Some(icon_gap_letter_spacing(16.0, 12.0)));
+    }
+
+    #[test]
     fn combining_sequence_carries_the_boundary_gap_as_one_cluster() {
         let segments = gapped_runs("e\u{301}\u{f240}", 12.0, 16.0);
 
@@ -669,9 +695,10 @@ mod tests {
         let icon = '\u{f240}';
         assert!(boundary_gap_between('t', icon));
         assert!(boundary_gap_between(icon, 't'));
-        // Whitespace separates on its own and icons stay flush together.
+        // Leading whitespace separates on its own; trailing whitespace keeps
+        // the icon's safety advance. Icons stay flush together.
         assert!(!boundary_gap_between(' ', icon));
-        assert!(!boundary_gap_between(icon, ' '));
+        assert!(boundary_gap_between(icon, ' '));
         assert!(!boundary_gap_between(icon, '\u{f015}'));
         // Powerline arrows tile; plain adjacent letters need no pad.
         assert!(!boundary_gap_between('\u{e0b0}', 't'));
