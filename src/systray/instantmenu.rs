@@ -275,6 +275,8 @@ fn spawn_menu(
     command
         .arg("--position")
         .arg("top-right")
+        .arg("--border-width")
+        .arg("--3")
         .arg("--lines")
         .arg(count.to_string())
         .arg("--width")
