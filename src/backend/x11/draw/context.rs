@@ -88,6 +88,11 @@ pub struct DrawContext {
     /// Cached pixel width of `"..."` for the current fontset.
     ellipsis_width: u32,
 
+    /// Letter-spacing (px) applied to a font-run's first glyph when it follows
+    /// an inline icon, giving icons symmetric breathing room; see
+    /// [`crate::bar::text::boundary_gap_between`].
+    icon_gap_px: u32,
+
     /// `true` only for the *original* `DrawContext` — clones do **not** own resources.
     owns_resources: bool,
 }
@@ -115,6 +120,7 @@ impl Clone for DrawContext {
             colormap: self.colormap,
             nomatches: self.nomatches.clone(),
             ellipsis_width: self.ellipsis_width,
+            icon_gap_px: self.icon_gap_px,
             owns_resources: false,
         }
     }
@@ -222,6 +228,7 @@ impl DrawContext {
                 colormap,
                 nomatches: VecDeque::with_capacity(NOMATCHES_LEN),
                 ellipsis_width: 0,
+                icon_gap_px: 0,
                 owns_resources: true,
             })
         }
@@ -618,6 +625,13 @@ impl DrawContext {
 // ── Font / fontset management ─────────────────────────────────────────────────
 
 impl DrawContext {
+    /// Set the pixel gap inserted before a font-run whose first glyph borders
+    /// an inline icon (symmetric nerd-font breathing room). Measured from the
+    /// configured text size; see [`crate::bar::text::icon_boundary_pad_px`].
+    pub fn set_icon_gap_px(&mut self, gap_px: u32) {
+        self.icon_gap_px = gap_px;
+    }
+
     /// Load a fontset from role-tagged font name strings.
     ///
     /// Role metadata survives missing faces, so the renderer never relies on

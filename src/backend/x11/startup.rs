@@ -253,6 +253,9 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         .collect();
     drw.fontset_create(&fonts)
         .unwrap_or_else(|error| panic!("instantwm: {error}"));
+    drw.set_icon_gap_px(crate::bar::text::icon_boundary_pad_px(
+        wm.core.config.fonts.text_size,
+    ));
 
     let metrics = wm.core.config.fonts.bar_metrics(wm.core.config.bar.height);
     let bordercolors = wm.core.config.colors.border;

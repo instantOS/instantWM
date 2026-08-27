@@ -1,5 +1,7 @@
 //! Backend-independent classification of bar text into semantic font roles.
 
+use unicode_segmentation::UnicodeSegmentation;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FontRole {
     Text,
@@ -75,6 +77,176 @@ pub(crate) fn is_powerline_only(text: &str) -> bool {
     saw_glyph
 }
 
+/// A Nerd Fonts powerline arrow. These glyphs are drawn to tile seamlessly:
+/// their ink extends past the nominal advance on purpose, so they must never
+/// receive boundary padding or adjacent letters would be pushed away from
+/// solid line segments.
+pub(crate) fn is_powerline_glyph(ch: char) -> bool {
+    matches!(ch as u32, 0xE0A0..=0xE0D7)
+}
+
+/// Breathing room around icon glyphs, expressed as a fraction of the *text*
+/// face size. Patched-font icons carry almost no side bearing of their own —
+/// most even have zero-width bearings, and powerline arrows go slightly
+/// negative — so explicit spacing is required wherever an icon directly
+/// touches normal text.
+const ICON_BOUNDARY_PAD_EM_TEXT: f32 = 0.15;
+
+/// Extra horizontal space (in pixels) inserted between a text glyph and an
+/// adjacent icon glyph. Both sides of an icon get the same amount so the gaps
+/// stay symmetric regardless of which fonts happen to sit next to it.
+pub fn icon_boundary_pad_px(text_size: f32) -> u32 {
+    (text_size.max(1.0) * ICON_BOUNDARY_PAD_EM_TEXT).round() as u32
+}
+
+/// Whether a text→icon transition needs padding before the first icon glyph.
+///
+/// Whitespace already separates neighbours, and powerline arrows tile through
+/// their neighbours, so neither case is padded. Both arguments are validated
+/// for their roles so plain text pairs can never synthesize a gap.
+pub(crate) fn needs_gap_before_icon(prev: Option<char>, icon_first: char) -> bool {
+    matches!(prev, Some(prev_char) if !prev_char.is_whitespace()
+        && role_for_char(prev_char) == FontRole::Text)
+        && role_for_char(icon_first) == FontRole::Icon
+        && !is_powerline_glyph(icon_first)
+}
+
+/// Whether an icon→text transition needs padding after the last icon glyph.
+///
+/// Validates both arguments the same way [`needs_gap_before_icon`] does, so
+/// render loops asking about arbitrary character pairs stay gap-free.
+pub(crate) fn needs_gap_after_icon(icon_last: char, next: Option<char>) -> bool {
+    role_for_char(icon_last) == FontRole::Icon
+        && !is_powerline_glyph(icon_last)
+        && matches!(next, Some(next_char) if !next_char.is_whitespace()
+            && role_for_char(next_char) == FontRole::Text)
+}
+
+/// Whether a padding gap belongs *between* two adjacent characters.
+///
+/// Mirrors the two one-directional helpers above so render loops that walk a
+/// flat character stream (the X11 run loop) can ask a single question.
+pub(crate) fn boundary_gap_between(prev: char, next: char) -> bool {
+    needs_gap_before_icon(Some(prev), next) || needs_gap_after_icon(prev, Some(next))
+}
+
+/// Letter spacing, in em units of a span shaped at `carrier_size`, whose
+/// trailing advance equals one icon boundary pad measured at `text_size`.
+///
+/// cosmic-text implements letter spacing as an em-normalized *trailing*
+/// advance per glyph, so a span rendered at the icon face size has to shrink
+/// the value for both sides of an icon to cover the same pixel distance.
+pub(crate) fn icon_gap_letter_spacing(carrier_size: f32, text_size: f32) -> f32 {
+    ICON_BOUNDARY_PAD_EM_TEXT * text_size / carrier_size.max(1.0)
+}
+
+/// A [`TextRun`] annotated with the spacing its boundary cluster carries.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct GappedRun<'a> {
+    pub(crate) text: &'a str,
+    pub(crate) role: FontRole,
+    /// Optional letter spacing, in em units of this run's own face size,
+    /// applied to the run's isolated boundary grapheme. `None` leaves shaping
+    /// untouched.
+    pub(crate) gap_em: Option<f32>,
+    /// Prevent this span from joining a ligature that crosses the padded
+    /// boundary. Cosmic Text attributes spacing to the start of a shaped
+    /// cluster, so a boundary scalar absorbed into an earlier cluster would
+    /// otherwise lose its gap.
+    pub(crate) prevent_ligatures: bool,
+}
+
+/// Segment bar text into spans with symmetric icon boundary gaps baked in.
+///
+/// Each side of an inline icon contributes one [`ICON_BOUNDARY_PAD_EM_TEXT`]
+/// worth of pixels: the text-side half trails the *last* glyph of the text
+/// run, and the icon-side half trails the *last* glyph of the icon run, the
+/// latter rescaled through [`icon_gap_letter_spacing`] so both halves measure
+/// identical pixels. Boundary graphemes are isolated onto their own span, and
+/// ligatures are disabled only in their boundary word, keeping the rest of
+/// each run free of letter tracking and adjacent icons flush with each other.
+/// Whitespace neighbours, string edges and powerline arrows stay unpadded (see
+/// [`needs_gap_before_icon`] / [`needs_gap_after_icon`]).
+pub(crate) fn gapped_runs(text: &str, text_size: f32, icon_size: f32) -> Vec<GappedRun<'_>> {
+    /// Push `run_text`, splitting off its final grapheme onto a gapped span
+    /// when `gap_em` is set so combining sequences remain one shaped cluster.
+    /// The rest of the boundary word also has ligatures disabled, preventing
+    /// the final grapheme from being absorbed into a cluster that starts in
+    /// the unspaced span.
+    fn push_boundary_split<'a>(
+        gapped: &mut Vec<GappedRun<'a>>,
+        run_text: &'a str,
+        role: FontRole,
+        gap_em: Option<f32>,
+    ) {
+        let Some(gap) = gap_em else {
+            gapped.push(GappedRun {
+                text: run_text,
+                role,
+                gap_em: None,
+                prevent_ligatures: false,
+            });
+            return;
+        };
+
+        let tail_start = run_text
+            .grapheme_indices(true)
+            .next_back()
+            .map_or(0, |(index, _)| index);
+        let boundary_word_start = run_text[..tail_start]
+            .char_indices()
+            .rev()
+            .find_map(|(index, ch)| ch.is_whitespace().then_some(index + ch.len_utf8()))
+            .unwrap_or(0);
+
+        if boundary_word_start > 0 {
+            gapped.push(GappedRun {
+                text: &run_text[..boundary_word_start],
+                role,
+                gap_em: None,
+                prevent_ligatures: false,
+            });
+        }
+        if boundary_word_start < tail_start {
+            gapped.push(GappedRun {
+                text: &run_text[boundary_word_start..tail_start],
+                role,
+                gap_em: None,
+                prevent_ligatures: true,
+            });
+        }
+        gapped.push(GappedRun {
+            text: &run_text[tail_start..],
+            role,
+            gap_em: Some(gap),
+            prevent_ligatures: true,
+        });
+    }
+
+    let classified = runs(text);
+    let mut gapped = Vec::with_capacity(classified.len());
+    for index in 0..classified.len() {
+        let run = &classified[index];
+        // Runs strictly alternate roles, so only the following neighbour can
+        // close a gap on this run's trailing glyph.
+        let gap_em = classified
+            .get(index + 1)
+            .and_then(|next| {
+                let run_last = run.text.chars().next_back()?;
+                let next_first = next.text.chars().next()?;
+                Some(match run.role {
+                    FontRole::Icon => needs_gap_after_icon(run_last, Some(next_first))
+                        .then(|| icon_gap_letter_spacing(icon_size, text_size)),
+                    FontRole::Text => needs_gap_before_icon(Some(run_last), next_first)
+                        .then(|| icon_gap_letter_spacing(text_size, text_size)),
+                })
+            })
+            .flatten();
+        push_boundary_split(&mut gapped, run.text, run.role, gap_em);
+    }
+    gapped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +289,241 @@ mod tests {
         assert!(is_powerline_only(" \u{e0b0}"));
         assert!(!is_powerline_only("\u{f240}"));
         assert!(!is_powerline_only("A"));
+    }
+
+    #[test]
+    fn icon_boundaries_get_padded_but_edges_do_not() {
+        let icon = '\u{f240}';
+
+        // Icon in the middle of text: padded on both sides.
+        assert!(needs_gap_before_icon(Some('t'), icon));
+        assert!(needs_gap_after_icon(icon, Some('5')));
+
+        // Start/end of string: nothing to pad away from.
+        assert!(!needs_gap_before_icon(None, icon));
+        assert!(!needs_gap_after_icon(icon, None));
+
+        // Whitespace neighbours already separate the glyph.
+        assert!(!needs_gap_before_icon(Some(' '), icon));
+        assert!(!needs_gap_after_icon(icon, Some(' ')));
+
+        // An icon next to another icon stays flush.
+        let other_icon = '\u{f015}';
+        assert!(!needs_gap_before_icon(Some(other_icon), icon));
+        assert!(!needs_gap_after_icon(icon, Some(other_icon)));
+    }
+
+    #[test]
+    fn powerline_arrows_never_receive_boundary_padding() {
+        // Arrows intentionally paint outside their advance to tile segments.
+        for arrow in ['\u{e0b0}', '\u{e0b2}'] {
+            assert!(!needs_gap_before_icon(Some('t'), arrow));
+            assert!(!needs_gap_after_icon(arrow, Some('5')));
+            assert!(is_powerline_glyph(arrow));
+            assert!(!is_powerline_glyph('\u{f240}'));
+        }
+    }
+
+    #[test]
+    fn boundary_padding_scales_with_text_size() {
+        assert_eq!(icon_boundary_pad_px(12.0), 2);
+        assert_eq!(icon_boundary_pad_px(14.0), 2);
+        assert_eq!(icon_boundary_pad_px(20.0), 3);
+        assert_eq!(icon_boundary_pad_px(1.0), 0);
+    }
+
+    #[test]
+    fn gap_letter_spacing_scales_to_the_carrier_face_size() {
+        // On the text face the constant applies verbatim…
+        assert!((icon_gap_letter_spacing(12.0, 12.0) - 0.15).abs() < 1e-6);
+        // …while the icon face shrinks it so both sides cover equal pixels.
+        assert!((icon_gap_letter_spacing(16.0, 12.0) - 0.1125).abs() < 1e-6);
+        // Degenerate carrier sizes still produce a finite value.
+        assert!((icon_gap_letter_spacing(0.0, 12.0) - 1.8).abs() < 1e-5);
+    }
+
+    #[test]
+    fn gapped_runs_pads_both_sides_of_an_inline_icon() {
+        let segments = gapped_runs("ab\u{f240}cd", 12.0, 16.0);
+        assert_eq!(segments.len(), 4);
+
+        assert_eq!(segments[0].text, "a");
+        assert_eq!(segments[0].role, FontRole::Text);
+        assert_eq!(segments[0].gap_em, None);
+        // The glyph before the icon carries the text-side half of the gap.
+        assert_eq!(
+            segments[1],
+            GappedRun {
+                text: "b",
+                role: FontRole::Text,
+                gap_em: Some(icon_gap_letter_spacing(12.0, 12.0)),
+                prevent_ligatures: true,
+            }
+        );
+        // The icon itself carries the icon-side half.
+        assert_eq!(
+            segments[2],
+            GappedRun {
+                text: "\u{f240}",
+                role: FontRole::Icon,
+                gap_em: Some(icon_gap_letter_spacing(16.0, 12.0)),
+                prevent_ligatures: true,
+            }
+        );
+        // Trailing text has nothing to pad away from, so it keeps its run
+        // whole instead of splitting off a lone boundary glyph.
+        assert_eq!(
+            segments[3],
+            GappedRun {
+                text: "cd",
+                role: FontRole::Text,
+                gap_em: None,
+                prevent_ligatures: false,
+            }
+        );
+    }
+
+    #[test]
+    fn gapped_runs_leave_whitespace_powerline_edges_and_icon_pairs_unpadded() {
+        // A nested fn avoids the closure-lifetime knot around borrowing `text`.
+        fn flatten(text: &str) -> Vec<(&str, Option<f32>)> {
+            gapped_runs(text, 12.0, 16.0)
+                .iter()
+                .map(|segment| (segment.text, segment.gap_em))
+                .collect()
+        }
+
+        // Whitespace already separates neighbours.
+        assert_eq!(
+            flatten("a \u{f240} b"),
+            [("a ", None), ("\u{f240}", None), (" b", None)],
+        );
+
+        // Powerline arrows tile through their neighbours.
+        assert_eq!(
+            flatten("a\u{e0b0}b"),
+            [("a", None), ("\u{e0b0}", None), ("b", None)],
+        );
+
+        // String edges have nothing to pad away from.
+        assert_eq!(
+            flatten("\u{f240} 50%"),
+            [("\u{f240}", None), (" 50%", None)],
+        );
+        // An edge only ever suppresses the half facing outward: a trailing
+        // icon loses its own half while the text-side half still rides "t".
+        assert_eq!(
+            flatten("bat\u{f240}"),
+            [
+                ("ba", None),
+                ("t", Some(icon_gap_letter_spacing(12.0, 12.0))),
+                ("\u{f240}", None),
+            ],
+        );
+        assert_eq!(flatten(""), []);
+
+        // Adjacent icons share one run and stay flush end to end…
+        assert_eq!(flatten("\u{f240}\u{f015}"), [("\u{f240}\u{f015}", None)]);
+
+        // …and an icon trailing real text keeps the gap against that text.
+        assert_eq!(
+            flatten("ab\u{f240}"),
+            [
+                ("a", None),
+                ("b", Some(icon_gap_letter_spacing(12.0, 12.0))),
+                ("\u{f240}", None),
+            ],
+        );
+    }
+
+    #[test]
+    fn only_the_boundary_grapheme_of_each_run_gets_letter_spacing() {
+        let segments = gapped_runs("abc\u{f240}\u{f015}de", 12.0, 16.0);
+        assert_eq!(
+            segments,
+            [
+                GappedRun {
+                    text: "ab",
+                    role: FontRole::Text,
+                    gap_em: None,
+                    prevent_ligatures: true,
+                },
+                GappedRun {
+                    text: "c",
+                    role: FontRole::Text,
+                    gap_em: Some(icon_gap_letter_spacing(12.0, 12.0)),
+                    prevent_ligatures: true,
+                },
+                GappedRun {
+                    text: "\u{f240}",
+                    role: FontRole::Icon,
+                    gap_em: None,
+                    prevent_ligatures: true,
+                },
+                GappedRun {
+                    text: "\u{f015}",
+                    role: FontRole::Icon,
+                    gap_em: Some(icon_gap_letter_spacing(16.0, 12.0)),
+                    prevent_ligatures: true,
+                },
+                GappedRun {
+                    text: "de",
+                    role: FontRole::Text,
+                    gap_em: None,
+                    prevent_ligatures: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn multibyte_boundaries_split_on_grapheme_boundaries() {
+        let segments = gapped_runs("déjà\u{f240}", 12.0, 16.0);
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].text, "déj");
+        assert_eq!(segments[1].text, "à");
+        assert_eq!(segments[1].role, FontRole::Text);
+        assert!(segments[1].gap_em.is_some());
+        assert_eq!(segments[2].role, FontRole::Icon);
+        assert_eq!(segments[2].gap_em, None);
+    }
+
+    #[test]
+    fn combining_sequence_carries_the_boundary_gap_as_one_cluster() {
+        let segments = gapped_runs("e\u{301}\u{f240}", 12.0, 16.0);
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].text, "e\u{301}");
+        assert_eq!(segments[0].role, FontRole::Text);
+        assert!(segments[0].gap_em.is_some());
+        assert!(segments[0].prevent_ligatures);
+    }
+
+    #[test]
+    fn boundary_word_is_marked_to_prevent_ligature_clusters() {
+        let segments = gapped_runs("label fi\u{f240}", 12.0, 16.0);
+
+        assert_eq!(segments[0].text, "label ");
+        assert!(!segments[0].prevent_ligatures);
+        assert_eq!(segments[1].text, "f");
+        assert_eq!(segments[1].gap_em, None);
+        assert!(segments[1].prevent_ligatures);
+        assert_eq!(segments[2].text, "i");
+        assert!(segments[2].gap_em.is_some());
+        assert!(segments[2].prevent_ligatures);
+    }
+
+    #[test]
+    fn boundary_gap_between_answers_one_question_per_transition() {
+        let icon = '\u{f240}';
+        assert!(boundary_gap_between('t', icon));
+        assert!(boundary_gap_between(icon, 't'));
+        // Whitespace separates on its own and icons stay flush together.
+        assert!(!boundary_gap_between(' ', icon));
+        assert!(!boundary_gap_between(icon, ' '));
+        assert!(!boundary_gap_between(icon, '\u{f015}'));
+        // Powerline arrows tile; plain adjacent letters need no pad.
+        assert!(!boundary_gap_between('\u{e0b0}', 't'));
+        assert!(!boundary_gap_between('t', 'x'));
     }
 }

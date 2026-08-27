@@ -212,6 +212,24 @@ impl DrawContext {
             let mut nextfont_idx: Option<usize> = None;
             let mut utf8codepoint: u32 = 0;
 
+            // Nerd-font icons carry zero side bearings, so a run starting next
+            // to an inline icon takes a leading gap; the icon's own side waits
+            // at the opposite transition via the same predicate. Pen and
+            // remaining width move together so overflow and ellipsis checks
+            // below see numbers that already include the pad.
+            if self.icon_gap_px > 0 {
+                if let (Some(prev), Some(first)) = (
+                    text[..utf8str_start].chars().next_back(),
+                    text[utf8str_start..].chars().next(),
+                ) {
+                    if crate::bar::text::boundary_gap_between(prev, first) {
+                        let gap = self.icon_gap_px.min(w);
+                        x += gap as i32;
+                        w -= gap;
+                    }
+                }
+            }
+
             // ── Walk codepoints in the current font run ──────────────────────
             while text_pos < text_bytes.len() {
                 let remaining = &text_bytes[text_pos..];

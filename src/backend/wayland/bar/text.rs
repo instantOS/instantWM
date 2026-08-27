@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use cosmic_text::{
-    Attrs, Buffer, Color as CosmicColor, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap,
+    Attrs, Buffer, Color as CosmicColor, Family, FeatureTag, FontFeatures, FontSystem, Metrics,
+    Shaping, SwashCache, Wrap,
 };
 
 use crate::bar::text::{self as bar_text, FontRole};
@@ -12,10 +13,6 @@ use crate::types::{Point, Rect, Size};
 use super::pixels;
 
 const TEXT_CACHE_LIMIT: usize = 2048;
-// Many patched-font icons paint slightly beyond their nominal advance. Keep
-// enough tracking on those glyphs that the following normal-font run cannot
-// start inside the icon's ink bounds.
-const ICON_LETTER_SPACING_EM: f32 = 0.12;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct TextMeasureKey {
@@ -183,31 +180,42 @@ impl TextRasterizer {
 
     fn set_buffer_text(&self, buffer: &mut Buffer, text: &str, box_height: i32) {
         let default_attrs = Attrs::new().family(Family::Name(&self.fonts.text_family));
-        let spans = bar_text::runs(text).into_iter().map(|run| {
-            let (family, size) = match run.role {
-                FontRole::Icon => (&self.fonts.icon_family, self.fonts.icon_size),
-                FontRole::Text => (&self.fonts.text_family, self.fonts.text_size),
-            };
-            (run.text, attrs_for_run(family, size, box_height, run.role))
-        });
+        let spans = bar_text::gapped_runs(text, self.fonts.text_size, self.fonts.icon_size)
+            .into_iter()
+            .map(|segment| {
+                let (family, size) = match segment.role {
+                    FontRole::Icon => (&self.fonts.icon_family, self.fonts.icon_size),
+                    FontRole::Text => (&self.fonts.text_family, self.fonts.text_size),
+                };
+                // The trailing boundary gap rides a span holding only the
+                // run's last grapheme, so tracking cannot touch the rest.
+                let mut attrs = attrs_for_run(family, size, box_height);
+                if let Some(gap) = segment.gap_em {
+                    attrs = attrs.letter_spacing(gap);
+                }
+                if segment.prevent_ligatures {
+                    let mut features = FontFeatures::new();
+                    features
+                        .disable(FeatureTag::STANDARD_LIGATURES)
+                        .disable(FeatureTag::CONTEXTUAL_LIGATURES)
+                        .disable(FeatureTag::DISCRETIONARY_LIGATURES);
+                    attrs = attrs.font_features(features);
+                }
+                (segment.text, attrs)
+            });
         buffer.set_rich_text(spans, &default_attrs, Shaping::Advanced, None);
     }
 }
 
-fn attrs_for_run(family: &str, size: f32, box_height: i32, role: FontRole) -> Attrs<'_> {
+fn attrs_for_run(family: &str, size: f32, box_height: i32) -> Attrs<'_> {
     let line_height = if box_height > 0 {
         box_height as f32
     } else {
         size
     };
-    let attrs = Attrs::new()
+    Attrs::new()
         .family(Family::Name(family))
-        .metrics(Metrics::new(size, line_height));
-    if role == FontRole::Icon {
-        attrs.letter_spacing(ICON_LETTER_SPACING_EM)
-    } else {
-        attrs
-    }
+        .metrics(Metrics::new(size, line_height))
 }
 
 fn normalized_family(family: &str) -> String {
@@ -231,7 +239,7 @@ fn resolve_family(font_system: &FontSystem, configured: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{FontConfig, FontRole, TextRasterizer, attrs_for_run};
+    use super::{FontConfig, TextRasterizer, attrs_for_run};
     use cosmic_text::Metrics;
 
     #[test]
@@ -279,7 +287,7 @@ mod tests {
 
     #[test]
     fn icon_runs_carry_their_independent_size() {
-        let attrs = attrs_for_run("Symbols Nerd Font", 18.0, 32, FontRole::Icon);
+        let attrs = attrs_for_run("Symbols Nerd Font", 18.0, 32);
         let metrics: Metrics = attrs.metrics_opt.expect("run metrics").into();
         assert_eq!(metrics.font_size, 18.0);
         assert_eq!(metrics.line_height, 32.0);
