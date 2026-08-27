@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::contexts::CoreCtx;
 use crate::types::{MouseButton, Point, Rect, Size};
 
+pub(crate) mod instantmenu;
 pub(crate) mod render;
 pub(crate) mod status_notifier;
 
@@ -32,6 +33,8 @@ pub(crate) struct SystrayHost {
     pub(crate) tray: StatusNotifierTray,
     /// Session state of a bar-hosted DBusMenu.
     pub(crate) menu: TrayMenuState,
+    /// External instantMENU presentation of the hosted menu.
+    pub(crate) instantmenu: instantmenu::InstantMenuHost,
 }
 impl SystrayHost {
     pub(crate) fn start(
@@ -39,6 +42,7 @@ impl SystrayHost {
         native_menu_request: Option<NativeMenuRequestSlot>,
         wake: Option<calloop::ping::Ping>,
     ) {
+        self.instantmenu.set_wake(wake.clone());
         if self.runtime.is_none() {
             self.runtime = Some(StatusNotifierRuntime::start(native_menu_request, wake));
         }

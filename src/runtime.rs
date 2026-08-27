@@ -10,6 +10,7 @@ use calloop::generic::Generic;
 use calloop::timer::{TimeoutAction, Timer};
 use calloop::{Interest, Mode, PostAction};
 
+use crate::backend::WindowOps;
 use crate::core_state::LayoutWorkTargets;
 use crate::wm::Wm;
 
@@ -37,7 +38,8 @@ pub struct TickResult {
 /// Shared per-tick housekeeping with backend-specific scheduler options.
 ///
 /// Processing order is backend-independent and deterministic:
-/// 1. StatusNotifier tray events
+/// 1. StatusNotifier tray events (incl. the external instantMENU tray-menu
+///    host, which reconciles against the drained session state)
 /// 2. internal status updates
 /// 3. IPC command dispatch
 /// 4. monitor configuration work
@@ -49,6 +51,9 @@ pub fn event_loop_tick_with_options(
     options: TickOptions,
 ) -> TickResult {
     let systray_updated = wm.poll_systray();
+    if crate::systray::instantmenu::drive_instantmenu_menu(wm) {
+        wm.bar.mark_dirty();
+    }
     let status_handled = crate::bar::status::drain_internal_status_updates(wm);
     // A finished region selection may resize a window, so it drains before
     // pending work to let the same tick apply the resulting layout.
@@ -84,6 +89,21 @@ pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkRes
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
         result.monitor_config_applied = true;
+    }
+
+    // Edge scratchpads finish their slide-out through backend animation
+    // bookkeeping; complete the deferred logical hide once it drained.
+    let pending_hides = wm.work.pending_scratchpad_hide_windows();
+    let finished_hides: Vec<crate::types::WindowId> = pending_hides
+        .into_iter()
+        .filter(|win| !wm.backend.window_animation_active(*win))
+        .collect();
+    for win in &finished_hides {
+        wm.work.cancel_pending_scratchpad_hide(*win);
+    }
+    if !finished_hides.is_empty() {
+        let mut ctx = wm.ctx();
+        crate::floating::finish_scratchpad_hides(&mut ctx, &finished_hides);
     }
 
     if !wm.work.layout.is_pending() {

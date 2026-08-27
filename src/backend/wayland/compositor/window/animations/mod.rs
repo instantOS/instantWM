@@ -497,6 +497,13 @@ impl WaylandState {
             .any(WaylandWindowAnimation::is_active)
     }
 
+    /// Check whether one window currently has an active geometry animation.
+    pub fn window_has_active_animation(&self, win: WindowId) -> bool {
+        self.window_animations
+            .get(&win)
+            .is_some_and(WaylandWindowAnimation::is_active)
+    }
+
     /// Check if any compositor visual transition needs another frame.
     pub fn has_active_animations(&self) -> bool {
         self.has_active_window_animations() || self.layout_preview_animation.is_active()

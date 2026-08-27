@@ -368,6 +368,11 @@ impl WindowOps for WaylandBackend {
             .unwrap_or(false)
     }
 
+    fn window_animation_active(&self, window: WindowId) -> bool {
+        self.with_state(|state: &mut WaylandState| state.window_has_active_animation(window))
+            .unwrap_or(false)
+    }
+
     fn flush(&self) {
         let _ = self.with_state(WaylandState::flush);
     }

@@ -177,6 +177,7 @@ impl BarPosition {
             Self::Tag(idx) => Gesture::Tag(idx),
             Self::CloseButton(_) => Gesture::CloseButton,
             Self::WinTitle(w) => Gesture::WinTitle(w),
+            Self::SystrayMenuItem(idx) => Gesture::TrayMenuEntry(idx),
             _ => Gesture::None,
         }
     }
@@ -201,6 +202,9 @@ pub enum Gesture {
     StartMenu,
     /// Cursor is over a clickable i3bar block, identified by protocol order.
     StatusBlock(usize),
+    /// Cursor is over an entry of the bar-hosted tray menu (0-based entry
+    /// index).
+    TrayMenuEntry(usize),
 }
 
 impl Gesture {

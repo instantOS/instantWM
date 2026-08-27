@@ -62,12 +62,39 @@ pub struct DerivedState {
     pub bar_horizontal_padding: i32,
 }
 
+/// Backend presenting the hosted StatusNotifier context menu.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrayMenuBackend {
+    /// Prefer instantMENU when the binary is available, otherwise the bar.
+    #[default]
+    Auto,
+    /// Render the menu inline in the status bar.
+    StatusBar,
+    /// Delegate the menu to an external instantMENU process.
+    InstantMenu,
+}
+
+impl TrayMenuBackend {
+    /// Lowercase name for serialization and IPC round-trips.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::StatusBar => "statusbar",
+            Self::InstantMenu => "instantmenu",
+        }
+    }
+}
+
 /// System tray settings.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SystrayConfig {
     pub show: bool,
     pub pinning: usize,
     pub spacing: i32,
+    /// How the tray item context menu is presented.
+    pub menu_backend: TrayMenuBackend,
 }
 
 impl Default for SystrayConfig {
@@ -76,6 +103,7 @@ impl Default for SystrayConfig {
             show: true,
             pinning: 0,
             spacing: 0,
+            menu_backend: TrayMenuBackend::default(),
         }
     }
 }
@@ -187,9 +215,40 @@ impl FontConfig {
 }
 
 #[cfg(test)]
+mod tray_menu_backend_tests {
+    use super::{SystrayConfig, TrayMenuBackend};
+
+    #[test]
+    fn backend_names_round_trip_through_serde() {
+        for (backend, name) in [
+            (TrayMenuBackend::Auto, "auto"),
+            (TrayMenuBackend::StatusBar, "statusbar"),
+            (TrayMenuBackend::InstantMenu, "instantmenu"),
+        ] {
+            assert_eq!(backend.as_str(), name);
+            assert_eq!(
+                serde_json::to_string(&backend).unwrap(),
+                format!("\"{name}\"")
+            );
+            assert_eq!(
+                serde_json::from_str::<TrayMenuBackend>(&format!("\"{name}\"")).unwrap(),
+                backend
+            );
+        }
+    }
+
+    #[test]
+    fn default_backend_is_auto_and_partial_sections_keep_defaults() {
+        assert_eq!(SystrayConfig::default().menu_backend, TrayMenuBackend::Auto);
+        let config: SystrayConfig = toml::from_str("menu_backend = \"statusbar\"\n").unwrap();
+        assert_eq!(config.menu_backend, TrayMenuBackend::StatusBar);
+        assert!(config.show, "show keeps its non-derive default");
+    }
+}
+
+#[cfg(test)]
 mod font_config_tests {
     use super::FontConfig;
-
     #[test]
     fn bar_metrics_are_shared_and_respect_the_visual_minimum() {
         let fonts = FontConfig {
@@ -651,6 +710,12 @@ pub struct PendingWork {
     /// Newly managed windows waiting for their first authoritative arrange
     /// before the one-time spawn transition can be started.
     pub(crate) spawn_animations: BTreeSet<WindowId>,
+    /// Edge scratchpads whose slide-out animation is still playing.
+    ///
+    /// The logical hide (conceal, focus hand-off, layout) is deferred until
+    /// the backend reports the exit animation finished, so the overlay slides
+    /// out instead of vanishing on the first frame.
+    pending_scratchpad_hides: BTreeSet<WindowId>,
 }
 
 impl Default for PendingWork {
@@ -663,7 +728,30 @@ impl Default for PendingWork {
             cursor_config: false,
             layout,
             spawn_animations: BTreeSet::new(),
+            pending_scratchpad_hides: BTreeSet::new(),
         }
+    }
+}
+
+impl PendingWork {
+    /// Track an edge scratchpad whose logical hide waits for its exit animation.
+    pub fn queue_pending_scratchpad_hide(&mut self, win: WindowId) {
+        self.pending_scratchpad_hides.insert(win);
+    }
+
+    /// Whether a deferred hide is waiting on this window's exit animation.
+    pub fn has_pending_scratchpad_hide(&self, win: WindowId) -> bool {
+        self.pending_scratchpad_hides.contains(&win)
+    }
+
+    /// Cancel a tracked pending hide (the scratchpad is being shown again).
+    pub fn cancel_pending_scratchpad_hide(&mut self, win: WindowId) {
+        self.pending_scratchpad_hides.remove(&win);
+    }
+
+    /// Snapshot the windows with a deferred hide awaiting their animation.
+    pub fn pending_scratchpad_hide_windows(&self) -> Vec<WindowId> {
+        self.pending_scratchpad_hides.iter().copied().collect()
     }
 }
 

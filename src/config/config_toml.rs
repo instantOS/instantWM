@@ -1,5 +1,6 @@
 use crate::config::appearance::get_fonts;
 use crate::config::keybind_config::KeybindSpec;
+use crate::core_state::SystrayConfig;
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, KeyboardLayout, Rule, StatusColorConfig,
     TagColorConfigs, WindowColorConfigs,
@@ -58,6 +59,8 @@ pub struct UserConfig {
     pub animations: AnimationConfig,
     /// Status bar visibility and geometry.
     pub bar: BarConfig,
+    /// System tray settings.
+    pub systray: SystrayConfig,
     /// Raise a floating window when its client area is left-clicked.
     ///
     /// Disabled by default so focus-follows-mouse and click-to-focus do not
@@ -92,6 +95,7 @@ impl Default for UserConfig {
             layout: LayoutConfig::default(),
             animations: AnimationConfig::default(),
             bar: BarConfig::default(),
+            systray: SystrayConfig::default(),
             raise_floating_on_click: false,
             rules: Vec::new(),
             exec_once: Vec::new(),
@@ -752,6 +756,23 @@ mod theme_tests {
             .unwrap()
             .try_into::<UserConfig>()
             .unwrap()
+    }
+
+    #[test]
+    fn systray_menu_backend_parses_from_a_partial_section() {
+        let user = parse("[systray]\nmenu_backend = \"instantmenu\"\n");
+        assert_eq!(
+            user.systray.menu_backend,
+            crate::core_state::TrayMenuBackend::InstantMenu
+        );
+        // Unrelated fields keep their defaults when the section is partial.
+        assert!(user.systray.show);
+        assert_eq!(user.systray.spacing, 0);
+    }
+
+    #[test]
+    fn systray_menu_backend_rejects_unknown_values() {
+        assert!(toml::from_str::<UserConfig>("[systray]\nmenu_backend = \"popup\"\n").is_err());
     }
 
     #[test]

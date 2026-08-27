@@ -132,7 +132,9 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
     std::mem::discriminant(&gesture).hash(hasher);
     match gesture {
         crate::types::Gesture::WinTitle(win) => win.hash(hasher),
-        crate::types::Gesture::Tag(tag) | crate::types::Gesture::StatusBlock(tag) => {
+        crate::types::Gesture::Tag(tag)
+        | crate::types::Gesture::StatusBlock(tag)
+        | crate::types::Gesture::TrayMenuEntry(tag) => {
             tag.hash(hasher)
         }
         crate::types::Gesture::None

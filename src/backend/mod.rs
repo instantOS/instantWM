@@ -121,6 +121,14 @@ pub trait WindowOps {
     /// This is a query method that returns state rather than performing an action.
     fn window_exists(&self, window: WindowId) -> bool;
 
+    /// Whether the backend is currently animating this window's geometry.
+    ///
+    /// Default implementation reports no animation; backends with animation
+    /// bookkeeping override this.
+    fn window_animation_active(&self, _window: WindowId) -> bool {
+        false
+    }
+
     /// Return the protocol/backend surface type for a managed window.
     fn window_protocol(&self, window: WindowId) -> WindowProtocol;
     fn flush(&self);
@@ -402,6 +410,16 @@ impl WindowOps for Backend {
                 X11BackendRef::new(&data.conn, data.screen_num).window_exists(window)
             }
             Backend::Wayland(data) => data.backend.window_exists(window),
+        }
+    }
+
+    fn window_animation_active(&self, window: WindowId) -> bool {
+        match self {
+            Backend::X11(data) => data
+                .x11_runtime
+                .window_animations
+                .contains_key(&window),
+            Backend::Wayland(data) => data.backend.window_animation_active(window),
         }
     }
 

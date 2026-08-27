@@ -529,9 +529,20 @@ fn show_scratchpad_window_with_options(
     }) else {
         return Err(format!("window {} is not a managed scratchpad", found.0));
     };
+    let mut reversing_slide_out = false;
 
     if was_visible {
-        return Ok(false);
+        // A pending hide means the slide-out is still animating; reversing the
+        // toggle must cancel that pending hide so the deferred concealment
+        // never runs, then fall through so the entrance animation retargets
+        // the window from wherever the slide currently is.
+        reversing_slide_out = ctx.core().pending_work().has_pending_scratchpad_hide(found);
+        ctx.core_mut()
+            .pending_work_mut()
+            .cancel_pending_scratchpad_hide(found);
+        if !reversing_slide_out {
+            return Ok(false);
+        }
     }
 
     let target_monitor = options.monitor_id;
@@ -544,7 +555,10 @@ fn show_scratchpad_window_with_options(
     let previous_focus = ctx.core().model().selected_win();
     ctx.core_mut()
         .mutate_selection(|model| prepare_scratchpad_for_show(model, found, target_monitor));
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(found)
+    // A reversed slide-out keeps the focus target remembered when it was
+    // first shown; overwriting it here would degrade the eventual hand-off.
+    if !reversing_slide_out
+        && let Some(client) = ctx.core_mut().model_mut().client_mut(found)
         && let Some(scratchpad) = client.scratchpad_mut()
     {
         scratchpad.remember_focus(restore_focus);
@@ -570,9 +584,13 @@ fn show_scratchpad_window_with_options(
 
         let slide = EdgeSlideRects::new(content_rect, dir, client_size);
 
-        ctx.move_resize(found, slide.hidden, MoveResizeOptions::immediate());
-
-        reveal_scratchpad_window(ctx, found);
+        // A reversed slide-out is still mapped mid-flight; re-parking it
+        // off-screen first would make the window jump. The animate_to below
+        // continues the existing transition from its current frame instead.
+        if !reversing_slide_out {
+            ctx.move_resize(found, slide.hidden, MoveResizeOptions::immediate());
+            reveal_scratchpad_window(ctx, found);
+        }
         ctx.move_resize(
             found,
             slide.shown,
@@ -677,7 +695,15 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     let Ok(found) = find_live_scratchpad(ctx, name) else {
         return;
     };
+    hide_scratchpad_window(ctx, found);
+}
 
+/// Hide one scratchpad window whose liveness the caller already validated.
+///
+/// Edge-anchored scratchpads play their slide-out first and defer the logical
+/// hide until the backend reports the animation finished; see
+/// [`finish_scratchpad_hides`].
+pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) {
     let direction = ctx
         .core()
         .state()
@@ -704,23 +730,59 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         })
     };
 
-    let restore_focus = if let Some(client) = ctx.core_mut().model_mut().client_mut(found) {
-        client
-            .scratchpad_mut()
-            .and_then(|scratchpad| scratchpad.take_restore_focus())
-    } else {
-        None
-    };
-
-    if let Some(slide) = slide {
-        ctx.move_resize(
-            found,
-            slide.hidden,
-            MoveResizeOptions::animate_to(EMPHASIZED_ANIMATION_MILLIS),
-        );
+    match slide {
+        Some(slide) => {
+            // Animate the slide-out and defer the logical hide until the
+            // backend reports the transition finished. Hiding synchronously
+            // would unmap the window on the same tick and destroy the
+            // animation it just started. The remembered focus stays on the
+            // scratchpad so the deferred hide can hand focus back.
+            ctx.move_resize(
+                found,
+                slide.hidden,
+                MoveResizeOptions::animate_to(EMPHASIZED_ANIMATION_MILLIS),
+            );
+            ctx.core_mut()
+                .pending_work_mut()
+                .queue_pending_scratchpad_hide(found);
+        }
+        None => {
+            let restore_focus = take_scratchpad_restore_focus(ctx, found);
+            crate::client::visibility::hide_with_focus(ctx, found, restore_focus);
+        }
     }
+}
 
-    crate::client::visibility::hide_with_focus(ctx, found, restore_focus);
+/// Consume a scratchpad's remembered pre-show focus target, if any.
+fn take_scratchpad_restore_focus(ctx: &mut WmCtx, win: WindowId) -> Option<WindowId> {
+    ctx.core_mut()
+        .model_mut()
+        .client_mut(win)
+        .and_then(|client| client.scratchpad_mut())
+        .and_then(|scratchpad| scratchpad.take_restore_focus())
+}
+
+/// Complete deferred edge-scratchpad hides whose exit animation has finished.
+///
+/// Backend animation ticks call this once their animation bookkeeping shows the
+/// window is no longer transitioning. Each completion performs the logical
+/// hide that [`scratchpad_hide_name`] postponed, preserving the focus
+/// hand-off captured when the overlay was shown.
+pub fn finish_scratchpad_hides(ctx: &mut WmCtx, wins: &[WindowId]) {
+    for &win in wins {
+        // The window may have been restored, remoted, or removed while its
+        // exit animation played; only still-visible scratchpads conceal.
+        let should_hide = ctx
+            .core()
+            .model()
+            .client(win)
+            .is_some_and(|client| client.is_scratchpad_visible());
+        if !should_hide {
+            continue;
+        }
+        let restore_focus = take_scratchpad_restore_focus(ctx, win);
+        crate::client::visibility::hide_with_focus(ctx, win, restore_focus);
+    }
 }
 
 pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
@@ -743,7 +805,10 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     let Some(client) = ctx.core().model().client(found) else {
         return;
     };
-    let is_visible = client.is_scratchpad_visible();
+    // A pending hide means the slide-out is still playing; the next toggle
+    // must reverse it rather than restart an identical slide-out.
+    let is_visible =
+        client.is_scratchpad_visible() && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
 
     if is_visible {
         scratchpad_hide_name(ctx, name);
@@ -775,6 +840,10 @@ pub(crate) fn scratchpad_toggle_from_hot_corner(
     else {
         return;
     };
+    // A pending hide means the slide-out is still playing; the next trigger
+    // must reverse it rather than restart an identical slide-out.
+    let is_visible =
+        is_visible && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
 
     if is_visible {
         scratchpad_hide_name(ctx, name);
@@ -874,8 +943,10 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 #[cfg(test)]
 mod tests {
     use super::{
-        EdgeSlideRects, name_from_window_identity, regular_scratchpad_rect,
-        scratchpad_restore_window, set_scratchpad_direction, show_transferred_scratchpad,
+        EdgeSlideRects, ScratchpadShowOptions, hide_scratchpad_window,
+        name_from_window_identity, regular_scratchpad_rect, scratchpad_restore_window,
+        set_scratchpad_direction, show_scratchpad_window_with_options,
+        show_transferred_scratchpad,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -985,6 +1056,113 @@ mod tests {
         assert_eq!(client.geo, original_geo);
         assert_eq!(client.border_width, 3);
         assert!(!client.is_locked);
+    }
+
+    #[test]
+    fn edge_scratchpad_hide_defers_concealment_until_the_animation_finishes() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let scratchpad = WindowId(90);
+        let mut client = Client {
+            win: scratchpad,
+            monitor_id,
+            geo: Rect::new(0, 0, 640, 360),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("edge", Some(EdgeDirection::Top), 1920, 1080)
+            .unwrap();
+        wm.core.model.insert_client(client);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .clients
+            .push(scratchpad);
+
+        hide_scratchpad_window(&mut wm.ctx(), scratchpad);
+
+        // The slide-out is playing: the window stays logically visible and a
+        // pending hide is queued.
+        assert!(
+            wm.core
+                .model
+                .client(scratchpad)
+                .unwrap()
+                .is_scratchpad_visible()
+        );
+        assert!(wm.work.has_pending_scratchpad_hide(scratchpad));
+
+        // Completing the animation performs the deferred logical hide.
+        crate::floating::scratchpad::finish_scratchpad_hides(&mut wm.ctx(), &[scratchpad]);
+        assert!(
+            !wm.core
+                .model
+                .client(scratchpad)
+                .unwrap()
+                .is_scratchpad_visible()
+        );
+    }
+
+    #[test]
+    fn showing_during_a_slide_out_cancels_the_pending_hide() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let scratchpad = WindowId(91);
+        let mut client = Client {
+            win: scratchpad,
+            monitor_id,
+            geo: Rect::new(0, 0, 640, 360),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("edge", Some(EdgeDirection::Top), 1920, 1080)
+            .unwrap();
+        wm.core.model.insert_client(client);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .clients
+            .push(scratchpad);
+
+        hide_scratchpad_window(&mut wm.ctx(), scratchpad);
+        assert!(wm.work.has_pending_scratchpad_hide(scratchpad));
+
+        let shown = show_scratchpad_window_with_options(
+            &mut wm.ctx(),
+            scratchpad,
+            ScratchpadShowOptions {
+                monitor_id,
+                focus: true,
+                warp_pointer: false,
+            },
+        )
+        .unwrap();
+
+        // Reversing the toggle reports the show succeeded and cancels the
+        // deferred hide; the overlay stays up.
+        assert!(shown);
+        assert!(!wm.work.has_pending_scratchpad_hide(scratchpad));
+        assert!(
+            wm.core
+                .model
+                .client(scratchpad)
+                .unwrap()
+                .is_scratchpad_visible()
+        );
     }
 
     #[test]

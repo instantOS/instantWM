@@ -403,13 +403,20 @@ pub(crate) fn build_monitor_snapshots(
             });
         }
 
+        // While the external instantMENU presents the tray menu, the bar
+        // neither reserves width for it nor renders the overlay.
+        let instantmenu_hosts_menu = core
+            .bar
+            .systray_host
+            .instantmenu
+            .hosting(core.config().systray.menu_backend);
         let presentation = BarPresentation {
             status: if is_selected_monitor {
                 selected_status.clone()
             } else {
                 StatusPresentation::Hidden
             },
-            overlay: if is_selected_monitor {
+            overlay: if is_selected_monitor && !instantmenu_hosts_menu {
                 core.bar
                     .systray_host
                     .menu
@@ -874,12 +881,22 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
     }
 
     if let Some(menu) = snapshot.presentation.tray_menu() {
+        let hover = match snapshot.gesture {
+            Gesture::TrayMenuEntry(entry_index) => {
+                Some(crate::systray::render::TrayMenuHover {
+                    entry_index,
+                    color: snapshot.status_hover_color,
+                })
+            }
+            _ => None,
+        };
         crate::systray::render::draw_menu(
             painter,
             &menu.view,
             &layout.menu.cells,
             &systray.base_scheme,
             bar_height,
+            hover,
         );
     }
 }

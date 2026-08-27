@@ -97,7 +97,7 @@ pub fn get_tags_alt() -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 use crate::core_state::{
-    BindingConfig, ColorConfig, EffectiveConfig, FontConfig, SystrayConfig, WindowConfig,
+    BindingConfig, ColorConfig, EffectiveConfig, FontConfig, WindowConfig,
 };
 use crate::types::Key;
 use std::collections::HashMap;
@@ -284,7 +284,7 @@ pub fn resolve_config(
             ..WindowConfig::default()
         },
         bar,
-        systray: SystrayConfig::default(),
+        systray: theme.systray,
         layout,
         animations: theme.animations,
         colors: ColorConfig {
@@ -321,6 +321,7 @@ pub fn resolve_config(
 #[cfg(test)]
 mod resolution_tests {
     use super::*;
+    use crate::core_state::SystrayConfig;
 
     #[test]
     fn resolution_rejects_invalid_layout_before_building_effective_config() {
@@ -349,5 +350,20 @@ mod resolution_tests {
         assert_eq!(effective.tag_template.len(), MAX_TAGS);
         assert_eq!(effective.window, WindowConfig::default());
         assert_eq!(effective.systray, SystrayConfig::default());
+    }
+
+    #[test]
+    fn systray_settings_resolve_from_the_user_schema() {
+        let mut user = config_toml::UserConfig::default();
+        user.systray.menu_backend = crate::core_state::TrayMenuBackend::InstantMenu;
+        user.systray.spacing = 6;
+
+        let effective = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
+
+        assert_eq!(
+            effective.systray.menu_backend,
+            crate::core_state::TrayMenuBackend::InstantMenu
+        );
+        assert_eq!(effective.systray.spacing, 6);
     }
 }

@@ -65,6 +65,7 @@ install -Dm644 "utils/instantwm-wayland.desktop" "${PKG_DIR}/usr/share/wayland-s
 install -Dm644 "utils/instantwm-wayland-debug.desktop" "${PKG_DIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 install -Dm755 "scripts/instantwm-debug.sh" "${PKG_DIR}/usr/bin/instantwm-debug"
 install -Dm644 "resources/instantwm-portals.conf" "${PKG_DIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+install -Dm644 "resources/instantwm-session.target" "${PKG_DIR}/usr/lib/systemd/user/instantwm-session.target"
 
 # Install man page if it exists
 if [[ -f instantwm.1 ]]; then
