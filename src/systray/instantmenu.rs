@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use calloop::ping::Ping;
 
 use crate::core_state::TrayMenuBackend;
+#[allow(unused_imports)]
 use crate::systray::{MenuAction, MenuEntry, MenuToggle, MenuView};
 use crate::wm::Wm;
 
@@ -33,7 +34,7 @@ const MENU_WIDTH: i32 = 340;
 /// Final result of one instantmenu process, delivered by its reader thread.
 enum MenuOutcome {
     /// An item was chosen; `label` is the exact line instantMENU printed
-    /// (markup stripped), matching [`display_label`] of the source entry.
+    /// (markup stripped), matching [`MenuEntry::display_label`] of the source entry.
     Selected { session_id: u64, label: String },
     /// The menu was dismissed without a choice (Escape or an outside press).
     Dismissed { session_id: u64 },
@@ -217,7 +218,7 @@ fn handle_selection(wm: &mut Wm, session_id: u64, label: &str, hosting: bool) ->
         .view
         .entries
         .iter()
-        .find(|entry| display_label(entry) == label)
+        .find(|entry| entry.display_label() == label)
     else {
         // Unknown output text: treat the exchange as a dismissal.
         close_session(wm);
@@ -375,27 +376,6 @@ fn kill_child(pgid_slot: &Arc<Mutex<Option<i32>>>) {
     }
 }
 
-/// The label exactly as instantMENU receives — and prints — it: the same
-/// toggle-indicator prefix and submenu arrow the bar-native menu shows.
-fn display_label(entry: &MenuEntry) -> String {
-    let prefix = match entry.toggle {
-        MenuToggle::Check(true) => "✓ ",
-        MenuToggle::Check(false) => "□ ",
-        MenuToggle::Radio(true) => "● ",
-        MenuToggle::Radio(false) => "○ ",
-        MenuToggle::None => "",
-    };
-    let suffix = if matches!(entry.action, MenuAction::OpenSubmenu(_)) {
-        " ›"
-    } else {
-        ""
-    };
-    format!(
-        "{prefix}{}{suffix}",
-        entry.label.trim().replace(['\n', '\r'], " ")
-    )
-}
-
 /// One instantMENU input line per selectable entry; separators have no
 /// equivalent in a launcher list and are skipped.
 fn build_lines(view: &MenuView) -> Vec<String> {
@@ -419,7 +399,7 @@ fn entry_line(entry: &MenuEntry) -> Option<String> {
         line.push_str(&attrs.join(" "));
         line.push_str("} ");
     }
-    line.push_str(&display_label(entry));
+    line.push_str(&entry.display_label());
     Some(line)
 }
 
@@ -606,8 +586,8 @@ mod tests {
         let mut submenu = entry("Preferences");
         submenu.action = MenuAction::OpenSubmenu(3);
 
-        assert_eq!(display_label(&checked), "✓ Enabled");
-        assert_eq!(display_label(&submenu), "Preferences ›");
+        assert_eq!(checked.display_label(), "✓ Enabled");
+        assert_eq!(submenu.display_label(), "Preferences ›");
     }
 
     #[test]
@@ -640,7 +620,7 @@ mod tests {
         for (line, entry) in lines.iter().zip(selectable) {
             let line = line.as_str();
             let payload = line.split_once("} ").map_or(line, |(_, payload)| payload);
-            assert_eq!(payload, display_label(entry));
+            assert_eq!(payload, entry.display_label());
         }
     }
 

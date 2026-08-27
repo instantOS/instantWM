@@ -798,11 +798,19 @@ fn reconcile_items_embedded(
         st.items.retain(|id| alive.contains(id));
     }
 
-    // Now reconcile as if we got the items from a proxy.
+    reconcile_ids(conn, evt_tx, known_ids, alive);
+}
+
+fn reconcile_ids(
+    conn: &Connection,
+    evt_tx: &SystrayEventTx,
+    known_ids: &mut HashSet<String>,
+    ids: impl IntoIterator<Item = String>,
+) {
     let mut seen = HashSet::new();
-    for id in &alive {
+    for id in ids {
         seen.insert(id.clone());
-        if let Some((service, path)) = parse_sni_id(id)
+        if let Some((service, path)) = parse_sni_id(&id)
             && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
         {
             evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
@@ -829,27 +837,7 @@ fn reconcile_items(
 ) -> zbus::Result<()> {
     let proxy = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
     let services: Vec<String> = proxy.get_property("RegisteredStatusNotifierItems")?;
-    let mut seen = HashSet::new();
-    for id in services {
-        seen.insert(id.clone());
-        if let Some((service, path)) = parse_sni_id(&id)
-            && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
-        {
-            evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
-                service,
-                path,
-                icon_rgba,
-                icon_size,
-            }));
-        }
-    }
-
-    for removed in known_ids.difference(&seen) {
-        if let Some((service, path)) = parse_sni_id(removed) {
-            evt_tx.send(SystrayEvt::ItemRemoved(service, path));
-        }
-    }
-    *known_ids = seen;
+    reconcile_ids(conn, evt_tx, known_ids, services);
     Ok(())
 }
 

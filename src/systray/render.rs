@@ -1,5 +1,6 @@
 use crate::bar::SystrayHitSlot;
 use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
+#[allow(unused_imports)]
 use crate::systray::{MenuAction, MenuToggle, MenuView};
 use crate::types::Rect;
 use crate::types::color::Rgba;
@@ -44,22 +45,10 @@ pub(crate) fn draw_menu(
                 .with_alpha(disabled_scheme.foreground.a() * 0.55);
             painter.set_scheme(disabled_scheme);
         }
-        let prefix = match entry.toggle {
-            MenuToggle::Check(true) => "✓ ",
-            MenuToggle::Check(false) => "□ ",
-            MenuToggle::Radio(true) => "● ",
-            MenuToggle::Radio(false) => "○ ",
-            MenuToggle::None => "",
-        };
-        let suffix = if matches!(entry.action, MenuAction::OpenSubmenu(_)) {
-            " ›"
-        } else {
-            ""
-        };
         painter.text(
             Rect::new(cell.start, 0, width, bar_height),
             scaled_px(6, ui_scale),
-            &format!("{prefix}{}{suffix}", entry.label),
+            &entry.display_label(),
             false,
             0,
             TextOverflow::Ellipsis,
@@ -77,11 +66,7 @@ pub(crate) fn draw_menu(
     }
 }
 
-/// Decorative pixels that are not derived from font advances or bar height
-/// follow the monitor's UI scale. Mirrors [`crate::bar::scene`]'s helper.
-fn scaled_px(value: i32, scale: f64) -> i32 {
-    ((value as f64 * scale).round() as i32).max(1)
-}
+use crate::types::geometry::scaled_px;
 
 /// Thin vertical rules between adjacent ordinary entries, in the style of the
 /// i3bar block separators. Boundaries next to a separator entry already read

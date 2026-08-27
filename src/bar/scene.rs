@@ -11,9 +11,7 @@ const STARTMENU_ICON_INNER: i32 = 6;
 const TAG_DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 
-fn scaled_px(value: i32, scale: f64) -> i32 {
-    ((value as f64 * scale).round() as i32).max(1)
-}
+use crate::types::geometry::scaled_px;
 
 fn status_scheme(colors: &StatusColorConfig) -> BarScheme {
     BarScheme::from(&colors.as_scheme())
