@@ -26,10 +26,10 @@ const WORKER_RETRY_MAX: Duration = Duration::from_secs(60);
 
 /// How often to fall back to a full reconcile scan of StatusNotifierItems.
 ///
-/// Live icon changes are delivered via the item's `NewIcon` signal so the
-/// compositor does not need to poll the (potentially large) `IconPixmap`
-/// property every second. This fallback only exists for items that do not
-/// emit `NewIcon`, so it runs at a slow, low-cost cadence.
+/// Item lifetime and icon changes are delivered as D-Bus signals (see
+/// [`WatcherEvent`]), so this scan is only a safety net: it retries items
+/// whose icon was not available at registration and covers items that do not
+/// emit `NewIcon`. It runs at a slow, low-cost cadence.
 const ICON_REFRESH_FALLBACK: Duration = Duration::from_secs(10);
 
 /// Build a short-lived proxy without zbus' lazy property cache.
@@ -115,6 +115,9 @@ struct WatcherState {
 ///    systray thread. RefCell is insufficient because it is not thread-safe (`!Send + !Sync`).
 struct StatusNotifierWatcherService {
     state: Arc<Mutex<WatcherState>>,
+    /// Notifies the discovery lane of registrations as they happen, instead
+    /// of waiting for the slow fallback reconcile.
+    events: Sender<WatcherEvent>,
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
@@ -141,8 +144,9 @@ impl StatusNotifierWatcherService {
         let mut st = self.state.lock().unwrap();
         if !st.items.contains(&canonical) {
             log::info!("embedded watcher: registered item {canonical}");
-            st.items.push(canonical);
+            st.items.push(canonical.clone());
         }
+        let _ = self.events.send(WatcherEvent::Registered(canonical));
     }
 
     fn register_status_notifier_host(&self, _service: &str) {
@@ -231,6 +235,27 @@ enum SystrayEvt {
         session_id: u64,
         view: Option<MenuView>,
     },
+}
+
+/// A discovery-lane event, fed by the signal watcher threads and the embedded
+/// watcher service into the refresh loop's channel.
+///
+/// Everything flows through one channel so `run_item_refresh` can block
+/// indefinitely: without a periodic wakeup there is no idle work, and the
+/// loop still reacts the moment a tray item is born, dies, or changes icon.
+#[derive(Debug)]
+enum WatcherEvent {
+    /// An item emitted `NewIcon` — (service, path).
+    NewIcon(String, String),
+    /// An item registered with the watcher (canonical `service/path` id).
+    Registered(String),
+    /// An item unregistered from the watcher (canonical `service/path` id).
+    Unregistered(String),
+    /// A bus name lost its owner; every item it owns is gone (embedded mode,
+    /// where we are the watcher and the SNI spec offers no unregister call).
+    NameLost(String),
+    /// The parent worker thread is shutting the discovery lane down.
+    Stop,
 }
 
 /// Event transport with an optional event-loop wake.
@@ -500,7 +525,12 @@ fn run_systray_thread(
 
     log::info!("status notifier: connected to session bus");
 
-    let mode = detect_watcher_mode(&conn);
+    // One channel feeds the discovery lane: item lifetime signals, icon
+    // changes, and shutdown all arrive as `WatcherEvent`s so the refresh
+    // thread can block indefinitely instead of polling a stop channel.
+    let (watch_tx, watch_rx) = channel::<WatcherEvent>();
+
+    let mode = detect_watcher_mode(&conn, watch_tx.clone());
 
     match &mode {
         WatcherMode::External => {
@@ -515,10 +545,10 @@ fn run_systray_thread(
     // Icon discovery is deliberately isolated from interactive commands.
     // StatusNotifier items can take a long time to serialize IconPixmap; a
     // slow background refresh must not delay Activate or ContextMenu.
-    let (refresh_stop_tx, refresh_stop_rx) = channel();
     let refresh_conn = conn.clone();
     let refresh_mode = mode.clone();
     let refresh_evt_tx = evt_tx.clone();
+    let refresh_watch_tx = watch_tx.clone();
     let refresh_thread = match thread::Builder::new()
         .name("instantwm-systray-refresh".to_string())
         .spawn(move || {
@@ -526,7 +556,8 @@ fn run_systray_thread(
                 &refresh_conn,
                 &refresh_mode,
                 &refresh_evt_tx,
-                refresh_stop_rx,
+                refresh_watch_tx,
+                watch_rx,
             );
         }) {
         Ok(thread) => Some(thread),
@@ -580,7 +611,9 @@ fn run_systray_thread(
         }
     }
 
-    drop(refresh_stop_tx);
+    // Watcher threads keep sender clones alive, so channel disconnect cannot
+    // signal shutdown; stop the refresh loop explicitly before joining it.
+    let _ = watch_tx.send(WatcherEvent::Stop);
     if let Some(thread) = refresh_thread {
         let _ = thread.join();
     }
@@ -590,7 +623,8 @@ fn run_item_refresh(
     conn: &Connection,
     mode: &WatcherMode,
     evt_tx: &SystrayEventTx,
-    stop_rx: Receiver<()>,
+    watch_tx: Sender<WatcherEvent>,
+    watch_rx: Receiver<WatcherEvent>,
 ) {
     let mut known_ids = HashSet::new();
     let mut watching = HashSet::new();
@@ -599,53 +633,216 @@ fn run_item_refresh(
         return;
     }
 
-    // Live icon changes are delivered by each item's `NewIcon` signal, so we
-    // do not need to re-download IconPixmap on a tight timer. Watcher threads
-    // forward (service, path) here whenever an icon actually changes.
-    let (changed_tx, changed_rx) = channel();
-    spawn_icon_watchers(conn, &known_ids, &mut watching, &changed_tx);
+    // Item lifetime and icon changes arrive as D-Bus signals: dedicated
+    // watcher threads forward them here, so the loop below sleeps until a
+    // real event (or the slow fallback reconcile) and never polls.
+    spawn_lifetime_watchers(conn, mode, &watch_tx);
+    spawn_icon_watchers(conn, known_ids.iter(), &mut watching, &watch_tx);
 
     let mut fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
     loop {
-        match changed_rx.recv_timeout(Duration::from_secs(1)) {
-            Ok((service, path)) => {
+        let idle_for = fallback_deadline.saturating_duration_since(Instant::now());
+        match watch_rx.recv_timeout(idle_for) {
+            Ok(WatcherEvent::NewIcon(service, path)) => {
                 refresh_item_icon(conn, evt_tx, &service, &path);
             }
-            Err(RecvTimeoutError::Timeout) => {
-                // Parent ended the worker by dropping the stop sender, or sent
-                // an explicit stop signal.
-                match stop_rx.try_recv() {
-                    Err(TryRecvError::Empty) => {}
-                    Ok(()) | Err(TryRecvError::Disconnected) => break,
-                }
-                if Instant::now() >= fallback_deadline {
-                    reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
-                    spawn_icon_watchers(conn, &known_ids, &mut watching, &changed_tx);
-                    fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
-                }
+            Ok(WatcherEvent::Registered(id)) => {
+                handle_registered(conn, evt_tx, &mut known_ids, &mut watching, &watch_tx, &id);
             }
-            Err(RecvTimeoutError::Disconnected) => return,
+            Ok(WatcherEvent::Unregistered(id)) => {
+                handle_unregistered(evt_tx, &mut known_ids, &id);
+            }
+            Ok(WatcherEvent::NameLost(name)) => {
+                handle_name_lost(mode, evt_tx, &mut known_ids, &name);
+            }
+            Ok(WatcherEvent::Stop) | Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+                spawn_icon_watchers(conn, known_ids.iter(), &mut watching, &watch_tx);
+                fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
+            }
         }
     }
+}
+
+/// Spawn the item-lifetime signal watchers for the active mode.
+///
+/// External mode subscribes to the watcher's own signals. Embedded mode is
+/// notified of registrations directly by the watcher service and learns of
+/// item death from the bus's `NameOwnerChanged` — the SNI spec has no
+/// unregister call, so a vanished owner is the only death notice.
+fn spawn_lifetime_watchers(conn: &Connection, mode: &WatcherMode, watch_tx: &Sender<WatcherEvent>) {
+    let spawn = |name: &'static str, run: fn(Connection, Sender<WatcherEvent>)| {
+        let conn = conn.clone();
+        let tx = watch_tx.clone();
+        if thread::Builder::new()
+            .name(name.to_string())
+            .spawn(move || run(conn, tx))
+            .is_err()
+        {
+            log::warn!("status notifier: failed to spawn {name} watcher");
+        }
+    };
+    match mode {
+        WatcherMode::External => {
+            spawn("instantwm-sni-registered", |conn, tx| {
+                watch_watcher_signals(conn, tx, "StatusNotifierItemRegistered", WatcherEvent::Registered)
+            });
+            spawn("instantwm-sni-unregistered", |conn, tx| {
+                watch_watcher_signals(conn, tx, "StatusNotifierItemUnregistered", WatcherEvent::Unregistered)
+            });
+        }
+        WatcherMode::Embedded(_) => {
+            spawn("instantwm-sni-owners", watch_name_owners);
+        }
+    }
+}
+
+/// Forward the external watcher's item lifetime signals into the refresh
+/// loop's channel, one thread per signal.
+fn watch_watcher_signals(
+    conn: Connection,
+    tx: Sender<WatcherEvent>,
+    member: &'static str,
+    event: fn(String) -> WatcherEvent,
+) {
+    let Ok(proxy) = uncached_proxy(&conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE) else {
+        return;
+    };
+    let Ok(signals) = proxy.receive_signal(member) else {
+        return;
+    };
+    for message in signals {
+        let Ok(id) = message.body().deserialize::<String>() else {
+            continue;
+        };
+        if tx.send(event(id)).is_err() {
+            return;
+        }
+    }
+}
+
+/// Forward bus names that lost their owner (`NameOwnerChanged` with an empty
+/// new owner). Wakes only when a session-bus name actually changes hands —
+/// proportional to bus activity, never to idle time.
+fn watch_name_owners(conn: Connection, tx: Sender<WatcherEvent>) {
+    let Ok(proxy) = uncached_proxy(
+        &conn,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+    ) else {
+        return;
+    };
+    let Ok(signals) = proxy.receive_signal("NameOwnerChanged") else {
+        return;
+    };
+    for message in signals {
+        let Ok((name, old_owner, new_owner)) =
+            message.body().deserialize::<(String, String, String)>()
+        else {
+            continue;
+        };
+        if !old_owner.is_empty() && new_owner.is_empty() && tx.send(WatcherEvent::NameLost(name)).is_err() {
+            return;
+        }
+    }
+}
+
+/// A tray item registered: fetch its icon now so it appears immediately
+/// instead of waiting for the fallback reconcile.
+fn handle_registered(
+    conn: &Connection,
+    evt_tx: &SystrayEventTx,
+    known_ids: &mut HashSet<String>,
+    watching: &mut HashSet<String>,
+    watch_tx: &Sender<WatcherEvent>,
+    id: &str,
+) {
+    let Some((service, path)) = parse_sni_id(id) else {
+        return;
+    };
+    let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path) else {
+        // Icon not available (yet): leave the item unknown so the fallback
+        // reconcile retries it rather than dropping it silently.
+        return;
+    };
+    evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
+        service,
+        path,
+        icon_rgba,
+        icon_size,
+    }));
+    let mut fresh = HashSet::new();
+    fresh.insert(id.to_string());
+    spawn_icon_watchers(conn, fresh.iter(), watching, watch_tx);
+    known_ids.insert(id.to_string());
+}
+
+/// A tray item unregistered: drop it from the tray immediately.
+fn handle_unregistered(
+    evt_tx: &SystrayEventTx,
+    known_ids: &mut HashSet<String>,
+    id: &str,
+) {
+    if !known_ids.remove(id) {
+        return;
+    }
+    if let Some((service, path)) = parse_sni_id(id) {
+        evt_tx.send(SystrayEvt::ItemRemoved(service, path));
+    }
+}
+
+/// A bus name lost its owner: every known item it hosted is gone. Also prunes
+/// the embedded watcher's advertised item list so its property stays truthful.
+fn handle_name_lost(
+    mode: &WatcherMode,
+    evt_tx: &SystrayEventTx,
+    known_ids: &mut HashSet<String>,
+    name: &str,
+) {
+    let dead: Vec<String> = known_ids
+        .iter()
+        .filter(|id| id_matches_service(id, name))
+        .cloned()
+        .collect();
+    if dead.is_empty() {
+        return;
+    }
+    for id in &dead {
+        known_ids.remove(id);
+        log::info!("status notifier: item {id} lost its bus name");
+        if let Some((service, path)) = parse_sni_id(id) {
+            evt_tx.send(SystrayEvt::ItemRemoved(service, path));
+        }
+    }
+    if let WatcherMode::Embedded(state) = mode {
+        state.lock().unwrap().items.retain(|id| !id_matches_service(id, name));
+    }
+}
+
+/// Whether a canonical item id (`service/path`) is hosted by the given bus name.
+fn id_matches_service(id: &str, service: &str) -> bool {
+    parse_sni_id(id).is_some_and(|(id_service, _)| id_service == service)
 }
 
 /// Spawn a blocking `NewIcon` watcher for each registered item that does not
 /// yet have one. Each watcher forwards `(service, path)` when the item emits
 /// `NewIcon`, so icons update immediately without the compositor polling.
-fn spawn_icon_watchers(
+fn spawn_icon_watchers<'a>(
     conn: &Connection,
-    ids: &HashSet<String>,
+    ids: impl Iterator<Item = &'a String>,
     watching: &mut HashSet<String>,
-    changed_tx: &Sender<(String, String)>,
+    watch_tx: &Sender<WatcherEvent>,
 ) {
-    let new_ids: Vec<&String> = ids.iter().filter(|id| !watching.contains(*id)).collect();
+    let new_ids: Vec<&String> = ids.filter(|id| !watching.contains(*id)).collect();
     for id in new_ids {
         let Some((service, path)) = parse_sni_id(id) else {
             continue;
         };
         watching.insert(id.clone());
         let conn = conn.clone();
-        let tx = changed_tx.clone();
+        let tx = watch_tx.clone();
         let watch_service = service.clone();
         let watch_path = path.clone();
         if std::thread::Builder::new()
@@ -663,7 +860,7 @@ fn spawn_icon_watchers(
 /// Any failure (item gone, DBus error, no signal support) simply ends this
 /// watcher; the item is still covered by the slow fallback reconcile, so this
 /// is best-effort and never silently drops an icon forever.
-fn watch_item_icon(conn: Connection, tx: Sender<(String, String)>, service: String, path: String) {
+fn watch_item_icon(conn: Connection, tx: Sender<WatcherEvent>, service: String, path: String) {
     let proxy = match uncached_proxy(&conn, &service, &path, ITEM_IFACE) {
         Ok(proxy) => proxy,
         Err(_) => return,
@@ -673,7 +870,10 @@ fn watch_item_icon(conn: Connection, tx: Sender<(String, String)>, service: Stri
         Err(_) => return,
     };
     while signals.next().is_some() {
-        if tx.send((service.clone(), path.clone())).is_err() {
+        if tx
+            .send(WatcherEvent::NewIcon(service.clone(), path.clone()))
+            .is_err()
+        {
             return;
         }
     }
@@ -694,7 +894,11 @@ fn refresh_item_icon(conn: &Connection, evt_tx: &SystrayEventTx, service: &str, 
 
 /// Probe the session bus for an existing StatusNotifierWatcher.
 /// If one exists, use it (external mode). Otherwise start our own (embedded mode).
-fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
+///
+/// `events` feeds registration notifications to the discovery lane when the
+/// embedded watcher is used; external mode subscribes to the watcher's
+/// signals instead (see `spawn_lifetime_watchers`).
+fn detect_watcher_mode(conn: &Connection, events: Sender<WatcherEvent>) -> WatcherMode {
     // Try to read a property from an existing watcher.
     let has_external = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)
         .and_then(|proxy| proxy.get_property::<i32>("ProtocolVersion"))
@@ -713,6 +917,7 @@ fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
     let state = Arc::new(Mutex::new(WatcherState::default()));
     let service = StatusNotifierWatcherService {
         state: Arc::clone(&state),
+        events,
     };
 
     // Serve the interface on the existing connection's object server.
