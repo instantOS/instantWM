@@ -255,7 +255,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
     wm.core
         .interaction
         .drag
-        .begin_tree_resize(crate::core_state::TreeResizeParams {
+        .begin_tree_resize(crate::core_state::TreeResizeStart {
             win: first,
             button: MouseButton::Right,
             source: InteractionSource::Pointer,

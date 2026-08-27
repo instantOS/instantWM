@@ -292,7 +292,7 @@ impl WaylandState {
         let is_resizing = window
             .user_data()
             .get::<WindowIdMarker>()
-            .is_some_and(|marker| self.active_resizes.contains(&marker.id));
+            .is_some_and(|marker| self.active_resize == Some(marker.id));
         let presentation = window
             .user_data()
             .get::<WindowIdMarker>()

@@ -295,7 +295,7 @@ impl<'a> WmCtx<'a> {
     /// previous native state.
     pub fn sync_interaction_projection(&mut self) {
         use crate::backend::InteractionProjectionOps;
-        let desired = self.core().interaction().drag.presentation();
+        let desired = self.core().interaction().drag.projection();
         match self {
             WmCtx::X11(ctx) => ctx.reconcile_interaction_projection(desired),
             WmCtx::Wayland(ctx) => ctx.reconcile_interaction_projection(desired),
@@ -306,16 +306,16 @@ impl<'a> WmCtx<'a> {
     /// its derived native presentation changes.
     ///
     /// Production interaction mutations should cross this boundary instead of
-    /// mutating `DragState` through `CoreCtx`; the closure form makes it
+    /// mutating `PointerInteractionState` through `CoreCtx`; the closure form makes it
     /// impossible to return successfully with an unprojected presentation
     /// change. State-only motion updates avoid redundant backend work.
     pub fn transition_pointer_interaction<R>(
         &mut self,
-        transition: impl FnOnce(&mut crate::core_state::DragState) -> R,
+        transition: impl FnOnce(&mut crate::core_state::PointerInteractionState) -> R,
     ) -> R {
-        let previous = self.core().interaction().drag.presentation();
+        let previous = self.core().interaction().drag.projection();
         let result = transition(&mut self.core_mut().state_mut().interaction.drag);
-        if self.core().interaction().drag.presentation() != previous {
+        if self.core().interaction().drag.projection() != previous {
             self.sync_interaction_projection();
         }
         result

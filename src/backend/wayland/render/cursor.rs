@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 /// Backend-agnostic cursor state after applying WM override policy.
 #[derive(Debug, PartialEq)]
-pub enum CursorPresentation {
+pub enum ResolvedCursor {
     Hidden,
     Named(CursorIcon),
     Surface {
@@ -18,7 +18,7 @@ pub enum CursorPresentation {
     DndIcon {
         icon: WlSurface,
         hotspot: Point<i32, Logical>,
-        cursor: Box<CursorPresentation>,
+        cursor: Box<ResolvedCursor>,
     },
 }
 
@@ -27,26 +27,26 @@ pub enum CursorPresentation {
 /// WM icon overrides are only visual hints for compositor-driven interactions.
 /// A client-hidden cursor must remain hidden so relative pointer users, such as
 /// games running through XWayland, cannot be defeated by stale hover state.
-pub fn resolve_cursor_presentation(
+pub fn resolve_cursor(
     status: &CursorImageStatus,
     icon_override: Option<CursorIcon>,
     dnd_icon: Option<&WlSurface>,
     hidden_by_touch: bool,
-) -> CursorPresentation {
+) -> ResolvedCursor {
     if hidden_by_touch {
-        return CursorPresentation::Hidden;
+        return ResolvedCursor::Hidden;
     }
     let base = match status {
-        CursorImageStatus::Hidden => CursorPresentation::Hidden,
-        CursorImageStatus::Named(icon) => CursorPresentation::Named(icon_override.unwrap_or(*icon)),
+        CursorImageStatus::Hidden => ResolvedCursor::Hidden,
+        CursorImageStatus::Named(icon) => ResolvedCursor::Named(icon_override.unwrap_or(*icon)),
         CursorImageStatus::Surface(surface) => {
             if let Some(icon) = icon_override {
-                CursorPresentation::Named(icon)
+                ResolvedCursor::Named(icon)
             } else {
                 // Check if the cursor surface is still alive before using it.
                 // If the surface is dead, fall back to the default cursor icon.
                 if !smithay::utils::IsAlive::alive(surface) {
-                    return CursorPresentation::Named(CursorIcon::Default);
+                    return ResolvedCursor::Named(CursorIcon::Default);
                 }
                 let hotspot = with_states(surface, |states| {
                     states
@@ -55,7 +55,7 @@ pub fn resolve_cursor_presentation(
                         .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
                         .unwrap_or((0, 0).into())
                 });
-                CursorPresentation::Surface {
+                ResolvedCursor::Surface {
                     surface: surface.clone(),
                     hotspot,
                 }
@@ -73,7 +73,7 @@ pub fn resolve_cursor_presentation(
                 .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
                 .unwrap_or((0, 0).into())
         });
-        return CursorPresentation::DndIcon {
+        return ResolvedCursor::DndIcon {
             icon: icon.clone(),
             hotspot,
             cursor: Box::new(base),
@@ -87,32 +87,29 @@ pub fn resolve_cursor_presentation(
 mod tests {
     use smithay::input::pointer::{CursorIcon, CursorImageStatus};
 
-    use super::{CursorPresentation, resolve_cursor_presentation};
+    use super::{ResolvedCursor, resolve_cursor};
 
     #[test]
     fn hidden_cursor_status_wins_over_wm_icon_override() {
-        let presentation = resolve_cursor_presentation(
+        let presentation = resolve_cursor(
             &CursorImageStatus::Hidden,
             Some(CursorIcon::Grabbing),
             None,
             false,
         );
 
-        assert!(matches!(presentation, CursorPresentation::Hidden));
+        assert!(matches!(presentation, ResolvedCursor::Hidden));
     }
 
     #[test]
     fn wm_icon_override_still_applies_to_named_cursor_status() {
-        let presentation = resolve_cursor_presentation(
+        let presentation = resolve_cursor(
             &CursorImageStatus::Named(CursorIcon::Default),
             Some(CursorIcon::Grabbing),
             None,
             false,
         );
 
-        assert_eq!(
-            presentation,
-            CursorPresentation::Named(CursorIcon::Grabbing)
-        );
+        assert_eq!(presentation, ResolvedCursor::Named(CursorIcon::Grabbing));
     }
 }

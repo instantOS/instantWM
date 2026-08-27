@@ -276,7 +276,7 @@ impl Default for EffectiveConfig {
 /// gesture previews) belong here, not as flat `CoreState` fields.
 #[derive(Default, Debug, Clone)]
 pub struct InteractionState {
-    pub drag: DragState,
+    pub drag: PointerInteractionState,
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
     /// Backend-neutral outer rectangle of the active compositor interaction

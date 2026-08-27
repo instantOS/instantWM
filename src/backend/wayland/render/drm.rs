@@ -34,7 +34,7 @@ use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::image_capture::PendingImageCapture;
-use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor_presentation};
+use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::frame::{
     send_frame_callbacks, update_primary_scanout_output, window_overlaps_output,
 };
@@ -439,7 +439,7 @@ fn build_drm_cursor_elements(
     start_time: Instant,
 ) -> Vec<DrmExtras> {
     let local_pointer = Point::from((pointer_location.x - entry.rect.x as f64, pointer_location.y));
-    let cursor_presentation = resolve_cursor_presentation(
+    let resolved_cursor = resolve_cursor(
         &state.cursor_image_status,
         state.cursor_icon_override,
         state.runtime.dnd_icon.as_ref(),
@@ -451,7 +451,7 @@ fn build_drm_cursor_elements(
     build_cursor_elements(
         renderer,
         cursor_manager,
-        &cursor_presentation,
+        &resolved_cursor,
         local_pointer,
         cursor_scale,
         millis,
@@ -884,19 +884,19 @@ fn collect_presentation_feedback(
 fn build_cursor_elements(
     renderer: &mut GlesRenderer,
     cursor_manager: &CursorManager,
-    cursor_presentation: &CursorPresentation,
+    resolved_cursor: &ResolvedCursor,
     local_pointer: Point<f64, smithay::utils::Logical>,
     scale: i32,
     millis: u32,
 ) -> Vec<DrmExtras> {
     let mut custom_elements = Vec::new();
 
-    match cursor_presentation {
-        CursorPresentation::Hidden => {}
-        CursorPresentation::Named(_) => {
+    match resolved_cursor {
+        ResolvedCursor::Hidden => {}
+        ResolvedCursor::Named(_) => {
             if let Some(cursor_elem) = cursor_manager.render_element(
                 local_pointer,
-                cursor_presentation,
+                resolved_cursor,
                 scale,
                 millis,
                 renderer,
@@ -904,7 +904,7 @@ fn build_cursor_elements(
                 custom_elements.push(DrmExtras::Cursor(cursor_elem));
             }
         }
-        CursorPresentation::Surface { surface, hotspot } => {
+        ResolvedCursor::Surface { surface, hotspot } => {
             let Some(cursor_elements) = super::cursor_surface_render_elements(
                 renderer,
                 surface,
@@ -916,7 +916,7 @@ fn build_cursor_elements(
             };
             custom_elements.extend(cursor_elements.into_iter().map(DrmExtras::Surface));
         }
-        CursorPresentation::DndIcon {
+        ResolvedCursor::DndIcon {
             icon,
             hotspot,
             cursor,

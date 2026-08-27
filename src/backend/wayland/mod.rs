@@ -418,7 +418,7 @@ fn wayland_cursor_icon(
 impl crate::backend::InteractionProjectionOps for crate::contexts::WmCtxWayland<'_> {
     fn reconcile_interaction_projection(
         &mut self,
-        desired: crate::core_state::InteractionPresentation,
+        desired: crate::core_state::InteractionProjection,
     ) {
         self.wayland
             .set_cursor_icon_override(wayland_cursor_icon(desired.cursor));

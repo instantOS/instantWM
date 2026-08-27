@@ -29,19 +29,19 @@ use super::constants::RESIZE_BORDER_ZONE;
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
 // Pure hover-offer state lives on [`crate::core_state::HoverOffer`] /
-// [`crate::core_state::DragState`]; these functions reconcile its derived
+// [`crate::core_state::PointerInteractionState`]; these functions reconcile its derived
 // presentation after each transition.
 
 /// Window and direction selected by the resize-border hit test.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HoverResizeTarget {
+pub struct HoverResizeHit {
     pub win: WindowId,
     pub dir: ResizeDirection,
     pub geo: Rect,
 }
 
 /// Activate a resize hover offer and reconcile its derived presentation.
-fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
+fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeHit) {
     let changed = ctx.transition_pointer_interaction(|drag| {
         drag.set_hover_offer(HoverOffer::Resize {
             win: target.win,
@@ -65,11 +65,7 @@ pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
     }
 }
 
-fn resize_target_for_window(
-    model: &WmModel,
-    win: WindowId,
-    root: Point,
-) -> Option<HoverResizeTarget> {
+fn resize_target_for_window(model: &WmModel, win: WindowId, root: Point) -> Option<HoverResizeHit> {
     let view = model.client_view(win)?;
     let c = view.client;
     let mon = view.monitor;
@@ -87,7 +83,7 @@ fn resize_target_for_window(
     }
 
     let hit = c.geo.local_point(root);
-    Some(HoverResizeTarget {
+    Some(HoverResizeHit {
         win,
         dir: ResizeDirection::from_hit(c.geo.size(), hit),
         geo: c.geo,
@@ -97,7 +93,7 @@ fn resize_target_for_window(
 // ── Border detection ─────────────────────────────────────────────────────────
 
 /// Return the floating window + direction currently targeted by hover-resize.
-fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTarget> {
+fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit> {
     let point = Rect::new(root.x, root.y, 1, 1);
     let monitor_id = model.monitors.id_intersecting_rect(point)?;
     let mon = model.monitor(monitor_id)?;
@@ -112,10 +108,7 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTar
         .find_map(|win| resize_target_for_window(model, win, root))
 }
 
-pub fn selected_hover_resize_target_at(
-    model: &WmModel,
-    position: Point,
-) -> Option<HoverResizeTarget> {
+pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Option<HoverResizeHit> {
     let win = model.selected_win()?;
     let monitor = model.client_view(win)?.monitor;
     if monitor.bar_contains_y(&model.clients, position.y) {

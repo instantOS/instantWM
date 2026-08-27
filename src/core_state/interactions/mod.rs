@@ -23,19 +23,19 @@ mod tests;
 /// operation. Backends reconcile their current cursor and input ownership with
 /// this value, making redundant synchronization safe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InteractionPresentation {
+pub struct InteractionProjection {
     pub cursor: AltCursor,
-    pub pointer_routing: PointerRouting,
+    pub pointer_delivery: PointerDelivery,
     /// Window undergoing a direct interactive geometry resize. Semantic tree
     /// weight resizing is intentionally not a client resize lifecycle.
     pub active_resize_window: Option<WindowId>,
 }
 
-impl Default for InteractionPresentation {
+impl Default for InteractionProjection {
     fn default() -> Self {
         Self {
             cursor: AltCursor::Default,
-            pointer_routing: PointerRouting::Normal,
+            pointer_delivery: PointerDelivery::Default,
             active_resize_window: None,
         }
     }
@@ -44,14 +44,13 @@ impl Default for InteractionPresentation {
 /// Who must receive the pointer stream represented by an interaction.
 ///
 /// Backends are free to satisfy this guarantee differently. In particular,
-/// X11 uses a native pointer grab for [`Self::HoverOffer`], while Wayland's
-/// compositor input path already owns the stream.
+/// X11 uses a native pointer grab for [`Self::DeliverHoverCommitToWm`], while
+/// Wayland's compositor input path already owns the stream.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum PointerRouting {
+pub enum PointerDelivery {
     #[default]
-    Normal,
-    HoverOffer,
-    CapturedInteraction,
+    Default,
+    DeliverHoverCommitToWm,
 }
 
 /// The single compositor-owned input sequence currently in progress.
@@ -71,7 +70,7 @@ pub enum CapturedInteraction {
 impl CapturedInteraction {
     pub fn button(&self) -> MouseButton {
         match self {
-            Self::Window(state) => state.interaction().button(),
+            Self::Window(state) => state.button(),
             Self::Tag(state) => state.button,
             Self::SidebarVolume(state) => state.button(),
             Self::BottomBar(state) => state.button(),
@@ -81,7 +80,7 @@ impl CapturedInteraction {
 
     pub fn source(&self) -> InteractionSource {
         match self {
-            Self::Window(state) => state.interaction().source(),
+            Self::Window(state) => state.source(),
             Self::Tag(state) => state.source,
             Self::SidebarVolume(state) => state.source(),
             Self::BottomBar(state) => state.source(),
@@ -104,12 +103,7 @@ impl CapturedInteraction {
         match self {
             Self::Window(WindowDragState::Armed(_)) => AltCursor::Default,
             Self::Window(WindowDragState::Reordering(..)) => AltCursor::HorizontalAdjust,
-            Self::Window(WindowDragState::Active(drag)) => match drag.drag_type() {
-                DragType::Move => AltCursor::Move,
-                DragType::Resize(direction) | DragType::TreeResize(direction) => {
-                    AltCursor::Resize(direction)
-                }
-            },
+            Self::Window(WindowDragState::Active(drag)) => drag.operation().cursor(),
             Self::Tag(drag) if drag.dragging => AltCursor::Move,
             Self::Tag(_) => AltCursor::Default,
             Self::SidebarVolume(_) => AltCursor::VerticalAdjust,
@@ -124,25 +118,25 @@ impl CapturedInteraction {
     }
 }
 
-/// Consolidated state for mouse/touch interactions.
+/// Authoritative state for compositor-owned pointer and touch interactions.
 #[derive(Debug, Clone, Default)]
-pub struct DragState {
+pub struct PointerInteractionState {
     capture: Option<CapturedInteraction>,
     hover_offer: HoverOffer,
 }
 
-impl DragState {
+impl PointerInteractionState {
     /// Derive the complete native presentation from authoritative interaction
     /// state. A captured sequence always takes precedence over a passive hover
     /// offer, so cursor policy cannot depend on imperative call ordering.
-    pub fn presentation(&self) -> InteractionPresentation {
+    pub fn projection(&self) -> InteractionProjection {
         if let Some(capture) = self.capture.as_ref() {
-            return InteractionPresentation {
+            return InteractionProjection {
                 cursor: capture.cursor(),
-                pointer_routing: PointerRouting::CapturedInteraction,
+                pointer_delivery: PointerDelivery::Default,
                 active_resize_window: match capture {
                     CapturedInteraction::Window(WindowDragState::Active(drag))
-                        if matches!(drag.drag_type(), DragType::Resize(_)) =>
+                        if drag.operation().is_direct_resize() =>
                     {
                         Some(drag.win())
                     }
@@ -151,17 +145,17 @@ impl DragState {
             };
         }
         match self.hover_offer {
-            HoverOffer::Resize { dir, .. } => InteractionPresentation {
+            HoverOffer::Resize { dir, .. } => InteractionProjection {
                 cursor: AltCursor::Resize(dir),
-                pointer_routing: PointerRouting::HoverOffer,
+                pointer_delivery: PointerDelivery::DeliverHoverCommitToWm,
                 active_resize_window: None,
             },
-            HoverOffer::Sidebar(_) => InteractionPresentation {
+            HoverOffer::Sidebar(_) => InteractionProjection {
                 cursor: AltCursor::VerticalAdjust,
-                pointer_routing: PointerRouting::Normal,
+                pointer_delivery: PointerDelivery::Default,
                 active_resize_window: None,
             },
-            HoverOffer::None => InteractionPresentation::default(),
+            HoverOffer::None => InteractionProjection::default(),
         }
     }
 
@@ -183,21 +177,21 @@ impl DragState {
             .is_some_and(CapturedInteraction::owns_bar_hover)
     }
 
-    pub fn active_interaction(&self) -> Option<&DragInteraction> {
+    pub fn active_interaction(&self) -> Option<&ActiveWindowDrag> {
         match self.capture.as_ref() {
             Some(CapturedInteraction::Window(WindowDragState::Active(drag))) => Some(drag),
             _ => None,
         }
     }
 
-    pub fn armed_interaction(&self) -> Option<&DragInteraction> {
+    pub fn armed_interaction(&self) -> Option<&ArmedWindowDrag> {
         match self.capture.as_ref() {
             Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => Some(drag),
             _ => None,
         }
     }
 
-    pub fn reordering_interaction(&self) -> Option<(&DragInteraction, &TitleReorderDrag)> {
+    pub fn reordering_interaction(&self) -> Option<(&ArmedWindowDrag, &TitleReorderDrag)> {
         match self.capture.as_ref() {
             Some(CapturedInteraction::Window(WindowDragState::Reordering(drag, reorder))) => {
                 Some((drag, reorder))
@@ -392,11 +386,11 @@ impl DragState {
         start: Point,
         geo: Rect,
     ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_active(DragInteraction::immediate(
+        self.begin_active(ActiveWindowDrag::immediate(
             win,
             button,
             source,
-            DragOperation::Move,
+            ActiveWindowOperation::Move,
             start,
             geo,
         ))
@@ -411,7 +405,7 @@ impl DragState {
         start: Point,
         geo: Rect,
     ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_resize_with_policy(ActiveResizeParams {
+        self.begin_resize_with_policy(DirectResizeStart {
             win,
             button,
             source,
@@ -424,29 +418,31 @@ impl DragState {
 
     pub fn begin_resize_with_policy(
         &mut self,
-        params: ActiveResizeParams,
+        params: DirectResizeStart,
     ) -> Result<(), InteractionAlreadyActive> {
-        let mut drag = DragInteraction::immediate(
+        let drag = ActiveWindowDrag::immediate(
             params.win,
             params.button,
             params.source,
-            DragOperation::Resize(params.direction),
+            ActiveWindowOperation::DirectResize {
+                direction: params.direction,
+                policy: params.policy,
+            },
             params.start,
             params.geometry,
         );
-        drag.set_resize_policy(params.policy);
         self.begin_active(drag)
     }
 
     pub fn begin_tree_resize(
         &mut self,
-        params: TreeResizeParams,
+        params: TreeResizeStart,
     ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_active(DragInteraction::immediate(
+        self.begin_active(ActiveWindowDrag::immediate(
             params.win,
             params.button,
             params.source,
-            DragOperation::TreeResize {
+            ActiveWindowOperation::TreeResize {
                 direction: params.direction,
                 origin: params.origin,
             },
@@ -455,34 +451,53 @@ impl DragState {
         ))
     }
 
-    fn begin_active(&mut self, drag: DragInteraction) -> Result<(), InteractionAlreadyActive> {
+    fn begin_active(&mut self, drag: ActiveWindowDrag) -> Result<(), InteractionAlreadyActive> {
         self.begin_capture(CapturedInteraction::Window(WindowDragState::Active(drag)))
     }
 
     pub fn arm_title_drag(
         &mut self,
-        params: ArmedDragParams,
+        params: ArmedDragStart,
     ) -> Result<(), InteractionAlreadyActive> {
         self.begin_capture(CapturedInteraction::Window(WindowDragState::Armed(
-            DragInteraction::armed(params),
+            ArmedWindowDrag::new(params),
         )))
     }
 
-    pub fn activate_armed(
+    pub fn activate_armed_move(&mut self, start: Point, geo: Rect) -> Result<(), DragNotArmed> {
+        self.activate_armed(ActiveWindowOperation::Move, start, geo)
+    }
+
+    pub fn activate_armed_resize(
         &mut self,
-        drag_type: ArmedDragType,
+        direction: ResizeDirection,
+        policy: ResizePolicy,
         start: Point,
         geo: Rect,
     ) -> Result<(), DragNotArmed> {
-        let mut drag = match self.capture.take() {
+        self.activate_armed(
+            ActiveWindowOperation::DirectResize { direction, policy },
+            start,
+            geo,
+        )
+    }
+
+    fn activate_armed(
+        &mut self,
+        operation: ActiveWindowOperation,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragNotArmed> {
+        let drag = match self.capture.take() {
             Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => drag,
             other => {
                 self.capture = other;
                 return Err(DragNotArmed);
             }
         };
-        drag.activate_as(drag_type, start, geo);
-        self.capture = Some(CapturedInteraction::Window(WindowDragState::Active(drag)));
+        self.capture = Some(CapturedInteraction::Window(WindowDragState::Active(
+            drag.activate(operation, start, geo),
+        )));
         Ok(())
     }
 
@@ -508,19 +523,20 @@ impl DragState {
         start: Point,
         geo: Rect,
     ) -> Result<(), DragNotArmed> {
-        let mut drag = match self.capture.take() {
+        let drag = match self.capture.take() {
             Some(CapturedInteraction::Window(WindowDragState::Reordering(drag, _))) => drag,
             other => {
                 self.capture = other;
                 return Err(DragNotArmed);
             }
         };
-        drag.activate_as(ArmedDragType::Move, start, geo);
-        self.capture = Some(CapturedInteraction::Window(WindowDragState::Active(drag)));
+        self.capture = Some(CapturedInteraction::Window(WindowDragState::Active(
+            drag.activate(ActiveWindowOperation::Move, start, geo),
+        )));
         Ok(())
     }
 
-    pub fn finish_reordering(&mut self) -> Option<DragInteraction> {
+    pub fn finish_reordering(&mut self) -> Option<ArmedWindowDrag> {
         match self.capture.take() {
             Some(CapturedInteraction::Window(WindowDragState::Reordering(drag, _))) => Some(drag),
             other => {
@@ -531,17 +547,17 @@ impl DragState {
     }
 
     pub fn record_interactive_motion(&mut self, point: Point) {
-        if let Some(CapturedInteraction::Window(
-            WindowDragState::Armed(drag)
-            | WindowDragState::Reordering(drag, _)
-            | WindowDragState::Active(drag),
-        )) = self.capture.as_mut()
-        {
-            drag.record_motion(point)
+        if let Some(CapturedInteraction::Window(state)) = self.capture.as_mut() {
+            match state {
+                WindowDragState::Armed(drag) | WindowDragState::Reordering(drag, _) => {
+                    drag.record_motion(point)
+                }
+                WindowDragState::Active(drag) => drag.record_motion(point),
+            }
         }
     }
 
-    pub fn finish_active(&mut self, button: MouseButton) -> Option<DragInteraction> {
+    pub fn finish_active(&mut self, button: MouseButton) -> Option<ActiveWindowDrag> {
         if !self
             .active_interaction()
             .is_some_and(|drag| drag.button() == button)
@@ -554,7 +570,7 @@ impl DragState {
         }
     }
 
-    pub fn finish_armed(&mut self) -> Option<DragInteraction> {
+    pub fn finish_armed(&mut self) -> Option<ArmedWindowDrag> {
         match self.capture.take() {
             Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => Some(drag),
             other => {
@@ -564,13 +580,9 @@ impl DragState {
         }
     }
 
-    pub fn cancel_interactive(&mut self) -> Option<DragInteraction> {
+    pub fn cancel_window_interaction(&mut self) -> Option<WindowId> {
         match self.capture.take() {
-            Some(CapturedInteraction::Window(
-                WindowDragState::Armed(drag)
-                | WindowDragState::Reordering(drag, _)
-                | WindowDragState::Active(drag),
-            )) => Some(drag),
+            Some(CapturedInteraction::Window(state)) => Some(state.win()),
             other => {
                 self.capture = other;
                 None

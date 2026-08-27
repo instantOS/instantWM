@@ -241,23 +241,12 @@ impl WaylandState {
     /// Ending a resize emits the final configure without the resizing flag;
     /// redundant synchronization has no protocol effect.
     pub(crate) fn reconcile_interactive_resize(&mut self, desired: Option<WindowId>) {
-        if self.active_resizes.len() == usize::from(desired.is_some())
-            && desired.is_none_or(|window| self.active_resizes.contains(&window))
-        {
+        if self.active_resize == desired {
             return;
         }
 
-        let ended = self
-            .active_resizes
-            .iter()
-            .copied()
-            .filter(|window| Some(*window) != desired)
-            .collect::<Vec<_>>();
-        self.active_resizes.clear();
-        if let Some(window) = desired {
-            self.active_resizes.insert(window);
-        }
-        for window in ended {
+        let ended = std::mem::replace(&mut self.active_resize, desired);
+        if let Some(window) = ended.filter(|window| Some(*window) != desired) {
             if let Some(element) = self.find_window(window).cloned() {
                 self.send_toplevel_configure(&element, None);
             }
@@ -337,16 +326,15 @@ mod tests {
         let win = WindowId(23);
 
         state.reconcile_interactive_resize(Some(win));
-        assert_eq!(state.active_resizes.len(), 1);
-        assert!(state.active_resizes.contains(&win));
+        assert_eq!(state.active_resize, Some(win));
 
         state.reconcile_interactive_resize(Some(win));
-        assert_eq!(state.active_resizes.len(), 1);
+        assert_eq!(state.active_resize, Some(win));
 
         state.reconcile_interactive_resize(None);
-        assert!(state.active_resizes.is_empty());
+        assert_eq!(state.active_resize, None);
         state.reconcile_interactive_resize(None);
-        assert!(state.active_resizes.is_empty());
+        assert_eq!(state.active_resize, None);
     }
 
     #[test]

@@ -1,17 +1,5 @@
 use super::*;
 
-/// What kind of drag interaction is active.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DragType {
-    #[default]
-    Move,
-    /// Direct geometry resize for a floating client.
-    Resize(ResizeDirection),
-    /// Weight resize for a tiled leaf. The initial tree is stored alongside
-    /// the private interaction state so motion is independent of event rate.
-    TreeResize(ResizeDirection),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResizePolicy {
     #[default]
@@ -19,8 +7,9 @@ pub enum ResizePolicy {
     PreserveAspect,
 }
 
+/// Everything required to begin a direct floating-window resize.
 #[derive(Debug, Clone, Copy)]
-pub struct ActiveResizeParams {
+pub struct DirectResizeStart {
     pub win: WindowId,
     pub button: MouseButton,
     pub source: InteractionSource,
@@ -30,8 +19,9 @@ pub struct ActiveResizeParams {
     pub policy: ResizePolicy,
 }
 
+/// Everything required to begin a semantic tiled-tree resize.
 #[derive(Debug, Clone)]
-pub struct TreeResizeParams {
+pub struct TreeResizeStart {
     pub win: WindowId,
     pub button: MouseButton,
     pub source: InteractionSource,
@@ -41,102 +31,92 @@ pub struct TreeResizeParams {
     pub origin: crate::layouts::tree::LayoutTree,
 }
 
-/// Operations to which an armed title-bar interaction may transition.
-/// Tree resizing is deliberately absent because it must start with an
-/// authoritative layout-tree snapshot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArmedDragType {
-    Move,
-    Resize(ResizeDirection),
-}
-
-/// Authoritative operation carried by an active drag.
+/// The operation executed by an active window drag.
 ///
-/// Unlike [`DragType`], this owns all data required to execute the operation.
-/// In particular, a tree resize cannot exist without the tree snapshot from
-/// which pointer deltas are evaluated.
+/// Operation-specific data lives in its variant, so move interactions cannot
+/// accidentally carry resize policy and tree resizes cannot exist without an
+/// authoritative layout snapshot.
 #[derive(Debug, Clone)]
-pub(crate) enum DragOperation {
+pub(crate) enum ActiveWindowOperation {
     Move,
-    Resize(ResizeDirection),
+    DirectResize {
+        direction: ResizeDirection,
+        policy: ResizePolicy,
+    },
     TreeResize {
         direction: ResizeDirection,
         origin: crate::layouts::tree::LayoutTree,
     },
 }
 
-impl DragOperation {
-    fn kind(&self) -> DragType {
+impl ActiveWindowOperation {
+    pub(crate) fn cursor(&self) -> AltCursor {
         match self {
-            Self::Move => DragType::Move,
-            Self::Resize(direction) => DragType::Resize(*direction),
-            Self::TreeResize { direction, .. } => DragType::TreeResize(*direction),
+            Self::Move => AltCursor::Move,
+            Self::DirectResize { direction, .. } | Self::TreeResize { direction, .. } => {
+                AltCursor::Resize(*direction)
+            }
         }
+    }
+
+    pub(crate) fn is_direct_resize(&self) -> bool {
+        matches!(self, Self::DirectResize { .. })
+    }
+
+    pub(crate) fn is_tree_resize(&self) -> bool {
+        matches!(self, Self::TreeResize { .. })
     }
 }
 
+/// A title press that has not crossed the drag threshold.
+///
+/// No active operation is stored here because it is not known yet. The press
+/// may remain a click, become a title reorder, move, or direct resize.
 #[derive(Debug, Clone)]
-pub struct DragInteraction {
+pub struct ArmedWindowDrag {
     win: WindowId,
     button: MouseButton,
     source: InteractionSource,
     origin: ArmedDragOrigin,
-    operation: DragOperation,
-    win_start_geo: Rect,
     start_point: Point,
     last_root_point: Point,
-    /// Geometry to restore when the window is re-tiled (e.g. dropped on
-    /// the bar).  For windows that were already floating this equals
-    /// `win_start_geo`; for tiled windows promoted during the drag it
-    /// preserves the saved float dimensions.
     drop_restore_geo: Rect,
     was_focused: bool,
     was_hidden: bool,
     suppress_click_action: bool,
-    resize_policy: ResizePolicy,
 }
 
-impl DragInteraction {
-    pub(super) fn immediate(
-        win: WindowId,
-        button: MouseButton,
-        source: InteractionSource,
-        operation: DragOperation,
-        start: Point,
-        geo: Rect,
-    ) -> Self {
-        Self {
-            win,
-            button,
-            source,
-            origin: ArmedDragOrigin::Client,
-            operation,
-            start_point: start,
-            win_start_geo: geo,
-            drop_restore_geo: geo,
-            last_root_point: start,
-            was_focused: false,
-            was_hidden: false,
-            suppress_click_action: false,
-            resize_policy: ResizePolicy::Free,
-        }
-    }
-
-    pub(super) fn armed(params: ArmedDragParams) -> Self {
+impl ArmedWindowDrag {
+    pub(super) fn new(params: ArmedDragStart) -> Self {
         Self {
             win: params.win,
             button: params.button,
             source: params.source,
             origin: params.origin,
-            operation: DragOperation::Move,
             start_point: params.start,
-            win_start_geo: params.geometry,
-            drop_restore_geo: params.restore_geometry,
             last_root_point: params.start,
+            drop_restore_geo: params.restore_geometry,
             was_focused: params.was_focused,
             was_hidden: params.was_hidden,
             suppress_click_action: params.suppress_click_action,
-            resize_policy: ResizePolicy::Free,
+        }
+    }
+
+    pub(super) fn activate(
+        self,
+        operation: ActiveWindowOperation,
+        start: Point,
+        geometry: Rect,
+    ) -> ActiveWindowDrag {
+        ActiveWindowDrag {
+            win: self.win,
+            button: self.button,
+            source: self.source,
+            operation,
+            win_start_geo: geometry,
+            start_point: start,
+            last_root_point: start,
+            drop_restore_geo: self.drop_restore_geo,
         }
     }
 
@@ -152,11 +132,71 @@ impl DragInteraction {
     pub fn origin(&self) -> ArmedDragOrigin {
         self.origin
     }
-    pub fn drag_type(&self) -> DragType {
-        self.operation.kind()
+    pub fn start_point(&self) -> Point {
+        self.start_point
+    }
+    pub fn last_root_point(&self) -> Point {
+        self.last_root_point
+    }
+    pub fn was_focused(&self) -> bool {
+        self.was_focused
+    }
+    pub fn was_hidden(&self) -> bool {
+        self.was_hidden
+    }
+    pub fn suppress_click_action(&self) -> bool {
+        self.suppress_click_action
+    }
+    pub(super) fn record_motion(&mut self, point: Point) {
+        self.last_root_point = point;
+    }
+}
+
+/// A window move or resize whose operation is fully determined.
+#[derive(Debug, Clone)]
+pub struct ActiveWindowDrag {
+    win: WindowId,
+    button: MouseButton,
+    source: InteractionSource,
+    operation: ActiveWindowOperation,
+    win_start_geo: Rect,
+    start_point: Point,
+    last_root_point: Point,
+    /// Geometry to restore when a moved window is re-tiled.
+    drop_restore_geo: Rect,
+}
+
+impl ActiveWindowDrag {
+    pub(super) fn immediate(
+        win: WindowId,
+        button: MouseButton,
+        source: InteractionSource,
+        operation: ActiveWindowOperation,
+        start: Point,
+        geometry: Rect,
+    ) -> Self {
+        Self {
+            win,
+            button,
+            source,
+            operation,
+            win_start_geo: geometry,
+            start_point: start,
+            last_root_point: start,
+            drop_restore_geo: geometry,
+        }
     }
 
-    pub(crate) fn operation(&self) -> &DragOperation {
+    pub fn win(&self) -> WindowId {
+        self.win
+    }
+    pub fn button(&self) -> MouseButton {
+        self.button
+    }
+    pub fn source(&self) -> InteractionSource {
+        self.source
+    }
+    pub(crate) fn operation(&self) -> &ActiveWindowOperation {
         &self.operation
     }
     pub fn win_start_geo(&self) -> Rect {
@@ -171,61 +211,50 @@ impl DragInteraction {
     pub fn drop_restore_geo(&self) -> Rect {
         self.drop_restore_geo
     }
-    pub fn was_focused(&self) -> bool {
-        self.was_focused
-    }
-    pub fn was_hidden(&self) -> bool {
-        self.was_hidden
-    }
-    pub fn suppress_click_action(&self) -> bool {
-        self.suppress_click_action
-    }
-    pub fn resize_policy(&self) -> ResizePolicy {
-        self.resize_policy
-    }
-
-    pub(super) fn set_resize_policy(&mut self, policy: ResizePolicy) {
-        self.resize_policy = policy;
-    }
-
     pub(super) fn record_motion(&mut self, point: Point) {
         self.last_root_point = point;
-    }
-
-    pub(super) fn activate_as(&mut self, drag_type: ArmedDragType, start: Point, geo: Rect) {
-        self.operation = match drag_type {
-            ArmedDragType::Move => DragOperation::Move,
-            ArmedDragType::Resize(direction) => DragOperation::Resize(direction),
-        };
-        self.start_point = start;
-        self.last_root_point = start;
-        self.win_start_geo = geo;
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum WindowDragState {
-    Armed(DragInteraction),
-    /// Bar-title drag reordering the title strip. Converts to
-    /// [`Self::Active`] when the pointer leaves the title strip.
-    Reordering(DragInteraction, TitleReorderDrag),
-    Active(DragInteraction),
+    Armed(ArmedWindowDrag),
+    /// A bar-title drag that is still reordering the title strip. Leaving the
+    /// strip consumes the armed state and creates an active move.
+    Reordering(ArmedWindowDrag, TitleReorderDrag),
+    Active(ActiveWindowDrag),
+}
+
+impl WindowDragState {
+    pub fn button(&self) -> MouseButton {
+        match self {
+            Self::Armed(drag) | Self::Reordering(drag, _) => drag.button(),
+            Self::Active(drag) => drag.button(),
+        }
+    }
+
+    pub fn source(&self) -> InteractionSource {
+        match self {
+            Self::Armed(drag) | Self::Reordering(drag, _) => drag.source(),
+            Self::Active(drag) => drag.source(),
+        }
+    }
+
+    pub fn win(&self) -> WindowId {
+        match self {
+            Self::Armed(drag) | Self::Reordering(drag, _) => drag.win(),
+            Self::Active(drag) => drag.win(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("another interaction is already captured")]
 pub struct InteractionAlreadyActive;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("no armed drag is available to activate")]
 pub struct DragNotArmed;
-
-impl std::fmt::Display for DragNotArmed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("no armed drag is available to activate")
-    }
-}
-
-impl std::error::Error for DragNotArmed {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragCancelReason {
@@ -237,33 +266,24 @@ pub enum DragCancelReason {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ArmedDragParams {
+pub struct ArmedDragStart {
     pub win: WindowId,
     pub button: MouseButton,
     pub source: InteractionSource,
     pub origin: ArmedDragOrigin,
     pub start: Point,
-    pub geometry: Rect,
     pub restore_geometry: Rect,
     pub was_focused: bool,
     pub was_hidden: bool,
     pub suppress_click_action: bool,
 }
 
-/// Where an armed title-bar interaction was pressed.
-///
-/// Only bar-title presses may promote to a bar reorder drag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArmedDragOrigin {
     BarTitle,
     Client,
 }
 
-/// A bar-title drag that is reordering the title strip.
-///
-/// Order changes are committed live while the pointer stays on a title cell of
-/// `monitor_id`; leaving the title strip converts the interaction into an
-/// ordinary move drag. There is no rollback on release or cancel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TitleReorderDrag {
     monitor_id: MonitorId,
@@ -273,16 +293,7 @@ impl TitleReorderDrag {
     pub fn new(monitor_id: MonitorId) -> Self {
         Self { monitor_id }
     }
-
     pub fn monitor_id(&self) -> MonitorId {
         self.monitor_id
-    }
-}
-
-impl WindowDragState {
-    pub fn interaction(&self) -> &DragInteraction {
-        match self {
-            Self::Armed(drag) | Self::Reordering(drag, _) | Self::Active(drag) => drag,
-        }
     }
 }

@@ -69,12 +69,12 @@ pub fn set_x11_cursor(
 impl crate::backend::InteractionProjectionOps for WmCtxX11<'_> {
     fn reconcile_interaction_projection(
         &mut self,
-        desired: crate::core_state::InteractionPresentation,
+        desired: crate::core_state::InteractionProjection,
     ) {
         set_x11_cursor(&self.x11, self.x11_runtime, desired.cursor);
         match hover_ownership_update(
             self.x11_runtime.active_pointer_grab.map(|grab| grab.kind),
-            desired.pointer_routing,
+            desired.pointer_delivery,
         ) {
             HoverOwnershipUpdate::Acquire => {
                 ensure_hover_offer_pointer_ownership(self, desired.cursor)
@@ -94,12 +94,14 @@ enum HoverOwnershipUpdate {
 
 fn hover_ownership_update(
     active: Option<PointerGrabKind>,
-    desired: crate::core_state::PointerRouting,
+    desired: crate::core_state::PointerDelivery,
 ) -> HoverOwnershipUpdate {
     match (active, desired) {
-        (None, crate::core_state::PointerRouting::HoverOffer) => HoverOwnershipUpdate::Acquire,
+        (None, crate::core_state::PointerDelivery::DeliverHoverCommitToWm) => {
+            HoverOwnershipUpdate::Acquire
+        }
         (Some(PointerGrabKind::HoverOffer), routing)
-            if routing != crate::core_state::PointerRouting::HoverOffer =>
+            if routing != crate::core_state::PointerDelivery::DeliverHoverCommitToWm =>
         {
             HoverOwnershipUpdate::Release
         }
@@ -170,7 +172,7 @@ mod cursor_tests {
         CursorUpdateTargets, HoverOwnershipUpdate, cursor_update_targets, hover_ownership_update,
     };
     use crate::backend::x11::{ActivePointerGrab, PointerGrabKind};
-    use crate::core_state::PointerRouting;
+    use crate::core_state::PointerDelivery;
     use crate::types::AltCursor;
     use x11rb::protocol::xproto::EventMask;
 
@@ -215,25 +217,22 @@ mod cursor_tests {
     #[test]
     fn hover_ownership_reconciliation_is_level_triggered() {
         assert_eq!(
-            hover_ownership_update(None, PointerRouting::HoverOffer),
+            hover_ownership_update(None, PointerDelivery::DeliverHoverCommitToWm),
             HoverOwnershipUpdate::Acquire
         );
         assert_eq!(
             hover_ownership_update(
                 Some(PointerGrabKind::HoverOffer),
-                PointerRouting::HoverOffer
+                PointerDelivery::DeliverHoverCommitToWm
             ),
             HoverOwnershipUpdate::Keep
         );
         assert_eq!(
-            hover_ownership_update(Some(PointerGrabKind::HoverOffer), PointerRouting::Normal),
+            hover_ownership_update(Some(PointerGrabKind::HoverOffer), PointerDelivery::Default),
             HoverOwnershipUpdate::Release
         );
         assert_eq!(
-            hover_ownership_update(
-                Some(PointerGrabKind::Drag),
-                PointerRouting::CapturedInteraction,
-            ),
+            hover_ownership_update(Some(PointerGrabKind::Drag), PointerDelivery::Default,),
             HoverOwnershipUpdate::Keep
         );
     }

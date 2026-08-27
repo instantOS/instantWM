@@ -682,7 +682,7 @@ fn handle_begin_resize(
     let _ = ctx.transition_pointer_interaction(|drag| {
         crate::mouse::drag::lifecycle::begin_resize(
             drag,
-            crate::mouse::drag::lifecycle::ResizeDragParams {
+            crate::core_state::DirectResizeStart {
                 win,
                 button: crate::types::MouseButton::Left,
                 source: crate::types::InteractionSource::Pointer,

@@ -11,7 +11,7 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{MouseButton, Point, Rect, WindowId, XEmbedTray};
+use crate::types::{Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 use std::process::Command;
 
@@ -78,31 +78,6 @@ pub enum WindowProtocol {
     XWayland,
 }
 
-/// Backend-agnostic event type for drag loops.
-///
-/// Backend-specific events (X11 `x11rb::protocol::Event`, Wayland input
-/// events) are converted to this enum so that shared code does not depend
-/// on either backend's event types.
-#[derive(Debug, Clone, PartialEq)]
-pub enum BackendEvent {
-    /// Pointer motion.
-    Motion {
-        root: Point,
-        /// Modifier key mask (X11: `state` field, Wayland: modifier flags).
-        modifiers: u32,
-    },
-    /// Button press (start of a click).
-    ButtonPress { button: MouseButton },
-    /// Button release.
-    ButtonRelease {
-        button: MouseButton,
-        /// Modifier mask at release time.
-        modifiers: u32,
-    },
-    /// Key press (used with `with_keys: true`).
-    KeyPress { keycode: u32 },
-}
-
 /// Window lifecycle and stacking effects shared by all backends.
 pub trait WindowOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
@@ -152,7 +127,7 @@ pub trait PointerOps {
 pub trait InteractionProjectionOps {
     fn reconcile_interaction_projection(
         &mut self,
-        desired: crate::core_state::InteractionPresentation,
+        desired: crate::core_state::InteractionProjection,
     );
 }
 

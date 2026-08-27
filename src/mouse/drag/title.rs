@@ -57,11 +57,8 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.core().model().selected_win();
-    let (win_start_geo, drop_restore_geo) = match ctx.core().model().client(win) {
-        Some(c) => {
-            let restore = c.saved_floating_rect().unwrap_or(c.geo);
-            (c.geo, restore)
-        }
+    let drop_restore_geo = match ctx.core().model().client(win) {
+        Some(c) => c.saved_floating_rect().unwrap_or(c.geo),
         None => return false,
     };
     let was_hidden = ctx
@@ -70,13 +67,12 @@ pub fn title_drag_begin(
         .client(win)
         .is_some_and(|client| client.is_hidden);
     ctx.transition_pointer_interaction(|drag| {
-        drag.arm_title_drag(crate::core_state::ArmedDragParams {
+        drag.arm_title_drag(crate::core_state::ArmedDragStart {
             win,
             button: btn,
             origin,
             source,
             start: click_root,
-            geometry: win_start_geo,
             restore_geometry: drop_restore_geo,
             was_focused: sel == Some(win),
             was_hidden,
@@ -202,9 +198,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     };
 
     if ctx
-        .transition_pointer_interaction(|drag| {
-            drag.activate_armed(crate::core_state::ArmedDragType::Move, start, current_geo)
-        })
+        .transition_pointer_interaction(|drag| drag.activate_armed_move(start, current_geo))
         .is_err()
     {
         return false;
@@ -557,10 +551,7 @@ mod tests {
         ));
         let active = wm.core.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.source(), InteractionSource::Pointer);
-        assert!(matches!(
-            active.drag_type(),
-            crate::core_state::DragType::TreeResize(_)
-        ));
+        assert!(active.operation().is_tree_resize());
     }
 
     /// Two tiled clients on a monitor with a visible bar, in bar-presentation
@@ -704,7 +695,10 @@ mod tests {
         assert!(!wm.core.interaction.drag.owns_bar_hover());
         let active = wm.core.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.win(), first);
-        assert_eq!(active.drag_type(), crate::core_state::DragType::Move);
+        assert!(matches!(
+            active.operation(),
+            crate::core_state::ActiveWindowOperation::Move
+        ));
     }
 
     #[test]
