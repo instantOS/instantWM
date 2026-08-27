@@ -206,7 +206,7 @@ pub struct WaylandState {
     /// size feedback becomes authoritative again.
     pub(super) pending_authoritative_sizes: HashMap<WindowId, (i32, i32)>,
     pub(super) native_size_hints: HashMap<WindowId, crate::types::SizeHints>,
-    pub(super) active_resizes: HashSet<WindowId>,
+    pub(super) active_resize: Option<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     pub(super) window_animations:
@@ -587,7 +587,7 @@ impl WaylandState {
             placed_border: HashMap::new(),
             pending_authoritative_sizes: HashMap::new(),
             native_size_hints: HashMap::new(),
-            active_resizes: HashSet::new(),
+            active_resize: None,
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),

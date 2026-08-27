@@ -1,6 +1,6 @@
 //! X11 mouse backend helpers.
 
-use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
 use crate::contexts::WmCtxX11;
 use crate::types::{AltCursor, Point, WindowId};
 use x11rb::connection::Connection;
@@ -66,9 +66,72 @@ pub fn set_x11_cursor(
     }
 }
 
-impl crate::backend::CursorOps for WmCtxX11<'_> {
-    fn apply_cursor_style(&mut self, style: AltCursor) {
-        set_x11_cursor(&self.x11, self.x11_runtime, style);
+impl crate::backend::InteractionProjectionOps for WmCtxX11<'_> {
+    fn reconcile_interaction_projection(
+        &mut self,
+        desired: crate::core_state::InteractionProjection,
+    ) {
+        set_x11_cursor(&self.x11, self.x11_runtime, desired.cursor);
+        match hover_ownership_update(
+            self.x11_runtime.active_pointer_grab.map(|grab| grab.kind),
+            desired.pointer_delivery,
+        ) {
+            HoverOwnershipUpdate::Acquire => {
+                ensure_hover_offer_pointer_ownership(self, desired.cursor)
+            }
+            HoverOwnershipUpdate::Release => release_hover_offer_pointer_ownership(self),
+            HoverOwnershipUpdate::Keep => {}
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HoverOwnershipUpdate {
+    Acquire,
+    Release,
+    Keep,
+}
+
+fn hover_ownership_update(
+    active: Option<PointerGrabKind>,
+    desired: crate::core_state::PointerDelivery,
+) -> HoverOwnershipUpdate {
+    match (active, desired) {
+        (None, crate::core_state::PointerDelivery::DeliverHoverCommitToWm) => {
+            HoverOwnershipUpdate::Acquire
+        }
+        (Some(PointerGrabKind::HoverOffer), routing)
+            if routing != crate::core_state::PointerDelivery::DeliverHoverCommitToWm =>
+        {
+            HoverOwnershipUpdate::Release
+        }
+        _ => HoverOwnershipUpdate::Keep,
+    }
+}
+
+/// Ensure X11 satisfies the shared hover-offer routing guarantee.
+///
+/// A passive offer only owns the root window. When its border zone overlaps a
+/// client, the client would otherwise own both cursor feedback and the press.
+/// The native grab is an X11 projection detail and is never exposed to shared
+/// interaction policy.
+fn ensure_hover_offer_pointer_ownership(ctx: &mut WmCtxX11<'_>, cursor: AltCursor) {
+    // A modal drag owns its native transport separately. Never replace it.
+    if ctx.x11_runtime.active_pointer_grab.is_some() {
+        return;
+    }
+    if crate::backend::x11::grab::grab_hover_offer_pointer(&ctx.x11, ctx.x11_runtime, cursor) {
+        let _ = ctx.x11.conn.flush();
+    }
+}
+
+fn release_hover_offer_pointer_ownership(ctx: &mut WmCtxX11<'_>) {
+    let held_by_offer = ctx
+        .x11_runtime
+        .active_pointer_grab
+        .is_some_and(|grab| grab.kind == PointerGrabKind::HoverOffer);
+    if held_by_offer {
+        crate::backend::x11::grab::ungrab(&ctx.x11, ctx.x11_runtime);
     }
 }
 
@@ -105,13 +168,17 @@ pub fn managed_window(
 
 #[cfg(test)]
 mod cursor_tests {
-    use super::{CursorUpdateTargets, cursor_update_targets};
-    use crate::backend::x11::ActivePointerGrab;
+    use super::{
+        CursorUpdateTargets, HoverOwnershipUpdate, cursor_update_targets, hover_ownership_update,
+    };
+    use crate::backend::x11::{ActivePointerGrab, PointerGrabKind};
+    use crate::core_state::PointerDelivery;
     use crate::types::AltCursor;
     use x11rb::protocol::xproto::EventMask;
 
     fn active(cursor: AltCursor) -> ActivePointerGrab {
         ActivePointerGrab {
+            kind: PointerGrabKind::Drag,
             event_mask: EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             cursor,
         }
@@ -144,6 +211,29 @@ mod cursor_tests {
                 root: false,
                 active_grab: false,
             }
+        );
+    }
+
+    #[test]
+    fn hover_ownership_reconciliation_is_level_triggered() {
+        assert_eq!(
+            hover_ownership_update(None, PointerDelivery::DeliverHoverCommitToWm),
+            HoverOwnershipUpdate::Acquire
+        );
+        assert_eq!(
+            hover_ownership_update(
+                Some(PointerGrabKind::HoverOffer),
+                PointerDelivery::DeliverHoverCommitToWm
+            ),
+            HoverOwnershipUpdate::Keep
+        );
+        assert_eq!(
+            hover_ownership_update(Some(PointerGrabKind::HoverOffer), PointerDelivery::Default),
+            HoverOwnershipUpdate::Release
+        );
+        assert_eq!(
+            hover_ownership_update(Some(PointerGrabKind::Drag), PointerDelivery::Default,),
+            HoverOwnershipUpdate::Keep
         );
     }
 }

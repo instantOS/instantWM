@@ -18,9 +18,8 @@
 //! ungrab(&x11, x11_runtime);
 //! ```
 
-use crate::backend::BackendEvent;
 use crate::backend::PointerOps;
-use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{AltCursor, MouseButton, Point};
 use x11rb::CURRENT_TIME;
@@ -46,20 +45,36 @@ pub fn grab_pointer(
 ) -> bool {
     let event_mask =
         EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
-    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask)
+    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask, PointerGrabKind::Drag)
 }
 
-/// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
-pub fn grab_pointer_with_keys(
+/// Lend the pointer to an armed hover-resize offer, without a modal loop.
+///
+/// The passive offer model only owns the root window: over any other window
+/// the client beneath owns the cursor and the button press. This grab carries
+/// the offer's resize cursor across those windows and routes the committing
+/// press to the root window, where [`commit_hover_offer`] picks it up. It is
+/// released by [`ungrab`] as soon as the offer clears.
+///
+/// The grab always selects its own `PointerMotion`: raw XI2 motion cannot be
+/// relied on while an active grab is held (servers stop delivering it), and
+/// without motion the offer could never observe the pointer leaving the
+/// border zone. Where raw events do keep flowing, the redundant delivery is
+/// harmless — offer state updates are idempotent position checks.
+pub fn grab_hover_offer_pointer(
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
     cursor: AltCursor,
 ) -> bool {
-    let event_mask = EventMask::BUTTON_PRESS
-        | EventMask::BUTTON_RELEASE
-        | EventMask::POINTER_MOTION
-        | EventMask::KEY_PRESS;
-    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask)
+    let event_mask =
+        EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
+    grab_pointer_with_mask(
+        x11,
+        x11_runtime,
+        cursor,
+        event_mask,
+        PointerGrabKind::HoverOffer,
+    )
 }
 
 fn grab_pointer_with_mask(
@@ -67,6 +82,7 @@ fn grab_pointer_with_mask(
     x11_runtime: &mut X11RuntimeConfig,
     cursor: AltCursor,
     event_mask: EventMask,
+    kind: PointerGrabKind,
 ) -> bool {
     let cursor_index = cursor.to_x11_index();
     let xcursor = x11_runtime
@@ -78,8 +94,11 @@ fn grab_pointer_with_mask(
 
     let grabbed = grab_pointer_impl(x11.conn, x11_runtime.root, xcursor, event_mask);
     if grabbed {
-        x11_runtime.active_pointer_grab =
-            Some(crate::backend::x11::ActivePointerGrab { event_mask, cursor });
+        x11_runtime.active_pointer_grab = Some(crate::backend::x11::ActivePointerGrab {
+            kind,
+            event_mask,
+            cursor,
+        });
     }
     grabbed
 }
@@ -141,55 +160,28 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     let _ = ctx.x11.conn.flush();
 }
 
-/// Convert an X11 event to a backend-agnostic [`BackendEvent`].
-fn event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
-    match event {
-        x11rb::protocol::Event::MotionNotify(m) => Some(BackendEvent::Motion {
-            root: Point::new(m.root_x as i32, m.root_y as i32),
-            modifiers: u16::from(m.state) as u32,
-        }),
-        x11rb::protocol::Event::ButtonRelease(br) => {
-            MouseButton::from_x11_detail(br.detail).map(|button| BackendEvent::ButtonRelease {
-                button,
-                modifiers: u16::from(br.state) as u32,
-            })
-        }
-        x11rb::protocol::Event::ButtonPress(bp) => MouseButton::from_x11_detail(bp.detail)
-            .map(|button| BackendEvent::ButtonPress { button }),
-        x11rb::protocol::Event::KeyPress(kp) => Some(BackendEvent::KeyPress {
-            keycode: kp.detail as u32,
-        }),
-        _ => None,
-    }
-}
-
-/// Call `on_event` with the given event converted to [`BackendEvent`].
-///
-/// Returns `true` (continue) when the event cannot be converted.
-fn call_on_event<F>(
-    on_event: &mut F,
-    ctx: &mut WmCtxX11<'_>,
-    event: &x11rb::protocol::Event,
-) -> bool
-where
-    F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
-{
+/// Dispatch an event consumed by X11's modal pointer loop.
+fn dispatch_grabbed_event(ctx: &mut WmCtxX11<'_>, event: &x11rb::protocol::Event) {
     // The modal grab loop consumes X11 events before the normal calloop
     // dispatcher can see them. Preserve bar damage notifications here; the
     // following deferred-work pump will coalesce and render them.
     if let x11rb::protocol::Event::Expose(expose) = event {
         crate::backend::x11::events::handlers::expose(ctx, expose);
-        return true;
+        return;
     }
     if let x11rb::protocol::Event::XinputTouchBegin(touch) = event {
         crate::backend::x11::events::handlers::touch_begin(ctx, touch);
-        return true;
+        return;
     }
 
-    if let Some(be) = event_to_backend(event) {
-        on_event(ctx, &be)
-    } else {
-        true
+    if let x11rb::protocol::Event::MotionNotify(motion) = event {
+        let _ = crate::mouse::interaction::handle(
+            &mut WmCtx::X11(ctx.reborrow()),
+            crate::mouse::interaction::InteractionEvent::pointer_update(
+                Point::new(motion.root_x as i32, motion.root_y as i32),
+                u16::from(motion.state) as u32,
+            ),
+        );
     }
 }
 
@@ -198,9 +190,6 @@ where
 /// Handles pointer grabbing, the motion-event loop (with throttling),
 /// and final ungrabbing.
 ///
-/// If `with_keys` is true, also captures KeyPress events.
-/// The closure `on_event` returns `true` to continue the loop, `false` to break.
-/// Events are converted to [`BackendEvent`] so callers are backend-agnostic.
 /// Returns the root coordinates and modifier mask from the matching button
 /// release. Both values are already present in the event, so callers never
 /// need a synchronous `QueryPointer` round trip to finish an interaction.
@@ -211,23 +200,12 @@ pub struct X11DragRelease {
     pub time_msec: u32,
 }
 
-pub fn mouse_drag_loop<F>(
+fn run_interaction_grab_loop(
     ctx: &mut WmCtxX11<'_>,
     btn: MouseButton,
     cursor: AltCursor,
-    with_keys: bool,
-    mut on_event: F,
-) -> Option<X11DragRelease>
-where
-    F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
-{
-    let grabbed = if with_keys {
-        grab_pointer_with_keys(&ctx.x11, ctx.x11_runtime, cursor)
-    } else {
-        grab_pointer(&ctx.x11, ctx.x11_runtime, cursor)
-    };
-
-    if !grabbed {
+) -> Option<X11DragRelease> {
+    if !grab_pointer(&ctx.x11, ctx.x11_runtime, cursor) {
         return None;
     }
 
@@ -250,11 +228,7 @@ where
                             // back so wait_event/poll_for_event yield it next time!
                             // x11rb doesn't let us un-read events easily, so we process
                             // the compressed motion *now*, then process this next_evt.
-                            if !call_on_event(&mut on_event, ctx, &event) {
-                                pump_deferred_work(ctx);
-                                ungrab(&ctx.x11, ctx.x11_runtime);
-                                return None;
-                            }
+                            dispatch_grabbed_event(ctx, &event);
                             pump_deferred_work(ctx);
 
                             // Now process the non-motion event we peeked.
@@ -269,11 +243,7 @@ where
                                     time_msec: br.time,
                                 });
                             }
-                            if !call_on_event(&mut on_event, ctx, &next_evt) {
-                                pump_deferred_work(ctx);
-                                ungrab(&ctx.x11, ctx.x11_runtime);
-                                return None;
-                            }
+                            dispatch_grabbed_event(ctx, &next_evt);
                             pump_deferred_work(ctx);
 
                             // We've processed the peeked event; continue the
@@ -291,19 +261,18 @@ where
         }
 
         let should_continue = match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.to_x11_detail() {
-                    release = Some(X11DragRelease {
-                        root: Point::new(br.root_x as i32, br.root_y as i32),
-                        modifiers: u16::from(br.state) as u32,
-                        time_msec: br.time,
-                    });
-                    false
-                } else {
-                    call_on_event(&mut on_event, ctx, &event)
-                }
+            x11rb::protocol::Event::ButtonRelease(br) if br.detail == btn.to_x11_detail() => {
+                release = Some(X11DragRelease {
+                    root: Point::new(br.root_x as i32, br.root_y as i32),
+                    modifiers: u16::from(br.state) as u32,
+                    time_msec: br.time,
+                });
+                false
             }
-            _ => call_on_event(&mut on_event, ctx, &event),
+            _ => {
+                dispatch_grabbed_event(ctx, &event);
+                true
+            }
         };
 
         pump_deferred_work(ctx);
@@ -322,16 +291,20 @@ where
 ///
 /// X11 alone needs a native pointer grab and a synchronous adapter. Gesture
 /// semantics remain in `mouse::interaction`, alongside Wayland pointer/touch.
-/// Commit the current hover-resize offer to a move, resize, or close
-/// operation.
+/// Commit the current hover-resize offer to a move, direct resize, tree
+/// resize, or close operation.
 ///
 /// X11 commits offers through its modal grab loop; the shared mouse module
 /// owns only the offer model. Returns `false` when there is no resize offer
 /// or the button is not a valid commit button for hover resize.
 pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    let Some((win, _)) = ctx.core.interaction().drag.hover_offer.resize_target() else {
+    let offer = ctx.core.interaction().drag.hover_offer();
+    let Some((win, _)) = offer.resize_target().or_else(|| offer.tree_resize_target()) else {
         return false;
     };
+    if offer.tree_resize_target().is_some() && btn == MouseButton::Middle {
+        return false;
+    }
     if btn == MouseButton::Middle {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         crate::mouse::clear_hover_offer(&mut wm_ctx);
@@ -376,37 +349,9 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     {
         return false;
     }
-    let cursor = match ctx.core.interaction().drag.capture() {
-        Some(crate::core_state::CapturedInteraction::SidebarVolume(_)) => AltCursor::VerticalAdjust,
-        Some(crate::core_state::CapturedInteraction::BottomBar(_)) => AltCursor::HorizontalAdjust,
-        Some(crate::core_state::CapturedInteraction::Window(state)) => match state {
-            crate::core_state::WindowDragState::Reordering(..) => AltCursor::HorizontalAdjust,
-            _ => {
-                let drag = state.interaction();
-                match drag.drag_type() {
-                    crate::core_state::DragType::Move if btn == MouseButton::Right => {
-                        AltCursor::Move
-                    }
-                    crate::core_state::DragType::Move => AltCursor::Default,
-                    crate::core_state::DragType::Resize(dir)
-                    | crate::core_state::DragType::TreeResize(dir) => AltCursor::Resize(dir),
-                }
-            }
-        },
-        Some(crate::core_state::CapturedInteraction::Tag(_)) => AltCursor::Default,
-        Some(crate::core_state::CapturedInteraction::OverviewCard(_)) => AltCursor::Move,
-        None => return false,
-    };
+    let cursor = ctx.core.interaction().drag.projection().cursor;
 
-    let release = mouse_drag_loop(ctx, btn, cursor, false, |ctx, event| {
-        if let BackendEvent::Motion { root, modifiers } = event {
-            let _ = crate::mouse::interaction::handle(
-                &mut crate::contexts::WmCtx::X11(ctx.reborrow()),
-                crate::mouse::interaction::InteractionEvent::pointer_update(*root, *modifiers),
-            );
-        }
-        true
-    });
+    let release = run_interaction_grab_loop(ctx, btn, cursor);
 
     let Some(release) = release else {
         let _ = crate::mouse::interaction::handle(

@@ -83,6 +83,9 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
         return TreePlacementStart::Unavailable;
     };
     ctx.set_current_mode(crate::core_state::ActiveWmMode::TreePlacement(state));
+    // Placement keys own the pointer until the session ends; a hover-resize
+    // offer armed beforehand must give up its cursor and pointer borrow.
+    crate::mouse::clear_hover_offer(ctx);
     ctx.update_layout_preview(Some(preview_rect));
     TreePlacementStart::Started
 }

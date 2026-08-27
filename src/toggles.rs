@@ -130,28 +130,42 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 }
 
-/// Set the bottom bar visibility on the selected monitor's current tag.
+/// Set the bottom bar visibility everywhere.
+///
+/// The bottom bar state is a single global setting, so toggling it applies
+/// to every monitor and survives tag switches.
 ///
 /// Shared by the hotkey toggle and the IPC toggle command (which can also
 /// force on/off).
 pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
-    let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-    selected_monitor.per_tag_state().show_bottom_bar = shown;
-    selected_monitor.show_bottom_bar = shown;
+    let changed_monitors: Vec<MonitorId> = ctx
+        .core_mut()
+        .model_mut()
+        .monitors_iter_mut()
+        .filter(|(_, monitor)| monitor.show_bottom_bar != shown)
+        .map(|(monitor_id, _)| monitor_id)
+        .collect();
+    if changed_monitors.is_empty() {
+        return;
+    }
 
-    let selmon_idx = ctx.core().model().selected_monitor_id();
+    for monitor in ctx.core_mut().model_mut().monitors_iter_all_mut() {
+        monitor.show_bottom_bar = shown;
+    }
 
-    ctx.refresh_monitor_bottom_bar(selmon_idx);
+    for monitor_id in changed_monitors {
+        ctx.refresh_monitor_bottom_bar(monitor_id);
 
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
+        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{toggle_mode_name, toggled_bool, unhide_all};
+    use super::{set_bottom_bar_shown, toggle_mode_name, toggled_bool, unhide_all};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::core_state::ActiveWmMode;
-    use crate::types::{Client, Monitor, ToggleAction, WindowId};
+    use crate::types::{Client, Monitor, TagMask, ToggleAction, WindowId};
     use crate::wm::Wm;
 
     #[test]
@@ -208,5 +222,61 @@ mod tests {
         assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
         assert!(!wm.core.model.client(also_hidden).unwrap().is_hidden);
         assert_eq!(wm.core.model.selected_win(), Some(focused));
+    }
+
+    #[test]
+    fn set_bottom_bar_shown_applies_to_every_monitor_and_tag() {
+        // The bottom bar is one global session setting. A toggle must reach
+        // every monitor and survive tag switches; historically it was stored
+        // per selected monitor and per tag mask, so other monitors kept the
+        // bar and switching tags resurrected it.
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+
+        let first = wm.core.model.monitors.push(Monitor::default());
+        let second = wm.core.model.monitors.push(Monitor::default());
+        for monitor in wm.core.model.monitors_iter_all_mut() {
+            monitor.show_bottom_bar = true;
+        }
+        wm.core.model.set_selected_monitor(second);
+
+        let tag_a = TagMask::single(1).unwrap();
+        let tag_b = TagMask::single(2).unwrap();
+        // Seed per-tag state on two different tags of both monitors so a
+        // per-tag-scoped implementation would leave stale entries behind.
+        for id in [first, second] {
+            let monitor = wm.core.model.monitor_mut(id).unwrap();
+            monitor.set_selected_tags_with_history(tag_a);
+            monitor.per_tag_state();
+            monitor.set_selected_tags_with_history(tag_b);
+            monitor.per_tag_state();
+            monitor.set_selected_tags_with_history(tag_a);
+            assert!(monitor.shows_bottom_bar());
+        }
+
+        // Toggle off while viewing tag_a of the second monitor.
+        set_bottom_bar_shown(&mut wm.ctx(), false);
+
+        let all_hidden = |wm: &Wm| {
+            [first, second]
+                .iter()
+                .all(|id| !wm.core.model.monitor(*id).unwrap().shows_bottom_bar())
+        };
+        assert!(all_hidden(&wm));
+
+        // Switching tags must not resurrect the bar.
+        for id in [first, second] {
+            let monitor = wm.core.model.monitor_mut(id).unwrap();
+            monitor.set_selected_tags_with_history(tag_b);
+            assert!(!monitor.shows_bottom_bar());
+        }
+        assert!(all_hidden(&wm));
+
+        // Toggling back on re-enables it everywhere again.
+        set_bottom_bar_shown(&mut wm.ctx(), true);
+        assert!(
+            [first, second]
+                .iter()
+                .all(|id| wm.core.model.monitor(*id).unwrap().shows_bottom_bar())
+        );
     }
 }

@@ -18,7 +18,10 @@
 //! let mut drw = DrawContext::new(None)?;
 //!
 //! // Load fonts.
-//! drw.fontset_create(&["monospace:size=10", "Noto Color Emoji:size=10"])?;
+//! drw.fontset_create(&[
+//!     (crate::bar::text::FontRole::Text, "monospace:pixelsize=10"),
+//!     (crate::bar::text::FontRole::Icon, "Symbols Nerd Font:pixelsize=14"),
+//! ])?;
 //!
 //! // Allocate a color scheme and activate it.
 //! let scheme = drw.scm_create(&["#eeeeee", "#222222", "#005577"])?;

@@ -237,13 +237,18 @@ impl WaylandState {
         self.pending_warp = Some(Point::from((x, y)));
     }
 
-    pub(crate) fn begin_interactive_resize(&mut self, window: WindowId) {
-        self.active_resizes.insert(window);
-    }
+    /// Reconcile xdg-toplevel's `resizing` state with the interaction model.
+    /// Ending a resize emits the final configure without the resizing flag;
+    /// redundant synchronization has no protocol effect.
+    pub(crate) fn reconcile_interactive_resize(&mut self, desired: Option<WindowId>) {
+        if self.active_resize == desired {
+            return;
+        }
 
-    pub(crate) fn end_interactive_resize(&mut self, window: WindowId) {
-        self.active_resizes.remove(&window);
-        if let Some(element) = self.find_window(window).cloned() {
+        let ended = std::mem::replace(&mut self.active_resize, desired);
+        if let Some(window) = ended.filter(|window| Some(*window) != desired)
+            && let Some(element) = self.find_window(window).cloned()
+        {
             self.send_toplevel_configure(&element, None);
         }
     }
@@ -312,6 +317,24 @@ mod tests {
         assert!(!committed_size_is_stale(None, (800, 600)));
         assert!(!committed_size_is_stale(Some((800, 600)), (800, 600)));
         assert!(committed_size_is_stale(Some((800, 600)), (1920, 1080)));
+    }
+
+    #[test]
+    fn interactive_resize_reconciliation_is_idempotent() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let win = WindowId(23);
+
+        state.reconcile_interactive_resize(Some(win));
+        assert_eq!(state.active_resize, Some(win));
+
+        state.reconcile_interactive_resize(Some(win));
+        assert_eq!(state.active_resize, Some(win));
+
+        state.reconcile_interactive_resize(None);
+        assert_eq!(state.active_resize, None);
+        state.reconcile_interactive_resize(None);
+        assert_eq!(state.active_resize, None);
     }
 
     #[test]

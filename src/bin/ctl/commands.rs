@@ -362,7 +362,7 @@ pub enum ConfigAction {
     /// With no argument, lists every key. Pass a section (e.g. `layout`) or a
     /// full key (e.g. `layout.inner_gap`) to narrow the output to matches.
     List {
-        /// Section or key prefix to filter by (e.g. `fonts`, `fonts.fonts`).
+        /// Section or key prefix to filter by (e.g. `fonts`, `fonts.icon_size`).
         prefix: Option<String>,
     },
 }

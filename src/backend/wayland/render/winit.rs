@@ -8,7 +8,7 @@ use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor_presentation};
+use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::frame::{send_frame_callbacks, update_primary_scanout_output};
 use crate::backend::wayland::render::scene::{
     SceneCache, build_common_scene_elements, count_upper_layer_render_elements,
@@ -35,13 +35,13 @@ pub fn render_frame(
     start_time: std::time::Instant,
 ) -> bool {
     // Backend-specific: apply cursor via window API
-    let cursor_presentation = resolve_cursor_presentation(
+    let resolved_cursor = resolve_cursor(
         &state.cursor_image_status,
         state.cursor_icon_override,
         state.runtime.dnd_icon.as_ref(),
         state.runtime.cursor_hidden_by_touch,
     );
-    apply_cursor_presentation_internal(backend, &cursor_presentation);
+    apply_resolved_cursor_internal(backend, &resolved_cursor);
     // Backend-specific: get buffer age
     let buffer_age = backend.buffer_age().unwrap_or(0);
 
@@ -89,7 +89,7 @@ pub fn render_frame(
         // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
         render_cursor_overlays(
             renderer,
-            &cursor_presentation,
+            &resolved_cursor,
             state.pointer.current_location(),
             &mut render_elements,
         );
@@ -162,28 +162,28 @@ pub fn render_frame(
 }
 
 // Backend-specific: cursor handling via winit window API
-fn apply_cursor_presentation_internal(
+fn apply_resolved_cursor_internal(
     backend: &WinitGraphicsBackend<GlesRenderer>,
-    presentation: &CursorPresentation,
+    presentation: &ResolvedCursor,
 ) {
     match presentation {
-        CursorPresentation::Hidden => {
+        ResolvedCursor::Hidden => {
             backend.window().set_cursor_visible(false);
         }
-        CursorPresentation::Named(icon) => {
+        ResolvedCursor::Named(icon) => {
             backend.window().set_cursor_visible(true);
             backend
                 .window()
                 .set_cursor(smithay::reexports::winit::cursor::Cursor::Icon(*icon));
         }
-        CursorPresentation::Surface { .. } => {
+        ResolvedCursor::Surface { .. } => {
             // Client-provided surface cursor. Winit cannot set surface as cursor,
             // so we hide the system cursor and render as an overlay ourselves in render_frame.
             backend.window().set_cursor_visible(false);
         }
-        CursorPresentation::DndIcon { cursor, .. } => {
+        ResolvedCursor::DndIcon { cursor, .. } => {
             // Recursively apply the visibility settings of the base cursor.
-            apply_cursor_presentation_internal(backend, cursor);
+            apply_resolved_cursor_internal(backend, cursor);
         }
     }
 }
@@ -192,13 +192,13 @@ fn apply_cursor_presentation_internal(
 /// (client surface cursors and drag-and-drop icons).
 fn render_cursor_overlays(
     renderer: &mut GlesRenderer,
-    presentation: &CursorPresentation,
+    presentation: &ResolvedCursor,
     pointer_location: smithay::utils::Point<f64, smithay::utils::Logical>,
     render_elements: &mut Vec<WaylandExtras>,
 ) {
     match presentation {
-        CursorPresentation::Hidden | CursorPresentation::Named(_) => {}
-        CursorPresentation::Surface { surface, hotspot } => {
+        ResolvedCursor::Hidden | ResolvedCursor::Named(_) => {}
+        ResolvedCursor::Surface { surface, hotspot } => {
             // Double-check that the surface is still alive before rendering.
             let Some(elements) = super::cursor_surface_render_elements(
                 renderer,
@@ -211,7 +211,7 @@ fn render_cursor_overlays(
             };
             render_elements.extend(elements.into_iter().map(WaylandExtras::Surface));
         }
-        CursorPresentation::DndIcon {
+        ResolvedCursor::DndIcon {
             icon,
             hotspot,
             cursor,

@@ -180,7 +180,7 @@ mod tests {
         );
 
         assert_eq!(pointer.current_location(), Point::from((1900.0, 500.0)));
-        assert!(wm.core.interaction.drag.hover_offer.is_sidebar());
+        assert!(wm.core.interaction.drag.hover_offer().is_sidebar());
     }
 
     #[test]
@@ -598,7 +598,7 @@ fn dispatch_pointer_motion(
     };
 
     if !sidebar_offer_active {
-        // Phase 5: Update hover resize state for floating windows
+        // Phase 5: Update floating-border and tiled-gap resize offers
         let suppress_hover_focus =
             update_hover_resize_state(wm, root, wm.core.interaction.drag.has_capture());
 
@@ -765,7 +765,7 @@ fn handle_bar_motion(
     false
 }
 
-/// Update hover resize state for floating windows.
+/// Update floating-border and tiled-gap resize state.
 ///
 /// Hover focus is suppressed only while a resize-border offer is actually
 /// held: the pointer then sits in the border strip of a floating window, and
@@ -787,9 +787,8 @@ fn update_hover_resize_state(wm: &mut Wm, root: RootPoint, drag_active: bool) ->
         return false;
     };
 
-    // Offer resize near any visible floating window's border (X11 parity).
-    crate::mouse::update_any_floating_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root)
-        .is_some()
+    // Offer resize at visible floating borders and adjustable tiled gaps.
+    crate::mouse::update_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root).is_some()
 }
 
 /// Update pointer focus based on drag state.

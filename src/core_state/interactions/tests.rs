@@ -1,9 +1,12 @@
 use super::{
-    BottomBarDrag, DragState, OverviewCardAction, OverviewCardDrag, SidebarVolumeDrag,
-    SwipeDirection,
+    BottomBarDrag, OverviewCardAction, OverviewCardDrag, PointerInteractionState,
+    SidebarVolumeDrag, SwipeDirection,
 };
 use crate::actions::ButtonAction;
-use crate::types::{InteractionSource, MonitorId, MouseButton, Point, Rect, TagMask, WindowId};
+use crate::types::{
+    AltCursor, InteractionSource, MonitorId, MouseButton, Point, Rect, ResizeDirection, TagMask,
+    WindowId,
+};
 
 fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
     BottomBarDrag::new(
@@ -109,7 +112,7 @@ fn bottom_bar_drag_exposes_bound_directional_actions() {
 
 #[test]
 fn bottom_bar_lifecycle_rejects_overlap_and_wrong_button_release() {
-    let mut interactions = DragState::default();
+    let mut interactions = PointerInteractionState::default();
     interactions
         .begin_overview_card(OverviewCardDrag::new(
             WindowId(1),
@@ -139,7 +142,7 @@ fn bottom_bar_lifecycle_rejects_overlap_and_wrong_button_release() {
 
 #[test]
 fn bottom_bar_cancel_clears_the_gesture() {
-    let mut interactions = DragState::default();
+    let mut interactions = PointerInteractionState::default();
     interactions
         .begin_bottom_bar(bottom_bar_drag(500, 1000))
         .unwrap();
@@ -148,16 +151,15 @@ fn bottom_bar_cancel_clears_the_gesture() {
     assert!(!interactions.cancel_bottom_bar());
 }
 
-fn armed_title_drag(win: WindowId, origin: super::ArmedDragOrigin) -> DragState {
-    let mut interactions = DragState::default();
+fn armed_title_drag(win: WindowId, origin: super::ArmedDragOrigin) -> PointerInteractionState {
+    let mut interactions = PointerInteractionState::default();
     interactions
-        .arm_title_drag(super::ArmedDragParams {
+        .arm_title_drag(super::ArmedDragStart {
             win,
             button: MouseButton::Left,
             source: InteractionSource::Pointer,
             origin,
             start: Point::new(300, 10),
-            geometry: Rect::new(0, 0, 400, 300),
             restore_geometry: Rect::new(0, 0, 400, 300),
             was_focused: true,
             was_hidden: false,
@@ -196,7 +198,10 @@ fn title_reorder_transitions_from_armed_to_move_and_release() {
     assert!(interactions.reordering_interaction().is_none());
     let active = interactions.active_interaction().unwrap();
     assert_eq!(active.win(), win);
-    assert_eq!(active.drag_type(), super::DragType::Move);
+    assert!(matches!(
+        active.operation(),
+        super::ActiveWindowOperation::Move
+    ));
 
     // A fresh reorder ends cleanly on release.
     let mut interactions = armed_title_drag(win, super::ArmedDragOrigin::BarTitle);
@@ -211,7 +216,7 @@ fn title_reorder_transitions_from_armed_to_move_and_release() {
 
 #[test]
 fn title_reorder_requires_an_armed_capture() {
-    let mut interactions = DragState::default();
+    let mut interactions = PointerInteractionState::default();
     assert!(
         interactions
             .begin_title_reorder(super::TitleReorderDrag::new(MonitorId::from_raw(1)))
@@ -227,7 +232,7 @@ fn title_reorder_requires_an_armed_capture() {
 
 #[test]
 fn tag_drag_owns_bar_hover_for_its_complete_capture() {
-    let mut interactions = DragState::default();
+    let mut interactions = PointerInteractionState::default();
     interactions
         .begin_tag_drag(super::TagDragState {
             initial_tag: TagMask::single(1).unwrap(),
@@ -287,7 +292,7 @@ fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
         500,
         30,
     );
-    let mut interactions = DragState::default();
+    let mut interactions = PointerInteractionState::default();
     interactions
         .begin_overview_card(OverviewCardDrag::new(
             WindowId(1),
@@ -343,7 +348,7 @@ fn overview_card_gesture_resolves_tap_upward_drag_and_other_drag() {
 #[test]
 fn overview_card_gesture_captures_its_complete_input_sequence() {
     let win = WindowId(9);
-    let mut interactions = DragState::default();
+    let mut interactions = PointerInteractionState::default();
     interactions
         .begin_overview_card(OverviewCardDrag::new(
             win,
@@ -365,4 +370,136 @@ fn overview_card_gesture_captures_its_complete_input_sequence() {
         Some(OverviewCardAction::Select(win))
     );
     assert!(!interactions.has_capture());
+}
+
+#[test]
+fn presentation_is_derived_from_hover_offer() {
+    let mut interactions = PointerInteractionState::default();
+    assert_eq!(
+        interactions.projection(),
+        super::InteractionProjection::default()
+    );
+
+    interactions.set_hover_offer(super::HoverOffer::Resize {
+        win: WindowId(4),
+        dir: ResizeDirection::TopLeft,
+    });
+    assert_eq!(
+        interactions.projection(),
+        super::InteractionProjection {
+            cursor: AltCursor::Resize(ResizeDirection::TopLeft),
+            pointer_delivery: super::PointerDelivery::DeliverHoverCommitToWm,
+            active_resize_window: None,
+        }
+    );
+
+    interactions.clear_hover_offer();
+    assert_eq!(
+        interactions.projection(),
+        super::InteractionProjection::default()
+    );
+}
+
+#[test]
+fn tiled_gap_offer_projects_its_tree_resize_cursor() {
+    let mut interactions = PointerInteractionState::default();
+    interactions.set_hover_offer(super::HoverOffer::TreeResize {
+        win: WindowId(9),
+        dir: ResizeDirection::Right,
+    });
+
+    assert_eq!(
+        interactions.projection(),
+        super::InteractionProjection {
+            cursor: AltCursor::Resize(ResizeDirection::Right),
+            pointer_delivery: super::PointerDelivery::DeliverHoverCommitToWm,
+            active_resize_window: None,
+        }
+    );
+    assert_eq!(
+        interactions.hover_offer().tree_resize_target(),
+        Some((WindowId(9), ResizeDirection::Right))
+    );
+    assert_eq!(interactions.hover_offer().resize_target(), None);
+}
+
+#[test]
+fn beginning_capture_atomically_invalidates_hover_offer() {
+    let mut interactions = PointerInteractionState::default();
+    interactions.set_hover_offer(super::HoverOffer::Resize {
+        win: WindowId(4),
+        dir: ResizeDirection::Left,
+    });
+    interactions
+        .begin_sidebar_volume(SidebarVolumeDrag::new(
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            MonitorId::from_raw(1),
+            500,
+            30,
+        ))
+        .unwrap();
+
+    assert_eq!(interactions.hover_offer(), super::HoverOffer::None);
+    assert_eq!(interactions.projection().cursor, AltCursor::VerticalAdjust);
+    assert_eq!(
+        interactions.projection().pointer_delivery,
+        super::PointerDelivery::Default
+    );
+    assert!(!interactions.set_hover_offer(super::HoverOffer::Resize {
+        win: WindowId(5),
+        dir: ResizeDirection::Right,
+    }));
+}
+
+#[test]
+fn captured_interaction_cursor_tracks_internal_transitions() {
+    let mut interactions = PointerInteractionState::default();
+    interactions
+        .begin_bottom_bar(bottom_bar_drag(500, 1000))
+        .unwrap();
+    assert_eq!(interactions.projection().cursor, AltCursor::Move);
+
+    assert_eq!(
+        interactions.update_bottom_bar(Point::new(500, 960)),
+        Some(SwipeDirection::Up)
+    );
+    assert_eq!(interactions.projection().cursor, AltCursor::VerticalAdjust);
+
+    interactions.cancel_capture();
+    interactions
+        .begin_resize(
+            WindowId(8),
+            MouseButton::Right,
+            InteractionSource::Pointer,
+            ResizeDirection::BottomRight,
+            Point::new(10, 10),
+            Rect::new(0, 0, 100, 100),
+        )
+        .unwrap();
+    assert_eq!(
+        interactions.projection().cursor,
+        AltCursor::Resize(ResizeDirection::BottomRight)
+    );
+}
+
+#[test]
+fn overview_close_threshold_drives_destructive_cursor() {
+    let mut interactions = PointerInteractionState::default();
+    interactions
+        .begin_overview_card(OverviewCardDrag::new(
+            WindowId(9),
+            MouseButton::Left,
+            InteractionSource::Pointer,
+            Point::new(100, 100),
+            20,
+        ))
+        .unwrap();
+    assert_eq!(interactions.projection().cursor, AltCursor::Move);
+
+    assert_eq!(
+        interactions.update_overview_card(Point::new(100, 70)),
+        Some(true)
+    );
+    assert_eq!(interactions.projection().cursor, AltCursor::Close);
 }

@@ -32,7 +32,7 @@ use crate::backend::output::{
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::init::drm::init_gpu;
 use crate::backend::wayland::input::apply_pending_warp;
-use crate::backend::wayland::render::cursor::{CursorPresentation, resolve_cursor_presentation};
+use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::drm::{
     CursorManager, ManagedDrmOutputManager, OutputHitRegion, OutputSurfaceEntry, RenderOutcome,
     build_output_surfaces, create_output_manager, render_drm_output,
@@ -472,11 +472,11 @@ fn setup_drm_vblank_handler(
 /// Extract a `CursorIcon` from a resolved cursor presentation for
 /// animation-timer scheduling.  `Surface` cursors are client-owned and
 /// cannot be introspected, so they return `None`.
-fn cursor_presentation_icon(p: &CursorPresentation) -> Option<CursorIcon> {
+fn resolved_cursor_icon(p: &ResolvedCursor) -> Option<CursorIcon> {
     match p {
-        CursorPresentation::Hidden | CursorPresentation::Surface { .. } => None,
-        CursorPresentation::Named(icon) => Some(*icon),
-        CursorPresentation::DndIcon { cursor, .. } => cursor_presentation_icon(cursor),
+        ResolvedCursor::Hidden | ResolvedCursor::Surface { .. } => None,
+        ResolvedCursor::Named(icon) => Some(*icon),
+        ResolvedCursor::DndIcon { cursor, .. } => resolved_cursor_icon(cursor),
     }
 }
 
@@ -593,13 +593,13 @@ fn run_event_loop(
             // animated cursors (e.g. the spinning "wait" cursor) alive
             // even when the system is otherwise idle.
             let animated = {
-                let presentation = resolve_cursor_presentation(
+                let presentation = resolve_cursor(
                     &state.cursor_image_status,
                     state.cursor_icon_override,
                     state.runtime.dnd_icon.as_ref(),
                     state.runtime.cursor_hidden_by_touch,
                 );
-                cursor_presentation_icon(&presentation)
+                resolved_cursor_icon(&presentation)
                     .is_some_and(|icon| cursor_manager.is_animated(icon, 1))
             };
             state.runtime.cursor_is_animated = animated;

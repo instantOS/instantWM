@@ -205,7 +205,9 @@ impl WaylandState {
         }
         self.window_index.remove(&window);
         self.native_size_hints.remove(&window);
-        self.active_resizes.remove(&window);
+        if self.active_resize == Some(window) {
+            self.active_resize = None;
+        }
         self.clear_window_presentation_state(window);
         self.clear_window_protocol_state(window);
         self.clear_seat_focus_if_focused(window);

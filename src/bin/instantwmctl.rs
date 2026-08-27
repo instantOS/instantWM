@@ -343,7 +343,7 @@ fn validate_list_prefix(prefix: &str) -> Result<(), String> {
 
 /// Narrow a `ConfigList` to keys under `prefix`.
 ///
-/// A key matches when it equals `prefix` (a leaf key, e.g. `fonts.fonts`) or
+/// A key matches when it equals `prefix` (a leaf key, e.g. `fonts.icon_size`) or
 /// sits beneath it (a section or `section.id`, e.g. `fonts` or
 /// `input.type:touchpad`). The trailing-dot check prevents `fonts` from
 /// matching a sibling like `fontsx`.
@@ -929,7 +929,7 @@ mod tests {
     #[test]
     fn validate_list_prefix_accepts_known_sections() {
         assert!(validate_list_prefix("fonts").is_ok());
-        assert!(validate_list_prefix("fonts.fonts").is_ok());
+        assert!(validate_list_prefix("fonts.icon_size").is_ok());
         assert!(validate_list_prefix("input").is_ok());
         // Map-section ids contain dots/colons; the section is still `input`.
         assert!(validate_list_prefix("input.type:touchpad").is_ok());
@@ -950,8 +950,8 @@ mod tests {
     #[test]
     fn filter_config_list_narrows_to_section() {
         let entries = vec![
-            ("fonts.config_font".to_string(), "x".to_string()),
-            ("fonts.fonts".to_string(), "y".to_string()),
+            ("fonts.icon_family".to_string(), "x".to_string()),
+            ("fonts.text_family".to_string(), "y".to_string()),
             ("layout.inner_gap".to_string(), "0".to_string()),
         ];
         match filter_config_list(Response::ConfigList(entries), "fonts") {
@@ -966,13 +966,13 @@ mod tests {
     #[test]
     fn filter_config_list_matches_single_leaf() {
         let entries = vec![
-            ("fonts.config_font".to_string(), "x".to_string()),
-            ("fonts.fonts".to_string(), "y".to_string()),
+            ("fonts.icon_family".to_string(), "x".to_string()),
+            ("fonts.text_family".to_string(), "y".to_string()),
         ];
-        match filter_config_list(Response::ConfigList(entries), "fonts.fonts") {
+        match filter_config_list(Response::ConfigList(entries), "fonts.text_family") {
             Response::ConfigList(rows) => {
                 assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0].0, "fonts.fonts");
+                assert_eq!(rows[0].0, "fonts.text_family");
             }
             other => panic!("expected ConfigList, got {other:?}"),
         }
@@ -982,13 +982,13 @@ mod tests {
     fn filter_config_list_does_not_match_sibling_prefix() {
         // `fonts` must not match a `fontsx.*` sibling (trailing-dot check).
         let entries = vec![
-            ("fonts.fonts".to_string(), "y".to_string()),
+            ("fonts.text_family".to_string(), "y".to_string()),
             ("fontsx.thing".to_string(), "z".to_string()),
         ];
         match filter_config_list(Response::ConfigList(entries), "fonts") {
             Response::ConfigList(rows) => {
                 assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0].0, "fonts.fonts");
+                assert_eq!(rows[0].0, "fonts.text_family");
             }
             other => panic!("expected ConfigList, got {other:?}"),
         }

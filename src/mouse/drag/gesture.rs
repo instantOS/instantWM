@@ -35,22 +35,19 @@ fn begin_sidebar_gesture(
         .map(|monitor| (monitor.monitor_rect.h / 30).max(1))
         .unwrap_or_else(|| (target.rect.h / 30).max(1));
     if ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .begin_sidebar_volume(crate::core_state::SidebarVolumeDrag::new(
-            btn,
-            source,
-            target.monitor_id,
-            start.y,
-            threshold,
-        ))
+        .transition_pointer_interaction(|drag| {
+            drag.begin_sidebar_volume(crate::core_state::SidebarVolumeDrag::new(
+                btn,
+                source,
+                target.monitor_id,
+                start.y,
+                threshold,
+            ))
+        })
         .is_err()
     {
         return false;
     }
-    crate::mouse::clear_hover_offer(ctx);
-    ctx.set_cursor_style(AltCursor::VerticalAdjust);
     true
 }
 
@@ -59,19 +56,12 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
         return;
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
-        ctx.core_mut()
-            .interaction_mut()
-            .drag
-            .cancel_sidebar_volume();
-        ctx.set_cursor_style(AltCursor::Default);
+        ctx.transition_pointer_interaction(|drag| drag.cancel_sidebar_volume());
         return;
     }
 
     let steps = ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .update_sidebar_volume(root_y)
+        .transition_pointer_interaction(|drag| drag.update_sidebar_volume(root_y))
         .unwrap_or(0);
     if steps == 0 {
         return;
@@ -101,11 +91,7 @@ pub fn sidebar_gesture_finish(
     if ctx.core().interaction().drag.sidebar_volume_button() != Some(btn) {
         return false;
     }
-    ctx.core_mut()
-        .interaction_mut()
-        .drag
-        .finish_sidebar_volume(btn);
-    ctx.set_cursor_style(AltCursor::Default);
+    ctx.transition_pointer_interaction(|drag| drag.finish_sidebar_volume(btn));
     let _ = crate::mouse::set_sidebar_offer(ctx, hover_target);
     true
 }
@@ -136,27 +122,21 @@ pub fn bottom_bar_gesture_begin(
         .map(|monitor| (monitor.monitor_rect.w / 30).max(1))
         .unwrap_or(1);
     if ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .begin_bottom_bar(crate::core_state::BottomBarDrag::new(
-            btn,
-            source,
-            monitor_id,
-            start,
-            threshold,
-            press_time_msec,
-            actions,
-        ))
+        .transition_pointer_interaction(|drag| {
+            drag.begin_bottom_bar(crate::core_state::BottomBarDrag::new(
+                btn,
+                source,
+                monitor_id,
+                start,
+                threshold,
+                press_time_msec,
+                actions,
+            ))
+        })
         .is_err()
     {
         return false;
     }
-    crate::mouse::clear_hover_offer(ctx);
-    // Use a neutral 4-way move cursor until a direction latches — the bar
-    // supports left/right/up gestures, so a horizontal-only cursor is
-    // misleading.
-    ctx.set_cursor_style(AltCursor::Move);
     true
 }
 
@@ -169,22 +149,12 @@ pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
         return;
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
-        ctx.core_mut().interaction_mut().drag.cancel_bottom_bar();
-        ctx.set_cursor_style(AltCursor::Default);
+        ctx.transition_pointer_interaction(|drag| drag.cancel_bottom_bar());
         return;
     }
-    if let Some(direction) = ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .update_bottom_bar(root)
+    if let Some(direction) = ctx.transition_pointer_interaction(|drag| drag.update_bottom_bar(root))
     {
-        // Reflect the latched direction in the cursor for tactile feedback.
-        let style = match direction {
-            crate::core_state::SwipeDirection::Up => AltCursor::VerticalAdjust,
-            _ => AltCursor::HorizontalAdjust,
-        };
-        ctx.set_cursor_style(style);
+        let _ = direction;
     }
 }
 
@@ -217,8 +187,7 @@ pub fn bottom_bar_gesture_finish(
         };
         (drag.source(), action)
     };
-    ctx.core_mut().interaction_mut().drag.finish_bottom_bar(btn);
-    ctx.set_cursor_style(AltCursor::Default);
+    ctx.transition_pointer_interaction(|drag| drag.finish_bottom_bar(btn));
     if let Some(action) = action {
         let arg = crate::types::ButtonArg {
             target: crate::types::ButtonTarget::BottomBar,

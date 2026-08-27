@@ -6,8 +6,6 @@ use std::collections::HashMap;
 pub struct PerTagState {
     pub master_count: usize,
     pub show_bar: bool,
-    /// Whether the bottom (gesture) strip is shown on this tag mask.
-    pub show_bottom_bar: bool,
     pub presentation: crate::layouts::PresentationMode,
     /// Live manual tiling topology of the *active* layout slot for this exact
     /// visible tag mask. Every tree edit applies here, whatever the layout.
@@ -26,16 +24,15 @@ pub struct PerTagState {
 
 impl Default for PerTagState {
     fn default() -> Self {
-        Self::new(true, false)
+        Self::new(true)
     }
 }
 
 impl PerTagState {
-    pub fn new(show_bar: bool, show_bottom_bar: bool) -> Self {
+    pub fn new(show_bar: bool) -> Self {
         Self {
             master_count: 1,
             show_bar,
-            show_bottom_bar,
             presentation: crate::layouts::PresentationMode::Tiled,
             layout_tree: crate::layouts::tree::LayoutTree::default(),
             active_preset: crate::layouts::tree::Preset::MasterStack,

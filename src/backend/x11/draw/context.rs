@@ -25,7 +25,7 @@ use std::ptr;
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
 use std::cmp::min;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use super::color::{Color, ColorScheme, Cursor};
 use super::ffi::{
@@ -38,9 +38,10 @@ use super::ffi::{
     XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMoveResizeWindow,
     XOpenDisplay, XPutImage, XRenderColor, XRenderComposite, XRenderCreatePicture,
     XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture, XSetForeground,
-    XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw,
-    XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch,
-    XftFontOpenName, XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
+    XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue,
+    XftColorFree, XftDraw, XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose,
+    XftFontMatch, XftFontOpenName, XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8,
+    XlibGc, Z_PIXMAP,
 };
 use super::font::Fnt;
 
@@ -49,6 +50,24 @@ use crate::types::Rect as WmRect;
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
 /// find a fallback font for the same unrenderable character.
 const NOMATCHES_LEN: usize = 64;
+const TEXT_WIDTH_CACHE_LIMIT: usize = 2048;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct BarSchemeKey {
+    foreground: [u32; 4],
+    background: [u32; 4],
+    detail: [u32; 4],
+}
+
+impl From<&crate::bar::paint::BarScheme> for BarSchemeKey {
+    fn from(scheme: &crate::bar::paint::BarScheme) -> Self {
+        Self {
+            foreground: scheme.foreground.into_array().map(f32::to_bits),
+            background: scheme.background.into_array().map(f32::to_bits),
+            detail: scheme.detail.into_array().map(f32::to_bits),
+        }
+    }
+}
 
 // ── DrawContext ──────────────────────────────────────────────────────────────────────
 
@@ -71,9 +90,17 @@ pub struct DrawContext {
     /// it to the real window.
     pub(super) drawable: Drawable,
     pub(super) gc: XlibGc,
+    /// Xft surface bound to `drawable`, reused by every text cell until the
+    /// backing pixmap changes.
+    pub(super) xft_draw: *mut XftDraw,
 
     /// Active color scheme.
     scheme: Option<ColorScheme>,
+
+    /// Bar colors allocated on this X display. Keeping this cache with the
+    /// owning context avoids allocating the same Xft colors on every redraw.
+    bar_scheme_cache: HashMap<BarSchemeKey, ColorScheme>,
+    allocated_colors: Vec<XftColor>,
 
     /// Loaded fontset (vector of fonts for fallback chain).
     pub fonts: Option<Vec<Fnt>>,
@@ -84,9 +111,13 @@ pub struct DrawContext {
 
     /// Ring buffer of codepoints for which no fallback font was found.
     nomatches: VecDeque<u32>,
+    text_width_cache: HashMap<String, u32>,
+    text_width_insertion_order: VecDeque<String>,
 
-    /// Cached pixel width of `"..."` for the current fontset.
-    ellipsis_width: u32,
+    /// Letter-spacing (px) applied to a font-run's first glyph when it follows
+    /// an inline icon, giving icons symmetric breathing room; see
+    /// [`crate::bar::text::boundary_gap_between`].
+    icon_gap_px: u32,
 
     /// `true` only for the *original* `DrawContext` — clones do **not** own resources.
     owns_resources: bool,
@@ -108,13 +139,19 @@ impl Clone for DrawContext {
             root: self.root,
             drawable: self.drawable,
             gc: self.gc,
+            xft_draw: self.xft_draw,
             scheme: self.scheme.clone(),
+            bar_scheme_cache: self.bar_scheme_cache.clone(),
+            // A shallow context borrows color handles owned by the original.
+            allocated_colors: Vec::new(),
             fonts: self.fonts.clone(),
             depth: self.depth,
             visual: self.visual,
             colormap: self.colormap,
             nomatches: self.nomatches.clone(),
-            ellipsis_width: self.ellipsis_width,
+            text_width_cache: self.text_width_cache.clone(),
+            text_width_insertion_order: self.text_width_insertion_order.clone(),
+            icon_gap_px: self.icon_gap_px,
             owns_resources: false,
         }
     }
@@ -126,9 +163,18 @@ impl Drop for DrawContext {
         // calls `XftFontClose`, which requires a live display.
         self.fonts.take();
 
-        // SAFETY: only the owning instance frees resources.
+        // Every context frees colors it allocated itself; only the original
+        // context owns the shared pixmap, GC, fonts, and display connection.
         unsafe {
+            if !self.display.is_null() {
+                for color in &mut self.allocated_colors {
+                    XftColorFree(self.display, self.visual, self.colormap, color);
+                }
+            }
             if self.owns_resources && !self.display.is_null() {
+                if !self.xft_draw.is_null() {
+                    XftDrawDestroy(self.xft_draw);
+                }
                 XFreePixmap(self.display, self.drawable);
                 XFreeGC(self.display, self.gc);
                 XCloseDisplay(self.display);
@@ -207,6 +253,14 @@ impl DrawContext {
 
             XSetLineAttributes(display, gc, 1, 0, 0, 0);
 
+            let xft_draw = XftDrawCreate(display, drawable, visual, colormap);
+            if xft_draw.is_null() {
+                XFreeGC(display, gc);
+                XFreePixmap(display, drawable);
+                XCloseDisplay(display);
+                return Err("cannot create Xft drawing surface".to_string());
+            }
+
             Ok(Self {
                 w: 1,
                 h: 1,
@@ -215,13 +269,18 @@ impl DrawContext {
                 root,
                 drawable,
                 gc,
+                xft_draw,
                 scheme: None,
+                bar_scheme_cache: HashMap::new(),
+                allocated_colors: Vec::new(),
                 fonts: None,
                 depth: depth as u8,
                 visual,
                 colormap,
                 nomatches: VecDeque::with_capacity(NOMATCHES_LEN),
-                ellipsis_width: 0,
+                text_width_cache: HashMap::new(),
+                text_width_insertion_order: VecDeque::new(),
+                icon_gap_px: 0,
                 owns_resources: true,
             })
         }
@@ -275,15 +334,28 @@ impl DrawContext {
         if w == 0 || h == 0 {
             return;
         }
+        if self.w == w && self.h == h {
+            return;
+        }
         unsafe {
             let new_drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
             if new_drawable == 0 {
                 return;
             }
+            let new_xft_draw =
+                XftDrawCreate(self.display, new_drawable, self.visual, self.colormap);
+            if new_xft_draw.is_null() {
+                XFreePixmap(self.display, new_drawable);
+                return;
+            }
+            if !self.xft_draw.is_null() {
+                XftDrawDestroy(self.xft_draw);
+            }
             if self.drawable != 0 {
                 XFreePixmap(self.display, self.drawable);
             }
             self.drawable = new_drawable;
+            self.xft_draw = new_xft_draw;
         }
         self.w = w;
         self.h = h;
@@ -501,13 +573,31 @@ impl DrawContext {
         self.scheme = Some(scheme);
     }
 
+    /// Select a backend-neutral bar scheme, allocating each distinct Xft color
+    /// at most once for the lifetime of this display connection.
+    pub(crate) fn set_bar_scheme(&mut self, scheme: &crate::bar::paint::BarScheme) {
+        let key = BarSchemeKey::from(scheme);
+        let allocated = if let Some(existing) = self.bar_scheme_cache.get(&key) {
+            existing.clone()
+        } else {
+            let allocated = ColorScheme {
+                fg: self.clr_create_rgba(scheme.foreground),
+                bg: self.clr_create_rgba(scheme.background),
+                detail: self.clr_create_rgba(scheme.detail),
+            };
+            self.bar_scheme_cache.insert(key, allocated.clone());
+            allocated
+        };
+        self.set_scheme(allocated);
+    }
+
     /// Read-only access to the active color scheme, if one is set.
     pub fn get_scheme(&self) -> Option<&ColorScheme> {
         self.scheme.as_ref()
     }
 
     /// Allocate a single color by name (e.g. `"#ff0000"` or `"red"`).
-    pub fn clr_create(&self, clrname: &str) -> Result<Color, String> {
+    pub fn clr_create(&mut self, clrname: &str) -> Result<Color, String> {
         if self.display.is_null() {
             return Err("X11 display not available".to_string());
         }
@@ -534,6 +624,7 @@ impl DrawContext {
             if ok == 0 {
                 return Err(format!("cannot allocate color '{}'", clrname));
             }
+            self.allocated_colors.push(color.clone());
             // Xlib drops the high byte; restore the full alpha.
             color.pixel |= 0xff << 24;
         }
@@ -541,7 +632,7 @@ impl DrawContext {
         Ok(Color { color })
     }
 
-    pub fn clr_create_rgba(&self, rgba: crate::types::color::Rgba) -> Color {
+    pub fn clr_create_rgba(&mut self, rgba: crate::types::color::Rgba) -> Color {
         let clamp = |v: f32| -> u16 {
             let v = v.clamp(0.0, 1.0);
             (v * 65535.0).round() as u16
@@ -570,6 +661,7 @@ impl DrawContext {
                 &mut color,
             );
             if ok != 0 {
+                self.allocated_colors.push(color.clone());
                 color.pixel |= 0xff << 24;
             }
         }
@@ -580,7 +672,7 @@ impl DrawContext {
     /// Allocate a color scheme from a slice of color name strings.
     ///
     /// Requires exactly 3 colors: foreground, background, detail.
-    pub fn scm_create(&self, clrnames: &[&str]) -> Result<ColorScheme, String> {
+    pub fn scm_create(&mut self, clrnames: &[&str]) -> Result<ColorScheme, String> {
         if clrnames.len() != 3 {
             return Err(format!(
                 "scm_create requires exactly 3 colors (fg, bg, detail), got {}",
@@ -618,30 +710,53 @@ impl DrawContext {
 // ── Font / fontset management ─────────────────────────────────────────────────
 
 impl DrawContext {
-    /// Load a fontset from an ordered list of font name strings.
+    /// Set the pixel gap inserted before a font-run whose first glyph borders
+    /// an inline icon (symmetric nerd-font breathing room). Measured from the
+    /// configured text size; see [`crate::bar::text::icon_boundary_pad_px`].
+    pub fn set_icon_gap_px(&mut self, gap_px: u32) {
+        self.icon_gap_px = gap_px;
+    }
+
+    /// Load a fontset from role-tagged font name strings.
     ///
-    /// Fonts are stored in the order given; the first font is tried first when
-    /// rendering each glyph. Success guarantees a non-empty active fontset.
-    pub fn fontset_create(&mut self, font_names: &[&str]) -> Result<(), String> {
+    /// Role metadata survives missing faces, so the renderer never relies on
+    /// a fragile "second successfully loaded font is icons" convention.
+    pub(crate) fn fontset_create(
+        &mut self,
+        font_names: &[(crate::bar::text::FontRole, &str)],
+    ) -> Result<(), String> {
         if self.display.is_null() {
             return Err("cannot load fonts without an X11 display".to_string());
         }
         let mut fonts = Vec::new();
-        for &name in font_names {
-            if let Some(fnt) = self.load_font_by_name(name)? {
+        for &(role, name) in font_names {
+            if let Some(fnt) = self.load_font_by_name(role, name)? {
                 fonts.push(fnt);
             }
         }
         if fonts.is_empty() {
             return Err("none of the configured fonts could be loaded".to_string());
         }
+        for &(role, name) in font_names {
+            if !fonts.iter().any(|font| font.role == role) {
+                return Err(format!(
+                    "configured {role:?} font '{name}' could not be loaded"
+                ));
+            }
+        }
         self.fonts = Some(fonts);
+        self.text_width_cache.clear();
+        self.text_width_insertion_order.clear();
         Ok(())
     }
 
     /// Load a single font by name string, returning a [`Fnt`].
-    fn load_font_by_name(&self, name: &str) -> Result<Option<Fnt>, String> {
-        self.xfont_create(Some(name), None)
+    fn load_font_by_name(
+        &self,
+        role: crate::bar::text::FontRole,
+        name: &str,
+    ) -> Result<Option<Fnt>, String> {
+        self.xfont_create(role, Some(name), None)
     }
 
     /// Core font-loading helper: either open by name or by Fontconfig pattern.
@@ -649,6 +764,7 @@ impl DrawContext {
     /// Exactly one of `fontname` / `fontpattern` must be `Some`.
     pub(super) fn xfont_create(
         &self,
+        role: crate::bar::text::FontRole,
         fontname: Option<&str>,
         fontpattern: Option<*mut FcPattern>,
     ) -> Result<Option<Fnt>, String> {
@@ -688,6 +804,7 @@ impl DrawContext {
         let (ascent, descent) = unsafe { ((*xfont).ascent, (*xfont).descent) };
 
         Ok(Some(Fnt {
+            role,
             display: self.display,
             h: (ascent + descent) as u32,
             xfont,
@@ -709,8 +826,20 @@ impl DrawContext {
         if self.fonts.is_none() || text.is_empty() {
             return 0;
         }
+        if let Some(width) = self.text_width_cache.get(text) {
+            return *width;
+        }
         // `text(x=0, y=0, w=0, h=0, …)` measures without rendering.
-        self.text(WmRect::default(), 0, text, false, 0) as u32
+        let width = self.text(WmRect::default(), 0, text, false, 0) as u32;
+        if self.text_width_cache.len() >= TEXT_WIDTH_CACHE_LIMIT
+            && let Some(oldest) = self.text_width_insertion_order.pop_front()
+        {
+            self.text_width_cache.remove(oldest.as_str());
+        }
+        let owned = text.to_owned();
+        self.text_width_cache.insert(owned.clone(), width);
+        self.text_width_insertion_order.push_back(owned);
+        width
     }
 
     /// Like [`fontset_getwidth`] but clamped to at most `n` pixels.

@@ -64,6 +64,7 @@ pub(crate) fn hit_test(
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
+    let scaled_hit_width = |value: i32| ((value as f64 * monitor.ui_scale).round() as i32).max(1);
     if is_selected_monitor
         && let Some(BarOverlayHit::TrayMenu { start, end, slots }) = &hit.overlay
         && local_x >= *start
@@ -110,8 +111,10 @@ pub(crate) fn hit_test(
     for r in &hit.title_ranges {
         if local_x >= r.start && local_x < r.end {
             let this_width = (r.end - r.start).max(0);
-            let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
-            if monitor.selected == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
+            let resize_start = r.start + this_width - scaled_hit_width(RESIZE_WIDGET_WIDTH);
+            if monitor.selected == Some(r.win)
+                && local_x < r.start + scaled_hit_width(CLOSE_BUTTON_HIT_WIDTH)
+            {
                 return BarPosition::CloseButton(r.win);
             }
             if monitor.selected == Some(r.win) && local_x >= resize_start {

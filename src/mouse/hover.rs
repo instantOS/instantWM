@@ -1,68 +1,101 @@
-//! Hover-resize: cursor feedback and click-to-resize/move/close near floating
-//! windows.
+//! Hover-resize: cursor feedback and click-to-resize around floating windows
+//! and in gaps between tiled windows.
 //!
 //! When the pointer hovers just outside a floating window's border, the root
 //! cursor changes to a resize shape.  A left-click then starts an interactive
 //! resize (or move, when the cursor is at the window's top-middle edge);
 //! a right-click always starts a move; a middle-click closes the window.
 //! Moving further away deactivates the mode.
+//! An adjustable inner tiling gap instead offers the corresponding tree seam;
+//! dragging either primary button there has the same layout effect as a
+//! Super+right-button resize on the adjacent tile.
 //!
-//! The hover-offer *model* is shared; committing it to an interaction is a
-//! backend concern (X11 commits through its modal grab loop in
-//! `backend/x11/grab.rs`, Wayland through implicit pointer grabs).
+//! The hover-offer model is authoritative: cursor presentation and pointer
+//! routing are derived from it and reconciled by the active backend. Committing
+//! an offer remains a transport concern (X11 uses its modal interaction loop;
+//! Wayland uses compositor-owned pointer input).
 //!
 //! ## Entry points
 //!
 //! | Function                                      | Called from          | Purpose                                    |
 //! |-----------------------------------------------|----------------------|--------------------------------------------|
-//! | [`update_floating_resize_offer_at`]           | X11 motion           | Update resize offer + cursor, may focus    |
-//! | [`update_any_floating_resize_offer_at`]       | Wayland motion       | Any-window offer + cursor, focus untouched |
+//! | [`update_resize_offer_with_focus_at`]         | X11 motion           | Update resize offer + cursor, may focus    |
+//! | [`update_resize_offer_at`]                    | Wayland motion       | Update resize offer + cursor only          |
 
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
 use crate::model::WmModel;
-use crate::types::{AltCursor, Point, Rect, ResizeDirection, WindowId};
+use crate::types::{Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
 
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
 // Pure hover-offer state lives on [`crate::core_state::HoverOffer`] /
-// [`crate::core_state::DragState`]; these functions apply the matching cursor.
+// [`crate::core_state::PointerInteractionState`]; these functions reconcile its derived
+// presentation after each transition.
 
 /// Window and direction selected by the resize-border hit test.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HoverResizeTarget {
+pub struct HoverResizeHit {
     pub win: WindowId,
     pub dir: ResizeDirection,
     pub geo: Rect,
 }
 
-/// Activate a resize hover offer and apply the matching cursor.
-fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
-    ctx.core_mut()
-        .state_mut()
-        .interaction
-        .drag
-        .set_hover_offer(HoverOffer::Resize {
+/// Activate a resize hover offer and reconcile its derived presentation.
+fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeHit) {
+    let changed = ctx.transition_pointer_interaction(|drag| {
+        drag.set_hover_offer(HoverOffer::Resize {
             win: target.win,
             dir: target.dir,
-        });
-    ctx.set_cursor_style(AltCursor::Resize(target.dir));
-}
-
-/// Clear any active hover offer and reset the cursor if the state changed.
-pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
-    if ctx.core_mut().interaction_mut().drag.clear_hover_offer() {
-        ctx.set_cursor_style(crate::types::AltCursor::Default);
+        })
+    });
+    if !changed {
+        // Retry a previously failed native projection while the offer remains
+        // authoritative (for example, an X11 grab becoming available).
+        ctx.sync_interaction_projection();
     }
 }
 
-fn resize_target_for_window(
-    model: &WmModel,
-    win: WindowId,
-    root: Point,
-) -> Option<HoverResizeTarget> {
+fn offer_tree_resize(ctx: &mut WmCtx, win: WindowId, direction: ResizeDirection) {
+    let changed = ctx.transition_pointer_interaction(|drag| {
+        drag.set_hover_offer(HoverOffer::TreeResize {
+            win,
+            dir: direction,
+        })
+    });
+    if !changed {
+        ctx.sync_interaction_projection();
+    }
+}
+
+/// Update the passive resize offer at a pointer position without applying
+/// hover-focus policy. Returns the window owning the offered resize seam.
+pub fn update_resize_offer_at(ctx: &mut WmCtx, root: Point) -> Option<WindowId> {
+    if let Some(target) = hover_resize_target_at(ctx.core().model(), root) {
+        offer_hover_resize(ctx, target);
+        return Some(target.win);
+    }
+    if let Some((win, resize)) = crate::layouts::manager::pointer_tree_gap_resize_start(ctx, root) {
+        offer_tree_resize(ctx, win, resize.direction);
+        return Some(win);
+    }
+    clear_hover_offer(ctx);
+    None
+}
+
+/// Clear any active hover offer and reconcile the resulting presentation.
+pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
+    // Reconciliation is intentionally unconditional so native state can heal
+    // even after a redundant logical clear.
+    let changed = ctx.transition_pointer_interaction(|drag| drag.clear_hover_offer());
+    if !changed {
+        ctx.sync_interaction_projection();
+    }
+}
+
+fn resize_target_for_window(model: &WmModel, win: WindowId, root: Point) -> Option<HoverResizeHit> {
     let view = model.client_view(win)?;
     let c = view.client;
     let mon = view.monitor;
@@ -80,7 +113,7 @@ fn resize_target_for_window(
     }
 
     let hit = c.geo.local_point(root);
-    Some(HoverResizeTarget {
+    Some(HoverResizeHit {
         win,
         dir: ResizeDirection::from_hit(c.geo.size(), hit),
         geo: c.geo,
@@ -90,7 +123,7 @@ fn resize_target_for_window(
 // ── Border detection ─────────────────────────────────────────────────────────
 
 /// Return the floating window + direction currently targeted by hover-resize.
-fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTarget> {
+fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit> {
     let point = Rect::new(root.x, root.y, 1, 1);
     let monitor_id = model.monitors.id_intersecting_rect(point)?;
     let mon = model.monitor(monitor_id)?;
@@ -105,10 +138,7 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTar
         .find_map(|win| resize_target_for_window(model, win, root))
 }
 
-pub fn selected_hover_resize_target_at(
-    model: &WmModel,
-    position: Point,
-) -> Option<HoverResizeTarget> {
+pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Option<HoverResizeHit> {
     let win = model.selected_win()?;
     let monitor = model.client_view(win)?.monitor;
     if monitor.bar_contains_y(&model.clients, position.y) {
@@ -130,13 +160,12 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
 
 // ── Motion-notify hook ───────────────────────────────────────────────────────
 
-/// Updates the resize offer when the pointer is in a floating window border.
+/// Updates the resize offer at floating borders and adjustable inner gaps.
 ///
 /// Returns `true` when the pointer is over a resize offer zone and the caller
 /// should stop processing the motion event.
-pub fn update_floating_resize_offer_at(ctx: &mut WmCtx, root: Point) -> bool {
-    if let Some(target) = hover_resize_target_at(ctx.core().model(), root) {
-        offer_hover_resize(ctx, target);
+pub fn update_resize_offer_with_focus_at(ctx: &mut WmCtx, root: Point) -> bool {
+    if let Some(win) = update_resize_offer_at(ctx, root) {
         // This function is only entered from physical X11 motion. The shared
         // mode policy still decides whether the resize offer may move focus.
         // Otherwise the motion handler resolves the actual window beneath the
@@ -146,34 +175,15 @@ pub fn update_floating_resize_offer_at(ctx: &mut WmCtx, root: Point) -> bool {
             .behavior()
             .focus_follows_mouse
             .allows(crate::types::HoverFocusTrigger::PointerMotion)
-            && ctx.core().model().selected_win() != Some(target.win)
+            && ctx.core().model().selected_win() != Some(win)
             && !has_visible_tiled_client(ctx.core().model());
 
         if should_focus {
-            crate::focus::focus(ctx, Some(target.win));
+            crate::focus::focus(ctx, Some(win));
         }
         return true;
     }
-
-    clear_hover_offer(ctx);
     false
-}
-
-/// Update the resize offer scanning every visible floating window.
-///
-/// This is the Wayland motion path: hovering just outside *any* floating
-/// window's border arms the resize offer and projects the matching cursor —
-/// X11 parity for `update_floating_resize_offer_at`, minus its focus side
-/// effects (Wayland decides hover focus separately).
-///
-/// Returns the window whose border is being offered, if any.
-pub fn update_any_floating_resize_offer_at(ctx: &mut WmCtx, position: Point) -> Option<WindowId> {
-    let Some(target) = hover_resize_target_at(ctx.core().model(), position) else {
-        clear_hover_offer(ctx);
-        return None;
-    };
-    offer_hover_resize(ctx, target);
-    Some(target.win)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,18 +205,18 @@ pub fn set_sidebar_offer(
     target: Option<crate::types::SidebarTarget>,
 ) -> SidebarOfferUpdate {
     if let Some(target) = target {
-        ctx.core_mut()
-            .state_mut()
-            .interaction
-            .drag
-            .set_hover_offer(HoverOffer::Sidebar(target));
-        // Always project the cursor. Gesture completion can leave the same
-        // logical offer in place while changing the active cursor override.
-        ctx.set_cursor_style(AltCursor::VerticalAdjust);
+        // Always reconcile. Gesture completion can leave the same logical
+        // offer in place while ending a higher-priority captured interaction.
+        let changed = ctx.transition_pointer_interaction(|drag| {
+            drag.set_hover_offer(HoverOffer::Sidebar(target))
+        });
+        if !changed {
+            ctx.sync_interaction_projection();
+        }
         return SidebarOfferUpdate::Active;
     }
 
-    if ctx.core().interaction().drag.hover_offer.is_sidebar() {
+    if ctx.core().interaction().drag.hover_offer().is_sidebar() {
         clear_hover_offer(ctx);
         return SidebarOfferUpdate::Cleared;
     }

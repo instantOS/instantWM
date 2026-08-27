@@ -1,6 +1,6 @@
 //! Backend-neutral interactive resize policy and geometry helpers.
 //!
-//! Recognition creates a shared `DragInteraction`; native backends only feed
+//! Recognition creates a shared `ActiveWindowDrag`; native backends only feed
 //! normalized input to it. Free and aspect-preserving resize therefore use
 //! identical geometry and lifecycle behavior on X11 and Wayland.
 

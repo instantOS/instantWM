@@ -55,7 +55,7 @@ pub struct Monitor {
     pub tag_set: [TagMask; 2],
     /// Whether to show the bar.
     pub show_bar: bool,
-    /// Whether the bottom bar is enabled for this monitor (config default).
+    /// Whether the bottom bar is shown (single global session setting).
     pub show_bottom_bar: bool,
     /// Bar window handle.
     pub bar_win: WindowId,
@@ -213,17 +213,10 @@ impl Monitor {
         self.shows_bar() && !self.has_real_fullscreen(clients)
     }
 
-    /// Whether this monitor draws the bottom bar, independent of the top bar.
+    /// Whether this monitor draws the bottom bar. The state is global and
+    /// deliberately not per-tag: toggling it applies to every tag.
     pub fn shows_bottom_bar(&self) -> bool {
-        self.show_bottom_bar_for_mask(self.selected_tags())
-    }
-
-    /// Returns bottom bar state for the given tag mask.
-    pub fn show_bottom_bar_for_mask(&self, mask: TagMask) -> bool {
-        self.per_tag
-            .get(&mask)
-            .map(|s| s.show_bottom_bar)
-            .unwrap_or(self.show_bottom_bar)
+        self.show_bottom_bar
     }
 
     /// Check whether the bottom bar is visible on this monitor.
@@ -323,10 +316,9 @@ impl Monitor {
     pub fn per_tag_state(&mut self) -> &mut PerTagState {
         let mask = self.selected_tags();
         let default_show_bar = self.show_bar;
-        let default_show_bottom_bar = self.show_bottom_bar;
         self.per_tag
             .entry(mask)
-            .or_insert_with(|| PerTagState::new(default_show_bar, default_show_bottom_bar))
+            .or_insert_with(|| PerTagState::new(default_show_bar))
     }
 
     /// Read the current pertag state, returning `None` if no entry exists yet.

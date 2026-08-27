@@ -57,11 +57,8 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.core().model().selected_win();
-    let (win_start_geo, drop_restore_geo) = match ctx.core().model().client(win) {
-        Some(c) => {
-            let restore = c.saved_floating_rect().unwrap_or(c.geo);
-            (c.geo, restore)
-        }
+    let drop_restore_geo = match ctx.core().model().client(win) {
+        Some(c) => c.saved_floating_rect().unwrap_or(c.geo),
         None => return false,
     };
     let was_hidden = ctx
@@ -69,22 +66,20 @@ pub fn title_drag_begin(
         .model()
         .client(win)
         .is_some_and(|client| client.is_hidden);
-    ctx.core_mut()
-        .interaction_mut()
-        .drag
-        .arm_title_drag(crate::core_state::ArmedDragParams {
+    ctx.transition_pointer_interaction(|drag| {
+        drag.arm_title_drag(crate::core_state::ArmedDragStart {
             win,
             button: btn,
             origin,
             source,
             start: click_root,
-            geometry: win_start_geo,
             restore_geometry: drop_restore_geo,
             was_focused: sel == Some(win),
             was_hidden,
             suppress_click_action,
         })
         .is_ok()
+    })
 }
 
 /// Shared move-start policy for title-bar / Super+client left-click drags.
@@ -162,7 +157,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
             // Tree resize owns an initial tree snapshot, so replace the armed
             // click with the authoritative resize interaction after the drag
             // threshold has been crossed.
-            let _ = ctx.core_mut().interaction_mut().drag.finish_armed();
+            ctx.transition_pointer_interaction(|drag| drag.finish_armed());
             resize_from_point(ctx, win, btn, source, point);
             return true;
         }
@@ -186,26 +181,12 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
             return true;
         };
 
-        let activated = match ctx {
-            WmCtx::X11(x11) => activate_armed_resize(
-                &mut x11.core.interaction_mut().drag,
-                &x11.x11,
-                dir,
-                warp_point,
-                current_geo,
-            ),
-            WmCtx::Wayland(wayland) => activate_armed_resize(
-                &mut wayland.core.interaction_mut().drag,
-                wayland.wayland,
-                dir,
-                warp_point,
-                current_geo,
-            ),
-        };
+        let activated = ctx.transition_pointer_interaction(|drag| {
+            activate_armed_resize(drag, dir, warp_point, current_geo)
+        });
         if activated.is_err() {
             return false;
         }
-        ctx.set_cursor_style(AltCursor::Resize(dir));
         return true;
     }
 
@@ -217,15 +198,11 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     };
 
     if ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .activate_armed(crate::core_state::ArmedDragType::Move, start, current_geo)
+        .transition_pointer_interaction(|drag| drag.activate_armed_move(start, current_geo))
         .is_err()
     {
         return false;
     }
-    ctx.set_cursor_style(AltCursor::Move);
     true
 }
 
@@ -242,10 +219,7 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     };
 
     if root.manhattan_distance(&armed.start_point()) <= DRAG_THRESHOLD {
-        ctx.core_mut()
-            .interaction_mut()
-            .drag
-            .record_interactive_motion(root);
+        ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));
         return false;
     }
 
@@ -306,16 +280,13 @@ fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Op
 /// Promote an armed bar-title press to a live title-strip reorder.
 fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> bool {
     if ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .begin_title_reorder(crate::core_state::TitleReorderDrag::new(monitor_id))
+        .transition_pointer_interaction(|drag| {
+            drag.begin_title_reorder(crate::core_state::TitleReorderDrag::new(monitor_id))
+        })
         .is_err()
     {
         return false;
     }
-    crate::mouse::clear_hover_offer(ctx);
-    ctx.set_cursor_style(AltCursor::HorizontalAdjust);
     ctx.core_mut()
         .bar
         .hover
@@ -343,10 +314,7 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let monitor_id = reorder.monitor_id();
     let source = drag.source();
     let start_point = drag.start_point();
-    ctx.core_mut()
-        .interaction_mut()
-        .drag
-        .record_interactive_motion(root);
+    ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));
 
     match title_strip_target(ctx, monitor_id, root) {
         Some(target) => {
@@ -380,17 +348,13 @@ fn convert_reorder_to_move(
     let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point) else {
         // The window cannot start a move drag (e.g. an edge scratchpad); end
         // the interaction instead of leaving the capture dangling.
-        let _ = ctx.core_mut().interaction_mut().drag.finish_reordering();
-        ctx.set_cursor_style(AltCursor::Default);
+        ctx.transition_pointer_interaction(|drag| drag.finish_reordering());
         ctx.core_mut().bar.hover.clear();
         ctx.request_bar_update();
         return false;
     };
     if ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .activate_reordering_as_move(start, current_geo)
+        .transition_pointer_interaction(|drag| drag.activate_reordering_as_move(start, current_geo))
         .is_err()
     {
         return false;
@@ -399,7 +363,6 @@ fn convert_reorder_to_move(
     // became an ordinary move drag; hover updates resume on the next motion.
     ctx.core_mut().bar.hover.clear();
     ctx.request_bar_update();
-    ctx.set_cursor_style(AltCursor::Move);
     true
 }
 
@@ -414,8 +377,7 @@ pub fn title_reorder_finish(ctx: &mut WmCtx) {
     let root = drag.last_root_point();
     let monitor_id = reorder.monitor_id();
     let position = super::bar_position_on_monitor(ctx, monitor_id, root);
-    ctx.core_mut().interaction_mut().drag.finish_reordering();
-    ctx.set_cursor_style(AltCursor::Default);
+    ctx.transition_pointer_interaction(|drag| drag.finish_reordering());
 
     // Leave the bar in its ordinary hover state. Clearing it unconditionally
     // causes a visible one-frame flash before the next pointer-motion event.
@@ -436,7 +398,7 @@ pub fn title_reorder_finish(ctx: &mut WmCtx) {
 /// Once the drag threshold promotes the interaction to `Active`, the unified
 /// the shared interaction transport handles the drop instead.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
-    let Some(drag) = ctx.core_mut().interaction_mut().drag.finish_armed() else {
+    let Some(drag) = ctx.transition_pointer_interaction(|state| state.finish_armed()) else {
         return;
     };
     let win = drag.win();
@@ -589,10 +551,7 @@ mod tests {
         ));
         let active = wm.core.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.source(), InteractionSource::Pointer);
-        assert!(matches!(
-            active.drag_type(),
-            crate::core_state::DragType::TreeResize(_)
-        ));
+        assert!(active.operation().is_tree_resize());
     }
 
     /// Two tiled clients on a monitor with a visible bar, in bar-presentation
@@ -736,7 +695,10 @@ mod tests {
         assert!(!wm.core.interaction.drag.owns_bar_hover());
         let active = wm.core.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.win(), first);
-        assert_eq!(active.drag_type(), crate::core_state::DragType::Move);
+        assert!(matches!(
+            active.operation(),
+            crate::core_state::ActiveWindowOperation::Move
+        ));
     }
 
     #[test]

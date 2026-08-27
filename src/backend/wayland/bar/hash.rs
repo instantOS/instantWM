@@ -25,15 +25,22 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.rect.y.hash(hasher);
     snapshot.rect.w.hash(hasher);
     snapshot.rect.h.hash(hasher);
-    snapshot.font_size.to_bits().hash(hasher);
-    snapshot.font_families.hash(hasher);
+    snapshot.ui_scale.to_bits().hash(hasher);
+    snapshot.fonts.text_family.hash(hasher);
+    snapshot.fonts.text_size.to_bits().hash(hasher);
+    snapshot.fonts.icon_family.hash(hasher);
+    snapshot.fonts.icon_size.to_bits().hash(hasher);
     snapshot.is_selected_monitor.hash(hasher);
     hash_scheme(hasher, &snapshot.status_scheme);
+    for value in snapshot.status_separator_color.into_array() {
+        value.to_bits().hash(hasher);
+    }
     for value in snapshot.status_hover_color.into_array() {
         value.to_bits().hash(hasher);
     }
     snapshot.startmenu_size.hash(hasher);
     snapshot.horizontal_padding.hash(hasher);
+    snapshot.external_right_width.hash(hasher);
     hash_gesture(hasher, snapshot.gesture);
     snapshot.layout_symbol.hash(hasher);
     snapshot.show_shutdown.hash(hasher);
@@ -42,6 +49,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.tags.len().hash(hasher);
     for tag in &snapshot.tags {
         tag.slot.hash(hasher);
+        tag.tag_index.hash(hasher);
         tag.label.hash(hasher);
         hash_scheme(hasher, &tag.scheme);
     }

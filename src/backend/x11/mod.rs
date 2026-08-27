@@ -164,7 +164,18 @@ impl X11KeyboardMapping {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PointerGrabKind {
+    /// Modal drag/resize loop in [`crate::backend::x11::grab`].
+    Drag,
+    /// Pointer ownership lent to an armed hover-resize offer. Held without a
+    /// modal loop and released as soon as the offer clears; it must never be
+    /// taken from, or released over, an ongoing drag.
+    HoverOffer,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ActivePointerGrab {
+    pub kind: PointerGrabKind,
     pub event_mask: x11rb::protocol::xproto::EventMask,
     pub cursor: crate::types::AltCursor,
 }
@@ -410,12 +421,6 @@ impl WindowOps for X11BackendRef<'_> {
     fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
         crate::backend::WindowProtocol::X11
     }
-}
-
-impl crate::backend::InteractiveResizeOps for X11BackendRef<'_> {
-    fn begin_interactive_resize(&self, _window: WindowId) {}
-
-    fn end_interactive_resize(&self, _window: WindowId) {}
 }
 
 impl PointerOps for X11BackendRef<'_> {

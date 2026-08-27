@@ -66,7 +66,7 @@ pub mod runtime;
 pub mod session;
 pub mod visibility;
 
-use crate::backend::{InteractiveResizeOps, OutputOps, PointerOps, WindowOps, WindowProtocol};
+use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
@@ -420,28 +420,22 @@ fn wayland_cursor_icon(
     }
 }
 
-impl crate::backend::CursorOps for crate::contexts::WmCtxWayland<'_> {
-    fn apply_cursor_style(&mut self, style: crate::types::AltCursor) {
+impl crate::backend::InteractionProjectionOps for crate::contexts::WmCtxWayland<'_> {
+    fn reconcile_interaction_projection(
+        &mut self,
+        desired: crate::core_state::InteractionProjection,
+    ) {
         self.wayland
-            .set_cursor_icon_override(wayland_cursor_icon(style));
+            .set_cursor_icon_override(wayland_cursor_icon(desired.cursor));
+        let _ = self
+            .wayland
+            .with_state(|state| state.reconcile_interactive_resize(desired.active_resize_window));
     }
 }
 
 impl crate::backend::WindowCloseOps for crate::contexts::WmCtxWayland<'_> {
     fn close_window(&mut self, window: WindowId) {
         let _ = self.wayland.close_window(window);
-    }
-}
-
-impl InteractiveResizeOps for WaylandBackend {
-    fn begin_interactive_resize(&self, window: WindowId) {
-        self.with_state(|state| state.begin_interactive_resize(window))
-            .expect("Wayland compositor state must be attached while handling a resize");
-    }
-
-    fn end_interactive_resize(&self, window: WindowId) {
-        self.with_state(|state| state.end_interactive_resize(window))
-            .expect("Wayland compositor state must be attached while handling a resize");
     }
 }
 

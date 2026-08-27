@@ -22,7 +22,7 @@ use smithay::utils::{Physical, Point, Transform};
 use xcursor::CursorTheme;
 use xcursor::parser::{Image, parse_xcursor};
 
-use crate::backend::wayland::render::cursor::CursorPresentation;
+use crate::backend::wayland::render::cursor::ResolvedCursor;
 
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("cursor.rgba");
 
@@ -273,16 +273,16 @@ impl CursorManager {
     pub fn render_element(
         &self,
         pointer_location: Point<f64, smithay::utils::Logical>,
-        presentation: &CursorPresentation,
+        presentation: &ResolvedCursor,
         scale: i32,
         millis: u32,
         renderer: &mut GlesRenderer,
     ) -> Option<TextureRenderElement<GlesTexture>> {
         let icon = match presentation {
-            CursorPresentation::Hidden => return None,
-            CursorPresentation::Named(icon) => *icon,
-            CursorPresentation::Surface { .. } => return None,
-            CursorPresentation::DndIcon { cursor, .. } => {
+            ResolvedCursor::Hidden => return None,
+            ResolvedCursor::Named(icon) => *icon,
+            ResolvedCursor::Surface { .. } => return None,
+            ResolvedCursor::DndIcon { cursor, .. } => {
                 return self.render_element(pointer_location, cursor, scale, millis, renderer);
             }
         };

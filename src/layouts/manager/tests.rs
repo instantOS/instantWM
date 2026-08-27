@@ -1,6 +1,7 @@
 use super::{
     available_tree_resize_direction, clients_with_planned_borders, compute_monitor_z_order,
-    manual_tree_pointer_interaction_allowed, pointer_tree_resize_allowed, shifted_master_count,
+    manual_tree_pointer_interaction_allowed, pointer_tree_gap_resize_start,
+    pointer_tree_resize_allowed, shifted_master_count,
 };
 use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
@@ -44,6 +45,72 @@ fn add_tiled_monitor(
     monitor.clients.push(win);
     monitor.selected = Some(win);
     monitor_id
+}
+
+#[test]
+fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    wm.core.behavior.animated = false;
+    wm.core.config.layout.inner_gap = 20;
+    wm.core.config.layout.outer_gap = 20;
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let monitor_id = add_tiled_monitor(&mut wm, first, Rect::new(0, 0, 800, 600));
+    assert!(wm.core.model.insert_client(Client {
+        win: second,
+        monitor_id,
+        tags: TagMask::single(1).unwrap(),
+        mode: ClientMode::tiled(),
+        ..Client::default()
+    }));
+    wm.core
+        .model
+        .monitor_mut(monitor_id)
+        .unwrap()
+        .clients
+        .push(second);
+    super::arrange(&mut wm.ctx(), Some(monitor_id));
+
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let geom = super::arrange::compute_tiling_geometry(
+        monitor,
+        &wm.core.model.clients,
+        &wm.core.config.layout,
+        wm.core.config.window.resize_hints,
+        wm.core.derived.bar_height,
+    )
+    .unwrap();
+    let first_geo = geom.placement.client_rect(geom.slots[&first], 0);
+    let second_geo = geom.placement.client_rect(geom.slots[&second], 0);
+    let gap = if first_geo.right() <= second_geo.x {
+        Point::new((first_geo.right() + second_geo.x) / 2, first_geo.center().y)
+    } else if second_geo.right() <= first_geo.x {
+        Point::new(
+            (second_geo.right() + first_geo.x) / 2,
+            second_geo.center().y,
+        )
+    } else if first_geo.bottom() <= second_geo.y {
+        Point::new(
+            first_geo.center().x,
+            (first_geo.bottom() + second_geo.y) / 2,
+        )
+    } else {
+        Point::new(
+            second_geo.center().x,
+            (second_geo.bottom() + first_geo.y) / 2,
+        )
+    };
+
+    assert!(
+        pointer_tree_gap_resize_start(&wm.ctx(), gap).is_some(),
+        "first={first_geo:?} second={second_geo:?} gap={gap:?}"
+    );
+    assert!(
+        pointer_tree_gap_resize_start(&wm.ctx(), Point::new(10, first_geo.center().y)).is_none(),
+        "the configured outer gap must retain root/desktop behavior"
+    );
 }
 
 #[test]
@@ -255,7 +322,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
     wm.core
         .interaction
         .drag
-        .begin_tree_resize(crate::core_state::TreeResizeParams {
+        .begin_tree_resize(crate::core_state::TreeResizeStart {
             win: first,
             button: MouseButton::Right,
             source: InteractionSource::Pointer,

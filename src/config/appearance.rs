@@ -3,11 +3,34 @@
 //! Backends consume the resolved, typed colour tables. Theme selection and
 //! user overrides are handled while loading TOML, before runtime state exists.
 
-use crate::config::config_toml::{ColorConfig, ColorTheme};
+use crate::config::config_toml::ColorTheme;
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba, Rgba,
     StatusColorConfig, TagColorConfigs, TagColorSet, WindowColorConfigs, WindowColorSet,
 };
+use serde::{Deserialize, Serialize};
+
+/// Every colour table the window manager consumes.
+///
+/// A single definition serves both the `[colors]` TOML section and runtime
+/// state ([`crate::core_state::EffectiveConfig`]), so parsing and consumption
+/// cannot drift apart. Per-monitor tag sets copy [`TagColorConfigs`] out of
+/// `tag` at monitor creation time; everything else is read directly.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ColorConfig {
+    pub tag: TagColorConfigs,
+    pub window: WindowColorConfigs,
+    pub close_button: CloseButtonColorConfigs,
+    pub border: BorderColorConfig,
+    pub status: StatusColorConfig,
+}
+
+impl Default for ColorConfig {
+    fn default() -> Self {
+        ColorTheme::default().into()
+    }
+}
 
 #[derive(Clone, Copy)]
 struct Accent {
@@ -288,17 +311,11 @@ impl From<ColorTheme> for ColorConfig {
                 fg: p.foreground,
                 bg: p.background,
                 detail: p.background,
+                separator: p.surface,
                 hover: p.primary.hover_fill,
             },
         }
     }
-}
-
-pub fn get_fonts() -> Vec<String> {
-    vec![
-        "Inter-Regular:size=12".into(),
-        "Fira Code Nerd Font:size=12".into(),
-    ]
 }
 
 #[cfg(test)]
@@ -328,6 +345,23 @@ mod tests {
             assert_ne!(
                 status.hover, status.bg,
                 "{} status hover must contrast with the bar background",
+                theme
+            );
+        }
+    }
+
+    #[test]
+    fn every_builtin_status_separator_is_muted_and_visible() {
+        for theme in ColorTheme::ALL {
+            let status = ColorConfig::from(*theme).status;
+            assert_ne!(
+                status.separator, status.bg,
+                "{} status separator must contrast with the bar background",
+                theme
+            );
+            assert_ne!(
+                status.separator, status.fg,
+                "{} status separator must be muted relative to foreground text",
                 theme
             );
         }

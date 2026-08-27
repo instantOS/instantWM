@@ -1,5 +1,6 @@
 use crate::client::PendingLaunch;
 use crate::config::ModeConfig;
+use crate::config::appearance::ColorConfig;
 use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
@@ -108,15 +109,6 @@ impl Default for SystrayConfig {
     }
 }
 
-/// Colour schemes for various UI elements.
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ColorConfig {
-    pub window: WindowColorConfigs,
-    pub close_button: CloseButtonColorConfigs,
-    pub border: BorderColorConfig,
-    pub status_bar: StatusColorConfig,
-}
-
 /// Keybindings, mouse buttons, modes, and client rules.
 #[derive(Clone, Default)]
 pub struct BindingConfig {
@@ -127,11 +119,18 @@ pub struct BindingConfig {
     pub rules: Vec<Rule>,
 }
 
-/// Font configuration.
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+/// Role-based font configuration shared by every bar backend.
+///
+/// Sizes are logical pixels. Keeping the text and icon faces explicit avoids
+/// making font-list order carry rendering semantics and lets both Xft and
+/// cosmic-text apply the same metrics.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct FontConfig {
-    pub fonts: Vec<String>,
-    pub config_font: String,
+    pub text_family: String,
+    pub text_size: f32,
+    pub icon_family: String,
+    pub icon_size: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,42 +140,36 @@ pub struct BarMetrics {
 }
 
 impl FontConfig {
-    /// Extract the first positive `size=N` value, falling back to 14 pixels.
-    pub fn size(&self) -> f32 {
-        self.fonts
-            .iter()
-            .find_map(|font| {
-                let idx = font.find("size=")?;
-                let tail = &font[idx + 5..];
-                let number: String = tail
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '.')
-                    .collect();
-                number.parse::<f32>().ok().filter(|size| *size > 0.0)
-            })
-            .unwrap_or(14.0)
+    pub fn validated(self) -> Result<Self, String> {
+        for (field, family) in [
+            ("text_family", self.text_family.as_str()),
+            ("icon_family", self.icon_family.as_str()),
+        ] {
+            if family.trim().is_empty() {
+                return Err(format!("fonts.{field} must not be empty"));
+            }
+        }
+        for (field, size) in [("text_size", self.text_size), ("icon_size", self.icon_size)] {
+            if !size.is_finite() || size <= 0.0 {
+                return Err(format!(
+                    "fonts.{field} must be finite and positive, got {size}"
+                ));
+            }
+        }
+        Ok(self)
     }
 
-    /// Return family names stripped of Fontconfig size and style fragments.
-    pub fn families(&self) -> Vec<String> {
-        self.fonts
-            .iter()
-            .filter_map(|font| {
-                let mut family = font.split(':').next()?.trim();
-                for suffix in ["-Regular", "-Medium", "-Bold", "-Light", "-Thin"] {
-                    if let Some(stripped) = family.strip_suffix(suffix) {
-                        family = stripped;
-                        break;
-                    }
-                }
-                (!family.is_empty()).then(|| family.to_string())
-            })
-            .collect()
+    /// Return a copy scaled for a monitor's logical UI scale.
+    pub fn scaled(&self, scale: f32) -> Self {
+        let mut scaled = self.clone();
+        scaled.text_size = (scaled.text_size * scale).max(1.0);
+        scaled.icon_size = (scaled.icon_size * scale).max(1.0);
+        scaled
     }
 
     /// Calculate a comfortable line/cell height for the configured font size.
     pub fn line_height(&self) -> i32 {
-        let size = self.size();
+        let size = self.text_size.max(self.icon_size);
         ((size * 1.3).ceil() as i32).max(size.ceil() as i32 + 2)
     }
 
@@ -194,23 +187,16 @@ impl FontConfig {
             horizontal_padding: font_height,
         }
     }
+}
 
-    /// Xft interprets `size` as points, whereas the shared config defines it
-    /// in pixels. Convert only the size property and preserve every other
-    /// Fontconfig pattern fragment.
-    pub fn xft_pixel_patterns(&self) -> Vec<String> {
-        self.fonts
-            .iter()
-            .map(|font| {
-                font.split(':')
-                    .map(|part| {
-                        part.strip_prefix("size=")
-                            .map_or_else(|| part.to_string(), |size| format!("pixelsize={size}"))
-                    })
-                    .collect::<Vec<_>>()
-                    .join(":")
-            })
-            .collect()
+impl Default for FontConfig {
+    fn default() -> Self {
+        Self {
+            text_family: "Inter".to_string(),
+            text_size: 12.0,
+            icon_family: "Symbols Nerd Font".to_string(),
+            icon_size: 16.0,
+        }
     }
 }
 
@@ -252,11 +238,16 @@ mod font_config_tests {
     #[test]
     fn bar_metrics_are_shared_and_respect_the_visual_minimum() {
         let fonts = FontConfig {
-            fonts: vec!["Inter-Regular:size=12".to_string()],
+            text_size: 12.0,
             ..FontConfig::default()
         };
 
         let automatic = fonts.bar_metrics(0);
+        assert_eq!(
+            fonts.line_height(),
+            21,
+            "the 16px icon face sets the line height"
+        );
         assert_eq!(automatic.horizontal_padding, fonts.line_height());
         assert_eq!(automatic.height, fonts.line_height() + 12);
 
@@ -268,21 +259,22 @@ mod font_config_tests {
     }
 
     #[test]
-    fn xft_patterns_preserve_pixel_sized_shared_font_semantics() {
-        let fonts = FontConfig {
-            fonts: vec![
-                "Inter-Regular:size=12:style=Bold".to_string(),
-                "Symbols Nerd Font:pixelsize=15".to_string(),
-            ],
-            ..FontConfig::default()
-        };
-
-        assert_eq!(
-            fonts.xft_pixel_patterns(),
-            [
-                "Inter-Regular:pixelsize=12:style=Bold",
-                "Symbols Nerd Font:pixelsize=15"
-            ]
+    fn rejects_invalid_role_configuration() {
+        assert!(
+            FontConfig {
+                icon_size: 0.0,
+                ..FontConfig::default()
+            }
+            .validated()
+            .is_err()
+        );
+        assert!(
+            FontConfig {
+                text_family: " ".into(),
+                ..FontConfig::default()
+            }
+            .validated()
+            .is_err()
         );
     }
 }
@@ -303,7 +295,6 @@ pub struct EffectiveConfig {
     pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
-    pub tag_colors: TagColorConfigs,
     /// Resolved keyboard settings. The current layout index remains runtime
     /// interaction state in [`KeyboardLayoutState`].
     pub keyboard: crate::config::config_toml::KeyboardConfig,
@@ -335,7 +326,7 @@ impl Default for EffectiveConfig {
 /// gesture previews) belong here, not as flat `CoreState` fields.
 #[derive(Default, Debug, Clone)]
 pub struct InteractionState {
-    pub drag: DragState,
+    pub drag: PointerInteractionState,
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
     /// Backend-neutral outer rectangle of the active compositor interaction
@@ -787,20 +778,17 @@ pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
     };
     let show_bottom_bar = next.bar.show_bottom;
     let tag_template = next.tag_template.clone();
-    let tag_colors = next.tag_colors.clone();
+    let tag_colors = next.colors.tag.clone();
 
     state.config = next;
     state.interaction.keyboard_layout = keyboard_layout;
     state.model.tags.colors = tag_colors;
     state.model.tags.num_tags = tag_template.len();
 
-    // The file setting is global. Reloading it resets interactive per-tag
-    // overrides so existing outputs immediately match newly created outputs.
+    // The bottom bar state is global. Reloading it resets interactive
+    // toggles so existing outputs immediately match newly created outputs.
     for (_id, monitor) in state.model.monitors_iter_mut() {
         monitor.show_bottom_bar = show_bottom_bar;
-        for per_tag in monitor.per_tag.values_mut() {
-            per_tag.show_bottom_bar = show_bottom_bar;
-        }
         monitor.init_tags(&tag_template);
     }
 }

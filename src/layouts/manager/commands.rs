@@ -21,7 +21,7 @@ fn tree_preset_changes_allowed(ctx: &WmCtx<'_>) -> bool {
         .interaction()
         .drag
         .active_interaction()
-        .is_some_and(|drag| matches!(drag.drag_type(), crate::core_state::DragType::TreeResize(_)))
+        .is_some_and(|drag| drag.operation().is_tree_resize())
 }
 
 /// Result of trying to reorder the selected maximized-stack entry.

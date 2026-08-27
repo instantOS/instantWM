@@ -289,14 +289,36 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Project a cursor style through the active backend.
-    /// Backend implementations suppress redundant native updates.
-    pub fn set_cursor_style(&mut self, style: crate::types::AltCursor) {
-        use crate::backend::CursorOps;
+    /// Reconcile the backend with the presentation derived from authoritative
+    /// interaction state. This is intentionally level-triggered: callers may
+    /// invoke it after any possibly relevant transition without tracking the
+    /// previous native state.
+    pub fn sync_interaction_projection(&mut self) {
+        use crate::backend::InteractionProjectionOps;
+        let desired = self.core().interaction().drag.projection();
         match self {
-            WmCtx::X11(ctx) => ctx.apply_cursor_style(style),
-            WmCtx::Wayland(ctx) => ctx.apply_cursor_style(style),
+            WmCtx::X11(ctx) => ctx.reconcile_interaction_projection(desired),
+            WmCtx::Wayland(ctx) => ctx.reconcile_interaction_projection(desired),
         }
+    }
+
+    /// Commit one pointer-interaction model transition and reconcile whenever
+    /// its derived native presentation changes.
+    ///
+    /// Production interaction mutations should cross this boundary instead of
+    /// mutating `PointerInteractionState` through `CoreCtx`; the closure form makes it
+    /// impossible to return successfully with an unprojected presentation
+    /// change. State-only motion updates avoid redundant backend work.
+    pub fn transition_pointer_interaction<R>(
+        &mut self,
+        transition: impl FnOnce(&mut crate::core_state::PointerInteractionState) -> R,
+    ) -> R {
+        let previous = self.core().interaction().drag.projection();
+        let result = transition(&mut self.core_mut().state_mut().interaction.drag);
+        if self.core().interaction().drag.projection() != previous {
+            self.sync_interaction_projection();
+        }
+        result
     }
 
     /// Ask the active backend to close a managed window gracefully, falling

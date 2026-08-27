@@ -1,38 +1,14 @@
-use crate::backend::x11::draw::{ColorScheme, DrawContext};
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::backend::x11::draw::DrawContext;
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
 use crate::types::{Rect, Size};
-use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct SchemeKey {
-    foreground: [u32; 4],
-    background: [u32; 4],
-    detail: [u32; 4],
+pub struct X11BarPainter<'a> {
+    drw: &'a mut DrawContext,
 }
 
-impl SchemeKey {
-    fn from_scheme(s: &BarScheme) -> Self {
-        Self {
-            foreground: s.foreground.into_array().map(f32::to_bits),
-            background: s.background.into_array().map(f32::to_bits),
-            detail: s.detail.into_array().map(f32::to_bits),
-        }
-    }
-}
-
-pub struct X11BarPainter {
-    drw: DrawContext,
-    scheme: Option<BarScheme>,
-    scheme_cache: HashMap<SchemeKey, ColorScheme>,
-}
-
-impl X11BarPainter {
-    pub fn new(drw: DrawContext) -> Self {
-        Self {
-            drw,
-            scheme: None,
-            scheme_cache: HashMap::new(),
-        }
+impl<'a> X11BarPainter<'a> {
+    pub fn new(drw: &'a mut DrawContext) -> Self {
+        Self { drw }
     }
 
     pub fn map(&self, window: crate::types::WindowId, bounds: Rect) {
@@ -40,33 +16,20 @@ impl X11BarPainter {
     }
 }
 
-impl BarPainter for X11BarPainter {
+impl BarPainter for X11BarPainter<'_> {
     fn text_width(&mut self, text: &str) -> i32 {
         self.drw.fontset_getwidth(text) as i32
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {
-        let key = SchemeKey::from_scheme(&scheme);
-        let cs = if let Some(existing) = self.scheme_cache.get(&key) {
-            existing.clone()
-        } else {
-            let built = ColorScheme {
-                fg: self.drw.clr_create_rgba(scheme.foreground),
-                bg: self.drw.clr_create_rgba(scheme.background),
-                detail: self.drw.clr_create_rgba(scheme.detail),
-            };
-            self.scheme_cache.insert(key, built.clone());
-            built
-        };
-        self.drw.set_scheme(cs);
-        self.scheme = Some(scheme);
+        self.drw.set_bar_scheme(&scheme);
     }
 
-    fn rect(&mut self, bounds: Rect, filled: bool, invert: bool) {
+    fn rect(&mut self, bounds: Rect, invert: bool) {
         if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        self.drw.rect(bounds, filled, invert);
+        self.drw.rect(bounds, true, invert);
     }
 
     fn text(
@@ -76,12 +39,18 @@ impl BarPainter for X11BarPainter {
         text: &str,
         invert: bool,
         detail_height: i32,
+        overflow: TextOverflow,
     ) -> i32 {
         if bounds.w <= 0 || bounds.h <= 0 {
             return bounds.x;
         }
+        let lpad = lpad.max(0).min(bounds.w);
+        let fitted = crate::bar::text::fit_to_width(text, bounds.w - lpad, overflow, |candidate| {
+            self.drw.fontset_getwidth(candidate) as i32
+        });
         self.drw
-            .text(bounds, lpad.max(0) as u32, text, invert, detail_height)
+            .text(bounds, lpad as u32, fitted.as_ref(), invert, detail_height);
+        bounds.right()
     }
 
     fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {

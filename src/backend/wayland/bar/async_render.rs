@@ -164,8 +164,7 @@ fn render_snapshot(
             mon.presentation.status.ensure_items_parsed();
         }
 
-        painter.set_font_size(mon.font_size);
-        painter.set_font_families(&mon.font_families);
+        painter.set_fonts(&mon.fonts);
         painter.begin(Scale::from(1.0), mon.rect);
         let output = scene::render_monitor_snapshot(&mon, painter);
 

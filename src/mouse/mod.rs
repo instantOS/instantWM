@@ -57,8 +57,8 @@ pub use drag::{
 
 pub use hot_corner::update_overlay_hot_corner;
 pub use hover::{
-    SidebarOfferUpdate, clear_hover_offer, set_sidebar_offer, update_any_floating_resize_offer_at,
-    update_floating_resize_offer_at, update_sidebar_offer_at,
+    SidebarOfferUpdate, clear_hover_offer, set_sidebar_offer, update_resize_offer_at,
+    update_resize_offer_with_focus_at, update_sidebar_offer_at,
 };
 
 // ── resize ────────────────────────────────────────────────────────────────────

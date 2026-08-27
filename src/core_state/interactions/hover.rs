@@ -2,14 +2,16 @@ use super::*;
 
 /// The pointer-owned interaction currently being offered before a click commits it.
 ///
-/// This is the source of truth for hover offers; the cursor icon is a
-/// side-effect, not the other way around.
+/// This is the source of truth for hover offers; cursor and pointer-routing
+/// presentation are derived from it, not independently mutated side effects.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum HoverOffer {
     #[default]
     None,
     /// Cursor is in the resize border zone of a floating window.
     Resize { win: WindowId, dir: ResizeDirection },
+    /// Cursor is in an inner gap on an adjustable tiled-tree seam.
+    TreeResize { win: WindowId, dir: ResizeDirection },
     /// Cursor is on the sidebar drag edge.
     Sidebar(SidebarTarget),
 }
@@ -31,6 +33,15 @@ impl HoverOffer {
     pub fn resize_target(self) -> Option<(WindowId, ResizeDirection)> {
         match self {
             HoverOffer::Resize { win, dir } => Some((win, dir)),
+            _ => None,
+        }
+    }
+
+    /// The tiled-tree seam targeted by an inner-gap offer.
+    #[inline]
+    pub fn tree_resize_target(self) -> Option<(WindowId, ResizeDirection)> {
+        match self {
+            HoverOffer::TreeResize { win, dir } => Some((win, dir)),
             _ => None,
         }
     }
