@@ -434,7 +434,7 @@ pub(crate) fn build_monitor_snapshots(
             );
             Some(SystraySnapshot {
                 items,
-                base_scheme: status_scheme(&core.config().colors.status_bar),
+                base_scheme: status_scheme(&core.config().colors.status),
                 layout,
             })
         } else {
@@ -451,9 +451,9 @@ pub(crate) fn build_monitor_snapshots(
             ),
             fonts,
             is_selected_monitor,
-            status_scheme: status_scheme(&core.config().colors.status_bar),
-            status_separator_color: core.config().colors.status_bar.separator,
-            status_hover_color: core.config().colors.status_bar.hover,
+            status_scheme: status_scheme(&core.config().colors.status),
+            status_separator_color: core.config().colors.status.separator,
+            status_hover_color: core.config().colors.status.hover,
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,

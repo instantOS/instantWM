@@ -250,7 +250,7 @@ pub fn render_bar_buffers(
 /// routes presses to the configured `BottomBar` bindings.
 pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
     let mut buffers = Vec::new();
-    let bg = core.config().colors.status_bar.bg;
+    let bg = core.config().colors.status.bg;
     let monitors: Vec<crate::types::Monitor> = core
         .model()
         .monitors_iter()

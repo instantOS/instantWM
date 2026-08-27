@@ -256,7 +256,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     let metrics = wm.core.config.fonts.bar_metrics(wm.core.config.bar.height);
     let bordercolors = wm.core.config.colors.border;
-    let statusbarcolors = wm.core.config.colors.status_bar;
+    let statusbarcolors = wm.core.config.colors.status;
     let close_color = wm.core.config.colors.close_button.gesture_color();
 
     init_cursors(&mut data.x11_runtime, &mut drw);

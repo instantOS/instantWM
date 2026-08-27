@@ -22,16 +22,11 @@ pub fn list_themes() -> Response {
 
 /// Switch to a built-in theme, recolouring the running WM.
 pub fn set_theme(wm: &mut Wm, theme: ColorTheme) -> Response {
-    // Recompute every colour table from the theme palette, then drop it onto
-    // the runtime colour state. Tag colours live separately from the rest, so
-    // both stores are updated.
-    let colors = crate::config::config_toml::ColorConfig::from(theme);
-    wm.core.config.colors.window = colors.window;
-    wm.core.config.colors.close_button = colors.close_button;
-    wm.core.config.colors.border = colors.border;
-    wm.core.config.colors.status_bar = colors.status;
-    wm.core.config.tag_colors = colors.tag.clone();
-    wm.core.model.tags.colors = colors.tag;
+    // Recompute every colour table from the theme palette and install it as
+    // one unit. Per-monitor tag sets mirror the shared tag table.
+    let colors = crate::config::appearance::ColorConfig::from(theme);
+    wm.core.model.tags.colors = colors.tag.clone();
+    wm.core.config.colors = colors;
     wm.core.config.theme = theme;
     config::recolor(wm);
     Response::ok()
@@ -53,7 +48,7 @@ mod tests {
 
         assert_eq!(wm.core.config.theme, ColorTheme::Nord);
         // Tag colours live in `model.tags.colors`…
-        let nord = crate::config::config_toml::ColorConfig::from(ColorTheme::Nord);
+        let nord = crate::config::appearance::ColorConfig::from(ColorTheme::Nord);
         assert_eq!(
             wm.core.model.tags.colors.no_hover.focus.bg,
             nord.tag.no_hover.focus.bg
@@ -63,7 +58,7 @@ mod tests {
             wm.core.config.colors.border.tile_focus,
             nord.border.tile_focus
         );
-        assert_eq!(wm.core.config.colors.status_bar.fg, nord.status.fg);
+        assert_eq!(wm.core.config.colors.status.fg, nord.status.fg);
     }
 
     #[test]

@@ -96,7 +96,7 @@ pub fn get_tags_alt() -> Vec<String> {
 // Effective configuration resolution
 // ---------------------------------------------------------------------------
 
-use crate::core_state::{BindingConfig, ColorConfig, EffectiveConfig, SystrayConfig, WindowConfig};
+use crate::core_state::{BindingConfig, EffectiveConfig, SystrayConfig, WindowConfig};
 use crate::types::Key;
 use std::collections::HashMap;
 use std::env;
@@ -286,12 +286,7 @@ pub fn resolve_config(
         systray: SystrayConfig::default(),
         layout,
         animations: theme.animations,
-        colors: ColorConfig {
-            window: theme.colors.window,
-            close_button: theme.colors.close_button,
-            border: theme.colors.border,
-            status_bar: theme.colors.status,
-        },
+        colors: theme.colors,
         theme: theme.theme,
         bindings: BindingConfig {
             keys,
@@ -303,7 +298,6 @@ pub fn resolve_config(
         fonts: theme.fonts,
         external_commands: default_commands(),
         tag_template,
-        tag_colors: theme.colors.tag,
         keyboard,
         input: theme.input,
         monitors: theme.monitors,

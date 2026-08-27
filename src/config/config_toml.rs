@@ -1,9 +1,7 @@
+use super::appearance::ColorConfig;
 use crate::config::keybind_config::KeybindSpec;
 use crate::core_state::FontConfig;
-use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, KeyboardLayout, Rule, StatusColorConfig,
-    TagColorConfigs, WindowColorConfigs,
-};
+use crate::types::{KeyboardLayout, Rule};
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -523,22 +521,6 @@ pub struct KeyboardConfig {
     pub model: Option<String>,
     /// Swap Caps Lock and Escape.
     pub swapescape: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(default)]
-pub struct ColorConfig {
-    pub tag: TagColorConfigs,
-    pub window: WindowColorConfigs,
-    pub close_button: CloseButtonColorConfigs,
-    pub border: BorderColorConfig,
-    pub status: StatusColorConfig,
-}
-
-impl Default for ColorConfig {
-    fn default() -> Self {
-        ColorTheme::default().into()
-    }
 }
 
 pub fn load_config_file() -> Result<UserConfig, String> {

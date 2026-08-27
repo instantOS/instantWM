@@ -1,5 +1,6 @@
 use crate::client::PendingLaunch;
 use crate::config::ModeConfig;
+use crate::config::appearance::ColorConfig;
 use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
@@ -78,15 +79,6 @@ impl Default for SystrayConfig {
             spacing: 0,
         }
     }
-}
-
-/// Colour schemes for various UI elements.
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct ColorConfig {
-    pub window: WindowColorConfigs,
-    pub close_button: CloseButtonColorConfigs,
-    pub border: BorderColorConfig,
-    pub status_bar: StatusColorConfig,
 }
 
 /// Keybindings, mouse buttons, modes, and client rules.
@@ -244,7 +236,6 @@ pub struct EffectiveConfig {
     pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
-    pub tag_colors: TagColorConfigs,
     /// Resolved keyboard settings. The current layout index remains runtime
     /// interaction state in [`KeyboardLayoutState`].
     pub keyboard: crate::config::config_toml::KeyboardConfig,
@@ -699,7 +690,7 @@ pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
     };
     let show_bottom_bar = next.bar.show_bottom;
     let tag_template = next.tag_template.clone();
-    let tag_colors = next.tag_colors.clone();
+    let tag_colors = next.colors.tag.clone();
 
     state.config = next;
     state.interaction.keyboard_layout = keyboard_layout;
