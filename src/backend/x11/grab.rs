@@ -291,16 +291,20 @@ fn run_interaction_grab_loop(
 ///
 /// X11 alone needs a native pointer grab and a synchronous adapter. Gesture
 /// semantics remain in `mouse::interaction`, alongside Wayland pointer/touch.
-/// Commit the current hover-resize offer to a move, resize, or close
-/// operation.
+/// Commit the current hover-resize offer to a move, direct resize, tree
+/// resize, or close operation.
 ///
 /// X11 commits offers through its modal grab loop; the shared mouse module
 /// owns only the offer model. Returns `false` when there is no resize offer
 /// or the button is not a valid commit button for hover resize.
 pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    let Some((win, _)) = ctx.core.interaction().drag.hover_offer().resize_target() else {
+    let offer = ctx.core.interaction().drag.hover_offer();
+    let Some((win, _)) = offer.resize_target().or_else(|| offer.tree_resize_target()) else {
         return false;
     };
+    if offer.tree_resize_target().is_some() && btn == MouseButton::Middle {
+        return false;
+    }
     if btn == MouseButton::Middle {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         crate::mouse::clear_hover_offer(&mut wm_ctx);

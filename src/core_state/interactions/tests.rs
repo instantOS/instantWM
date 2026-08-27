@@ -401,6 +401,29 @@ fn presentation_is_derived_from_hover_offer() {
 }
 
 #[test]
+fn tiled_gap_offer_projects_its_tree_resize_cursor() {
+    let mut interactions = PointerInteractionState::default();
+    interactions.set_hover_offer(super::HoverOffer::TreeResize {
+        win: WindowId(9),
+        dir: ResizeDirection::Right,
+    });
+
+    assert_eq!(
+        interactions.projection(),
+        super::InteractionProjection {
+            cursor: AltCursor::Resize(ResizeDirection::Right),
+            pointer_delivery: super::PointerDelivery::DeliverHoverCommitToWm,
+            active_resize_window: None,
+        }
+    );
+    assert_eq!(
+        interactions.hover_offer().tree_resize_target(),
+        Some((WindowId(9), ResizeDirection::Right))
+    );
+    assert_eq!(interactions.hover_offer().resize_target(), None);
+}
+
+#[test]
 fn beginning_capture_atomically_invalidates_hover_offer() {
     let mut interactions = PointerInteractionState::default();
     interactions.set_hover_offer(super::HoverOffer::Resize {

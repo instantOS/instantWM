@@ -145,11 +145,13 @@ impl PointerInteractionState {
             };
         }
         match self.hover_offer {
-            HoverOffer::Resize { dir, .. } => InteractionProjection {
-                cursor: AltCursor::Resize(dir),
-                pointer_delivery: PointerDelivery::DeliverHoverCommitToWm,
-                active_resize_window: None,
-            },
+            HoverOffer::Resize { dir, .. } | HoverOffer::TreeResize { dir, .. } => {
+                InteractionProjection {
+                    cursor: AltCursor::Resize(dir),
+                    pointer_delivery: PointerDelivery::DeliverHoverCommitToWm,
+                    active_resize_window: None,
+                }
+            }
             HoverOffer::Sidebar(_) => InteractionProjection {
                 cursor: AltCursor::VerticalAdjust,
                 pointer_delivery: PointerDelivery::Default,

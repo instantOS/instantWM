@@ -19,8 +19,8 @@ pub use commands::{
 };
 pub(crate) use pointer::{
     PointerPlacementPreviewCache, PointerTreeResizeStart, apply_tree_target,
-    pointer_tree_resize_start, preview_tree_target, tree_placement_targets,
-    update_pointer_tree_resize, uses_manual_tree_pointer_interaction,
+    pointer_tree_gap_resize_start, pointer_tree_resize_start, preview_tree_target,
+    tree_placement_targets, update_pointer_tree_resize, uses_manual_tree_pointer_interaction,
 };
 #[cfg(test)]
 use pointer::{

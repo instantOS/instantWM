@@ -551,8 +551,10 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
             {
                 return;
             }
-            if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root)
-            {
+            if crate::mouse::update_resize_offer_with_focus_at(
+                &mut WmCtx::X11(ctx.reborrow()),
+                root,
+            ) {
                 return;
             }
         }

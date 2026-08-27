@@ -2,7 +2,7 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::{ArrangePlan, LayoutOutput, PresentationMode};
-use crate::types::{Client, Monitor, MonitorId, Size, TiledClientInfo, WindowId};
+use crate::types::{Client, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
 use std::collections::{BTreeSet, HashMap};
 
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
@@ -191,6 +191,44 @@ impl Monitor {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TilingGeometry {
+    pub placement: LayoutPlacement,
+    pub slots: HashMap<WindowId, Rect>,
+}
+
+pub(crate) fn compute_tiling_constraints(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    layout_cfg: &crate::config::config_toml::LayoutConfig,
+    resize_hints: bool,
+    bar_height: i32,
+) -> (LayoutPlacement, HashMap<WindowId, Size>) {
+    let tiled = monitor.collect_tiling_tree_members(clients);
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        PresentationMode::Tiled,
+        tiled.len() as u32,
+    );
+    let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
+    (placement, minimums)
+}
+
+pub(crate) fn compute_tiling_geometry(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    layout_cfg: &crate::config::config_toml::LayoutConfig,
+    resize_hints: bool,
+    bar_height: i32,
+) -> Option<TilingGeometry> {
+    let (placement, minimums) =
+        compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);
+    let tree = &monitor.per_tag()?.layout_tree;
+    let (slots, _) = tree.soft_constrained_bounds(placement.work_rect(), &minimums);
+    Some(TilingGeometry { placement, slots })
+}
+
 fn reconcile_manual_tree(
     monitor: &mut Monitor,
     clients: &HashMap<WindowId, Client>,
@@ -200,13 +238,8 @@ fn reconcile_manual_tree(
 ) {
     let tiled = monitor.collect_tiling_tree_members(clients);
     let windows = tiled.iter().map(|client| client.win).collect::<Vec<_>>();
-    let placement = LayoutPlacement::new(
-        layout_cfg,
-        monitor,
-        PresentationMode::Tiled,
-        windows.len() as u32,
-    );
-    let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
+    let (placement, minimums) =
+        compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);
     monitor.per_tag_state().layout_tree.reconcile_for_layout(
         &windows,
         layout_cfg.new_window_placement,
@@ -224,14 +257,9 @@ fn compute_manual_tree(
 ) -> Vec<LayoutOutput> {
     let tiled = monitor.collect_tiling_tree_members(clients);
     let windows: Vec<_> = tiled.iter().map(|client| client.win).collect();
-    let placement = LayoutPlacement::new(
-        layout_cfg,
-        monitor,
-        PresentationMode::Tiled,
-        windows.len() as u32,
-    );
+    let (placement, minimums) =
+        compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);
     let work_rect = placement.work_rect();
-    let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
     let (slots, constraints_fit) = {
         let tree = &mut monitor.per_tag_state().layout_tree;
         tree.reconcile_for_layout(
@@ -271,7 +299,7 @@ fn compute_manual_tree(
         .collect()
 }
 
-pub(super) fn tiling_minimum_slots(
+fn tiling_minimum_slots(
     placement: &LayoutPlacement,
     tiled: &[TiledClientInfo],
     clients: &HashMap<WindowId, Client>,

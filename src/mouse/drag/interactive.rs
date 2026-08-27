@@ -100,13 +100,33 @@ pub fn tree_resize_begin(
     true
 }
 
-/// Commit the currently selected floating-border hover target.
+/// Commit the currently selected floating-border or tiled-gap hover target.
 pub fn hover_drag_begin(
     ctx: &mut WmCtx<'_>,
     position: Point,
     btn: MouseButton,
     source: InteractionSource,
 ) -> bool {
+    if let Some((win, _)) = ctx
+        .core()
+        .interaction()
+        .drag
+        .hover_offer()
+        .tree_resize_target()
+    {
+        if btn != MouseButton::Left && btn != MouseButton::Right {
+            return false;
+        }
+        let Some(resize) = crate::layouts::manager::pointer_tree_resize_start(ctx, win, position)
+        else {
+            return false;
+        };
+        let Some(geometry) = ctx.core().model().client(win).map(|client| client.geo) else {
+            return false;
+        };
+        return tree_resize_begin(ctx, win, btn, source, position, geometry, resize);
+    }
+
     let Some(target) =
         crate::mouse::hover::selected_hover_resize_target_at(ctx.core().model(), position)
     else {

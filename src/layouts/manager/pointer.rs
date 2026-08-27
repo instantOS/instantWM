@@ -4,7 +4,7 @@ use crate::layouts::placement::LayoutPlacement;
 use crate::types::{MonitorId, Rect, Size, TagMask, WindowId};
 use std::collections::HashMap;
 
-use super::arrange::{arrange, tiling_minimum_slots};
+use super::arrange::{arrange, compute_tiling_constraints, compute_tiling_geometry};
 use super::finish_layout_change;
 
 #[derive(Debug, Clone)]
@@ -88,6 +88,54 @@ pub(crate) fn pointer_tree_resize_start(
         direction,
         origin: tree.clone(),
     })
+}
+
+/// Resolve an adjustable tiled-tree seam from a pointer position in an inner
+/// gap. Outer gaps deliberately do not count: they retain desktop semantics.
+pub(crate) fn pointer_tree_gap_resize_start(
+    ctx: &WmCtx<'_>,
+    point: crate::types::Point,
+) -> Option<(WindowId, PointerTreeResizeStart)> {
+    let model = ctx.core().model();
+    let monitor_id = model
+        .monitors
+        .id_intersecting_rect(crate::mouse::pointer::point_rect(point))?;
+    let monitor = model.monitor(monitor_id)?;
+    let tiled = monitor.collect_tiling_tree_members(&model.clients);
+    if monitor.current_layout() != PresentationMode::Tiled || tiled.len() <= 1 {
+        return None;
+    }
+    let visible_tags = monitor.visible_tags();
+    if monitor
+        .iter_clients(&model.clients)
+        .any(|(_, client)| client.is_visible(visible_tags) && client.geo.contains_point(point))
+    {
+        return None;
+    }
+
+    let geom = compute_tiling_geometry(
+        monitor,
+        &model.clients,
+        &ctx.core().config().layout,
+        ctx.core().config().window.resize_hints,
+        ctx.core().derived().bar_height,
+    )?;
+    if geom.placement.inner_gap() <= 0 || !geom.placement.work_rect().contains_point(point) {
+        return None;
+    }
+
+    let (win, slot) = geom
+        .slots
+        .into_iter()
+        .find(|(_, slot)| slot.contains_point(point))?;
+
+    // Removing only the inner gap (and no client border) distinguishes a real
+    // gap from content, borders, and unused pixels at the work-area edge.
+    if geom.placement.client_rect(slot, 0).contains_point(point) {
+        return None;
+    }
+
+    pointer_tree_resize_start(ctx, win, point).map(|resize| (win, resize))
 }
 
 pub(super) fn pointer_tree_resize_allowed(
@@ -287,21 +335,13 @@ pub(super) fn selected_tiling_constraints(
     ctx: &WmCtx<'_>,
 ) -> Option<(LayoutPlacement, HashMap<WindowId, Size>)> {
     let monitor = ctx.core().model().expect_selected_monitor();
-    let tiled = monitor.collect_tiled(&ctx.core().model().clients);
-    let placement = LayoutPlacement::new(
-        &ctx.core().config().layout,
+    Some(compute_tiling_constraints(
         monitor,
-        PresentationMode::Tiled,
-        tiled.len() as u32,
-    );
-    let minimums = tiling_minimum_slots(
-        &placement,
-        &tiled,
         &ctx.core().model().clients,
+        &ctx.core().config().layout,
         ctx.core().config().window.resize_hints,
         ctx.core().derived().bar_height,
-    );
-    Some((placement, minimums))
+    ))
 }
 
 fn selected_tree_placement_session(
@@ -461,29 +501,7 @@ pub fn preview_tree_at_point(
         );
     }
 
-    let monitor = ctx.core().model().expect_selected_monitor();
-    let tiled = monitor.collect_tiled(&ctx.core().model().clients);
-    let placement = LayoutPlacement::new(
-        &ctx.core().config().layout,
-        monitor,
-        PresentationMode::Tiled,
-        tiled.len() as u32,
-    );
-    let minimums = tiling_minimum_slots(
-        &placement,
-        &tiled,
-        &ctx.core().model().clients,
-        ctx.core().config().window.resize_hints,
-        ctx.core().derived().bar_height,
-    );
-    let tree = monitor.per_tag()?.layout_tree.clone();
-    let mut session = crate::layouts::tree::TreePlacementSession::new(
-        tree,
-        window,
-        placement.work_rect(),
-        edge_fraction,
-        minimums,
-    );
+    let (placement, mut session) = selected_tree_placement_session(ctx, window)?;
     let slot = session.preview_point(point);
     ctx.core_mut()
         .state_mut()

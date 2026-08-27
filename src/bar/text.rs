@@ -679,7 +679,10 @@ mod tests {
             .expect("battery icon segment");
 
         assert_eq!(battery.role, FontRole::Icon);
-        assert_eq!(battery.gap_em, Some(icon_gap_letter_spacing(16.0, 12.0, 16.0)));
+        assert_eq!(
+            battery.gap_em,
+            Some(icon_gap_letter_spacing(16.0, 12.0, 16.0))
+        );
     }
 
     #[test]

@@ -10,6 +10,8 @@ pub enum HoverOffer {
     None,
     /// Cursor is in the resize border zone of a floating window.
     Resize { win: WindowId, dir: ResizeDirection },
+    /// Cursor is in an inner gap on an adjustable tiled-tree seam.
+    TreeResize { win: WindowId, dir: ResizeDirection },
     /// Cursor is on the sidebar drag edge.
     Sidebar(SidebarTarget),
 }
@@ -31,6 +33,15 @@ impl HoverOffer {
     pub fn resize_target(self) -> Option<(WindowId, ResizeDirection)> {
         match self {
             HoverOffer::Resize { win, dir } => Some((win, dir)),
+            _ => None,
+        }
+    }
+
+    /// The tiled-tree seam targeted by an inner-gap offer.
+    #[inline]
+    pub fn tree_resize_target(self) -> Option<(WindowId, ResizeDirection)> {
+        match self {
+            HoverOffer::TreeResize { win, dir } => Some((win, dir)),
             _ => None,
         }
     }
