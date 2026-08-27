@@ -10,11 +10,11 @@ use zbus::zvariant::{OwnedValue, Value};
 use crate::types::Size;
 
 use super::{
-    MenuAction, MenuToggle, NativeMenuRequest, StatusNotifierItem, StatusNotifierRuntime,
-    StatusNotifierTray, StatusNotifierWorker, WORKER_RETRY_MIN, clear_native_menu_request,
-    dbus_icon_bytes_to_rgba, handle_name_lost, handle_unregistered, id_matches_service,
-    menu_entry_from_properties, select_largest_valid_pixmap, set_native_menu_request,
-    strip_menu_mnemonics, SystrayEventTx, WatcherMode, WatcherState,
+    clear_native_menu_request, dbus_icon_bytes_to_rgba, handle_name_lost, handle_unregistered,
+    id_matches_service, menu_entry_from_properties, select_largest_valid_pixmap,
+    set_native_menu_request, strip_menu_mnemonics, MenuAction, MenuToggle, NativeMenuRequest,
+    StatusNotifierItem, StatusNotifierRuntime, StatusNotifierTray, StatusNotifierWorker,
+    SystrayEventTx, WatcherMode, WatcherState, WORKER_RETRY_MIN,
 };
 
 fn string_value(value: &str) -> OwnedValue {
@@ -202,18 +202,12 @@ fn dbus_menu_raw_layout_parses_into_menu_entries() {
 /// An event sender without a wake ping, for exercising the discovery handlers.
 fn quiet_evt_tx() -> (SystrayEventTx, std::sync::mpsc::Receiver<super::SystrayEvt>) {
     let (tx, rx) = channel();
-    (
-        SystrayEventTx { tx, wake: None },
-        rx,
-    )
+    (SystrayEventTx { tx, wake: None }, rx)
 }
 
 #[test]
 fn item_ids_match_their_hosting_bus_name() {
-    assert!(id_matches_service(
-        ":1.42/StatusNotifierItem",
-        ":1.42"
-    ));
+    assert!(id_matches_service(":1.42/StatusNotifierItem", ":1.42"));
     assert!(id_matches_service(
         "org.kde.StatusNotifierItem-4242-1/StatusNotifierItem",
         "org.kde.StatusNotifierItem-4242-1"
@@ -223,10 +217,7 @@ fn item_ids_match_their_hosting_bus_name() {
         "org.kde.StatusNotifierItem-4242-1",
         "org.kde.StatusNotifierItem-4242-1"
     ));
-    assert!(!id_matches_service(
-        ":1.42/StatusNotifierItem",
-        ":1.43"
-    ));
+    assert!(!id_matches_service(":1.42/StatusNotifierItem", ":1.43"));
     assert!(!id_matches_service(":1.42/StatusNotifierItem", ""));
 }
 
@@ -251,7 +242,12 @@ fn unregistering_a_known_item_removes_only_that_item() {
         }
         other => panic!("expected ItemRemoved, got {other:?}"),
     }
-    assert_eq!(known, [":1.11/StatusNotifierItem".to_string()].into_iter().collect());
+    assert_eq!(
+        known,
+        [":1.11/StatusNotifierItem".to_string()]
+            .into_iter()
+            .collect()
+    );
 
     // Unknown ids (never fetched, or already gone) stay silent.
     handle_unregistered(&evt_tx, &mut known, ":1.99/StatusNotifierItem");
@@ -286,7 +282,12 @@ fn a_lost_bus_name_removes_its_items_and_prunes_the_watcher_state() {
     }
     // The surviving item is untouched in both the discovery set and the
     // watcher's advertised list.
-    assert_eq!(known, [":1.11/StatusNotifierItem".to_string()].into_iter().collect());
+    assert_eq!(
+        known,
+        [":1.11/StatusNotifierItem".to_string()]
+            .into_iter()
+            .collect()
+    );
     assert_eq!(
         state.lock().unwrap().items,
         vec![":1.11/StatusNotifierItem".to_string()]
@@ -314,6 +315,30 @@ impl FakeItem {
     #[zbus(property)]
     fn icon_pixmap(&self) -> Vec<(i32, i32, Vec<u8>)> {
         vec![(1, 1, vec![0x80, 0x10, 0x20, 0x30])]
+    }
+}
+
+struct FakeExternalWatcher {
+    items: Arc<Mutex<Vec<String>>>,
+}
+
+#[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
+impl FakeExternalWatcher {
+    fn register_status_notifier_host(&self, _service: &str) {}
+
+    #[zbus(property)]
+    fn registered_status_notifier_items(&self) -> Vec<String> {
+        self.items.lock().unwrap().clone()
+    }
+
+    #[zbus(property)]
+    fn is_status_notifier_host_registered(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
+    fn protocol_version(&self) -> i32 {
+        0
     }
 }
 
@@ -348,7 +373,10 @@ fn sni_smoke_child() {
 
     let boot = std::time::Instant::now();
     loop {
-        assert!(boot.elapsed() < Duration::from_secs(10), "worker never became ready");
+        assert!(
+            boot.elapsed() < Duration::from_secs(10),
+            "worker never became ready"
+        );
         match worker.evt_rx.recv_timeout(Duration::from_millis(50)) {
             Ok(super::SystrayEvt::Ready) => break,
             Ok(_) => {}
@@ -386,6 +414,24 @@ fn sni_smoke_child() {
     let upsert_ms = registered_at.elapsed().as_millis();
     println!("SMOKE upsert after {upsert_ms}ms");
 
+    // A broad signal match replaces the old per-item watcher threads. Verify
+    // that the unique D-Bus sender is mapped back to the registered item.
+    item_conn
+        .emit_signal(
+            None::<&str>,
+            "/StatusNotifierItem",
+            super::ITEM_IFACE,
+            "NewIcon",
+            &(),
+        )
+        .expect("emit NewIcon");
+    let icon_at = recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(_)),
+        "the changed icon",
+    );
+    println!("SMOKE icon refresh after {}ms", icon_at.elapsed().as_millis());
+
     // The app exits: closing its connection releases the bus name, which the
     // worker must notice via NameOwnerChanged — not via the fallback.
     drop(item_conn);
@@ -395,6 +441,113 @@ fn sni_smoke_child() {
         "the dead item's removal",
     );
     println!("SMOKE removal after {}ms", died_at.elapsed().as_millis());
+
+    // Closing the command lane must also close and join the owned signal
+    // listener. A leaked blocking watcher would hang this join until the
+    // parent test's deadline kills the process.
+    let StatusNotifierWorker {
+        cmd_tx,
+        evt_rx,
+        thread,
+    } = worker;
+    drop(cmd_tx);
+    drop(evt_rx);
+    thread.join().expect("worker shuts down cleanly");
+    println!("SMOKE worker stopped");
+}
+
+fn external_sni_smoke_child() {
+    let items = Arc::new(Mutex::new(Vec::new()));
+    let watcher_conn = zbus::blocking::Connection::session().expect("watcher connects to bus");
+    watcher_conn
+        .object_server()
+        .at(
+            super::WATCHER_PATH,
+            FakeExternalWatcher {
+                items: Arc::clone(&items),
+            },
+        )
+        .expect("serve external watcher");
+    watcher_conn
+        .request_name(super::WATCHER_SERVICE)
+        .expect("own watcher name");
+
+    let worker = StatusNotifierWorker::spawn(None, None).expect("spawn systray worker");
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::Ready),
+        "external worker readiness",
+    );
+
+    let item_conn = zbus::blocking::Connection::session().expect("item connects to bus");
+    item_conn
+        .object_server()
+        .at("/StatusNotifierItem", FakeItem)
+        .expect("serve fake item");
+    let id = format!(
+        "{}/StatusNotifierItem",
+        item_conn.unique_name().expect("item has a unique name").as_str()
+    );
+    items.lock().unwrap().push(id.clone());
+    watcher_conn
+        .emit_signal(
+            None::<&str>,
+            super::WATCHER_PATH,
+            super::WATCHER_IFACE,
+            "StatusNotifierItemRegistered",
+            &id,
+        )
+        .expect("emit external registration");
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(_)),
+        "external registration",
+    );
+
+    watcher_conn
+        .emit_signal(
+            None::<&str>,
+            super::WATCHER_PATH,
+            super::WATCHER_IFACE,
+            "StatusNotifierItemRegistered",
+            &id,
+        )
+        .expect("emit duplicate registration");
+    assert!(
+        worker
+            .evt_rx
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "duplicate registration triggered another icon fetch",
+    );
+
+    items.lock().unwrap().clear();
+    watcher_conn
+        .emit_signal(
+            None::<&str>,
+            super::WATCHER_PATH,
+            super::WATCHER_IFACE,
+            "StatusNotifierItemUnregistered",
+            &id,
+        )
+        .expect("emit external unregistration");
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemRemoved(_, _)),
+        "external unregistration",
+    );
+
+    let StatusNotifierWorker {
+        cmd_tx,
+        evt_rx,
+        thread,
+    } = worker;
+    drop(cmd_tx);
+    drop(evt_rx);
+    thread.join().expect("external worker shuts down cleanly");
+    drop(item_conn);
+    drop(watcher_conn);
+    println!("EXTERNAL SMOKE passed");
 }
 
 #[test]
@@ -419,7 +572,10 @@ fn items_appear_and_vanish_via_signals_not_the_fallback() {
     let mut child = Command::new("dbus-run-session")
         .arg("--")
         .arg(std::env::current_exe().expect("test binary"))
-        .args(["items_appear_and_vanish_via_signals_not_the_fallback", "--nocapture"])
+        .args([
+            "items_appear_and_vanish_via_signals_not_the_fallback",
+            "--nocapture",
+        ])
         .env("INSTANTWM_SNI_SMOKE_CHILD", "1")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -446,5 +602,41 @@ fn items_appear_and_vanish_via_signals_not_the_fallback() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     print!("{stdout}");
     assert!(stdout.contains("SMOKE upsert after"), "no upsert line");
+    assert!(stdout.contains("SMOKE icon refresh after"), "no icon refresh line");
     assert!(stdout.contains("SMOKE removal after"), "no removal line");
+    assert!(stdout.contains("SMOKE worker stopped"), "worker leaked a watcher");
+}
+
+#[test]
+fn external_watcher_signals_are_subscribed_before_ready() {
+    if std::env::var_os("INSTANTWM_SNI_EXTERNAL_CHILD").is_some() {
+        external_sni_smoke_child();
+        return;
+    }
+    if !Command::new("dbus-run-session")
+        .arg("--version")
+        .output()
+        .is_ok_and(|ok| ok.status.success())
+    {
+        return;
+    }
+
+    let output = Command::new("dbus-run-session")
+        .arg("--")
+        .arg(std::env::current_exe().expect("test binary"))
+        .args([
+            "external_watcher_signals_are_subscribed_before_ready",
+            "--nocapture",
+        ])
+        .env("INSTANTWM_SNI_EXTERNAL_CHILD", "1")
+        .output()
+        .expect("run external watcher smoke test");
+    assert!(
+        output.status.success(),
+        "external watcher smoke test failed:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    print!("{stdout}");
+    assert!(stdout.contains("EXTERNAL SMOKE passed"));
 }
