@@ -113,18 +113,20 @@ pub(crate) fn is_powerline_glyph(ch: char) -> bool {
     matches!(ch as u32, 0xE0A0..=0xE0D7)
 }
 
-/// Breathing room around icon glyphs, expressed as a fraction of the *text*
-/// face size. Patched-font icons carry almost no side bearing of their own —
+/// Breathing room around icon glyphs, expressed as a fraction of the *icon*
+/// face size (or maximum face size). Patched-font icons are artificially
+/// inflated relative to text and carry almost no side bearing of their own —
 /// most even have zero-width bearings, and powerline arrows go slightly
 /// negative — so explicit spacing is required wherever an icon directly
 /// touches normal text.
-const ICON_BOUNDARY_PAD_EM_TEXT: f32 = 0.15;
+const ICON_BOUNDARY_PAD_EM: f32 = 0.35;
 
 /// Extra horizontal space (in pixels) inserted between a text glyph and an
 /// adjacent icon glyph. Both sides of an icon get the same amount so the gaps
 /// stay symmetric regardless of which fonts happen to sit next to it.
-pub fn icon_boundary_pad_px(text_size: f32) -> u32 {
-    (text_size.max(1.0) * ICON_BOUNDARY_PAD_EM_TEXT).round() as u32
+pub fn icon_boundary_pad_px(text_size: f32, icon_size: f32) -> u32 {
+    let effective_size = icon_size.max(text_size).max(1.0);
+    (effective_size * ICON_BOUNDARY_PAD_EM).round() as u32
 }
 
 /// Whether a text→icon transition needs padding before the first icon glyph.
@@ -160,13 +162,14 @@ pub(crate) fn boundary_gap_between(prev: char, next: char) -> bool {
 }
 
 /// Letter spacing, in em units of a span shaped at `carrier_size`, whose
-/// trailing advance equals one icon boundary pad measured at `text_size`.
+/// trailing advance equals one icon boundary pad measured from `icon_size.max(text_size)`.
 ///
 /// cosmic-text implements letter spacing as an em-normalized *trailing*
-/// advance per glyph, so a span rendered at the icon face size has to shrink
+/// advance per glyph, so a span rendered at the icon face size has to rescale
 /// the value for both sides of an icon to cover the same pixel distance.
-pub(crate) fn icon_gap_letter_spacing(carrier_size: f32, text_size: f32) -> f32 {
-    ICON_BOUNDARY_PAD_EM_TEXT * text_size / carrier_size.max(1.0)
+pub(crate) fn icon_gap_letter_spacing(carrier_size: f32, text_size: f32, icon_size: f32) -> f32 {
+    let effective_size = icon_size.max(text_size).max(1.0);
+    ICON_BOUNDARY_PAD_EM * effective_size / carrier_size.max(1.0)
 }
 
 /// Fit text to a cell using backend-provided advance measurement.
@@ -323,9 +326,9 @@ pub(crate) fn gapped_runs(text: &str, text_size: f32, icon_size: f32) -> Vec<Gap
                 let next_first = next.text.chars().next()?;
                 Some(match run.role {
                     FontRole::Icon => needs_gap_after_icon(run_last, Some(next_first))
-                        .then(|| icon_gap_letter_spacing(icon_size, text_size)),
+                        .then(|| icon_gap_letter_spacing(icon_size, text_size, icon_size)),
                     FontRole::Text => needs_gap_before_icon(Some(run_last), next_first)
-                        .then(|| icon_gap_letter_spacing(text_size, text_size)),
+                        .then(|| icon_gap_letter_spacing(text_size, text_size, icon_size)),
                 })
             })
             .flatten();
@@ -470,30 +473,44 @@ mod tests {
     }
 
     #[test]
-    fn boundary_padding_scales_with_text_size() {
-        assert_eq!(icon_boundary_pad_px(12.0), 2);
-        assert_eq!(icon_boundary_pad_px(14.0), 2);
-        assert_eq!(icon_boundary_pad_px(20.0), 3);
-        assert_eq!(icon_boundary_pad_px(1.0), 0);
+    fn boundary_padding_scales_with_inflated_icon_size() {
+        assert_eq!(icon_boundary_pad_px(12.0, 16.0), 6);
+        assert_eq!(icon_boundary_pad_px(12.0, 12.0), 4);
+        assert_eq!(icon_boundary_pad_px(14.0, 18.0), 6);
+        assert_eq!(icon_boundary_pad_px(20.0, 26.0), 9);
+        assert_eq!(icon_boundary_pad_px(1.0, 1.0), 0);
     }
 
     #[test]
     fn gap_letter_spacing_scales_to_the_carrier_face_size() {
-        // On the text face the constant applies verbatim…
-        assert!((icon_gap_letter_spacing(12.0, 12.0) - 0.15).abs() < 1e-6);
-        // …while the icon face shrinks it so both sides cover equal pixels.
-        assert!((icon_gap_letter_spacing(16.0, 12.0) - 0.1125).abs() < 1e-6);
+        // When carrier is text (12px) with inflated icon (16px), gap scales to 16px…
+        assert!((icon_gap_letter_spacing(12.0, 12.0, 16.0) - (0.35 * 16.0 / 12.0)).abs() < 1e-6);
+        // …while on the icon face (16px) it uses the base fraction.
+        assert!((icon_gap_letter_spacing(16.0, 12.0, 16.0) - 0.35).abs() < 1e-6);
         // Degenerate carrier sizes still produce a finite value.
-        assert!((icon_gap_letter_spacing(0.0, 12.0) - 1.8).abs() < 1e-5);
+        assert!((icon_gap_letter_spacing(0.0, 12.0, 16.0) - 5.6).abs() < 1e-5);
     }
 
     #[test]
     fn xft_and_cosmic_spacing_resolve_to_the_same_device_pixel() {
-        for text_size in [10.0, 12.0, 14.0, 16.0, 20.0] {
-            let cosmic_pixels = icon_gap_letter_spacing(text_size, text_size) * text_size;
+        for (text_size, icon_size) in [
+            (10.0, 14.0),
+            (12.0, 16.0),
+            (14.0, 18.0),
+            (16.0, 20.0),
+            (20.0, 26.0),
+        ] {
+            let cosmic_pixels_text =
+                icon_gap_letter_spacing(text_size, text_size, icon_size) * text_size;
             assert_eq!(
-                cosmic_pixels.round() as u32,
-                icon_boundary_pad_px(text_size)
+                cosmic_pixels_text.round() as u32,
+                icon_boundary_pad_px(text_size, icon_size)
+            );
+            let cosmic_pixels_icon =
+                icon_gap_letter_spacing(icon_size, text_size, icon_size) * icon_size;
+            assert_eq!(
+                cosmic_pixels_icon.round() as u32,
+                icon_boundary_pad_px(text_size, icon_size)
             );
         }
     }
@@ -512,7 +529,7 @@ mod tests {
             GappedRun {
                 text: "b",
                 role: FontRole::Text,
-                gap_em: Some(icon_gap_letter_spacing(12.0, 12.0)),
+                gap_em: Some(icon_gap_letter_spacing(12.0, 12.0, 16.0)),
                 prevent_ligatures: true,
             }
         );
@@ -522,7 +539,7 @@ mod tests {
             GappedRun {
                 text: "\u{f240}",
                 role: FontRole::Icon,
-                gap_em: Some(icon_gap_letter_spacing(16.0, 12.0)),
+                gap_em: Some(icon_gap_letter_spacing(16.0, 12.0, 16.0)),
                 prevent_ligatures: true,
             }
         );
@@ -555,7 +572,7 @@ mod tests {
             flatten("a \u{f240} b"),
             [
                 ("a ", None),
-                ("\u{f240}", Some(icon_gap_letter_spacing(16.0, 12.0))),
+                ("\u{f240}", Some(icon_gap_letter_spacing(16.0, 12.0, 16.0))),
                 (" b", None)
             ],
         );
@@ -571,7 +588,7 @@ mod tests {
         assert_eq!(
             flatten("\u{f240} 50%"),
             [
-                ("\u{f240}", Some(icon_gap_letter_spacing(16.0, 12.0))),
+                ("\u{f240}", Some(icon_gap_letter_spacing(16.0, 12.0, 16.0))),
                 (" 50%", None)
             ],
         );
@@ -581,7 +598,7 @@ mod tests {
             flatten("bat\u{f240}"),
             [
                 ("ba", None),
-                ("t", Some(icon_gap_letter_spacing(12.0, 12.0))),
+                ("t", Some(icon_gap_letter_spacing(12.0, 12.0, 16.0))),
                 ("\u{f240}", None),
             ],
         );
@@ -595,7 +612,7 @@ mod tests {
             flatten("ab\u{f240}"),
             [
                 ("a", None),
-                ("b", Some(icon_gap_letter_spacing(12.0, 12.0))),
+                ("b", Some(icon_gap_letter_spacing(12.0, 12.0, 16.0))),
                 ("\u{f240}", None),
             ],
         );
@@ -616,7 +633,7 @@ mod tests {
                 GappedRun {
                     text: "c",
                     role: FontRole::Text,
-                    gap_em: Some(icon_gap_letter_spacing(12.0, 12.0)),
+                    gap_em: Some(icon_gap_letter_spacing(12.0, 12.0, 16.0)),
                     prevent_ligatures: true,
                 },
                 GappedRun {
@@ -628,7 +645,7 @@ mod tests {
                 GappedRun {
                     text: "\u{f015}",
                     role: FontRole::Icon,
-                    gap_em: Some(icon_gap_letter_spacing(16.0, 12.0)),
+                    gap_em: Some(icon_gap_letter_spacing(16.0, 12.0, 16.0)),
                     prevent_ligatures: true,
                 },
                 GappedRun {
@@ -662,7 +679,7 @@ mod tests {
             .expect("battery icon segment");
 
         assert_eq!(battery.role, FontRole::Icon);
-        assert_eq!(battery.gap_em, Some(icon_gap_letter_spacing(16.0, 12.0)));
+        assert_eq!(battery.gap_em, Some(icon_gap_letter_spacing(16.0, 12.0, 16.0)));
     }
 
     #[test]
