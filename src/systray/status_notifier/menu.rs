@@ -7,12 +7,9 @@ pub(super) fn open_dbus_menu(
     item_path: &str,
 ) -> zbus::Result<Option<DbusMenuSession>> {
     let item = uncached_proxy(conn, service, item_path, ITEM_IFACE)?;
-    let menu_path: String = item
-        .get_property("Menu")
-        .unwrap_or_else(|_| "/".to_string());
-    if menu_path == "/" {
+    let Some(menu_path) = fetch_menu_path(&item) else {
         return Ok(None);
-    }
+    };
 
     notify_menu_about_to_show(conn, service, &menu_path, 0);
     let view = fetch_menu_level(conn, service, &menu_path, 0, false)?;
@@ -26,6 +23,21 @@ pub(super) fn open_dbus_menu(
         parents: Vec::new(),
         last_view: view,
     }))
+}
+
+fn fetch_menu_path(proxy: &Proxy<'_>) -> Option<String> {
+    if let Ok(path) = proxy.get_property::<zbus::zvariant::OwnedObjectPath>("Menu") {
+        let path_str = path.as_str().to_string();
+        if path_str != "/" && !path_str.is_empty() {
+            return Some(path_str);
+        }
+    }
+    if let Ok(path_str) = proxy.get_property::<String>("Menu") {
+        if path_str != "/" && !path_str.is_empty() {
+            return Some(path_str);
+        }
+    }
+    None
 }
 
 pub(super) fn handle_menu_action(
@@ -125,7 +137,9 @@ fn notify_menu_about_to_show(conn: &Connection, service: &str, menu_path: &str, 
     let _ = proxy.call_method("AboutToShow", &(id,));
 }
 
-fn fetch_menu_level(
+type RawMenuLayout = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
+
+pub(super) fn fetch_menu_level(
     conn: &Connection,
     service: &str,
     menu_path: &str,
@@ -133,19 +147,7 @@ fn fetch_menu_level(
     include_back: bool,
 ) -> zbus::Result<MenuView> {
     let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
-    let root = match proxy
-        .call::<_, _, (u32, OwnedValue)>("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))
-    {
-        Ok((_, layout)) => layout,
-        Err(_) => {
-            let (layout,): (OwnedValue,) =
-                proxy.call("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))?;
-            layout
-        }
-    };
-
-    let (_, _, children): (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) =
-        root.try_into().map_err(zbus::Error::Variant)?;
+    let (_, _, children) = get_menu_layout(&proxy, parent_id)?;
     let mut entries = Vec::with_capacity(children.len() + usize::from(include_back));
     if include_back {
         entries.push(MenuEntry {
@@ -165,7 +167,23 @@ fn fetch_menu_level(
     Ok(MenuView { entries })
 }
 
-fn parse_menu_entry(value: OwnedValue) -> zbus::Result<Option<MenuEntry>> {
+fn get_menu_layout(proxy: &Proxy<'_>, parent_id: i32) -> zbus::Result<RawMenuLayout> {
+    if let Ok((_, layout)) =
+        proxy.call::<_, _, (u32, RawMenuLayout)>("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))
+    {
+        return Ok(layout);
+    }
+    if let Ok((_, layout_val)) =
+        proxy.call::<_, _, (u32, OwnedValue)>("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))
+    {
+        return layout_val.try_into().map_err(zbus::Error::Variant);
+    }
+    let (layout,): (RawMenuLayout,) =
+        proxy.call("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))?;
+    Ok(layout)
+}
+
+pub(super) fn parse_menu_entry(value: OwnedValue) -> zbus::Result<Option<MenuEntry>> {
     let (id, props, children): (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) =
         value.try_into().map_err(zbus::Error::Variant)?;
     Ok(menu_entry_from_properties(id, &props, !children.is_empty()))

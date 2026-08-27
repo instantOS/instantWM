@@ -176,3 +176,23 @@ fn stopped_worker_clears_stale_state_and_schedules_bounded_restart() {
     }
     assert_eq!(runtime.retry_delay, Duration::from_secs(60));
 }
+
+#[test]
+fn dbus_menu_raw_layout_parses_into_menu_entries() {
+    let mut props = HashMap::new();
+    props.insert("label".to_string(), string_value("Exit"));
+    props.insert("enabled".to_string(), OwnedValue::from(true));
+    props.insert("visible".to_string(), OwnedValue::from(true));
+
+    let child_tuple = (7i32, props, Vec::<OwnedValue>::new());
+    let child_val = OwnedValue::try_from(Value::from(child_tuple)).expect("valid tuple");
+
+    let entry = super::menu::parse_menu_entry(child_val)
+        .expect("parsed successfully")
+        .expect("entry present");
+
+    assert_eq!(entry.label, "Exit");
+    assert_eq!(entry.action, MenuAction::Activate(7));
+    assert!(entry.enabled);
+    assert!(!entry.separator);
+}
