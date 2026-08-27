@@ -273,8 +273,10 @@ mod tests {
 
         // Toggling back on re-enables it everywhere again.
         set_bottom_bar_shown(&mut wm.ctx(), true);
-        assert!([first, second]
-            .iter()
-            .all(|id| wm.core.model.monitor(*id).unwrap().shows_bottom_bar()));
+        assert!(
+            [first, second]
+                .iter()
+                .all(|id| wm.core.model.monitor(*id).unwrap().shows_bottom_bar())
+        );
     }
 }

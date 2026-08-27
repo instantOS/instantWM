@@ -1,4 +1,4 @@
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
 use crate::contexts::CoreCtx;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Client, CloseButtonColorConfigs,
@@ -10,6 +10,10 @@ const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
 const TAG_DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
+
+fn scaled_px(value: i32, scale: f64) -> i32 {
+    ((value as f64 * scale).round() as i32).max(1)
+}
 
 fn status_scheme(colors: &StatusColorConfig) -> BarScheme {
     BarScheme::from(&colors.as_scheme())
@@ -231,6 +235,9 @@ impl BarPresentation {
 pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
+    /// Effective logical UI scale used for decorative metrics that are not
+    /// derived from font advances or bar height.
+    pub ui_scale: f64,
     pub fonts: crate::core_state::FontConfig,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
@@ -449,6 +456,7 @@ pub(crate) fn build_monitor_snapshots(
                 mon.work_rect().w,
                 mon.bar_height,
             ),
+            ui_scale: mon.ui_scale,
             fonts,
             is_selected_monitor,
             status_scheme: status_scheme(&core.config().colors.status),
@@ -502,38 +510,36 @@ fn draw_startmenu_icon(
     startmenu_size: i32,
     gesture: Gesture,
     bar_height: i32,
+    ui_scale: f64,
 ) {
-    let icon_offset = (bar_height - CLOSE_BUTTON_WIDTH) / 2;
+    let icon_size = scaled_px(STARTMENU_ICON_SIZE, ui_scale);
+    let inner_size = scaled_px(STARTMENU_ICON_INNER, ui_scale);
+    let icon_offset = (bar_height - icon_size) / 2;
+    let outer_x = scaled_px(5, ui_scale);
+    let inner_x = scaled_px(9, ui_scale);
+    let inner_y_offset = scaled_px(4, ui_scale);
+    let trailing_x = scaled_px(19, ui_scale);
     let startmenu_invert = gesture == Gesture::StartMenu;
     painter.set_scheme(scheme.clone());
     painter.rect(
         Rect::new(0, 0, startmenu_size, bar_height),
-        true,
         !startmenu_invert,
     );
     painter.rect(
-        Rect::new(5, icon_offset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE),
-        true,
+        Rect::new(outer_x, icon_offset, icon_size, icon_size),
         startmenu_invert,
     );
     painter.rect(
         Rect::new(
-            9,
-            icon_offset + 4,
-            STARTMENU_ICON_INNER,
-            STARTMENU_ICON_INNER,
+            inner_x,
+            icon_offset + inner_y_offset,
+            inner_size,
+            inner_size,
         ),
-        true,
         !startmenu_invert,
     );
     painter.rect(
-        Rect::new(
-            19,
-            icon_offset + STARTMENU_ICON_SIZE,
-            STARTMENU_ICON_INNER,
-            STARTMENU_ICON_INNER,
-        ),
-        true,
+        Rect::new(trailing_x, icon_offset + icon_size, inner_size, inner_size),
         startmenu_invert,
     );
 }
@@ -555,6 +561,7 @@ fn draw_shutdown_button(
         symbol,
         true,
         0,
+        TextOverflow::Ellipsis,
     );
 
     x + bar_height
@@ -566,26 +573,28 @@ fn draw_close_button(
     is_hover: bool,
     x: i32,
     bar_height: i32,
+    ui_scale: f64,
 ) {
     let mut scheme = scheme.clone();
     scheme.foreground = scheme.detail;
     painter.set_scheme(scheme);
+    let button_width = scaled_px(CLOSE_BUTTON_WIDTH, ui_scale);
+    let button_height = scaled_px(CLOSE_BUTTON_HEIGHT, ui_scale);
+    let button_detail = scaled_px(CLOSE_BUTTON_DETAIL, ui_scale);
     let button_x = x + bar_height / 6;
-    let detail_offset = if is_hover { CLOSE_BUTTON_DETAIL } else { 0 };
-    let button_y = (bar_height - CLOSE_BUTTON_WIDTH) / 2 - detail_offset;
+    let detail_offset = if is_hover { button_detail } else { 0 };
+    let button_y = (bar_height - button_width) / 2 - detail_offset;
     painter.rect(
-        Rect::new(button_x, button_y, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT),
-        true,
+        Rect::new(button_x, button_y, button_width, button_height),
         true,
     );
     painter.rect(
         Rect::new(
             button_x,
-            (bar_height - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
-            CLOSE_BUTTON_WIDTH,
-            CLOSE_BUTTON_DETAIL + detail_offset,
+            (bar_height - button_width) / 2 + button_height - detail_offset,
+            button_width,
+            button_detail + detail_offset,
         ),
-        true,
         false,
     );
 }
@@ -602,9 +611,9 @@ fn draw_tags_section(
         let width = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
         painter.set_scheme(tag.scheme.clone());
         let detail_height = if snapshot.gesture == Gesture::Tag(tag.slot) {
-            TAG_DETAIL_BAR_HEIGHT_HOVER
+            scaled_px(TAG_DETAIL_BAR_HEIGHT_HOVER, snapshot.ui_scale)
         } else {
-            TAG_DETAIL_BAR_HEIGHT_NORMAL
+            scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale)
         };
         let lpad = (snapshot.horizontal_padding / 2).max(0);
         x = painter.text(
@@ -613,6 +622,7 @@ fn draw_tags_section(
             &tag.label,
             false,
             detail_height,
+            TextOverflow::Ellipsis,
         );
         hit.tag_ranges.push(crate::bar::TagHitRange {
             start: x - width,
@@ -641,6 +651,7 @@ fn draw_layout_symbol_section(
         &snapshot.layout_symbol,
         false,
         0,
+        TextOverflow::Ellipsis,
     );
     hit.layout_start = layout_start;
     hit.layout_end = x;
@@ -718,7 +729,7 @@ fn draw_titles_section(
 ) {
     if snapshot.titles.is_empty() {
         painter.set_scheme(snapshot.status_scheme.clone());
-        painter.rect(Rect::new(x, 0, title_width, bar_height), true, true);
+        painter.rect(Rect::new(x, 0, title_width, bar_height), true);
         return;
     }
 
@@ -734,20 +745,29 @@ fn draw_titles_section(
     {
         let text_w = painter.text_width(&title.name);
         painter.set_scheme(title.scheme.clone());
-        let lpad = if text_w < this_width - 64 {
+        let roomy_text_margin = scaled_px(64, snapshot.ui_scale);
+        let close_button_threshold = scaled_px(32, snapshot.ui_scale);
+        let close_button_text_offset = scaled_px(20, snapshot.ui_scale);
+        let lpad = if text_w < this_width - roomy_text_margin {
             ((this_width - text_w) as f32 * 0.5) as i32
         } else {
-            snapshot.horizontal_padding / 2 + if this_width >= 32 { 20 } else { 0 }
+            snapshot.horizontal_padding / 2
+                + if this_width >= close_button_threshold {
+                    close_button_text_offset
+                } else {
+                    0
+                }
         };
         painter.text(
             Rect::new(title_x, 0, this_width, bar_height),
             lpad,
             &title.name,
             false,
-            4,
+            scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale),
+            TextOverflow::Ellipsis,
         );
         if let Some(close_scheme) = &title.close_scheme
-            && this_width >= 32
+            && this_width >= close_button_threshold
         {
             draw_close_button(
                 painter,
@@ -755,6 +775,7 @@ fn draw_titles_section(
                 snapshot.gesture == Gesture::CloseButton,
                 title_x,
                 bar_height,
+                snapshot.ui_scale,
             );
         }
         hit.title_ranges.push(crate::bar::TitleHitRange {
@@ -812,6 +833,7 @@ pub(crate) fn render_monitor_snapshot(
         snapshot.startmenu_size,
         snapshot.gesture,
         bar_height,
+        snapshot.ui_scale,
     );
 
     let mut x = snapshot.startmenu_size;
@@ -855,13 +877,11 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
         painter.rect(
             Rect::new(layout.start_x, 0, layout.total_width, bar_height),
             true,
-            true,
         );
     }
     if layout.menu.width > 0 {
         painter.rect(
             Rect::new(layout.menu.start_x, 0, layout.menu.width, bar_height),
-            true,
             true,
         );
     }
@@ -880,6 +900,7 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
             &layout.menu.cells,
             &systray.base_scheme,
             bar_height,
+            snapshot.ui_scale,
         );
     }
 }
@@ -898,6 +919,13 @@ mod tests {
     fn marker(value: f32) -> ColorSchemeRgba {
         let color = Rgba::new(value, value, value, 1.0);
         ColorSchemeRgba::new(color, color, color)
+    }
+
+    #[test]
+    fn decorative_pixels_follow_monitor_scale() {
+        assert_eq!(scaled_px(4, 1.0), 4);
+        assert_eq!(scaled_px(4, 1.5), 6);
+        assert_eq!(scaled_px(1, 0.5), 1);
     }
 
     #[test]

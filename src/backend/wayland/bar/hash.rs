@@ -25,6 +25,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.rect.y.hash(hasher);
     snapshot.rect.w.hash(hasher);
     snapshot.rect.h.hash(hasher);
+    snapshot.ui_scale.to_bits().hash(hasher);
     snapshot.fonts.text_family.hash(hasher);
     snapshot.fonts.text_size.to_bits().hash(hasher);
     snapshot.fonts.icon_family.hash(hasher);
@@ -39,6 +40,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     }
     snapshot.startmenu_size.hash(hasher);
     snapshot.horizontal_padding.hash(hasher);
+    snapshot.external_right_width.hash(hasher);
     hash_gesture(hasher, snapshot.gesture);
     snapshot.layout_symbol.hash(hasher);
     snapshot.show_shutdown.hash(hasher);
@@ -47,6 +49,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.tags.len().hash(hasher);
     for tag in &snapshot.tags {
         tag.slot.hash(hasher);
+        tag.tag_index.hash(hasher);
         tag.label.hash(hasher);
         hash_scheme(hasher, &tag.scheme);
     }

@@ -1,5 +1,5 @@
 use crate::bar::SystrayHitSlot;
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
 use crate::systray::{MenuAction, MenuToggle, MenuView};
 use crate::types::Rect;
 
@@ -10,7 +10,9 @@ pub(crate) fn draw_menu(
     cells: &[SystrayHitSlot],
     base_scheme: &BarScheme,
     bar_height: i32,
+    ui_scale: f64,
 ) {
+    let scaled = |value: i32| ((value as f64 * ui_scale).round() as i32).max(1);
     for cell in cells {
         let Some(entry) = menu.entries.get(cell.idx) else {
             continue;
@@ -18,8 +20,12 @@ pub(crate) fn draw_menu(
         let width = cell.end - cell.start;
         if entry.separator {
             painter.rect(
-                Rect::new(cell.start + 4, bar_height / 2, (width - 8).max(1), 1),
-                true,
+                Rect::new(
+                    cell.start + scaled(4),
+                    bar_height / 2,
+                    (width - scaled(8)).max(1),
+                    scaled(1),
+                ),
                 false,
             );
             continue;
@@ -45,10 +51,11 @@ pub(crate) fn draw_menu(
         };
         painter.text(
             Rect::new(cell.start, 0, width, bar_height),
-            6,
+            scaled(6),
             &format!("{prefix}{}{suffix}", entry.label),
             false,
             0,
+            TextOverflow::Ellipsis,
         );
         if !entry.enabled {
             painter.set_scheme(base_scheme.clone());

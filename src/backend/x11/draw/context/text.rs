@@ -21,13 +21,6 @@ impl DrawContext {
         if self.display.is_null() {
             return (false, x, w, ptr::null_mut());
         }
-        // Lazy-initialise ellipsis width.
-        // Skip when `detail_height < 0` — that signals we are *drawing* the
-        // ellipsis itself and must not recurse.
-        if self.ellipsis_width == 0 && detail_height >= 0 {
-            self.ellipsis_width = self.fontset_getwidth("...");
-        }
-
         // Paint background and create Xft draw surface.
         // SAFETY: Xlib/Xft drawing calls with raw pointers.
         let bg = if invert { fg_pixel } else { bg_pixel };
@@ -61,10 +54,9 @@ impl DrawContext {
             }
         }
 
-        // SAFETY: XftDrawCreate returns a raw pointer owned by us.
-        let d = unsafe { XftDrawCreate(self.display, self.drawable, self.visual, self.colormap) };
+        let d = self.xft_draw;
         if d.is_null() {
-            // Fallback to measure-only if Xft surface creation failed.
+            // Fallback to measure-only if the persistent Xft surface failed.
             return (false, x, u32::MAX, ptr::null_mut());
         }
 
@@ -84,8 +76,6 @@ impl DrawContext {
     /// * `invert`        — swap fg/bg colors.
     /// * `detail_height` — if `> 0`, the bottom `detail_height` pixels of the
     ///   background are painted in the *detail* color.
-    ///   Pass `0` for a plain background, `-1` to skip the ellipsis-width
-    ///   calculation (used when drawing `"..."` itself to avoid infinite recursion).
     ///
     /// # Returns
     ///
@@ -100,10 +90,11 @@ impl DrawContext {
         invert: bool,
         detail_height: i32,
     ) -> i32 {
-        if self.display.is_null() || self.fonts.is_none() || text.is_empty() {
+        if self.display.is_null() {
             return 0;
         }
 
+        let cell_right = bounds.right();
         let mut x = bounds.x;
         let y = bounds.y;
         let mut w = bounds.w.max(0) as u32;
@@ -113,6 +104,9 @@ impl DrawContext {
         // Measuring text width requires only the fontset, not a color scheme.
         let mut render = x != 0 || y != 0 || w != 0 || h != 0;
         if !render {
+            if self.fonts.is_none() || text.is_empty() {
+                return 0;
+            }
             w = u32::MAX;
         }
 
@@ -150,22 +144,23 @@ impl DrawContext {
             d = nd;
         }
 
+        // A text cell owns its background independently of whether it has a
+        // drawable label. This also keeps layout stable when a configured tag
+        // name is empty or a font failed to provide any glyphs.
+        if text.is_empty() || self.fonts.is_none() {
+            return if render { cell_right } else { 0 };
+        }
+
         let (x, w) = self.text_run_loop(
             d,
             WmRect::new(x, y, 0, h as i32),
             w,
             text,
             invert,
-            detail_height,
             render,
             fg_color.as_ref(),
             bg_color.as_ref(),
         );
-
-        // ── Tear down Xft draw surface ────────────────────────────────────────
-        if !d.is_null() {
-            unsafe { XftDrawDestroy(d) };
-        }
 
         x + if render { w as i32 } else { 0 }
     }
@@ -178,7 +173,6 @@ impl DrawContext {
         available_width: u32,
         text: &str,
         invert: bool,
-        detail_height: i32,
         render: bool,
         fg_color: Option<&XftColor>,
         bg_color: Option<&XftColor>,
@@ -199,14 +193,10 @@ impl DrawContext {
         let mut usedfont_idx: usize = 0;
         let mut charexists = false;
 
-        // Ellipsis tracking — when text overflows we draw "..." at `ellipsis_x`.
-        let mut ellipsis_x: i32 = 0;
-        let mut ellipsis_w: u32 = 0;
         let mut overflow = false;
 
         loop {
             let mut ew: u32 = 0;
-            let mut ellipsis_len: usize = 0;
             let mut utf8strlen: usize = 0;
             let utf8str_start = text_pos; // byte offset of this font-run's start
             let mut nextfont_idx: Option<usize> = None;
@@ -215,32 +205,31 @@ impl DrawContext {
             // Nerd-font icons carry zero side bearings, so a run starting next
             // to an inline icon takes a leading gap; the icon's own side waits
             // at the opposite transition via the same predicate. Pen and
-            // remaining width move together so overflow and ellipsis checks
-            // below see numbers that already include the pad.
-            if self.icon_gap_px > 0 {
-                if let (Some(prev), Some(first)) = (
+            // remaining width move together so overflow checks below see
+            // numbers that already include the pad.
+            if self.icon_gap_px > 0
+                && let (Some(prev), Some(first)) = (
                     text[..utf8str_start].chars().next_back(),
                     text[utf8str_start..].chars().next(),
-                ) {
-                    if crate::bar::text::boundary_gap_between(prev, first) {
-                        let gap = self.icon_gap_px.min(w);
-                        x += gap as i32;
-                        w -= gap;
-                    }
-                }
+                )
+                && crate::bar::text::boundary_gap_between(prev, first)
+            {
+                let gap = self.icon_gap_px.min(w);
+                x += gap as i32;
+                w -= gap;
             }
 
             // ── Walk codepoints in the current font run ──────────────────────
             while text_pos < text_bytes.len() {
-                let remaining = &text_bytes[text_pos..];
-                let (charlen, codepoint) = match std::str::from_utf8(remaining) {
-                    Ok(s) => s
-                        .chars()
-                        .next()
-                        .map(|c| (c.len_utf8(), c as u32))
-                        .unwrap_or((0, 0xFFFD)),
-                    Err(e) => (e.error_len().unwrap_or(1), 0xFFFD),
-                };
+                // `text_pos` is advanced only by UTF-8 scalar lengths, and
+                // the input is already a valid `&str`; validating the entire
+                // remaining suffix for every character made this loop
+                // quadratic for long titles.
+                let ch = text[text_pos..]
+                    .chars()
+                    .next()
+                    .expect("text_pos must precede a UTF-8 scalar");
+                let (charlen, codepoint) = (ch.len_utf8(), ch as u32);
                 utf8codepoint = codepoint;
 
                 // Find which font in the fallback chain can render this char.
@@ -277,20 +266,11 @@ impl DrawContext {
                         let glyph_bytes = &text_bytes[text_pos..slice_end];
                         let tmpw = self.font_getexts(cur_font, glyph_bytes);
 
-                        // Update ellipsis position if there is still room.
-                        if ew + self.ellipsis_width <= w {
-                            ellipsis_x = x + ew as i32;
-                            ellipsis_w = w.saturating_sub(ew);
-                            ellipsis_len = utf8strlen;
-                        }
-
                         if ew + tmpw > w {
                             // This glyph would overflow — stop the run here.
                             overflow = true;
                             if !render {
                                 x += tmpw as i32;
-                            } else {
-                                utf8strlen = ellipsis_len;
                             }
                         } else if cur_idx == usedfont_idx {
                             // Same font — extend the current run.
@@ -349,15 +329,6 @@ impl DrawContext {
                 w = w.saturating_sub(ew);
             }
 
-            // Draw the ellipsis if we overflowed (but guard against recursion).
-            if render && overflow && text != "..." {
-                self.draw_ellipsis(
-                    WmRect::new(ellipsis_x, y, ellipsis_w as i32, h as i32),
-                    invert,
-                    detail_height,
-                );
-            }
-
             if text_pos >= text_bytes.len() || overflow {
                 break;
             }
@@ -380,17 +351,6 @@ impl DrawContext {
         }
 
         (x, w)
-    }
-
-    // ── Internal helpers for `text` ───────────────────────────────────────────
-
-    /// Draw `"..."` at `(x, y)` within `w × h`, used when text overflows.
-    ///
-    /// Passes `detail_height = -1` to suppress recursive ellipsis measurement.
-    fn draw_ellipsis(&mut self, bounds: WmRect, invert: bool, detail_height: i32) {
-        // detail_height == -1 prevents a further recursive call back here.
-        let dh = if detail_height >= 0 { detail_height } else { 0 };
-        self.text(bounds, 0, "...", invert, -1.max(dh - 1));
     }
 
     /// Return `true` if `codepoint` is in the no-match cache.

@@ -14,7 +14,7 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::{Scale, Transform};
 
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
 use crate::bar::scene;
 use crate::contexts::CoreCtx;
 use crate::types::{Point, Rect, Size};
@@ -74,11 +74,6 @@ impl WaylandBarPainter {
             return;
         };
         runtime.set_render_ping(render_ping);
-    }
-
-    /// Measure text width without requiring `&mut self`; used for hit-testing.
-    pub fn measure_text_width(&self, text: &str) -> i32 {
-        self.text.width(text, 0)
     }
 
     pub fn begin(&mut self, _scale: Scale<f64>, surface_rect: Rect) {
@@ -142,8 +137,8 @@ impl BarPainter for WaylandBarPainter {
         self.scheme = Some(scheme);
     }
 
-    fn rect(&mut self, bounds: Rect, filled: bool, invert: bool) {
-        if !filled || bounds.w <= 0 || bounds.h <= 0 {
+    fn rect(&mut self, bounds: Rect, invert: bool) {
+        if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
         let Some(scheme) = self.scheme.clone() else {
@@ -164,6 +159,7 @@ impl BarPainter for WaylandBarPainter {
         text: &str,
         invert: bool,
         detail_height: i32,
+        overflow: TextOverflow,
     ) -> i32 {
         let Some(scheme) = self.scheme.clone() else {
             return bounds.x;
@@ -184,6 +180,12 @@ impl BarPainter for WaylandBarPainter {
             );
         }
         if !text.is_empty() {
+            let available_width = (bounds.w - lpad).max(0);
+            let fitted =
+                crate::bar::text::fit_to_width(text, available_width, overflow, |candidate| {
+                    self.text.width(candidate, bounds.h)
+                });
+            let text = fitted.as_ref();
             let powerline = crate::bar::text::is_powerline_only(text);
             let bleed = if powerline { 2 } else { 0 };
             let text_x = bounds.x + lpad - bleed;
@@ -326,6 +328,31 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_text_still_paints_and_advances_the_complete_cell() {
+        let mut painter = WaylandBarPainter::new_worker_painter();
+        painter.begin(Scale::from(1.0), Rect::new(0, 0, 8, 4));
+        painter.set_scheme(BarScheme {
+            foreground: crate::types::Rgba::new(1.0, 0.0, 0.0, 1.0),
+            background: crate::types::Rgba::new(0.0, 0.0, 1.0, 1.0),
+            detail: crate::types::Rgba::ZERO,
+        });
+
+        let right = BarPainter::text(
+            &mut painter,
+            Rect::new(2, 0, 4, 4),
+            0,
+            "",
+            false,
+            0,
+            TextOverflow::Ellipsis,
+        );
+
+        assert_eq!(right, 6);
+        let pixel = (2 * 4) as usize;
+        assert_eq!(&painter.pixels[pixel..pixel + 4], &[255, 0, 0, 255]);
+    }
 
     fn test_wm() -> crate::wm::Wm {
         use crate::backend::{Backend, wayland::WaylandBackend};

@@ -2,7 +2,7 @@ use super::TEXT_PADDING;
 use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
 use crate::types::{Point, Rect, Rgba};
 
 const HOVER_INDICATOR_HEIGHT: i32 = 3;
@@ -492,7 +492,7 @@ pub(crate) fn draw_status_items(
     }
 
     painter.set_scheme(base_scheme.clone());
-    painter.rect(layout.clip_bounds, true, true);
+    painter.rect(layout.clip_bounds, true);
 
     let mut click_targets = Vec::new();
     for item in layout.items {
@@ -505,7 +505,7 @@ pub(crate) fn draw_status_items(
                     continue;
                 };
                 painter.set_scheme(base_scheme.clone());
-                painter.text(bounds, 0, text, false, 0);
+                painter.text(bounds, 0, text, false, 0, TextOverflow::Clip);
             }
             LaidOutItem::I3Block {
                 item_index,
@@ -541,7 +541,6 @@ pub(crate) fn draw_status_items(
                     });
                     painter.rect(
                         Rect::new(bounds.x, bounds.bottom() - height, bounds.w, height),
-                        true,
                         false,
                     );
                 }
@@ -606,7 +605,7 @@ fn draw_i3_block(
         detail,
     };
     painter.set_scheme(block_scheme.clone());
-    painter.rect(bounds, true, true);
+    painter.rect(bounds, true);
 
     let border_color = block
         .border
@@ -623,7 +622,6 @@ fn draw_i3_block(
     if border.top > 0 {
         painter.rect(
             Rect::new(bounds.x, bounds.y, bounds.w, border.top.min(bounds.h)),
-            true,
             false,
         );
     }
@@ -631,14 +629,12 @@ fn draw_i3_block(
         let height = border.bottom.min(bounds.h);
         painter.rect(
             Rect::new(bounds.x, bounds.y + bounds.h - height, bounds.w, height),
-            true,
             false,
         );
     }
     if border.left > 0 {
         painter.rect(
             Rect::new(bounds.x, bounds.y, border.left.min(bounds.w), bounds.h),
-            true,
             false,
         );
     }
@@ -646,14 +642,20 @@ fn draw_i3_block(
         let width = border.right.min(bounds.w);
         painter.rect(
             Rect::new(bounds.x + bounds.w - width, bounds.y, width, bounds.h),
-            true,
             false,
         );
     }
 
     if text_bounds.w > 0 {
         painter.set_scheme(block_scheme);
-        painter.text(text_bounds, text_lpad, text, false, 0);
+        painter.text(
+            text_bounds,
+            text_lpad,
+            text,
+            false,
+            0,
+            TextOverflow::Ellipsis,
+        );
     }
 }
 
@@ -665,7 +667,7 @@ fn draw_separator(
     base_scheme: &BarScheme,
 ) {
     painter.set_scheme(base_scheme.clone());
-    painter.rect(bounds, true, true);
+    painter.rect(bounds, true);
     if !draw_line || bounds.w <= 0 || bounds.h <= 0 {
         return;
     }
@@ -678,7 +680,7 @@ fn draw_separator(
         background: base_scheme.background,
         detail: base_scheme.detail,
     });
-    painter.rect(Rect::new(line_x, line_y, 1, line_height), true, false);
+    painter.rect(Rect::new(line_x, line_y, 1, line_height), false);
 }
 
 #[cfg(test)]
@@ -705,7 +707,7 @@ mod tests {
             self.scheme = Some(scheme);
         }
 
-        fn rect(&mut self, bounds: Rect, _filled: bool, invert: bool) {
+        fn rect(&mut self, bounds: Rect, invert: bool) {
             let color = self
                 .scheme
                 .as_ref()
@@ -721,6 +723,7 @@ mod tests {
             text: &str,
             _invert: bool,
             _detail_height: i32,
+            _overflow: TextOverflow,
         ) -> i32 {
             self.texts.push(text.to_string());
             self.text_bounds.push(bounds);

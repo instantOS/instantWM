@@ -261,18 +261,13 @@ fn run_interaction_grab_loop(
         }
 
         let should_continue = match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.to_x11_detail() {
-                    release = Some(X11DragRelease {
-                        root: Point::new(br.root_x as i32, br.root_y as i32),
-                        modifiers: u16::from(br.state) as u32,
-                        time_msec: br.time,
-                    });
-                    false
-                } else {
-                    dispatch_grabbed_event(ctx, &event);
-                    true
-                }
+            x11rb::protocol::Event::ButtonRelease(br) if br.detail == btn.to_x11_detail() => {
+                release = Some(X11DragRelease {
+                    root: Point::new(br.root_x as i32, br.root_y as i32),
+                    modifiers: u16::from(br.state) as u32,
+                    time_msec: br.time,
+                });
+                false
             }
             _ => {
                 dispatch_grabbed_event(ctx, &event);

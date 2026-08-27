@@ -27,8 +27,19 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
     if bar_win == WindowId::default() {
         return;
     }
-    let work_rect_w = monitor.work_rect().w;
-    let bar_height = core.derived().bar_height;
+    let snapshots = crate::bar::scene::build_monitor_snapshots(
+        core,
+        true,
+        core.bar.runtime.external_tray_width,
+    );
+    let Some(snapshot) = snapshots
+        .iter()
+        .find(|snapshot| snapshot.monitor_id == mon_idx)
+    else {
+        return;
+    };
+    let work_rect_w = snapshot.rect.w;
+    let bar_height = snapshot.rect.h;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
@@ -41,21 +52,10 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
             return;
         }
         drw.resize(work_rect_w as u32, bar_height as u32);
-        drw.clone()
+        drw
     };
 
     let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
-    let snapshots = crate::bar::scene::build_monitor_snapshots(
-        core,
-        true,
-        core.bar.runtime.external_tray_width,
-    );
-    let Some(snapshot) = snapshots
-        .iter()
-        .find(|snapshot| snapshot.monitor_id == mon_idx)
-    else {
-        return;
-    };
     crate::bar::renderer::draw_bar_snapshot(core, mon_idx, snapshot, &mut painter);
 
     painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
@@ -82,11 +82,11 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
             continue;
         }
 
-        let work_rect_w = match core.model().monitor(i) {
-            Some(m) => m.work_rect().w,
-            None => continue,
+        let Some(snapshot) = snapshot_by_monitor_id.get(&i).copied() else {
+            continue;
         };
-        let bar_height = core.derived().bar_height;
+        let work_rect_w = snapshot.rect.w;
+        let bar_height = snapshot.rect.h;
         if work_rect_w <= 0 || bar_height <= 0 {
             continue;
         }
@@ -99,11 +99,7 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
                 continue;
             }
             drw.resize(work_rect_w as u32, bar_height as u32);
-            drw.clone()
-        };
-
-        let Some(snapshot) = snapshot_by_monitor_id.get(&i).copied() else {
-            continue;
+            drw
         };
 
         let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);

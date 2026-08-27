@@ -246,10 +246,10 @@ impl WaylandState {
         }
 
         let ended = std::mem::replace(&mut self.active_resize, desired);
-        if let Some(window) = ended.filter(|window| Some(*window) != desired) {
-            if let Some(element) = self.find_window(window).cloned() {
-                self.send_toplevel_configure(&element, None);
-            }
+        if let Some(window) = ended.filter(|window| Some(*window) != desired)
+            && let Some(element) = self.find_window(window).cloned()
+        {
+            self.send_toplevel_configure(&element, None);
         }
     }
 

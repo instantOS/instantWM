@@ -1,5 +1,16 @@
 use crate::types::{ColorSchemeRgba, Rect, Rgba, Size};
 
+/// How text that is wider than its cell is represented.
+///
+/// This is presentation policy, not a rasterizer detail: every backend must
+/// produce the same fitted string before handing it to Xft, cosmic-text, or a
+/// future text engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextOverflow {
+    Clip,
+    Ellipsis,
+}
+
 #[derive(Clone, Debug)]
 pub struct BarScheme {
     pub foreground: Rgba,
@@ -46,9 +57,21 @@ impl From<&ColorSchemeRgba> for BarScheme {
 }
 
 pub trait BarPainter {
+    /// Measure the horizontal advance of `text` using the fonts active for the
+    /// monitor currently being painted.
     fn text_width(&mut self, text: &str) -> i32;
     fn set_scheme(&mut self, scheme: BarScheme);
-    fn rect(&mut self, bounds: Rect, filled: bool, invert: bool);
+
+    /// Fill `bounds` with the scheme foreground (`invert=false`) or background
+    /// (`invert=true`).
+    fn rect(&mut self, bounds: Rect, invert: bool);
+
+    /// Paint one complete bar cell and return `bounds.right()`.
+    ///
+    /// The background and optional detail strip are painted even when `text`
+    /// is empty. `overflow` is applied after subtracting `lpad`. Implementors
+    /// must not return a glyph advance: callers chain cells using the returned
+    /// right edge.
     fn text(
         &mut self,
         bounds: Rect,
@@ -56,6 +79,7 @@ pub trait BarPainter {
         text: &str,
         invert: bool,
         detail_height: i32,
+        overflow: TextOverflow,
     ) -> i32;
     /// Blit non-premultiplied RGBA8 pixels (row-major, 4 bytes per pixel)
     /// scaled to exactly fill `destination`. Used for compositor-rendered

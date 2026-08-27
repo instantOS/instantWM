@@ -1,6 +1,32 @@
-//! Backend-independent classification of bar text into semantic font roles.
+//! Shared typography policy for the top bar.
+//!
+//! Bar text mixes an ordinary text face with a larger Nerd Font icon face.
+//! Correcting the icon size exposed a second problem: many patched glyphs have
+//! asymmetric side bearings or ink outside their nominal advance, so adjacent
+//! text could look lopsided or overlap the icon. Normal kerning cannot repair a
+//! boundary between different faces.
+//!
+//! The policy is therefore:
+//!
+//! ```text
+//! Text("bat") -- gap -- Icon("\u{f240}") -- gap -- Text("50%")
+//! ```
+//!
+//! A single, text-size-relative gap is added at every direct text/icon
+//! transition. Whitespace already supplies separation, adjacent icons remain
+//! flush, and Powerline glyphs are excluded because their intentional ink
+//! overlap is what makes segments tile seamlessly.
+//!
+//! Xft can insert the resulting integral pixel gap directly between font runs.
+//! cosmic-text expresses the same policy as trailing span spacing; preserving
+//! that spacing requires isolating the boundary grapheme and preventing it from
+//! joining a ligature. These are different rasterizer adapters for one visual
+//! rule, not separate sources of typography policy.
 
+use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::bar::paint::TextOverflow;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FontRole {
@@ -140,6 +166,63 @@ pub(crate) fn icon_gap_letter_spacing(carrier_size: f32, text_size: f32) -> f32 
     ICON_BOUNDARY_PAD_EM_TEXT * text_size / carrier_size.max(1.0)
 }
 
+/// Fit text to a cell using backend-provided advance measurement.
+///
+/// Clipped text is returned unchanged because both rasterizers already enforce
+/// cell bounds. Ellipsis truncation occurs at extended grapheme boundaries and
+/// uses a binary search over those boundaries, avoiding a shaped measurement
+/// for every prefix. The returned text is shared policy; the backend only
+/// rasterizes it. A borrowed value is returned when no fitting is needed.
+pub(crate) fn fit_to_width<'a>(
+    text: &'a str,
+    max_width: i32,
+    overflow: TextOverflow,
+    mut measure: impl FnMut(&str) -> i32,
+) -> Cow<'a, str> {
+    let max_width = max_width.max(0);
+    // Both rasterizers already clip to the cell bounds. Measuring and
+    // rebuilding a clipped string only duplicates their work and, for
+    // cosmic-text, would shape a series of throwaway prefixes.
+    if text.is_empty() || overflow == TextOverflow::Clip {
+        return Cow::Borrowed(text);
+    }
+    if measure(text) <= max_width {
+        return Cow::Borrowed(text);
+    }
+
+    let suffix = "...";
+    let suffix_width = measure(suffix);
+    if suffix_width > max_width {
+        return Cow::Borrowed("");
+    }
+
+    let grapheme_ends: Vec<_> = text
+        .grapheme_indices(true)
+        .map(|(start, grapheme)| start + grapheme.len())
+        .collect();
+    let mut low = 0;
+    let mut high = grapheme_ends.len();
+    let mut candidate = String::new();
+    while low < high {
+        let candidate_count = low + (high - low).div_ceil(2);
+        let end = grapheme_ends[candidate_count - 1];
+        candidate.clear();
+        candidate.push_str(&text[..end]);
+        candidate.push_str(suffix);
+        if measure(&candidate) <= max_width {
+            low = candidate_count;
+        } else {
+            high = candidate_count - 1;
+        }
+    }
+
+    let fitted_end = low.checked_sub(1).map_or(0, |index| grapheme_ends[index]);
+    let mut fitted = String::with_capacity(fitted_end + suffix.len());
+    fitted.push_str(&text[..fitted_end]);
+    fitted.push_str(suffix);
+    Cow::Owned(fitted)
+}
+
 /// A [`TextRun`] annotated with the spacing its boundary cluster carries.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct GappedRun<'a> {
@@ -251,6 +334,63 @@ pub(crate) fn gapped_runs(text: &str, text_size: f32, icon_size: f32) -> Vec<Gap
 mod tests {
     use super::*;
 
+    fn monospace_width(text: &str) -> i32 {
+        text.graphemes(true).count() as i32
+    }
+
+    #[test]
+    fn fitting_keeps_text_borrowed_when_it_already_fits() {
+        let fitted = fit_to_width("hello", 5, TextOverflow::Ellipsis, monospace_width);
+        assert!(matches!(fitted, Cow::Borrowed("hello")));
+    }
+
+    #[test]
+    fn fitting_applies_one_shared_ellipsis_policy() {
+        assert_eq!(
+            fit_to_width("abcdef", 5, TextOverflow::Ellipsis, monospace_width),
+            "ab..."
+        );
+        assert_eq!(
+            fit_to_width("abcdef", 5, TextOverflow::Clip, monospace_width),
+            "abcdef"
+        );
+        assert_eq!(
+            fit_to_width("abcdef", 2, TextOverflow::Ellipsis, monospace_width),
+            ""
+        );
+    }
+
+    #[test]
+    fn clipping_is_deferred_to_the_rasterizer_without_measuring() {
+        let mut measurements = 0;
+        let fitted = fit_to_width("e\u{301}x", 1, TextOverflow::Clip, |_| {
+            measurements += 1;
+            99
+        });
+        assert!(matches!(fitted, Cow::Borrowed("e\u{301}x")));
+        assert_eq!(measurements, 0);
+    }
+
+    #[test]
+    fn ellipsis_never_splits_a_grapheme_cluster() {
+        assert_eq!(
+            fit_to_width("e\u{301}xyzz", 4, TextOverflow::Ellipsis, monospace_width),
+            "e\u{301}..."
+        );
+    }
+
+    #[test]
+    fn ellipsis_uses_logarithmically_many_measurements() {
+        let text = "x".repeat(1024);
+        let mut measurements = 0;
+        let fitted = fit_to_width(&text, 100, TextOverflow::Ellipsis, |candidate| {
+            measurements += 1;
+            candidate.len() as i32
+        });
+        assert_eq!(fitted.len(), 100);
+        assert!(measurements <= 13, "used {measurements} measurements");
+    }
+
     #[test]
     fn splits_mixed_text_at_semantic_role_boundaries() {
         let classified = runs("bat \u{f240} 50%");
@@ -340,6 +480,17 @@ mod tests {
         assert!((icon_gap_letter_spacing(16.0, 12.0) - 0.1125).abs() < 1e-6);
         // Degenerate carrier sizes still produce a finite value.
         assert!((icon_gap_letter_spacing(0.0, 12.0) - 1.8).abs() < 1e-5);
+    }
+
+    #[test]
+    fn xft_and_cosmic_spacing_resolve_to_the_same_device_pixel() {
+        for text_size in [10.0, 12.0, 14.0, 16.0, 20.0] {
+            let cosmic_pixels = icon_gap_letter_spacing(text_size, text_size) * text_size;
+            assert_eq!(
+                cosmic_pixels.round() as u32,
+                icon_boundary_pad_px(text_size)
+            );
+        }
     }
 
     #[test]

@@ -378,6 +378,13 @@ unsafe extern "C" {
         result: *mut XftColor,
     ) -> c_int;
 
+    pub fn XftColorFree(
+        display: *mut libc::c_void,
+        visual: *mut libc::c_void,
+        cmap: c_ulong,
+        color: *mut XftColor,
+    );
+
     pub fn XftFontMatch(
         display: *mut libc::c_void,
         screen: c_int,
