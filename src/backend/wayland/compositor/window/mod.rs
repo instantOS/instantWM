@@ -237,14 +237,30 @@ impl WaylandState {
         self.pending_warp = Some(Point::from((x, y)));
     }
 
-    pub(crate) fn begin_interactive_resize(&mut self, window: WindowId) {
-        self.active_resizes.insert(window);
-    }
+    /// Reconcile xdg-toplevel's `resizing` state with the interaction model.
+    /// Ending a resize emits the final configure without the resizing flag;
+    /// redundant synchronization has no protocol effect.
+    pub(crate) fn reconcile_interactive_resize(&mut self, desired: Option<WindowId>) {
+        if self.active_resizes.len() == usize::from(desired.is_some())
+            && desired.is_none_or(|window| self.active_resizes.contains(&window))
+        {
+            return;
+        }
 
-    pub(crate) fn end_interactive_resize(&mut self, window: WindowId) {
-        self.active_resizes.remove(&window);
-        if let Some(element) = self.find_window(window).cloned() {
-            self.send_toplevel_configure(&element, None);
+        let ended = self
+            .active_resizes
+            .iter()
+            .copied()
+            .filter(|window| Some(*window) != desired)
+            .collect::<Vec<_>>();
+        self.active_resizes.clear();
+        if let Some(window) = desired {
+            self.active_resizes.insert(window);
+        }
+        for window in ended {
+            if let Some(element) = self.find_window(window).cloned() {
+                self.send_toplevel_configure(&element, None);
+            }
         }
     }
 
@@ -312,6 +328,25 @@ mod tests {
         assert!(!committed_size_is_stale(None, (800, 600)));
         assert!(!committed_size_is_stale(Some((800, 600)), (800, 600)));
         assert!(committed_size_is_stale(Some((800, 600)), (1920, 1080)));
+    }
+
+    #[test]
+    fn interactive_resize_reconciliation_is_idempotent() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let win = WindowId(23);
+
+        state.reconcile_interactive_resize(Some(win));
+        assert_eq!(state.active_resizes.len(), 1);
+        assert!(state.active_resizes.contains(&win));
+
+        state.reconcile_interactive_resize(Some(win));
+        assert_eq!(state.active_resizes.len(), 1);
+
+        state.reconcile_interactive_resize(None);
+        assert!(state.active_resizes.is_empty());
+        state.reconcile_interactive_resize(None);
+        assert!(state.active_resizes.is_empty());
     }
 
     #[test]

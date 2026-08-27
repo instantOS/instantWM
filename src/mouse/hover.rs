@@ -7,13 +7,10 @@
 //! a right-click always starts a move; a middle-click closes the window.
 //! Moving further away deactivates the mode.
 //!
-//! The hover-offer *model* is shared; committing it to an interaction is a
-//! backend concern (X11 commits through its modal grab loop in
-//! `backend/x11/grab.rs`, Wayland through implicit pointer grabs).  While the
-//! offer stands, X11 additionally holds a non-modal pointer grab
-//! ([`WmCtx::set_hover_pointer_grab`]) so the resize cursor and the
-//! committing click are not swallowed by whatever window the border zone
-//! happens to overlap; Wayland owns both already and ignores the grab.
+//! The hover-offer model is authoritative: cursor presentation and pointer
+//! routing are derived from it and reconciled by the active backend. Committing
+//! an offer remains a transport concern (X11 uses its modal interaction loop;
+//! Wayland uses compositor-owned pointer input).
 //!
 //! ## Entry points
 //!
@@ -25,14 +22,15 @@
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
 use crate::model::WmModel;
-use crate::types::{AltCursor, Point, Rect, ResizeDirection, WindowId};
+use crate::types::{Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
 
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
 // Pure hover-offer state lives on [`crate::core_state::HoverOffer`] /
-// [`crate::core_state::DragState`]; these functions apply the matching cursor.
+// [`crate::core_state::DragState`]; these functions reconcile its derived
+// presentation after each transition.
 
 /// Window and direction selected by the resize-border hit test.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,30 +40,29 @@ pub struct HoverResizeTarget {
     pub geo: Rect,
 }
 
-/// Activate a resize hover offer and apply the matching cursor.
+/// Activate a resize hover offer and reconcile its derived presentation.
 fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
-    ctx.core_mut()
-        .state_mut()
-        .interaction
-        .drag
-        .set_hover_offer(HoverOffer::Resize {
+    let changed = ctx.transition_pointer_interaction(|drag| {
+        drag.set_hover_offer(HoverOffer::Resize {
             win: target.win,
             dir: target.dir,
-        });
-    ctx.set_cursor_style(AltCursor::Resize(target.dir));
-    // X11 borrows the pointer for as long as the offer stands so both the
-    // cursor and the committing click survive overlap with other windows.
-    ctx.set_hover_pointer_grab(true);
+        })
+    });
+    if !changed {
+        // Retry a previously failed native projection while the offer remains
+        // authoritative (for example, an X11 grab becoming available).
+        ctx.sync_interaction_projection();
+    }
 }
 
-/// Clear any active hover offer and reset the cursor if the state changed.
+/// Clear any active hover offer and reconcile the resulting presentation.
 pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
-    if ctx.core_mut().interaction_mut().drag.clear_hover_offer() {
-        ctx.set_cursor_style(crate::types::AltCursor::Default);
+    // Reconciliation is intentionally unconditional so native state can heal
+    // even after a redundant logical clear.
+    let changed = ctx.transition_pointer_interaction(|drag| drag.clear_hover_offer());
+    if !changed {
+        ctx.sync_interaction_projection();
     }
-    // Also release a pointer still borrowed by an offer that mutated state
-    // elsewhere (for example the sidebar replacing a resize offer).
-    ctx.set_hover_pointer_grab(false);
 }
 
 fn resize_target_for_window(
@@ -205,21 +202,18 @@ pub fn set_sidebar_offer(
     target: Option<crate::types::SidebarTarget>,
 ) -> SidebarOfferUpdate {
     if let Some(target) = target {
-        ctx.core_mut()
-            .state_mut()
-            .interaction
-            .drag
-            .set_hover_offer(HoverOffer::Sidebar(target));
-        // Return a pointer borrowed by a resize offer before projecting the
-        // sidebar cursor, or the borrow would outlive its offer.
-        ctx.set_hover_pointer_grab(false);
-        // Always project the cursor. Gesture completion can leave the same
-        // logical offer in place while changing the active cursor override.
-        ctx.set_cursor_style(AltCursor::VerticalAdjust);
+        // Always reconcile. Gesture completion can leave the same logical
+        // offer in place while ending a higher-priority captured interaction.
+        let changed = ctx.transition_pointer_interaction(|drag| {
+            drag.set_hover_offer(HoverOffer::Sidebar(target))
+        });
+        if !changed {
+            ctx.sync_interaction_projection();
+        }
         return SidebarOfferUpdate::Active;
     }
 
-    if ctx.core().interaction().drag.hover_offer.is_sidebar() {
+    if ctx.core().interaction().drag.hover_offer().is_sidebar() {
         clear_hover_offer(ctx);
         return SidebarOfferUpdate::Cleared;
     }

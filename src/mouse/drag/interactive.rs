@@ -7,20 +7,13 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::drag::lifecycle::{ResizeDragParams, begin_resize};
-use crate::types::{AltCursor, InteractionSource, MouseButton, Point, Rect, WindowId};
+use crate::types::{InteractionSource, MouseButton, Point, Rect, WindowId};
 
 fn begin_active_resize(
     ctx: &mut WmCtx<'_>,
     params: ResizeDragParams,
 ) -> Result<(), crate::core_state::InteractionAlreadyActive> {
-    match ctx {
-        WmCtx::X11(x11) => begin_resize(&mut x11.core.interaction_mut().drag, &x11.x11, params),
-        WmCtx::Wayland(wayland) => begin_resize(
-            &mut wayland.core.interaction_mut().drag,
-            wayland.wayland,
-            params,
-        ),
-    }
+    ctx.transition_pointer_interaction(|drag| begin_resize(drag, params))
 }
 
 /// Begin a directional resize from a compositor binding on any backend.
@@ -71,7 +64,6 @@ pub fn directional_resize_begin_with_policy(
     {
         return false;
     }
-    ctx.set_cursor_style(AltCursor::Resize(direction));
     crate::focus::focus(ctx, Some(win));
     ctx.raise_client(win);
     true
@@ -88,23 +80,21 @@ pub fn tree_resize_begin(
     resize: crate::layouts::manager::PointerTreeResizeStart,
 ) -> bool {
     if ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .begin_tree_resize(crate::core_state::TreeResizeParams {
-            win,
-            button: btn,
-            source,
-            direction: resize.direction,
-            start,
-            geometry,
-            origin: resize.origin,
+        .transition_pointer_interaction(|drag| {
+            drag.begin_tree_resize(crate::core_state::TreeResizeParams {
+                win,
+                button: btn,
+                source,
+                direction: resize.direction,
+                start,
+                geometry,
+                origin: resize.origin,
+            })
         })
         .is_err()
     {
         return false;
     }
-    ctx.set_cursor_style(AltCursor::Resize(resize.direction));
     crate::focus::focus(ctx, Some(win));
     ctx.raise_client(win);
     true
@@ -141,11 +131,9 @@ pub fn hover_drag_begin(
         crate::core_state::DragType::Resize(target.dir)
     };
     let started = match drag_type {
-        crate::core_state::DragType::Move => ctx
-            .core_mut()
-            .interaction_mut()
-            .drag
-            .begin_move(target.win, btn, source, position, target.geo),
+        crate::core_state::DragType::Move => ctx.transition_pointer_interaction(|drag| {
+            drag.begin_move(target.win, btn, source, position, target.geo)
+        }),
         crate::core_state::DragType::Resize(direction) => begin_active_resize(
             ctx,
             ResizeDragParams {
@@ -164,14 +152,10 @@ pub fn hover_drag_begin(
         return false;
     }
 
-    crate::mouse::clear_hover_offer(ctx);
-    match drag_type {
-        crate::core_state::DragType::Move => ctx.set_cursor_style(AltCursor::Move),
-        crate::core_state::DragType::Resize(direction) => {
-            ctx.set_cursor_style(AltCursor::Resize(direction));
-        }
-        crate::core_state::DragType::TreeResize(_) => unreachable!(),
-    }
+    debug_assert!(!matches!(
+        drag_type,
+        crate::core_state::DragType::TreeResize(_)
+    ));
     crate::focus::focus(ctx, Some(target.win));
     ctx.raise_client(target.win);
     true
@@ -191,10 +175,7 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     let Some(drag) = ctx.core().interaction().drag.active_interaction().cloned() else {
         return false;
     };
-    ctx.core_mut()
-        .interaction_mut()
-        .drag
-        .record_interactive_motion(root);
+    ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));
 
     match drag.operation() {
         crate::core_state::DragOperation::Move => {
@@ -310,20 +291,10 @@ fn apply_resize_drag_motion(
     );
 }
 
-/// Finish the active window interaction using backend protocol capabilities.
+/// Finish the active window interaction and reconcile its derived projection.
 pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32) -> bool {
-    let finished = match ctx {
-        WmCtx::X11(x11) => crate::mouse::drag::lifecycle::finish(
-            &mut x11.core.interaction_mut().drag,
-            &x11.x11,
-            btn,
-        ),
-        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::finish(
-            &mut wayland.core.interaction_mut().drag,
-            wayland.wayland,
-            btn,
-        ),
-    };
+    let finished =
+        ctx.transition_pointer_interaction(|drag| crate::mouse::drag::lifecycle::finish(drag, btn));
     let Some(drag) = finished else {
         return false;
     };

@@ -102,12 +102,11 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
             let _ = crate::mouse::process_title_reorder_motion(ctx, event.root);
         }
         Some(CapturedInteraction::Tag(_)) => {
-            ctx.core_mut()
-                .interaction_mut()
-                .drag
-                .tag_drag_mut()
-                .expect("tag capture remained active")
-                .last_motion = Some((event.root, event.modifiers));
+            ctx.transition_pointer_interaction(|drag| {
+                drag.tag_drag_mut()
+                    .expect("tag capture remained active")
+                    .last_motion = Some((event.root, event.modifiers));
+            });
             let _ = crate::mouse::apply_drag_tag_motion(ctx, event.root);
         }
         Some(CapturedInteraction::SidebarVolume(_)) => {
@@ -158,28 +157,13 @@ fn finish(
 }
 
 fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
-    let cancelled_interactive = match ctx {
-        WmCtx::X11(x11) => crate::mouse::drag::lifecycle::cancel(
-            &mut x11.core.interaction_mut().drag,
-            &x11.x11,
-            reason,
-        ),
-        WmCtx::Wayland(wayland) => crate::mouse::drag::lifecycle::cancel(
-            &mut wayland.core.interaction_mut().drag,
-            wayland.wayland,
-            reason,
-        ),
-    }
-    .is_some();
-    let cancelled_other = ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .cancel_capture()
-        .is_some();
+    let (cancelled_interactive, cancelled_other) = ctx.transition_pointer_interaction(|drag| {
+        let cancelled_interactive = crate::mouse::drag::lifecycle::cancel(drag, reason).is_some();
+        let cancelled_other = drag.cancel_capture().is_some();
+        (cancelled_interactive, cancelled_other)
+    });
     if cancelled_interactive || cancelled_other {
         ctx.core_mut().bar.hover.clear();
-        ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);
         ctx.request_bar_update();
         InteractionOutcome::Captured

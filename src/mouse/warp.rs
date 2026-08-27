@@ -8,7 +8,6 @@
 //! | [`clamp_into`]                     | Clamp a point into window bounds (before a drag/resize)|
 //! | [`warp_to_focus`]                  | Keybinding handler – warp to the selected window       |
 //! | [`warp_to_resize_corner`]          | Warp to the edge/corner for a resize direction         |
-//! | [`WmCtx::set_cursor_style`]        | Restore the normal (arrow) root cursor                 |
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
 

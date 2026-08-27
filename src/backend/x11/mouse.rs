@@ -1,7 +1,7 @@
 //! X11 mouse backend helpers.
 
 use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
-use crate::contexts::{CoreCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::types::{AltCursor, Point, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
@@ -66,46 +66,64 @@ pub fn set_x11_cursor(
     }
 }
 
-impl crate::backend::CursorOps for WmCtxX11<'_> {
-    fn apply_cursor_style(&mut self, style: AltCursor) {
-        set_x11_cursor(&self.x11, self.x11_runtime, style);
-    }
-}
-
-/// Grant the active hover-resize offer pointer ownership, or take it back.
-///
-/// X11 alone needs this: its passive offer can only project the root cursor
-/// and observe presses on the root window, so a floating window's border zone
-/// overlapping another client loses both the cursor feedback and the
-/// committing click to the client beneath. A non-modal grab — the pointer
-/// counterpart of the modal loop this backend used to run — restores both for
-/// exactly as long as the offer is armed.
-pub fn set_hover_pointer_grab(ctx: &mut WmCtxX11<'_>, active: bool) {
-    if active {
-        arm_hover_pointer_grab(ctx);
-    } else {
-        release_hover_pointer_grab(ctx);
-    }
-}
-
-fn arm_hover_pointer_grab(ctx: &mut WmCtxX11<'_>) {
-    // A modal drag already owns the pointer; never clobber it.
-    if ctx.x11_runtime.active_pointer_grab.is_some() || hover_grab_blocked(&ctx.core) {
-        return;
-    }
-    let Some((_, dir)) = ctx.core.interaction().drag.hover_offer.resize_target() else {
-        return;
-    };
-    if crate::backend::x11::grab::grab_hover_offer_pointer(
-        &ctx.x11,
-        ctx.x11_runtime,
-        AltCursor::Resize(dir),
+impl crate::backend::InteractionProjectionOps for WmCtxX11<'_> {
+    fn reconcile_interaction_projection(
+        &mut self,
+        desired: crate::core_state::InteractionPresentation,
     ) {
+        set_x11_cursor(&self.x11, self.x11_runtime, desired.cursor);
+        match hover_ownership_update(
+            self.x11_runtime.active_pointer_grab.map(|grab| grab.kind),
+            desired.pointer_routing,
+        ) {
+            HoverOwnershipUpdate::Acquire => {
+                ensure_hover_offer_pointer_ownership(self, desired.cursor)
+            }
+            HoverOwnershipUpdate::Release => release_hover_offer_pointer_ownership(self),
+            HoverOwnershipUpdate::Keep => {}
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HoverOwnershipUpdate {
+    Acquire,
+    Release,
+    Keep,
+}
+
+fn hover_ownership_update(
+    active: Option<PointerGrabKind>,
+    desired: crate::core_state::PointerRouting,
+) -> HoverOwnershipUpdate {
+    match (active, desired) {
+        (None, crate::core_state::PointerRouting::HoverOffer) => HoverOwnershipUpdate::Acquire,
+        (Some(PointerGrabKind::HoverOffer), routing)
+            if routing != crate::core_state::PointerRouting::HoverOffer =>
+        {
+            HoverOwnershipUpdate::Release
+        }
+        _ => HoverOwnershipUpdate::Keep,
+    }
+}
+
+/// Ensure X11 satisfies the shared hover-offer routing guarantee.
+///
+/// A passive offer only owns the root window. When its border zone overlaps a
+/// client, the client would otherwise own both cursor feedback and the press.
+/// The native grab is an X11 projection detail and is never exposed to shared
+/// interaction policy.
+fn ensure_hover_offer_pointer_ownership(ctx: &mut WmCtxX11<'_>, cursor: AltCursor) {
+    // A modal drag owns its native transport separately. Never replace it.
+    if ctx.x11_runtime.active_pointer_grab.is_some() {
+        return;
+    }
+    if crate::backend::x11::grab::grab_hover_offer_pointer(&ctx.x11, ctx.x11_runtime, cursor) {
         let _ = ctx.x11.conn.flush();
     }
 }
 
-fn release_hover_pointer_grab(ctx: &mut WmCtxX11<'_>) {
+fn release_hover_offer_pointer_ownership(ctx: &mut WmCtxX11<'_>) {
     let held_by_offer = ctx
         .x11_runtime
         .active_pointer_grab
@@ -113,14 +131,6 @@ fn release_hover_pointer_grab(ctx: &mut WmCtxX11<'_>) {
     if held_by_offer {
         crate::backend::x11::grab::ungrab(&ctx.x11, ctx.x11_runtime);
     }
-}
-
-/// Scenes that own pointer semantics in their own right must keep the offer
-/// from borrowing the pointer.
-fn hover_grab_blocked(core: &CoreCtx<'_>) -> bool {
-    core.model().is_overview_active()
-        || core.behavior().current_mode.tree_placement().is_some()
-        || core.interaction().drag.capture().is_some()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,8 +166,11 @@ pub fn managed_window(
 
 #[cfg(test)]
 mod cursor_tests {
-    use super::{CursorUpdateTargets, cursor_update_targets};
+    use super::{
+        CursorUpdateTargets, HoverOwnershipUpdate, cursor_update_targets, hover_ownership_update,
+    };
     use crate::backend::x11::{ActivePointerGrab, PointerGrabKind};
+    use crate::core_state::PointerRouting;
     use crate::types::AltCursor;
     use x11rb::protocol::xproto::EventMask;
 
@@ -196,6 +209,32 @@ mod cursor_tests {
                 root: false,
                 active_grab: false,
             }
+        );
+    }
+
+    #[test]
+    fn hover_ownership_reconciliation_is_level_triggered() {
+        assert_eq!(
+            hover_ownership_update(None, PointerRouting::HoverOffer),
+            HoverOwnershipUpdate::Acquire
+        );
+        assert_eq!(
+            hover_ownership_update(
+                Some(PointerGrabKind::HoverOffer),
+                PointerRouting::HoverOffer
+            ),
+            HoverOwnershipUpdate::Keep
+        );
+        assert_eq!(
+            hover_ownership_update(Some(PointerGrabKind::HoverOffer), PointerRouting::Normal),
+            HoverOwnershipUpdate::Release
+        );
+        assert_eq!(
+            hover_ownership_update(
+                Some(PointerGrabKind::Drag),
+                PointerRouting::CapturedInteraction,
+            ),
+            HoverOwnershipUpdate::Keep
         );
     }
 }

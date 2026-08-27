@@ -11,7 +11,7 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId, XEmbedTray};
+use crate::types::{MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 use std::process::Command;
 
@@ -143,27 +143,22 @@ pub trait PointerOps {
     }
 }
 
-/// Backend projection of the WM-owned cursor presentation.
+/// Reconcile native cursor and pointer routing with authoritative interaction
+/// state.
 ///
-/// Implemented by backend contexts rather than bare connections because X11
-/// cursor resources live in its runtime state.
-pub trait CursorOps {
-    fn apply_cursor_style(&mut self, style: AltCursor);
+/// Implementations must be idempotent. The shared interaction layer describes
+/// the presentation it requires; native grabs and compositor cursor overrides
+/// remain private backend mechanisms.
+pub trait InteractionProjectionOps {
+    fn reconcile_interaction_projection(
+        &mut self,
+        desired: crate::core_state::InteractionPresentation,
+    );
 }
 
 /// Graceful client termination projected through backend runtime state.
 pub trait WindowCloseOps {
     fn close_window(&mut self, window: WindowId);
-}
-
-/// Backend effects associated with the lifetime of a user-driven resize.
-///
-/// X11 implements this as a no-op because its synchronous pointer grab owns
-/// the resize lifetime. Wayland projects the lifetime into xdg-toplevel's
-/// `resizing` state.
-pub trait InteractiveResizeOps {
-    fn begin_interactive_resize(&self, window: WindowId);
-    fn end_interactive_resize(&self, window: WindowId);
 }
 
 /// Backend effects used by compositor-owned modal interactions.

@@ -362,7 +362,7 @@ where
 /// owns only the offer model. Returns `false` when there is no resize offer
 /// or the button is not a valid commit button for hover resize.
 pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    let Some((win, _)) = ctx.core.interaction().drag.hover_offer.resize_target() else {
+    let Some((win, _)) = ctx.core.interaction().drag.hover_offer().resize_target() else {
         return false;
     };
     if btn == MouseButton::Middle {
@@ -409,27 +409,7 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     {
         return false;
     }
-    let cursor = match ctx.core.interaction().drag.capture() {
-        Some(crate::core_state::CapturedInteraction::SidebarVolume(_)) => AltCursor::VerticalAdjust,
-        Some(crate::core_state::CapturedInteraction::BottomBar(_)) => AltCursor::HorizontalAdjust,
-        Some(crate::core_state::CapturedInteraction::Window(state)) => match state {
-            crate::core_state::WindowDragState::Reordering(..) => AltCursor::HorizontalAdjust,
-            _ => {
-                let drag = state.interaction();
-                match drag.drag_type() {
-                    crate::core_state::DragType::Move if btn == MouseButton::Right => {
-                        AltCursor::Move
-                    }
-                    crate::core_state::DragType::Move => AltCursor::Default,
-                    crate::core_state::DragType::Resize(dir)
-                    | crate::core_state::DragType::TreeResize(dir) => AltCursor::Resize(dir),
-                }
-            }
-        },
-        Some(crate::core_state::CapturedInteraction::Tag(_)) => AltCursor::Default,
-        Some(crate::core_state::CapturedInteraction::OverviewCard(_)) => AltCursor::Move,
-        None => return false,
-    };
+    let cursor = ctx.core.interaction().drag.presentation().cursor;
 
     let release = mouse_drag_loop(ctx, btn, cursor, false, |ctx, event| {
         if let BackendEvent::Motion { root, modifiers } = event {

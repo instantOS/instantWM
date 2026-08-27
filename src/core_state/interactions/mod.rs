@@ -1,8 +1,8 @@
 //! Backend-neutral pointer and touch interaction state.
 //!
-//! Backends feed these state machines normalized input. Window-system grabs,
-//! event loops, cursor updates, and other side effects remain in crate::mouse
-//! and crate::backend.
+//! Backends feed these state machines normalized input. Native event loops and
+//! input-capture mechanisms remain backend concerns; the cursor and pointer
+//! routing they must present are derived from this authoritative state.
 
 use super::*;
 
@@ -16,6 +16,43 @@ pub use window::*;
 
 #[cfg(test)]
 mod tests;
+
+/// Backend-neutral presentation required by the current interaction state.
+///
+/// This is a level-triggered description, not a request to perform a native
+/// operation. Backends reconcile their current cursor and input ownership with
+/// this value, making redundant synchronization safe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InteractionPresentation {
+    pub cursor: AltCursor,
+    pub pointer_routing: PointerRouting,
+    /// Window undergoing a direct interactive geometry resize. Semantic tree
+    /// weight resizing is intentionally not a client resize lifecycle.
+    pub active_resize_window: Option<WindowId>,
+}
+
+impl Default for InteractionPresentation {
+    fn default() -> Self {
+        Self {
+            cursor: AltCursor::Default,
+            pointer_routing: PointerRouting::Normal,
+            active_resize_window: None,
+        }
+    }
+}
+
+/// Who must receive the pointer stream represented by an interaction.
+///
+/// Backends are free to satisfy this guarantee differently. In particular,
+/// X11 uses a native pointer grab for [`Self::HoverOffer`], while Wayland's
+/// compositor input path already owns the stream.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PointerRouting {
+    #[default]
+    Normal,
+    HoverOffer,
+    CapturedInteraction,
+}
 
 /// The single compositor-owned input sequence currently in progress.
 ///
@@ -62,16 +99,76 @@ impl CapturedInteraction {
             Self::Tag(_) | Self::Window(WindowDragState::Reordering(..))
         )
     }
+
+    fn cursor(&self) -> AltCursor {
+        match self {
+            Self::Window(WindowDragState::Armed(_)) => AltCursor::Default,
+            Self::Window(WindowDragState::Reordering(..)) => AltCursor::HorizontalAdjust,
+            Self::Window(WindowDragState::Active(drag)) => match drag.drag_type() {
+                DragType::Move => AltCursor::Move,
+                DragType::Resize(direction) | DragType::TreeResize(direction) => {
+                    AltCursor::Resize(direction)
+                }
+            },
+            Self::Tag(drag) if drag.dragging => AltCursor::Move,
+            Self::Tag(_) => AltCursor::Default,
+            Self::SidebarVolume(_) => AltCursor::VerticalAdjust,
+            Self::BottomBar(drag) => match drag.latched_direction() {
+                Some(SwipeDirection::Up) => AltCursor::VerticalAdjust,
+                Some(SwipeDirection::Left | SwipeDirection::Right) => AltCursor::HorizontalAdjust,
+                None => AltCursor::Move,
+            },
+            Self::OverviewCard(drag) if drag.close_armed() => AltCursor::Close,
+            Self::OverviewCard(_) => AltCursor::Move,
+        }
+    }
 }
 
 /// Consolidated state for mouse/touch interactions.
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
     capture: Option<CapturedInteraction>,
-    pub hover_offer: HoverOffer,
+    hover_offer: HoverOffer,
 }
 
 impl DragState {
+    /// Derive the complete native presentation from authoritative interaction
+    /// state. A captured sequence always takes precedence over a passive hover
+    /// offer, so cursor policy cannot depend on imperative call ordering.
+    pub fn presentation(&self) -> InteractionPresentation {
+        if let Some(capture) = self.capture.as_ref() {
+            return InteractionPresentation {
+                cursor: capture.cursor(),
+                pointer_routing: PointerRouting::CapturedInteraction,
+                active_resize_window: match capture {
+                    CapturedInteraction::Window(WindowDragState::Active(drag))
+                        if matches!(drag.drag_type(), DragType::Resize(_)) =>
+                    {
+                        Some(drag.win())
+                    }
+                    _ => None,
+                },
+            };
+        }
+        match self.hover_offer {
+            HoverOffer::Resize { dir, .. } => InteractionPresentation {
+                cursor: AltCursor::Resize(dir),
+                pointer_routing: PointerRouting::HoverOffer,
+                active_resize_window: None,
+            },
+            HoverOffer::Sidebar(_) => InteractionPresentation {
+                cursor: AltCursor::VerticalAdjust,
+                pointer_routing: PointerRouting::Normal,
+                active_resize_window: None,
+            },
+            HoverOffer::None => InteractionPresentation::default(),
+        }
+    }
+
+    pub fn hover_offer(&self) -> HoverOffer {
+        self.hover_offer
+    }
+
     pub fn capture(&self) -> Option<&CapturedInteraction> {
         self.capture.as_ref()
     }
@@ -492,13 +589,27 @@ impl DragState {
         if self.capture.is_some() {
             return Err(InteractionAlreadyActive);
         }
+        // A passive offer and an owned input sequence are mutually exclusive.
+        // Dropping the offer here prevents stale hover intent from resurfacing
+        // when the capture later ends.
+        self.hover_offer = HoverOffer::None;
         self.capture = Some(capture);
         Ok(())
     }
 
+    /// Replace the passive offer and report whether authoritative state
+    /// changed. Native projection is deliberately handled by `WmCtx` after
+    /// the model transition.
     #[inline]
-    pub fn set_hover_offer(&mut self, offer: HoverOffer) {
+    pub fn set_hover_offer(&mut self, offer: HoverOffer) -> bool {
+        if self.capture.is_some() {
+            return false;
+        }
+        if self.hover_offer == offer {
+            return false;
+        }
         self.hover_offer = offer;
+        true
     }
 
     /// Clears an active hover offer. Returns `true` if the state changed.

@@ -1,13 +1,11 @@
-//! Narrow lifecycle coordination for interactive move and resize drags.
+//! Pure lifecycle transitions for interactive move and resize drags.
 //!
-//! This module deliberately does not accept `WmCtx`. It coordinates only the
-//! backend-neutral interaction state and the backend capability needed to
-//! project an active resize into the window-system protocol.
+//! Native resize state is derived through `InteractionPresentation`; this
+//! module never invokes a backend protocol edge directly.
 
-use crate::backend::InteractiveResizeOps;
 use crate::core_state::{
     ActiveResizeParams, ArmedDragType, DragCancelReason, DragInteraction, DragNotArmed, DragState,
-    DragType, InteractionAlreadyActive,
+    InteractionAlreadyActive,
 };
 use crate::types::{MouseButton, Point, Rect, ResizeDirection, WindowId};
 
@@ -15,62 +13,28 @@ pub type ResizeDragParams = ActiveResizeParams;
 
 pub fn begin_resize(
     interactions: &mut DragState,
-    protocol: &dyn InteractiveResizeOps,
     params: ResizeDragParams,
 ) -> Result<(), InteractionAlreadyActive> {
-    if interactions.has_capture() {
-        return Err(InteractionAlreadyActive);
-    }
-
-    // The precondition above makes the state commit infallible. Apply the
-    // backend projection first so an attached Wayland compositor observes the
-    // resizing state before the first size configure can be emitted.
-    protocol.begin_interactive_resize(params.win);
-    interactions
-        .begin_resize_with_policy(params)
-        .expect("validated idle interaction must accept resize");
-    Ok(())
+    interactions.begin_resize_with_policy(params)
 }
 
 pub fn activate_armed_resize(
     interactions: &mut DragState,
-    protocol: &dyn InteractiveResizeOps,
     direction: ResizeDirection,
     start: Point,
     geometry: Rect,
 ) -> Result<(), DragNotArmed> {
-    let win = interactions.armed_interaction().ok_or(DragNotArmed)?.win();
-    protocol.begin_interactive_resize(win);
     interactions
         .activate_armed(ArmedDragType::Resize(direction), start, geometry)
-        .expect("validated armed interaction must activate");
-    Ok(())
+        .map(|_| ())
 }
 
-pub fn finish(
-    interactions: &mut DragState,
-    protocol: &dyn InteractiveResizeOps,
-    button: MouseButton,
-) -> Option<DragInteraction> {
-    let finished = interactions.finish_active(button)?;
-    if matches!(finished.drag_type(), DragType::Resize(_)) {
-        // End the backend projection so Wayland emits the final configure
-        // without xdg-toplevel's `resizing` state. X11 implements this as a
-        // no-op because its pointer grab owns the resize lifetime.
-        protocol.end_interactive_resize(finished.win());
-    }
-    Some(finished)
+pub fn finish(interactions: &mut DragState, button: MouseButton) -> Option<DragInteraction> {
+    interactions.finish_active(button)
 }
 
-pub fn cancel(
-    interactions: &mut DragState,
-    protocol: &dyn InteractiveResizeOps,
-    reason: DragCancelReason,
-) -> Option<DragInteraction> {
+pub fn cancel(interactions: &mut DragState, reason: DragCancelReason) -> Option<DragInteraction> {
     let cancelled = interactions.cancel_interactive()?;
-    if matches!(cancelled.drag_type(), DragType::Resize(_)) {
-        protocol.end_interactive_resize(cancelled.win());
-    }
     log::debug!(
         "cancelled {:?} interaction for {:?}: {reason:?}",
         cancelled.drag_type(),
@@ -81,7 +45,6 @@ pub fn cancel(
 
 pub fn cancel_window(
     interactions: &mut DragState,
-    protocol: &dyn InteractiveResizeOps,
     window: WindowId,
     reason: DragCancelReason,
 ) -> Option<DragInteraction> {
@@ -92,37 +55,14 @@ pub fn cancel_window(
     if !belongs_to_window {
         return None;
     }
-    cancel(interactions, protocol, reason)
+    cancel(interactions, reason)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-
     use super::*;
-    use crate::core_state::ArmedDragParams;
+    use crate::core_state::{ArmedDragParams, DragType};
     use crate::types::InteractionSource;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum ProtocolEvent {
-        Begin(WindowId),
-        End(WindowId),
-    }
-
-    #[derive(Default)]
-    struct RecordingProtocol {
-        events: RefCell<Vec<ProtocolEvent>>,
-    }
-
-    impl InteractiveResizeOps for RecordingProtocol {
-        fn begin_interactive_resize(&self, window: WindowId) {
-            self.events.borrow_mut().push(ProtocolEvent::Begin(window));
-        }
-
-        fn end_interactive_resize(&self, window: WindowId) {
-            self.events.borrow_mut().push(ProtocolEvent::End(window));
-        }
-    }
 
     fn geometry() -> Rect {
         Rect {
@@ -146,12 +86,11 @@ mod tests {
     }
 
     #[test]
-    fn resize_lifecycle_pairs_protocol_begin_and_end() {
+    fn resize_lifecycle_exposes_and_clears_derived_resize_projection() {
         let win = WindowId(7);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
 
-        begin_resize(&mut interactions, &protocol, resize_params(win)).unwrap();
+        begin_resize(&mut interactions, resize_params(win)).unwrap();
         assert!(matches!(
             interactions
                 .active_interaction()
@@ -159,34 +98,33 @@ mod tests {
             Some(DragType::Resize(ResizeDirection::BottomRight))
         ));
 
-        let finished = finish(&mut interactions, &protocol, MouseButton::Right).unwrap();
+        assert_eq!(interactions.presentation().active_resize_window, Some(win));
+        let finished = finish(&mut interactions, MouseButton::Right).unwrap();
         assert_eq!(finished.win(), win);
         assert!(!interactions.has_capture());
-        assert_eq!(
-            *protocol.events.borrow(),
-            vec![ProtocolEvent::Begin(win), ProtocolEvent::End(win)]
-        );
+        assert_eq!(interactions.presentation().active_resize_window, None);
     }
 
     #[test]
-    fn rejected_second_resize_does_not_emit_a_protocol_event() {
+    fn rejected_second_resize_preserves_first_projection() {
         let first = WindowId(7);
         let second = WindowId(8);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
 
-        begin_resize(&mut interactions, &protocol, resize_params(first)).unwrap();
+        begin_resize(&mut interactions, resize_params(first)).unwrap();
         assert_eq!(
-            begin_resize(&mut interactions, &protocol, resize_params(second)),
+            begin_resize(&mut interactions, resize_params(second)),
             Err(InteractionAlreadyActive)
         );
-        assert_eq!(*protocol.events.borrow(), vec![ProtocolEvent::Begin(first)]);
+        assert_eq!(
+            interactions.presentation().active_resize_window,
+            Some(first)
+        );
         assert_eq!(interactions.active_interaction().unwrap().win(), first);
     }
 
     #[test]
-    fn resize_rejects_non_window_interaction_without_protocol_side_effects() {
-        let protocol = RecordingProtocol::default();
+    fn resize_rejects_non_window_interaction_without_state_change() {
         let mut interactions = DragState::default();
         interactions
             .begin_overview_card(crate::core_state::OverviewCardDrag::new(
@@ -199,10 +137,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            begin_resize(&mut interactions, &protocol, resize_params(WindowId(7)),),
+            begin_resize(&mut interactions, resize_params(WindowId(7)),),
             Err(InteractionAlreadyActive)
         );
-        assert!(protocol.events.borrow().is_empty());
+        assert_eq!(interactions.presentation().active_resize_window, None);
         assert!(matches!(
             interactions.capture(),
             Some(crate::core_state::CapturedInteraction::OverviewCard(_))
@@ -241,19 +179,17 @@ mod tests {
     #[test]
     fn wrong_button_does_not_finish_resize() {
         let win = WindowId(7);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
 
-        begin_resize(&mut interactions, &protocol, resize_params(win)).unwrap();
-        assert!(finish(&mut interactions, &protocol, MouseButton::Left).is_none());
+        begin_resize(&mut interactions, resize_params(win)).unwrap();
+        assert!(finish(&mut interactions, MouseButton::Left).is_none());
         assert!(interactions.active_interaction().is_some());
-        assert_eq!(*protocol.events.borrow(), vec![ProtocolEvent::Begin(win)]);
+        assert_eq!(interactions.presentation().active_resize_window, Some(win));
     }
 
     #[test]
-    fn tree_resize_owns_a_snapshot_without_entering_protocol_resize() {
+    fn tree_resize_owns_a_snapshot_without_requesting_toplevel_resize_state() {
         let win = WindowId(7);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
         let mut tree = crate::layouts::tree::LayoutTree::default();
         tree.apply_preset(
@@ -283,14 +219,13 @@ mod tests {
             crate::core_state::DragOperation::TreeResize { .. }
         ));
 
-        let _ = finish(&mut interactions, &protocol, MouseButton::Right).unwrap();
-        assert!(protocol.events.borrow().is_empty());
+        assert_eq!(interactions.presentation().active_resize_window, None);
+        let _ = finish(&mut interactions, MouseButton::Right).unwrap();
     }
 
     #[test]
-    fn move_lifecycle_never_touches_resize_protocol() {
+    fn move_lifecycle_never_requests_resize_projection() {
         let win = WindowId(7);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
         interactions
             .begin_move(
@@ -302,16 +237,15 @@ mod tests {
             )
             .unwrap();
 
-        let finished = finish(&mut interactions, &protocol, MouseButton::Left).unwrap();
+        let finished = finish(&mut interactions, MouseButton::Left).unwrap();
         assert_eq!(finished.drag_type(), DragType::Move);
         assert!(!interactions.has_capture());
-        assert!(protocol.events.borrow().is_empty());
+        assert_eq!(interactions.presentation().active_resize_window, None);
     }
 
     #[test]
-    fn armed_resize_becomes_protocol_managed_only_when_activated() {
+    fn armed_resize_requests_projection_only_when_activated() {
         let win = WindowId(7);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
         interactions
             .arm_title_drag(ArmedDragParams {
@@ -328,10 +262,9 @@ mod tests {
             })
             .unwrap();
 
-        assert!(protocol.events.borrow().is_empty());
+        assert_eq!(interactions.presentation().active_resize_window, None);
         activate_armed_resize(
             &mut interactions,
-            &protocol,
             ResizeDirection::Right,
             Point::new(810, 300),
             geometry(),
@@ -344,38 +277,28 @@ mod tests {
                 .map(DragInteraction::drag_type),
             Some(DragType::Resize(ResizeDirection::Right))
         ));
-        assert_eq!(*protocol.events.borrow(), vec![ProtocolEvent::Begin(win)]);
+        assert_eq!(interactions.presentation().active_resize_window, Some(win));
     }
 
     #[test]
     fn cancellation_is_scoped_to_the_requested_window() {
         let win = WindowId(7);
-        let protocol = RecordingProtocol::default();
         let mut interactions = DragState::default();
-        begin_resize(&mut interactions, &protocol, resize_params(win)).unwrap();
+        begin_resize(&mut interactions, resize_params(win)).unwrap();
 
         assert!(
             cancel_window(
                 &mut interactions,
-                &protocol,
                 WindowId(8),
                 DragCancelReason::WindowDestroyed,
             )
             .is_none()
         );
         assert!(interactions.active_interaction().is_some());
-        let cancelled = cancel_window(
-            &mut interactions,
-            &protocol,
-            win,
-            DragCancelReason::WindowDestroyed,
-        )
-        .unwrap();
+        let cancelled =
+            cancel_window(&mut interactions, win, DragCancelReason::WindowDestroyed).unwrap();
         assert_eq!(cancelled.win(), win);
         assert!(!interactions.has_capture());
-        assert_eq!(
-            *protocol.events.borrow(),
-            vec![ProtocolEvent::Begin(win), ProtocolEvent::End(win)]
-        );
+        assert_eq!(interactions.presentation().active_resize_window, None);
     }
 }

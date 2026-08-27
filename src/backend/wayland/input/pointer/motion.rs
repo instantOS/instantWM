@@ -180,7 +180,7 @@ mod tests {
         );
 
         assert_eq!(pointer.current_location(), Point::from((1900.0, 500.0)));
-        assert!(wm.core.interaction.drag.hover_offer.is_sidebar());
+        assert!(wm.core.interaction.drag.hover_offer().is_sidebar());
     }
 
     #[test]

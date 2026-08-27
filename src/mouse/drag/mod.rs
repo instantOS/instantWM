@@ -13,7 +13,7 @@
 //!
 //! Native backends only acquire input and translate it to
 //! [`crate::mouse::interaction::InteractionEvent`]. Recognition, mutation,
-//! cursor policy, and cleanup live in this shared subsystem.
+//! presentation policy, and cleanup live in this shared subsystem.
 
 // Re-export from submodules
 pub use gesture::{
@@ -95,7 +95,6 @@ pub fn drag_move_finish(
     modifiers: u32,
 ) {
     debug_assert!(!ctx.core().interaction().drag.has_capture());
-    ctx.set_cursor_style(crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
     complete_move_drop(
         ctx,
@@ -109,12 +108,11 @@ pub fn drag_move_finish(
 
 /// Shared post-resize-drag teardown used by both X11 and Wayland backends.
 ///
-/// Resets the cursor to the default, handles a potential monitor switch, and
-/// re-raises the client. The caller must finish the interaction lifecycle
-/// before invoking this cleanup.
+/// Reconciles the now-idle interaction presentation, handles a potential
+/// monitor switch, and re-raises the client. The caller must finish the
+/// interaction lifecycle before invoking this cleanup.
 pub fn drag_resize_finish(ctx: &mut WmCtx, win: WindowId) {
     debug_assert!(!ctx.core().interaction().drag.has_capture());
-    ctx.set_cursor_style(crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);
 }

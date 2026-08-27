@@ -621,19 +621,16 @@ fn finalize_wayland_client(
 
 fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
-    let cancelled_drag = if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
-        crate::mouse::drag::lifecycle::cancel_window(
-            &mut wl_ctx.core.interaction_mut().drag,
-            wl_ctx.wayland,
-            win,
-            crate::core_state::DragCancelReason::WindowDestroyed,
-        )
-        .is_some()
-    } else {
-        false
-    };
+    let cancelled_drag = ctx
+        .transition_pointer_interaction(|drag| {
+            crate::mouse::drag::lifecycle::cancel_window(
+                drag,
+                win,
+                crate::core_state::DragCancelReason::WindowDestroyed,
+            )
+        })
+        .is_some();
     if cancelled_drag {
-        ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
@@ -677,15 +674,14 @@ fn handle_begin_resize(
 ) {
     let mut ctx = wm.ctx();
     crate::client::fullscreen::leave_maximized(&mut ctx, win);
-    if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
-        let point = state.runtime.pointer_location;
-        let start = crate::types::Point::from_f64_round(point.x, point.y);
-        let Some(geometry) = wl_ctx.core.client_geo(win) else {
-            return;
-        };
-        if crate::mouse::drag::lifecycle::begin_resize(
-            &mut wl_ctx.core.interaction_mut().drag,
-            wl_ctx.wayland,
+    let point = state.runtime.pointer_location;
+    let start = crate::types::Point::from_f64_round(point.x, point.y);
+    let Some(geometry) = ctx.core().client_geo(win) else {
+        return;
+    };
+    let _ = ctx.transition_pointer_interaction(|drag| {
+        crate::mouse::drag::lifecycle::begin_resize(
+            drag,
             crate::mouse::drag::lifecycle::ResizeDragParams {
                 win,
                 button: crate::types::MouseButton::Left,
@@ -696,13 +692,7 @@ fn handle_begin_resize(
                 policy: crate::core_state::ResizePolicy::Free,
             },
         )
-        .is_err()
-        {
-            return;
-        }
-        crate::contexts::WmCtx::Wayland(wl_ctx.reborrow())
-            .set_cursor_style(crate::types::AltCursor::Resize(dir));
-    }
+    });
 }
 
 fn handle_update_xwayland_policy(

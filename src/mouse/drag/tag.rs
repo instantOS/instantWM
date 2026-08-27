@@ -113,10 +113,8 @@ pub fn drag_tag_begin(
         return false;
     };
     let monitor_id = ctx.core().model().selected_monitor_id();
-    ctx.core_mut()
-        .interaction_mut()
-        .drag
-        .begin_tag_drag(crate::core_state::TagDragState {
+    ctx.transition_pointer_interaction(|drag| {
+        drag.begin_tag_drag(crate::core_state::TagDragState {
             initial_tag,
             start,
             dragging: false,
@@ -128,6 +126,7 @@ pub fn drag_tag_begin(
             source,
         })
         .is_ok()
+    })
 }
 
 /// Update an armed tag interaction. The interaction remains active outside the
@@ -144,12 +143,12 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             drag.last_motion.map_or(0, |(_, modifiers)| modifiers),
         )
     };
-    ctx.core_mut()
-        .interaction_mut()
-        .drag
-        .tag_drag_mut()
-        .expect("tag capture remained active")
-        .last_motion = Some((root, previous_modifiers));
+    ctx.transition_pointer_interaction(|state| {
+        state
+            .tag_drag_mut()
+            .expect("tag capture remained active")
+            .last_motion = Some((root, previous_modifiers));
+    });
 
     if !was_dragging && root.manhattan_distance(&start) <= DRAG_THRESHOLD {
         return true;
@@ -160,13 +159,12 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         if selected_on_monitor(&ctx.core().model().monitors, monitor_id).is_none() {
             return true;
         }
-        ctx.core_mut()
-            .interaction_mut()
-            .drag
-            .tag_drag_mut()
-            .expect("tag capture remained active")
-            .dragging = true;
-        ctx.set_cursor_style(AltCursor::Move);
+        ctx.transition_pointer_interaction(|state| {
+            state
+                .tag_drag_mut()
+                .expect("tag capture remained active")
+                .dragging = true;
+        });
     }
 
     let position = super::bar_position_on_monitor(ctx, monitor_id, root);
@@ -186,14 +184,11 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         drag.cursor_on_bar != cursor_on_bar || drag.last_tag != tag_idx
     };
     if changed || !was_dragging {
-        let drag = ctx
-            .core_mut()
-            .interaction_mut()
-            .drag
-            .tag_drag_mut()
-            .expect("tag capture remained active");
-        drag.cursor_on_bar = cursor_on_bar;
-        drag.last_tag = tag_idx;
+        ctx.transition_pointer_interaction(|state| {
+            let drag = state.tag_drag_mut().expect("tag capture remained active");
+            drag.cursor_on_bar = cursor_on_bar;
+            drag.last_tag = tag_idx;
+        });
         if cursor_on_bar {
             ctx.core_mut().bar.hover.set(monitor_id, gesture, true);
         } else {
@@ -216,10 +211,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
         return;
     };
     let drag = ctx
-        .core_mut()
-        .interaction_mut()
-        .drag
-        .finish_tag_drag(button)
+        .transition_pointer_interaction(|state| state.finish_tag_drag(button))
         .expect("matching tag capture remained active");
     let root = drag.last_motion.map_or(drag.start, |(root, _)| root);
     let final_position = super::bar_position_on_monitor(ctx, drag.monitor_id, root);
@@ -265,9 +257,6 @@ fn finish_tag_release_presentation(
             .set(drag.monitor_id, position.to_gesture(), false);
     } else {
         ctx.core_mut().bar.hover.clear();
-    }
-    if drag.dragging {
-        ctx.set_cursor_style(AltCursor::Default);
     }
     ctx.request_bar_update();
 }
