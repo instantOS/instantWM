@@ -380,8 +380,10 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
 
 fn sync_bar_config_to_monitors(wm: &mut Wm) {
     let show_bar = wm.core.config.bar.show;
+    let show_bottom_bar = wm.core.config.bar.show_bottom;
     for monitor in wm.core.model.monitors_iter_all_mut() {
         monitor.show_bar = show_bar;
+        monitor.show_bottom_bar = show_bottom_bar;
         for state in monitor.per_tag.values_mut() {
             state.show_bar = show_bar;
         }

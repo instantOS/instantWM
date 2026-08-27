@@ -697,13 +697,10 @@ pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
     state.model.tags.colors = tag_colors;
     state.model.tags.num_tags = tag_template.len();
 
-    // The file setting is global. Reloading it resets interactive per-tag
-    // overrides so existing outputs immediately match newly created outputs.
+    // The bottom bar state is global. Reloading it resets interactive
+    // toggles so existing outputs immediately match newly created outputs.
     for (_id, monitor) in state.model.monitors_iter_mut() {
         monitor.show_bottom_bar = show_bottom_bar;
-        for per_tag in monitor.per_tag.values_mut() {
-            per_tag.show_bottom_bar = show_bottom_bar;
-        }
         monitor.init_tags(&tag_template);
     }
 }
