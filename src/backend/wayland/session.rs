@@ -69,16 +69,22 @@ pub fn ensure_dbus_session() {
 /// the compositor socket and desktop identity. This mirrors the environment
 /// import step commonly done by compositor session wrappers.
 pub fn import_env_into_dbus_activation() {
-    let mut attempted = false;
+    let vars = [
+        "WAYLAND_DISPLAY",
+        "XDG_CURRENT_DESKTOP",
+        "XDG_SESSION_DESKTOP",
+        "XDG_SESSION_TYPE",
+        "DESKTOP_SESSION",
+    ];
 
-    if let Ok(status) = Command::new("dbus-update-activation-environment")
-        .arg("--systemd")
-        .arg("WAYLAND_DISPLAY")
-        .arg("XDG_CURRENT_DESKTOP")
-        .arg("XDG_SESSION_DESKTOP")
-        .arg("DESKTOP_SESSION")
-        .status()
-    {
+    let mut attempted = false;
+    let mut cmd = Command::new("dbus-update-activation-environment");
+    cmd.arg("--systemd");
+    for var in &vars {
+        cmd.arg(var);
+    }
+
+    if let Ok(status) = cmd.status() {
         attempted = true;
         if !status.success() {
             log::debug!(
@@ -91,13 +97,11 @@ pub fn import_env_into_dbus_activation() {
     // Fall back to the non-systemd import path when systemd integration is
     // unavailable.
     if !attempted {
-        match Command::new("dbus-update-activation-environment")
-            .arg("WAYLAND_DISPLAY")
-            .arg("XDG_CURRENT_DESKTOP")
-            .arg("XDG_SESSION_DESKTOP")
-            .arg("DESKTOP_SESSION")
-            .status()
-        {
+        let mut cmd = Command::new("dbus-update-activation-environment");
+        for var in &vars {
+            cmd.arg(var);
+        }
+        match cmd.status() {
             Ok(status) if !status.success() => log::debug!(
                 "dbus-update-activation-environment exited with status {}",
                 status
@@ -105,6 +109,22 @@ pub fn import_env_into_dbus_activation() {
             Ok(_) => {}
             Err(err) => log::debug!("dbus-update-activation-environment unavailable: {}", err),
         }
+    }
+
+    // Reset any portal services leftover from a previous or crashed session so
+    // that xdg-desktop-portal cleanly re-activates its backends with the fresh
+    // WAYLAND_DISPLAY and environment. Only do this for standalone DRM sessions
+    // so nested instances do not disrupt the host desktop's portal services.
+    if env::var("INSTANTWM_BACKEND").ok().as_deref() == Some("wayland-drm") {
+        let _ = Command::new("systemctl")
+            .args([
+                "--user",
+                "stop",
+                "xdg-desktop-portal-wlr",
+                "xdg-desktop-portal-gtk",
+                "xdg-desktop-portal",
+            ])
+            .status();
     }
 }
 
