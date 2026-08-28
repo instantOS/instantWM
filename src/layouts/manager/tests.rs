@@ -714,19 +714,12 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
 
     assert!(rects[&WindowId(2)].w >= 160);
     for rect in rects.values() {
-        assert!(rect.x >= monitor.available_rect.x);
-        assert!(rect.y >= monitor.available_rect.y);
-        assert!(rect.x + rect.w <= monitor.available_rect.x + monitor.available_rect.w);
-        assert!(rect.y + rect.h <= monitor.available_rect.y + monitor.available_rect.h);
+        assert!(monitor.available_rect.contains_rect(rect));
     }
     for (index, first) in rects.values().enumerate() {
         for second in rects.values().skip(index + 1) {
-            let overlaps = first.x < second.x + second.w
-                && second.x < first.x + first.w
-                && first.y < second.y + second.h
-                && second.y < first.y + first.h;
             assert!(
-                !overlaps,
+                !first.intersects_other(second),
                 "tiled slots must not overlap: {first:?} {second:?}"
             );
         }

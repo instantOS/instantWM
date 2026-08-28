@@ -183,25 +183,18 @@ fn try_bottom_bar_press(
     ) {
         return false;
     }
-    if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
+    if MouseButton::from_x11_detail(e.detail).is_some() {
         thaw_pointer_grab(ctx);
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        crate::mouse::bindings::run_matching(
-            &mut wm_ctx,
-            crate::mouse::bindings::ButtonBindingEvent {
-                target: ButtonTarget::BottomBar,
-                window: None,
-                button: btn,
-                source: crate::types::InteractionSource::Pointer,
-                root,
-                clean_state,
-                time_msec: e.time,
-            },
-            numlockmask,
-            crate::mouse::bindings::MatchPolicy::All,
-        );
-        let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
     }
+    run_button_binding(
+        ctx,
+        e,
+        ButtonTarget::BottomBar,
+        None,
+        root,
+        clean_state,
+        numlockmask,
+    );
     true
 }
 
@@ -271,25 +264,24 @@ fn allow_press_replay(
     let _ = conn.flush();
 }
 
-/// Run configured button bindings for the press target, then drive any
-/// interaction grab a matching action started.
-fn dispatch_button_bindings(
+/// Run all configured button bindings matching the press, then drive any
+/// interaction grab a matching action started. Presses without a recognized
+/// button are ignored.
+fn run_button_binding(
     ctx: &mut WmCtxX11<'_>,
     e: &ButtonPressEvent,
-    button_target: Option<ButtonTarget>,
-    target_window: Option<WindowId>,
+    target: ButtonTarget,
+    window: Option<WindowId>,
     root: Point,
     clean_state: u32,
     numlockmask: u32,
 ) {
-    if let (Some(btn), Some(button_target)) =
-        (MouseButton::from_x11_detail(e.detail), button_target)
-    {
+    if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
         crate::mouse::bindings::run_matching(
             &mut WmCtx::X11(ctx.reborrow()),
             crate::mouse::bindings::ButtonBindingEvent {
-                target: button_target,
-                window: target_window,
+                target,
+                window,
                 button: btn,
                 source: crate::types::InteractionSource::Pointer,
                 root,
@@ -350,15 +342,17 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    dispatch_button_bindings(
-        ctx,
-        e,
-        button_target,
-        target_window,
-        root,
-        clean_state,
-        numlockmask,
-    );
+    if let Some(button_target) = button_target {
+        run_button_binding(
+            ctx,
+            e,
+            button_target,
+            target_window,
+            root,
+            clean_state,
+            numlockmask,
+        );
+    }
 }
 
 /// Handle incoming X11 client messages.

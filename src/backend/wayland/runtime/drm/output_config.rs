@@ -16,6 +16,28 @@ use crate::config::config_toml::VrrMode;
 
 use super::DrmLoopState;
 
+/// A configured VRR mode expressed as the adaptive-sync policy it implies.
+fn vrr_mode_policy(mode: VrrMode) -> AdaptiveSyncPolicy {
+    match mode {
+        VrrMode::Off => AdaptiveSyncPolicy::Disabled,
+        VrrMode::On => AdaptiveSyncPolicy::Enabled,
+        VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
+    }
+}
+
+/// An output's advertised modes, in transaction form.
+fn transaction_modes(entry: &OutputSurfaceEntry) -> Vec<TransactionOutputMode> {
+    entry
+        .modes
+        .iter()
+        .map(|(mode, _)| TransactionOutputMode {
+            width: mode.size.w,
+            height: mode.size.h,
+            refresh_millihertz: mode.refresh,
+        })
+        .collect()
+}
+
 fn requested_mode(
     entry: &OutputSurfaceEntry,
     config: &OutputHeadConfiguration,
@@ -41,26 +63,10 @@ fn transaction_snapshot(
                 let entry = output_surfaces
                     .iter()
                     .find(|entry| entry.output.name() == configuration.id.0);
-                let modes = entry
-                    .map(|entry| {
-                        entry
-                            .modes
-                            .iter()
-                            .map(|(mode, _)| TransactionOutputMode {
-                                width: mode.size.w,
-                                height: mode.size.h,
-                                refresh_millihertz: mode.refresh,
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let modes = entry.map(transaction_modes).unwrap_or_default();
                 let adaptive_sync_policy = configuration.adaptive_sync.unwrap_or_else(|| {
                     entry.map_or(AdaptiveSyncPolicy::Disabled, |entry| {
-                        match entry.configured_vrr_mode {
-                            VrrMode::Off => AdaptiveSyncPolicy::Disabled,
-                            VrrMode::On => AdaptiveSyncPolicy::Enabled,
-                            VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
-                        }
+                        vrr_mode_policy(entry.configured_vrr_mode)
                     })
                 });
                 OutputHeadSnapshot {
@@ -79,15 +85,7 @@ fn output_capabilities(output_surfaces: &[OutputSurfaceEntry]) -> Vec<OutputHead
         .iter()
         .map(|entry| OutputHeadCapabilities {
             id: entry.output.name().as_str().into(),
-            modes: entry
-                .modes
-                .iter()
-                .map(|(mode, _)| TransactionOutputMode {
-                    width: mode.size.w,
-                    height: mode.size.h,
-                    refresh_millihertz: mode.refresh,
-                })
-                .collect(),
+            modes: transaction_modes(entry),
             adaptive_sync: !matches!(entry.vrr_support, BackendVrrSupport::Unsupported),
         })
         .collect()
@@ -99,11 +97,7 @@ fn requested_vrr(
 ) -> (VrrMode, bool) {
     let policy = configuration
         .adaptive_sync
-        .unwrap_or(match entry.configured_vrr_mode {
-            VrrMode::Off => AdaptiveSyncPolicy::Disabled,
-            VrrMode::On => AdaptiveSyncPolicy::Enabled,
-            VrrMode::Auto => AdaptiveSyncPolicy::Automatic,
-        });
+        .unwrap_or(vrr_mode_policy(entry.configured_vrr_mode));
     match policy {
         AdaptiveSyncPolicy::Disabled => (VrrMode::Off, false),
         AdaptiveSyncPolicy::Enabled => (VrrMode::On, true),

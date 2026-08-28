@@ -252,6 +252,15 @@ impl Rect {
         point.x >= self.x && point.x < self.right() && point.y >= self.y && point.y < self.bottom()
     }
 
+    /// Check if this rectangle fully contains another, edges included.
+    #[inline]
+    pub fn contains_rect(&self, other: &Rect) -> bool {
+        other.x >= self.x
+            && other.y >= self.y
+            && other.right() <= self.right()
+            && other.bottom() <= self.bottom()
+    }
+
     /// Check if this rectangle intersects with another.
     #[inline]
     pub fn intersects_other(&self, other: &Rect) -> bool {

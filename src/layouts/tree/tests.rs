@@ -1508,12 +1508,7 @@ fn constrained_bounds_reserve_minimums_without_overlap() {
         bounds[&WindowId(3)].x + bounds[&WindowId(3)].w,
         layout.x + layout.w
     );
-    assert!(bounds.values().all(|rect| {
-        rect.x >= layout.x
-            && rect.y >= layout.y
-            && rect.x + rect.w <= layout.x + layout.w
-            && rect.y + rect.h <= layout.y + layout.h
-    }));
+    assert!(bounds.values().all(|rect| layout.contains_rect(rect)));
 }
 
 #[test]

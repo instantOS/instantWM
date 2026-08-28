@@ -9,13 +9,6 @@ use crate::types::input::EdgeDirection;
 use crate::types::{Client, ClientPlacement, Monitor, Rect, Size, TagMask, WindowId};
 use crate::wm::Wm;
 
-fn contains(outer: Rect, inner: Rect) -> bool {
-    inner.x >= outer.x
-        && inner.y >= outer.y
-        && inner.x + inner.w <= outer.x + outer.w
-        && inner.y + inner.h <= outer.y + outer.h
-}
-
 #[test]
 fn scratchpad_identity_accepts_wayland_app_id_and_x11_instance() {
     assert_eq!(
@@ -36,10 +29,7 @@ fn regular_scratchpad_percentages_include_borders_and_center_in_content() {
     let rect = regular_scratchpad_rect(content, 2, 50, 60).unwrap();
 
     assert_eq!(rect, Rect::new(580, 440, 956, 626));
-    assert!(contains(
-        content,
-        Rect::new(rect.x, rect.y, rect.w + 2 * 2, rect.h + 2 * 2)
-    ));
+    assert!(content.contains_rect(&Rect::new(rect.x, rect.y, rect.w + 2 * 2, rect.h + 2 * 2)));
 }
 
 #[test]
@@ -62,7 +52,7 @@ fn shown_rects_stay_inside_content_and_hidden_rects_stay_outside() {
     ] {
         let slide = EdgeSlideRects::new(content, direction, Size::new(640, 360));
 
-        assert!(contains(content, slide.shown), "{direction:?}");
+        assert!(content.contains_rect(&slide.shown), "{direction:?}");
         assert!(!content.intersects_other(&slide.hidden), "{direction:?}");
         assert_eq!(slide.hidden.size(), slide.shown.size());
     }
@@ -80,7 +70,7 @@ fn oversized_edge_scratchpads_are_clamped_to_content() {
     ] {
         let slide = EdgeSlideRects::new(content, direction, Size::new(500, 500));
 
-        assert!(contains(content, slide.shown), "{direction:?}");
+        assert!(content.contains_rect(&slide.shown), "{direction:?}");
         assert!(slide.shown.w > 0);
         assert!(slide.shown.h > 0);
     }

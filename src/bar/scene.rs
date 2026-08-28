@@ -438,8 +438,9 @@ fn build_systray_snapshot(
     core: &CoreCtx,
     mon: &Monitor,
     tray_menu: Option<&crate::systray::TrayMenuPresentation>,
+    base_scheme: BarScheme,
     systray_spacing: i32,
-    external_right_width: i32,
+    external_tray_width: i32,
 ) -> SystraySnapshot {
     let items = core.bar.systray_host.tray.clone();
     let layout = crate::systray::layout(
@@ -450,11 +451,11 @@ fn build_systray_snapshot(
         systray_spacing,
         // Compositor-rendered icons sit left of any externally
         // rendered tray strip (XEmbed windows on X11).
-        external_right_width.max(0),
+        external_tray_width,
     );
     SystraySnapshot {
         items,
-        base_scheme: status_scheme(&core.config().colors.status),
+        base_scheme,
         layout,
     }
 }
@@ -500,18 +501,27 @@ pub(crate) fn build_monitor_snapshots(
 
         let presentation = build_bar_presentation(core, is_selected_monitor, &selected_status);
 
+        // The tray snapshot and the right-edge width reserved for external
+        // tray content must agree: hit testing and XEmbed placement rely on
+        // both describing the same strip.
+        let tray_visible = show_systray && is_selected_monitor;
+        let external_tray_width = if tray_visible {
+            external_right_width.max(0)
+        } else {
+            0
+        };
         let tray_menu = presentation.tray_menu().cloned();
-        let systray = if show_systray && is_selected_monitor {
-            Some(build_systray_snapshot(
+        let status_scheme = status_scheme(&core.config().colors.status);
+        let systray = tray_visible.then(|| {
+            build_systray_snapshot(
                 core,
                 mon,
                 tray_menu.as_ref(),
+                status_scheme.clone(),
                 systray_spacing,
-                external_right_width,
-            ))
-        } else {
-            None
-        };
+                external_tray_width,
+            )
+        });
 
         snapshots.push(MonitorBarSnapshot {
             monitor_id: mon.id(),
@@ -524,7 +534,7 @@ pub(crate) fn build_monitor_snapshots(
             ui_scale: mon.ui_scale,
             fonts,
             is_selected_monitor,
-            status_scheme: status_scheme(&core.config().colors.status),
+            status_scheme,
             status_separator_color: core.config().colors.status.separator,
             status_hover_color: core.config().colors.status.hover,
             startmenu_size: mon.startmenu_size,
@@ -540,11 +550,7 @@ pub(crate) fn build_monitor_snapshots(
             titles,
             presentation,
             systray,
-            external_right_width: if show_systray && is_selected_monitor {
-                external_right_width.max(0)
-            } else {
-                0
-            },
+            external_right_width: external_tray_width,
         });
     }
 
