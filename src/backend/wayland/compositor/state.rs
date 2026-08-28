@@ -409,6 +409,9 @@ impl WaylandState {
         self.runtime.active_systray_menu.as_ref()
     }
 
+    /// Whether the active or not-yet-mapped native menu belongs to an item.
+    /// Adapters use this before dismissing the menu to implement click-toggle
+    /// without letting native compositor state leak into shared mouse policy.
     pub(crate) fn native_systray_menu_matches(&self, service: &str, path: &str) -> bool {
         self.runtime
             .active_systray_menu
@@ -1112,5 +1115,31 @@ mod render_target_tests {
         assert!(targets.invalidate_all());
         assert!(!targets.invalidate_output("HDMI-A-1".into()));
         assert!(matches!(targets, PendingRenderTargets::All));
+    }
+}
+
+#[cfg(test)]
+mod native_menu_tests {
+    use std::time::Instant;
+
+    use crate::systray::status_notifier::NativeMenuRequest;
+    use crate::types::Point;
+
+    #[test]
+    fn pending_native_menu_identity_is_available_until_dismissal() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        *state.runtime.pending_systray_menu.lock().unwrap() = Some(NativeMenuRequest {
+            created: Instant::now(),
+            anchor: Point::new(10, 20),
+            service: "org.example.Tray".into(),
+            path: "/org/example/Tray".into(),
+            owner_pid: Some(42),
+        });
+
+        assert!(state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
+        assert!(!state.native_systray_menu_matches("org.example.Other", "/org/example/Tray"));
+        assert!(state.dismiss_native_systray_menu());
+        assert!(!state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
     }
 }

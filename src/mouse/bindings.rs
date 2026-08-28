@@ -15,23 +15,17 @@ pub struct ButtonBindingEvent {
     pub time_msec: u32,
 }
 
-pub fn consume_one(ctx: &mut WmCtx<'_>, event: ButtonBindingEvent, numlockmask: u32) -> bool {
-    run_matching(ctx, event, numlockmask, MatchPolicy::First)
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum MatchPolicy {
-    All,
-    First,
-}
-
-pub(crate) fn run_matching(
+/// Execute the first configured binding matching this event.
+///
+/// A physical button chord has exactly one owner. Configuration order is the
+/// explicit precedence rule when duplicate targets are present; callers that
+/// need several operations should expose a compound action instead of relying
+/// on backend-dependent duplicate dispatch.
+pub(crate) fn run_first_matching(
     ctx: &mut WmCtx<'_>,
     event: ButtonBindingEvent,
     numlockmask: u32,
-    policy: MatchPolicy,
 ) -> bool {
-    let mut matched = false;
     let buttons = ctx.core().config().bindings.buttons.clone();
     for binding in &buttons {
         if !binding.matches(event.target) || binding.button != event.button {
@@ -53,11 +47,7 @@ pub(crate) fn run_matching(
                 time_msec: event.time_msec,
             },
         );
-        matched = true;
-
-        if matches!(policy, MatchPolicy::First) {
-            return true;
-        }
+        return true;
     }
-    matched
+    false
 }

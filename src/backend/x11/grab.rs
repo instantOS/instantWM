@@ -18,7 +18,6 @@
 //! ungrab(&x11, x11_runtime);
 //! ```
 
-use crate::backend::PointerOps;
 use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{AltCursor, MouseButton, Point};
@@ -53,7 +52,7 @@ pub fn grab_pointer(
 /// The passive offer model only owns the root window: over any other window
 /// the client beneath owns the cursor and the button press. This grab carries
 /// the offer's resize cursor across those windows and routes the committing
-/// press to the root window, where [`commit_hover_offer`] picks it up. It is
+/// press to the root window, where the press policy picks it up. It is
 /// released by [`ungrab`] as soon as the offer clears.
 ///
 /// The grab always selects its own `PointerMotion`: raw XI2 motion cannot be
@@ -289,59 +288,9 @@ fn run_interaction_grab_loop(
 
 /// Drive any compositor-owned interaction through the shared transport.
 ///
-/// X11 alone needs a native pointer grab and a synchronous adapter. Gesture
-/// semantics remain in `mouse::interaction`, alongside Wayland pointer/touch.
-/// Commit the current hover-resize offer to a move, direct resize, tree
-/// resize, or close operation.
-///
-/// X11 commits offers through its modal grab loop; the shared mouse module
-/// owns only the offer model. Returns `false` when there is no resize offer
-/// or the button is not a valid commit button for hover resize.
-pub fn commit_hover_offer(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    let offer = ctx.core.interaction().drag.hover_offer();
-    let Some((win, _)) = offer.resize_target().or_else(|| offer.tree_resize_target()) else {
-        return false;
-    };
-    if offer.tree_resize_target().is_some() && btn == MouseButton::Middle {
-        return false;
-    }
-    if btn == MouseButton::Middle {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        crate::mouse::clear_hover_offer(&mut wm_ctx);
-        if wm_ctx.core().model().selected_win() != Some(win) {
-            crate::focus::focus(&mut wm_ctx, Some(win));
-        }
-        crate::client::kill::close_win(&mut wm_ctx, win);
-        return true;
-    }
-    if btn != MouseButton::Left && btn != MouseButton::Right {
-        return false;
-    }
-    let start = ctx
-        .x11
-        .pointer_location()
-        .or_else(|| {
-            ctx.core
-                .model()
-                .client(win)
-                .map(|client| client.geo.center())
-        })
-        .unwrap_or_default();
-    let started = {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        if wm_ctx.core().model().selected_win() != Some(win) {
-            crate::focus::focus(&mut wm_ctx, Some(win));
-        }
-        crate::mouse::drag::hover_drag_begin(
-            &mut wm_ctx,
-            start,
-            btn,
-            crate::types::InteractionSource::Pointer,
-        )
-    };
-    started && drive_wm_interaction(ctx, btn)
-}
-
+/// Drive a captured shared interaction through X11's modal pointer grab.
+/// Gesture semantics remain in `mouse::interaction`, alongside Wayland
+/// pointer and touch handling.
 pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     if ctx.core.interaction().drag.captured_button() != Some(btn)
         || ctx.core.interaction().drag.captured_source()

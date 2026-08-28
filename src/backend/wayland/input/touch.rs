@@ -15,7 +15,6 @@ use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
 use crate::backend::wayland::compositor::{
     PointerFocusTarget, TOUCH_POINTER_BUTTON_CODE, WaylandState,
 };
-use crate::backend::wayland::input::focus::focus_managed_target;
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::MouseButton;
 use crate::wm::Wm;
@@ -101,101 +100,43 @@ pub fn handle_touch_down(
             if let Some((PointerFocusTarget::WlSurface(surface), _)) = hit.focus.as_ref() {
                 state.focus_layer_keyboard(surface, serial, LayerFocusRequest::UserInteraction);
             }
-        } else if !state.is_pointer_over_overlay(location) {
+        } else if !state.is_pointer_over_overlay(location)
+            && can_claim_wm_gesture_slot(state.runtime.wm_gesture_touch_slot)
+        {
             let root = root_point(location);
-            if let Some(monitor_id) = wm
-                .core
-                .model
-                .monitors
-                .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
-            {
-                crate::focus::select_monitor(&mut wm.ctx(), monitor_id);
-            }
-            let bar_position = {
-                let mut ctx = wm.ctx();
-                crate::bar::resolve_bar_position_at_root(ctx.core_mut(), root)
-                    .map(|(_, position)| position)
+            state.dismiss_native_systray_menu();
+            let modifiers = clean_modifier_state(state);
+            let input = crate::mouse::press::PressInput {
+                root,
+                button: Some(MouseButton::Left),
+                raw_button: MouseButton::Left.to_x11_detail(),
+                modifiers,
+                clicked_window: hit.hovered_window,
+                source: crate::types::InteractionSource::Touch(event.slot.into()),
+                time_msec: event.time_msec,
             };
-            if state.runtime.wm_gesture_touch_slot.is_none()
-                && let Some(position) = bar_position
-            {
-                state.runtime.wm_gesture_touch_slot = Some(event.slot);
-                let modifiers = clean_modifier_state(state);
-                crate::backend::wayland::input::bar::handle_bar_click(
-                    wm,
-                    state,
-                    position,
-                    TOUCH_POINTER_BUTTON_CODE,
-                    crate::types::InteractionSource::Touch(event.slot.into()),
-                    root,
-                    modifiers,
-                );
-                return;
-            }
-            if state.runtime.wm_gesture_touch_slot.is_none()
-                && state.logical_window_under_pointer(location).is_none()
-                && clean_modifier_state(state) == 0
-                && let Some(target) = crate::mouse::pointer::sidebar_target_at(&wm.core.model, root)
-            {
+            let outcome = {
                 let mut ctx = wm.ctx();
-                if crate::mouse::sidebar_gesture_begin(
-                    &mut ctx,
-                    MouseButton::Left,
-                    crate::types::InteractionSource::Touch(event.slot.into()),
-                    target,
+                crate::mouse::press::dispatch_press_policy(&mut ctx, input)
+            };
+            match outcome {
+                crate::mouse::press::PressOutcome::CapturedInteraction { .. }
+                | crate::mouse::press::PressOutcome::Consumed => {
+                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
+                    return;
+                }
+                crate::mouse::press::PressOutcome::SystrayIconPress {
+                    index,
+                    button,
                     root,
-                ) {
+                } => {
+                    let mut ctx = wm.ctx();
+                    crate::systray::press_icon(ctx.core_mut(), index, button, root);
                     state.runtime.wm_gesture_touch_slot = Some(event.slot);
                     return;
                 }
+                crate::mouse::press::PressOutcome::ReplayToClient { .. } => {}
             }
-            if state.runtime.wm_gesture_touch_slot.is_none()
-                && crate::mouse::pointer::bottom_bar_monitor_at(&wm.core.model, root).is_some()
-            {
-                // Run configured strip bindings (by default this starts the
-                // horizontal swipe gesture). If a binding captures the touch,
-                // motion/up are driven through the shared interaction transport.
-                let source = crate::types::InteractionSource::Touch(event.slot.into());
-                let clean_state = clean_modifier_state(state);
-                let mut ctx = wm.ctx();
-                crate::mouse::bindings::run_matching(
-                    &mut ctx,
-                    crate::mouse::bindings::ButtonBindingEvent {
-                        target: crate::types::ButtonTarget::BottomBar,
-                        window: None,
-                        button: MouseButton::Left,
-                        source,
-                        root,
-                        clean_state,
-                        time_msec: event.time_msec,
-                    },
-                    0,
-                    crate::mouse::bindings::MatchPolicy::All,
-                );
-                if wm.core.interaction.drag.captured_source() == Some(source) {
-                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
-                    return;
-                }
-            }
-            if state.runtime.wm_gesture_touch_slot.is_none()
-                && let Some(window) = hit.hovered_window
-                && wm.core.model.is_overview_active()
-            {
-                let source = crate::types::InteractionSource::Touch(event.slot.into());
-                if crate::overview::begin_card_gesture(
-                    &mut wm.ctx(),
-                    window,
-                    MouseButton::Left,
-                    source,
-                    root,
-                ) {
-                    // Do not emit wl_touch.down (or an emulated pointer press):
-                    // the overview owns this contact through motion/up.
-                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
-                    return;
-                }
-            }
-            focus_managed_target(wm, hit.hovered_window, Some(MouseButton::Left));
         }
     }
 
@@ -360,6 +301,12 @@ fn should_emulate_pointer(
     touch_was_grabbed: bool,
 ) -> bool {
     client_needs_emulation && !pointer_touch_active && !touch_was_grabbed
+}
+
+/// Only one touch contact may own compositor interaction state. Additional
+/// contacts remain native client touch points until that owner ends.
+fn can_claim_wm_gesture_slot(active: Option<TouchSlot>) -> bool {
+    active.is_none()
 }
 
 fn root_point(location: Point<f64, Logical>) -> crate::types::Point {
@@ -566,6 +513,12 @@ mod tests {
         assert!(!should_emulate_pointer(false, false, false));
         assert!(!should_emulate_pointer(true, true, false));
         assert!(!should_emulate_pointer(true, false, true));
+    }
+
+    #[test]
+    fn a_second_touch_cannot_replace_the_wm_gesture_owner() {
+        assert!(can_claim_wm_gesture_slot(None));
+        assert!(!can_claim_wm_gesture_slot(Some(Some(1).into())));
     }
 
     #[test]

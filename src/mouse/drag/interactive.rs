@@ -134,6 +134,10 @@ pub fn hover_drag_begin(
     };
 
     if btn == MouseButton::Middle {
+        // Closing is terminal for the passive offer. Clear its cursor/input
+        // projection before asking the backend to close the target so an
+        // asynchronous unmap cannot leave hover ownership behind.
+        crate::mouse::clear_hover_offer(ctx);
         crate::client::kill::close_win(ctx, target.win);
         return true;
     }
