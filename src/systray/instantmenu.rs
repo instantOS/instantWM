@@ -32,8 +32,8 @@ const MENU_WIDTH: i32 = 340;
 
 /// Final result of one instantmenu process, delivered by its reader thread.
 enum MenuOutcome {
-    /// An item was chosen; `label` is the exact line instantMENU printed
-    /// (markup stripped), matching [`display_label`] of the source entry.
+    /// An item was chosen; `label` is the `value` instantMENU printed
+    /// (the entry index as string), or legacy display label for fallback.
     Selected { session_id: u64, label: String },
     /// The menu was dismissed without a choice (Escape or an outside press).
     Dismissed { session_id: u64 },
@@ -206,6 +206,12 @@ pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
 }
 
 /// Map a chosen instantmenu line back to its entry and dispatch the action.
+///
+/// With the `value=<index>` integration, instantMENU outputs the `value`
+/// attribute (the entry's index in `MenuView`) rather than the display label.
+/// This decouples selection from fragile label equality and handles duplicate
+/// labels. A failing parse falls back to legacy label matching for backward
+/// compatibility.
 fn handle_selection(wm: &mut Wm, session_id: u64, label: &str, hosting: bool) -> bool {
     let Some(presentation) = wm.bar.systray_host.menu.presentation() else {
         return false;
@@ -213,12 +219,24 @@ fn handle_selection(wm: &mut Wm, session_id: u64, label: &str, hosting: bool) ->
     if presentation.session_id != session_id {
         return false;
     }
-    let Some(entry) = presentation
+    // Prefer index/value parsing; fall back to legacy label comparison.
+    let entry = if let Ok(index) = label.parse::<usize>() {
+        match presentation.view.entries.get(index) {
+            Some(entry) => entry,
+            None => {
+                // Unknown index: treat as dismissal.
+                close_session(wm);
+                return !hosting;
+            }
+        }
+    } else if let Some(entry) = presentation
         .view
         .entries
         .iter()
         .find(|entry| display_label(entry) == label)
-    else {
+    {
+        entry
+    } else {
         // Unknown output text: treat the exchange as a dismissal.
         close_session(wm);
         return !hosting;
@@ -397,12 +415,18 @@ fn display_label(entry: &MenuEntry) -> String {
 }
 
 /// One instantMENU input line per selectable entry; separators have no
-/// equivalent in a launcher list and are skipped.
+/// equivalent in a launcher list and are skipped. Each line carries
+/// `value=<index>` where index is the entry's position in `MenuView`, so
+/// instantMENU's output is the stable index rather than the display label.
 fn build_lines(view: &MenuView) -> Vec<String> {
-    view.entries.iter().filter_map(entry_line).collect()
+    view.entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| entry_line(index, entry))
+        .collect()
 }
 
-fn entry_line(entry: &MenuEntry) -> Option<String> {
+fn entry_line(index: usize, entry: &MenuEntry) -> Option<String> {
     if entry.separator {
         return None;
     }
@@ -413,6 +437,9 @@ fn entry_line(entry: &MenuEntry) -> Option<String> {
     if let Some(icon) = icon_for_entry(entry) {
         attrs.push(format!("icon={icon}"));
     }
+    // Stable unique output for robust selection (duplicate labels, markup chars).
+    // Index is integer, so no quoting needed; kept as bare value.
+    attrs.push(format!("value={index}"));
     let mut line = String::new();
     if !attrs.is_empty() {
         line.push('{');
@@ -624,23 +651,52 @@ mod tests {
         assert_eq!(lines.len(), 3, "separators produce no line");
 
         let expected = [
-            "{icon=open-in-new} Open".to_string(),
-            "{fade icon=logout} Quit".to_string(),
-            "{icon=settings} Settings".to_string(),
+            "{icon=open-in-new value=0} Open".to_string(),
+            "{fade icon=logout value=1} Quit".to_string(),
+            "{icon=settings value=3} Settings".to_string(),
         ];
         assert_eq!(lines, expected);
 
-        // Each line's payload (after the attribute block) is exactly what
-        // instantMENU prints back on selection.
-        let selectable = view
-            .entries
-            .iter()
-            .filter(|entry| !entry.separator)
-            .collect::<Vec<_>>();
-        for (line, entry) in lines.iter().zip(selectable) {
-            let line = line.as_str();
-            let payload = line.split_once("} ").map_or(line, |(_, payload)| payload);
+        // Each line's payload after the attribute block is still the display label,
+        // and the `value` attribute round-trips to the entry index.
+        for line in &lines {
+            let (attrs, payload) = line.split_once("} ").expect("attribute block");
+            // attrs includes leading '{'
+            let attrs = &attrs[1..];
+            let value_str = attrs
+                .split_whitespace()
+                .find_map(|attr| attr.strip_prefix("value="))
+                .expect("value attr present");
+            // Quote handling: instantMENU may quote values containing spaces, strip quotes.
+            let value_str = value_str.trim_matches('"');
+            let index: usize = value_str.parse().expect("value is integer index");
+            let entry = &view.entries[index];
+            assert!(!entry.separator, "value must not point to separator");
             assert_eq!(payload, display_label(entry));
+            // Also verify that parsing the instantMENU output (value) maps back correctly.
+            let parsed: usize = value_str.parse().unwrap();
+            assert_eq!(view.entries[parsed].label, entry.label);
+        }
+
+        // Duplicate labels get distinct values and round-trip correctly.
+        let dup_view = MenuView {
+            entries: vec![entry("Same"), entry("Same")],
+        };
+        let dup_lines = build_lines(&dup_view);
+        assert_eq!(dup_lines.len(), 2);
+        assert!(dup_lines[0].contains("value=0"));
+        assert!(dup_lines[1].contains("value=1"));
+        assert_ne!(dup_lines[0], dup_lines[1]);
+        for line in &dup_lines {
+            let (attrs, _) = line.split_once("} ").unwrap();
+            let attrs = &attrs[1..];
+            let v = attrs
+                .split_whitespace()
+                .find_map(|a| a.strip_prefix("value="))
+                .unwrap()
+                .trim_matches('"');
+            let idx: usize = v.parse().unwrap();
+            assert_eq!(dup_view.entries[idx].label, "Same");
         }
     }
 
