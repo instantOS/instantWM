@@ -3,7 +3,6 @@
 use std::env;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::time::Duration;
 
 use smithay::reexports::calloop::LoopHandle;
 use smithay::wayland::socket::ListeningSocketSource;
@@ -266,20 +265,4 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
     }
 }
 
-/// Spawn a lightweight test window a short time after startup.
-///
-/// This gives the compositor something visible to display immediately after
-/// launch during development / smoke-testing. Set
-/// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
-pub fn spawn_smoke_window() {
-    if env::var("INSTANTWM_WL_AUTOSPAWN").ok().as_deref() == Some("0") {
-        return;
-    }
-    std::thread::spawn(|| {
-        std::thread::sleep(Duration::from_millis(800));
-        let _ = Command::new("sh")
-            .arg("-lc")
-            .arg("for app in gtk3-demo thunar xmessage; do command -v \"$app\" >/dev/null 2>&1 && exec \"$app\"; done; exit 0")
-            .spawn();
-    });
-}
+

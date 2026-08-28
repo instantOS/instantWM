@@ -59,13 +59,12 @@ pub fn setup_listen_socket(
     );
 }
 
-/// Startup commands, smoke window, IPC listener registration, and status-bar ping source.
+/// Startup commands, IPC listener registration, and status-bar ping source.
 pub fn autostart_ipc_status_ping(
     loop_handle: &LoopHandle<'static, WaylandState>,
     wm: &crate::wm::Wm,
 ) -> Option<crate::ipc::IpcServer> {
     crate::runtime::run_startup_commands(wm);
-    crate::backend::wayland::session::spawn_smoke_window();
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     crate::runtime::register_ipc_source(loop_handle, &ipc_server);
     let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
