@@ -2,7 +2,7 @@ use crate::backend::x11::lifecycle::unmanage;
 use crate::backend::x11::systray::XEmbedMessage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
-    BarPosition, ButtonTarget, Gesture, MouseButton, Point, Rect, TagMask, WindowId,
+    BarPosition, ButtonTarget, Gesture, MonitorId, MouseButton, Point, Rect, TagMask, WindowId,
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -34,14 +34,17 @@ pub fn touch_begin(ctx: &mut WmCtxX11<'_>, e: &TouchBeginEvent) {
     let _ = ctx.x11.conn.flush();
 }
 
-pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
+/// Bring the monitor under the press into selection: first the monitor of the
+/// clicked window (if any), then the monitor intersecting the pointer. Returns
+/// the monitor id the press resolved to.
+fn select_monitor_for_press(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    root: Point,
+) -> MonitorId {
     let event_win = WindowId::from(e.event);
-    let numlockmask = ctx.x11_runtime().numlockmask;
-    let buttons_clone = ctx.core.config().bindings.buttons.clone();
-    let mut selmon_id = ctx.core.model().selected_monitor_id();
     let focusfollowsmouse = ctx.core.behavior().focus_follows_mouse.is_enabled();
-    let root = Point::new(e.root_x as i32, e.root_y as i32);
-    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
+    let mut selmon_id = ctx.core.model().selected_monitor_id();
 
     if let Some(clicked_mon) = ctx
         .core
@@ -66,18 +69,34 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     }
 
+    selmon_id
+}
+
+/// Release a synchronous passive-grab freeze without replaying the press,
+/// before an interaction's active grab takes over.
+fn thaw_pointer_grab(ctx: &WmCtxX11<'_>) {
+    let _ = ctx
+        .x11
+        .conn
+        .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
+    let _ = ctx.x11.conn.flush();
+}
+
+/// Try to begin a sidebar gesture on an unmodified left press over a sidebar
+/// target (root or empty area). Returns true when the press was consumed.
+fn try_sidebar_gesture(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    event_win: WindowId,
+    clean_state: u32,
+    root: Point,
+) -> bool {
     if !ctx.core.model().clients.contains_key(&event_win)
         && clean_state == 0
         && let Some(btn @ MouseButton::Left) = MouseButton::from_x11_detail(e.detail)
         && let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root)
     {
-        // Client passive grabs are synchronous. Release that freeze without
-        // replaying the press before acquiring the interaction's active grab.
-        let _ = ctx
-            .x11
-            .conn
-            .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
-        let _ = ctx.x11.conn.flush();
+        thaw_pointer_grab(ctx);
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         if crate::mouse::sidebar_gesture_begin(
             &mut wm_ctx,
@@ -88,6 +107,211 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         ) {
             crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
         }
+        return true;
+    }
+    false
+}
+
+/// Handle a left press while the overview may be active: a press on a client
+/// window begins the shared card gesture (consuming the press); any other
+/// left press exits the overview. Returns true when the press was consumed.
+fn handle_overview_press(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    target_window: Option<WindowId>,
+    root: Point,
+) -> bool {
+    if e.detail != MouseButton::Left.to_x11_detail() {
+        return false;
+    }
+    if let Some(window) = target_window
+        && ctx.core.model().is_overview_active()
+    {
+        thaw_pointer_grab(ctx);
+        let began = crate::overview::begin_card_gesture(
+            &mut WmCtx::X11(ctx.reborrow()),
+            window,
+            MouseButton::Left,
+            crate::types::InteractionSource::Pointer,
+            root,
+        );
+        if began {
+            let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, MouseButton::Left);
+        }
+        return true;
+    }
+    let exit_mode = if target_window.is_some() {
+        crate::overview::ExitMode::ToSelectedWindow
+    } else {
+        crate::overview::ExitMode::RestorePrevious
+    };
+    crate::overview::exit_overview(&mut WmCtx::X11(ctx.reborrow()), exit_mode);
+    false
+}
+
+/// Click-to-focus is independent of focus-follows-mouse. Passive grabs on
+/// unfocused clients let the WM focus first, then replay the click to the
+/// application below. Floating clients also raise on their click button.
+fn focus_and_raise_pressed_client(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    target_window: Option<WindowId>,
+) {
+    if target_window.is_some() && ctx.core.model().selected_win() != target_window {
+        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), target_window);
+    }
+    if let (Some(win), Some(button)) = (target_window, MouseButton::from_x11_detail(e.detail)) {
+        crate::focus::raise_floating_on_client_click(&mut WmCtx::X11(ctx.reborrow()), win, button);
+    }
+}
+
+/// Dispatch a press on the bottom bar strip. The strip only reacts to
+/// configured bindings; by default the left-button binding starts the
+/// horizontal swipe gesture. Any other press is swallowed: no contents, no
+/// root fall-through. Returns true when the press was consumed.
+fn try_bottom_bar_press(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    region: &crate::mouse::pointer::PointerRegion,
+    root: Point,
+    clean_state: u32,
+    numlockmask: u32,
+) -> bool {
+    if !matches!(
+        region,
+        crate::mouse::pointer::PointerRegion::BottomBar { .. }
+    ) {
+        return false;
+    }
+    if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
+        thaw_pointer_grab(ctx);
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::mouse::bindings::run_matching(
+            &mut wm_ctx,
+            crate::mouse::bindings::ButtonBindingEvent {
+                target: ButtonTarget::BottomBar,
+                window: None,
+                button: btn,
+                source: crate::types::InteractionSource::Pointer,
+                root,
+                clean_state,
+                time_msec: e.time,
+            },
+            numlockmask,
+            crate::mouse::bindings::MatchPolicy::All,
+        );
+        let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
+    }
+    true
+}
+
+/// Route presses on bar-hosted UI: tray-menu entries activate on left click,
+/// any other press first dismisses an open hosted menu, tray-icon presses are
+/// forwarded to their StatusNotifierItem, and status-text clicks run their
+/// handlers. Both tray paths mirror the Wayland click path; without this, bar
+/// clicks would fall through to bindings. Returns true when consumed.
+fn try_bar_press_dispatch(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    button_target: Option<ButtonTarget>,
+    root: Point,
+    clean_state: u32,
+) -> bool {
+    if let Some(ButtonTarget::Bar(BarPosition::SystrayMenuItem(idx))) = button_target {
+        if MouseButton::from_x11_detail(e.detail) == Some(MouseButton::Left) {
+            crate::systray::activate_menu_entry(&mut ctx.core, idx);
+        }
+        return true;
+    }
+    crate::systray::close_menu(&mut ctx.core);
+
+    if let Some(ButtonTarget::Bar(BarPosition::SystrayItem(idx))) = button_target {
+        if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
+            crate::systray::press_icon(&mut ctx.core, idx, btn, root);
+        }
+        return true;
+    }
+
+    if button_target == Some(ButtonTarget::Bar(BarPosition::StatusText)) {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::bar::handle_status_text_click(&mut wm_ctx, root, e.detail, clean_state);
+        return true;
+    }
+    false
+}
+
+/// Decide whether the synchronous client grab may replay the press to the
+/// application. Client button grabs use GrabMode::SYNC. Plain clicks should
+/// be replayed to the client after WM processing, but WM-owned modified
+/// clicks (e.g. Super+drag) must stay consumed by the WM so the initial press
+/// is not handed back to the client before the drag grab begins.
+fn allow_press_replay(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    button_target: Option<ButtonTarget>,
+    clean_state: u32,
+    numlockmask: u32,
+) {
+    let client_binding_matched = button_target == Some(ButtonTarget::ClientWin)
+        && ctx.core.config().bindings.buttons.iter().any(|button| {
+            button_target.is_some_and(|target| button.matches(target))
+                && button.button.to_x11_detail() == e.detail
+                && crate::util::clean_mask(button.mask, numlockmask) == clean_state
+        });
+
+    let conn = ctx.x11.conn;
+    let _ = conn.allow_events(
+        if client_binding_matched {
+            Allow::ASYNC_POINTER
+        } else {
+            Allow::REPLAY_POINTER
+        },
+        CURRENT_TIME,
+    );
+    let _ = conn.flush();
+}
+
+/// Run configured button bindings for the press target, then drive any
+/// interaction grab a matching action started.
+fn dispatch_button_bindings(
+    ctx: &mut WmCtxX11<'_>,
+    e: &ButtonPressEvent,
+    button_target: Option<ButtonTarget>,
+    target_window: Option<WindowId>,
+    root: Point,
+    clean_state: u32,
+    numlockmask: u32,
+) {
+    if let (Some(btn), Some(button_target)) =
+        (MouseButton::from_x11_detail(e.detail), button_target)
+    {
+        crate::mouse::bindings::run_matching(
+            &mut WmCtx::X11(ctx.reborrow()),
+            crate::mouse::bindings::ButtonBindingEvent {
+                target: button_target,
+                window: target_window,
+                button: btn,
+                source: crate::types::InteractionSource::Pointer,
+                root,
+                clean_state,
+                time_msec: e.time,
+            },
+            numlockmask,
+            crate::mouse::bindings::MatchPolicy::All,
+        );
+        let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
+    }
+}
+
+pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
+    let event_win = WindowId::from(e.event);
+    let numlockmask = ctx.x11_runtime().numlockmask;
+    let root = Point::new(e.root_x as i32, e.root_y as i32);
+    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
+
+    let selmon_id = select_monitor_for_press(ctx, e, root);
+
+    if try_sidebar_gesture(ctx, e, event_win, clean_state, root) {
         return;
     }
 
@@ -99,142 +323,23 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         .contains_key(&event_win)
         .then_some(event_win);
 
-    if e.detail == MouseButton::Left.to_x11_detail()
-        && let Some(window) = target_window
-        && ctx.core.model().is_overview_active()
-    {
-        // The passive client grab is synchronous. Thaw it without replaying
-        // the press, then let the shared overview gesture own motion/release.
-        let _ = ctx
-            .x11
-            .conn
-            .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
-        let _ = ctx.x11.conn.flush();
-        let began = crate::overview::begin_card_gesture(
-            &mut WmCtx::X11(ctx.reborrow()),
-            window,
-            MouseButton::Left,
-            crate::types::InteractionSource::Pointer,
-            root,
-        );
-        if began {
-            let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, MouseButton::Left);
-        }
+    if handle_overview_press(ctx, e, target_window, root) {
         return;
     }
 
-    if e.detail == MouseButton::Left.to_x11_detail() {
-        let exit_mode = if target_window.is_some() {
-            crate::overview::ExitMode::ToSelectedWindow
-        } else {
-            crate::overview::ExitMode::RestorePrevious
-        };
-        crate::overview::exit_overview(&mut WmCtx::X11(ctx.reborrow()), exit_mode);
-    }
-
-    // Click-to-focus is independent of focus-follows-mouse. Passive grabs on
-    // unfocused clients let the WM focus first, then replay the click to the
-    // application below.
-    if target_window.is_some() && ctx.core.model().selected_win() != target_window {
-        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), target_window);
-    }
-    if let (Some(win), Some(button)) = (target_window, MouseButton::from_x11_detail(e.detail)) {
-        crate::focus::raise_floating_on_client_click(&mut WmCtx::X11(ctx.reborrow()), win, button);
-    }
+    focus_and_raise_pressed_client(ctx, e, target_window);
 
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
-    if matches!(
-        region,
-        crate::mouse::pointer::PointerRegion::BottomBar { .. }
-    ) {
-        // The strip only reacts to configured bindings; by default the
-        // left-button binding starts the horizontal swipe gesture. Any other
-        // press is swallowed: no contents, no root fall-through.
-        if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
-            // Release a possible press freeze before acquiring the
-            // interaction's active grab.
-            let _ = ctx
-                .x11
-                .conn
-                .allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
-            let _ = ctx.x11.conn.flush();
-            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            crate::mouse::bindings::run_matching(
-                &mut wm_ctx,
-                crate::mouse::bindings::ButtonBindingEvent {
-                    target: ButtonTarget::BottomBar,
-                    window: None,
-                    button: btn,
-                    source: crate::types::InteractionSource::Pointer,
-                    root,
-                    clean_state,
-                    time_msec: e.time,
-                },
-                numlockmask,
-                crate::mouse::bindings::MatchPolicy::All,
-            );
-            let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
-        }
+    if try_bottom_bar_press(ctx, e, &region, root, clean_state, numlockmask) {
         return;
     }
     let button_target = region.binding_target();
 
-    // A press on a hosted tray-menu entry activates it (left only). Any other
-    // press first dismisses an open hosted menu, then a press on a tray icon
-    // is forwarded to its StatusNotifierItem. Both mirror the Wayland click
-    // path; without this, bar clicks would fall through to bindings.
-    if let Some(ButtonTarget::Bar(BarPosition::SystrayMenuItem(idx))) = button_target {
-        if MouseButton::from_x11_detail(e.detail) == Some(MouseButton::Left) {
-            crate::systray::activate_menu_entry(&mut ctx.core, idx);
-        }
-        return;
-    }
-    crate::systray::close_menu(&mut ctx.core);
-
-    if let Some(ButtonTarget::Bar(BarPosition::SystrayItem(idx))) = button_target {
-        if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
-            crate::systray::press_icon(
-                &mut ctx.core,
-                idx,
-                btn,
-                crate::types::Point::new(e.root_x as i32, e.root_y as i32),
-            );
-        }
+    if try_bar_press_dispatch(ctx, e, button_target, root, clean_state) {
         return;
     }
 
-    if button_target == Some(ButtonTarget::Bar(BarPosition::StatusText)) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        crate::bar::handle_status_text_click(
-            &mut wm_ctx,
-            crate::types::Point::new(e.root_x as i32, e.root_y as i32),
-            e.detail,
-            clean_state,
-        );
-        return;
-    }
-
-    let client_binding_matched = button_target == Some(ButtonTarget::ClientWin)
-        && buttons_clone.iter().any(|button| {
-            button_target.is_some_and(|target| button.matches(target))
-                && button.button.to_x11_detail() == e.detail
-                && crate::util::clean_mask(button.mask, numlockmask) == clean_state
-        });
-
-    // Client button grabs use GrabMode::SYNC. Plain clicks should be replayed to
-    // the client after WM processing, but WM-owned modified clicks (e.g. Super+drag)
-    // must stay consumed by the WM so the initial press is not handed back to the
-    // client before the drag grab begins.
-    let conn = ctx.x11.conn;
-    let _ = conn.allow_events(
-        if client_binding_matched {
-            Allow::ASYNC_POINTER
-        } else {
-            Allow::REPLAY_POINTER
-        },
-        CURRENT_TIME,
-    );
-    let _ = conn.flush();
+    allow_press_replay(ctx, e, button_target, clean_state, numlockmask);
 
     if button_target == Some(ButtonTarget::Root)
         && let Some(mon) = ctx.core.model().monitor(selmon_id)
@@ -245,25 +350,15 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    if let (Some(btn), Some(button_target)) =
-        (MouseButton::from_x11_detail(e.detail), button_target)
-    {
-        crate::mouse::bindings::run_matching(
-            &mut WmCtx::X11(ctx.reborrow()),
-            crate::mouse::bindings::ButtonBindingEvent {
-                target: button_target,
-                window: target_window,
-                button: btn,
-                source: crate::types::InteractionSource::Pointer,
-                root: crate::types::Point::new(e.root_x as i32, e.root_y as i32),
-                clean_state,
-                time_msec: e.time,
-            },
-            numlockmask,
-            crate::mouse::bindings::MatchPolicy::All,
-        );
-        let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, btn);
-    }
+    dispatch_button_bindings(
+        ctx,
+        e,
+        button_target,
+        target_window,
+        root,
+        clean_state,
+        numlockmask,
+    );
 }
 
 /// Handle incoming X11 client messages.

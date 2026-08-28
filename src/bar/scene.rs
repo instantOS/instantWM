@@ -266,52 +266,46 @@ pub(crate) struct MonitorRenderOutputWithId {
     pub output: MonitorRenderOutput,
 }
 
-pub(crate) fn build_monitor_snapshots(
-    core: &mut CoreCtx,
-    include_status_items: bool,
-    external_right_width: i32,
-) -> Vec<MonitorBarSnapshot> {
-    let selected_monitor_num = core.model().expect_selected_monitor().num;
-    let show_systray = core.config().systray.show;
-    let systray_spacing = core.config().systray.spacing;
-    let base_fonts = core.config().fonts.clone();
-    let bar_hover = core.bar.hover;
-    enum ModeStatus {
-        Default,
-        Overview,
-        Named { name: String, display: String },
-    }
-    let mode_status = match &core.behavior().current_mode {
+/// Which interactive WM mode the bar should advertise in the status area.
+enum ModeStatus {
+    Default,
+    Overview,
+    Named { name: String, display: String },
+}
+
+/// Configured display name for a named mode, if the config carries one.
+fn mode_display(core: &CoreCtx, name: &str) -> Option<String> {
+    core.config()
+        .bindings
+        .modes
+        .get(name)
+        .and_then(|mode| mode.description.as_ref())
+        .cloned()
+}
+
+fn resolve_mode_status(core: &CoreCtx) -> ModeStatus {
+    match &core.behavior().current_mode {
         crate::core_state::ActiveWmMode::Overview => ModeStatus::Overview,
-        crate::core_state::ActiveWmMode::Named(name) => {
-            let display = core
-                .config()
-                .bindings
-                .modes
-                .get(name)
-                .and_then(|mode| mode.description.as_ref())
-                .cloned()
-                .unwrap_or_else(|| name.clone());
-            ModeStatus::Named {
-                name: name.clone(),
-                display,
-            }
-        }
+        crate::core_state::ActiveWmMode::Named(name) => ModeStatus::Named {
+            name: name.clone(),
+            display: mode_display(core, name).unwrap_or_else(|| name.clone()),
+        },
         crate::core_state::ActiveWmMode::TreePlacement(_) => {
             let name = crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string();
-            let display = core
-                .config()
-                .bindings
-                .modes
-                .get(&name)
-                .and_then(|mode| mode.description.as_ref())
-                .cloned()
-                .unwrap_or_else(|| "place window".to_string());
-            ModeStatus::Named { name, display }
+            ModeStatus::Named {
+                display: mode_display(core, &name).unwrap_or_else(|| "place window".to_string()),
+                name,
+            }
         }
         crate::core_state::ActiveWmMode::Default => ModeStatus::Default,
-    };
-    let selected_status = match mode_status {
+    }
+}
+
+fn resolve_status_presentation(
+    core: &mut CoreCtx,
+    include_status_items: bool,
+) -> StatusPresentation {
+    match resolve_mode_status(core) {
         ModeStatus::Overview => StatusPresentation::Overview(status_content(
             core,
             "mode: overview".to_string(),
@@ -341,7 +335,141 @@ pub(crate) fn build_monitor_snapshots(
                 ))
             }
         }
-    };
+    }
+}
+
+fn collect_tag_cells(
+    core: &CoreCtx,
+    mon: &Monitor,
+    occupied_tags: TagMask,
+    urgent_tags: TagMask,
+    gesture: Gesture,
+    drag_active: bool,
+) -> Vec<TagCellSnapshot> {
+    let mut tags = Vec::new();
+    for tag in crate::tags::bar::visible_tags(core.state(), mon, occupied_tags) {
+        let is_hover = gesture == Gesture::Tag(tag.slot);
+        let mut scheme = tag_scheme(
+            core.model(),
+            mon,
+            tag.tag_index as u32,
+            occupied_tags,
+            urgent_tags,
+            is_hover,
+        );
+        if is_hover && drag_active {
+            scheme = tag_hover_fill_scheme(&core.model().tags.colors);
+        }
+        tags.push(TagCellSnapshot {
+            slot: tag.slot,
+            tag_index: tag.tag_index,
+            label: tag.label.to_string(),
+            scheme,
+        });
+    }
+    tags
+}
+
+fn collect_title_cells(
+    core: &CoreCtx,
+    mon: &Monitor,
+    is_selected_monitor: bool,
+    gesture: Gesture,
+) -> Vec<TitleCellSnapshot> {
+    let mut titles = Vec::new();
+    for win in mon.bar_client_order(&core.model().clients) {
+        let Some(c) = core.model().client(win) else {
+            continue;
+        };
+        let is_hover = gesture == Gesture::WinTitle(c.win);
+        let scheme = window_scheme(core.model(), &core.config().colors.window, c, is_hover);
+        let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {
+            let is_fullscreen = c.mode().is_fullscreen();
+            Some(close_button_scheme(
+                &core.config().colors.close_button,
+                gesture == Gesture::CloseButton,
+                c.is_locked,
+                is_fullscreen,
+            ))
+        } else {
+            None
+        };
+        titles.push(TitleCellSnapshot {
+            win: c.win,
+            name: c.name.clone(),
+            scheme,
+            close_scheme,
+        });
+    }
+    titles
+}
+
+fn build_bar_presentation(
+    core: &CoreCtx,
+    is_selected_monitor: bool,
+    selected_status: &StatusPresentation,
+) -> BarPresentation {
+    // While the external instantMENU presents the tray menu, the bar
+    // neither reserves width for it nor renders the overlay.
+    let instantmenu_hosts_menu = core
+        .bar
+        .systray_host
+        .instantmenu
+        .hosting(core.config().systray.menu_backend);
+    BarPresentation {
+        status: if is_selected_monitor {
+            selected_status.clone()
+        } else {
+            StatusPresentation::Hidden
+        },
+        overlay: if is_selected_monitor && !instantmenu_hosts_menu {
+            core.bar
+                .systray_host
+                .menu
+                .presentation()
+                .map(BarOverlay::TrayMenu)
+        } else {
+            None
+        },
+    }
+}
+
+fn build_systray_snapshot(
+    core: &CoreCtx,
+    mon: &Monitor,
+    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
+    systray_spacing: i32,
+    external_right_width: i32,
+) -> SystraySnapshot {
+    let items = core.bar.systray_host.tray.clone();
+    let layout = crate::systray::layout(
+        &items,
+        tray_menu.map(|menu| &menu.view),
+        mon.work_rect().w,
+        mon.bar_height,
+        systray_spacing,
+        // Compositor-rendered icons sit left of any externally
+        // rendered tray strip (XEmbed windows on X11).
+        external_right_width.max(0),
+    );
+    SystraySnapshot {
+        items,
+        base_scheme: status_scheme(&core.config().colors.status),
+        layout,
+    }
+}
+
+pub(crate) fn build_monitor_snapshots(
+    core: &mut CoreCtx,
+    include_status_items: bool,
+    external_right_width: i32,
+) -> Vec<MonitorBarSnapshot> {
+    let selected_monitor_num = core.model().expect_selected_monitor().num;
+    let show_systray = core.config().systray.show;
+    let systray_spacing = core.config().systray.spacing;
+    let base_fonts = core.config().fonts.clone();
+    let bar_hover = core.bar.hover;
+    let selected_status = resolve_status_presentation(core, include_status_items);
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
 
     let mut snapshots = Vec::new();
@@ -358,97 +486,29 @@ pub(crate) fn build_monitor_snapshots(
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = bar_hover.gesture_on(monitor_id);
-        let mut tags = Vec::new();
-        for tag in crate::tags::bar::visible_tags(core.state(), mon, stats.occupied_tags) {
-            let is_hover = gesture == Gesture::Tag(tag.slot);
-            let mut scheme = tag_scheme(
-                core.model(),
-                mon,
-                tag.tag_index as u32,
-                stats.occupied_tags,
-                stats.urgent_tags,
-                is_hover,
-            );
-            if is_hover && bar_hover.drag_active {
-                scheme = tag_hover_fill_scheme(&core.model().tags.colors);
-            }
-            tags.push(TagCellSnapshot {
-                slot: tag.slot,
-                tag_index: tag.tag_index,
-                label: tag.label.to_string(),
-                scheme,
-            });
-        }
+        let tags = collect_tag_cells(
+            core,
+            mon,
+            stats.occupied_tags,
+            stats.urgent_tags,
+            gesture,
+            bar_hover.drag_active,
+        );
 
         let selected_tags = mon.visible_tags();
-        let mut titles = Vec::new();
-        for win in mon.bar_client_order(&core.model().clients) {
-            let Some(c) = core.model().client(win) else {
-                continue;
-            };
-            let is_hover = gesture == Gesture::WinTitle(c.win);
-            let scheme = window_scheme(core.model(), &core.config().colors.window, c, is_hover);
-            let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {
-                let is_fullscreen = c.mode().is_fullscreen();
-                Some(close_button_scheme(
-                    &core.config().colors.close_button,
-                    gesture == Gesture::CloseButton,
-                    c.is_locked,
-                    is_fullscreen,
-                ))
-            } else {
-                None
-            };
-            titles.push(TitleCellSnapshot {
-                win: c.win,
-                name: c.name.clone(),
-                scheme,
-                close_scheme,
-            });
-        }
+        let titles = collect_title_cells(core, mon, is_selected_monitor, gesture);
 
-        // While the external instantMENU presents the tray menu, the bar
-        // neither reserves width for it nor renders the overlay.
-        let instantmenu_hosts_menu = core
-            .bar
-            .systray_host
-            .instantmenu
-            .hosting(core.config().systray.menu_backend);
-        let presentation = BarPresentation {
-            status: if is_selected_monitor {
-                selected_status.clone()
-            } else {
-                StatusPresentation::Hidden
-            },
-            overlay: if is_selected_monitor && !instantmenu_hosts_menu {
-                core.bar
-                    .systray_host
-                    .menu
-                    .presentation()
-                    .map(BarOverlay::TrayMenu)
-            } else {
-                None
-            },
-        };
+        let presentation = build_bar_presentation(core, is_selected_monitor, &selected_status);
 
         let tray_menu = presentation.tray_menu().cloned();
         let systray = if show_systray && is_selected_monitor {
-            let items = core.bar.systray_host.tray.clone();
-            let layout = crate::systray::layout(
-                &items,
-                tray_menu.as_ref().map(|menu| &menu.view),
-                mon.work_rect().w,
-                mon.bar_height,
+            Some(build_systray_snapshot(
+                core,
+                mon,
+                tray_menu.as_ref(),
                 systray_spacing,
-                // Compositor-rendered icons sit left of any externally
-                // rendered tray strip (XEmbed windows on X11).
-                external_right_width.max(0),
-            );
-            Some(SystraySnapshot {
-                items,
-                base_scheme: status_scheme(&core.config().colors.status),
-                layout,
-            })
+                external_right_width,
+            ))
         } else {
             None
         };
