@@ -276,6 +276,29 @@ fn close_session(wm: &mut Wm) {
     }
 }
 
+fn instantmenu_command(count: i32, bar_height: i32) -> Command {
+    let mut command = Command::new(INSTANTMENU_BIN);
+    command
+        .arg("--position")
+        .arg("top-right")
+        .arg("--border-width")
+        .arg("3")
+        .arg("--lines")
+        .arg(count.to_string())
+        .arg("--width")
+        .arg(MENU_WIDTH.to_string())
+        // Open directly below a top bar, where the bar-native menu lives.
+        .arg("--y-offset")
+        .arg(bar_height.max(0).to_string())
+        // Follow keyboard focus: the tray menu opens on the selected output.
+        .arg("--monitor")
+        .arg("auto")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .process_group(0);
+    command
+}
+
 /// Spawn an instantmenu for `session_id` showing one line per selectable
 /// entry. The reader thread publishes the outcome and pings the loop.
 fn spawn_menu(
@@ -290,26 +313,7 @@ fn spawn_menu(
     let mut items = lines.join("\n");
     items.push('\n');
 
-    let mut command = Command::new(INSTANTMENU_BIN);
-    command
-        .arg("--position")
-        .arg("top-right")
-        .arg("--border-width")
-        .arg("--3")
-        .arg("--lines")
-        .arg(count.to_string())
-        .arg("--width")
-        .arg(MENU_WIDTH.to_string())
-        // Open directly below a top bar, where the bar-native menu lives.
-        .arg("--y-offset")
-        .arg(bar_height.max(0).to_string())
-        // Follow keyboard focus: the tray menu opens on the selected output.
-        .arg("--monitor")
-        .arg("auto")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .process_group(0);
-
+    let mut command = instantmenu_command(count, bar_height);
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -697,5 +701,49 @@ mod tests {
         // backend dimension, which is not.
         let host = InstantMenuHost::new();
         assert!(!host.hosting(TrayMenuBackend::StatusBar));
+    }
+
+    #[test]
+    fn command_arguments_have_valid_structure_and_numeric_values() {
+        let count = 5;
+        let bar_height = 32;
+        let cmd = instantmenu_command(count, bar_height);
+        let args: Vec<&str> = cmd.get_args().map(|s| s.to_str().unwrap()).collect();
+
+        // Ensure arguments are structured as valid (flag, value) pairs
+        assert!(args.len() % 2 == 0, "arguments should be key-value pairs");
+
+        let mut map = std::collections::HashMap::new();
+        for chunk in args.chunks_exact(2) {
+            let flag = chunk[0];
+            let val = chunk[1];
+            assert!(flag.starts_with("--"), "flag {flag} must start with '--'");
+            assert!(
+                !val.starts_with("--"),
+                "option value {val:?} for {flag} must not start with '--' (malformed flag)"
+            );
+            map.insert(flag, val);
+        }
+
+        // Validate numeric flags parse as numbers
+        assert_eq!(
+            map.get("--lines").and_then(|v| v.parse::<i32>().ok()),
+            Some(count)
+        );
+        assert_eq!(
+            map.get("--y-offset").and_then(|v| v.parse::<i32>().ok()),
+            Some(bar_height)
+        );
+        assert!(
+            map.get("--border-width")
+                .and_then(|v| v.parse::<i32>().ok())
+                .is_some()
+        );
+        assert!(
+            map.get("--width")
+                .and_then(|v| v.parse::<i32>().ok())
+                .is_some()
+        );
+        assert_eq!(map.get("--position"), Some(&"top-right"));
     }
 }
