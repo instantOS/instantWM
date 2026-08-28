@@ -180,6 +180,13 @@ impl Size {
     }
 }
 
+/// Decorative pixels that are not derived from font advances or bar height
+/// follow the monitor's UI scale.
+#[inline]
+pub(crate) fn scaled_px(value: i32, scale: f64) -> i32 {
+    ((value as f64 * scale).round() as i32).max(1)
+}
+
 /// A rectangle representing window geometry or screen areas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Rect {

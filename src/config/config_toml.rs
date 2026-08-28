@@ -295,7 +295,7 @@ impl Default for LayoutConfig {
         Self {
             inner_gap: 0,
             outer_gap: 0,
-            smart_gaps: false,
+            smart_gaps: true,
             maximized_gaps: false,
             keyboard_resize_step: 0.05,
             minimum_weight: 0.15,

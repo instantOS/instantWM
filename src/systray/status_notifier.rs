@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use calloop::ping::Ping;
-use zbus::blocking::{Connection, Proxy};
+use zbus::blocking::{Connection, MessageIterator, Proxy};
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::{OwnedValue, Value};
 
@@ -145,8 +145,8 @@ impl StatusNotifierWatcherService {
         if !st.items.contains(&canonical) {
             log::info!("embedded watcher: registered item {canonical}");
             st.items.push(canonical.clone());
+            let _ = self.events.send(WatcherEvent::Registered(canonical));
         }
-        let _ = self.events.send(WatcherEvent::Registered(canonical));
     }
 
     fn register_status_notifier_host(&self, _service: &str) {
@@ -237,7 +237,7 @@ enum SystrayEvt {
     },
 }
 
-/// A discovery-lane event, fed by the signal watcher threads and the embedded
+/// A discovery-lane event, fed by the signal listener and the embedded
 /// watcher service into the refresh loop's channel.
 ///
 /// Everything flows through one channel so `run_item_refresh` can block
@@ -245,7 +245,7 @@ enum SystrayEvt {
 /// loop still reacts the moment a tray item is born, dies, or changes icon.
 #[derive(Debug)]
 enum WatcherEvent {
-    /// An item emitted `NewIcon` — (service, path).
+    /// An item emitted `NewIcon` — (unique sender, path).
     NewIcon(String, String),
     /// An item registered with the watcher (canonical `service/path` id).
     Registered(String),
@@ -627,27 +627,30 @@ fn run_item_refresh(
     watch_rx: Receiver<WatcherEvent>,
 ) {
     let mut known_ids = HashSet::new();
-    let mut watching = HashSet::new();
+    // Install D-Bus match rules before taking the initial snapshot. This
+    // closes the gap where an external watcher could announce an item after
+    // reconciliation but before the old watcher threads subscribed.
+    let signal_watcher = match SignalWatcher::spawn(mode, watch_tx.clone()) {
+        Ok(watcher) => Some(watcher),
+        Err(error) => {
+            log::warn!("status notifier: failed to start signal watcher: {error}");
+            None
+        }
+    };
     reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
     if !evt_tx.send(SystrayEvt::Ready) {
         return;
     }
 
-    // Item lifetime and icon changes arrive as D-Bus signals: dedicated
-    // watcher threads forward them here, so the loop below sleeps until a
-    // real event (or the slow fallback reconcile) and never polls.
-    spawn_lifetime_watchers(conn, mode, &watch_tx);
-    spawn_icon_watchers(conn, known_ids.iter(), &mut watching, &watch_tx);
-
     let mut fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
     loop {
         let idle_for = fallback_deadline.saturating_duration_since(Instant::now());
         match watch_rx.recv_timeout(idle_for) {
-            Ok(WatcherEvent::NewIcon(service, path)) => {
-                refresh_item_icon(conn, evt_tx, &service, &path);
+            Ok(WatcherEvent::NewIcon(sender, path)) => {
+                refresh_signalled_icons(conn, evt_tx, &known_ids, &sender, &path);
             }
             Ok(WatcherEvent::Registered(id)) => {
-                handle_registered(conn, evt_tx, &mut known_ids, &mut watching, &watch_tx, &id);
+                handle_registered(conn, evt_tx, &mut known_ids, &id);
             }
             Ok(WatcherEvent::Unregistered(id)) => {
                 handle_unregistered(evt_tx, &mut known_ids, &id);
@@ -658,92 +661,112 @@ fn run_item_refresh(
             Ok(WatcherEvent::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => {
                 reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
-                spawn_icon_watchers(conn, known_ids.iter(), &mut watching, &watch_tx);
                 fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
             }
         }
     }
+
+    drop(signal_watcher);
 }
 
-/// Spawn the item-lifetime signal watchers for the active mode.
-///
-/// External mode subscribes to the watcher's own signals. Embedded mode is
-/// notified of registrations directly by the watcher service and learns of
-/// item death from the bus's `NameOwnerChanged` — the SNI spec has no
-/// unregister call, so a vanished owner is the only death notice.
-fn spawn_lifetime_watchers(conn: &Connection, mode: &WatcherMode, watch_tx: &Sender<WatcherEvent>) {
-    let spawn = |name: &'static str, run: fn(Connection, Sender<WatcherEvent>)| {
-        let conn = conn.clone();
-        let tx = watch_tx.clone();
-        if thread::Builder::new()
-            .name(name.to_string())
-            .spawn(move || run(conn, tx))
-            .is_err()
-        {
-            log::warn!("status notifier: failed to spawn {name} watcher");
+/// One owned D-Bus listener replaces the previous collection of detached
+/// blocking threads. Its connection is separate from the worker connection so
+/// closing it reliably interrupts the iterator without disturbing commands.
+struct SignalWatcher {
+    connection: Option<Connection>,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl SignalWatcher {
+    fn spawn(mode: &WatcherMode, tx: Sender<WatcherEvent>) -> zbus::Result<Self> {
+        let connection = Connection::session()?;
+        let messages = MessageIterator::from(&connection);
+        let dbus = uncached_proxy(
+            &connection,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+        )?;
+
+        // NewIcon is intentionally broad. A single match and listener handles
+        // every item, avoiding one permanent OS thread per tray icon.
+        add_match(
+            &dbus,
+            "type='signal',interface='org.kde.StatusNotifierItem',member='NewIcon'",
+        )?;
+        match mode {
+            WatcherMode::External => add_match(
+                &dbus,
+                "type='signal',sender='org.kde.StatusNotifierWatcher',interface='org.kde.StatusNotifierWatcher'",
+            )?,
+            WatcherMode::Embedded(_) => add_match(
+                &dbus,
+                "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged'",
+            )?,
         }
-    };
-    match mode {
-        WatcherMode::External => {
-            spawn("instantwm-sni-registered", |conn, tx| {
-                watch_watcher_signals(conn, tx, "StatusNotifierItemRegistered", WatcherEvent::Registered)
-            });
-            spawn("instantwm-sni-unregistered", |conn, tx| {
-                watch_watcher_signals(conn, tx, "StatusNotifierItemUnregistered", WatcherEvent::Unregistered)
-            });
+        drop(dbus);
+
+        let thread = thread::Builder::new()
+            .name("instantwm-sni-signals".to_string())
+            .spawn(move || watch_signals(messages, tx))?;
+        Ok(Self {
+            connection: Some(connection),
+            thread: Some(thread),
+        })
+    }
+}
+
+impl Drop for SignalWatcher {
+    fn drop(&mut self) {
+        if let Some(connection) = self.connection.take() {
+            let _ = connection.close();
         }
-        WatcherMode::Embedded(_) => {
-            spawn("instantwm-sni-owners", watch_name_owners);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
         }
     }
 }
 
-/// Forward the external watcher's item lifetime signals into the refresh
-/// loop's channel, one thread per signal.
-fn watch_watcher_signals(
-    conn: Connection,
-    tx: Sender<WatcherEvent>,
-    member: &'static str,
-    event: fn(String) -> WatcherEvent,
-) {
-    let Ok(proxy) = uncached_proxy(&conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE) else {
-        return;
-    };
-    let Ok(signals) = proxy.receive_signal(member) else {
-        return;
-    };
-    for message in signals {
-        let Ok(id) = message.body().deserialize::<String>() else {
-            continue;
-        };
-        if tx.send(event(id)).is_err() {
+fn add_match(proxy: &Proxy<'_>, rule: &str) -> zbus::Result<()> {
+    proxy.call("AddMatch", &(rule,))
+}
+
+fn watch_signals(mut messages: MessageIterator, tx: Sender<WatcherEvent>) {
+    for message in &mut messages {
+        let Ok(message) = message else {
             return;
-        }
-    }
-}
-
-/// Forward bus names that lost their owner (`NameOwnerChanged` with an empty
-/// new owner). Wakes only when a session-bus name actually changes hands —
-/// proportional to bus activity, never to idle time.
-fn watch_name_owners(conn: Connection, tx: Sender<WatcherEvent>) {
-    let Ok(proxy) = uncached_proxy(
-        &conn,
-        "org.freedesktop.DBus",
-        "/org/freedesktop/DBus",
-        "org.freedesktop.DBus",
-    ) else {
-        return;
-    };
-    let Ok(signals) = proxy.receive_signal("NameOwnerChanged") else {
-        return;
-    };
-    for message in signals {
-        let Ok((name, old_owner, new_owner)) =
-            message.body().deserialize::<(String, String, String)>()
-        else {
-            continue;
         };
-        if !old_owner.is_empty() && new_owner.is_empty() && tx.send(WatcherEvent::NameLost(name)).is_err() {
+        let header = message.header();
+        let interface = header.interface().map(|name| name.as_str());
+        let member = header.member().map(|name| name.as_str());
+        let event = match (interface, member) {
+            (Some(WATCHER_IFACE), Some("StatusNotifierItemRegistered")) => message
+                .body()
+                .deserialize::<String>()
+                .ok()
+                .map(WatcherEvent::Registered),
+            (Some(WATCHER_IFACE), Some("StatusNotifierItemUnregistered")) => message
+                .body()
+                .deserialize::<String>()
+                .ok()
+                .map(WatcherEvent::Unregistered),
+            (Some("org.freedesktop.DBus"), Some("NameOwnerChanged")) => message
+                .body()
+                .deserialize::<(String, String, String)>()
+                .ok()
+                .and_then(|(name, old_owner, new_owner)| {
+                    (!old_owner.is_empty() && new_owner.is_empty())
+                        .then_some(WatcherEvent::NameLost(name))
+                }),
+            (Some(ITEM_IFACE), Some("NewIcon")) => header
+                .sender()
+                .zip(header.path())
+                .map(|(sender, path)| {
+                    WatcherEvent::NewIcon(sender.as_str().to_string(), path.as_str().to_string())
+                }),
+            _ => None,
+        };
+        if event.is_some_and(|event| tx.send(event).is_err()) {
             return;
         }
     }
@@ -755,16 +778,18 @@ fn handle_registered(
     conn: &Connection,
     evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
-    watching: &mut HashSet<String>,
-    watch_tx: &Sender<WatcherEvent>,
     id: &str,
 ) {
+    if !known_ids.insert(id.to_string()) {
+        return;
+    }
     let Some((service, path)) = parse_sni_id(id) else {
+        known_ids.remove(id);
         return;
     };
     let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path) else {
-        // Icon not available (yet): leave the item unknown so the fallback
-        // reconcile retries it rather than dropping it silently.
+        // Icon not available yet. Keep the registration known so duplicate
+        // signals stay cheap; the fallback reconcile retries every known id.
         return;
     };
     evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
@@ -773,10 +798,6 @@ fn handle_registered(
         icon_rgba,
         icon_size,
     }));
-    let mut fresh = HashSet::new();
-    fresh.insert(id.to_string());
-    spawn_icon_watchers(conn, fresh.iter(), watching, watch_tx);
-    known_ids.insert(id.to_string());
 }
 
 /// A tray item unregistered: drop it from the tray immediately.
@@ -806,9 +827,6 @@ fn handle_name_lost(
         .filter(|id| id_matches_service(id, name))
         .cloned()
         .collect();
-    if dead.is_empty() {
-        return;
-    }
     for id in &dead {
         known_ids.remove(id);
         log::info!("status notifier: item {id} lost its bus name");
@@ -826,55 +844,37 @@ fn id_matches_service(id: &str, service: &str) -> bool {
     parse_sni_id(id).is_some_and(|(id_service, _)| id_service == service)
 }
 
-/// Spawn a blocking `NewIcon` watcher for each registered item that does not
-/// yet have one. Each watcher forwards `(service, path)` when the item emits
-/// `NewIcon`, so icons update immediately without the compositor polling.
-fn spawn_icon_watchers<'a>(
+/// Refresh every known item matching the unique sender and object path of a
+/// broad NewIcon signal. Well-known item names are resolved only when a signal
+/// arrives, keeping idle discovery free of D-Bus calls.
+fn refresh_signalled_icons(
     conn: &Connection,
-    ids: impl Iterator<Item = &'a String>,
-    watching: &mut HashSet<String>,
-    watch_tx: &Sender<WatcherEvent>,
+    evt_tx: &SystrayEventTx,
+    known_ids: &HashSet<String>,
+    sender: &str,
+    signal_path: &str,
 ) {
-    let new_ids: Vec<&String> = ids.filter(|id| !watching.contains(*id)).collect();
-    for id in new_ids {
+    for id in known_ids {
         let Some((service, path)) = parse_sni_id(id) else {
             continue;
         };
-        watching.insert(id.clone());
-        let conn = conn.clone();
-        let tx = watch_tx.clone();
-        let watch_service = service.clone();
-        let watch_path = path.clone();
-        if std::thread::Builder::new()
-            .name("instantwm-sni-watch".to_string())
-            .spawn(move || watch_item_icon(conn, tx, watch_service, watch_path))
-            .is_err()
-        {
-            log::warn!("status notifier: failed to spawn icon watcher for {service}{path}");
+        if path != signal_path {
+            continue;
         }
-    }
-}
-
-/// Block waiting for the item's `NewIcon` signal, re-emitting its current icon.
-///
-/// Any failure (item gone, DBus error, no signal support) simply ends this
-/// watcher; the item is still covered by the slow fallback reconcile, so this
-/// is best-effort and never silently drops an icon forever.
-fn watch_item_icon(conn: Connection, tx: Sender<WatcherEvent>, service: String, path: String) {
-    let proxy = match uncached_proxy(&conn, &service, &path, ITEM_IFACE) {
-        Ok(proxy) => proxy,
-        Err(_) => return,
-    };
-    let mut signals = match proxy.receive_signal("NewIcon") {
-        Ok(signals) => signals,
-        Err(_) => return,
-    };
-    while signals.next().is_some() {
-        if tx
-            .send(WatcherEvent::NewIcon(service.clone(), path.clone()))
-            .is_err()
-        {
-            return;
+        let matches_sender = service == sender
+            || (!service.starts_with(':')
+                && uncached_proxy(
+                    conn,
+                    "org.freedesktop.DBus",
+                    "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus",
+                )
+                .and_then(|proxy| {
+                    proxy.call::<_, _, String>("GetNameOwner", &(service.as_str(),))
+                })
+                .is_ok_and(|owner| owner == sender));
+        if matches_sender {
+            refresh_item_icon(conn, evt_tx, &service, &path);
         }
     }
 }
@@ -897,7 +897,7 @@ fn refresh_item_icon(conn: &Connection, evt_tx: &SystrayEventTx, service: &str, 
 ///
 /// `events` feeds registration notifications to the discovery lane when the
 /// embedded watcher is used; external mode subscribes to the watcher's
-/// signals instead (see `spawn_lifetime_watchers`).
+/// signals through [`SignalWatcher`].
 fn detect_watcher_mode(conn: &Connection, events: Sender<WatcherEvent>) -> WatcherMode {
     // Try to read a property from an existing watcher.
     let has_external = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)
@@ -1003,11 +1003,19 @@ fn reconcile_items_embedded(
         st.items.retain(|id| alive.contains(id));
     }
 
-    // Now reconcile as if we got the items from a proxy.
+    reconcile_ids(conn, evt_tx, known_ids, alive);
+}
+
+fn reconcile_ids(
+    conn: &Connection,
+    evt_tx: &SystrayEventTx,
+    known_ids: &mut HashSet<String>,
+    ids: impl IntoIterator<Item = String>,
+) {
     let mut seen = HashSet::new();
-    for id in &alive {
+    for id in ids {
         seen.insert(id.clone());
-        if let Some((service, path)) = parse_sni_id(id)
+        if let Some((service, path)) = parse_sni_id(&id)
             && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
         {
             evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
@@ -1034,27 +1042,7 @@ fn reconcile_items(
 ) -> zbus::Result<()> {
     let proxy = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
     let services: Vec<String> = proxy.get_property("RegisteredStatusNotifierItems")?;
-    let mut seen = HashSet::new();
-    for id in services {
-        seen.insert(id.clone());
-        if let Some((service, path)) = parse_sni_id(&id)
-            && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
-        {
-            evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
-                service,
-                path,
-                icon_rgba,
-                icon_size,
-            }));
-        }
-    }
-
-    for removed in known_ids.difference(&seen) {
-        if let Some((service, path)) = parse_sni_id(removed) {
-            evt_tx.send(SystrayEvt::ItemRemoved(service, path));
-        }
-    }
-    *known_ids = seen;
+    reconcile_ids(conn, evt_tx, known_ids, services);
     Ok(())
 }
 

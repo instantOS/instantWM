@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use calloop::ping::Ping;
 
 use crate::core_state::TrayMenuBackend;
+#[allow(unused_imports)]
 use crate::systray::{MenuAction, MenuEntry, MenuToggle, MenuView};
 use crate::wm::Wm;
 
@@ -233,7 +234,7 @@ fn handle_selection(wm: &mut Wm, session_id: u64, label: &str, hosting: bool) ->
         .view
         .entries
         .iter()
-        .find(|entry| display_label(entry) == label)
+        .find(|entry| entry.display_label() == label)
     {
         entry
     } else {
@@ -393,27 +394,6 @@ fn kill_child(pgid_slot: &Arc<Mutex<Option<i32>>>) {
     }
 }
 
-/// The label exactly as instantMENU receives — and prints — it: the same
-/// toggle-indicator prefix and submenu arrow the bar-native menu shows.
-fn display_label(entry: &MenuEntry) -> String {
-    let prefix = match entry.toggle {
-        MenuToggle::Check(true) => "✓ ",
-        MenuToggle::Check(false) => "□ ",
-        MenuToggle::Radio(true) => "● ",
-        MenuToggle::Radio(false) => "○ ",
-        MenuToggle::None => "",
-    };
-    let suffix = if matches!(entry.action, MenuAction::OpenSubmenu(_)) {
-        " ›"
-    } else {
-        ""
-    };
-    format!(
-        "{prefix}{}{suffix}",
-        entry.label.trim().replace(['\n', '\r'], " ")
-    )
-}
-
 /// One instantMENU input line per selectable entry; separators have no
 /// equivalent in a launcher list and are skipped. Each line carries
 /// `value=<index>` where index is the entry's position in `MenuView`, so
@@ -446,7 +426,7 @@ fn entry_line(index: usize, entry: &MenuEntry) -> Option<String> {
         line.push_str(&attrs.join(" "));
         line.push_str("} ");
     }
-    line.push_str(&display_label(entry));
+    line.push_str(&entry.display_label());
     Some(line)
 }
 
@@ -633,8 +613,8 @@ mod tests {
         let mut submenu = entry("Preferences");
         submenu.action = MenuAction::OpenSubmenu(3);
 
-        assert_eq!(display_label(&checked), "✓ Enabled");
-        assert_eq!(display_label(&submenu), "Preferences ›");
+        assert_eq!(checked.display_label(), "✓ Enabled");
+        assert_eq!(submenu.display_label(), "Preferences ›");
     }
 
     #[test]
@@ -672,7 +652,7 @@ mod tests {
             let index: usize = value_str.parse().expect("value is integer index");
             let entry = &view.entries[index];
             assert!(!entry.separator, "value must not point to separator");
-            assert_eq!(payload, display_label(entry));
+            assert_eq!(payload, entry.display_label());
             // Also verify that parsing the instantMENU output (value) maps back correctly.
             let parsed: usize = value_str.parse().unwrap();
             assert_eq!(view.entries[parsed].label, entry.label);

@@ -185,6 +185,32 @@ pub(crate) struct MenuEntry {
     pub action: MenuAction,
 }
 
+impl MenuEntry {
+    /// Display label with toggle prefix and submenu suffix, sanitized for
+    /// both bar-native and instantmenu presentation.
+    ///
+    /// Shared by bar-native rendering (`systray::render`) and the external
+    /// `instantmenu` backend so both present the same glyphs.
+    pub(crate) fn display_label(&self) -> String {
+        let prefix = match self.toggle {
+            MenuToggle::Check(true) => "✓ ",
+            MenuToggle::Check(false) => "□ ",
+            MenuToggle::Radio(true) => "● ",
+            MenuToggle::Radio(false) => "○ ",
+            MenuToggle::None => "",
+        };
+        let suffix = if matches!(self.action, MenuAction::OpenSubmenu(_)) {
+            " ›"
+        } else {
+            ""
+        };
+        format!(
+            "{prefix}{}{suffix}",
+            self.label.trim().replace(['\n', '\r'], " ")
+        )
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct MenuView {
     pub entries: Vec<MenuEntry>,
