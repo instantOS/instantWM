@@ -221,6 +221,10 @@ fn initialize_drm_output_surface(
         .expect("initialize_output");
     let (vrr_support, configured_vrr_mode) =
         configure_drm_output_vrr(state, &spec.name, spec.connector, &surface);
+    state.runtime.output_power_modes.insert(
+        spec.name.clone(),
+        crate::backend::output::OutputPowerMode::On,
+    );
 
     OutputSurfaceEntry {
         crtc: spec.crtc,
@@ -241,6 +245,8 @@ fn initialize_drm_output_surface(
         configured_vrr_mode,
         vrr_enabled: false,
         enabled: true,
+        powered: true,
+        pending_power_on: None,
     }
 }
 

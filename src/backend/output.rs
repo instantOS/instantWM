@@ -93,6 +93,102 @@ pub struct OutputSnapshot {
     pub heads: Vec<OutputHeadSnapshot>,
 }
 
+/// Physical power state of a configured output.
+///
+/// This is deliberately separate from [`OutputHeadConfiguration::enabled`]:
+/// powering an output off keeps it in the compositor's logical output space,
+/// while disabling an output removes it from that space entirely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputPowerMode {
+    Off,
+    On,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OutputPowerRequestId(u64);
+
+#[derive(Debug, Clone)]
+pub struct PendingOutputPowerRequest {
+    pub id: OutputPowerRequestId,
+    pub output: OutputId,
+    pub mode: OutputPowerMode,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompletedOutputPowerRequest {
+    pub id: OutputPowerRequestId,
+    pub output: OutputId,
+    pub result: Result<OutputPowerMode, OutputPowerError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum OutputPowerError {
+    #[error("output {0} is not available for power management")]
+    Unavailable(String),
+    #[error("backend rejected the output power change: {0}")]
+    Backend(String),
+}
+
+/// Backend-neutral queue joining protocol requests to backend-native DPMS.
+#[derive(Debug, Default)]
+pub struct OutputPowerService {
+    next_id: u64,
+    pending: VecDeque<PendingOutputPowerRequest>,
+    completed: VecDeque<CompletedOutputPowerRequest>,
+}
+
+impl OutputPowerService {
+    pub fn submit(&mut self, output: OutputId, mode: OutputPowerMode) -> OutputPowerRequestId {
+        self.next_id = self.next_id.wrapping_add(1);
+        let id = OutputPowerRequestId(self.next_id);
+        self.pending
+            .push_back(PendingOutputPowerRequest { id, output, mode });
+        id
+    }
+
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
+    pub fn take_next_pending(&mut self) -> Option<PendingOutputPowerRequest> {
+        self.pending.pop_front()
+    }
+
+    pub fn requeue(&mut self, request: PendingOutputPowerRequest) {
+        self.pending.push_front(request);
+    }
+
+    pub fn cancel(&mut self, ids: &[OutputPowerRequestId]) {
+        self.pending.retain(|request| !ids.contains(&request.id));
+    }
+
+    pub fn complete(
+        &mut self,
+        request: PendingOutputPowerRequest,
+        result: Result<OutputPowerMode, OutputPowerError>,
+    ) {
+        self.completed.push_back(CompletedOutputPowerRequest {
+            id: request.id,
+            output: request.output,
+            result,
+        });
+    }
+
+    pub fn complete_by_id(
+        &mut self,
+        id: OutputPowerRequestId,
+        output: OutputId,
+        result: Result<OutputPowerMode, OutputPowerError>,
+    ) {
+        self.completed
+            .push_back(CompletedOutputPowerRequest { id, output, result });
+    }
+
+    pub fn take_completed(&mut self) -> Vec<CompletedOutputPowerRequest> {
+        self.completed.drain(..).collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OutputTransactionError {
     #[error("configuration omitted output {0}")]
@@ -422,6 +518,39 @@ mod tests {
             .validate(&[capability("one")]),
             Err(OutputTransactionError::NoEnabledOutputs)
         );
+    }
+
+    #[test]
+    fn output_power_requests_preserve_order_and_backend_results() {
+        let mut service = OutputPowerService::default();
+        let off = service.submit("DP-1".into(), OutputPowerMode::Off);
+        let on = service.submit("DP-1".into(), OutputPowerMode::On);
+
+        let first = service.take_next_pending().unwrap();
+        assert_eq!(first.id, off);
+        assert_eq!(first.mode, OutputPowerMode::Off);
+        service.complete(first, Ok(OutputPowerMode::Off));
+
+        let second = service.take_next_pending().unwrap();
+        assert_eq!(second.id, on);
+        service.requeue(second);
+        let second = service.take_next_pending().unwrap();
+        service.complete(
+            second,
+            Err(OutputPowerError::Backend("modeset failed".into())),
+        );
+
+        let completed = service.take_completed();
+        assert_eq!(completed.len(), 2);
+        assert_eq!(completed[0].result, Ok(OutputPowerMode::Off));
+        assert!(matches!(
+            completed[1].result,
+            Err(OutputPowerError::Backend(_))
+        ));
+
+        let cancelled = service.submit("DP-2".into(), OutputPowerMode::Off);
+        service.cancel(&[cancelled]);
+        assert!(!service.has_pending());
     }
 
     #[test]

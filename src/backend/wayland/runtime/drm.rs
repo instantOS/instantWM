@@ -26,8 +26,8 @@ use std::time::Instant;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
     AdaptiveSyncPolicy, OutputHeadCapabilities, OutputHeadConfiguration, OutputHeadSnapshot,
-    OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction, OutputTransactionError,
-    OutputTransactionKind,
+    OutputId, OutputMode as TransactionOutputMode, OutputPowerError, OutputPowerMode,
+    OutputSnapshot, OutputTransaction, OutputTransactionError, OutputTransactionKind,
 };
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::init::drm::init_gpu;
@@ -549,6 +549,9 @@ fn run_event_loop(
                 refresh_drm_layout_state(state, output_surfaces, layout_state);
                 shared_input_dimensions.set(layout_state.total_size);
             }
+            state.project_completed_output_power_requests();
+            process_output_power_requests(state, output_surfaces, loop_state);
+            state.project_completed_output_power_requests();
             if pointer_moved {
                 loop_state.mark_pointer_output_dirty(
                     state.runtime.pointer_location.x as i32,
@@ -1019,11 +1022,31 @@ fn process_output_configurations(
         for (index, config, _) in &requested {
             let entry = &mut output_surfaces[*index];
             if !config.enabled {
+                if let Some(id) = entry.pending_power_on.take() {
+                    state.runtime.output_power.complete_by_id(
+                        id,
+                        OutputId(entry.output.name()),
+                        Err(OutputPowerError::Unavailable(entry.output.name())),
+                    );
+                }
                 entry.surface.take();
                 entry.enabled = false;
+                entry.powered = false;
                 entry.vrr_enabled = false;
+                state
+                    .runtime
+                    .output_power_modes
+                    .remove(&entry.output.name());
             } else {
+                let newly_enabled = !entry.enabled;
                 entry.enabled = true;
+                if newly_enabled {
+                    entry.powered = true;
+                    state
+                        .runtime
+                        .output_power_modes
+                        .insert(entry.output.name(), OutputPowerMode::On);
+                }
                 let (mode, enabled) = requested_vrr(entry, config);
                 entry.vrr_enabled = enabled;
                 entry.configured_vrr_mode = mode;
@@ -1037,6 +1060,89 @@ fn process_output_configurations(
         loop_state.mark_all_dirty();
         // Project the authoritative state before attempting another apply.
         break;
+    }
+}
+
+fn process_output_power_requests(
+    state: &mut WaylandState,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    loop_state: &mut DrmLoopState,
+) {
+    if !state.runtime.output_power.has_pending() {
+        return;
+    }
+
+    while let Some(request) = state.runtime.output_power.take_next_pending() {
+        let Some(entry) = output_surfaces
+            .iter_mut()
+            .find(|entry| entry.output.name() == request.output.0)
+        else {
+            let name = request.output.0.clone();
+            state
+                .runtime
+                .output_power
+                .complete(request, Err(OutputPowerError::Unavailable(name)));
+            continue;
+        };
+        if !entry.enabled || entry.surface.is_none() {
+            let name = entry.output.name();
+            state
+                .runtime
+                .output_power
+                .complete(request, Err(OutputPowerError::Unavailable(name)));
+            continue;
+        }
+        if entry.pending_power_on.is_some() || loop_state.pending_crtcs.contains(&entry.crtc) {
+            state.runtime.output_power.requeue(request);
+            break;
+        }
+
+        let current = if entry.powered {
+            OutputPowerMode::On
+        } else {
+            OutputPowerMode::Off
+        };
+        if current == request.mode {
+            state.runtime.output_power.complete(request, Ok(current));
+            continue;
+        }
+
+        match request.mode {
+            OutputPowerMode::Off => {
+                let result = entry
+                    .surface
+                    .as_ref()
+                    .expect("enabled DRM output has a surface")
+                    .with_compositor(|compositor| compositor.clear());
+                match result {
+                    Ok(()) => {
+                        entry.powered = false;
+                        state
+                            .runtime
+                            .output_power_modes
+                            .insert(entry.output.name(), OutputPowerMode::Off);
+                        state
+                            .runtime
+                            .output_power
+                            .complete(request, Ok(OutputPowerMode::Off));
+                    }
+                    Err(error) => {
+                        state.runtime.output_power.complete(
+                            request,
+                            Err(OutputPowerError::Backend(format!("{error:?}"))),
+                        );
+                        break;
+                    }
+                }
+            }
+            OutputPowerMode::On => {
+                entry.powered = true;
+                entry.pending_power_on = Some(request.id);
+                loop_state.mark_dirty(entry.crtc);
+                // Completion is delayed until render_outputs queues the first
+                // frame, which is the commit that re-enables a cleared CRTC.
+            }
+        }
     }
 }
 
@@ -1184,7 +1290,7 @@ fn render_outputs(
 
         for entry in output_surfaces.iter_mut() {
             let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
-            if !needs_render || !entry.enabled {
+            if !needs_render || !entry.enabled || !entry.powered {
                 continue;
             }
             // Don't render if a page flip is already in flight — queue_buffer
@@ -1213,6 +1319,18 @@ fn render_outputs(
 
             match rendered {
                 RenderOutcome::Submitted => {
+                    if let Some(id) = entry.pending_power_on.take() {
+                        let output = OutputId(entry.output.name());
+                        state
+                            .runtime
+                            .output_power_modes
+                            .insert(output.0.clone(), OutputPowerMode::On);
+                        state.runtime.output_power.complete_by_id(
+                            id,
+                            output,
+                            Ok(OutputPowerMode::On),
+                        );
+                    }
                     loop_state.frame_callback_timers.disarm(&entry.crtc);
                     loop_state.pending_crtcs.insert(entry.crtc);
                     if let Some(failed_frames) = render_failures.remove(&entry.crtc)
@@ -1232,6 +1350,9 @@ fn render_outputs(
                         start_time,
                     );
                     render_failures.remove(&entry.crtc);
+                    if entry.pending_power_on.is_some() {
+                        loop_state.mark_dirty(entry.crtc);
+                    }
                 }
                 RenderOutcome::Failed => {
                     let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
@@ -1245,7 +1366,24 @@ fn render_outputs(
                         );
                     }
 
-                    loop_state.mark_dirty(entry.crtc);
+                    if *failed_frames >= 3
+                        && let Some(id) = entry.pending_power_on.take()
+                    {
+                        entry.powered = false;
+                        let output = OutputId(entry.output.name());
+                        state.runtime.output_power.complete_by_id(
+                            id,
+                            output,
+                            Err(OutputPowerError::Backend(
+                                "failed to queue a frame while powering on".to_string(),
+                            )),
+                        );
+                        if let Some(surface) = entry.surface.as_ref() {
+                            let _ = surface.with_compositor(|compositor| compositor.clear());
+                        }
+                    } else {
+                        loop_state.mark_dirty(entry.crtc);
+                    }
                 }
             }
         }

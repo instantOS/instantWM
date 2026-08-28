@@ -10,11 +10,11 @@ use zbus::zvariant::{OwnedValue, Value};
 use crate::types::Size;
 
 use super::{
-    clear_native_menu_request, dbus_icon_bytes_to_rgba, handle_name_lost, handle_unregistered,
-    id_matches_service, menu_entry_from_properties, select_largest_valid_pixmap,
-    set_native_menu_request, strip_menu_mnemonics, MenuAction, MenuToggle, NativeMenuRequest,
-    StatusNotifierItem, StatusNotifierRuntime, StatusNotifierTray, StatusNotifierWorker,
-    SystrayEventTx, WatcherMode, WatcherState, WORKER_RETRY_MIN,
+    MenuAction, MenuToggle, NativeMenuRequest, StatusNotifierItem, StatusNotifierRuntime,
+    StatusNotifierTray, StatusNotifierWorker, SystrayEventTx, WORKER_RETRY_MIN, WatcherMode,
+    WatcherState, clear_native_menu_request, dbus_icon_bytes_to_rgba, handle_name_lost,
+    handle_unregistered, id_matches_service, menu_entry_from_properties,
+    select_largest_valid_pixmap, set_native_menu_request, strip_menu_mnemonics,
 };
 
 fn string_value(value: &str) -> OwnedValue {
@@ -430,7 +430,10 @@ fn sni_smoke_child() {
         |evt| matches!(evt, super::SystrayEvt::ItemUpsert(_)),
         "the changed icon",
     );
-    println!("SMOKE icon refresh after {}ms", icon_at.elapsed().as_millis());
+    println!(
+        "SMOKE icon refresh after {}ms",
+        icon_at.elapsed().as_millis()
+    );
 
     // The app exits: closing its connection releases the bus name, which the
     // worker must notice via NameOwnerChanged — not via the fallback.
@@ -486,7 +489,10 @@ fn external_sni_smoke_child() {
         .expect("serve fake item");
     let id = format!(
         "{}/StatusNotifierItem",
-        item_conn.unique_name().expect("item has a unique name").as_str()
+        item_conn
+            .unique_name()
+            .expect("item has a unique name")
+            .as_str()
     );
     items.lock().unwrap().push(id.clone());
     watcher_conn
@@ -602,9 +608,15 @@ fn items_appear_and_vanish_via_signals_not_the_fallback() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     print!("{stdout}");
     assert!(stdout.contains("SMOKE upsert after"), "no upsert line");
-    assert!(stdout.contains("SMOKE icon refresh after"), "no icon refresh line");
+    assert!(
+        stdout.contains("SMOKE icon refresh after"),
+        "no icon refresh line"
+    );
     assert!(stdout.contains("SMOKE removal after"), "no removal line");
-    assert!(stdout.contains("SMOKE worker stopped"), "worker leaked a watcher");
+    assert!(
+        stdout.contains("SMOKE worker stopped"),
+        "worker leaked a watcher"
+    );
 }
 
 #[test]

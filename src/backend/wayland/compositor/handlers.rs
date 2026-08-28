@@ -534,6 +534,46 @@ impl OutputManagementHandler for WaylandState {
 crate::delegate_output_management!(WaylandState);
 
 // ---------------------------------------------------------------------------
+// wlr-output-power-management-unstable-v1 handler
+// ---------------------------------------------------------------------------
+
+impl crate::backend::wayland::compositor::protocols::output_power::OutputPowerHandler
+    for WaylandState
+{
+    fn output_power_state(
+        &mut self,
+    ) -> &mut crate::backend::wayland::compositor::protocols::output_power::OutputPowerState {
+        &mut self.output_power_state
+    }
+
+    fn output_power_mode(
+        &self,
+        output: &smithay::output::Output,
+    ) -> Option<crate::backend::output::OutputPowerMode> {
+        self.runtime.output_power_modes.get(&output.name()).copied()
+    }
+
+    fn submit_output_power_request(
+        &mut self,
+        output: crate::backend::output::OutputId,
+        mode: crate::backend::output::OutputPowerMode,
+    ) -> crate::backend::output::OutputPowerRequestId {
+        let id = self.runtime.output_power.submit(output, mode);
+        self.request_render();
+        id
+    }
+
+    fn cancel_output_power_requests(
+        &mut self,
+        requests: &[crate::backend::output::OutputPowerRequestId],
+    ) {
+        self.runtime.output_power.cancel(requests);
+    }
+}
+
+crate::delegate_output_power!(WaylandState);
+
+// ---------------------------------------------------------------------------
 // wlr-foreign-toplevel-management-unstable-v1 handler
 // ---------------------------------------------------------------------------
 

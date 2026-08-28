@@ -900,12 +900,10 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
 
     if let Some(menu) = snapshot.presentation.tray_menu() {
         let hover = match snapshot.gesture {
-            Gesture::TrayMenuEntry(entry_index) => {
-                Some(crate::systray::render::TrayMenuHover {
-                    entry_index,
-                    color: snapshot.status_hover_color,
-                })
-            }
+            Gesture::TrayMenuEntry(entry_index) => Some(crate::systray::render::TrayMenuHover {
+                entry_index,
+                color: snapshot.status_hover_color,
+            }),
             _ => None,
         };
         crate::systray::render::draw_menu(

@@ -758,12 +758,11 @@ fn watch_signals(mut messages: MessageIterator, tx: Sender<WatcherEvent>) {
                     (!old_owner.is_empty() && new_owner.is_empty())
                         .then_some(WatcherEvent::NameLost(name))
                 }),
-            (Some(ITEM_IFACE), Some("NewIcon")) => header
-                .sender()
-                .zip(header.path())
-                .map(|(sender, path)| {
+            (Some(ITEM_IFACE), Some("NewIcon")) => {
+                header.sender().zip(header.path()).map(|(sender, path)| {
                     WatcherEvent::NewIcon(sender.as_str().to_string(), path.as_str().to_string())
-                }),
+                })
+            }
             _ => None,
         };
         if event.is_some_and(|event| tx.send(event).is_err()) {
@@ -801,11 +800,7 @@ fn handle_registered(
 }
 
 /// A tray item unregistered: drop it from the tray immediately.
-fn handle_unregistered(
-    evt_tx: &SystrayEventTx,
-    known_ids: &mut HashSet<String>,
-    id: &str,
-) {
+fn handle_unregistered(evt_tx: &SystrayEventTx, known_ids: &mut HashSet<String>, id: &str) {
     if !known_ids.remove(id) {
         return;
     }
@@ -835,7 +830,11 @@ fn handle_name_lost(
         }
     }
     if let WatcherMode::Embedded(state) = mode {
-        state.lock().unwrap().items.retain(|id| !id_matches_service(id, name));
+        state
+            .lock()
+            .unwrap()
+            .items
+            .retain(|id| !id_matches_service(id, name));
     }
 }
 
@@ -869,9 +868,7 @@ fn refresh_signalled_icons(
                     "/org/freedesktop/DBus",
                     "org.freedesktop.DBus",
                 )
-                .and_then(|proxy| {
-                    proxy.call::<_, _, String>("GetNameOwner", &(service.as_str(),))
-                })
+                .and_then(|proxy| proxy.call::<_, _, String>("GetNameOwner", &(service.as_str(),)))
                 .is_ok_and(|owner| owner == sender));
         if matches_sender {
             refresh_item_icon(conn, evt_tx, &service, &path);

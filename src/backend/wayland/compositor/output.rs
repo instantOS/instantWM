@@ -153,6 +153,9 @@ impl WaylandState {
                 head.adaptive_sync_enabled,
             );
             if !config.enabled {
+                self.runtime.output_power_modes.remove(&output.name());
+                let cancelled = self.output_power_state.fail_output(&output.name());
+                self.runtime.output_power.cancel(&cancelled);
                 output_state.set(false, false);
                 self.space.unmap_output(&output);
                 self.set_output_global_enabled(&output, false);
@@ -199,6 +202,13 @@ impl WaylandState {
             changed |= self.finish_output_transaction(transaction);
         }
         changed
+    }
+
+    pub fn project_completed_output_power_requests(&mut self) {
+        for completed in self.runtime.output_power.take_completed() {
+            let cancelled = self.output_power_state.complete(completed);
+            self.runtime.output_power.cancel(&cancelled);
+        }
     }
 
     fn current_output_transaction(&self) -> OutputTransaction {

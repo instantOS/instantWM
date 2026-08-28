@@ -35,7 +35,14 @@ pub(crate) fn draw_menu(
         };
         let width = cell.end - cell.start;
         if entry.separator {
-            draw_separator_entry(painter, cell.start, width, base_scheme, bar_height, ui_scale);
+            draw_separator_entry(
+                painter,
+                cell.start,
+                width,
+                base_scheme,
+                bar_height,
+                ui_scale,
+            );
             continue;
         }
         if !entry.enabled {
@@ -91,9 +98,7 @@ fn draw_entry_separators(
             continue;
         }
         painter.set_scheme(base_scheme.clone());
-        let line_height = (bar_height - scaled_px(8, ui_scale))
-            .max(1)
-            .min(bar_height);
+        let line_height = (bar_height - scaled_px(8, ui_scale)).max(1).min(bar_height);
         let line_y = (bar_height - line_height) / 2;
         painter.rect(
             Rect::new(left.end, line_y, scaled_px(1, ui_scale), line_height),
@@ -185,7 +190,12 @@ mod tests {
             bounds.x + bounds.w
         }
 
-        fn blit_rgba(&mut self, destination: Rect, source_size: crate::types::Size, src_rgba: &[u8]) {
+        fn blit_rgba(
+            &mut self,
+            destination: Rect,
+            source_size: crate::types::Size,
+            src_rgba: &[u8],
+        ) {
             assert!(
                 src_rgba.len() >= (source_size.w as usize) * (source_size.h as usize) * 4,
                 "blit_rgba requires enough source pixels"
@@ -263,7 +273,10 @@ mod tests {
         );
 
         let line_height = (BAR_HEIGHT - 8).clamp(1, BAR_HEIGHT);
-        let separator = (Rect::new(cells[0].end, (BAR_HEIGHT - line_height) / 2, 1, line_height), scheme().foreground);
+        let separator = (
+            Rect::new(cells[0].end, (BAR_HEIGHT - line_height) / 2, 1, line_height),
+            scheme().foreground,
+        );
         assert!(painter.rectangles.contains(&separator));
         // Exactly one rule for two entries: no outer edges are ruled.
         assert_eq!(
@@ -295,10 +308,12 @@ mod tests {
         );
 
         // No vertical rules at all: both boundaries flank the separator entry.
-        assert!(!painter
-            .rectangles
-            .iter()
-            .any(|(rect, _)| rect.w == 1 && rect.h > 1));
+        assert!(
+            !painter
+                .rectangles
+                .iter()
+                .any(|(rect, _)| rect.w == 1 && rect.h > 1)
+        );
         // The separator entry itself renders a centred horizontal rule.
         let rule = (
             Rect::new(cells[1].start + 4, (BAR_HEIGHT - 1) / 2, 16, 1),
@@ -371,10 +386,12 @@ mod tests {
             1.0,
         );
 
-        assert!(!painter
-            .rectangles
-            .iter()
-            .any(|(_, color)| *color == hover_color));
+        assert!(
+            !painter
+                .rectangles
+                .iter()
+                .any(|(_, color)| *color == hover_color)
+        );
     }
 
     #[test]

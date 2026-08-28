@@ -807,8 +807,8 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     };
     // A pending hide means the slide-out is still playing; the next toggle
     // must reverse it rather than restart an identical slide-out.
-    let is_visible =
-        client.is_scratchpad_visible() && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
+    let is_visible = client.is_scratchpad_visible()
+        && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
 
     if is_visible {
         scratchpad_hide_name(ctx, name);
@@ -842,8 +842,7 @@ pub(crate) fn scratchpad_toggle_from_hot_corner(
     };
     // A pending hide means the slide-out is still playing; the next trigger
     // must reverse it rather than restart an identical slide-out.
-    let is_visible =
-        is_visible && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
+    let is_visible = is_visible && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
 
     if is_visible {
         scratchpad_hide_name(ctx, name);
@@ -943,10 +942,9 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 #[cfg(test)]
 mod tests {
     use super::{
-        EdgeSlideRects, ScratchpadShowOptions, hide_scratchpad_window,
-        name_from_window_identity, regular_scratchpad_rect, scratchpad_restore_window,
-        set_scratchpad_direction, show_scratchpad_window_with_options,
-        show_transferred_scratchpad,
+        EdgeSlideRects, ScratchpadShowOptions, hide_scratchpad_window, name_from_window_identity,
+        regular_scratchpad_rect, scratchpad_restore_window, set_scratchpad_direction,
+        show_scratchpad_window_with_options, show_transferred_scratchpad,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;

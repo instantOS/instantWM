@@ -32,10 +32,11 @@ fn fetch_menu_path(proxy: &Proxy<'_>) -> Option<String> {
             return Some(path_str);
         }
     }
-    if let Ok(path_str) = proxy.get_property::<String>("Menu") {
-        if path_str != "/" && !path_str.is_empty() {
-            return Some(path_str);
-        }
+    if let Ok(path_str) = proxy.get_property::<String>("Menu")
+        && path_str != "/"
+        && !path_str.is_empty()
+    {
+        return Some(path_str);
     }
     None
 }
@@ -168,8 +169,8 @@ pub(super) fn fetch_menu_level(
 }
 
 fn get_menu_layout(proxy: &Proxy<'_>, parent_id: i32) -> zbus::Result<RawMenuLayout> {
-    if let Ok((_, layout)) =
-        proxy.call::<_, _, (u32, RawMenuLayout)>("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))
+    if let Ok((_, layout)) = proxy
+        .call::<_, _, (u32, RawMenuLayout)>("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))
     {
         return Ok(layout);
     }

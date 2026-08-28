@@ -68,6 +68,7 @@ use smithay::{
 
 use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 use super::protocols::output_management::OutputManagementState;
+use super::protocols::output_power::OutputPowerState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::core_state::CoreState;
@@ -161,6 +162,7 @@ pub struct WaylandState {
     pub session_lock_manager_state: SessionLockManagerState,
     pub ext_workspace_state: ExtWorkspaceManagerState,
     pub output_management_state: OutputManagementState,
+    pub output_power_state: OutputPowerState,
     pub foreign_toplevel_management_state:
         crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState,
     /// Current session lock state.
@@ -323,6 +325,10 @@ pub struct WaylandRuntimeState {
     pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
     pub output_transactions: crate::backend::output::OutputTransactionService,
+    pub output_power: crate::backend::output::OutputPowerService,
+    /// Authoritative physical power mode for outputs whose active backend
+    /// supports DPMS. Absence means the output cannot be power-managed.
+    pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
     pub intercepted_key_releases: HashSet<Keycode>,
 }
 
@@ -352,6 +358,8 @@ impl Default for WaylandRuntimeState {
             pending_winit_resize: None,
             winit_close_requested: false,
             output_transactions: crate::backend::output::OutputTransactionService::default(),
+            output_power: crate::backend::output::OutputPowerService::default(),
+            output_power_modes: HashMap::new(),
             intercepted_key_releases: HashSet::new(),
         }
     }
@@ -508,6 +516,7 @@ impl WaylandState {
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let ext_workspace_state = ExtWorkspaceManagerState::new(&dh);
         let output_management_state = OutputManagementState::new::<Self>(&dh);
+        let output_power_state = OutputPowerState::new::<Self>(&dh);
         let foreign_toplevel_management_state =
             crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState::new::<Self>(&dh);
 
@@ -565,6 +574,7 @@ impl WaylandState {
             session_lock_manager_state,
             ext_workspace_state,
             output_management_state,
+            output_power_state,
             foreign_toplevel_management_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),

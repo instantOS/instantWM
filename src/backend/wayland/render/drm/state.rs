@@ -9,6 +9,7 @@ use smithay::output::Output;
 use smithay::reexports::drm::control::{self, connector, crtc};
 
 use crate::backend::BackendVrrSupport;
+use crate::backend::output::OutputPowerRequestId;
 use crate::config::config_toml::VrrMode;
 pub const DEFAULT_SCREEN_WIDTH: i32 = 1280;
 pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
@@ -40,4 +41,8 @@ pub struct OutputSurfaceEntry {
     pub configured_vrr_mode: VrrMode,
     pub vrr_enabled: bool,
     pub enabled: bool,
+    /// Physical DPMS state, independent of logical output enablement.
+    pub powered: bool,
+    /// A power-on request is acknowledged after its first frame is queued.
+    pub pending_power_on: Option<OutputPowerRequestId>,
 }

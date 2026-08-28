@@ -385,10 +385,7 @@ impl WindowOps for Backend {
 
     fn window_animation_active(&self, window: WindowId) -> bool {
         match self {
-            Backend::X11(data) => data
-                .x11_runtime
-                .window_animations
-                .contains_key(&window),
+            Backend::X11(data) => data.x11_runtime.window_animations.contains_key(&window),
             Backend::Wayland(data) => data.backend.window_animation_active(window),
         }
     }
