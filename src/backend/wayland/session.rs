@@ -62,19 +62,46 @@ pub fn ensure_dbus_session() {
     }
 }
 
-/// Import the Wayland session environment into the D-Bus activation environment.
-///
-/// Portals and other D-Bus-activated services need these variables to discover
-/// the compositor socket and desktop identity. This mirrors the environment
-/// import step commonly done by compositor session wrappers.
-pub fn import_env_into_dbus_activation() {
-    let vars = [
+/// Resolve the list of session environment variables to import into D-Bus activation.
+pub fn dbus_activation_vars() -> Vec<&'static str> {
+    let mut vars = vec![
         "WAYLAND_DISPLAY",
         "XDG_CURRENT_DESKTOP",
         "XDG_SESSION_DESKTOP",
         "XDG_SESSION_TYPE",
         "DESKTOP_SESSION",
     ];
+    if env::var_os("DISPLAY").is_some() {
+        vars.push("DISPLAY");
+    }
+    vars
+}
+
+/// Reset any portal services leftover from a previous or crashed session so
+/// that xdg-desktop-portal cleanly re-activates its backends with the fresh
+/// WAYLAND_DISPLAY and environment. Only do this for standalone DRM sessions
+/// so nested instances do not disrupt the host desktop's portal services.
+pub fn reset_portal_services() {
+    if env::var("INSTANTWM_BACKEND").ok().as_deref() == Some("wayland-drm") {
+        let _ = Command::new("systemctl")
+            .args([
+                "--user",
+                "stop",
+                "xdg-desktop-portal-wlr",
+                "xdg-desktop-portal-gtk",
+                "xdg-desktop-portal",
+            ])
+            .status();
+    }
+}
+
+/// Import the Wayland session environment into the D-Bus activation environment.
+///
+/// Portals and other D-Bus-activated services need these variables to discover
+/// the compositor socket and desktop identity. This mirrors the environment
+/// import step commonly done by compositor session wrappers.
+pub fn import_env_into_dbus_activation() {
+    let vars = dbus_activation_vars();
 
     let mut attempted = false;
     let mut cmd = Command::new("dbus-update-activation-environment");
@@ -108,22 +135,6 @@ pub fn import_env_into_dbus_activation() {
             Ok(_) => {}
             Err(err) => log::debug!("dbus-update-activation-environment unavailable: {}", err),
         }
-    }
-
-    // Reset any portal services leftover from a previous or crashed session so
-    // that xdg-desktop-portal cleanly re-activates its backends with the fresh
-    // WAYLAND_DISPLAY and environment. Only do this for standalone DRM sessions
-    // so nested instances do not disrupt the host desktop's portal services.
-    if env::var("INSTANTWM_BACKEND").ok().as_deref() == Some("wayland-drm") {
-        let _ = Command::new("systemctl")
-            .args([
-                "--user",
-                "stop",
-                "xdg-desktop-portal-wlr",
-                "xdg-desktop-portal-gtk",
-                "xdg-desktop-portal",
-            ])
-            .status();
     }
 }
 
@@ -193,6 +204,7 @@ pub fn setup_socket(
 
     apply_session_env(&socket_name);
     import_env_into_dbus_activation();
+    reset_portal_services();
     start_graphical_session_target();
 
     loop_handle
@@ -233,6 +245,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
     ) {
         Ok((xwayland, client)) => {
             unsafe { env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
+            import_env_into_dbus_activation();
             let handle_for_wm = loop_handle.clone();
             if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
             {
@@ -242,6 +255,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                 } => {
                     data.xdisplay = Some(display_number);
                     unsafe { env::set_var("DISPLAY", format!(":{display_number}")) };
+                    import_env_into_dbus_activation();
                     match X11Wm::start_wm(
                         handle_for_wm.clone(),
                         &data.display_handle,
@@ -262,5 +276,27 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         Err(err) => {
             log::warn!("failed to spawn XWayland: {err}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dbus_activation_vars_without_display() {
+        unsafe { env::remove_var("DISPLAY") };
+        let vars = dbus_activation_vars();
+        assert!(vars.contains(&"WAYLAND_DISPLAY"));
+        assert!(vars.contains(&"XDG_CURRENT_DESKTOP"));
+        assert!(!vars.contains(&"DISPLAY"));
+    }
+
+    #[test]
+    fn test_dbus_activation_vars_with_display() {
+        unsafe { env::set_var("DISPLAY", ":0") };
+        let vars = dbus_activation_vars();
+        assert!(vars.contains(&"WAYLAND_DISPLAY"));
+        assert!(vars.contains(&"DISPLAY"));
     }
 }

@@ -1,12 +1,9 @@
 use crate::bar::SystrayHitSlot;
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow, draw_hover_accent};
 #[allow(unused_imports)]
 use crate::systray::{MenuAction, MenuToggle, MenuView};
 use crate::types::Rect;
 use crate::types::color::Rgba;
-
-/// Height of the bottom accent strip marking the hovered menu entry.
-const HOVER_INDICATOR_HEIGHT: i32 = 3;
 
 /// Hover presentation for one bar-hosted menu entry, mirroring the status
 /// block hover accent.
@@ -129,23 +126,10 @@ fn draw_separator_entry(
     );
 }
 
-/// Bottom accent strip in the hover colour, matching status block hover.
-fn draw_hover_accent(painter: &mut dyn BarPainter, bounds: Rect, color: Rgba) {
-    let height = HOVER_INDICATOR_HEIGHT.min(bounds.h).max(0);
-    painter.set_scheme(BarScheme {
-        foreground: color,
-        background: color,
-        detail: color,
-    });
-    painter.rect(
-        Rect::new(bounds.x, bounds.bottom() - height, bounds.w, height),
-        false,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bar::paint::HOVER_INDICATOR_HEIGHT;
     use crate::systray::{MenuAction, MenuEntry};
 
     #[derive(Default)]

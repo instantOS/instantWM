@@ -52,6 +52,24 @@ impl Default for WindowConfig {
     }
 }
 
+impl WindowConfig {
+    pub fn validated(self) -> Result<Self, String> {
+        if self.border_width_px < 0 {
+            return Err(format!(
+                "window.border_width_px must be non-negative, got {}",
+                self.border_width_px
+            ));
+        }
+        if self.snap_threshold < 0 {
+            return Err(format!(
+                "window.snap_threshold must be non-negative, got {}",
+                self.snap_threshold
+            ));
+        }
+        Ok(self)
+    }
+}
+
 /// Measurements derived from the active backend and rendering resources.
 ///
 /// These values are runtime state rather than user configuration, so config

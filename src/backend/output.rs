@@ -43,6 +43,36 @@ pub enum OutputTransform {
     Flipped270,
 }
 
+impl OutputTransform {
+    /// Parse a transform string as used in config and IPC (case-insensitive).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "normal" => Some(Self::Normal),
+            "90" => Some(Self::Rotate90),
+            "180" => Some(Self::Rotate180),
+            "270" => Some(Self::Rotate270),
+            "flipped" => Some(Self::Flipped),
+            "flipped-90" | "flipped90" => Some(Self::Flipped90),
+            "flipped-180" | "flipped180" => Some(Self::Flipped180),
+            "flipped-270" | "flipped270" => Some(Self::Flipped270),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Rotate90 => "90",
+            Self::Rotate180 => "180",
+            Self::Rotate270 => "270",
+            Self::Flipped => "flipped",
+            Self::Flipped90 => "flipped-90",
+            Self::Flipped180 => "flipped-180",
+            Self::Flipped270 => "flipped-270",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AdaptiveSyncPolicy {
     Disabled,
@@ -384,6 +414,28 @@ impl OutputTransactionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_transform_strings_round_trip() {
+        for transform in [
+            OutputTransform::Normal,
+            OutputTransform::Rotate90,
+            OutputTransform::Rotate180,
+            OutputTransform::Rotate270,
+            OutputTransform::Flipped,
+            OutputTransform::Flipped90,
+            OutputTransform::Flipped180,
+            OutputTransform::Flipped270,
+        ] {
+            assert_eq!(OutputTransform::parse(transform.as_str()), Some(transform));
+        }
+
+        assert_eq!(
+            OutputTransform::parse("FLIPPED90"),
+            Some(OutputTransform::Flipped90)
+        );
+        assert_eq!(OutputTransform::parse("sideways"), None);
+    }
 
     fn transaction() -> OutputTransaction {
         OutputTransaction { heads: Vec::new() }
