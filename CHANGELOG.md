@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23](https://github.com/instantOS/instantWM/compare/v0.1.22...v0.1.23) - 2026-08-31
+
+### Changed
+
+- unify button press policy dispatch across X11 and Wayland
+
+### Other
+
+- fix missing X11 hover offer
+- Merge branch 'main' of github.com:instantOS/instantWM
+- refactor cursor ownership
+- remove redundant structs
+- deduplicate color structs
+- make bottom bar a global setting
+- fix nerd font icon spacing
+- improve font rendering performance
+- fix nerd font spacing again
+- fix icon size spacing relation
+- gap resizing stuff
+- fix systray correctness bugs
+- new instantmenu systray backend
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- fix session startup stuff
+- border width
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix systray latency
+- dedupe
+- fix new systray correctness
+- remove old smoke test
+- change default for smart gaps
+- better systray value handling
+- remove old spec
+- add power management protocol
+- bump stuff
+- refactor huge files
+- fix typo
+- fmt
+
 ## [0.1.22](https://github.com/instantOS/instantWM/compare/v0.1.21...v0.1.22) - 2026-08-25
 
 ### Changed
