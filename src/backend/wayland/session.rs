@@ -64,6 +64,10 @@ pub fn ensure_dbus_session() {
 
 /// Resolve the list of session environment variables to import into D-Bus activation.
 pub fn dbus_activation_vars() -> Vec<&'static str> {
+    dbus_activation_vars_from(env::var_os("DISPLAY").is_some())
+}
+
+pub(crate) fn dbus_activation_vars_from(has_display: bool) -> Vec<&'static str> {
     let mut vars = vec![
         "WAYLAND_DISPLAY",
         "XDG_CURRENT_DESKTOP",
@@ -71,7 +75,7 @@ pub fn dbus_activation_vars() -> Vec<&'static str> {
         "XDG_SESSION_TYPE",
         "DESKTOP_SESSION",
     ];
-    if env::var_os("DISPLAY").is_some() {
+    if has_display {
         vars.push("DISPLAY");
     }
     vars
@@ -285,8 +289,7 @@ mod tests {
 
     #[test]
     fn test_dbus_activation_vars_without_display() {
-        unsafe { env::remove_var("DISPLAY") };
-        let vars = dbus_activation_vars();
+        let vars = dbus_activation_vars_from(false);
         assert!(vars.contains(&"WAYLAND_DISPLAY"));
         assert!(vars.contains(&"XDG_CURRENT_DESKTOP"));
         assert!(!vars.contains(&"DISPLAY"));
@@ -294,8 +297,7 @@ mod tests {
 
     #[test]
     fn test_dbus_activation_vars_with_display() {
-        unsafe { env::set_var("DISPLAY", ":0") };
-        let vars = dbus_activation_vars();
+        let vars = dbus_activation_vars_from(true);
         assert!(vars.contains(&"WAYLAND_DISPLAY"));
         assert!(vars.contains(&"DISPLAY"));
     }
