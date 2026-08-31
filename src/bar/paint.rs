@@ -56,6 +56,23 @@ impl From<&ColorSchemeRgba> for BarScheme {
     }
 }
 
+/// Height of the bottom accent strip marking a hovered status block or menu entry.
+pub const HOVER_INDICATOR_HEIGHT: i32 = 3;
+
+/// Bottom accent strip in the hover colour, shared by status and systray.
+pub fn draw_hover_accent(painter: &mut dyn BarPainter, bounds: Rect, color: Rgba) {
+    let height = HOVER_INDICATOR_HEIGHT.min(bounds.h).max(0);
+    painter.set_scheme(BarScheme {
+        foreground: color,
+        background: color,
+        detail: color,
+    });
+    painter.rect(
+        Rect::new(bounds.x, bounds.bottom() - height, bounds.w, height),
+        false,
+    );
+}
+
 pub trait BarPainter {
     /// Measure the horizontal advance of `text` using the fonts active for the
     /// monitor currently being painted.

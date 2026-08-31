@@ -2,10 +2,8 @@ use super::TEXT_PADDING;
 use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
+use crate::bar::paint::{BarPainter, BarScheme, TextOverflow, draw_hover_accent};
 use crate::types::{Point, Rect, Rgba};
-
-const HOVER_INDICATOR_HEIGHT: i32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct StatusBlockHover {
@@ -532,17 +530,7 @@ pub(crate) fn draw_status_items(
                     &base_scheme,
                 );
                 if let Some(hover) = hover.filter(|hover| hover.block_index == block_index) {
-                    let color = hover.color;
-                    let height = HOVER_INDICATOR_HEIGHT.min(bounds.h).max(0);
-                    painter.set_scheme(BarScheme {
-                        foreground: color,
-                        background: color,
-                        detail: color,
-                    });
-                    painter.rect(
-                        Rect::new(bounds.x, bounds.bottom() - height, bounds.w, height),
-                        false,
-                    );
+                    draw_hover_accent(painter, bounds, hover.color);
                 }
                 click_targets.push(StatusClickTarget {
                     bounds,
@@ -686,6 +674,7 @@ fn draw_separator(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bar::paint::HOVER_INDICATOR_HEIGHT;
     use crate::types::{Insets, Size};
 
     #[derive(Default)]

@@ -687,27 +687,15 @@ fn reconcile_monitor_model(
     }
 }
 
-fn scaled_i32(value: i32, scale: f64) -> i32 {
-    if value <= 0 {
-        return 0;
-    }
-    let scale = if scale.is_finite() && scale > 0.0 {
-        scale
-    } else {
-        1.0
-    };
-    ((value as f64) * scale).round() as i32
-}
-
 fn scaled_monitor_ui_metrics(
     config: &EffectiveConfig,
     derived: &DerivedState,
     scale: f64,
 ) -> (i32, i32, i32) {
     (
-        scaled_i32(derived.bar_height, scale).max(1),
-        scaled_i32(derived.bar_horizontal_padding, scale).max(1),
-        scaled_i32(config.bar.startmenu_size, scale).max(1),
+        crate::types::geometry::scaled_px(derived.bar_height, scale).max(1),
+        crate::types::geometry::scaled_px(derived.bar_horizontal_padding, scale).max(1),
+        crate::types::geometry::scaled_px(config.bar.startmenu_size, scale).max(1),
     )
 }
 

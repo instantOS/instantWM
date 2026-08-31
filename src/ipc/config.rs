@@ -148,7 +148,9 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
 
     let state = &mut wm.core;
     let result = match section {
-        RuntimeConfigSection::Window => parse_then_set(&mut state.config.window, rest, value),
+        RuntimeConfigSection::Window => set_field_from_raw(&state.config.window, rest, value)
+            .and_then(crate::core_state::WindowConfig::validated)
+            .map(|candidate| state.config.window = candidate),
         RuntimeConfigSection::Bar => set_field_from_raw(&state.config.bar, rest, value)
             .and_then(crate::config::config_toml::BarConfig::validated)
             .map(|candidate| state.config.bar = candidate),
@@ -594,6 +596,29 @@ mod tests {
             Response::Err(_)
         ));
         assert!(matches!(do_get(&mut wm, "display.width"), Response::Err(_)));
+    }
+
+    #[test]
+    fn invalid_window_values_do_not_mutate_runtime_config() {
+        let mut wm = test_wm();
+        let original = wm.core.config.window.clone();
+
+        assert!(matches!(
+            do_set(&mut wm, "window.border_width_px", "-1"),
+            Response::Err(_)
+        ));
+        assert!(matches!(
+            do_set(&mut wm, "window.snap_threshold", "-1"),
+            Response::Err(_)
+        ));
+        assert_eq!(
+            wm.core.config.window.border_width_px,
+            original.border_width_px
+        );
+        assert_eq!(
+            wm.core.config.window.snap_threshold,
+            original.snap_threshold
+        );
     }
 
     #[test]

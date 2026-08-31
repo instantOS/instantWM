@@ -156,22 +156,21 @@ fn rebase_saved_position(
     )
 }
 
+/// Fully-contained policy for floating windows — size-clamped and anchored.
+///
+/// Unlike `Rect::clamp_position` (partially-visible for tiling), this ensures
+/// the entire outer rect (`rect.w/h + 2*border`) is inside `work_area`
+/// (bar-excluded). Oversized windows are shrunk to `work_area - 2*border` and
+/// anchored to `work_area.x`/`y`. Shared primitive is
+/// `Rect::clamp_fully_contained_axis`.
 pub(crate) fn contain_floating_rect(mut rect: Rect, work_area: Rect, border: i32) -> Rect {
     let border = border.max(0);
     rect.w = rect.w.max(1).min((work_area.w - 2 * border).max(1));
     rect.h = rect.h.max(1).min((work_area.h - 2 * border).max(1));
-    let total_w = rect.w + 2 * border;
-    let total_h = rect.h + 2 * border;
-    rect.x = if total_w >= work_area.w {
-        work_area.x
-    } else {
-        rect.x.clamp(work_area.x, work_area.right() - total_w)
-    };
-    rect.y = if total_h >= work_area.h {
-        work_area.y
-    } else {
-        rect.y.clamp(work_area.y, work_area.bottom() - total_h)
-    };
+    let total_w = rect.total_width(border);
+    let total_h = rect.total_height(border);
+    rect.x = Rect::clamp_fully_contained_axis(rect.x, total_w, work_area.x, work_area.w);
+    rect.y = Rect::clamp_fully_contained_axis(rect.y, total_h, work_area.y, work_area.h);
     rect
 }
 
@@ -301,6 +300,13 @@ pub fn sane_floating_spawn_rect(
     rect.differs_from(&client.geo).then_some(rect)
 }
 
+/// Spawn policy: fully-contained but center if `fully_outside`.
+///
+/// Like `contain_floating_rect` for the fully-contained case (`total_len >=
+/// bounds_len => bounds_pos`), but stale-coordinate dialogs that are entirely
+/// off-screen are centered instead of clamped to the nearest edge for
+/// discoverability (tested by `sane_floating_spawn_rect_centers_when_completely_offscreen`).
+/// Otherwise delegates to `Rect::clamp_fully_contained_axis`.
 fn normalize_spawn_axis(
     pos: i32,
     total_len: i32,
@@ -311,15 +317,10 @@ fn normalize_spawn_axis(
     if total_len >= bounds_len {
         return bounds_pos;
     }
-
-    let min_pos = bounds_pos;
-    let max_pos = bounds_pos + bounds_len - total_len;
-
     if fully_outside {
-        bounds_pos + (bounds_len - total_len) / 2
-    } else {
-        pos.clamp(min_pos, max_pos)
+        return bounds_pos + (bounds_len - total_len) / 2;
     }
+    Rect::clamp_fully_contained_axis(pos, total_len, bounds_pos, bounds_len)
 }
 
 /// Result of [`apply_size_hints`] indicating whether backend/protocol client
@@ -346,7 +347,6 @@ pub fn apply_size_hints(
     };
     let client = view.client;
 
-    let old_geo = client.geo;
     let border_width = client.border_width;
     let should_apply_hints = config.window.resize_hints
         || client.mode().is_normal_floating()
@@ -357,13 +357,15 @@ pub fn apply_size_hints(
     rect.h = rect.h.max(1);
 
     // Phase 2: Clamp position to keep window visible.
+    let total_w = rect.total_width(border_width);
+    let total_h = rect.total_height(border_width);
     clamp_position_to_bounds(
         &derived.display,
         rect,
         Some(view.monitor.work_rect()),
         interact,
-        old_geo.total_width(border_width),
-        old_geo.total_height(border_width),
+        total_w,
+        total_h,
     );
 
     // Phase 3: Enforce minimum size (bar height).

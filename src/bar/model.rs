@@ -191,7 +191,11 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let layout_end = tag_end + bar_layout_symbol_width;
 
     // ── Shutdown button ───────────────────────────────────────────────────
-    let shutdown_end = layout_end + bar_height;
+    let shutdown_end = if mon.selected.is_none() {
+        layout_end + bar_height
+    } else {
+        layout_end
+    };
 
     // ── Status text ───────────────────────────────────────────────────────
     // Mirrors the render path's reservation: compositor-rendered StatusNotifier
@@ -224,7 +228,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     let mut title_ranges: Vec<TitleHitRange> = Vec::new();
     if n > 0 {
-        let title_area_start = layout_end;
+        let title_area_start = shutdown_end;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {

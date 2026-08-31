@@ -257,7 +257,7 @@ pub(crate) fn move_resize(
     let Some(client_geometry) = client_geometry(ctx.core().model(), win) else {
         return;
     };
-    let final_rect = target.clamped_to_monitor(
+    let final_rect = target.clamped_size_to(
         client_geometry.monitor_rect.w,
         client_geometry.monitor_rect.h,
     );

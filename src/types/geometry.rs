@@ -184,6 +184,14 @@ impl Size {
 /// follow the monitor's UI scale.
 #[inline]
 pub(crate) fn scaled_px(value: i32, scale: f64) -> i32 {
+    if value <= 0 {
+        return 0;
+    }
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
     ((value as f64 * scale).round() as i32).max(1)
 }
 
@@ -408,10 +416,18 @@ impl Rect {
         self.w > 0 && self.h > 0
     }
 
-    /// Clamp position to keep the window within the given bounds.
+    /// Clamp position — partially-visible policy for tiling/interactive moves.
     ///
-    /// Ensures the window doesn't escape the usable area by adjusting
-    /// x and y so at least part of the window remains visible.
+    /// Keeps at least 1px of the window (`total_w`/`total_h` includes borders via
+    /// `Rect::total_width`/`total_height`) inside `bounds`. Oversized windows
+    /// (`total >= bounds`) are left at their current `x`/`y` if already
+    /// partially visible, unlike `contain_floating_rect` which anchors them to
+    /// `bounds.x`/`bounds.y`. Callers: tiling drag/resize and
+    /// `client::geometry::clamp_position_to_bounds` with `interact=true`
+    /// (global screen) or `work_rect` (per-monitor).
+    ///
+    /// See also `contain_floating_rect` (`client/geometry.rs:159`) for the
+    /// fully-contained floating policy.
     #[inline]
     pub fn clamp_position(&mut self, bounds: &Rect, total_w: i32, total_h: i32) {
         let right_bound = bounds.right();
@@ -431,6 +447,25 @@ impl Rect {
         }
     }
 
+    /// Clamp a single axis for fully-contained placement.
+    ///
+    /// Shared primitive for `contain_floating_rect` and `normalize_spawn_axis`:
+    /// if `total_len >= bounds_len` anchor to `bounds_pos`, else
+    /// `pos.clamp(bounds_pos, bounds_pos+bounds_len-total_len)`.
+    #[inline]
+    pub(crate) fn clamp_fully_contained_axis(
+        pos: i32,
+        total_len: i32,
+        bounds_pos: i32,
+        bounds_len: i32,
+    ) -> i32 {
+        if total_len >= bounds_len {
+            bounds_pos
+        } else {
+            pos.clamp(bounds_pos, bounds_pos + bounds_len - total_len)
+        }
+    }
+
     /// Ensure minimum dimensions.
     #[inline]
     pub fn enforce_minimum(&mut self, min_w: i32, min_h: i32) {
@@ -438,9 +473,14 @@ impl Rect {
         self.h = self.h.max(min_h);
     }
 
-    /// Return a new Rect with size clamped to fit within (max_w, max_h) and minimum 1x1.
+    /// Return a new Rect with size clamped to `1..=max` — size-only, not position.
+    ///
+    /// Does not move `x`/`y` and does not consider borders or `work_area`
+    /// (bar exclusion). For floating, prefer `contain_floating_rect` which
+    /// clamps size *and* fully contains position. This helper is only a final
+    /// safety cap for `geometry::move_resize` after layout/hints.
     #[inline]
-    pub fn clamped_to_monitor(&self, max_w: i32, max_h: i32) -> Rect {
+    pub fn clamped_size_to(&self, max_w: i32, max_h: i32) -> Rect {
         Rect {
             x: self.x,
             y: self.y,
