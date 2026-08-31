@@ -711,10 +711,13 @@ mod tests {
         let args: Vec<&str> = cmd.get_args().map(|s| s.to_str().unwrap()).collect();
 
         // Ensure arguments are structured as valid (flag, value) pairs
-        assert!(args.len() % 2 == 0, "arguments should be key-value pairs");
+        assert!(
+            args.len().is_multiple_of(2),
+            "arguments should be key-value pairs"
+        );
 
         let mut map = std::collections::HashMap::new();
-        for chunk in args.chunks_exact(2) {
+        for chunk in args.as_chunks::<2>().0 {
             let flag = chunk[0];
             let val = chunk[1];
             assert!(flag.starts_with("--"), "flag {flag} must start with '--'");
