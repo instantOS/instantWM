@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24](https://github.com/instantOS/instantWM/compare/v0.1.23...v0.1.24) - 2026-09-01
+
+### Other
+
+- unify and fix some stuff
+- refactor display var handling
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- bump stuff
+- fix old games: tty and configure req
+- fix build
+- Merge branch 'dev'
+
 ## [0.1.23](https://github.com/instantOS/instantWM/compare/v0.1.22...v0.1.23) - 2026-08-31
 
 ### Changed
