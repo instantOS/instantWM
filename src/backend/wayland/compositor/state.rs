@@ -224,6 +224,9 @@ pub struct WaylandState {
     /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
     /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
+    /// Deferred cursor position hint from a locked pointer constraint.
+    /// Warped to when the pointer constraint is lifted/unlocked.
+    pub cursor_position_hint: Option<(WlSurface, Point<f64, Logical>)>,
     /// Backend-local runtime state that is not part of protocol or desktop state.
     pub runtime: WaylandRuntimeState,
     /// Queue of commands to be processed by the core WM.
@@ -617,6 +620,7 @@ impl WaylandState {
             layout_preview_target: None,
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
+            cursor_position_hint: None,
             runtime: WaylandRuntimeState::default(),
             command_queue: std::cell::RefCell::new(Vec::new()),
         }

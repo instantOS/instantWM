@@ -497,19 +497,25 @@ impl PointerConstraintsHandler for WaylandState {
             return;
         }
 
-        let Some(origin) = self.pointer_constraint_surface_origin(surface) else {
-            return;
-        };
-        let target = origin + location;
-        pointer.set_location(target);
-        self.runtime.pointer_location = target;
+        self.cursor_position_hint = Some((surface.clone(), location));
     }
 
     fn remove_constraint(
         &mut self,
-        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        _pointer: &smithay::input::pointer::PointerHandle<Self>,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
     ) {
+        if let Some((hint_surface, hint_location)) = self.cursor_position_hint.take() {
+            if &hint_surface == surface {
+                if let Some(origin) = self.pointer_constraint_surface_origin(&hint_surface) {
+                    let target = origin + hint_location;
+                    pointer.set_location(target);
+                    self.runtime.pointer_location = target;
+                }
+            } else {
+                self.cursor_position_hint = Some((hint_surface, hint_location));
+            }
+        }
     }
 }
 
@@ -664,3 +670,36 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
 }
 
 crate::delegate_foreign_toplevel_management!(WaylandState);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smithay::utils::Point;
+
+    #[test]
+    fn remove_constraint_applies_matching_cursor_position_hint() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let pointer = state.seat.get_pointer().unwrap();
+
+        state.runtime.pointer_location = Point::from((500.0, 500.0));
+        pointer.set_location(Point::from((500.0, 500.0)));
+
+        let dummy_surface = smithay::reexports::wayland_server::protocol::wl_surface::WlSurface::from_id(
+            &state.display_handle.clone(),
+            smithay::reexports::wayland_server::backend::ObjectId::null(),
+        )
+        .unwrap();
+
+        // Without an active window/surface origin, unmatching surface hint remains untouched
+        PointerConstraintsHandler::remove_constraint(
+            &mut state,
+            &dummy_surface,
+            &pointer,
+        );
+
+        assert_eq!(state.runtime.pointer_location, Point::from((500.0, 500.0)));
+        assert_eq!(pointer.current_location(), Point::from((500.0, 500.0)));
+    }
+}
+

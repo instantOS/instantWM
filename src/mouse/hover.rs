@@ -27,7 +27,7 @@
 
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
-use crate::model::WmModel;
+use crate::model::{ClientView, WmModel};
 use crate::types::{Monitor, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
@@ -98,8 +98,7 @@ pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
     }
 }
 
-fn resize_target_for_window(model: &WmModel, win: WindowId, root: Point) -> Option<HoverResizeHit> {
-    let view = model.client_view(win)?;
+fn resize_target_for_window(view: ClientView<'_>, root: Point) -> Option<HoverResizeHit> {
     let c = view.client;
     let mon = view.monitor;
     let selected_tags = mon.visible_tags();
@@ -117,7 +116,7 @@ fn resize_target_for_window(model: &WmModel, win: WindowId, root: Point) -> Opti
 
     let hit = c.geo.local_point(root);
     Some(HoverResizeHit {
-        win,
+        win: c.win,
         dir: ResizeDirection::from_hit(c.geo.size(), hit),
         geo: c.geo,
     })
@@ -128,13 +127,17 @@ fn resize_target_for_window(model: &WmModel, win: WindowId, root: Point) -> Opti
 /// `true` when a visible window's surface — borders included — covers `point`.
 ///
 /// Mirrors the backend hit tests: what matters is the surface the pointer is
-/// actually over, not focus order. Stale ids simply do not occlude.
-fn is_point_over_client_surface(model: &WmModel, win: WindowId, point: Point) -> bool {
-    let Some(view) = model.client_view(win) else {
-        return false;
-    };
+/// actually over, not focus order. Hidden windows do not occlude.
+fn view_covers_point(view: ClientView<'_>, point: Point) -> bool {
     view.client.is_visible(view.monitor.visible_tags())
         && view.client.total_rect().contains_point(point)
+}
+
+/// [`view_covers_point`] by window id. Stale ids simply do not occlude.
+fn is_point_over_client_surface(model: &WmModel, win: WindowId, point: Point) -> bool {
+    model
+        .client_view(win)
+        .is_some_and(|view| view_covers_point(view, point))
 }
 
 /// `true` when a visible window stacked above `win` covers `point`.
@@ -158,12 +161,16 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
     // focus order disagrees with the visible stacking. Stale ids are skipped
     // by the per-window visibility lookup. A window whose surface covers the
     // pointer equally hides every border below it, so the scan stops there
-    // rather than offering the seam of a covered window.
+    // rather than offering the seam of a covered window. One resolved view
+    // per window serves both the band check and the occlusion stop.
     for win in mon.z_order.iter_top_to_bottom() {
-        if let Some(hit) = resize_target_for_window(model, win, root) {
+        let Some(view) = model.client_view(win) else {
+            continue;
+        };
+        if let Some(hit) = resize_target_for_window(view, root) {
             return Some(hit);
         }
-        if is_point_over_client_surface(model, win, root) {
+        if view_covers_point(view, root) {
             return None;
         }
     }
@@ -172,17 +179,17 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
 
 pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Option<HoverResizeHit> {
     let win = model.selected_win()?;
-    let monitor = model.client_view(win)?.monitor;
-    if monitor.bar_contains_y(&model.clients, position.y) {
+    let view = model.client_view(win)?;
+    if view.monitor.bar_contains_y(&model.clients, position.y) {
         return None;
     }
-    let target = resize_target_for_window(model, win, position)?;
     // A click must never commit a border the user cannot see: when another
     // window's surface covers the position, the press belongs to that window.
-    if point_occluded_above(model, monitor, win, position) {
+    // Checked before the band test so an occluded seam skips the hit math.
+    if point_occluded_above(model, view.monitor, win, position) {
         return None;
     }
-    Some(target)
+    resize_target_for_window(view, position)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
@@ -404,7 +411,11 @@ mod tests {
     #[test]
     fn covered_window_borders_are_not_offered_through_the_covering_surface() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        setup_stacked_floating_windows(&mut wm, Rect::new(150, 130, 400, 300), Rect::new(100, 90, 600, 400));
+        setup_stacked_floating_windows(
+            &mut wm,
+            Rect::new(150, 130, 400, 300),
+            Rect::new(100, 90, 600, 400),
+        );
 
         // Inside the covered window's top border zone (y 100..130) but
         // strictly inside the covering window's surface.
@@ -428,14 +439,19 @@ mod tests {
     #[test]
     fn exposed_border_of_a_covered_window_still_offers() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        setup_stacked_floating_windows(&mut wm, Rect::new(750, 130, 400, 300), Rect::new(100, 90, 600, 400));
+        setup_stacked_floating_windows(
+            &mut wm,
+            Rect::new(750, 130, 400, 300),
+            Rect::new(100, 90, 600, 400),
+        );
 
         // In the covered window's left border zone, outside the cover's
         // surface (the cover's band ends at x = 700 + 30).
         let target = hover_resize_target_at(&wm.core.model, Point::new(735, 200));
         assert_eq!(target.map(|hit| hit.win), Some(WindowId(1)));
         assert_eq!(
-            selected_hover_resize_target_at(&wm.core.model, Point::new(735, 200)).map(|hit| hit.win),
+            selected_hover_resize_target_at(&wm.core.model, Point::new(735, 200))
+                .map(|hit| hit.win),
             Some(WindowId(1))
         );
     }
