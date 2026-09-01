@@ -120,16 +120,66 @@ fn has_x11_animations(wm: &Wm) -> bool {
 
 /// Drain all pending X11 events from the connection and dispatch them.
 fn drain_x11_events(wm: &mut Wm) {
+    let mut raw_motion_pending = false;
     while let Some((conn, _)) = wm.backend.x11_conn() {
         match conn.poll_for_event() {
-            Ok(Some(event)) => dispatch_event(wm, event),
-            Ok(None) => break,
+            Ok(Some(x11rb::protocol::Event::XinputRawMotion(_))) => {
+                // Raw motion carries device valuators rather than the
+                // accelerated root position used by shared pointer policy.
+                // Collapse a queued run into one root-position snapshot so a
+                // high-rate device cannot force one synchronous QueryPointer
+                // round trip per sample.
+                raw_motion_pending = true;
+            }
+            Ok(Some(event)) => {
+                if raw_motion_pending && event_requires_current_pointer_state(&event) {
+                    dispatch_raw_motion(wm);
+                    raw_motion_pending = false;
+                }
+                dispatch_event(wm, event);
+            }
+            Ok(None) => {
+                if raw_motion_pending {
+                    dispatch_raw_motion(wm);
+                    raw_motion_pending = false;
+                    // Waiting for QueryPointer may also read and queue events
+                    // from the connection. Drain those now; the fd need not
+                    // remain readable once x11rb owns the parsed events.
+                    continue;
+                }
+                break;
+            }
             Err(err) => {
                 log::warn!("X11 poll_for_event error: {}", err);
+                if raw_motion_pending {
+                    dispatch_raw_motion(wm);
+                }
                 break;
             }
         }
     }
+}
+
+/// Events whose semantics depend on hover state established by earlier
+/// motion must not overtake the coalesced pointer update. Unrelated display
+/// traffic remains freely batchable, so Expose/Configure bursts cannot split
+/// one raw-motion run into repeated server round trips.
+fn event_requires_current_pointer_state(event: &x11rb::protocol::Event) -> bool {
+    matches!(
+        event,
+        x11rb::protocol::Event::ButtonPress(_)
+            | x11rb::protocol::Event::EnterNotify(_)
+            | x11rb::protocol::Event::LeaveNotify(_)
+            | x11rb::protocol::Event::XinputTouchBegin(_)
+    )
+}
+
+fn dispatch_raw_motion(wm: &mut Wm) {
+    let ctx = wm.ctx();
+    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+        return;
+    };
+    handlers::raw_motion_notify(&mut ctx);
 }
 
 /// Tick active X11 window animations, interpolating geometry each frame.
@@ -233,7 +283,10 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),
-        x11rb::protocol::Event::XinputRawMotion(_) => handlers::raw_motion_notify(&mut ctx),
+        // Raw motion is coalesced by `drain_x11_events`; dispatching an
+        // individual sample would reintroduce a QueryPointer round trip per
+        // device event.
+        x11rb::protocol::Event::XinputRawMotion(_) => {}
         x11rb::protocol::Event::XinputTouchBegin(e) => handlers::touch_begin(&mut ctx, &e),
         x11rb::protocol::Event::PropertyNotify(e) => handlers::property_notify(&mut ctx, &e),
         x11rb::protocol::Event::ResizeRequest(e) => handlers::resize_request(&mut ctx, &e),

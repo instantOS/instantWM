@@ -28,7 +28,7 @@ pub struct TreeResizeStart {
     pub direction: ResizeDirection,
     pub start: Point,
     pub geometry: Rect,
-    pub origin: crate::layouts::tree::LayoutTree,
+    pub origin: std::sync::Arc<crate::layouts::tree::LayoutTree>,
 }
 
 /// The operation executed by an active window drag.
@@ -45,7 +45,7 @@ pub(crate) enum ActiveWindowOperation {
     },
     TreeResize {
         direction: ResizeDirection,
-        origin: crate::layouts::tree::LayoutTree,
+        origin: std::sync::Arc<crate::layouts::tree::LayoutTree>,
     },
 }
 
