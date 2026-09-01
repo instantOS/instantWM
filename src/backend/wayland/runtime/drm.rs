@@ -140,6 +140,8 @@ pub fn run() -> ! {
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
+    state.runtime.session = Some(session.clone());
+
     super::bootstrap::attach_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);

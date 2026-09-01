@@ -195,3 +195,20 @@ pub const XF86XK_AUDIO_PLAY: u32 = 0x1008FF14;
 pub const XF86XK_AUDIO_PAUSE: u32 = 0x1008FF15;
 pub const XF86XK_AUDIO_NEXT: u32 = 0x1008FF17;
 pub const XF86XK_AUDIO_PREV: u32 = 0x1008FF16;
+
+// ---------------------------------------------------------------------------
+// XF86 VT switch keys
+// ---------------------------------------------------------------------------
+
+pub const XF86XK_SWITCH_VT_1: u32 = 0x1008FE01;
+pub const XF86XK_SWITCH_VT_2: u32 = 0x1008FE02;
+pub const XF86XK_SWITCH_VT_3: u32 = 0x1008FE03;
+pub const XF86XK_SWITCH_VT_4: u32 = 0x1008FE04;
+pub const XF86XK_SWITCH_VT_5: u32 = 0x1008FE05;
+pub const XF86XK_SWITCH_VT_6: u32 = 0x1008FE06;
+pub const XF86XK_SWITCH_VT_7: u32 = 0x1008FE07;
+pub const XF86XK_SWITCH_VT_8: u32 = 0x1008FE08;
+pub const XF86XK_SWITCH_VT_9: u32 = 0x1008FE09;
+pub const XF86XK_SWITCH_VT_10: u32 = 0x1008FE0A;
+pub const XF86XK_SWITCH_VT_11: u32 = 0x1008FE0B;
+pub const XF86XK_SWITCH_VT_12: u32 = 0x1008FE0C;
