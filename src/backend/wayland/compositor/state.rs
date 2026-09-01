@@ -57,6 +57,7 @@ use smithay::{
         },
         shm::ShmState,
         single_pixel_buffer::SinglePixelBufferState,
+        tablet_manager::TabletManagerState,
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
@@ -156,6 +157,7 @@ pub struct WaylandState {
     pub pointer_warp_manager: PointerWarpManager,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
+    pub tablet_manager_state: TabletManagerState,
     pub viewporter_state: ViewporterState,
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
     pub text_input_manager_state: TextInputManagerState,
@@ -522,6 +524,7 @@ impl WaylandState {
         let pointer_warp_manager = PointerWarpManager::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
+        let tablet_manager_state = TabletManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let virtual_keyboard_manager_state =
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
@@ -583,6 +586,7 @@ impl WaylandState {
             pointer_warp_manager,
             relative_pointer_manager_state,
             single_pixel_buffer_state,
+            tablet_manager_state,
             viewporter_state,
             virtual_keyboard_manager_state,
             text_input_manager_state,

@@ -2,7 +2,8 @@
 
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, Device as InputDevice, Event, InputEvent, PointerAxisEvent,
-    PointerButtonEvent, PointerMotionEvent, TouchEvent,
+    PointerButtonEvent, PointerMotionEvent, ProximityState, TabletToolEvent,
+    TabletToolProximityEvent, TouchEvent,
 };
 use smithay::backend::input::{
     GestureBeginEvent as GestureBeginTrait, GestureEndEvent as GestureEndTrait,
@@ -14,6 +15,8 @@ use smithay::input::pointer::{
     GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
     GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
 };
+use smithay::input::tablet::{TabletDescriptor, TabletSeatTrait};
+use smithay::reexports::input::event::tablet_tool::TipState;
 
 use smithay::utils::SERIAL_COUNTER;
 
@@ -166,7 +169,15 @@ pub fn dispatch_libinput_event(
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
+            use smithay::reexports::input::DeviceCapability;
+
             configure_device(&mut device, &wm.core.config.input);
+            if device.has_capability(DeviceCapability::TabletTool) {
+                state
+                    .seat
+                    .tablet_seat()
+                    .add_wp_tablet(&state.display_handle, &TabletDescriptor::from(&device));
+            }
             state.runtime.tracked_devices.push(device);
             LibinputEventOutcome::Ignored
         }
@@ -175,6 +186,7 @@ pub fn dispatch_libinput_event(
 
             let removed_pointer = device.has_capability(DeviceCapability::Pointer);
             let removed_touch = device.has_capability(DeviceCapability::Touch);
+            let removed_tablet = device.has_capability(DeviceCapability::TabletTool);
             state.runtime.tracked_devices.retain(|d| d != &device);
             if removed_pointer {
                 state.push_command(WmCommand::CancelInteractiveDrag(
@@ -183,6 +195,13 @@ pub fn dispatch_libinput_event(
             }
             if removed_touch {
                 handle_touch_cancel(wm, state);
+            }
+            if removed_tablet {
+                let tablet_seat = state.seat.tablet_seat();
+                tablet_seat.remove_tablet(&TabletDescriptor::from(&device));
+                if tablet_seat.count_tablets() == 0 {
+                    tablet_seat.clear_tools();
+                }
             }
             LibinputEventOutcome::Ignored
         }
@@ -363,7 +382,204 @@ pub fn dispatch_libinput_event(
             handle_touch_cancel(wm, state);
             LibinputEventOutcome::Activity
         }
+        InputEvent::TabletToolAxis { event } => {
+            handle_tablet_tool_axis(state, &event, total_w, total_h);
+            LibinputEventOutcome::PointerMoved
+        }
+        InputEvent::TabletToolProximity { event } => {
+            handle_tablet_tool_proximity(state, &event, total_w, total_h);
+            LibinputEventOutcome::PointerMoved
+        }
+        InputEvent::TabletToolTip { event } => {
+            handle_tablet_tool_tip(state, &event);
+            LibinputEventOutcome::Activity
+        }
+        InputEvent::TabletToolButton { event } => {
+            handle_tablet_tool_button(state, &event);
+            LibinputEventOutcome::Activity
+        }
         _ => LibinputEventOutcome::Ignored,
+    }
+}
+
+fn handle_tablet_tool_axis(
+    state: &mut WaylandState,
+    event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolAxisEvent,
+    total_w: i32,
+    total_h: i32,
+) {
+    let tablet_seat = state.seat.tablet_seat();
+    let x = event.x_transformed(total_w);
+    let y = event.y_transformed(total_h);
+    let pointer_location = smithay::utils::Point::from((x, y));
+    state.runtime.pointer_location = pointer_location;
+    if let Some(pointer) = state.seat.get_pointer() {
+        pointer.set_location(pointer_location);
+    }
+
+    let snapshot = state.pointer_hit_snapshot();
+    let hit = state.contents_under_pointer_in_snapshot(pointer_location, &snapshot);
+    let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
+
+    let tool = tablet_seat.get_tool(&event.tool());
+    let time = event.time_msec();
+
+    if let Some(tool) = tool {
+        let frame = smithay::input::tablet::tool::AxisFrame {
+            pressure: event.pressure_has_changed().then(|| event.pressure()),
+            distance: event.distance_has_changed().then(|| event.distance()),
+            tilt: event.tilt_has_changed().then(|| event.tilt()),
+            rotation: event.rotation_has_changed().then(|| event.rotation()),
+            slider: event.slider_has_changed().then(|| event.slider_position()),
+            wheel: event
+                .wheel_has_changed()
+                .then(|| (event.wheel_delta(), event.wheel_delta_discrete())),
+        };
+
+        tool.axis(state, frame);
+
+        tool.motion(
+            state,
+            focus,
+            &smithay::input::tablet::tool::MotionEvent {
+                location: pointer_location,
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+            },
+        );
+
+        tool.frame(state, time);
+    }
+}
+
+fn handle_tablet_tool_proximity(
+    state: &mut WaylandState,
+    event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolProximityEvent,
+    total_w: i32,
+    total_h: i32,
+) {
+    let tablet_seat = state.seat.tablet_seat();
+    let x = event.x_transformed(total_w);
+    let y = event.y_transformed(total_h);
+    let pointer_location = smithay::utils::Point::from((x, y));
+    state.runtime.pointer_location = pointer_location;
+    if let Some(pointer) = state.seat.get_pointer() {
+        pointer.set_location(pointer_location);
+    }
+
+    let tool_desc = event.tool();
+    let snapshot = state.pointer_hit_snapshot();
+    let hit = state.contents_under_pointer_in_snapshot(pointer_location, &snapshot);
+    let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
+
+    let tablet = tablet_seat.get_tablet(&TabletDescriptor::from(&event.device()));
+    let dh = state.display_handle.clone();
+    let tool = tablet_seat
+        .get_tool(&tool_desc)
+        .unwrap_or_else(|| tablet_seat.add_wp_tool(state, &dh, &tool_desc));
+
+    if let Some(tablet) = tablet {
+        let frame = smithay::input::tablet::tool::AxisFrame {
+            pressure: event.pressure_has_changed().then(|| event.pressure()),
+            distance: event.distance_has_changed().then(|| event.distance()),
+            tilt: event.tilt_has_changed().then(|| event.tilt()),
+            rotation: event.rotation_has_changed().then(|| event.rotation()),
+            slider: event.slider_has_changed().then(|| event.slider_position()),
+            wheel: event
+                .wheel_has_changed()
+                .then(|| (event.wheel_delta(), event.wheel_delta_discrete())),
+        };
+
+        match event.state() {
+            ProximityState::In => {
+                tool.proximity_in(
+                    state,
+                    focus,
+                    tablet,
+                    &smithay::input::tablet::tool::ProximityInEvent {
+                        location: pointer_location,
+                        axis: Some(frame),
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                    },
+                );
+            }
+            ProximityState::Out => {
+                tool.proximity_out(
+                    state,
+                    &smithay::input::tablet::tool::ProximityOutEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                    },
+                );
+            }
+        }
+
+        tool.frame(state, event.time_msec());
+    }
+}
+
+fn handle_tablet_tool_tip(
+    state: &mut WaylandState,
+    event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolTipEvent,
+) {
+    let tablet_seat = state.seat.tablet_seat();
+    let tool = tablet_seat.get_tool(&event.tool());
+
+    if let Some(tool) = tool {
+        let serial = SERIAL_COUNTER.next_serial();
+
+        match event.tip_state() {
+            TipState::Down => {
+                tool.down(
+                    state,
+                    &smithay::input::tablet::tool::DownEvent {
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+
+                let loc = state.runtime.pointer_location;
+                let snapshot = state.pointer_hit_snapshot();
+                let hit = state.contents_under_pointer_in_snapshot(loc, &snapshot);
+                if let Some(win) = hit.hovered_win {
+                    state.request_window_focus(win);
+                }
+            }
+            TipState::Up => {
+                tool.up(
+                    state,
+                    &smithay::input::tablet::tool::UpEvent {
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+            }
+        }
+
+        tool.frame(state, event.time_msec());
+    }
+}
+
+fn handle_tablet_tool_button(
+    state: &mut WaylandState,
+    event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolButtonEvent,
+) {
+    let tablet_seat = state.seat.tablet_seat();
+    let tool = tablet_seat.get_tool(&event.tool());
+
+    if let Some(tool) = tool {
+        tool.button(
+            state,
+            &smithay::input::tablet::tool::ButtonEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                button: event.button(),
+                state: event.button_state().into(),
+                time: event.time_msec(),
+            },
+        );
+
+        tool.frame(state, event.time_msec());
     }
 }
 
@@ -371,6 +587,7 @@ pub fn dispatch_libinput_event(
 mod tests {
     use super::resolve_touch_output_keys;
     use crate::config::config_toml::InputConfig;
+    use smithay::input::tablet::TabletSeatTrait;
     use std::collections::HashMap;
 
     fn config(output: &str) -> InputConfig {
@@ -416,5 +633,13 @@ mod tests {
             resolve_touch_output_keys("event12", "Touchscreen", "type:touch", &configs),
             Some("eDP-1")
         );
+    }
+
+    #[test]
+    fn tablet_seat_initializes_and_counts_tablets() {
+        let (_event_loop, state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let tablet_seat = state.seat.tablet_seat();
+        assert_eq!(tablet_seat.count_tablets(), 0);
     }
 }
