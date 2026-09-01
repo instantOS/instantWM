@@ -63,6 +63,11 @@ PKGS=(
   build-essential
   pkg-config
   wayland-protocols
+  # cosmic-text (bar text rasterizer) panics with "no default font found"
+  # when shaping text on a system without any fonts, so tests need a real
+  # font package, not just the fontconfig/freetype dev libraries.
+  # Architecture-independent, so it is not mirrored per cross arch.
+  fonts-dejavu-core
   "${DEV_LIBS[@]}"
 )
 
