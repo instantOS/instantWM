@@ -637,8 +637,7 @@ mod tests {
 
     #[test]
     fn tablet_seat_initializes_and_counts_tablets() {
-        let (_event_loop, state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, state) = crate::backend::wayland::compositor::new_event_loop_and_state();
         let tablet_seat = state.seat.tablet_seat();
         assert_eq!(tablet_seat.count_tablets(), 0);
     }

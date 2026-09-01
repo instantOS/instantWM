@@ -9,6 +9,7 @@ use smithay::{
             CompositorHandler, SurfaceAttributes, TraversalAction, get_parent, is_sync_subsurface,
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        drm_syncobj::{DrmSyncobjCachedState, DrmSyncobjHandler},
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         input_method::{InputMethodHandler, PopupSurface},
         keyboard_shortcuts_inhibit::{
@@ -48,6 +49,56 @@ impl CompositorHandler for WaylandState {
         } else {
             panic!("client missing compositor client state");
         }
+    }
+
+    fn new_surface(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        smithay::wayland::compositor::add_pre_commit_hook::<Self, _>(
+            surface,
+            move |state, _dh, surface| {
+                let mut acquire_point = None;
+                let maybe_dmabuf =
+                    smithay::wayland::compositor::with_states(surface, |surface_data| {
+                        acquire_point.clone_from(
+                            &surface_data
+                                .cached_state
+                                .get::<DrmSyncobjCachedState>()
+                                .pending()
+                                .acquire_point,
+                        );
+                        surface_data
+                            .cached_state
+                            .get::<SurfaceAttributes>()
+                            .pending()
+                            .buffer
+                            .as_ref()
+                            .and_then(|assignment| match assignment {
+                                smithay::wayland::compositor::BufferAssignment::NewBuffer(
+                                    buffer,
+                                ) => smithay::wayland::dmabuf::get_dmabuf(buffer).cloned().ok(),
+                                _ => None,
+                            })
+                    });
+
+                if let Some(_dmabuf) = maybe_dmabuf
+                    && let Some(acquire_point) = acquire_point
+                    && let Ok((blocker, source)) = acquire_point.generate_blocker()
+                    && let Some(client) = surface.client()
+                {
+                    let res = state.loop_handle.insert_source(source, move |_, _, data| {
+                        let dh = data.display_handle.clone();
+                        data.client_compositor_state(&client)
+                            .blocker_cleared(data, &dh);
+                        Ok(())
+                    });
+                    if res.is_ok() {
+                        smithay::wayland::compositor::add_blocker(surface, blocker);
+                    }
+                }
+            },
+        );
     }
 
     fn commit(
@@ -538,6 +589,12 @@ impl PointerWarpHandler for WaylandState {
     }
 }
 
+impl DrmSyncobjHandler for WaylandState {
+    fn drm_syncobj_state(&mut self) -> Option<&mut smithay::wayland::drm_syncobj::DrmSyncobjState> {
+        self.drm_syncobj_state.as_mut()
+    }
+}
+
 impl InputMethodHandler for WaylandState {
     fn new_popup(&mut self, surface: PopupSurface) {
         if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
@@ -704,21 +761,17 @@ mod tests {
         state.runtime.pointer_location = Point::from((500.0, 500.0));
         pointer.set_location(Point::from((500.0, 500.0)));
 
-        let dummy_surface = smithay::reexports::wayland_server::protocol::wl_surface::WlSurface::from_id(
-            &state.display_handle.clone(),
-            smithay::reexports::wayland_server::backend::ObjectId::null(),
-        )
-        .unwrap();
+        let dummy_surface =
+            smithay::reexports::wayland_server::protocol::wl_surface::WlSurface::from_id(
+                &state.display_handle.clone(),
+                smithay::reexports::wayland_server::backend::ObjectId::null(),
+            )
+            .unwrap();
 
         // Without an active window/surface origin, unmatching surface hint remains untouched
-        PointerConstraintsHandler::remove_constraint(
-            &mut state,
-            &dummy_surface,
-            &pointer,
-        );
+        PointerConstraintsHandler::remove_constraint(&mut state, &dummy_surface, &pointer);
 
         assert_eq!(state.runtime.pointer_location, Point::from((500.0, 500.0)));
         assert_eq!(pointer.current_location(), Point::from((500.0, 500.0)));
     }
 }
-

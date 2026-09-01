@@ -29,6 +29,7 @@ use smithay::{
         content_type::ContentTypeState,
         cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
+        drm_syncobj::DrmSyncobjState,
         fixes::FixesState,
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         fractional_scale::FractionalScaleManagerState,
@@ -146,8 +147,10 @@ pub struct WaylandState {
     pub xwayland_shell_state: XWaylandShellState,
     pub xwayland_keyboard_grab_state: XWaylandKeyboardGrabState,
     pub wlr_layer_shell_state: WlrLayerShellState,
+    pub loop_handle: LoopHandle<'static, WaylandState>,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
+    pub drm_syncobj_state: Option<DrmSyncobjState>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub image_capture_source_state: ImageCaptureSourceState,
     pub output_capture_source_state: OutputCaptureSourceState,
@@ -575,8 +578,10 @@ impl WaylandState {
             xwayland_shell_state,
             xwayland_keyboard_grab_state,
             wlr_layer_shell_state,
+            loop_handle: handle.clone(),
             dmabuf_state,
             dmabuf_global: None,
+            drm_syncobj_state: None,
             foreign_toplevel_list_state,
             image_capture_source_state,
             output_capture_source_state,
@@ -631,6 +636,17 @@ impl WaylandState {
             cursor_position_hint: None,
             runtime: WaylandRuntimeState::default(),
             command_queue: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn init_drm_syncobj(&mut self, drm_device: smithay::backend::drm::DrmDeviceFd) {
+        if smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&drm_device) {
+            log::info!("Explicit sync (wp_linux_drm_syncobj_v1) is supported and initialized");
+            self.drm_syncobj_state = Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<
+                Self,
+            >(&self.display_handle, drm_device));
+        } else {
+            log::info!("DRM device does not support syncobj eventfd; explicit sync disabled");
         }
     }
 

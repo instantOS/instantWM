@@ -146,16 +146,11 @@ pub fn run() -> ! {
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
-    let (
-        primary_gpu_path,
-        drm_device,
-        drm_notifier,
-        _drm_fd,
-        gbm_device,
-        egl_display,
-        mut renderer,
-    ) = init_gpu(&mut session, &seat_name);
+    let (primary_gpu_path, drm_device, drm_notifier, drm_fd, gbm_device, egl_display, mut renderer) =
+        init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
+
+    state.init_drm_syncobj(drm_fd.clone());
 
     super::bootstrap::attach_gles_renderer_and_protocols(
         &mut state,
