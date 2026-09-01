@@ -11,6 +11,10 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         input_method::{InputMethodHandler, PopupSurface},
+        keyboard_shortcuts_inhibit::{
+            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
+            KeyboardShortcutsInhibitor,
+        },
         output::OutputHandler,
         pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
         seat::WaylandFocus,
@@ -342,9 +346,28 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
-        let win = self.window_id_for_surface(surface)?;
-        let window = self.window_index.get(&win)?;
-        Some(KeyboardFocusTarget::Window(window.clone()))
+        if let Some(win) = self.window_id_for_surface(surface)
+            && let Some(window) = self.window_index.get(&win)
+        {
+            return Some(KeyboardFocusTarget::Window(window.clone()));
+        }
+
+        // Override-redirect X11 windows are intentionally not in window_index,
+        // but their XWayland wl_surface is still a valid keyboard focus target.
+        // The grab itself ensures events remain routed to this surface.
+        Some(KeyboardFocusTarget::WlSurface(surface.clone()))
+    }
+}
+
+impl KeyboardShortcutsInhibitHandler for WaylandState {
+    fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
+        &mut self.keyboard_shortcuts_inhibit_state
+    }
+
+    fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {
+        // Grant requests immediately. Input routing below still scopes the
+        // inhibitor to its associated surface and the seat's current focus.
+        inhibitor.activate();
     }
 }
 

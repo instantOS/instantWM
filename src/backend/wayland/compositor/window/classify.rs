@@ -16,7 +16,7 @@ use crate::backend::wayland::compositor::state::WindowIdMarker;
 pub enum WindowType {
     /// Normal tiled or floating window - receives focus normally
     Normal,
-    /// Overlay window (dmenu, popup, menu) - focus suppresses WM shortcuts
+    /// Overlay window (dmenu, popup, menu) with elevated stacking/focus behavior
     Overlay,
     /// Launcher window (dmenu, instantmenu) - special focus behavior
     Launcher,
@@ -84,14 +84,6 @@ impl WaylandState {
         }
 
         WindowType::Normal
-    }
-
-    /// Check if a window should suppress WM keyboard shortcuts when focused.
-    ///
-    /// Returns true for overlay windows (dmenu, popups, menus) where
-    /// keyboard input should go to the window without triggering keybindings.
-    pub fn should_suppress_shortcuts_for(&self, window: &Window) -> bool {
-        self.classify_window(window).is_overlay()
     }
 
     /// Iterator over windows in z-order (top-to-bottom), along with their type.

@@ -3,6 +3,8 @@
 use smithay::backend::input::{InputBackend, KeyboardKeyEvent};
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
 use smithay::wayland::input_method::InputMethodSeat;
+use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
@@ -10,6 +12,75 @@ use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
 use smithay::utils::SERIAL_COUNTER;
+
+/// Why ordinary WM keybindings are withheld for the current key event.
+///
+/// Emergency VT switching and dismissal of an open compositor-owned menu are
+/// handled separately before ordinary keybinding dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShortcutSuppression {
+    SessionLocked,
+    /// A Smithay grab other than the compositor's input-method grab.
+    KeyboardGrab,
+    /// An active inhibitor whose associated surface currently has focus.
+    SurfaceInhibitor,
+    ExclusiveLayer,
+}
+
+/// Protocol and focus facts used to derive shortcut policy in one place.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ShortcutContext {
+    session_locked: bool,
+    keyboard_grabbed: bool,
+    input_method_grabbed: bool,
+    focused_surface_inhibited: bool,
+    exclusive_layer: bool,
+}
+
+fn select_shortcut_suppression(context: ShortcutContext) -> Option<ShortcutSuppression> {
+    if context.session_locked {
+        Some(ShortcutSuppression::SessionLocked)
+    } else if context.keyboard_grabbed && !context.input_method_grabbed {
+        Some(ShortcutSuppression::KeyboardGrab)
+    } else if context.focused_surface_inhibited {
+        Some(ShortcutSuppression::SurfaceInhibitor)
+    } else if context.exclusive_layer {
+        Some(ShortcutSuppression::ExclusiveLayer)
+    } else {
+        None
+    }
+}
+
+fn shortcut_suppression(
+    state: &WaylandState,
+    keyboard: &KeyboardHandle<WaylandState>,
+) -> Option<ShortcutSuppression> {
+    let focus = keyboard.current_focus();
+    let focused_surface_inhibited = focus
+        .as_ref()
+        .and_then(WaylandFocus::wl_surface)
+        .and_then(|surface| {
+            state
+                .seat
+                .keyboard_shortcuts_inhibitor_for_surface(surface.as_ref())
+        })
+        .is_some_and(|inhibitor| inhibitor.is_active());
+    let exclusive_layer = focus.as_ref().is_some_and(|focus| {
+        let KeyboardFocusTarget::WlSurface(surface) = focus else {
+            return false;
+        };
+        state
+            .layer_keyboard_policy(surface)
+            .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts)
+    });
+    select_shortcut_suppression(ShortcutContext {
+        session_locked: state.is_locked(),
+        keyboard_grabbed: keyboard.is_grabbed(),
+        input_method_grabbed: state.seat.input_method().keyboard_grabbed(),
+        focused_surface_inhibited,
+        exclusive_layer,
+    })
+}
 
 /// Detect if a key event corresponds to a VT switch (Ctrl+Alt+F1..F12 or XF86Switch_VT_1..12).
 pub fn vt_switch_target(
@@ -39,26 +110,7 @@ pub fn handle_keyboard<B: InputBackend>(
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    // When the session is locked, all input must go to the lock surface.
-    let mut wm_shortcuts_allowed = if state.is_locked() {
-        false
-    } else {
-        match keyboard_handle.current_focus() {
-            None => true,
-            Some(KeyboardFocusTarget::Window(ref w)) => {
-                // Use the unified window classifier to determine if shortcuts
-                // should be suppressed. This handles all overlay types consistently.
-                !state.should_suppress_shortcuts_for(w)
-            }
-            // Layer shell surfaces (e.g. rofi, dmenu) that request exclusive keyboard
-            // interactivity must receive all input — suppress WM shortcuts for them.
-            // Non-exclusive surfaces (e.g. the bar) still allow WM shortcuts.
-            Some(KeyboardFocusTarget::WlSurface(ref surface)) => !state
-                .layer_keyboard_policy(surface)
-                .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts),
-            Some(KeyboardFocusTarget::Popup(_)) => false,
-        }
-    };
+    let suppression = shortcut_suppression(state, keyboard_handle);
     let key_code = event.key_code();
     let key_state = event.state();
     keyboard_handle.input(
@@ -78,11 +130,11 @@ pub fn handle_keyboard<B: InputBackend>(
 
             // Emergency VT switching (Ctrl+Alt+F1..F12 or XF86Switch_VT_1..12)
             // This is processed unconditionally before window grabs and shortcut suppression.
-            if let Some(vt) = vt_switch_target(raw_keysym, modifiers) {
-                if data.switch_vt(vt) {
-                    data.runtime.intercepted_key_releases.insert(key_code);
-                    return FilterResult::Intercept(());
-                }
+            if let Some(vt) = vt_switch_target(raw_keysym, modifiers)
+                && data.switch_vt(vt)
+            {
+                data.runtime.intercepted_key_releases.insert(key_code);
+                return FilterResult::Intercept(());
             }
 
             if raw_keysym == crate::config::keysyms::XK_ESCAPE {
@@ -96,7 +148,7 @@ pub fn handle_keyboard<B: InputBackend>(
                     return FilterResult::Intercept(());
                 }
             }
-            if wm_shortcuts_allowed {
+            if suppression.is_none() {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let ctx = wm.ctx();
                 let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
@@ -120,6 +172,85 @@ mod tests {
     use smithay::input::keyboard::ModifiersState;
 
     #[test]
+    fn shortcut_suppression_requires_an_explicit_input_policy() {
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext::default()),
+            None
+        );
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                exclusive_layer: true,
+                ..ShortcutContext::default()
+            }),
+            Some(ShortcutSuppression::ExclusiveLayer)
+        );
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                focused_surface_inhibited: true,
+                ..ShortcutContext::default()
+            }),
+            Some(ShortcutSuppression::SurfaceInhibitor)
+        );
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                keyboard_grabbed: true,
+                ..ShortcutContext::default()
+            }),
+            Some(ShortcutSuppression::KeyboardGrab)
+        );
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                session_locked: true,
+                ..ShortcutContext::default()
+            }),
+            Some(ShortcutSuppression::SessionLocked)
+        );
+    }
+
+    #[test]
+    fn input_method_grab_alone_keeps_compositor_shortcuts_available() {
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                keyboard_grabbed: true,
+                input_method_grabbed: true,
+                ..ShortcutContext::default()
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn security_and_protocol_reasons_have_stable_precedence() {
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                session_locked: true,
+                keyboard_grabbed: true,
+                input_method_grabbed: true,
+                focused_surface_inhibited: true,
+                exclusive_layer: true,
+            }),
+            Some(ShortcutSuppression::SessionLocked)
+        );
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                keyboard_grabbed: true,
+                focused_surface_inhibited: true,
+                exclusive_layer: true,
+                ..ShortcutContext::default()
+            }),
+            Some(ShortcutSuppression::KeyboardGrab)
+        );
+        assert_eq!(
+            select_shortcut_suppression(ShortcutContext {
+                focused_surface_inhibited: true,
+                exclusive_layer: true,
+                ..ShortcutContext::default()
+            }),
+            Some(ShortcutSuppression::SurfaceInhibitor)
+        );
+    }
+
+    #[test]
     fn test_vt_switch_direct_keysyms() {
         let empty_mods = ModifiersState::default();
         assert_eq!(vt_switch_target(XF86XK_SWITCH_VT_1, &empty_mods), Some(1));
@@ -130,9 +261,11 @@ mod tests {
 
     #[test]
     fn test_vt_switch_ctrl_alt_function_keys() {
-        let mut mods = ModifiersState::default();
-        mods.ctrl = true;
-        mods.alt = true;
+        let mods = ModifiersState {
+            ctrl: true,
+            alt: true,
+            ..ModifiersState::default()
+        };
 
         assert_eq!(vt_switch_target(XK_F1, &mods), Some(1));
         assert_eq!(vt_switch_target(XK_F2, &mods), Some(2));
@@ -141,13 +274,17 @@ mod tests {
         assert_eq!(vt_switch_target(XK_F12, &mods), Some(12));
 
         // Missing ctrl
-        let mut no_ctrl = ModifiersState::default();
-        no_ctrl.alt = true;
+        let no_ctrl = ModifiersState {
+            alt: true,
+            ..ModifiersState::default()
+        };
         assert_eq!(vt_switch_target(XK_F3, &no_ctrl), None);
 
         // Missing alt
-        let mut no_alt = ModifiersState::default();
-        no_alt.ctrl = true;
+        let no_alt = ModifiersState {
+            ctrl: true,
+            ..ModifiersState::default()
+        };
         assert_eq!(vt_switch_target(XK_F3, &no_alt), None);
 
         // Different key

@@ -37,6 +37,7 @@ use smithay::{
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
         image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
         input_method::InputMethodManagerState,
+        keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState,
         output::OutputManagerState,
         pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
@@ -157,6 +158,7 @@ pub struct WaylandState {
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
     pub text_input_manager_state: TextInputManagerState,
     pub input_method_manager_state: InputMethodManagerState,
+    pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
@@ -516,6 +518,7 @@ impl WaylandState {
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_manager_state = TextInputManagerState::new::<Self>(&dh);
         let input_method_manager_state = InputMethodManagerState::new::<Self, _>(&dh, |_| true);
+        let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
@@ -574,6 +577,7 @@ impl WaylandState {
             virtual_keyboard_manager_state,
             text_input_manager_state,
             input_method_manager_state,
+            keyboard_shortcuts_inhibit_state,
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,
