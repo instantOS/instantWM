@@ -1,6 +1,5 @@
 //! Frame callbacks and primary-scanout bookkeeping.
 
-use std::collections::HashMap;
 use std::time::Duration;
 
 use smithay::backend::renderer::element::{
@@ -13,7 +12,7 @@ use smithay::desktop::utils::{
 use smithay::input::pointer::CursorImageStatus;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Client, Resource, backend::ClientId};
+use smithay::reexports::wayland_server::{Client, Resource};
 use smithay::wayland::commit_timing::{CommitTimerBarrierStateUserData, Timestamp};
 use smithay::wayland::compositor::CompositorHandler;
 use smithay::wayland::fifo::FifoBarrierCachedState;
@@ -29,32 +28,43 @@ pub fn service_commit_timing(
     output: &Output,
     presentation_target: smithay::utils::Time<smithay::utils::Monotonic>,
 ) -> Option<Timestamp> {
-    let mut clients: HashMap<ClientId, Client> = HashMap::new();
+    let mut clients: Vec<Client> = Vec::new();
     let mut next_deadline: Option<Timestamp> = None;
-    let mut visit = |surface: &WlSurface, states: &smithay::wayland::compositor::SurfaceData| {
-        let Some(mut timers) = states
-            .data_map
-            .get::<CommitTimerBarrierStateUserData>()
-            .map(|timers| timers.lock().unwrap())
-        else {
-            return;
+    let surfaces: Vec<_> = state.commit_timing_surfaces.iter().cloned().collect();
+    for surface in surfaces {
+        let result = smithay::wayland::compositor::with_states(&surface, |states| {
+            if !constraint_matches_output(state, &surface, states, output) {
+                return None;
+            }
+            let mut timers = states
+                .data_map
+                .get::<CommitTimerBarrierStateUserData>()?
+                .lock()
+                .unwrap();
+            Some((
+                timers.signal_until(presentation_target),
+                timers.next_deadline(),
+            ))
+        });
+        let Some((signaled, deadline)) = result else {
+            continue;
         };
-        if timers.signal_until(presentation_target)
-            && let Some(client) = surface.client()
-        {
-            clients.insert(client.id(), client);
+        if deadline.is_none() {
+            // Remove before blocker_cleared: applying the newly unblocked
+            // commit may synchronously register another timed constraint.
+            state.commit_timing_surfaces.remove(&surface);
         }
-        if let Some(deadline) = timers.next_deadline()
+        if signaled && let Some(client) = surface.client() {
+            remember_client(&mut clients, client);
+        }
+        if let Some(deadline) = deadline
             && next_deadline.is_none_or(|current| deadline < current)
         {
             next_deadline = Some(deadline);
         }
-    };
-
-    visit_output_surfaces_with_fallback(state, output, &mut visit);
-    drop(visit);
+    }
     let dh = state.display_handle.clone();
-    for client in clients.into_values() {
+    for client in clients {
         state
             .client_compositor_state(&client)
             .blocker_cleared(state, &dh);
@@ -62,87 +72,58 @@ pub fn service_commit_timing(
     next_deadline
 }
 
-fn visit_output_surfaces(
+fn constraint_matches_output(
     state: &WaylandState,
+    surface: &WlSurface,
+    states: &smithay::wayland::compositor::SurfaceData,
     output: &Output,
-    visit: &mut impl FnMut(&WlSurface, &smithay::wayland::compositor::SurfaceData),
-) {
-    if state.is_locked() {
-        if let Some(lock) = state.lock_surfaces.get(&output.name()) {
-            with_surfaces_surface_tree(lock.wl_surface(), |surface, states| visit(surface, states));
-        }
-    } else {
-        for window in state
-            .space
-            .elements()
-            .filter(|window| window_overlaps_output(state, window, output))
-        {
-            window.with_surfaces(|surface, states| visit(surface, states));
-        }
-    }
-    let map = smithay::desktop::layer_map_for_output(output);
-    for layer in map.layers() {
-        layer.with_surfaces(|surface, states| visit(surface, states));
-    }
-    drop(map);
-    for_each_auxiliary_surface(state, |surface| {
-        smithay::wayland::compositor::with_states(surface, |states| visit(surface, states));
-    });
-}
-
-/// Visit surfaces presented on this output, plus every live surface which was
-/// not reached by any output traversal on the first output. Protocol
-/// constraints can be installed by the commit which creates/maps a surface,
-/// so restricting servicing to already-visible desktop elements creates a
-/// circular dependency: the commit cannot complete until the constraint is
-/// serviced, and the surface cannot become visible until the commit completes.
-fn visit_output_surfaces_with_fallback(
-    state: &WaylandState,
-    output: &Output,
-    visit: &mut impl FnMut(&WlSurface, &smithay::wayland::compositor::SurfaceData),
-) {
-    let mut reached = std::collections::HashSet::new();
-    visit_output_surfaces(state, output, &mut |surface, states| {
-        reached.insert(surface.clone());
-        visit(surface, states);
-    });
-
-    if state.space.outputs().next() == Some(output) {
-        for surface in &state.protocol_surfaces {
-            if !reached.contains(surface) {
-                smithay::wayland::compositor::with_states(surface, |states| visit(surface, states));
-            }
-        }
-    }
+) -> bool {
+    surface_primary_scanout_output(surface, states)
+        .as_ref()
+        .map_or_else(
+            || state.space.outputs().next() == Some(output),
+            |primary| primary == output,
+        )
 }
 
 /// Clear FIFO constraints after an output refresh has accepted the commit
 /// which established them. This unblocks the following queued surface commit.
 pub fn release_fifo_barriers(state: &mut WaylandState, output: &Output) {
-    let mut clients: HashMap<ClientId, Client> = HashMap::new();
-    let mut visit = |surface: &WlSurface, states: &smithay::wayland::compositor::SurfaceData| {
-        if let Some(barrier) = states
-            .cached_state
-            .get::<FifoBarrierCachedState>()
-            .current()
-            .barrier
-            .take()
-        {
-            barrier.signal();
-            if let Some(client) = surface.client() {
-                clients.insert(client.id(), client);
-            }
+    let mut clients: Vec<Client> = Vec::new();
+    let surfaces: Vec<_> = state.fifo_constraint_surfaces.iter().cloned().collect();
+    for surface in surfaces {
+        let barrier = smithay::wayland::compositor::with_states(&surface, |states| {
+            constraint_matches_output(state, &surface, states, output).then(|| {
+                states
+                    .cached_state
+                    .get::<FifoBarrierCachedState>()
+                    .current()
+                    .barrier
+                    .take()
+            })
+        })
+        .flatten();
+        let Some(barrier) = barrier else {
+            continue;
+        };
+        state.fifo_constraint_surfaces.remove(&surface);
+        barrier.signal();
+        if let Some(client) = surface.client() {
+            remember_client(&mut clients, client);
         }
-    };
-
-    visit_output_surfaces_with_fallback(state, output, &mut visit);
-    drop(visit);
+    }
 
     let dh = state.display_handle.clone();
-    for client in clients.into_values() {
+    for client in clients {
         state
             .client_compositor_state(&client)
             .blocker_cleared(state, &dh);
+    }
+}
+
+fn remember_client(clients: &mut Vec<Client>, client: Client) {
+    if !clients.iter().any(|known| known.id() == client.id()) {
+        clients.push(client);
     }
 }
 

@@ -193,12 +193,14 @@ pub fn run_startup_commands(wm: &Wm) {
 
 /// X11 late startup sequence.
 ///
-/// Runs startup commands, binds the IPC socket, and spawns the status bar.
+/// Binds the IPC socket first so startup commands — including `ins autostart`,
+/// which applies the wallpaper through `instantwmctl wallpaper` — can reach
+/// the compositor immediately, then runs them and spawns the status bar.
 /// The StatusNotifier worker starts later, from the calloop event loop, so it
 /// can receive a wake ping; see `backend::x11::events::run`.
 pub fn late_init_x11(wm: &mut Wm) -> Option<crate::ipc::IpcServer> {
-    run_startup_commands(wm);
     let ipc_server = crate::ipc::IpcServer::bind().ok();
+    run_startup_commands(wm);
     spawn_status_bar(wm);
     ipc_server
 }

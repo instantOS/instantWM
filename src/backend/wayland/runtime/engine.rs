@@ -24,6 +24,7 @@ use smithay::utils::{Clock, Monotonic, Time};
 pub(crate) struct PresentationScheduler<K> {
     callbacks: Rc<RefCell<HashMap<K, u64>>>,
     commit_timing: Rc<RefCell<HashMap<K, (u64, Instant)>>>,
+    presentation_phase: Rc<RefCell<HashMap<K, Instant>>>,
     next_generation: Cell<u64>,
 }
 
@@ -32,6 +33,7 @@ impl<K> Default for PresentationScheduler<K> {
         Self {
             callbacks: Rc::new(RefCell::new(HashMap::new())),
             commit_timing: Rc::new(RefCell::new(HashMap::new())),
+            presentation_phase: Rc::new(RefCell::new(HashMap::new())),
             next_generation: Cell::new(0),
         }
     }
@@ -57,7 +59,8 @@ where
         self.callbacks.borrow_mut().insert(key.clone(), generation);
 
         let output = output.clone();
-        let delay = output_frame_callback_delay(&output);
+        let period = output_frame_callback_delay(&output);
+        let delay = self.next_presentation_delay(&key, period, Instant::now());
         let armed_for_timer = Rc::clone(&self.callbacks);
         let timer_key = key.clone();
         if let Err(err) = loop_handle.insert_source(
@@ -95,9 +98,17 @@ where
         self.callbacks.borrow_mut().remove(key);
     }
 
+    /// Record the observed completion phase used to align timer-backed work
+    /// with the output rather than starting a free-running clock at request
+    /// time.
+    pub(crate) fn presentation_completed(&self, key: K, now: Instant) {
+        self.presentation_phase.borrow_mut().insert(key, now);
+    }
+
     pub(crate) fn remove_output(&self, key: &K) {
         self.callbacks.borrow_mut().remove(key);
         self.commit_timing.borrow_mut().remove(key);
+        self.presentation_phase.borrow_mut().remove(key);
     }
 
     /// Service eligible commit timestamps and arm a wakeup one refresh before
@@ -111,7 +122,8 @@ where
     ) {
         let period = output_frame_callback_delay(output);
         let clock = Clock::<Monotonic>::new();
-        let frame_target = clock.now() + period;
+        let presentation_delay = self.next_presentation_delay(&key, period, Instant::now());
+        let frame_target = clock.now() + presentation_delay;
         let Some(deadline) = crate::backend::wayland::render::frame::service_commit_timing(
             state,
             output,
@@ -167,6 +179,13 @@ where
             log::warn!("failed to arm commit-timing wakeup for {key:?}: {err}");
         }
     }
+
+    fn next_presentation_delay(&self, key: &K, period: Duration, now: Instant) -> Duration {
+        self.presentation_phase
+            .borrow()
+            .get(key)
+            .map_or(period, |last| next_phase_delay(*last, now, period))
+    }
 }
 
 fn output_frame_callback_delay(output: &Output) -> Duration {
@@ -187,10 +206,27 @@ fn commit_timing_wake_delay(
     deadline.saturating_sub(now).saturating_sub(refresh_period)
 }
 
+fn next_phase_delay(last: Instant, now: Instant, period: Duration) -> Duration {
+    let elapsed = now.saturating_duration_since(last);
+    let period_nanos = period.as_nanos();
+    if period_nanos == 0 {
+        return Duration::ZERO;
+    }
+    let remainder = Duration::from_nanos(
+        u64::try_from(elapsed.as_nanos() % period_nanos)
+            .expect("a refresh-phase remainder is smaller than one Duration"),
+    );
+    if remainder.is_zero() {
+        period
+    } else {
+        period - remainder
+    }
+}
+
 #[cfg(test)]
 mod presentation_scheduler_tests {
-    use super::commit_timing_wake_delay;
-    use std::time::Duration;
+    use super::{commit_timing_wake_delay, next_phase_delay};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn timed_commit_wakes_one_refresh_before_deadline() {
@@ -216,6 +252,17 @@ mod presentation_scheduler_tests {
                 Duration::ZERO
             );
         }
+    }
+
+    #[test]
+    fn callback_delay_stays_aligned_to_observed_presentation_phase() {
+        let phase = Instant::now();
+        let period = Duration::from_millis(10);
+        assert_eq!(
+            next_phase_delay(phase, phase + Duration::from_millis(24), period),
+            Duration::from_millis(6)
+        );
+        assert_eq!(next_phase_delay(phase, phase, period), period);
     }
 }
 /// Run the shared Wayland tick and convert model changes into one compositor

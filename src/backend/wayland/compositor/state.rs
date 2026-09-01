@@ -155,9 +155,12 @@ pub struct WaylandState {
     pub dmabuf_global: Option<DmabufGlobal>,
     pub drm_syncobj_state: Option<DrmSyncobjState>,
     pub fifo_manager_state: FifoManagerState,
-    /// Every live protocol surface, including surfaces whose first timed
-    /// commit has not become eligible and therefore cannot be mapped yet.
-    pub protocol_surfaces: HashSet<WlSurface>,
+    /// Surfaces with a FIFO barrier that still needs a presentation event.
+    /// Populated from the pre-commit path so blocked first commits are tracked
+    /// before they can enter the desktop surface tree.
+    pub fifo_constraint_surfaces: HashSet<WlSurface>,
+    /// Surfaces with commit-timing barriers that have not all become eligible.
+    pub commit_timing_surfaces: HashSet<WlSurface>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub image_capture_source_state: ImageCaptureSourceState,
     pub output_capture_source_state: OutputCaptureSourceState,
@@ -593,7 +596,8 @@ impl WaylandState {
             dmabuf_global: None,
             drm_syncobj_state: None,
             fifo_manager_state,
-            protocol_surfaces: HashSet::new(),
+            fifo_constraint_surfaces: HashSet::new(),
+            commit_timing_surfaces: HashSet::new(),
             foreign_toplevel_list_state,
             image_capture_source_state,
             output_capture_source_state,

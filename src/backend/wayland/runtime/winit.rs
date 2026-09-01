@@ -4,6 +4,7 @@
 //! Wayland or X11 session.
 
 use std::process::exit;
+use std::time::Instant;
 
 use smithay::backend::input::{AbsolutePositionEvent, Event, InputEvent, TouchEvent};
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -216,6 +217,7 @@ pub fn run() -> ! {
 
             if submitted {
                 presentation_scheduler.presentation_submitted(&());
+                presentation_scheduler.presentation_completed((), Instant::now());
             }
             if (callbacks_requested || render_requested) && !submitted {
                 presentation_scheduler.arm_callbacks(
@@ -231,6 +233,7 @@ pub fn run() -> ! {
             }
         })
         .expect("wayland event loop run");
+    crate::startup::autostart::shutdown_autostart();
     exit(0);
 }
 

@@ -310,6 +310,7 @@ pub fn run() -> ! {
         runtime_event_rx,
     );
 
+    crate::startup::autostart::shutdown_autostart();
     crate::backend::wayland::session::stop_graphical_session_target();
     exit(0);
 }
@@ -508,7 +509,6 @@ fn run_event_loop(
     let loop_signal: LoopSignal = event_loop.get_signal();
     let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
-    let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let render_retry_guard = crate::runtime::AnimationTimerGuard::new();
     let shared_input_dimensions = Rc::clone(input_dimensions);
     let monotonic_clock = Clock::<Monotonic>::new();
@@ -600,9 +600,9 @@ fn run_event_loop(
                 }
             }
 
-            // Resolve cursor animation state so the on-demand timer keeps
-            // animated cursors (e.g. the spinning "wait" cursor) alive
-            // even when the system is otherwise idle.
+            // Resolve cursor animation state. Its first dirty frame starts a
+            // page-flip chain; subsequent vblanks advance it without an
+            // independent compositor timer drifting against scanout.
             let animated = {
                 let presentation = resolve_cursor(
                     &state.cursor_image_status,
@@ -620,12 +620,6 @@ fn run_event_loop(
                     layout_state,
                 );
             }
-
-            // Arm an on-demand animation timer when animations are active.
-            let has_anim = state.has_active_animations() || animated;
-            anim_guard.ensure_armed(has_anim, &loop_handle, move |state| {
-                state.has_active_animations() || state.runtime.cursor_is_animated
-            });
 
             if let Some(keyboard_handle) = state.seat.get_keyboard() {
                 process_cursor_warp(wm, state, &pointer_handle, &keyboard_handle, loop_state);
@@ -676,6 +670,9 @@ fn process_runtime_events(
                 loop_state.mark_all_dirty();
             }
             DrmRuntimeEvent::VBlank(crtc) => {
+                loop_state
+                    .presentation_scheduler
+                    .presentation_completed(crtc, Instant::now());
                 if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
                     let Some(surface) = entry.surface.as_mut() else {
                         loop_state.pending_crtcs.remove(&crtc);

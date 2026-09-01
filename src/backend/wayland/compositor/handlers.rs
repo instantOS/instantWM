@@ -5,11 +5,13 @@ use smithay::{
     reexports::wayland_server::{Client, Resource},
     wayland::{
         buffer::BufferHandler,
+        commit_timing::CommitTimerStateUserData,
         compositor::{
             CompositorHandler, SurfaceAttributes, TraversalAction, get_parent, is_sync_subsurface,
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         drm_syncobj::{DrmSyncobjCachedState, DrmSyncobjHandler},
+        fifo::FifoCachedState,
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         input_method::{InputMethodHandler, PopupSurface},
         keyboard_shortcuts_inhibit::{
@@ -55,13 +57,37 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        self.protocol_surfaces.insert(surface.clone());
         smithay::wayland::compositor::add_destruction_hook::<Self, _>(surface, |state, surface| {
-            state.protocol_surfaces.remove(surface);
+            state.fifo_constraint_surfaces.remove(surface);
+            state.commit_timing_surfaces.remove(surface);
         });
         smithay::wayland::compositor::add_pre_commit_hook::<Self, _>(
             surface,
             move |state, _dh, surface| {
+                // These protocol hooks are installed after the compositor's
+                // new-surface hook. Record intent from their public pending
+                // state before they create blockers, so even a blocked first
+                // commit is indexed without scanning every live surface.
+                let (sets_fifo_barrier, has_commit_timestamp) =
+                    smithay::wayland::compositor::with_states(surface, |surface_data| {
+                        let sets_fifo_barrier = surface_data
+                            .cached_state
+                            .get::<FifoCachedState>()
+                            .pending()
+                            .set_barrier;
+                        let has_commit_timestamp = surface_data
+                            .data_map
+                            .get::<CommitTimerStateUserData>()
+                            .is_some_and(|timer| timer.borrow().timestamp.is_some());
+                        (sets_fifo_barrier, has_commit_timestamp)
+                    });
+                if sets_fifo_barrier {
+                    state.fifo_constraint_surfaces.insert(surface.clone());
+                }
+                if has_commit_timestamp {
+                    state.commit_timing_surfaces.insert(surface.clone());
+                }
+
                 let mut acquire_point = None;
                 let maybe_dmabuf =
                     smithay::wayland::compositor::with_states(surface, |surface_data| {
