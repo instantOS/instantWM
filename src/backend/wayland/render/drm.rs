@@ -16,6 +16,7 @@ use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
+use smithay::backend::renderer::element::utils::select_dmabuf_feedback;
 use smithay::backend::renderer::element::{Element, Id, RenderElement, RenderElementStates};
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::{Bind, Blit, BufferType, Offscreen, Renderer, buffer_type};
@@ -26,10 +27,12 @@ use smithay::desktop::utils::{
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::{self, connector, crtc};
+use smithay::reexports::wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1;
 use std::fmt;
 use std::time::Instant;
 
 use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
+use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
@@ -51,8 +54,8 @@ mod cursor;
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutputManager, OutputHitRegion,
-    OutputSurfaceEntry,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutput, ManagedDrmOutputManager,
+    OutputDmabufFeedback, OutputHitRegion, OutputSurfaceEntry,
 };
 
 pub mod state;
@@ -221,6 +224,13 @@ fn initialize_drm_output_surface(
         .expect("initialize_output");
     let (vrr_support, configured_vrr_mode) =
         configure_drm_output_vrr(state, &spec.name, spec.connector, &surface);
+    let dmabuf_feedback = build_output_dmabuf_feedback(renderer, &surface);
+    if dmabuf_feedback.is_none() {
+        log::warn!(
+            "Output {}: could not build DMA-BUF scanout feedback; clients will receive render-only feedback",
+            spec.name
+        );
+    }
     state.runtime.output_power_modes.insert(
         spec.name.clone(),
         crate::backend::output::OutputPowerMode::On,
@@ -237,6 +247,7 @@ fn initialize_drm_output_surface(
             .map(|mode| (OutputMode::from(mode), mode))
             .collect(),
         output: output.clone(),
+        dmabuf_feedback,
         rect: crate::types::Rect::from_position_and_size(
             crate::types::Point::new(x_offset, 0),
             spec.pixel_size,
@@ -248,6 +259,45 @@ fn initialize_drm_output_surface(
         powered: true,
         pending_power_on: None,
     }
+}
+
+pub(crate) fn build_output_dmabuf_feedback(
+    renderer: &GlesRenderer,
+    output: &ManagedDrmOutput,
+) -> Option<OutputDmabufFeedback> {
+    use smithay::backend::allocator::format::FormatSet;
+    use smithay::backend::egl::EGLDevice;
+
+    let render_node = EGLDevice::device_for_display(renderer.egl_context().display())
+        .ok()?
+        .try_get_render_node()
+        .ok()??;
+    let render_formats = renderer.dmabuf_formats();
+    let scanout_formats: FormatSet = output.with_compositor(|compositor| {
+        compositor
+            .surface()
+            .plane_info()
+            .formats
+            .intersection(&render_formats)
+            .copied()
+            .collect()
+    });
+    let scanout_device = output
+        .with_compositor(|compositor| compositor.surface().device_fd().dev_id())
+        .ok()?;
+
+    let builder = DmabufFeedbackBuilder::new(render_node.dev_id(), render_formats.clone());
+    let render = builder.clone().build().ok()?;
+    let scanout = builder
+        .add_preference_tranche(
+            scanout_device,
+            zwp_linux_dmabuf_feedback_v1::TrancheFlags::Scanout,
+            scanout_formats,
+            4u32..=6,
+        )
+        .build()
+        .ok()?;
+    Some(OutputDmabufFeedback { render, scanout })
 }
 
 fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offset: i32) -> Output {
@@ -281,7 +331,7 @@ fn configure_drm_output_vrr(
     let configured_vrr_mode = state
         .output_vrr_metadata(output_name)
         .map(|m| m.vrr_mode)
-        .unwrap_or(VrrMode::Auto);
+        .unwrap_or_default();
     state.set_output_vrr_mode(output_name, configured_vrr_mode);
     state.set_output_vrr_enabled(output_name, false);
     log::info!("Output {output_name}: VRR support = {:?}", vrr_support);
@@ -411,6 +461,7 @@ pub fn render_drm_output(
     }
 
     update_primary_scanout_output(state, &entry.output, &frame_result.states);
+    send_output_dmabuf_feedback(state, entry, &frame_result.states);
 
     let frame_metadata = DrmFrameMetadata {
         presentation_feedback: collect_presentation_feedback(state, entry, &frame_result.states),
@@ -432,8 +483,49 @@ pub fn render_drm_output(
         }
     }
 
+    crate::backend::wayland::render::frame::release_fifo_barriers(state, &entry.output);
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
     RenderOutcome::Submitted
+}
+
+fn send_output_dmabuf_feedback(
+    state: &WaylandState,
+    entry: &OutputSurfaceEntry,
+    render_states: &RenderElementStates,
+) {
+    let Some(feedback) = entry.dmabuf_feedback.as_ref() else {
+        return;
+    };
+    if !state.is_locked() {
+        for window in state
+            .space
+            .elements()
+            .filter(|window| window_overlaps_output(state, window, &entry.output))
+        {
+            window.send_dmabuf_feedback(
+                &entry.output,
+                surface_primary_scanout_output,
+                |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_states,
+                        &feedback.render,
+                        &feedback.scanout,
+                    )
+                },
+            );
+        }
+    }
+    let map = smithay::desktop::layer_map_for_output(&entry.output);
+    for layer in map.layers() {
+        layer.send_dmabuf_feedback(
+            &entry.output,
+            surface_primary_scanout_output,
+            |surface, _| {
+                select_dmabuf_feedback(surface, render_states, &feedback.render, &feedback.scanout)
+            },
+        );
+    }
 }
 
 fn build_drm_cursor_elements(

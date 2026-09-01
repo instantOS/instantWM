@@ -14,46 +14,51 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
+use smithay::utils::{Clock, Monotonic, Time};
 
-/// Coalesces callback-only surface commits and delivers them at output refresh
-/// cadence without forcing either rendering backend to submit an empty frame.
+/// Per-output presentation wakeups shared by nested and DRM runtimes.
+///
+/// Callback-only commits and client commit-timing deadlines use independent
+/// generations, while sharing refresh prediction and the compositor clock.
 #[derive(Debug)]
-pub(crate) struct FrameCallbackTimerGuard<K> {
-    armed: Rc<RefCell<HashMap<K, u64>>>,
+pub(crate) struct PresentationScheduler<K> {
+    callbacks: Rc<RefCell<HashMap<K, u64>>>,
+    commit_timing: Rc<RefCell<HashMap<K, (u64, Instant)>>>,
     next_generation: Cell<u64>,
 }
 
-impl<K> Default for FrameCallbackTimerGuard<K> {
+impl<K> Default for PresentationScheduler<K> {
     fn default() -> Self {
         Self {
-            armed: Rc::new(RefCell::new(HashMap::new())),
+            callbacks: Rc::new(RefCell::new(HashMap::new())),
+            commit_timing: Rc::new(RefCell::new(HashMap::new())),
             next_generation: Cell::new(0),
         }
     }
 }
 
-impl<K> FrameCallbackTimerGuard<K>
+impl<K> PresentationScheduler<K>
 where
     K: Clone + Debug + Eq + Hash + 'static,
 {
-    pub(crate) fn arm(
+    pub(crate) fn arm_callbacks(
         &self,
         key: K,
         loop_handle: &LoopHandle<'_, WaylandState>,
         output: &Output,
         start_time: Instant,
     ) {
-        if self.armed.borrow().contains_key(&key) {
+        if self.callbacks.borrow().contains_key(&key) {
             return;
         }
 
         let generation = self.next_generation.get().wrapping_add(1);
         self.next_generation.set(generation);
-        self.armed.borrow_mut().insert(key.clone(), generation);
+        self.callbacks.borrow_mut().insert(key.clone(), generation);
 
         let output = output.clone();
         let delay = output_frame_callback_delay(&output);
-        let armed_for_timer = Rc::clone(&self.armed);
+        let armed_for_timer = Rc::clone(&self.callbacks);
         let timer_key = key.clone();
         if let Err(err) = loop_handle.insert_source(
             smithay::reexports::calloop::timer::Timer::from_duration(delay),
@@ -64,6 +69,7 @@ where
                     .is_some_and(|current| *current == generation);
                 if is_current {
                     armed_for_timer.borrow_mut().remove(&timer_key);
+                    crate::backend::wayland::render::frame::release_fifo_barriers(state, &output);
                     crate::backend::wayland::render::frame::send_frame_callbacks(
                         state,
                         &output,
@@ -74,19 +80,92 @@ where
             },
         ) {
             let is_current = self
-                .armed
+                .callbacks
                 .borrow()
                 .get(&key)
                 .is_some_and(|current| *current == generation);
             if is_current {
-                self.armed.borrow_mut().remove(&key);
+                self.callbacks.borrow_mut().remove(&key);
             }
             log::warn!("failed to arm frame-callback timer for {key:?}: {err}");
         }
     }
 
-    pub(crate) fn disarm(&self, key: &K) {
-        self.armed.borrow_mut().remove(key);
+    pub(crate) fn presentation_submitted(&self, key: &K) {
+        self.callbacks.borrow_mut().remove(key);
+    }
+
+    pub(crate) fn remove_output(&self, key: &K) {
+        self.callbacks.borrow_mut().remove(key);
+        self.commit_timing.borrow_mut().remove(key);
+    }
+
+    /// Service eligible commit timestamps and arm a wakeup one refresh before
+    /// the earliest remaining deadline so rendering can target that refresh.
+    pub(crate) fn schedule_commit_timing(
+        &self,
+        key: K,
+        loop_handle: &LoopHandle<'_, WaylandState>,
+        state: &mut WaylandState,
+        output: &Output,
+    ) {
+        let period = output_frame_callback_delay(output);
+        let clock = Clock::<Monotonic>::new();
+        let frame_target = clock.now() + period;
+        let Some(deadline) = crate::backend::wayland::render::frame::service_commit_timing(
+            state,
+            output,
+            frame_target,
+        ) else {
+            self.commit_timing.borrow_mut().remove(&key);
+            return;
+        };
+        let deadline: Time<Monotonic> = deadline.into();
+        let delay = commit_timing_wake_delay(
+            Duration::from(deadline),
+            Duration::from(clock.now()),
+            period,
+        );
+        let wake_at = Instant::now() + delay;
+        if self
+            .commit_timing
+            .borrow()
+            .get(&key)
+            .is_some_and(|(_, current)| *current <= wake_at)
+        {
+            return;
+        }
+
+        let generation = self.next_generation.get().wrapping_add(1);
+        self.next_generation.set(generation);
+        self.commit_timing
+            .borrow_mut()
+            .insert(key.clone(), (generation, wake_at));
+        let scheduled = Rc::clone(&self.commit_timing);
+        let timer_key = key.clone();
+        let output = output.clone();
+        if let Err(err) = loop_handle.insert_source(
+            smithay::reexports::calloop::timer::Timer::from_duration(delay),
+            move |_, _, state| {
+                let is_current = scheduled
+                    .borrow()
+                    .get(&timer_key)
+                    .is_some_and(|(current, _)| *current == generation);
+                if is_current {
+                    scheduled.borrow_mut().remove(&timer_key);
+                    let clock = Clock::<Monotonic>::new();
+                    let target = clock.now() + output_frame_callback_delay(&output);
+                    crate::backend::wayland::render::frame::service_commit_timing(
+                        state, &output, target,
+                    );
+                    state.request_output_render(&output);
+                }
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            },
+        ) {
+            self.commit_timing.borrow_mut().remove(&key);
+            log::warn!("failed to arm commit-timing wakeup for {key:?}: {err}");
+        }
     }
 }
 
@@ -98,6 +177,46 @@ fn output_frame_callback_delay(output: &Output) -> Duration {
             (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
         })
         .unwrap_or_else(|| Duration::from_millis(16))
+}
+
+fn commit_timing_wake_delay(
+    deadline: Duration,
+    now: Duration,
+    refresh_period: Duration,
+) -> Duration {
+    deadline.saturating_sub(now).saturating_sub(refresh_period)
+}
+
+#[cfg(test)]
+mod presentation_scheduler_tests {
+    use super::commit_timing_wake_delay;
+    use std::time::Duration;
+
+    #[test]
+    fn timed_commit_wakes_one_refresh_before_deadline() {
+        assert_eq!(
+            commit_timing_wake_delay(
+                Duration::from_millis(100),
+                Duration::from_millis(20),
+                Duration::from_millis(16),
+            ),
+            Duration::from_millis(64)
+        );
+    }
+
+    #[test]
+    fn imminent_and_stale_deadlines_wake_immediately() {
+        for deadline in [10, 20, 25] {
+            assert_eq!(
+                commit_timing_wake_delay(
+                    Duration::from_millis(deadline),
+                    Duration::from_millis(20),
+                    Duration::from_millis(16),
+                ),
+                Duration::ZERO
+            );
+        }
+    }
 }
 /// Run the shared Wayland tick and convert model changes into one compositor
 /// redraw request. DRM and winit then consume that request using their own

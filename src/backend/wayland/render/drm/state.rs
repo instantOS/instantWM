@@ -7,6 +7,7 @@ use smithay::backend::drm::output::{DrmOutput, DrmOutputManager};
 use smithay::output::Mode as OutputMode;
 use smithay::output::Output;
 use smithay::reexports::drm::control::{self, connector, crtc};
+use smithay::wayland::dmabuf::DmabufFeedback;
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::OutputPowerRequestId;
@@ -20,6 +21,12 @@ pub type ManagedDrmOutput =
     DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>;
 pub type ManagedDrmOutputManager =
     DrmOutputManager<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>;
+
+#[derive(Clone)]
+pub struct OutputDmabufFeedback {
+    pub render: DmabufFeedback,
+    pub scanout: DmabufFeedback,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct OutputHitRegion {
@@ -36,6 +43,7 @@ pub struct OutputSurfaceEntry {
     pub connector: connector::Handle,
     pub modes: Vec<(OutputMode, control::Mode)>,
     pub output: Output,
+    pub dmabuf_feedback: Option<OutputDmabufFeedback>,
     pub rect: crate::types::Rect,
     pub vrr_support: BackendVrrSupport,
     pub configured_vrr_mode: VrrMode,

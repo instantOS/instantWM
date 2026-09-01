@@ -125,7 +125,7 @@ pub fn run() -> ! {
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let animation_interval = crate::runtime::animation_frame_interval(host_refresh_millihertz);
     let loop_handle_for_timer = event_loop.handle();
-    let frame_callback_timers = super::engine::FrameCallbackTimerGuard::<()>::default();
+    let presentation_scheduler = super::engine::PresentationScheduler::<()>::default();
     let mut scene_cache = SceneCache::default();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
@@ -155,6 +155,12 @@ pub fn run() -> ! {
             wm.work.input_config = false;
 
             super::engine::process_animations_and_request_render(state);
+            presentation_scheduler.schedule_commit_timing(
+                (),
+                &loop_handle_for_timer,
+                state,
+                &output,
+            );
 
             // The async bar renderer wakes us with a bare render ping after a
             // result is ready.  While the bar is dirty, consume that wakeup by
@@ -209,10 +215,15 @@ pub fn run() -> ! {
                 );
 
             if submitted {
-                frame_callback_timers.disarm(&());
+                presentation_scheduler.presentation_submitted(&());
             }
             if (callbacks_requested || render_requested) && !submitted {
-                frame_callback_timers.arm((), &loop_handle_for_timer, &output, start_time);
+                presentation_scheduler.arm_callbacks(
+                    (),
+                    &loop_handle_for_timer,
+                    &output,
+                    start_time,
+                );
             }
 
             if state.display_handle.flush_clients().is_err() {

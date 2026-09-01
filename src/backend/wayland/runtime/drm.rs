@@ -53,7 +53,7 @@ struct DrmLoopState {
     render_flags: HashMap<crtc::Handle, bool>,
     taken_render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
-    frame_callback_timers: super::engine::FrameCallbackTimerGuard<crtc::Handle>,
+    presentation_scheduler: super::engine::PresentationScheduler<crtc::Handle>,
     presentation_seq: HashMap<crtc::Handle, u64>,
     last_bar_update_seq: u64,
     scene_cache: SceneCache,
@@ -70,7 +70,7 @@ impl DrmLoopState {
             render_flags,
             taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
-            frame_callback_timers: super::engine::FrameCallbackTimerGuard::default(),
+            presentation_scheduler: super::engine::PresentationScheduler::default(),
             presentation_seq: output_surfaces
                 .iter()
                 .map(|entry| (entry.crtc, 0))
@@ -529,6 +529,17 @@ fn run_event_loop(
                 output_surfaces,
                 start_time,
             );
+            for entry in output_surfaces
+                .iter()
+                .filter(|entry| entry.enabled && entry.powered)
+            {
+                loop_state.presentation_scheduler.schedule_commit_timing(
+                    entry.crtc,
+                    &loop_handle,
+                    state,
+                    &entry.output,
+                );
+            }
             super::engine::event_loop_tick_and_request_render(wm, state, ipc_server);
             process_output_configurations(
                 state,
@@ -750,7 +761,7 @@ fn process_frame_callback_requests(
             PendingRenderTargets::Outputs(outputs) => outputs.contains(&entry.output.name()),
         };
         if targeted {
-            loop_state.frame_callback_timers.arm(
+            loop_state.presentation_scheduler.arm_callbacks(
                 entry.crtc,
                 loop_handle,
                 &entry.output,
@@ -849,7 +860,9 @@ fn render_outputs(
                             Ok(OutputPowerMode::On),
                         );
                     }
-                    loop_state.frame_callback_timers.disarm(&entry.crtc);
+                    loop_state
+                        .presentation_scheduler
+                        .presentation_submitted(&entry.crtc);
                     loop_state.pending_crtcs.insert(entry.crtc);
                     if let Some(failed_frames) = render_failures.remove(&entry.crtc)
                         && failed_frames >= 3
@@ -861,7 +874,7 @@ fn render_outputs(
                     }
                 }
                 RenderOutcome::EmptyFrame => {
-                    loop_state.frame_callback_timers.arm(
+                    loop_state.presentation_scheduler.arm_callbacks(
                         entry.crtc,
                         loop_handle,
                         &entry.output,

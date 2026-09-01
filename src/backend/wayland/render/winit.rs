@@ -156,6 +156,7 @@ pub fn render_frame(
 
     if submitted {
         // Shared: frame callbacks follow a buffer submitted for presentation.
+        crate::backend::wayland::render::frame::release_fifo_barriers(state, output);
         send_frame_callbacks(state, output, start_time.elapsed());
     }
     submitted

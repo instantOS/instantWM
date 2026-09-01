@@ -25,11 +25,13 @@ use smithay::{
     utils::{Logical, Point},
     wayland::{
         alpha_modifier::AlphaModifierState,
+        commit_timing::CommitTimingManagerState,
         compositor::CompositorState,
         content_type::ContentTypeState,
         cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         drm_syncobj::DrmSyncobjState,
+        fifo::FifoManagerState,
         fixes::FixesState,
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         fractional_scale::FractionalScaleManagerState,
@@ -128,6 +130,7 @@ pub struct WaylandState {
     pub alpha_modifier_state: AlphaModifierState,
     pub compositor_state: CompositorState,
     pub content_type_state: ContentTypeState,
+    pub commit_timing_manager_state: CommitTimingManagerState,
     pub cursor_shape_manager_state: CursorShapeManagerState,
     pub fixes_state: FixesState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
@@ -151,6 +154,10 @@ pub struct WaylandState {
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub drm_syncobj_state: Option<DrmSyncobjState>,
+    pub fifo_manager_state: FifoManagerState,
+    /// Every live protocol surface, including surfaces whose first timed
+    /// commit has not become eligible and therefore cannot be mapped yet.
+    pub protocol_surfaces: HashSet<WlSurface>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub image_capture_source_state: ImageCaptureSourceState,
     pub output_capture_source_state: OutputCaptureSourceState,
@@ -499,6 +506,7 @@ impl WaylandState {
         let alpha_modifier_state = AlphaModifierState::new::<Self>(&dh);
         let compositor_state = CompositorState::new::<Self>(&dh);
         let content_type_state = ContentTypeState::new::<Self>(&dh);
+        let commit_timing_manager_state = CommitTimingManagerState::new::<Self>(&dh);
         let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
         let fixes_state = FixesState::new::<Self>(&dh);
         let fractional_scale_manager_state = FractionalScaleManagerState::new::<Self>(&dh);
@@ -518,6 +526,7 @@ impl WaylandState {
         let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
+        let fifo_manager_state = FifoManagerState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
         let image_capture_source_state = ImageCaptureSourceState::new();
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
@@ -559,6 +568,7 @@ impl WaylandState {
             alpha_modifier_state,
             compositor_state,
             content_type_state,
+            commit_timing_manager_state,
             cursor_shape_manager_state,
             fixes_state,
             fractional_scale_manager_state,
@@ -582,6 +592,8 @@ impl WaylandState {
             dmabuf_state,
             dmabuf_global: None,
             drm_syncobj_state: None,
+            fifo_manager_state,
+            protocol_surfaces: HashSet::new(),
             foreign_toplevel_list_state,
             image_capture_source_state,
             output_capture_source_state,
@@ -1019,7 +1031,7 @@ impl WaylandState {
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
                 vrr_support: support,
-                vrr_mode: VrrMode::Auto,
+                vrr_mode: VrrMode::default(),
                 vrr_enabled: false,
             });
         entry.vrr_support = support;
@@ -1059,7 +1071,7 @@ impl WaylandState {
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
-                vrr_mode: VrrMode::Auto,
+                vrr_mode: VrrMode::default(),
                 vrr_enabled: enabled,
             });
         let changed = entry.vrr_enabled != enabled;
@@ -1145,6 +1157,13 @@ impl WaylandState {
 #[cfg(test)]
 mod render_target_tests {
     use super::PendingRenderTargets;
+
+    #[test]
+    fn presentation_constraints_are_compositor_managed() {
+        let (_event_loop, state) = crate::backend::wayland::compositor::new_event_loop_and_state();
+        assert!(state.fifo_manager_state.is_managed());
+        assert!(state.commit_timing_manager_state.is_managed());
+    }
 
     #[test]
     fn output_invalidations_accumulate_without_becoming_global() {

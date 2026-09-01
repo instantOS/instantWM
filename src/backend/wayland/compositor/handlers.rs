@@ -55,6 +55,10 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
+        self.protocol_surfaces.insert(surface.clone());
+        smithay::wayland::compositor::add_destruction_hook::<Self, _>(surface, |state, surface| {
+            state.protocol_surfaces.remove(surface);
+        });
         smithay::wayland::compositor::add_pre_commit_hook::<Self, _>(
             surface,
             move |state, _dh, surface| {
@@ -266,14 +270,34 @@ fn surface_commit_render_service(
     smithay::wayland::compositor::with_states(surface, |states| {
         let mut guard = states.cached_state.get::<SurfaceAttributes>();
         let attrs = guard.current();
-        if attrs.buffer.is_some() || attrs.buffer_delta.is_some() || !attrs.damage.is_empty() {
-            SurfaceCommitService::Render
-        } else if !attrs.frame_callbacks.is_empty() {
-            SurfaceCommitService::FrameCallbacks
-        } else {
-            SurfaceCommitService::None
-        }
+        classify_surface_commit(
+            attrs.buffer.is_some() || attrs.buffer_delta.is_some() || !attrs.damage.is_empty(),
+            !attrs.frame_callbacks.is_empty(),
+            states
+                .cached_state
+                .get::<smithay::wayland::fifo::FifoBarrierCachedState>()
+                .current()
+                .barrier
+                .is_some(),
+        )
     })
+}
+
+fn classify_surface_commit(
+    has_pixels: bool,
+    has_frame_callbacks: bool,
+    has_fifo_barrier: bool,
+) -> SurfaceCommitService {
+    if has_pixels {
+        SurfaceCommitService::Render
+    } else if has_frame_callbacks || has_fifo_barrier {
+        // A FIFO set_barrier commit needs a real output refresh deadline even
+        // when it changes no pixels and requests no wl_surface.frame.
+        // Otherwise the following wait_barrier commit can never progress.
+        SurfaceCommitService::FrameCallbacks
+    } else {
+        SurfaceCommitService::None
+    }
 }
 
 fn service_surface_commit(
@@ -751,6 +775,30 @@ crate::delegate_foreign_toplevel_management!(WaylandState);
 mod tests {
     use super::*;
     use smithay::utils::Point;
+
+    #[test]
+    fn fifo_only_commit_requests_a_refresh() {
+        assert_eq!(
+            classify_surface_commit(false, false, true),
+            SurfaceCommitService::FrameCallbacks
+        );
+    }
+
+    #[test]
+    fn pixel_changes_take_precedence_over_protocol_only_work() {
+        assert_eq!(
+            classify_surface_commit(true, true, true),
+            SurfaceCommitService::Render
+        );
+    }
+
+    #[test]
+    fn empty_commit_does_not_schedule_work() {
+        assert_eq!(
+            classify_surface_commit(false, false, false),
+            SurfaceCommitService::None
+        );
+    }
 
     #[test]
     fn remove_constraint_applies_matching_cursor_position_hint() {
