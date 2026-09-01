@@ -17,6 +17,7 @@ use smithay::{
         },
         output::OutputHandler,
         pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
+        pointer_warp::PointerWarpHandler,
         seat::WaylandFocus,
         shm::ShmHandler,
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
@@ -514,6 +515,24 @@ impl PointerConstraintsHandler for WaylandState {
                 }
             } else {
                 self.cursor_position_hint = Some((hint_surface, hint_location));
+            }
+        }
+    }
+}
+
+impl PointerWarpHandler for WaylandState {
+    fn warp_pointer(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        _pointer: smithay::reexports::wayland_server::protocol::wl_pointer::WlPointer,
+        pos: smithay::utils::Point<f64, smithay::utils::Logical>,
+        _serial: smithay::utils::Serial,
+    ) {
+        if let Some(origin) = self.pointer_constraint_surface_origin(&surface) {
+            let target = origin + pos;
+            if let Some(pointer) = self.seat.get_pointer() {
+                pointer.set_location(target);
+                self.runtime.pointer_location = target;
             }
         }
     }

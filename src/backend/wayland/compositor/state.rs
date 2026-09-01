@@ -41,6 +41,7 @@ use smithay::{
         output::OutputManagerState,
         pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
+        pointer_warp::PointerWarpManager,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         selection::{
@@ -152,6 +153,7 @@ pub struct WaylandState {
     pub image_copy_capture_state: ImageCopyCaptureState,
     pub pointer_gestures_state: PointerGesturesState,
     pub pointer_constraints_state: PointerConstraintsState,
+    pub pointer_warp_manager: PointerWarpManager,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
     pub viewporter_state: ViewporterState,
@@ -517,6 +519,7 @@ impl WaylandState {
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
+        let pointer_warp_manager = PointerWarpManager::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
@@ -577,6 +580,7 @@ impl WaylandState {
             image_copy_capture_state,
             pointer_gestures_state,
             pointer_constraints_state,
+            pointer_warp_manager,
             relative_pointer_manager_state,
             single_pixel_buffer_state,
             viewporter_state,
