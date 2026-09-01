@@ -1,6 +1,6 @@
 [package]
 name = "instantwm"
-version = "0.1.23"
+version = "0.1.24"
 edition = "2024"
 description = "Hybrid tiling window manager for X11 and Wayland"
 license = "MIT"
