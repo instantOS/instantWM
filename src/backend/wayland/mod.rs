@@ -61,6 +61,7 @@ pub mod commands;
 pub mod compositor;
 pub mod init;
 pub mod input;
+pub(crate) mod output;
 pub mod render;
 pub mod runtime;
 pub mod session;

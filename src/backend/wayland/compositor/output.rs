@@ -14,6 +14,7 @@ use crate::backend::output::{
     OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction, OutputTransactionKind,
     OutputTransform,
 };
+use crate::backend::wayland::output::{from_smithay_transform, to_smithay_transform};
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
 
@@ -21,46 +22,6 @@ use super::protocols::output_management::OutputManagementOutputState;
 use super::state::WaylandState;
 
 struct OutputGlobal(Mutex<Option<GlobalId>>);
-
-fn parse_transform(transform_str: &str) -> Option<Transform> {
-    match transform_str.to_lowercase().as_str() {
-        "normal" => Some(Transform::Normal),
-        "90" => Some(Transform::_90),
-        "180" => Some(Transform::_180),
-        "270" => Some(Transform::_270),
-        "flipped" => Some(Transform::Flipped),
-        "flipped-90" | "flipped90" => Some(Transform::Flipped90),
-        "flipped-180" | "flipped180" => Some(Transform::Flipped180),
-        "flipped-270" | "flipped270" => Some(Transform::Flipped270),
-        _ => None,
-    }
-}
-
-fn smithay_transform(transform: OutputTransform) -> Transform {
-    match transform {
-        OutputTransform::Normal => Transform::Normal,
-        OutputTransform::Rotate90 => Transform::_90,
-        OutputTransform::Rotate180 => Transform::_180,
-        OutputTransform::Rotate270 => Transform::_270,
-        OutputTransform::Flipped => Transform::Flipped,
-        OutputTransform::Flipped90 => Transform::Flipped90,
-        OutputTransform::Flipped180 => Transform::Flipped180,
-        OutputTransform::Flipped270 => Transform::Flipped270,
-    }
-}
-
-fn transaction_transform(transform: Transform) -> OutputTransform {
-    match transform {
-        Transform::Normal => OutputTransform::Normal,
-        Transform::_90 => OutputTransform::Rotate90,
-        Transform::_180 => OutputTransform::Rotate180,
-        Transform::_270 => OutputTransform::Rotate270,
-        Transform::Flipped => OutputTransform::Flipped,
-        Transform::Flipped90 => OutputTransform::Flipped90,
-        Transform::Flipped180 => OutputTransform::Flipped180,
-        Transform::Flipped270 => OutputTransform::Flipped270,
-    }
-}
 
 fn smithay_mode(mode: TransactionOutputMode) -> OutputMode {
     OutputMode {
@@ -164,7 +125,7 @@ impl WaylandState {
                 let location = (config.position.x, config.position.y).into();
                 output.change_current_state(
                     config.mode.map(smithay_mode),
-                    Some(smithay_transform(config.transform)),
+                    Some(to_smithay_transform(config.transform)),
                     Some(Scale::Fractional(config.scale)),
                     Some(location),
                 );
@@ -234,7 +195,7 @@ impl WaylandState {
                         refresh_millihertz: mode.refresh,
                     }),
                     position: Point::new(output.current_location().x, output.current_location().y),
-                    transform: transaction_transform(output.current_transform()),
+                    transform: from_smithay_transform(output.current_transform()),
                     scale: output.current_scale().fractional_scale(),
                     adaptive_sync: Some(match vrr_mode {
                         VrrMode::Off => AdaptiveSyncPolicy::Disabled,
@@ -432,8 +393,12 @@ impl WaylandState {
                 head.enabled = enable;
             }
 
-            if let Some(transform) = config.transform.as_ref().and_then(|t| parse_transform(t)) {
-                head.transform = transaction_transform(transform);
+            if let Some(transform) = config
+                .transform
+                .as_ref()
+                .and_then(|t| OutputTransform::parse(t))
+            {
+                head.transform = transform;
             }
 
             if let Some(ref pos) = config.position

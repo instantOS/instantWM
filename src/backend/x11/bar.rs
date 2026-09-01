@@ -19,6 +19,28 @@ pub fn update_status(
     draw_bar(core, x11_runtime, selmon_idx);
 }
 
+fn paint_bar_snapshot(
+    core: &mut CoreCtx,
+    x11_runtime: &mut X11RuntimeConfig,
+    monitor_id: MonitorId,
+    snapshot: &crate::bar::scene::MonitorBarSnapshot,
+    bar_win: WindowId,
+) {
+    let work_rect_w = snapshot.rect.w;
+    let bar_height = snapshot.rect.h;
+    if work_rect_w <= 0 || bar_height <= 0 {
+        return;
+    }
+    let drw = match x11_runtime.draw.as_mut() {
+        Some(drw) if drw.has_display() => drw,
+        _ => return,
+    };
+    drw.resize(work_rect_w as u32, bar_height as u32);
+    let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
+    crate::bar::renderer::draw_bar_snapshot(core, monitor_id, snapshot, &mut painter);
+    painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
+}
+
 pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx: MonitorId) {
     let Some(monitor) = core.model().monitor(mon_idx).cloned() else {
         return;
@@ -38,27 +60,7 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
     else {
         return;
     };
-    let work_rect_w = snapshot.rect.w;
-    let bar_height = snapshot.rect.h;
-    if work_rect_w <= 0 || bar_height <= 0 {
-        return;
-    }
-
-    let drw = {
-        let Some(drw) = x11_runtime.draw.as_mut() else {
-            return;
-        };
-        if !drw.has_display() {
-            return;
-        }
-        drw.resize(work_rect_w as u32, bar_height as u32);
-        drw
-    };
-
-    let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
-    crate::bar::renderer::draw_bar_snapshot(core, mon_idx, snapshot, &mut painter);
-
-    painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
+    paint_bar_snapshot(core, x11_runtime, mon_idx, snapshot, bar_win);
 }
 
 pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
@@ -74,37 +76,17 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
             .map(|snapshot| (snapshot.monitor_id, snapshot))
             .collect();
 
-    for i in monitor_ids {
-        let Some(bar_win) = core.model().monitor(i).map(|monitor| monitor.bar_win) else {
+    for monitor_id in monitor_ids {
+        let Some(bar_win) = core.model().monitor(monitor_id).map(|m| m.bar_win) else {
             continue;
         };
         if bar_win == WindowId::default() {
             continue;
         }
-
-        let Some(snapshot) = snapshot_by_monitor_id.get(&i).copied() else {
+        let Some(snapshot) = snapshot_by_monitor_id.get(&monitor_id).copied() else {
             continue;
         };
-        let work_rect_w = snapshot.rect.w;
-        let bar_height = snapshot.rect.h;
-        if work_rect_w <= 0 || bar_height <= 0 {
-            continue;
-        }
-
-        let drw = {
-            let Some(drw) = x11_runtime.draw.as_mut() else {
-                continue;
-            };
-            if !drw.has_display() {
-                continue;
-            }
-            drw.resize(work_rect_w as u32, bar_height as u32);
-            drw
-        };
-
-        let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
-        crate::bar::renderer::draw_bar_snapshot(core, i, snapshot, &mut painter);
-        painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
+        paint_bar_snapshot(core, x11_runtime, monitor_id, snapshot, bar_win);
     }
     core.bar.mark_drawn();
 }

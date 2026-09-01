@@ -330,6 +330,7 @@ pub struct WaylandRuntimeState {
     /// supports DPMS. Absence means the output cannot be power-managed.
     pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
     pub intercepted_key_releases: HashSet<Keycode>,
+    pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
 }
 
 impl Default for WaylandRuntimeState {
@@ -361,6 +362,7 @@ impl Default for WaylandRuntimeState {
             output_power: crate::backend::output::OutputPowerService::default(),
             output_power_modes: HashMap::new(),
             intercepted_key_releases: HashSet::new(),
+            session: None,
         }
     }
 }
@@ -1087,6 +1089,21 @@ impl WaylandState {
     /// Notify the idle manager of user activity.
     pub fn notify_activity(&mut self) {
         self.idle_notify_manager_state.notify_activity(&self.seat);
+    }
+
+    /// Switch to a Linux virtual terminal (TTY) if running on a DRM session.
+    pub fn switch_vt(&mut self, vt: i32) -> bool {
+        if let Some(session) = self.runtime.session.as_mut() {
+            log::info!("Switching to VT {vt}");
+            if let Err(err) = smithay::backend::session::Session::change_vt(session, vt) {
+                log::error!("Failed to switch to VT {vt}: {err}");
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        }
     }
 }
 

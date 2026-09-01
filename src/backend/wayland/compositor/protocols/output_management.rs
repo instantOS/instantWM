@@ -30,8 +30,9 @@ use smithay::utils::{Logical, Physical, Point, Size, Transform};
 
 use crate::backend::output::{
     AdaptiveSyncPolicy, OutputHeadConfiguration, OutputId, OutputMode as TransactionOutputMode,
-    OutputTransaction, OutputTransactionId, OutputTransactionKind, OutputTransform,
+    OutputTransaction, OutputTransactionId, OutputTransactionKind,
 };
+use crate::backend::wayland::output::from_smithay_transform;
 
 // ---------------------------------------------------------------------------
 // Public state types
@@ -183,19 +184,6 @@ fn transaction_mode(mode: Mode) -> TransactionOutputMode {
     }
 }
 
-fn transaction_transform(transform: Transform) -> OutputTransform {
-    match transform {
-        Transform::Normal => OutputTransform::Normal,
-        Transform::_90 => OutputTransform::Rotate90,
-        Transform::_180 => OutputTransform::Rotate180,
-        Transform::_270 => OutputTransform::Rotate270,
-        Transform::Flipped => OutputTransform::Flipped,
-        Transform::Flipped90 => OutputTransform::Flipped90,
-        Transform::Flipped180 => OutputTransform::Flipped180,
-        Transform::Flipped270 => OutputTransform::Flipped270,
-    }
-}
-
 fn build_transaction(
     configurations: &[(Output, Option<PendingOutputConfigurationInner>)],
 ) -> OutputTransaction {
@@ -210,7 +198,7 @@ fn build_transaction(
                     output.current_location().x,
                     output.current_location().y,
                 ),
-                transform: transaction_transform(output.current_transform()),
+                transform: from_smithay_transform(output.current_transform()),
                 scale: output.current_scale().fractional_scale(),
                 adaptive_sync: None,
             },
@@ -238,7 +226,7 @@ fn build_transaction(
                     enabled: true,
                     mode: selected_mode,
                     position: crate::types::Point::new(position.x, position.y),
-                    transform: transaction_transform(
+                    transform: from_smithay_transform(
                         configuration
                             .transform
                             .unwrap_or_else(|| output.current_transform()),
