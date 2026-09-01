@@ -332,6 +332,8 @@ pub struct WaylandRuntimeState {
     /// supports DPMS. Absence means the output cannot be power-managed.
     pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
     pub intercepted_key_releases: HashSet<Keycode>,
+    pub(crate) shortcut_recovery:
+        crate::backend::wayland::input::keyboard::recovery::ShortcutRecoveryState,
     pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
 }
 
@@ -364,6 +366,7 @@ impl Default for WaylandRuntimeState {
             output_power: crate::backend::output::OutputPowerService::default(),
             output_power_modes: HashMap::new(),
             intercepted_key_releases: HashSet::new(),
+            shortcut_recovery: Default::default(),
             session: None,
         }
     }
@@ -907,7 +910,7 @@ impl WaylandState {
     }
 
     #[inline]
-    fn request_output_name_render(&mut self, output_name: String) {
+    pub(crate) fn request_output_name_render(&mut self, output_name: String) {
         if self.runtime.render_targets.invalidate_output(output_name) {
             self.ping_render_loop();
         }

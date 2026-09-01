@@ -180,6 +180,9 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     } else {
         false
     };
+    if state.shortcut_recovery_needs_tick() {
+        state.tick_shortcut_recovery(Instant::now());
+    }
     if state.has_active_animations() {
         state.tick_animations();
         // A retarget that just settled moves windows between outputs after

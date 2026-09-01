@@ -342,6 +342,21 @@ impl XWaylandShellHandler for WaylandState {
 }
 
 impl XWaylandKeyboardGrabHandler for WaylandState {
+    fn grab(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        seat: smithay::input::Seat<Self>,
+        grab: smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrab<Self>,
+    ) {
+        if self.shortcut_recovery_bypasses(&surface) {
+            log::debug!("denied XWayland keyboard re-grab after user recovery");
+            return;
+        }
+        if let Some(keyboard) = seat.get_keyboard() {
+            keyboard.set_grab(self, grab, smithay::utils::SERIAL_COUNTER.next_serial());
+        }
+    }
+
     fn keyboard_focus_for_xsurface(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -367,7 +382,9 @@ impl KeyboardShortcutsInhibitHandler for WaylandState {
     fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {
         // Grant requests immediately. Input routing below still scopes the
         // inhibitor to its associated surface and the seat's current focus.
-        inhibitor.activate();
+        if !self.shortcut_recovery_bypasses(inhibitor.wl_surface()) {
+            inhibitor.activate();
+        }
     }
 }
 

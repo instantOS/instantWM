@@ -16,18 +16,23 @@ pub mod winit;
 /// as required by Smithay's `OutputDamageTracker`.
 ///
 /// Front-to-back order (index 0 = front-most, last index = back-most):
-///   1. Overlays (dmenu, popups)
-///   2. Upper layer shells (Overlay / Top)
-///   3. Status bar (top bar and bottom bar)
-///   4. Window borders
-///   5. Windows and lower layer shells (Bottom / Background)
+///   1. Emergency shortcut-recovery indicator
+///   2. Overlays (dmenu, popups)
+///   3. Upper layer shells (Overlay / Top)
+///   4. Status bar (top bar and bottom bar)
+///   5. Window borders
+///   6. Windows and lower layer shells (Bottom / Background)
 ///
 /// Smithay's `OutputDamageTracker::render_output` uses this front-to-back list to
 /// perform occlusion culling, then renders elements in reverse (`.rev()`) order
 /// back-to-front onto the framebuffer.
 macro_rules! assemble_scene_elements {
     ($target:ident, $scene:expr, $space_elements:expr, $num_upper:expr, $suppress_upper:expr, $elements:expr) => {{
-        // 1. Overlays (dmenu, popups)
+        // 1. Compositor safety UI must remain visible over every client.
+        for elem in $scene.shortcut_recovery {
+            $elements.push($target::Solid(elem));
+        }
+        // 2. Overlays (dmenu, popups)
         for elem in $scene.overlays {
             $elements.push($target::Surface(elem));
         }

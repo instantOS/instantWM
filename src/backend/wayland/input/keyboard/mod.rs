@@ -1,5 +1,7 @@
 //! Keyboard input handling for Wayland compositor.
 
+pub(crate) mod recovery;
+
 use smithay::backend::input::{InputBackend, KeyboardKeyEvent};
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
 use smithay::wayland::input_method::InputMethodSeat;
@@ -12,6 +14,17 @@ use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
 use smithay::utils::SERIAL_COUNTER;
+
+fn is_shortcut_recovery_chord(
+    raw_keysym: u32,
+    modifiers: &smithay::input::keyboard::ModifiersState,
+) -> bool {
+    raw_keysym == crate::config::keysyms::XK_ESCAPE
+        && modifiers.logo
+        && modifiers.shift
+        && !modifiers.ctrl
+        && !modifiers.alt
+}
 
 /// Why ordinary WM keybindings are withheld for the current key event.
 ///
@@ -121,12 +134,44 @@ pub fn handle_keyboard<B: InputBackend>(
         event.time_msec(),
         |data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
+                if data.release_shortcut_recovery_key(key_code) {
+                    data.runtime.intercepted_key_releases.remove(&key_code);
+                    return FilterResult::Intercept(());
+                }
+                if data.shortcut_recovery_is_armed() && (!modifiers.logo || !modifiers.shift) {
+                    data.cancel_shortcut_recovery();
+                }
                 if data.runtime.intercepted_key_releases.remove(&key_code) {
                     return FilterResult::Intercept(());
                 }
                 return FilterResult::Forward;
             }
             let raw_keysym = keysym.raw_syms().first().map_or(0, |ks| ks.raw());
+
+            // Key-repeat events remain compositor-owned after recovery has
+            // completed, until the matching physical release arrives.
+            if data.shortcut_recovery_owns_key(key_code) {
+                return FilterResult::Intercept(());
+            }
+
+            // Any additional press changes the deliberate recovery chord.
+            // Cancel the gesture, then route that extra key normally.
+            if data.shortcut_recovery_is_armed() {
+                data.cancel_shortcut_recovery();
+            }
+
+            if matches!(
+                suppression,
+                Some(ShortcutSuppression::KeyboardGrab | ShortcutSuppression::SurfaceInhibitor)
+            ) && is_shortcut_recovery_chord(raw_keysym, modifiers)
+                && let Some(surface) = keyboard_handle
+                    .current_focus()
+                    .and_then(|focus| focus.wl_surface().map(|surface| surface.into_owned()))
+            {
+                data.arm_shortcut_recovery(key_code, surface);
+                data.runtime.intercepted_key_releases.insert(key_code);
+                return FilterResult::Intercept(());
+            }
 
             // Emergency VT switching (Ctrl+Alt+F1..F12 or XF86Switch_VT_1..12)
             // This is processed unconditionally before window grabs and shortcut suppression.
@@ -290,5 +335,30 @@ mod tests {
         // Different key
         assert_eq!(vt_switch_target(XK_ESCAPE, &mods), None);
         assert_eq!(vt_switch_target(XK_A, &mods), None);
+    }
+
+    #[test]
+    fn recovery_chord_is_exact_and_deliberate() {
+        let chord = ModifiersState {
+            logo: true,
+            shift: true,
+            ..ModifiersState::default()
+        };
+        assert!(is_shortcut_recovery_chord(XK_ESCAPE, &chord));
+        assert!(!is_shortcut_recovery_chord(XK_Q, &chord));
+        assert!(!is_shortcut_recovery_chord(
+            XK_ESCAPE,
+            &ModifiersState {
+                logo: true,
+                ..ModifiersState::default()
+            }
+        ));
+        assert!(!is_shortcut_recovery_chord(
+            XK_ESCAPE,
+            &ModifiersState {
+                ctrl: true,
+                ..chord
+            }
+        ));
     }
 }

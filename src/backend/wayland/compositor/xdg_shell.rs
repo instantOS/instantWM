@@ -239,8 +239,11 @@ impl SeatHandler for WaylandState {
         target: Option<&KeyboardFocusTarget>,
     ) {
         let wl_surface = target.and_then(WaylandFocus::wl_surface);
-        let client = wl_surface.and_then(|s| self.display_handle.get_client(s.id()).ok());
+        let client = wl_surface
+            .as_ref()
+            .and_then(|s| self.display_handle.get_client(s.id()).ok());
         set_data_device_focus(&self.display_handle, seat, client);
+        self.shortcut_recovery_focus_changed(wl_surface.as_deref());
     }
 
     fn cursor_image(
