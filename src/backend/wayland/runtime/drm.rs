@@ -32,7 +32,7 @@ use crate::backend::wayland::init::drm::init_gpu;
 use crate::backend::wayland::input::apply_pending_warp;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::drm::{
-    CursorManager, ManagedDrmOutputManager, OutputHitRegion, OutputSurfaceEntry, RenderOutcome,
+    CursorManager, ManagedDrmOutputManager, OutputSurfaceEntry, RenderOutcome,
     add_new_output_surfaces, build_output_surfaces, create_output_manager, render_drm_output,
     usable_connector_handles,
 };
@@ -50,6 +50,16 @@ use vrr::apply_output_vrr_policy;
 struct DrmLayoutState {
     total_size: crate::types::Size,
     output_hit_regions: Vec<OutputHitRegion>,
+}
+
+/// Render-scheduling geometry for one scanout. This deliberately lives in the
+/// DRM runtime rather than the renderer: deciding which CRTC needs a frame is
+/// event-loop policy, and the renderer already owns the authoritative output
+/// geometry through [`OutputSurfaceEntry`].
+#[derive(Debug, Clone, Copy)]
+struct OutputHitRegion {
+    crtc: crtc::Handle,
+    rect: crate::types::Rect,
 }
 
 struct DrmLoopState {
@@ -96,14 +106,14 @@ impl DrmLoopState {
         }
     }
 
-    fn mark_pointer_output_dirty(&mut self, px: i32, layout: &DrmLayoutState) {
-        for entry in &layout.output_hit_regions {
-            if px >= entry.x_offset && px < entry.x_offset + entry.width {
-                self.mark_dirty(entry.crtc);
-                return;
-            }
+    fn mark_pointer_output_dirty(&mut self, pointer: crate::types::Point, layout: &DrmLayoutState) {
+        if let Some(crtc) = output_at_pointer(&layout.output_hit_regions, pointer) {
+            self.mark_dirty(crtc);
+        } else {
+            // This can be observed briefly while a new output layout is being
+            // projected. Redrawing all outputs is the safe recovery path.
+            self.mark_all_dirty();
         }
-        self.mark_all_dirty();
     }
 
     fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
@@ -136,12 +146,22 @@ impl DrmLoopState {
     }
 }
 
+fn output_at_pointer(
+    regions: &[OutputHitRegion],
+    pointer: crate::types::Point,
+) -> Option<crtc::Handle> {
+    regions
+        .iter()
+        .find(|region| region.rect.contains_point(pointer))
+        .map(|region| region.crtc)
+}
+
 #[derive(Debug, Clone, Copy)]
 enum DrmRuntimeEvent {
     SessionPaused,
     SessionActivated,
     VBlank(crtc::Handle),
-    PointerMoved { old_x: i32 },
+    PointerMoved { old_location: crate::types::Point },
     OutputTopologyChanged,
 }
 
@@ -238,7 +258,10 @@ pub fn run() -> ! {
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
             // has not yet resumed.
-            let old_pointer_x = state.runtime.pointer_location.x as i32;
+            let old_pointer_location = crate::types::Point::new(
+                state.runtime.pointer_location.x as i32,
+                state.runtime.pointer_location.y as i32,
+            );
             let outcome = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 crate::backend::wayland::input::drm::dispatch_libinput_event(
@@ -255,7 +278,7 @@ pub fn run() -> ! {
                 LibinputEventOutcome::PointerMoved => {
                     state.notify_activity();
                     let _ = runtime_event_tx_input.send(DrmRuntimeEvent::PointerMoved {
-                        old_x: old_pointer_x,
+                        old_location: old_pointer_location,
                     });
                 }
             }
@@ -350,17 +373,30 @@ fn cursor_size(size: u32) -> u8 {
 
 /// Compute total screen dimensions from output surfaces.
 fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::types::Size {
-    let total_width = output_surfaces
-        .iter()
-        .map(|surface| surface.rect.x + surface.rect.w)
-        .max()
-        .unwrap_or(crate::backend::wayland::render::drm::DEFAULT_SCREEN_WIDTH);
-    let total_height = output_surfaces
-        .iter()
-        .map(|surface| surface.rect.h)
-        .max()
-        .unwrap_or(crate::backend::wayland::render::drm::DEFAULT_SCREEN_HEIGHT);
-    crate::types::Size::new(total_width, total_height)
+    output_layout_size(
+        output_surfaces.iter().map(|surface| surface.rect),
+        crate::types::Size::new(
+            crate::backend::wayland::render::drm::DEFAULT_SCREEN_WIDTH,
+            crate::backend::wayland::render::drm::DEFAULT_SCREEN_HEIGHT,
+        ),
+    )
+}
+
+fn output_layout_size(
+    rects: impl IntoIterator<Item = crate::types::Rect>,
+    fallback: crate::types::Size,
+) -> crate::types::Size {
+    rects
+        .into_iter()
+        .fold(None, |extent: Option<crate::types::Size>, rect| {
+            let right = rect.x.saturating_add(rect.w).max(1);
+            let bottom = rect.y.saturating_add(rect.h).max(1);
+            Some(match extent {
+                Some(extent) => crate::types::Size::new(extent.w.max(right), extent.h.max(bottom)),
+                None => crate::types::Size::new(right, bottom),
+            })
+        })
+        .unwrap_or(fallback)
 }
 
 fn init_layout_state(
@@ -373,8 +409,7 @@ fn init_layout_state(
             .iter()
             .map(|entry| OutputHitRegion {
                 crtc: entry.crtc,
-                x_offset: entry.rect.x,
-                width: entry.rect.w,
+                rect: entry.rect,
             })
             .collect(),
     }
@@ -399,19 +434,9 @@ fn refresh_drm_layout_state(
         .iter()
         .filter(|entry| entry.enabled)
         .collect();
-    let total_size = crate::types::Size::new(
-        active
-            .iter()
-            .map(|entry| entry.rect.x + entry.rect.w)
-            .max()
-            .unwrap_or(1)
-            .max(1),
-        active
-            .iter()
-            .map(|entry| entry.rect.y + entry.rect.h)
-            .max()
-            .unwrap_or(1)
-            .max(1),
+    let total_size = output_layout_size(
+        active.iter().map(|entry| entry.rect),
+        crate::types::Size::new(1, 1),
     );
     *layout_state = DrmLayoutState {
         total_size,
@@ -419,8 +444,7 @@ fn refresh_drm_layout_state(
             .iter()
             .map(|entry| OutputHitRegion {
                 crtc: entry.crtc,
-                x_offset: entry.rect.x,
-                width: entry.rect.w,
+                rect: entry.rect,
             })
             .collect(),
     };
@@ -618,7 +642,10 @@ fn run_event_loop(
             state.project_completed_output_power_requests();
             if pointer_moved {
                 loop_state.mark_pointer_output_dirty(
-                    state.runtime.pointer_location.x as i32,
+                    crate::types::Point::new(
+                        state.runtime.pointer_location.x as i32,
+                        state.runtime.pointer_location.y as i32,
+                    ),
                     layout_state,
                 );
             }
@@ -672,7 +699,10 @@ fn run_event_loop(
             state.runtime.cursor_is_animated = animated;
             if animated {
                 loop_state.mark_pointer_output_dirty(
-                    state.runtime.pointer_location.x as i32,
+                    crate::types::Point::new(
+                        state.runtime.pointer_location.x as i32,
+                        state.runtime.pointer_location.y as i32,
+                    ),
                     layout_state,
                 );
             }
@@ -754,8 +784,8 @@ fn process_runtime_events(
                 }
                 loop_state.pending_crtcs.remove(&crtc);
             }
-            DrmRuntimeEvent::PointerMoved { old_x } => {
-                loop_state.mark_pointer_output_dirty(old_x, layout_state);
+            DrmRuntimeEvent::PointerMoved { old_location } => {
+                loop_state.mark_pointer_output_dirty(old_location, layout_state);
                 pointer_moved = true;
             }
             DrmRuntimeEvent::OutputTopologyChanged => topology_changed = true,
@@ -1121,5 +1151,73 @@ mod cursor_config_tests {
         assert_eq!(cursor_size(0), 1);
         assert_eq!(cursor_size(24), 24);
         assert_eq!(cursor_size(512), u8::MAX);
+    }
+}
+
+#[cfg(test)]
+mod output_layout_tests {
+    use smithay::reexports::drm::control::{crtc, from_u32};
+
+    use super::{OutputHitRegion, output_at_pointer, output_layout_size};
+    use crate::types::{Point, Rect, Size};
+
+    fn crtc(raw: u32) -> crtc::Handle {
+        from_u32(raw).expect("test CRTC handles are non-zero")
+    }
+
+    #[test]
+    fn stacked_outputs_with_overlapping_x_ranges_route_by_both_axes() {
+        let top_left = crtc(1);
+        let top_right = crtc(2);
+        let bottom = crtc(3);
+        let regions = [
+            OutputHitRegion {
+                crtc: top_left,
+                rect: Rect::new(0, 0, 1920, 1080),
+            },
+            OutputHitRegion {
+                crtc: top_right,
+                rect: Rect::new(1920, 0, 1920, 1080),
+            },
+            OutputHitRegion {
+                crtc: bottom,
+                rect: Rect::new(960, 1080, 1920, 1080),
+            },
+        ];
+
+        assert_eq!(
+            output_at_pointer(&regions, Point::new(1200, 500)),
+            Some(top_left)
+        );
+        assert_eq!(
+            output_at_pointer(&regions, Point::new(2200, 500)),
+            Some(top_right)
+        );
+        assert_eq!(
+            output_at_pointer(&regions, Point::new(1200, 1500)),
+            Some(bottom)
+        );
+        assert_eq!(output_at_pointer(&regions, Point::new(4000, 1500)), None);
+    }
+
+    #[test]
+    fn layout_size_includes_vertical_offsets() {
+        let outputs = [
+            Rect::new(0, 0, 3840, 1080),
+            Rect::new(960, 1080, 1920, 1080),
+        ];
+
+        assert_eq!(
+            output_layout_size(outputs, Size::new(1, 1)),
+            Size::new(3840, 2160)
+        );
+    }
+
+    #[test]
+    fn empty_layout_uses_its_callers_fallback() {
+        assert_eq!(
+            output_layout_size([], Size::new(1280, 800)),
+            Size::new(1280, 800)
+        );
     }
 }

@@ -28,13 +28,6 @@ pub struct OutputDmabufFeedback {
     pub scanout: DmabufFeedback,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct OutputHitRegion {
-    pub crtc: crtc::Handle,
-    pub x_offset: i32,
-    pub width: i32,
-}
-
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
     pub surface: Option<

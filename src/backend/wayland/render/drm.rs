@@ -55,7 +55,7 @@ mod cursor;
 pub use cursor::CursorManager;
 pub use state::{
     DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutput, ManagedDrmOutputManager,
-    OutputDmabufFeedback, OutputHitRegion, OutputSurfaceEntry,
+    OutputDmabufFeedback, OutputSurfaceEntry,
 };
 
 pub mod state;
