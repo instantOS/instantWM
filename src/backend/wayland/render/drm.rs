@@ -586,7 +586,10 @@ fn build_drm_cursor_elements(
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: Instant,
 ) -> Vec<DrmExtras> {
-    let local_pointer = Point::from((pointer_location.x - entry.rect.x as f64, pointer_location.y));
+    let local_pointer = Point::from((
+        pointer_location.x - entry.rect.x as f64,
+        pointer_location.y - entry.rect.y as f64,
+    ));
     let resolved_cursor = resolve_cursor(
         &state.cursor_image_status,
         state.cursor_icon_override,

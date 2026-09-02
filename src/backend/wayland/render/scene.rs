@@ -14,6 +14,7 @@ use smithay::backend::renderer::element::{Element, Id};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::PopupManager;
 use smithay::output::Output;
+use smithay::utils::{Physical, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::Backend;
@@ -175,6 +176,7 @@ pub fn build_common_scene_elements_from_shared(
 
     let output_scale = output.current_scale().fractional_scale();
     let render_scale = smithay::utils::Scale::from(output_scale);
+    let output_rect = state.space.output_geometry(output);
     let mut overlays = Vec::new();
     for (window, logical_loc) in state.overlay_windows_for_render(output) {
         let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
@@ -191,9 +193,18 @@ pub fn build_common_scene_elements_from_shared(
 
     let mut bar = Vec::new();
     for (buffer, position) in shared.bar_buffers.iter() {
+        let Some(output_rect) = output_rect else {
+            continue;
+        };
+        let global_position =
+            smithay::utils::Point::<i32, smithay::utils::Logical>::from((position.x, position.y));
+        if !output_rect.contains(global_position) {
+            continue;
+        }
+        let local = logical_point_to_output_physical(*position, output_rect, output_scale);
         match MemoryRenderBufferRenderElement::from_buffer(
             renderer,
-            (position.x as f64, position.y as f64),
+            (local.x as f64, local.y as f64),
             buffer,
             None,
             None,
@@ -205,14 +216,24 @@ pub fn build_common_scene_elements_from_shared(
         }
     }
 
-    let mut borders = shared.borders.clone();
+    let mut borders = output_rect
+        .map(|output_rect| project_solids_to_output(&shared.borders, output_rect, output_scale))
+        .unwrap_or_default();
+    let mut layout_preview = Vec::new();
     crate::backend::wayland::render::borders::append_layout_preview(
-        &mut borders,
+        &mut layout_preview,
         (state.layout_preview_style() == crate::types::InteractionOutlineStyle::Layout)
             .then(|| state.layout_preview_rect())
             .flatten(),
         shared.layout_preview_color,
     );
+    if let Some(output_rect) = output_rect {
+        borders.extend(project_solids_to_output(
+            &layout_preview,
+            output_rect,
+            output_scale,
+        ));
+    }
 
     let shortcut_recovery = build_shortcut_recovery_indicator(state, output);
 
@@ -222,6 +243,66 @@ pub fn build_common_scene_elements_from_shared(
         bar,
         borders,
     }
+}
+
+/// Convert a compositor-global logical point into the physical coordinate
+/// system of one output framebuffer.
+fn logical_point_to_output_physical(
+    point: crate::types::Point,
+    output_rect: Rectangle<i32, smithay::utils::Logical>,
+    scale: f64,
+) -> smithay::utils::Point<i32, Physical> {
+    smithay::utils::Point::from((
+        ((point.x - output_rect.loc.x) as f64 * scale).round() as i32,
+        ((point.y - output_rect.loc.y) as f64 * scale).round() as i32,
+    ))
+}
+
+fn project_logical_rect_to_output(
+    rect: Rectangle<i32, smithay::utils::Logical>,
+    output_rect: Rectangle<i32, smithay::utils::Logical>,
+    scale: f64,
+) -> Option<Rectangle<i32, Physical>> {
+    let clipped = rect.intersection(output_rect)?;
+    let local_loc = logical_point_to_output_physical(
+        crate::types::Point::new(clipped.loc.x, clipped.loc.y),
+        output_rect,
+        scale,
+    );
+    let far = logical_point_to_output_physical(
+        crate::types::Point::new(
+            clipped.loc.x + clipped.size.w,
+            clipped.loc.y + clipped.size.h,
+        ),
+        output_rect,
+        scale,
+    );
+    Some(Rectangle::new(local_loc, (far - local_loc).to_size()))
+}
+
+fn project_solids_to_output(
+    solids: &[SolidColorRenderElement],
+    output_rect: Rectangle<i32, smithay::utils::Logical>,
+    scale: f64,
+) -> Vec<SolidColorRenderElement> {
+    solids
+        .iter()
+        .filter_map(|element| {
+            let global = element.geometry(smithay::utils::Scale::from(1.0));
+            let global = Rectangle::<i32, smithay::utils::Logical>::new(
+                (global.loc.x, global.loc.y).into(),
+                (global.size.w, global.size.h).into(),
+            );
+            let geometry = project_logical_rect_to_output(global, output_rect, scale)?;
+            Some(SolidColorRenderElement::new(
+                element.id().clone(),
+                geometry,
+                element.current_commit(),
+                element.color(),
+                element.kind(),
+            ))
+        })
+        .collect()
 }
 
 fn build_shortcut_recovery_indicator(
@@ -427,5 +508,50 @@ pub fn get_render_element_counts(
         bar: scene.bar.len(),
         borders: scene.borders.len(),
         space: space_render_elements_len.saturating_sub(num_upper),
+    }
+}
+
+#[cfg(test)]
+mod output_projection_tests {
+    use super::*;
+    use smithay::utils::Logical;
+
+    fn logical_rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
+        Rectangle::new((x, y).into(), (w, h).into())
+    }
+
+    #[test]
+    fn projection_subtracts_both_output_axes() {
+        let output = logical_rect(1920, -1080, 2560, 1440);
+        let rect = logical_rect(2020, -1030, 300, 200);
+
+        assert_eq!(
+            project_logical_rect_to_output(rect, output, 1.0),
+            Some(Rectangle::new((100, 50).into(), (300, 200).into()))
+        );
+    }
+
+    #[test]
+    fn projection_scales_locations_and_edges_without_seams() {
+        let output = logical_rect(1000, 500, 800, 600);
+        let rect = logical_rect(1011, 507, 13, 9);
+
+        assert_eq!(
+            project_logical_rect_to_output(rect, output, 1.5),
+            Some(Rectangle::new((17, 11).into(), (19, 13).into()))
+        );
+    }
+
+    #[test]
+    fn projection_clips_cross_output_decorations() {
+        let output = logical_rect(1920, 0, 1920, 1080);
+        let crossing = logical_rect(1918, 100, 6, 20);
+        let outside = logical_rect(100, 100, 200, 200);
+
+        assert_eq!(
+            project_logical_rect_to_output(crossing, output, 1.0),
+            Some(Rectangle::new((0, 100).into(), (4, 20).into()))
+        );
+        assert_eq!(project_logical_rect_to_output(outside, output, 1.0), None);
     }
 }
