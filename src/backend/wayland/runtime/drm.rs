@@ -22,7 +22,7 @@ use std::mem;
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::backend::output::{
     OutputId, OutputPlacement, OutputPowerError, OutputPowerMode, plan_automatic_output_positions,
@@ -524,10 +524,34 @@ fn setup_udev_hotplug_handler(
             return;
         }
     };
+    let retry_handle = loop_handle.clone();
     loop_handle
         .insert_source(backend, move |event, _, _| match event {
             UdevEvent::Added { .. } | UdevEvent::Changed { .. } | UdevEvent::Removed { .. } => {
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::OutputTopologyChanged);
+                // Thunderbolt and DisplayPort MST branches enumerate in
+                // stages. Udev does not guarantee that the final connector
+                // state has settled when the first DRM change arrives, nor
+                // that every later link-state transition produces a distinct
+                // event useful to this compositor. Reprobe at bounded settling
+                // points so a connector or mode that appears late is not lost
+                // until the next physical hotplug.
+                for delay in [
+                    Duration::from_millis(100),
+                    Duration::from_millis(350),
+                    Duration::from_secs(1),
+                ] {
+                    let retry_tx = runtime_event_tx.clone();
+                    if let Err(error) = retry_handle.insert_source(
+                        smithay::reexports::calloop::timer::Timer::from_duration(delay),
+                        move |_, _, _| {
+                            let _ = retry_tx.send(DrmRuntimeEvent::OutputTopologyChanged);
+                            smithay::reexports::calloop::timer::TimeoutAction::Drop
+                        },
+                    ) {
+                        log::warn!("failed to schedule DRM hot-plug reprobe: {error}");
+                    }
+                }
             }
         })
         .expect("failed to insert udev hot-plug source");

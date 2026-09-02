@@ -535,8 +535,14 @@ fn take_matching_monitor(
     None
 }
 
-/// Move clients whose monitor has disappeared onto a surviving monitor,
-/// updating both ownership and per-monitor membership lists.
+/// Move clients whose monitor has disappeared onto a surviving monitor.
+///
+/// A topology change must never leave an ordinary managed window reachable
+/// only through tags that are not projected anywhere. Preserve the clients'
+/// tag identity, but widen the survivor's current view to include every tag
+/// carried in from removed monitors. This makes unplugging an output a lossless
+/// operation from the user's point of view: no window is silently retagged and
+/// every migrated window is immediately reachable.
 fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorId) {
     let stale_wins: Vec<WindowId> = model
         .clients
@@ -545,9 +551,21 @@ fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorI
         .map(|c| c.win)
         .collect();
 
+    let mut reachable_tags = model
+        .monitor(survivor)
+        .map(Monitor::selected_tags)
+        .unwrap_or(TagMask::EMPTY);
     for win in stale_wins {
+        if let Some(client) = model.client(win)
+            && !client.is_scratchpad()
+        {
+            reachable_tags = reachable_tags | client.tags;
+        }
         let reassigned = model.reassign_client_monitor(win, survivor);
         debug_assert!(reassigned, "orphaned managed client must be re-homeable");
+    }
+    if let Some(monitor) = model.monitor_mut(survivor) {
+        monitor.set_selected_tags(reachable_tags);
     }
 }
 
@@ -849,8 +867,13 @@ mod transfer_focus_tests {
         model.insert_client(Client {
             win,
             monitor_id: removed,
+            tags: TagMask::single(2).unwrap(),
             ..Client::default()
         });
+        model
+            .monitor_mut(retained)
+            .unwrap()
+            .set_selected_tags(TagMask::single(1).unwrap());
         model.monitor_mut(removed).unwrap().clients.push(win);
 
         let outputs = [BackendOutputInfo {
@@ -871,6 +894,16 @@ mod transfer_focus_tests {
         );
         assert!(model.monitor(retained).is_some());
         assert_eq!(model.client(win).unwrap().monitor_id, retained);
+        assert_eq!(
+            model.monitor(retained).unwrap().selected_tags(),
+            TagMask::single(1).unwrap() | TagMask::single(2).unwrap()
+        );
+        assert!(
+            model
+                .client(win)
+                .unwrap()
+                .is_visible(model.monitor(retained).unwrap().selected_tags())
+        );
     }
 
     #[test]

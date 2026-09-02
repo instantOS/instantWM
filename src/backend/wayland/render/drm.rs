@@ -119,14 +119,31 @@ pub fn add_new_output_surfaces(
         .collect();
     let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmExtras>::default();
 
+    let mut pending = Vec::new();
     for &conn_handle in res.connectors() {
         if existing_connectors.contains(&conn_handle) {
             continue;
         }
-        let Some(spec) = drm_output_spec(output_manager, &res, conn_handle, &used_crtcs) else {
+        let Some(candidate) = drm_output_candidate(output_manager, &res, conn_handle) else {
             continue;
         };
+        pending.push(candidate);
+    }
 
+    let candidate_crtcs: Vec<Vec<_>> = pending
+        .iter()
+        .map(|candidate| candidate.crtcs.clone())
+        .collect();
+    let Some(assignments) = complete_crtc_assignment(&candidate_crtcs, &used_crtcs) else {
+        log::warn!(
+            "could not find a complete CRTC assignment for {} newly connected outputs",
+            pending.len()
+        );
+        return;
+    };
+
+    for (candidate, crtc) in pending.into_iter().zip(assignments) {
+        let spec = candidate.assign(crtc);
         used_crtcs.push(spec.crtc);
         let Some(entry) = initialize_drm_output_surface(
             output_manager,
@@ -171,12 +188,35 @@ struct DrmOutputSpec {
     name: String,
 }
 
-fn drm_output_spec(
+struct DrmOutputCandidate {
+    connector: connector::Handle,
+    crtcs: Vec<crtc::Handle>,
+    mode: control::Mode,
+    modes: Vec<control::Mode>,
+    pixel_size: crate::types::Size,
+    physical_size: crate::types::Size,
+    name: String,
+}
+
+impl DrmOutputCandidate {
+    fn assign(self, crtc: crtc::Handle) -> DrmOutputSpec {
+        DrmOutputSpec {
+            connector: self.connector,
+            crtc,
+            mode: self.mode,
+            modes: self.modes,
+            pixel_size: self.pixel_size,
+            physical_size: self.physical_size,
+            name: self.name,
+        }
+    }
+}
+
+fn drm_output_candidate(
     output_manager: &ManagedDrmOutputManager,
     resources: &control::ResourceHandles,
     connector: connector::Handle,
-    used_crtcs: &[crtc::Handle],
-) -> Option<DrmOutputSpec> {
+) -> Option<DrmOutputCandidate> {
     let conn_info = output_manager
         .device()
         .get_connector(connector, false)
@@ -186,13 +226,23 @@ fn drm_output_spec(
     }
 
     let mode = best_connector_mode(conn_info.modes())?;
-    let crtc = unused_connector_crtc(output_manager, resources, &conn_info, used_crtcs)?;
+    let crtcs: Vec<_> = conn_info
+        .encoders()
+        .iter()
+        .filter_map(|&encoder| output_manager.device().get_encoder(encoder).ok())
+        .flat_map(|encoder| resources.filter_crtcs(encoder.possible_crtcs()))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    if crtcs.is_empty() {
+        return None;
+    }
     let (width, height) = mode.size();
     let physical_size = conn_info.size().unwrap_or((0, 0));
 
-    Some(DrmOutputSpec {
+    Some(DrmOutputCandidate {
         connector,
-        crtc,
+        crtcs,
         mode,
         modes: conn_info.modes().to_vec(),
         pixel_size: crate::types::Size::new(width as i32, height as i32),
@@ -206,10 +256,11 @@ fn drm_output_spec(
 }
 
 fn is_usable_connector(conn_info: &connector::Info) -> bool {
-    matches!(
-        conn_info.state(),
-        connector::State::Connected | connector::State::Unknown
-    ) && !conn_info.modes().is_empty()
+    // `Unknown` is not evidence of a live sink. Keeping such a connector
+    // active reserves its CRTC and can prevent a newly enumerated MST head
+    // from being assigned. The hotplug settling probes will add it once KMS
+    // reports the authoritative Connected state.
+    conn_info.state() == connector::State::Connected && !conn_info.modes().is_empty()
 }
 
 fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
@@ -224,18 +275,45 @@ fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
     })
 }
 
-fn unused_connector_crtc(
-    output_manager: &ManagedDrmOutputManager,
-    resources: &control::ResourceHandles,
-    conn_info: &connector::Info,
-    used_crtcs: &[crtc::Handle],
-) -> Option<crtc::Handle> {
-    conn_info
-        .encoders()
-        .iter()
-        .filter_map(|&enc_h| output_manager.device().get_encoder(enc_h).ok())
-        .flat_map(|enc| resources.filter_crtcs(enc.possible_crtcs()))
-        .find(|crtc| !used_crtcs.contains(crtc))
+/// Find a complete output-to-CRTC matching. Greedy allocation is incorrect for
+/// MST docks because an early flexible connector can consume the only CRTC
+/// available to a later constrained connector.
+fn complete_crtc_assignment<T>(candidates: &[Vec<T>], unavailable: &[T]) -> Option<Vec<T>>
+where
+    T: Copy + Eq,
+{
+    fn search<T>(candidates: &[Vec<T>], assigned: &mut [Option<T>], used: &mut Vec<T>) -> bool
+    where
+        T: Copy + Eq,
+    {
+        let next = (0..candidates.len())
+            .filter(|index| assigned[*index].is_none())
+            .min_by_key(|index| {
+                candidates[*index]
+                    .iter()
+                    .filter(|candidate| !used.contains(candidate))
+                    .count()
+            });
+        let Some(index) = next else { return true };
+        for candidate in candidates[index].iter().copied() {
+            if used.contains(&candidate) {
+                continue;
+            }
+            assigned[index] = Some(candidate);
+            used.push(candidate);
+            if search(candidates, assigned, used) {
+                return true;
+            }
+            used.pop();
+            assigned[index] = None;
+        }
+        false
+    }
+
+    let mut assigned = vec![None; candidates.len()];
+    let mut used = unavailable.to_vec();
+    search(candidates, &mut assigned, &mut used)
+        .then(|| assigned.into_iter().map(Option::unwrap).collect())
 }
 
 fn initialize_drm_output_surface(
@@ -1095,4 +1173,30 @@ fn build_cursor_elements(
     }
 
     custom_elements
+}
+
+#[cfg(test)]
+mod tests {
+    use super::complete_crtc_assignment;
+
+    #[test]
+    fn crtc_matching_backtracks_for_constrained_mst_connector() {
+        // The first connector is flexible; the second can use only CRTC 1.
+        // A first-fit allocator incorrectly consumes 1 for the first output.
+        let assignment = complete_crtc_assignment(&[vec![1, 2], vec![1]], &[]).unwrap();
+        assert_eq!(assignment, vec![2, 1]);
+    }
+
+    #[test]
+    fn crtc_matching_respects_retained_outputs() {
+        assert_eq!(
+            complete_crtc_assignment(&[vec![1, 2], vec![2, 3]], &[1]),
+            Some(vec![2, 3])
+        );
+    }
+
+    #[test]
+    fn crtc_matching_rejects_partial_topologies() {
+        assert_eq!(complete_crtc_assignment(&[vec![1], vec![1]], &[]), None);
+    }
 }
