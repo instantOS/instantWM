@@ -155,6 +155,9 @@ pub enum WindowAction {
     List { window_id: Option<u32> },
     /// Show information about a managed window.
     Info { window_id: Option<u32> },
+    /// Activate a managed window: switch to its monitor and tags, then focus
+    /// and raise it. Hidden (minimized) windows are restored first.
+    Focus { window_id: Option<u32> },
     /// Resize and optionally move a managed window.
     Resize {
         window_id: Option<u32>,
@@ -581,6 +584,7 @@ impl From<WindowAction> for WindowCommand {
         match action {
             WindowAction::List { window_id } => Self::List(window_id),
             WindowAction::Info { window_id } => Self::Info(window_id),
+            WindowAction::Focus { window_id } => Self::Focus(window_id),
             WindowAction::Resize {
                 window_id,
                 monitor,
