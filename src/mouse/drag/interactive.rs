@@ -407,7 +407,7 @@ mod tests {
                 direction: ResizeDirection::Right,
                 start: Point::new(10, 10),
                 geometry: Rect::new(0, 0, 100, 100),
-                origin: crate::layouts::tree::LayoutTree::default(),
+                origin: crate::layouts::tree::LayoutTree::default().into(),
             })
             .unwrap();
 

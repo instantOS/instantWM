@@ -5,14 +5,22 @@ use smithay::{
     reexports::wayland_server::{Client, Resource},
     wayland::{
         buffer::BufferHandler,
+        commit_timing::CommitTimerStateUserData,
         compositor::{
             CompositorHandler, SurfaceAttributes, TraversalAction, get_parent, is_sync_subsurface,
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        drm_syncobj::{DrmSyncobjCachedState, DrmSyncobjHandler},
+        fifo::FifoCachedState,
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         input_method::{InputMethodHandler, PopupSurface},
+        keyboard_shortcuts_inhibit::{
+            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
+            KeyboardShortcutsInhibitor,
+        },
         output::OutputHandler,
         pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
+        pointer_warp::PointerWarpHandler,
         seat::WaylandFocus,
         shm::ShmHandler,
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
@@ -43,6 +51,84 @@ impl CompositorHandler for WaylandState {
         } else {
             panic!("client missing compositor client state");
         }
+    }
+
+    fn new_surface(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        smithay::wayland::compositor::add_destruction_hook::<Self, _>(surface, |state, surface| {
+            state.fifo_constraint_surfaces.remove(surface);
+            state.commit_timing_surfaces.remove(surface);
+        });
+        smithay::wayland::compositor::add_pre_commit_hook::<Self, _>(
+            surface,
+            move |state, _dh, surface| {
+                // These protocol hooks are installed after the compositor's
+                // new-surface hook. Record intent from their public pending
+                // state before they create blockers, so even a blocked first
+                // commit is indexed without scanning every live surface.
+                let (sets_fifo_barrier, has_commit_timestamp) =
+                    smithay::wayland::compositor::with_states(surface, |surface_data| {
+                        let sets_fifo_barrier = surface_data
+                            .cached_state
+                            .get::<FifoCachedState>()
+                            .pending()
+                            .set_barrier;
+                        let has_commit_timestamp = surface_data
+                            .data_map
+                            .get::<CommitTimerStateUserData>()
+                            .is_some_and(|timer| timer.borrow().timestamp.is_some());
+                        (sets_fifo_barrier, has_commit_timestamp)
+                    });
+                if sets_fifo_barrier {
+                    state.fifo_constraint_surfaces.insert(surface.clone());
+                }
+                if has_commit_timestamp {
+                    state.commit_timing_surfaces.insert(surface.clone());
+                }
+
+                let mut acquire_point = None;
+                let maybe_dmabuf =
+                    smithay::wayland::compositor::with_states(surface, |surface_data| {
+                        acquire_point.clone_from(
+                            &surface_data
+                                .cached_state
+                                .get::<DrmSyncobjCachedState>()
+                                .pending()
+                                .acquire_point,
+                        );
+                        surface_data
+                            .cached_state
+                            .get::<SurfaceAttributes>()
+                            .pending()
+                            .buffer
+                            .as_ref()
+                            .and_then(|assignment| match assignment {
+                                smithay::wayland::compositor::BufferAssignment::NewBuffer(
+                                    buffer,
+                                ) => smithay::wayland::dmabuf::get_dmabuf(buffer).cloned().ok(),
+                                _ => None,
+                            })
+                    });
+
+                if let Some(_dmabuf) = maybe_dmabuf
+                    && let Some(acquire_point) = acquire_point
+                    && let Ok((blocker, source)) = acquire_point.generate_blocker()
+                    && let Some(client) = surface.client()
+                {
+                    let res = state.loop_handle.insert_source(source, move |_, _, data| {
+                        let dh = data.display_handle.clone();
+                        data.client_compositor_state(&client)
+                            .blocker_cleared(data, &dh);
+                        Ok(())
+                    });
+                    if res.is_ok() {
+                        smithay::wayland::compositor::add_blocker(surface, blocker);
+                    }
+                }
+            },
+        );
     }
 
     fn commit(
@@ -210,14 +296,34 @@ fn surface_commit_render_service(
     smithay::wayland::compositor::with_states(surface, |states| {
         let mut guard = states.cached_state.get::<SurfaceAttributes>();
         let attrs = guard.current();
-        if attrs.buffer.is_some() || attrs.buffer_delta.is_some() || !attrs.damage.is_empty() {
-            SurfaceCommitService::Render
-        } else if !attrs.frame_callbacks.is_empty() {
-            SurfaceCommitService::FrameCallbacks
-        } else {
-            SurfaceCommitService::None
-        }
+        classify_surface_commit(
+            attrs.buffer.is_some() || attrs.buffer_delta.is_some() || !attrs.damage.is_empty(),
+            !attrs.frame_callbacks.is_empty(),
+            states
+                .cached_state
+                .get::<smithay::wayland::fifo::FifoBarrierCachedState>()
+                .current()
+                .barrier
+                .is_some(),
+        )
     })
+}
+
+fn classify_surface_commit(
+    has_pixels: bool,
+    has_frame_callbacks: bool,
+    has_fifo_barrier: bool,
+) -> SurfaceCommitService {
+    if has_pixels {
+        SurfaceCommitService::Render
+    } else if has_frame_callbacks || has_fifo_barrier {
+        // A FIFO set_barrier commit needs a real output refresh deadline even
+        // when it changes no pixels and requests no wl_surface.frame.
+        // Otherwise the following wait_barrier commit can never progress.
+        SurfaceCommitService::FrameCallbacks
+    } else {
+        SurfaceCommitService::None
+    }
 }
 
 fn service_surface_commit(
@@ -338,13 +444,49 @@ impl XWaylandShellHandler for WaylandState {
 }
 
 impl XWaylandKeyboardGrabHandler for WaylandState {
+    fn grab(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        seat: smithay::input::Seat<Self>,
+        grab: smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrab<Self>,
+    ) {
+        if self.shortcut_recovery_bypasses(&surface) {
+            log::debug!("denied XWayland keyboard re-grab after user recovery");
+            return;
+        }
+        if let Some(keyboard) = seat.get_keyboard() {
+            keyboard.set_grab(self, grab, smithay::utils::SERIAL_COUNTER.next_serial());
+        }
+    }
+
     fn keyboard_focus_for_xsurface(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
-        let win = self.window_id_for_surface(surface)?;
-        let window = self.window_index.get(&win)?;
-        Some(KeyboardFocusTarget::Window(window.clone()))
+        if let Some(win) = self.window_id_for_surface(surface)
+            && let Some(window) = self.window_index.get(&win)
+        {
+            return Some(KeyboardFocusTarget::Window(window.clone()));
+        }
+
+        // Override-redirect X11 windows are intentionally not in window_index,
+        // but their XWayland wl_surface is still a valid keyboard focus target.
+        // The grab itself ensures events remain routed to this surface.
+        Some(KeyboardFocusTarget::WlSurface(surface.clone()))
+    }
+}
+
+impl KeyboardShortcutsInhibitHandler for WaylandState {
+    fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
+        &mut self.keyboard_shortcuts_inhibit_state
+    }
+
+    fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {
+        // Grant requests immediately. Input routing below still scopes the
+        // inhibitor to its associated surface and the seat's current focus.
+        if !self.shortcut_recovery_bypasses(inhibitor.wl_surface()) {
+            inhibitor.activate();
+        }
     }
 }
 
@@ -457,19 +599,49 @@ impl PointerConstraintsHandler for WaylandState {
             return;
         }
 
-        let Some(origin) = self.pointer_constraint_surface_origin(surface) else {
-            return;
-        };
-        let target = origin + location;
-        pointer.set_location(target);
-        self.runtime.pointer_location = target;
+        self.cursor_position_hint = Some((surface.clone(), location));
     }
 
     fn remove_constraint(
         &mut self,
-        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        _pointer: &smithay::input::pointer::PointerHandle<Self>,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
     ) {
+        if let Some((hint_surface, hint_location)) = self.cursor_position_hint.take() {
+            if &hint_surface == surface {
+                if let Some(origin) = self.pointer_constraint_surface_origin(&hint_surface) {
+                    let target = origin + hint_location;
+                    pointer.set_location(target);
+                    self.runtime.pointer_location = target;
+                }
+            } else {
+                self.cursor_position_hint = Some((hint_surface, hint_location));
+            }
+        }
+    }
+}
+
+impl PointerWarpHandler for WaylandState {
+    fn warp_pointer(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        _pointer: smithay::reexports::wayland_server::protocol::wl_pointer::WlPointer,
+        pos: smithay::utils::Point<f64, smithay::utils::Logical>,
+        _serial: smithay::utils::Serial,
+    ) {
+        if let Some(origin) = self.pointer_constraint_surface_origin(&surface) {
+            let target = origin + pos;
+            if let Some(pointer) = self.seat.get_pointer() {
+                pointer.set_location(target);
+                self.runtime.pointer_location = target;
+            }
+        }
+    }
+}
+
+impl DrmSyncobjHandler for WaylandState {
+    fn drm_syncobj_state(&mut self) -> Option<&mut smithay::wayland::drm_syncobj::DrmSyncobjState> {
+        self.drm_syncobj_state.as_mut()
     }
 }
 
@@ -624,3 +796,56 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
 }
 
 crate::delegate_foreign_toplevel_management!(WaylandState);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smithay::utils::Point;
+
+    #[test]
+    fn fifo_only_commit_requests_a_refresh() {
+        assert_eq!(
+            classify_surface_commit(false, false, true),
+            SurfaceCommitService::FrameCallbacks
+        );
+    }
+
+    #[test]
+    fn pixel_changes_take_precedence_over_protocol_only_work() {
+        assert_eq!(
+            classify_surface_commit(true, true, true),
+            SurfaceCommitService::Render
+        );
+    }
+
+    #[test]
+    fn empty_commit_does_not_schedule_work() {
+        assert_eq!(
+            classify_surface_commit(false, false, false),
+            SurfaceCommitService::None
+        );
+    }
+
+    #[test]
+    fn remove_constraint_applies_matching_cursor_position_hint() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let pointer = state.seat.get_pointer().unwrap();
+
+        state.runtime.pointer_location = Point::from((500.0, 500.0));
+        pointer.set_location(Point::from((500.0, 500.0)));
+
+        let dummy_surface =
+            smithay::reexports::wayland_server::protocol::wl_surface::WlSurface::from_id(
+                &state.display_handle.clone(),
+                smithay::reexports::wayland_server::backend::ObjectId::null(),
+            )
+            .unwrap();
+
+        // Without an active window/surface origin, unmatching surface hint remains untouched
+        PointerConstraintsHandler::remove_constraint(&mut state, &dummy_surface, &pointer);
+
+        assert_eq!(state.runtime.pointer_location, Point::from((500.0, 500.0)));
+        assert_eq!(pointer.current_location(), Point::from((500.0, 500.0)));
+    }
+}

@@ -506,7 +506,9 @@ impl WaylandState {
 
     /// Check if any compositor visual transition needs another frame.
     pub fn has_active_animations(&self) -> bool {
-        self.has_active_window_animations() || self.layout_preview_animation.is_active()
+        self.has_active_window_animations()
+            || self.layout_preview_animation.is_active()
+            || self.shortcut_recovery_needs_tick()
     }
 
     /// Check if the window has an in-flight animation heading toward `outer_target`

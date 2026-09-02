@@ -214,7 +214,7 @@ mod tests {
                 direction: ResizeDirection::Right,
                 start: Point::new(100, 100),
                 geometry: geometry(),
-                origin: tree,
+                origin: tree.into(),
             })
             .unwrap();
         let active = interactions.active_interaction().unwrap();

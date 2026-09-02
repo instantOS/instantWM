@@ -422,8 +422,8 @@ pub struct MonitorConfig {
 )]
 #[serde(rename_all = "lowercase")]
 pub enum VrrMode {
-    Off,
     #[default]
+    Off,
     Auto,
     On,
 }
@@ -925,6 +925,11 @@ mod theme_tests {
             assert_eq!(theme.to_string().parse(), Ok(*theme));
         }
         assert!("not-a-theme".parse::<ColorTheme>().is_err());
+    }
+
+    #[test]
+    fn variable_refresh_rate_is_opt_in() {
+        assert_eq!(VrrMode::default(), VrrMode::Off);
     }
 
     #[test]

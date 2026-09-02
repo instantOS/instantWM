@@ -705,7 +705,7 @@ mod tests {
 
         let layout_cfg = state.config.layout;
         let plan = {
-            let clients = &state.model.clients;
+            let clients = &mut state.model.clients;
             state
                 .model
                 .monitors

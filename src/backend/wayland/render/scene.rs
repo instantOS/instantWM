@@ -6,7 +6,7 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
-use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::surface::{
     WaylandSurfaceRenderElement, render_elements_from_surface_tree,
 };
@@ -146,6 +146,7 @@ pub fn build_shared_scene_elements(
 
 /// Backend-agnostic render element buckets used by both Wayland startup paths.
 pub struct CommonSceneElements {
+    pub shortcut_recovery: Vec<SolidColorRenderElement>,
     pub overlays: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
     pub bar: Vec<MemoryRenderBufferRenderElement<GlesRenderer>>,
     pub borders: Vec<SolidColorRenderElement>,
@@ -213,11 +214,57 @@ pub fn build_common_scene_elements_from_shared(
         shared.layout_preview_color,
     );
 
+    let shortcut_recovery = build_shortcut_recovery_indicator(state, output);
+
     CommonSceneElements {
+        shortcut_recovery,
         overlays,
         bar,
         borders,
     }
+}
+
+fn build_shortcut_recovery_indicator(
+    state: &WaylandState,
+    output: &Output,
+) -> Vec<SolidColorRenderElement> {
+    const LOGICAL_HEIGHT: f64 = 6.0;
+    let Some(progress) = state.shortcut_recovery_progress(output) else {
+        return Vec::new();
+    };
+    let Some(mode) = output.current_mode() else {
+        return Vec::new();
+    };
+    let transformed_size = output.current_transform().transform_size(mode.size);
+    let width = transformed_size.w.max(1);
+    let height = (LOGICAL_HEIGHT * output.current_scale().fractional_scale())
+        .round()
+        .max(1.0) as i32;
+    let progress_width = ((f64::from(width) * progress).round() as i32).clamp(1, width);
+    let warning_mix = ((progress - 0.7) / 0.3).clamp(0.0, 1.0) as f32;
+    let color = [
+        0.18 + 0.82 * warning_mix,
+        0.72 - 0.40 * warning_mix,
+        1.0 - 0.88 * warning_mix,
+        1.0,
+    ];
+
+    [
+        ((width, height), [0.02, 0.02, 0.025, 0.88]),
+        ((progress_width, height), color),
+    ]
+    .into_iter()
+    .map(|(size, color)| {
+        let buffer = SolidColorBuffer::new(size, color);
+        SolidColorRenderElement::from_buffer(
+            &buffer,
+            (0, 0),
+            smithay::utils::Scale::from(1.0),
+            1.0,
+            Kind::Unspecified,
+        )
+    })
+    .collect()
 }
 
 /// Render native XDG popups as a compositor-wide foreground layer.
@@ -345,6 +392,7 @@ pub fn count_upper_layer_render_elements(renderer: &mut GlesRenderer, output: &O
 /// Helper struct to track element counts for pre-allocating the render vector.
 #[derive(Default)]
 pub struct RenderElementCounts {
+    pub shortcut_recovery: usize,
     pub overlays: usize,
     pub upper_layers: usize,
     pub bar: usize,
@@ -355,7 +403,12 @@ pub struct RenderElementCounts {
 impl RenderElementCounts {
     /// Calculate total capacity needed.
     pub fn total(&self) -> usize {
-        self.overlays + self.upper_layers + self.bar + self.borders + self.space
+        self.shortcut_recovery
+            + self.overlays
+            + self.upper_layers
+            + self.bar
+            + self.borders
+            + self.space
     }
 }
 
@@ -368,6 +421,7 @@ pub fn get_render_element_counts(
     num_upper: usize,
 ) -> RenderElementCounts {
     RenderElementCounts {
+        shortcut_recovery: scene.shortcut_recovery.len(),
         overlays: scene.overlays.len(),
         upper_layers: num_upper,
         bar: scene.bar.len(),

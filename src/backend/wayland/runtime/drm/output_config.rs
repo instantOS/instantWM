@@ -11,7 +11,9 @@ use crate::backend::output::{
     OutputSnapshot, OutputTransaction, OutputTransactionError, OutputTransactionKind,
 };
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::render::drm::{ManagedDrmOutputManager, OutputSurfaceEntry};
+use crate::backend::wayland::render::drm::{
+    ManagedDrmOutputManager, OutputSurfaceEntry, build_output_dmabuf_feedback,
+};
 use crate::config::config_toml::VrrMode;
 
 use super::DrmLoopState;
@@ -197,6 +199,13 @@ pub(super) fn process_output_configurations(
                     &render_elements,
                 ) {
                     Ok(surface) => {
+                        entry.dmabuf_feedback = build_output_dmabuf_feedback(renderer, &surface);
+                        if entry.dmabuf_feedback.is_none() {
+                            log::warn!(
+                                "Output {}: could not rebuild DMA-BUF scanout feedback",
+                                entry.output.name()
+                            );
+                        }
                         entry.surface = Some(surface);
                         newly_enabled.push(*index);
                     }
@@ -264,6 +273,7 @@ pub(super) fn process_output_configurations(
                     );
                 }
                 entry.surface.take();
+                loop_state.presentation_scheduler.remove_output(&entry.crtc);
                 entry.enabled = false;
                 entry.powered = false;
                 entry.vrr_enabled = false;

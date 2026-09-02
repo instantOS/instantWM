@@ -35,7 +35,7 @@ impl PointerPlacementPreviewCache {
 #[derive(Debug, Clone)]
 pub(crate) struct PointerTreeResizeStart {
     pub direction: crate::types::ResizeDirection,
-    pub origin: crate::layouts::tree::LayoutTree,
+    pub origin: std::sync::Arc<crate::layouts::tree::LayoutTree>,
 }
 
 /// Prepare a Super+right-button tree resize, or return `None` when the
@@ -86,7 +86,7 @@ pub(crate) fn pointer_tree_resize_start(
     )?;
     Some(PointerTreeResizeStart {
         direction,
-        origin: tree.clone(),
+        origin: std::sync::Arc::new(tree.clone()),
     })
 }
 

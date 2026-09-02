@@ -8,6 +8,9 @@ pacman-key --init
 pacman-key --populate archlinux
 pacman -Syu --noconfirm
 
+# cosmic-text (bar text rasterizer) panics with "no default font found"
+# when shaping text on a system without any fonts, so tests need a real
+# font package (ttf-dejavu below), not just the fontconfig/freetype libs.
 pacman -S --noconfirm --needed \
   base-devel \
   rust \
@@ -43,6 +46,7 @@ pacman -S --noconfirm --needed \
   libxaw \
   fontconfig \
   freetype2 \
+  ttf-dejavu \
   libxft \
   libdrm \
   wayland \

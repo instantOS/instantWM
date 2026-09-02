@@ -25,10 +25,13 @@ use smithay::{
     utils::{Logical, Point},
     wayland::{
         alpha_modifier::AlphaModifierState,
+        commit_timing::CommitTimingManagerState,
         compositor::CompositorState,
         content_type::ContentTypeState,
         cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
+        drm_syncobj::DrmSyncobjState,
+        fifo::FifoManagerState,
         fixes::FixesState,
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         fractional_scale::FractionalScaleManagerState,
@@ -37,9 +40,11 @@ use smithay::{
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
         image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
         input_method::InputMethodManagerState,
+        keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState,
         output::OutputManagerState,
         pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
+        pointer_warp::PointerWarpManager,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         selection::{
@@ -55,6 +60,7 @@ use smithay::{
         },
         shm::ShmState,
         single_pixel_buffer::SinglePixelBufferState,
+        tablet_manager::TabletManagerState,
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
@@ -124,6 +130,7 @@ pub struct WaylandState {
     pub alpha_modifier_state: AlphaModifierState,
     pub compositor_state: CompositorState,
     pub content_type_state: ContentTypeState,
+    pub commit_timing_manager_state: CommitTimingManagerState,
     pub cursor_shape_manager_state: CursorShapeManagerState,
     pub fixes_state: FixesState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
@@ -143,20 +150,32 @@ pub struct WaylandState {
     pub xwayland_shell_state: XWaylandShellState,
     pub xwayland_keyboard_grab_state: XWaylandKeyboardGrabState,
     pub wlr_layer_shell_state: WlrLayerShellState,
+    pub loop_handle: LoopHandle<'static, WaylandState>,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
+    pub drm_syncobj_state: Option<DrmSyncobjState>,
+    pub fifo_manager_state: FifoManagerState,
+    /// Surfaces with a FIFO barrier that still needs a presentation event.
+    /// Populated from the pre-commit path so blocked first commits are tracked
+    /// before they can enter the desktop surface tree.
+    pub fifo_constraint_surfaces: HashSet<WlSurface>,
+    /// Surfaces with commit-timing barriers that have not all become eligible.
+    pub commit_timing_surfaces: HashSet<WlSurface>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub image_capture_source_state: ImageCaptureSourceState,
     pub output_capture_source_state: OutputCaptureSourceState,
     pub image_copy_capture_state: ImageCopyCaptureState,
     pub pointer_gestures_state: PointerGesturesState,
     pub pointer_constraints_state: PointerConstraintsState,
+    pub pointer_warp_manager: PointerWarpManager,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub single_pixel_buffer_state: SinglePixelBufferState,
+    pub tablet_manager_state: TabletManagerState,
     pub viewporter_state: ViewporterState,
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
     pub text_input_manager_state: TextInputManagerState,
     pub input_method_manager_state: InputMethodManagerState,
+    pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
@@ -222,6 +241,9 @@ pub struct WaylandState {
     /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
     /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
+    /// Deferred cursor position hint from a locked pointer constraint.
+    /// Warped to when the pointer constraint is lifted/unlocked.
+    pub cursor_position_hint: Option<(WlSurface, Point<f64, Logical>)>,
     /// Backend-local runtime state that is not part of protocol or desktop state.
     pub runtime: WaylandRuntimeState,
     /// Queue of commands to be processed by the core WM.
@@ -330,6 +352,8 @@ pub struct WaylandRuntimeState {
     /// supports DPMS. Absence means the output cannot be power-managed.
     pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
     pub intercepted_key_releases: HashSet<Keycode>,
+    pub(crate) shortcut_recovery:
+        crate::backend::wayland::input::keyboard::recovery::ShortcutRecoveryState,
     pub session: Option<smithay::backend::session::libseat::LibSeatSession>,
 }
 
@@ -362,6 +386,7 @@ impl Default for WaylandRuntimeState {
             output_power: crate::backend::output::OutputPowerService::default(),
             output_power_modes: HashMap::new(),
             intercepted_key_releases: HashSet::new(),
+            shortcut_recovery: Default::default(),
             session: None,
         }
     }
@@ -484,6 +509,7 @@ impl WaylandState {
         let alpha_modifier_state = AlphaModifierState::new::<Self>(&dh);
         let compositor_state = CompositorState::new::<Self>(&dh);
         let content_type_state = ContentTypeState::new::<Self>(&dh);
+        let commit_timing_manager_state = CommitTimingManagerState::new::<Self>(&dh);
         let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
         let fixes_state = FixesState::new::<Self>(&dh);
         let fractional_scale_manager_state = FractionalScaleManagerState::new::<Self>(&dh);
@@ -503,19 +529,23 @@ impl WaylandState {
         let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
+        let fifo_manager_state = FifoManagerState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
         let image_capture_source_state = ImageCaptureSourceState::new();
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
+        let pointer_warp_manager = PointerWarpManager::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
+        let tablet_manager_state = TabletManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let virtual_keyboard_manager_state =
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_manager_state = TextInputManagerState::new::<Self>(&dh);
         let input_method_manager_state = InputMethodManagerState::new::<Self, _>(&dh, |_| true);
+        let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
@@ -541,6 +571,7 @@ impl WaylandState {
             alpha_modifier_state,
             compositor_state,
             content_type_state,
+            commit_timing_manager_state,
             cursor_shape_manager_state,
             fixes_state,
             fractional_scale_manager_state,
@@ -560,20 +591,28 @@ impl WaylandState {
             xwayland_shell_state,
             xwayland_keyboard_grab_state,
             wlr_layer_shell_state,
+            loop_handle: handle.clone(),
             dmabuf_state,
             dmabuf_global: None,
+            drm_syncobj_state: None,
+            fifo_manager_state,
+            fifo_constraint_surfaces: HashSet::new(),
+            commit_timing_surfaces: HashSet::new(),
             foreign_toplevel_list_state,
             image_capture_source_state,
             output_capture_source_state,
             image_copy_capture_state,
             pointer_gestures_state,
             pointer_constraints_state,
+            pointer_warp_manager,
             relative_pointer_manager_state,
             single_pixel_buffer_state,
+            tablet_manager_state,
             viewporter_state,
             virtual_keyboard_manager_state,
             text_input_manager_state,
             input_method_manager_state,
+            keyboard_shortcuts_inhibit_state,
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,
@@ -610,8 +649,20 @@ impl WaylandState {
             layout_preview_target: None,
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
+            cursor_position_hint: None,
             runtime: WaylandRuntimeState::default(),
             command_queue: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn init_drm_syncobj(&mut self, drm_device: smithay::backend::drm::DrmDeviceFd) {
+        if smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&drm_device) {
+            log::info!("Explicit sync (wp_linux_drm_syncobj_v1) is supported and initialized");
+            self.drm_syncobj_state = Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<
+                Self,
+            >(&self.display_handle, drm_device));
+        } else {
+            log::info!("DRM device does not support syncobj eventfd; explicit sync disabled");
         }
     }
 
@@ -903,7 +954,7 @@ impl WaylandState {
     }
 
     #[inline]
-    fn request_output_name_render(&mut self, output_name: String) {
+    pub(crate) fn request_output_name_render(&mut self, output_name: String) {
         if self.runtime.render_targets.invalidate_output(output_name) {
             self.ping_render_loop();
         }
@@ -984,7 +1035,7 @@ impl WaylandState {
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
                 vrr_support: support,
-                vrr_mode: VrrMode::Auto,
+                vrr_mode: VrrMode::default(),
                 vrr_enabled: false,
             });
         entry.vrr_support = support;
@@ -1024,7 +1075,7 @@ impl WaylandState {
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
-                vrr_mode: VrrMode::Auto,
+                vrr_mode: VrrMode::default(),
                 vrr_enabled: enabled,
             });
         let changed = entry.vrr_enabled != enabled;
@@ -1110,6 +1161,13 @@ impl WaylandState {
 #[cfg(test)]
 mod render_target_tests {
     use super::PendingRenderTargets;
+
+    #[test]
+    fn presentation_constraints_are_compositor_managed() {
+        let (_event_loop, state) = crate::backend::wayland::compositor::new_event_loop_and_state();
+        assert!(state.fifo_manager_state.is_managed());
+        assert!(state.commit_timing_manager_state.is_managed());
+    }
 
     #[test]
     fn output_invalidations_accumulate_without_becoming_global() {

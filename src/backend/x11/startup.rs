@@ -47,6 +47,7 @@ pub fn run() {
     let mut ipc_server = crate::runtime::late_init_x11(&mut wm);
 
     crate::backend::x11::events::run(&mut wm, &mut ipc_server);
+    crate::startup::autostart::shutdown_autostart();
     crate::backend::x11::lifecycle::cleanup(&mut wm);
 }
 

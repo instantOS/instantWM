@@ -5,8 +5,6 @@ mod commands;
 mod pointer;
 mod z_order;
 
-#[cfg(test)]
-use arrange::clients_with_planned_borders;
 pub use arrange::{arrange, arrange_monitor};
 pub(crate) use commands::finish_layout_change;
 #[cfg(test)]

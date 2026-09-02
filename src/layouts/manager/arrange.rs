@@ -85,7 +85,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let animated = globals.behavior.animated;
         let layout_cfg = globals.config.layout;
         let resize_hints = globals.config.window.resize_hints;
-        let clients = &globals.model.clients;
+        let clients = &mut globals.model.clients;
         let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
             return;
         };
@@ -134,7 +134,7 @@ impl ArrangePlan {
 impl Monitor {
     pub fn compute_arrange(
         &mut self,
-        clients: &HashMap<WindowId, Client>,
+        clients: &mut HashMap<WindowId, Client>,
         layout_cfg: &crate::config::config_toml::LayoutConfig,
         resize_hints: bool,
         bar_height: i32,
@@ -145,29 +145,27 @@ impl Monitor {
 
         // Border and geometry updates form one transaction. Layout against
         // the widths this pass will apply, not the previous client snapshot.
-        let layout_clients = clients_with_planned_borders(clients, &borders);
+        // `compute_arrange` already mutates the monitor's layout tree, so make
+        // the other logical half of the transaction authoritative as well.
+        // This avoids cloning the complete client map (including titles) on
+        // every arrangement pass merely to override a few integers.
+        apply_planned_borders(clients, &borders);
 
         let is_overview = self.overview_state.is_some();
         let (client_moves, z_order) = if is_overview {
-            let overview = crate::overview::compute(self, &layout_clients);
+            let overview = crate::overview::compute(self, clients);
             (overview.moves, Some(overview.z_order))
         } else {
             let moves = match self.current_layout() {
                 PresentationMode::Tiled => {
-                    compute_manual_tree(self, &layout_clients, layout_cfg, resize_hints, bar_height)
+                    compute_manual_tree(self, clients, layout_cfg, resize_hints, bar_height)
                 }
                 PresentationMode::Maximized => {
-                    reconcile_manual_tree(
-                        self,
-                        &layout_clients,
-                        layout_cfg,
-                        resize_hints,
-                        bar_height,
-                    );
-                    crate::layouts::algo::maximized(self, &layout_clients, layout_cfg, animated)
+                    reconcile_manual_tree(self, clients, layout_cfg, resize_hints, bar_height);
+                    crate::layouts::algo::maximized(self, clients, layout_cfg, animated)
                 }
                 PresentationMode::Floating => {
-                    crate::layouts::algo::floating(self, &layout_clients, animated)
+                    crate::layouts::algo::floating(self, clients, animated)
                 }
             };
             (moves, None)
@@ -319,17 +317,12 @@ fn tiling_minimum_slots(
         .collect()
 }
 
-pub(super) fn clients_with_planned_borders(
-    clients: &HashMap<WindowId, Client>,
-    borders: &[(WindowId, i32)],
-) -> HashMap<WindowId, Client> {
-    let mut planned = clients.clone();
+fn apply_planned_borders(clients: &mut HashMap<WindowId, Client>, borders: &[(WindowId, i32)]) {
     for &(win, border_width) in borders {
-        if let Some(client) = planned.get_mut(&win) {
+        if let Some(client) = clients.get_mut(&win) {
             client.border_width = border_width;
         }
     }
-    planned
 }
 
 fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {

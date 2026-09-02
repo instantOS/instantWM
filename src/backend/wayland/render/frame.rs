@@ -12,9 +12,120 @@ use smithay::desktop::utils::{
 use smithay::input::pointer::CursorImageStatus;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{Client, Resource};
+use smithay::wayland::commit_timing::{CommitTimerBarrierStateUserData, Timestamp};
+use smithay::wayland::compositor::CompositorHandler;
+use smithay::wayland::fifo::FifoBarrierCachedState;
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::backend::wayland::compositor::WaylandState;
+
+/// Release commits whose requested not-before timestamp is compatible with
+/// the predicted presentation time, returning the earliest deadline still
+/// blocked on this output.
+pub fn service_commit_timing(
+    state: &mut WaylandState,
+    output: &Output,
+    presentation_target: smithay::utils::Time<smithay::utils::Monotonic>,
+) -> Option<Timestamp> {
+    let mut clients: Vec<Client> = Vec::new();
+    let mut next_deadline: Option<Timestamp> = None;
+    let surfaces: Vec<_> = state.commit_timing_surfaces.iter().cloned().collect();
+    for surface in surfaces {
+        let result = smithay::wayland::compositor::with_states(&surface, |states| {
+            if !constraint_matches_output(state, &surface, states, output) {
+                return None;
+            }
+            let mut timers = states
+                .data_map
+                .get::<CommitTimerBarrierStateUserData>()?
+                .lock()
+                .unwrap();
+            Some((
+                timers.signal_until(presentation_target),
+                timers.next_deadline(),
+            ))
+        });
+        let Some((signaled, deadline)) = result else {
+            continue;
+        };
+        if deadline.is_none() {
+            // Remove before blocker_cleared: applying the newly unblocked
+            // commit may synchronously register another timed constraint.
+            state.commit_timing_surfaces.remove(&surface);
+        }
+        if signaled && let Some(client) = surface.client() {
+            remember_client(&mut clients, client);
+        }
+        if let Some(deadline) = deadline
+            && next_deadline.is_none_or(|current| deadline < current)
+        {
+            next_deadline = Some(deadline);
+        }
+    }
+    let dh = state.display_handle.clone();
+    for client in clients {
+        state
+            .client_compositor_state(&client)
+            .blocker_cleared(state, &dh);
+    }
+    next_deadline
+}
+
+fn constraint_matches_output(
+    state: &WaylandState,
+    surface: &WlSurface,
+    states: &smithay::wayland::compositor::SurfaceData,
+    output: &Output,
+) -> bool {
+    surface_primary_scanout_output(surface, states)
+        .as_ref()
+        .map_or_else(
+            || state.space.outputs().next() == Some(output),
+            |primary| primary == output,
+        )
+}
+
+/// Clear FIFO constraints after an output refresh has accepted the commit
+/// which established them. This unblocks the following queued surface commit.
+pub fn release_fifo_barriers(state: &mut WaylandState, output: &Output) {
+    let mut clients: Vec<Client> = Vec::new();
+    let surfaces: Vec<_> = state.fifo_constraint_surfaces.iter().cloned().collect();
+    for surface in surfaces {
+        let barrier = smithay::wayland::compositor::with_states(&surface, |states| {
+            constraint_matches_output(state, &surface, states, output).then(|| {
+                states
+                    .cached_state
+                    .get::<FifoBarrierCachedState>()
+                    .current()
+                    .barrier
+                    .take()
+            })
+        })
+        .flatten();
+        let Some(barrier) = barrier else {
+            continue;
+        };
+        state.fifo_constraint_surfaces.remove(&surface);
+        barrier.signal();
+        if let Some(client) = surface.client() {
+            remember_client(&mut clients, client);
+        }
+    }
+
+    let dh = state.display_handle.clone();
+    for client in clients {
+        state
+            .client_compositor_state(&client)
+            .blocker_cleared(state, &dh);
+    }
+}
+
+fn remember_client(clients: &mut Vec<Client>, client: Client) {
+    if !clients.iter().any(|known| known.id() == client.id()) {
+        clients.push(client);
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Frame callbacks

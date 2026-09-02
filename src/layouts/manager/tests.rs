@@ -1,5 +1,5 @@
 use super::{
-    available_tree_resize_direction, clients_with_planned_borders, compute_monitor_z_order,
+    available_tree_resize_direction, compute_monitor_z_order,
     manual_tree_pointer_interaction_allowed, pointer_tree_gap_resize_start,
     pointer_tree_resize_allowed, shifted_master_count,
 };
@@ -329,7 +329,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
             direction: ResizeDirection::Right,
             start: Point::new(400, 300),
             geometry: Rect::new(0, 0, 400, 600),
-            origin,
+            origin: origin.into(),
         })
         .unwrap();
 
@@ -506,16 +506,22 @@ fn pointer_tree_resize_remains_active_when_client_minimums_are_impossible() {
 }
 
 #[test]
-fn planned_border_is_used_without_waiting_for_next_arrange() {
+fn arrange_commits_planned_borders_before_computing_geometry() {
     let win = WindowId(1);
+    let mut monitor = monitor_with_order(&[win], win);
+    monitor.monitor_rect = Rect::new(0, 0, 800, 600);
+    monitor.available_rect = monitor.monitor_rect;
+    monitor.clients = vec![win];
     let mut client = visible_client(win);
     client.border_width = 2;
-    let clients = HashMap::from([(win, client)]);
+    client.old_border_width = 2;
+    let mut clients = HashMap::from([(win, client)]);
 
-    let planned = clients_with_planned_borders(&clients, &[(win, 0)]);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
 
-    assert_eq!(planned[&win].border_width, 0);
-    assert_eq!(clients[&win].border_width, 2);
+    assert_eq!(clients[&win].border_width, 0);
+    assert_eq!(plan.borders, [(win, 0)]);
+    assert_eq!(plan.client_moves[0].rect, monitor.available_rect);
 }
 
 #[test]
@@ -597,7 +603,7 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
     );
     monitor.available_rect = crate::types::Rect::new(0, 0, 100, 100);
     monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
-    let clients = monitor
+    let mut clients = monitor
         .clients
         .iter()
         .copied()
@@ -609,14 +615,14 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, 1);
 
-    let first = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let first = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     assert!(
         monitor
             .per_tag_state()
             .layout_tree
             .resize(WindowId(1), Side::Right)
     );
-    let second = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let second = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
 
     let first_rect = first
         .client_moves
@@ -641,12 +647,12 @@ fn second_tiled_window_is_placed_in_the_left_half() {
     monitor.clients = vec![WindowId(1)];
     let mut clients = HashMap::from([(WindowId(1), visible_client(WindowId(1)))]);
     let config = LayoutConfig::default();
-    let _ = monitor.compute_arrange(&clients, &config, true, 0, false);
+    let _ = monitor.compute_arrange(&mut clients, &config, true, 0, false);
 
     monitor.clients.push(WindowId(2));
     monitor.z_order.attach_top(WindowId(2));
     clients.insert(WindowId(2), visible_client(WindowId(2)));
-    let plan = monitor.compute_arrange(&clients, &config, true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &config, true, 0, false);
     let rects = plan
         .client_moves
         .iter()
@@ -664,7 +670,7 @@ fn changing_new_window_policy_does_not_rewrite_an_existing_tree() {
     monitor.available_rect = Rect::new(0, 0, 1200, 800);
     monitor.monitor_rect = monitor.available_rect;
     monitor.clients = windows.to_vec();
-    let clients = windows
+    let mut clients = windows
         .into_iter()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
@@ -672,12 +678,12 @@ fn changing_new_window_policy_does_not_rewrite_an_existing_tree() {
         new_window_placement: crate::config::config_toml::NewWindowPlacement::Auto,
         ..LayoutConfig::default()
     };
-    let before = monitor.compute_arrange(&clients, &auto, true, 0, false);
+    let before = monitor.compute_arrange(&mut clients, &auto, true, 0, false);
     let force = LayoutConfig {
         new_window_placement: crate::config::config_toml::NewWindowPlacement::Force,
         ..auto
     };
-    let after = monitor.compute_arrange(&clients, &force, true, 0, false);
+    let after = monitor.compute_arrange(&mut clients, &force, true, 0, false);
 
     let rectangles = |plan: crate::layouts::ArrangePlan| {
         plan.client_moves
@@ -705,7 +711,7 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
         .layout_tree
         .apply_preset(Preset::MasterStack, &windows, 1);
 
-    let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     let rects = plan
         .client_moves
         .iter()
@@ -746,7 +752,8 @@ fn arrange_softens_impossible_minimums_and_restores_them_when_space_returns() {
         .layout_tree
         .apply_preset(Preset::MasterStack, &windows, 1);
 
-    let overcommitted = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let overcommitted =
+        monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     let overcommitted_rects = overcommitted
         .client_moves
         .iter()
@@ -766,7 +773,7 @@ fn arrange_softens_impossible_minimums_and_restores_them_when_space_returns() {
 
     monitor.available_rect = Rect::new(0, 0, 500, 100);
     monitor.monitor_rect = monitor.available_rect;
-    let recovered = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let recovered = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     assert!(recovered.client_moves.iter().all(|output| {
         output.rect.w >= 200
             && output.options.size_hints == crate::geometry::SizeHintPolicy::Respect
@@ -780,7 +787,7 @@ fn dense_manual_layout_uses_one_animation_duration_for_every_window() {
     monitor.available_rect = Rect::new(0, 0, 1200, 700);
     monitor.monitor_rect = monitor.available_rect;
     monitor.clients = windows.clone();
-    let clients = windows
+    let mut clients = windows
         .iter()
         .copied()
         .map(|window| (window, visible_client(window)))
@@ -790,7 +797,7 @@ fn dense_manual_layout_uses_one_animation_duration_for_every_window() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, 1);
 
-    let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, true);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, true);
 
     assert_eq!(plan.client_moves.len(), windows.len());
     assert!(plan.client_moves.iter().all(|output| {
@@ -820,7 +827,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
-    let clients = HashMap::from([(
+    let mut clients = HashMap::from([(
         win,
         Client {
             win,
@@ -831,7 +838,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
         },
     )]);
 
-    let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
 
     assert_eq!(plan.client_moves.len(), 1);
     assert!(plan.fullscreen_moves.is_empty());
@@ -855,7 +862,7 @@ fn fullscreen_preserves_a_tiled_clients_tree_slot() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, 1);
 
-    let before = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let before = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     let before_rect = before
         .client_moves
         .iter()
@@ -865,7 +872,8 @@ fn fullscreen_preserves_a_tiled_clients_tree_slot() {
     let leaves_before = monitor.per_tag_state().layout_tree.leaves();
 
     clients.get_mut(&fullscreen_win).unwrap().enter_fullscreen();
-    let fullscreen = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let fullscreen =
+        monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
 
     assert_eq!(monitor.per_tag_state().layout_tree.leaves(), leaves_before);
     assert!(
@@ -882,7 +890,7 @@ fn fullscreen_preserves_a_tiled_clients_tree_slot() {
     );
 
     clients.get_mut(&fullscreen_win).unwrap().restore_mode();
-    let restored = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let restored = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     let restored_rect = restored
         .client_moves
         .iter()
@@ -900,7 +908,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     let mut monitor = monitor_with_order(&windows, WindowId(3));
     monitor.available_rect = Rect::new(0, 0, 400, 300);
     monitor.clients = windows.to_vec();
-    let clients = windows
+    let mut clients = windows
         .into_iter()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
@@ -914,7 +922,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .bounds(Rect::new(0, 0, 400, 300));
     monitor.per_tag_state().presentation = PresentationMode::Maximized;
 
-    let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let maximized = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     assert_eq!(maximized.client_moves.len(), windows.len());
     assert!(
         maximized
@@ -931,7 +939,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     );
 
     monitor.per_tag_state().presentation = PresentationMode::Tiled;
-    let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let manual = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     let first_rect = manual.client_moves.first().unwrap().rect;
     assert!(
         manual
@@ -961,12 +969,12 @@ fn maximized_presentation_reconciles_new_tiled_leaves() {
         .copied()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
-    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let _ = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
 
     monitor.clients.push(WindowId(3));
     monitor.z_order.attach_top(WindowId(3));
     clients.insert(WindowId(3), visible_client(WindowId(3)));
-    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let _ = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
 
     let leaves = monitor.per_tag_state().layout_tree.leaves();
     assert_eq!(leaves.len(), 3);
@@ -997,7 +1005,7 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .bounds(Rect::new(0, 0, 400, 300));
     monitor.per_tag_state().presentation = PresentationMode::Floating;
 
-    let floating = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let floating = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     assert!(floating.client_moves.is_empty());
     assert_eq!(
         monitor
@@ -1016,7 +1024,7 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     );
 
     monitor.per_tag_state().presentation = PresentationMode::Tiled;
-    let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let manual = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
     let first_rect = manual.client_moves.first().unwrap().rect;
     assert!(
         manual

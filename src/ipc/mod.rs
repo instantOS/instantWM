@@ -228,12 +228,6 @@ fn get_available_socket_path() -> PathBuf {
     }
 }
 
-/// Upper bound on time spent waiting for a client to drain its socket while a
-/// response is written. Streams are nonblocking so a stuck client can never
-/// wedge the compositor event loop; this budget only rides out transient
-/// backpressure before the response is dropped (and logged).
-const RESPONSE_WRITE_MAX_STALL: Duration = Duration::from_millis(20);
-
 fn send_response(stream: &mut UnixStream, response: &Response) -> io::Result<()> {
     let data = bincode::encode_to_vec(response, bincode::config::standard()).unwrap_or_else(|_| {
         bincode::encode_to_vec(
@@ -242,21 +236,21 @@ fn send_response(stream: &mut UnixStream, response: &Response) -> io::Result<()>
         )
         .unwrap()
     });
-    match write_all_bounded(stream, &data) {
+    match write_all_nonblocking(stream, &data) {
         Ok(()) => stream.flush(),
         Err(err) => {
-            log::warn!("dropping IPC response after write stall: {err}");
+            log::warn!("dropping IPC client whose response would block: {err}");
             Err(err)
         }
     }
 }
 
-/// `write_all` for a nonblocking stream that tolerates transient
-/// `WouldBlock` backpressure up to [`RESPONSE_WRITE_MAX_STALL`] before giving
-/// up, so oversized responses survive slow-but-live readers without ever
-/// blocking the loop indefinitely.
-fn write_all_bounded(stream: &mut UnixStream, mut data: &[u8]) -> io::Result<()> {
-    let deadline = Instant::now() + RESPONSE_WRITE_MAX_STALL;
+/// Write a response without ever waiting for client-controlled backpressure.
+///
+/// IPC clients are disposable peers of the compositor event loop. If their
+/// socket buffer cannot accept a response immediately, the caller drops the
+/// stream instead of delaying display and input dispatch.
+fn write_all_nonblocking(stream: &mut UnixStream, mut data: &[u8]) -> io::Result<()> {
     while !data.is_empty() {
         match stream.write(data) {
             Ok(0) => {
@@ -267,15 +261,6 @@ fn write_all_bounded(stream: &mut UnixStream, mut data: &[u8]) -> io::Result<()>
             }
             Ok(n) => data = &data[n..],
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                if Instant::now() >= deadline {
-                    return Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "client stopped reading its socket",
-                    ));
-                }
-                std::thread::sleep(Duration::from_millis(1));
-            }
             Err(err) => return Err(err),
         }
     }
@@ -461,11 +446,11 @@ mod tests {
     }
 
     #[test]
-    fn write_all_bounded_transfers_payload_on_nonblocking_stream() {
+    fn nonblocking_response_write_transfers_payload_when_the_peer_is_ready() {
         let (mut server_stream, mut client_stream) = UnixStream::pair().unwrap();
         server_stream.set_nonblocking(true).unwrap();
         let payload = vec![0x42; 8192];
-        write_all_bounded(&mut server_stream, &payload).unwrap();
+        write_all_nonblocking(&mut server_stream, &payload).unwrap();
 
         let mut received = vec![0u8; 8192];
         client_stream.read_exact(&mut received).unwrap();
