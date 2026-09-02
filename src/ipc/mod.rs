@@ -319,7 +319,9 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
             | MonitorCommand::Prev { .. }
             | MonitorCommand::Set { .. },
         ) => Some(RestorePrevious),
-        IpcCommand::Window(WindowCommand::Resize { .. } | WindowCommand::Close(None))
+        IpcCommand::Window(
+            WindowCommand::Resize { .. } | WindowCommand::Close(None) | WindowCommand::Focus(_),
+        )
         | IpcCommand::Scratchpad(
             ScratchpadCommand::Create { .. }
             | ScratchpadCommand::Restore {

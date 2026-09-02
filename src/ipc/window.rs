@@ -10,6 +10,7 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
     match cmd {
         WindowCommand::List(window_id) => list_windows(wm, window_id.map(WindowId::from)),
         WindowCommand::Info(window_id) => window_info(wm, window_id.map(WindowId::from)),
+        WindowCommand::Focus(window_id) => focus_window(wm, window_id.map(WindowId::from)),
         WindowCommand::Resize {
             window_id,
             monitor,
@@ -60,6 +61,30 @@ fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
     };
     crate::client::close_win(&mut wm.ctx(), win);
     Response::ok()
+}
+
+fn focus_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
+    let target = parsed_id.or_else(|| wm.core.model.selected_win());
+    let Some(win) = target else {
+        return Response::err("no target window");
+    };
+
+    // Mirror the X11 _NET_ACTIVE_WINDOW handler: an explicit activation
+    // request also restores hidden (minimized) windows before focusing.
+    if wm
+        .core
+        .model
+        .client(win)
+        .is_some_and(|client| client.is_hidden)
+    {
+        crate::client::show_window(&mut wm.ctx(), win);
+    }
+
+    if crate::focus::activate_client(&mut wm.ctx(), win) {
+        Response::ok()
+    } else {
+        Response::err("window not found")
+    }
 }
 
 fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {

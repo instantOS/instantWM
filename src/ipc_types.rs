@@ -235,6 +235,7 @@ pub struct PendingTmpRuleInfo {
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum WindowCommand {
     Info(Option<u32>),
+    Focus(Option<u32>),
     Resize {
         window_id: Option<u32>,
         monitor: Option<String>,
