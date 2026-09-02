@@ -411,19 +411,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
 pub fn apply_monitor_config(ctx: &mut WmCtx) {
     let monitors_cfg = ctx.core().config().monitors.clone();
-
-    // Apply wildcard first as fallback
-    if let Some(wildcard_cfg) = monitors_cfg.get("*") {
-        ctx.output_backend().set_monitor_config("*", wildcard_cfg);
-    }
-
-    // Apply specific configs
-    for (name, config) in monitors_cfg {
-        if name != "*" {
-            ctx.output_backend().set_monitor_config(&name, &config);
-        }
-    }
-
+    ctx.output_backend().apply_monitor_configs(&monitors_cfg);
     refresh_monitor_layout(ctx);
 }
 
@@ -883,5 +871,50 @@ mod transfer_focus_tests {
         );
         assert!(model.monitor(retained).is_some());
         assert_eq!(model.client(win).unwrap().monitor_id, retained);
+    }
+
+    #[test]
+    fn monitor_reconciliation_preserves_identity_and_adds_new_output() {
+        let mut model = crate::model::WmModel::new();
+        let retained = model.monitors.push(Monitor {
+            name: "eDP-1".to_string(),
+            ..Monitor::default()
+        });
+        let outputs = [
+            BackendOutputInfo {
+                name: "eDP-1".to_string(),
+                rect: Rect::new(0, 0, 1920, 1080),
+                scale: 1.0,
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: None,
+                vrr_enabled: false,
+            },
+            BackendOutputInfo {
+                name: "HDMI-A-1".to_string(),
+                rect: Rect::new(1920, 0, 3840, 2160),
+                scale: 1.0,
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: None,
+                vrr_enabled: false,
+            },
+        ];
+        let result = reconcile_monitor_model(
+            &mut model,
+            &outputs,
+            &[(20, 4, 30), (20, 4, 30)],
+            &[],
+            true,
+            false,
+        );
+
+        assert!(result.changed);
+        assert!(result.removed_bar_windows.is_empty());
+        assert_eq!(model.monitors.len(), 2);
+        assert_eq!(model.monitor(retained).unwrap().name, "eDP-1");
+        let hdmi_id = model
+            .monitors_iter()
+            .find_map(|(id, monitor)| (monitor.name == "HDMI-A-1").then_some(id))
+            .expect("new HDMI monitor");
+        assert_ne!(hdmi_id, retained);
     }
 }

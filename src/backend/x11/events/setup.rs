@@ -1,6 +1,7 @@
 use crate::backend::Backend;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
+use x11rb::protocol::randr::{ConnectionExt as RandrConnectionExt, NotifyMask};
 use x11rb::protocol::xinput::{
     ConnectionExt as XInputConnectionExt, EventMask as XInputEventMask, XIEventMask,
 };
@@ -79,6 +80,14 @@ pub fn setup_root(wm: &mut Wm) {
     }
 
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
+    // Root ConfigureNotify is not an output-topology notification: a connector
+    // may appear, disappear, or change its CRTC without resizing the root
+    // framebuffer. Subscribe to RandR's authoritative event stream as well.
+    let randr_mask =
+        NotifyMask::SCREEN_CHANGE | NotifyMask::CRTC_CHANGE | NotifyMask::OUTPUT_CHANGE;
+    if let Err(error) = conn.randr_select_input(root, randr_mask) {
+        log::warn!("failed to subscribe to RandR output changes: {error}");
+    }
     let _ = conn.flush();
 
     // Create the EWMH supporting WM check window.

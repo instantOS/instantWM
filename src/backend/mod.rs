@@ -163,8 +163,12 @@ pub trait LayoutInteractionOps {
 
 /// Output discovery and configuration.
 pub trait OutputOps {
-    /// Set monitor configuration. Every active backend owns output policy.
-    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig);
+    /// Apply the complete monitor policy. Backends resolve wildcard and named
+    /// precedence atomically rather than exposing order-dependent setters.
+    fn apply_monitor_configs(
+        &self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    );
 
     /// Get current outputs from the backend.
     fn get_outputs(&self) -> Vec<BackendOutputInfo>;
@@ -428,12 +432,15 @@ impl PointerOps for Backend {
 }
 
 impl OutputOps for Backend {
-    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+    fn apply_monitor_configs(
+        &self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
         match self {
             Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).set_monitor_config(name, config)
+                X11BackendRef::new(&data.conn, data.screen_num).apply_monitor_configs(configs)
             }
-            Backend::Wayland(data) => data.backend.set_monitor_config(name, config),
+            Backend::Wayland(data) => data.backend.apply_monitor_configs(configs),
         }
     }
 

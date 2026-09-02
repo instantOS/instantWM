@@ -283,6 +283,10 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),
+        x11rb::protocol::Event::RandrNotify(_) => handlers::randr_notify(&mut ctx),
+        x11rb::protocol::Event::RandrScreenChangeNotify(e) => {
+            handlers::randr_screen_change_notify(&mut ctx, &e)
+        }
         // Raw motion is coalesced by `drain_x11_events`; dispatching an
         // individual sample would reintroduce a QueryPointer round trip per
         // device event.

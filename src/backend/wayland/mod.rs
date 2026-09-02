@@ -441,11 +441,23 @@ impl crate::backend::WindowCloseOps for crate::contexts::WmCtxWayland<'_> {
 }
 
 impl OutputOps for WaylandBackend {
-    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
-        let name_str = name.to_owned();
-        let config_clone = config.clone();
+    fn apply_monitor_configs(
+        &self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
+        let configs = configs.clone();
         let _ = self.with_state(move |state: &mut WaylandState| {
-            state.set_output_config(&name_str, &config_clone);
+            let output_names: Vec<_> = state
+                .output_management_state
+                .outputs()
+                .iter()
+                .map(|output| output.name())
+                .collect();
+            for name in output_names {
+                if let Some(config) = configs.get(&name).or_else(|| configs.get("*")) {
+                    state.set_output_config(&name, config);
+                }
+            }
         });
     }
 

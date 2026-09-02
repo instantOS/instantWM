@@ -7,6 +7,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
+use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::input::pointer::CursorIcon;
 use smithay::reexports::calloop::{EventLoop, LoopHandle, LoopSignal};
 use smithay::reexports::drm::control::crtc;
@@ -30,7 +31,8 @@ use crate::backend::wayland::input::apply_pending_warp;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::drm::{
     CursorManager, ManagedDrmOutputManager, OutputHitRegion, OutputSurfaceEntry, RenderOutcome,
-    build_output_surfaces, create_output_manager, render_drm_output,
+    add_new_output_surfaces, build_output_surfaces, create_output_manager, render_drm_output,
+    usable_connector_handles,
 };
 use crate::backend::wayland::render::scene::{SceneCache, build_shared_scene_elements};
 use crate::config::config_toml::CursorConfig;
@@ -117,6 +119,19 @@ impl DrmLoopState {
             .iter()
             .any(|(crtc, &dirty)| dirty && !self.pending_crtcs.contains(crtc))
     }
+
+    fn remove_output(&mut self, crtc: crtc::Handle) {
+        self.render_flags.remove(&crtc);
+        self.taken_render_flags.remove(&crtc);
+        self.pending_crtcs.remove(&crtc);
+        self.presentation_seq.remove(&crtc);
+        self.presentation_scheduler.remove_output(&crtc);
+    }
+
+    fn add_output(&mut self, crtc: crtc::Handle) {
+        self.render_flags.insert(crtc, true);
+        self.presentation_seq.entry(crtc).or_insert(0);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -125,6 +140,7 @@ enum DrmRuntimeEvent {
     SessionActivated,
     VBlank(crtc::Handle),
     PointerMoved { old_x: i32 },
+    OutputTopologyChanged,
 }
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
@@ -253,6 +269,7 @@ pub fn run() -> ! {
     );
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
+    setup_udev_hotplug_handler(&loop_handle, &seat_name, runtime_event_tx.clone());
 
     let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &wm);
 
@@ -467,6 +484,29 @@ fn setup_drm_vblank_handler(
         .expect("drm notifier source");
 }
 
+/// Wake the DRM runtime whenever udev reports a graphics-device topology
+/// change. Connector probing and mutation remain on the compositor thread.
+fn setup_udev_hotplug_handler(
+    loop_handle: &calloop::LoopHandle<WaylandState>,
+    seat_name: &str,
+    runtime_event_tx: mpsc::Sender<DrmRuntimeEvent>,
+) {
+    let backend = match UdevBackend::new(seat_name) {
+        Ok(backend) => backend,
+        Err(error) => {
+            log::error!("failed to monitor DRM hot-plug events: {error}");
+            return;
+        }
+    };
+    loop_handle
+        .insert_source(backend, move |event, _, _| match event {
+            UdevEvent::Added { .. } | UdevEvent::Changed { .. } | UdevEvent::Removed { .. } => {
+                let _ = runtime_event_tx.send(DrmRuntimeEvent::OutputTopologyChanged);
+            }
+        })
+        .expect("failed to insert udev hot-plug source");
+}
+
 /// Extract a `CursorIcon` from a resolved cursor presentation for
 /// animation-timer scheduling.  `Surface` cursors are client-owned and
 /// cannot be introspected, so they return `None`.
@@ -496,7 +536,7 @@ fn run_event_loop(
     layout_state: &mut DrmLayoutState,
     input_dimensions: &Rc<Cell<crate::types::Size>>,
     loop_state: &mut DrmLoopState,
-    output_surfaces: &mut [OutputSurfaceEntry],
+    output_surfaces: &mut Vec<OutputSurfaceEntry>,
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
     renderer: &mut GlesRenderer,
     cursor_manager: &mut CursorManager,
@@ -515,13 +555,27 @@ fn run_event_loop(
 
     event_loop
         .run(None, state, move |state| {
-            let pointer_moved = process_runtime_events(
+            let (pointer_moved, topology_changed) = process_runtime_events(
                 &runtime_event_rx,
                 loop_state,
                 layout_state,
                 output_surfaces,
                 &monotonic_clock,
             );
+            if topology_changed
+                && reconcile_drm_outputs(
+                    wm,
+                    state,
+                    output_surfaces,
+                    output_manager,
+                    renderer,
+                    loop_state,
+                    layout_state,
+                    &shared_input_dimensions,
+                )
+            {
+                loop_state.mark_all_dirty();
+            }
             process_frame_callback_requests(
                 state,
                 &loop_handle,
@@ -658,8 +712,9 @@ fn process_runtime_events(
     layout_state: &DrmLayoutState,
     output_surfaces: &mut [OutputSurfaceEntry],
     monotonic_clock: &Clock<Monotonic>,
-) -> bool {
+) -> (bool, bool) {
     let mut pointer_moved = false;
+    let mut topology_changed = false;
     while let Ok(event) = runtime_event_rx.try_recv() {
         match event {
             DrmRuntimeEvent::SessionPaused => {
@@ -701,9 +756,106 @@ fn process_runtime_events(
                 loop_state.mark_pointer_output_dirty(old_x, layout_state);
                 pointer_moved = true;
             }
+            DrmRuntimeEvent::OutputTopologyChanged => topology_changed = true,
         }
     }
-    pointer_moved
+    (pointer_moved, topology_changed)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reconcile_drm_outputs(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    output_surfaces: &mut Vec<OutputSurfaceEntry>,
+    output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
+    renderer: &mut GlesRenderer,
+    loop_state: &mut DrmLoopState,
+    layout_state: &mut DrmLayoutState,
+    input_dimensions: &Rc<Cell<crate::types::Size>>,
+) -> bool {
+    let usable = {
+        let manager = output_manager.lock().unwrap();
+        match usable_connector_handles(&manager) {
+            Ok(connectors) => connectors,
+            Err(error) => {
+                log::warn!("failed to probe DRM connectors after hot-plug: {error}");
+                return false;
+            }
+        }
+    };
+
+    let old_connectors: HashSet<_> = output_surfaces
+        .iter()
+        .map(|entry| entry.connector)
+        .collect();
+    let mut retained = Vec::with_capacity(output_surfaces.len());
+    let mut removed = Vec::new();
+    for entry in output_surfaces.drain(..) {
+        if usable.contains(&entry.connector) {
+            retained.push(entry);
+        } else {
+            removed.push(entry);
+        }
+    }
+    *output_surfaces = retained;
+    let retained_connectors: HashSet<_> = output_surfaces
+        .iter()
+        .map(|entry| entry.connector)
+        .collect();
+
+    if !removed.is_empty() {
+        state
+            .output_management_state
+            .remove_heads::<WaylandState>(removed.iter().map(|entry| &entry.output));
+        for mut entry in removed {
+            let name = entry.output.name();
+            log::info!("Output {name}: disconnected");
+            entry.surface.take();
+            loop_state.remove_output(entry.crtc);
+            state.space.unmap_output(&entry.output);
+            state.set_output_global_enabled(&entry.output, false);
+            state.fail_pending_captures_for_output(&entry.output);
+            state.runtime.output_power_modes.remove(&name);
+            state.runtime.output_metadata.remove(&name);
+            let cancelled = state.output_power_state.fail_output(&name);
+            state.runtime.output_power.cancel(&cancelled);
+        }
+    }
+
+    {
+        let mut manager = output_manager.lock().unwrap();
+        add_new_output_surfaces(&mut manager, renderer, state, output_surfaces);
+    }
+
+    let added: Vec<_> = output_surfaces
+        .iter()
+        .filter(|entry| !retained_connectors.contains(&entry.connector))
+        .collect();
+    for entry in &added {
+        state
+            .space
+            .map_output(&entry.output, (entry.rect.x, entry.rect.y));
+        loop_state.add_output(entry.crtc);
+    }
+    state
+        .output_management_state
+        .add_heads::<WaylandState>(added.iter().map(|entry| &entry.output));
+
+    let connector_set_unchanged = added.is_empty()
+        && old_connectors.len() == output_surfaces.len()
+        && output_surfaces
+            .iter()
+            .all(|entry| old_connectors.contains(&entry.connector));
+    if connector_set_unchanged {
+        return false;
+    }
+
+    refresh_drm_layout_state(state, output_surfaces, layout_state);
+    input_dimensions.set(layout_state.total_size);
+    crate::monitor::refresh_monitor_layout(&mut wm.ctx());
+    state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
+    crate::monitor::apply_monitor_config(&mut wm.ctx());
+    true
 }
 
 fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {

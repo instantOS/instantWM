@@ -451,9 +451,12 @@ impl OutputOps for X11BackendRef<'_> {
         crate::backend::x11::monitor_helpers::xinerama_outputs(self)
     }
 
-    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+    fn apply_monitor_configs(
+        &self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
         let root = self.conn.setup().roots[self.screen_num].root;
-        randr::set_monitor_config(self.conn, root, name, config);
+        randr::apply_monitor_configs(self.conn, root, configs);
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {

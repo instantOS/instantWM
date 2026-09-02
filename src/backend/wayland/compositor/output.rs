@@ -59,7 +59,7 @@ fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
 }
 
 impl WaylandState {
-    fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
+    pub(crate) fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
         let Some(global) = output.user_data().get::<OutputGlobal>() else {
             return;
         };

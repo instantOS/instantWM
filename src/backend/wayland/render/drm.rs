@@ -87,34 +87,78 @@ pub fn build_output_surfaces(
     state: &mut WaylandState,
 ) -> Vec<OutputSurfaceEntry> {
     let mut output_surfaces: Vec<OutputSurfaceEntry> = Vec::new();
-    let mut output_x_offset: i32 = 0;
+    add_new_output_surfaces(output_manager, renderer, state, &mut output_surfaces);
+    output_surfaces
+}
+
+/// Discover and initialize connectors that are not already represented.
+/// Existing entries are deliberately left intact so a hot-plug does not
+/// modeset or reset unaffected outputs.
+pub fn add_new_output_surfaces(
+    output_manager: &mut ManagedDrmOutputManager,
+    renderer: &mut GlesRenderer,
+    state: &mut WaylandState,
+    output_surfaces: &mut Vec<OutputSurfaceEntry>,
+) {
+    let mut output_x_offset = output_surfaces
+        .iter()
+        .filter(|entry| entry.enabled)
+        .map(|entry| entry.rect.x.saturating_add(entry.rect.w))
+        .max()
+        .unwrap_or(0);
 
     let res = output_manager
         .device()
         .resource_handles()
         .expect("drm resource_handles");
-    let mut used_crtcs: Vec<crtc::Handle> = Vec::new();
+    let mut used_crtcs: Vec<crtc::Handle> =
+        output_surfaces.iter().map(|entry| entry.crtc).collect();
+    let existing_connectors: Vec<connector::Handle> = output_surfaces
+        .iter()
+        .map(|entry| entry.connector)
+        .collect();
     let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmExtras>::default();
 
     for &conn_handle in res.connectors() {
+        if existing_connectors.contains(&conn_handle) {
+            continue;
+        }
         let Some(spec) = drm_output_spec(output_manager, &res, conn_handle, &used_crtcs) else {
             continue;
         };
 
         used_crtcs.push(spec.crtc);
-        let entry = initialize_drm_output_surface(
+        let Some(entry) = initialize_drm_output_surface(
             output_manager,
             renderer,
             state,
             &init_render_elements,
             spec,
             output_x_offset,
-        );
+        ) else {
+            continue;
+        };
         output_x_offset += entry.rect.w;
         output_surfaces.push(entry);
     }
+}
 
-    output_surfaces
+/// Return the connector handles currently capable of producing an output.
+pub fn usable_connector_handles(
+    output_manager: &ManagedDrmOutputManager,
+) -> std::io::Result<Vec<connector::Handle>> {
+    let resources = output_manager.device().resource_handles()?;
+    Ok(resources
+        .connectors()
+        .iter()
+        .copied()
+        .filter(|connector| {
+            output_manager
+                .device()
+                .get_connector(*connector, false)
+                .is_ok_and(|info| is_usable_connector(&info))
+        })
+        .collect())
 }
 
 struct DrmOutputSpec {
@@ -172,8 +216,10 @@ fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
     modes.iter().copied().max_by(|a, b| {
         let (aw, ah) = a.size();
         let (bw, bh) = b.size();
-        (aw as u64 * ah as u64)
-            .cmp(&(bw as u64 * bh as u64))
+        a.mode_type()
+            .contains(control::ModeTypeFlags::PREFERRED)
+            .cmp(&b.mode_type().contains(control::ModeTypeFlags::PREFERRED))
+            .then_with(|| (aw as u64 * ah as u64).cmp(&(bw as u64 * bh as u64)))
             .then_with(|| a.vrefresh().cmp(&b.vrefresh()))
     })
 }
@@ -199,7 +245,7 @@ fn initialize_drm_output_surface(
     init_render_elements: &DrmOutputRenderElements<GlesRenderer, DrmExtras>,
     spec: DrmOutputSpec,
     x_offset: i32,
-) -> OutputSurfaceEntry {
+) -> Option<OutputSurfaceEntry> {
     log::info!(
         "Output {}: {}x{}@{}Hz on CRTC {:?}",
         spec.name,
@@ -210,18 +256,21 @@ fn initialize_drm_output_surface(
     );
 
     let output = create_drm_wayland_output(state, &spec, x_offset);
-    let surface = output_manager
-        .lock()
-        .initialize_output(
-            spec.crtc,
-            spec.mode,
-            &[spec.connector],
-            &output,
-            None,
-            renderer,
-            init_render_elements,
-        )
-        .expect("initialize_output");
+    let surface = match output_manager.lock().initialize_output(
+        spec.crtc,
+        spec.mode,
+        &[spec.connector],
+        &output,
+        None,
+        renderer,
+        init_render_elements,
+    ) {
+        Ok(surface) => surface,
+        Err(error) => {
+            log::warn!("Output {}: failed to initialize: {error:?}", spec.name);
+            return None;
+        }
+    };
     let (vrr_support, configured_vrr_mode) =
         configure_drm_output_vrr(state, &spec.name, spec.connector, &surface);
     let dmabuf_feedback = build_output_dmabuf_feedback(renderer, &surface);
@@ -236,7 +285,7 @@ fn initialize_drm_output_surface(
         crate::backend::output::OutputPowerMode::On,
     );
 
-    OutputSurfaceEntry {
+    Some(OutputSurfaceEntry {
         crtc: spec.crtc,
         surface: Some(surface),
         connector: spec.connector,
@@ -258,7 +307,7 @@ fn initialize_drm_output_surface(
         enabled: true,
         powered: true,
         pending_power_on: None,
-    }
+    })
 }
 
 pub(crate) fn build_output_dmabuf_feedback(
