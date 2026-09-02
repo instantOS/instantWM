@@ -7,8 +7,9 @@ use std::sync::{Arc, Mutex};
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
     AdaptiveSyncPolicy, OutputHeadCapabilities, OutputHeadConfiguration, OutputHeadSnapshot,
-    OutputId, OutputMode as TransactionOutputMode, OutputPowerError, OutputPowerMode,
-    OutputSnapshot, OutputTransaction, OutputTransactionError, OutputTransactionKind,
+    OutputId, OutputMode as TransactionOutputMode, OutputPositionSource, OutputPowerError,
+    OutputPowerMode, OutputSnapshot, OutputTransaction, OutputTransactionError,
+    OutputTransactionKind,
 };
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::render::drm::{
@@ -125,6 +126,7 @@ pub(super) fn process_output_configurations(
     let capabilities = output_capabilities(output_surfaces);
 
     while let Some(pending) = state.runtime.output_transactions.take_next_pending() {
+        let policy_transaction = pending.is_policy();
         if let Err(error) = pending.transaction.validate(&capabilities) {
             state
                 .runtime
@@ -264,6 +266,19 @@ pub(super) fn process_output_configurations(
 
         for (index, config, _) in &requested {
             let entry = &mut output_surfaces[*index];
+            if policy_transaction {
+                if state
+                    .runtime
+                    .configured_output_positions
+                    .contains(&entry.output.name())
+                {
+                    entry.position_source = OutputPositionSource::Configured;
+                } else if entry.position_source == OutputPositionSource::Configured {
+                    entry.position_source = OutputPositionSource::Automatic;
+                }
+            } else {
+                entry.position_source = OutputPositionSource::ClientManaged;
+            }
             if !config.enabled {
                 if let Some(id) = entry.pending_power_on.take() {
                     state.runtime.output_power.complete_by_id(

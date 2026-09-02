@@ -215,6 +215,14 @@ impl WaylandState {
         self.request_render();
     }
 
+    /// Queue the current desired state as a policy transaction even when no
+    /// output property changed. The DRM runtime uses this boundary to update
+    /// position ownership after configuration entries are removed.
+    pub(crate) fn queue_output_policy_projection(&mut self) {
+        let transaction = self.current_output_transaction();
+        self.queue_output_transaction(transaction);
+    }
+
     /// Create and register a default output.
     pub fn create_output(
         &mut self,

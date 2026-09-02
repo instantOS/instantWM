@@ -453,11 +453,19 @@ impl OutputOps for WaylandBackend {
                 .iter()
                 .map(|output| output.name())
                 .collect();
+            state.runtime.configured_output_positions.clear();
             for name in output_names {
                 if let Some(config) = configs.get(&name).or_else(|| configs.get("*")) {
+                    if config.position.is_some() {
+                        state
+                            .runtime
+                            .configured_output_positions
+                            .insert(name.clone());
+                    }
                     state.set_output_config(&name, config);
                 }
             }
+            state.queue_output_policy_projection();
         });
     }
 

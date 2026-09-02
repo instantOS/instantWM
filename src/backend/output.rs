@@ -8,6 +8,44 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::types::Point;
+use crate::types::Rect;
+
+/// Ownership of an output's logical position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputPositionSource {
+    /// Chosen by instantWM's fallback layout and eligible for compaction.
+    Automatic,
+    /// Anchored by persistent monitor configuration.
+    Configured,
+    /// Anchored by a runtime output-management client or external tool.
+    ClientManaged,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputPlacement {
+    pub id: String,
+    pub rect: Rect,
+    pub source: OutputPositionSource,
+}
+
+/// Plan a gap-free left-to-right layout for automatic outputs while treating
+/// configured and client-managed outputs as immovable anchors.
+pub fn plan_automatic_output_positions(outputs: &mut [OutputPlacement]) -> Vec<(String, Point)> {
+    outputs.sort_by(|a, b| (a.rect.x, &a.id).cmp(&(b.rect.x, &b.id)));
+    let mut cursor = 0;
+    let mut moves = Vec::new();
+    for output in outputs {
+        if output.source != OutputPositionSource::Automatic {
+            cursor = cursor.max(output.rect.x.saturating_add(output.rect.w));
+            continue;
+        }
+        if output.rect.x != cursor {
+            moves.push((output.id.clone(), Point::new(cursor, output.rect.y)));
+        }
+        cursor = cursor.saturating_add(output.rect.w);
+    }
+    moves
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OutputId(pub String);
@@ -316,6 +354,12 @@ pub struct PendingOutputTransaction {
     coalescible: bool,
 }
 
+impl PendingOutputTransaction {
+    pub fn is_policy(&self) -> bool {
+        self.coalescible
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompletedOutputTransaction {
     pub id: OutputTransactionId,
@@ -414,6 +458,34 @@ impl OutputTransactionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_layout_compacts_only_automatic_outputs() {
+        let mut outputs = vec![
+            OutputPlacement {
+                id: "automatic-left".into(),
+                rect: Rect::new(1920, 0, 1920, 1080),
+                source: OutputPositionSource::Automatic,
+            },
+            OutputPlacement {
+                id: "configured-anchor".into(),
+                rect: Rect::new(5000, 0, 1000, 1000),
+                source: OutputPositionSource::Configured,
+            },
+            OutputPlacement {
+                id: "automatic-right".into(),
+                rect: Rect::new(7000, 0, 1280, 720),
+                source: OutputPositionSource::Automatic,
+            },
+        ];
+        assert_eq!(
+            plan_automatic_output_positions(&mut outputs),
+            vec![
+                ("automatic-left".into(), Point::new(0, 0)),
+                ("automatic-right".into(), Point::new(6000, 0)),
+            ]
+        );
+    }
 
     #[test]
     fn output_transform_strings_round_trip() {

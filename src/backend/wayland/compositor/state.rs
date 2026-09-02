@@ -351,6 +351,8 @@ pub struct WaylandRuntimeState {
     /// Authoritative physical power mode for outputs whose active backend
     /// supports DPMS. Absence means the output cannot be power-managed.
     pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
+    /// Outputs whose logical position is anchored by persistent monitor config.
+    pub configured_output_positions: HashSet<String>,
     pub intercepted_key_releases: HashSet<Keycode>,
     pub(crate) shortcut_recovery:
         crate::backend::wayland::input::keyboard::recovery::ShortcutRecoveryState,
@@ -385,6 +387,7 @@ impl Default for WaylandRuntimeState {
             output_transactions: crate::backend::output::OutputTransactionService::default(),
             output_power: crate::backend::output::OutputPowerService::default(),
             output_power_modes: HashMap::new(),
+            configured_output_positions: HashSet::new(),
             intercepted_key_releases: HashSet::new(),
             shortcut_recovery: Default::default(),
             session: None,

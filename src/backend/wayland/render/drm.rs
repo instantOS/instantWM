@@ -301,6 +301,7 @@ fn initialize_drm_output_surface(
             crate::types::Point::new(x_offset, 0),
             spec.pixel_size,
         ),
+        position_source: crate::backend::output::OutputPositionSource::Automatic,
         vrr_support,
         configured_vrr_mode,
         vrr_enabled: false,

@@ -24,7 +24,9 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
-use crate::backend::output::{OutputId, OutputPowerError, OutputPowerMode};
+use crate::backend::output::{
+    OutputId, OutputPlacement, OutputPowerError, OutputPowerMode, plan_automatic_output_positions,
+};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::init::drm::init_gpu;
 use crate::backend::wayland::input::apply_pending_warp;
@@ -810,6 +812,13 @@ fn reconcile_drm_outputs(
         for mut entry in removed {
             let name = entry.output.name();
             log::info!("Output {name}: disconnected");
+            if let Some(id) = entry.pending_power_on.take() {
+                state.runtime.output_power.complete_by_id(
+                    id,
+                    OutputId(name.clone()),
+                    Err(OutputPowerError::Unavailable(name.clone())),
+                );
+            }
             entry.surface.take();
             loop_state.remove_output(entry.crtc);
             state.space.unmap_output(&entry.output);
@@ -850,12 +859,44 @@ fn reconcile_drm_outputs(
         return false;
     }
 
+    compact_drm_automatic_layout(state, output_surfaces);
     refresh_drm_layout_state(state, output_surfaces, layout_state);
     input_dimensions.set(layout_state.total_size);
     crate::monitor::refresh_monitor_layout(&mut wm.ctx());
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
     true
+}
+
+fn compact_drm_automatic_layout(
+    state: &mut WaylandState,
+    output_surfaces: &mut [OutputSurfaceEntry],
+) {
+    let mut placements: Vec<_> = output_surfaces
+        .iter()
+        .filter(|entry| entry.enabled)
+        .map(|entry| OutputPlacement {
+            id: entry.output.name(),
+            rect: entry.rect,
+            source: entry.position_source,
+        })
+        .collect();
+    for (name, position) in plan_automatic_output_positions(&mut placements) {
+        let Some(entry) = output_surfaces
+            .iter_mut()
+            .find(|entry| entry.output.name() == name)
+        else {
+            continue;
+        };
+        entry.rect.x = position.x;
+        entry.rect.y = position.y;
+        entry
+            .output
+            .change_current_state(None, None, None, Some((position.x, position.y).into()));
+        state
+            .space
+            .map_output(&entry.output, (position.x, position.y));
+    }
 }
 
 fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {

@@ -6,7 +6,7 @@
 //! connection.
 
 use libc::c_void;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
@@ -65,6 +65,17 @@ pub struct X11RuntimeConfig {
     pub original_border_widths: HashMap<WindowId, u32>,
     /// Cached WM_PROTOCOLS for managed clients, refreshed on PropertyNotify.
     pub client_protocols: HashMap<WindowId, X11ClientProtocols>,
+    /// Last physical RandR connector snapshot. CRTC state is deliberately not
+    /// part of this identity: an external `xrandr --off` must not look like a
+    /// newly plugged output.
+    pub connected_outputs: HashSet<String>,
+    /// Last active CRTC snapshot, used to distinguish an external disable from
+    /// physical disconnection and relinquish automatic placement ownership.
+    pub active_outputs: HashSet<String>,
+    /// Newly connected outputs awaiting a successful automatic CRTC assignment.
+    pub pending_output_enable: HashSet<String>,
+    /// Outputs whose position was chosen by instantWM's automatic policy.
+    pub automatic_outputs: HashSet<String>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -93,6 +104,10 @@ impl Default for X11RuntimeConfig {
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
             client_protocols: HashMap::new(),
+            connected_outputs: HashSet::new(),
+            active_outputs: HashSet::new(),
+            pending_output_enable: HashSet::new(),
+            automatic_outputs: HashSet::new(),
         }
     }
 }

@@ -2,9 +2,12 @@
 
 use crate::backend::BackendOutputInfo;
 use crate::backend::BackendVrrSupport;
+use crate::backend::output::{
+    OutputPlacement, OutputPositionSource, plan_automatic_output_positions,
+};
 use crate::config::config_toml::MonitorConfig;
 use crate::types::{MonitorPosition, Rect};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use x11rb::connection::Connection;
 use x11rb::protocol::randr::{self, ConnectionExt as RandrExt};
 use x11rb::protocol::xproto::{ConnectionExt as XprotoExt, Window};
@@ -214,26 +217,51 @@ pub fn apply_monitor_configs(
     }
 }
 
-/// Configure newly connected heads according to the same policy hierarchy as
-/// normal monitor configuration: exact name, wildcard, then automatic default.
-/// Explicitly disabled heads never undergo a temporary enabling modeset.
-pub fn configure_connected_outputs(
-    conn: &RustConnection,
-    root: Window,
-    configs: &HashMap<String, MonitorConfig>,
-) {
+/// Return physical connector identity independently of active CRTC state.
+pub fn connected_output_names(conn: &RustConnection, root: Window) -> HashSet<String> {
     let Some(resources) = conn
         .randr_get_screen_resources_current(root)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
     else {
-        return;
+        return HashSet::new();
+    };
+    fetch_output_infos(conn, &resources.outputs, resources.config_timestamp)
+        .into_iter()
+        .filter(|(_, output)| output.connection == randr::Connection::CONNECTED)
+        .map(|(_, output)| String::from_utf8_lossy(&output.name).into_owned())
+        .collect()
+}
+
+pub fn active_output_names(conn: &RustConnection, root: Window) -> HashSet<String> {
+    get_outputs(conn, root)
+        .into_iter()
+        .map(|output| output.name)
+        .collect()
+}
+
+/// Attempt automatic activation only for connectors that the runtime has
+/// identified as physically new. Returns successfully active outputs whose
+/// placement is owned by the automatic policy.
+pub fn configure_new_outputs(
+    conn: &RustConnection,
+    root: Window,
+    configs: &HashMap<String, MonitorConfig>,
+    candidates: &HashSet<String>,
+) -> (HashSet<String>, HashSet<String>) {
+    let Some(resources) = conn
+        .randr_get_screen_resources_current(root)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+    else {
+        return (HashSet::new(), HashSet::new());
     };
     let output_infos = fetch_output_infos(conn, &resources.outputs, resources.config_timestamp);
-    for (_, output) in output_infos
-        .iter()
-        .filter(|(_, output)| output.connection == randr::Connection::CONNECTED && output.crtc == 0)
-    {
+    for (_, output) in output_infos.iter().filter(|(_, output)| {
+        output.connection == randr::Connection::CONNECTED
+            && output.crtc == 0
+            && candidates.contains(String::from_utf8_lossy(&output.name).as_ref())
+    }) {
         let name = String::from_utf8_lossy(&output.name);
         let config = effective_monitor_config(configs, &name)
             .cloned()
@@ -243,6 +271,41 @@ pub fn configure_connected_outputs(
         }
         set_monitor_config(conn, root, &name, &config);
     }
+
+    let active: HashSet<_> = get_outputs(conn, root)
+        .into_iter()
+        .map(|output| output.name)
+        .collect();
+    let activated: HashSet<_> = candidates
+        .iter()
+        .filter(|name| active.contains(*name))
+        .cloned()
+        .collect();
+    let automatic = activated
+        .iter()
+        .filter(|name| {
+            effective_monitor_config(configs, name).is_none_or(|config| config.position.is_none())
+        })
+        .cloned()
+        .collect();
+    (activated, automatic)
+}
+
+pub fn output_is_explicitly_disabled(configs: &HashMap<String, MonitorConfig>, name: &str) -> bool {
+    effective_monitor_config(configs, name).is_some_and(|config| config.enable == Some(false))
+}
+
+pub fn new_auto_enable_candidates(
+    previous_connected: &HashSet<String>,
+    connected: &HashSet<String>,
+    active: &HashSet<String>,
+    configs: &HashMap<String, MonitorConfig>,
+) -> HashSet<String> {
+    connected
+        .difference(previous_connected)
+        .filter(|name| !active.contains(*name) && !output_is_explicitly_disabled(configs, name))
+        .cloned()
+        .collect()
 }
 
 fn effective_monitor_config<'a>(
@@ -259,10 +322,11 @@ pub fn compact_automatic_output_layout(
     conn: &RustConnection,
     root: Window,
     configs: &HashMap<String, MonitorConfig>,
+    automatic_outputs: &HashSet<String>,
 ) {
     let mut outputs = get_outputs(conn, root);
     outputs.sort_by(|a, b| (a.rect.x, &a.name).cmp(&(b.rect.x, &b.name)));
-    for (name, position) in planned_automatic_positions(&outputs, configs) {
+    for (name, position) in planned_automatic_positions(&outputs, configs, automatic_outputs) {
         let config = MonitorConfig {
             position: Some(format!("{},{}", position.x, position.y)),
             ..MonitorConfig::default()
@@ -274,26 +338,26 @@ pub fn compact_automatic_output_layout(
 fn planned_automatic_positions(
     outputs: &[BackendOutputInfo],
     configs: &HashMap<String, MonitorConfig>,
+    automatic_outputs: &HashSet<String>,
 ) -> Vec<(String, crate::types::Point)> {
-    let mut cursor = 0;
-    let mut moves = Vec::new();
-    for output in outputs {
-        let explicitly_positioned = effective_monitor_config(configs, &output.name)
-            .is_some_and(|config| config.position.is_some());
-        if explicitly_positioned {
-            cursor = cursor.max(output.rect.x.saturating_add(output.rect.w));
-            continue;
-        }
-
-        if output.rect.x != cursor {
-            moves.push((
-                output.name.clone(),
-                crate::types::Point::new(cursor, output.rect.y),
-            ));
-        }
-        cursor = cursor.saturating_add(output.rect.w);
-    }
-    moves
+    let mut placements: Vec<_> = outputs
+        .iter()
+        .map(|output| {
+            let automatic = automatic_outputs.contains(&output.name)
+                && effective_monitor_config(configs, &output.name)
+                    .is_none_or(|config| config.position.is_none());
+            OutputPlacement {
+                id: output.name.clone(),
+                rect: output.rect,
+                source: if automatic {
+                    OutputPositionSource::Automatic
+                } else {
+                    OutputPositionSource::ClientManaged
+                },
+            }
+        })
+        .collect();
+    plan_automatic_output_positions(&mut placements)
 }
 
 /// Set monitor configuration for a given resource-fetch strategy.
@@ -684,12 +748,12 @@ fn collect_output_rects(
 mod refresh_tests {
     use super::{
         automatic_output_position, crtc_configuration_matches, effective_monitor_config,
-        mode_refresh_millihertz, planned_automatic_positions,
+        mode_refresh_millihertz, new_auto_enable_candidates, planned_automatic_positions,
     };
     use crate::backend::{BackendOutputInfo, BackendVrrSupport};
     use crate::config::config_toml::MonitorConfig;
     use crate::types::{Point, Rect};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     #[test]
     fn calculates_standard_and_high_refresh_modes() {
@@ -784,8 +848,11 @@ mod refresh_tests {
             output("DP-1", Rect::new(1920, 0, 1920, 1080)),
             output("HDMI-1", Rect::new(5000, 0, 1920, 1080)),
         ];
+        let automatic: HashSet<_> = ["DP-1".to_string(), "HDMI-1".to_string()]
+            .into_iter()
+            .collect();
         assert_eq!(
-            planned_automatic_positions(&outputs, &HashMap::new()),
+            planned_automatic_positions(&outputs, &HashMap::new(), &automatic),
             vec![
                 ("DP-1".to_string(), Point::new(0, 0)),
                 ("HDMI-1".to_string(), Point::new(1920, 0)),
@@ -801,8 +868,26 @@ mod refresh_tests {
             },
         );
         assert_eq!(
-            planned_automatic_positions(&outputs, &configs),
+            planned_automatic_positions(&outputs, &configs, &automatic),
             vec![("HDMI-1".to_string(), Point::new(3840, 0))]
+        );
+    }
+
+    #[test]
+    fn external_crtc_disable_is_not_a_new_connector() {
+        let connected: HashSet<_> = ["DP-1".to_string()].into_iter().collect();
+        assert!(
+            new_auto_enable_candidates(&connected, &connected, &HashSet::new(), &HashMap::new(),)
+                .is_empty()
+        );
+        assert_eq!(
+            new_auto_enable_candidates(
+                &HashSet::new(),
+                &connected,
+                &HashSet::new(),
+                &HashMap::new(),
+            ),
+            connected
         );
     }
 }
