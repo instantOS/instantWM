@@ -146,6 +146,17 @@ impl WlrLayerShellHandler for WaylandState {
         let target_output = output
             .as_ref()
             .and_then(Output::from_resource)
+            // An output-less layer surface follows the selected monitor:
+            // launchers that defer the choice expect the focused output, not
+            // whichever output happens to enumerate first (on a laptop that
+            // is the built-in panel regardless of where focus is).
+            .or_else(|| {
+                let selected = self.globals()?.model.selected_monitor()?.name.clone();
+                self.space
+                    .outputs()
+                    .find(|output| output.name() == selected)
+                    .cloned()
+            })
             .or_else(|| self.space.outputs().next().cloned());
         let Some(target_output) = target_output else {
             return;
