@@ -432,6 +432,8 @@ pub struct WindowInfo {
     pub geometry: GeometryInfo,
     pub border_width: i32,
     pub state: WindowState,
+    /// True for the selected window of the selected monitor.
+    pub is_focused: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scratchpad: Option<ScratchpadInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -444,6 +446,7 @@ impl WindowInfo {
         valid_tag_mask: TagMask,
         protocol: WindowProtocol,
         monitor_position: usize,
+        is_focused: bool,
     ) -> Self {
         Self {
             id: c.win.0,
@@ -454,6 +457,7 @@ impl WindowInfo {
             geometry: c.geo.into(),
             border_width: c.border_width,
             state: c.into(),
+            is_focused,
             scratchpad: ScratchpadInfo::from_client(c, monitor_position),
             size_hints: SizeHintsInfo::try_from(c).ok(),
         }

@@ -439,26 +439,39 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 }
 
-fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Size {
-    let width = outputs
+fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Rect {
+    // Origin-aware bounding box: min origin to max edge, so negative positions
+    // (e.g. an output placed above with y < 0) keep both their size and origin.
+    let min_x = outputs.iter().map(|o| o.rect.x).min().unwrap_or(0);
+    let min_y = outputs.iter().map(|o| o.rect.y).min().unwrap_or(0);
+    let max_x = outputs
         .iter()
         .map(|o| o.rect.x.saturating_add(o.rect.w))
         .max()
-        .unwrap_or(1)
-        .max(1);
-    let height = outputs
+        .unwrap_or(1);
+    let max_y = outputs
         .iter()
         .map(|o| o.rect.y.saturating_add(o.rect.h))
         .max()
-        .unwrap_or(1)
-        .max(1);
-    Size::new(width, height)
+        .unwrap_or(1);
+    Rect::new(
+        min_x,
+        min_y,
+        max_x.saturating_sub(min_x).max(1),
+        max_y.saturating_sub(min_y).max(1),
+    )
 }
 
-fn sync_runtime_screen_size(derived: &mut DerivedState, layout_size: Size) -> bool {
-    if derived.display.width != layout_size.w || derived.display.height != layout_size.h {
-        derived.display.width = layout_size.w;
-        derived.display.height = layout_size.h;
+fn sync_runtime_screen_size(derived: &mut DerivedState, layout: Rect) -> bool {
+    if derived.display.x != layout.x
+        || derived.display.y != layout.y
+        || derived.display.width != layout.w
+        || derived.display.height != layout.h
+    {
+        derived.display.x = layout.x;
+        derived.display.y = layout.y;
+        derived.display.width = layout.w;
+        derived.display.height = layout.h;
         true
     } else {
         false
@@ -949,5 +962,46 @@ mod transfer_focus_tests {
             .find_map(|(id, monitor)| (monitor.name == "HDMI-A-1").then_some(id))
             .expect("new HDMI monitor");
         assert_ne!(hdmi_id, retained);
+    }
+
+    #[test]
+    fn layout_extent_and_screen_size_keep_negative_origin() {
+        let outputs = [
+            BackendOutputInfo {
+                name: "top".to_string(),
+                rect: Rect::new(0, -1080, 1920, 1080),
+                scale: 1.0,
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: None,
+                vrr_enabled: false,
+            },
+            BackendOutputInfo {
+                name: "bottom".to_string(),
+                rect: Rect::new(0, 0, 1920, 1080),
+                scale: 1.0,
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: None,
+                vrr_enabled: false,
+            },
+        ];
+
+        assert_eq!(
+            super::output_layout_extent(&outputs),
+            Rect::new(0, -1080, 1920, 2160)
+        );
+
+        let mut derived = crate::core_state::DerivedState::default();
+        assert!(super::sync_runtime_screen_size(
+            &mut derived,
+            Rect::new(0, -1080, 1920, 2160)
+        ));
+        assert_eq!(derived.display.x, 0);
+        assert_eq!(derived.display.y, -1080);
+        assert_eq!(derived.display.width, 1920);
+        assert_eq!(derived.display.height, 2160);
+        assert_eq!(
+            derived.display.screen_rect(),
+            Rect::new(0, -1080, 1920, 2160)
+        );
     }
 }

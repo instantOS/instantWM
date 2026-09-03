@@ -48,7 +48,7 @@ use vrr::apply_output_vrr_policy;
 
 #[derive(Debug)]
 struct DrmLayoutState {
-    total_size: crate::types::Size,
+    layout: crate::types::Rect,
     output_hit_regions: Vec<OutputHitRegion>,
 }
 
@@ -221,7 +221,7 @@ pub fn run() -> ! {
             output_surfaces.iter().map(|e| &e.output),
         );
 
-    let total_size = compute_total_dimensions(&output_surfaces);
+    let layout = compute_total_dimensions(&output_surfaces);
 
     {
         use crate::monitor::refresh_monitor_layout;
@@ -230,11 +230,11 @@ pub fn run() -> ! {
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 
-    let mut layout_state = init_layout_state(&output_surfaces, total_size);
+    let mut layout_state = init_layout_state(&output_surfaces, layout);
     // Calloop dispatches sources and the loop callback sequentially on this
-    // thread. Libinput only needs the current dimensions, so share that small
-    // copy without putting the complete layout behind an atomic lock.
-    let input_dimensions = Rc::new(Cell::new(total_size));
+    // thread. Libinput only needs the current layout bounds, so share that
+    // small copy without putting the complete layout behind an atomic lock.
+    let input_dimensions = Rc::new(Cell::new(layout));
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
@@ -251,9 +251,7 @@ pub fn run() -> ! {
     let runtime_event_tx_input = runtime_event_tx.clone();
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let dimensions = shared_input_dimensions.get();
-            let total_w = dimensions.w;
-            let total_h = dimensions.h;
+            let layout = shared_input_dimensions.get();
 
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
@@ -265,7 +263,7 @@ pub fn run() -> ! {
             let outcome = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 crate::backend::wayland::input::drm::dispatch_libinput_event(
-                    event, state, wm, total_w, total_h,
+                    event, state, wm, layout,
                 )
             } else {
                 crate::backend::wayland::input::drm::LibinputEventOutcome::Ignored
@@ -371,9 +369,13 @@ fn cursor_size(size: u32) -> u8 {
     size.clamp(1, u8::MAX as u32) as u8
 }
 
-/// Compute total screen dimensions from output surfaces.
-fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::types::Size {
-    output_layout_size(
+/// Compute total screen bounds from output surfaces, origin included.
+///
+/// Absolute-device mapping needs both the size and the origin: a layout with
+/// a negative position (output placed above/left) maps `0..size` onto
+/// `origin..origin+size`.
+fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::types::Rect {
+    output_layout_bounds(
         output_surfaces.iter().map(|surface| surface.rect),
         crate::types::Size::new(
             crate::backend::wayland::render::drm::DEFAULT_SCREEN_WIDTH,
@@ -382,29 +384,46 @@ fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::ty
     )
 }
 
+fn output_layout_bounds(
+    rects: impl IntoIterator<Item = crate::types::Rect>,
+    fallback: crate::types::Size,
+) -> crate::types::Rect {
+    let mut min_x = None::<i32>;
+    let mut min_y = None::<i32>;
+    let mut max_x = None::<i32>;
+    let mut max_y = None::<i32>;
+    for rect in rects {
+        let right = rect.x.saturating_add(rect.w);
+        let bottom = rect.y.saturating_add(rect.h);
+        min_x = Some(min_x.map_or(rect.x, |v| v.min(rect.x)));
+        min_y = Some(min_y.map_or(rect.y, |v| v.min(rect.y)));
+        max_x = Some(max_x.map_or(right, |v| v.max(right)));
+        max_y = Some(max_y.map_or(bottom, |v| v.max(bottom)));
+    }
+    match (min_x, min_y, max_x, max_y) {
+        (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) => crate::types::Rect::new(
+            min_x,
+            min_y,
+            max_x.saturating_sub(min_x).max(1),
+            max_y.saturating_sub(min_y).max(1),
+        ),
+        _ => crate::types::Rect::new(0, 0, fallback.w.max(1), fallback.h.max(1)),
+    }
+}
+
 fn output_layout_size(
     rects: impl IntoIterator<Item = crate::types::Rect>,
     fallback: crate::types::Size,
 ) -> crate::types::Size {
-    rects
-        .into_iter()
-        .fold(None, |extent: Option<crate::types::Size>, rect| {
-            let right = rect.x.saturating_add(rect.w).max(1);
-            let bottom = rect.y.saturating_add(rect.h).max(1);
-            Some(match extent {
-                Some(extent) => crate::types::Size::new(extent.w.max(right), extent.h.max(bottom)),
-                None => crate::types::Size::new(right, bottom),
-            })
-        })
-        .unwrap_or(fallback)
+    output_layout_bounds(rects, fallback).size()
 }
 
 fn init_layout_state(
     output_surfaces: &[OutputSurfaceEntry],
-    total_size: crate::types::Size,
+    layout: crate::types::Rect,
 ) -> DrmLayoutState {
     DrmLayoutState {
-        total_size,
+        layout,
         output_hit_regions: output_surfaces
             .iter()
             .map(|entry| OutputHitRegion {
@@ -434,12 +453,12 @@ fn refresh_drm_layout_state(
         .iter()
         .filter(|entry| entry.enabled)
         .collect();
-    let total_size = output_layout_size(
+    let layout = output_layout_bounds(
         active.iter().map(|entry| entry.rect),
         crate::types::Size::new(1, 1),
     );
     *layout_state = DrmLayoutState {
-        total_size,
+        layout,
         output_hit_regions: active
             .iter()
             .map(|entry| OutputHitRegion {
@@ -584,7 +603,7 @@ fn run_event_loop(
     wm: &mut Wm,
     state: &mut WaylandState,
     layout_state: &mut DrmLayoutState,
-    input_dimensions: &Rc<Cell<crate::types::Size>>,
+    input_dimensions: &Rc<Cell<crate::types::Rect>>,
     loop_state: &mut DrmLoopState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
@@ -659,7 +678,7 @@ fn run_event_loop(
                     crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones,
                 );
                 refresh_drm_layout_state(state, output_surfaces, layout_state);
-                shared_input_dimensions.set(layout_state.total_size);
+                shared_input_dimensions.set(layout_state.layout);
             }
             state.project_completed_output_power_requests();
             process_output_power_requests(state, output_surfaces, loop_state);
@@ -827,7 +846,7 @@ fn reconcile_drm_outputs(
     renderer: &mut GlesRenderer,
     loop_state: &mut DrmLoopState,
     layout_state: &mut DrmLayoutState,
-    input_dimensions: &Rc<Cell<crate::types::Size>>,
+    input_dimensions: &Rc<Cell<crate::types::Rect>>,
 ) -> bool {
     let usable = {
         let manager = output_manager.lock().unwrap();
@@ -915,7 +934,7 @@ fn reconcile_drm_outputs(
 
     compact_drm_automatic_layout(state, output_surfaces);
     refresh_drm_layout_state(state, output_surfaces, layout_state);
-    input_dimensions.set(layout_state.total_size);
+    input_dimensions.set(layout_state.layout);
     crate::monitor::refresh_monitor_layout(&mut wm.ctx());
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
@@ -1182,7 +1201,7 @@ mod cursor_config_tests {
 mod output_layout_tests {
     use smithay::reexports::drm::control::{crtc, from_u32};
 
-    use super::{OutputHitRegion, output_at_pointer, output_layout_size};
+    use super::{OutputHitRegion, output_at_pointer, output_layout_bounds, output_layout_size};
     use crate::types::{Point, Rect, Size};
 
     fn crtc(raw: u32) -> crtc::Handle {
@@ -1242,6 +1261,23 @@ mod output_layout_tests {
         assert_eq!(
             output_layout_size([], Size::new(1280, 800)),
             Size::new(1280, 800)
+        );
+    }
+
+    #[test]
+    fn layout_bounds_keep_negative_origin_for_absolute_mapping() {
+        let outputs = [
+            Rect::new(0, -1080, 1920, 1080),
+            Rect::new(0, 0, 1920, 1080),
+        ];
+
+        assert_eq!(
+            output_layout_bounds(outputs, Size::new(1, 1)),
+            Rect::new(0, -1080, 1920, 2160)
+        );
+        assert_eq!(
+            output_layout_size(outputs, Size::new(1, 1)),
+            Size::new(1920, 2160)
         );
     }
 }

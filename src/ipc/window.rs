@@ -38,6 +38,7 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     wins.sort_by_key(|c| c.win.0);
 
     let tag_mask = wm.core.model.tags.mask();
+    let selected = wm.core.model.selected_win();
     let windows: Vec<WindowInfo> = wins
         .iter()
         .filter_map(|c| {
@@ -47,6 +48,7 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
                 tag_mask,
                 wm.backend.window_protocol(c.win),
                 mon_pos,
+                selected == Some(c.win),
             ))
         })
         .collect();
@@ -106,6 +108,7 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
         tag_mask,
         wm.backend.window_protocol(c.win),
         mon_pos,
+        wm.core.model.selected_win() == Some(win),
     ))
 }
 
