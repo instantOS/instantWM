@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/instantOS/instantWM/compare/v0.1.24...v0.2.0) - 2026-09-03
+
+### Added
+
+- implement proper shortcut inhibition protocol
+- support drawing tablets
+
+### Fixed
+
+- support 2d monitor layouts
+- hot plugging and replugging a monitor disappeared windows
+
+### Other
+
+- implement keyboard inhibition recovery flow
+- some performance enhancements
+- fix hover state thingy
+- fix cursor hint thingy
+- add pointer warp protocol
+- add support for sync protocol thingy
+- fix dma thingy and add another protocol
+- speed up some stuff
+- init support for hot-plugging
+- add focus IPC command
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- fix weird transition behavior
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix wayland multi monitor rendering/hit testing issues
+- fix instantMENU spawning on the wrong monitor
+- fix cursor rebasing
+- bump stuff
+- fix cursor void and selection presentation
+
 ## [0.1.24](https://github.com/instantOS/instantWM/compare/v0.1.23...v0.1.24) - 2026-09-01
 
 ### Other
