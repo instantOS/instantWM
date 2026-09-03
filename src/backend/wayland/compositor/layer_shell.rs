@@ -63,9 +63,9 @@ pub(super) fn handle_layer_commit(
         // A surface that appears under a stationary cursor must still receive
         // pointer focus: launchers map their input surface from a keybind, so
         // no motion event will refresh focus for them otherwise.
-        state.push_command(WmCommand::PointerMotion(
-            PointerMotionCommand::Refresh { time_msec: 0 },
-        ));
+        state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
+            time_msec: 0,
+        }));
         if let Some(output) = layer_output.as_ref() {
             state.request_output_render(output);
         }
@@ -221,9 +221,9 @@ impl WlrLayerShellHandler for WaylandState {
         }
         // Reclaim the space that this layer surface had exclusively reserved.
         self.push_command(WmCommand::SyncLayerExclusiveZones);
-        self.push_command(WmCommand::PointerMotion(
-            PointerMotionCommand::Refresh { time_msec: 0 },
-        ));
+        self.push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
+            time_msec: 0,
+        }));
         for output in affected_outputs {
             self.request_output_render(&output);
         }

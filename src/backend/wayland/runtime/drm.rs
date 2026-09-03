@@ -1266,10 +1266,7 @@ mod output_layout_tests {
 
     #[test]
     fn layout_bounds_keep_negative_origin_for_absolute_mapping() {
-        let outputs = [
-            Rect::new(0, -1080, 1920, 1080),
-            Rect::new(0, 0, 1920, 1080),
-        ];
+        let outputs = [Rect::new(0, -1080, 1920, 1080), Rect::new(0, 0, 1920, 1080)];
 
         assert_eq!(
             output_layout_bounds(outputs, Size::new(1, 1)),
