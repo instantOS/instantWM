@@ -395,8 +395,7 @@ fn clamp_position_to_bounds(
     total_h: i32,
 ) {
     if interact {
-        let screen = Rect::new(0, 0, display.width, display.height);
-        geo.clamp_position(&screen, total_w, total_h);
+        geo.clamp_position(&display.screen_rect(), total_w, total_h);
     } else if let Some(wr) = work_rect {
         geo.clamp_position(&wr, total_w, total_h);
     }
@@ -464,10 +463,11 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
 #[cfg(test)]
 mod tests {
     use super::{
-        FloatingPlacementIntent, FloatingPlacementKind, resolve_floating_placement,
-        resolve_floating_transition, sane_floating_spawn_rect, sync_client_geometry,
+        FloatingPlacementIntent, FloatingPlacementKind, clamp_position_to_bounds,
+        resolve_floating_placement, resolve_floating_transition, sane_floating_spawn_rect,
+        sync_client_geometry,
     };
-    use crate::core_state::CoreState;
+    use crate::core_state::{CoreState, DisplayConfig};
     use crate::model::WmModel;
     use crate::types::{
         Client, Monitor, MonitorId, Point, Rect, Size, SnapPosition, TagMask, WindowId,
@@ -794,5 +794,26 @@ mod tests {
         let rect =
             sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
         assert_eq!(rect, Rect::new(1920, 32, 2000, 1200));
+    }
+
+    #[test]
+    fn interactive_clamp_keeps_windows_on_negative_origin_outputs() {
+        let display = DisplayConfig {
+            x: 0,
+            y: -1080,
+            width: 1920,
+            height: 2160,
+        };
+        let mut geo = Rect::new(100, -1000, 800, 600);
+        let total_w = geo.total_width(2);
+        let total_h = geo.total_height(2);
+
+        clamp_position_to_bounds(&display, &mut geo, None, true, total_w, total_h);
+
+        assert_eq!(
+            geo,
+            Rect::new(100, -1000, 800, 600),
+            "a floating drag on the upper output must not snap down to y=0"
+        );
     }
 }

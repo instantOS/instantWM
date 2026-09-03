@@ -20,10 +20,27 @@ pub use mode::*;
 // ---------------------------------------------------------------------------
 
 /// Display/screen dimensions.
+///
+/// `width`/`height` span from the layout origin (`x`, `y`) to the far edge,
+/// so negative output positions (an output placed above or left with `x < 0`
+/// or `y < 0`) are represented without shrinking the size. The origin is
+/// tracked alongside the size because `width`/`height` alone cannot place the
+/// global screen rect used for interactive window clamping.
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DisplayConfig {
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
     pub width: i32,
     pub height: i32,
+}
+
+impl DisplayConfig {
+    /// Global screen rectangle covering every output, origin included.
+    pub fn screen_rect(&self) -> crate::types::Rect {
+        crate::types::Rect::new(self.x, self.y, self.width, self.height)
+    }
 }
 
 /// Window behaviour settings.

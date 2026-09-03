@@ -2,7 +2,7 @@
 
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
-use smithay::utils::{Point, SERIAL_COUNTER};
+use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 
 use crate::backend::wayland::commands::PointerMotionCommand;
 use crate::backend::wayland::compositor::window::classify::WindowType;
@@ -74,6 +74,98 @@ impl MotionEvent {
             MotionEvent::Relative { time_msec, .. } => *time_msec,
         }
     }
+
+    /// Raw target without any clamping (caller applies layout-aware constraining).
+    fn raw_location(
+        &self,
+        current: Point<f64, smithay::utils::Logical>,
+    ) -> Point<f64, smithay::utils::Logical> {
+        match self {
+            MotionEvent::Absolute { x, y, .. } => Point::from((*x, *y)),
+            MotionEvent::Relative { dx, dy, .. } => Point::from((current.x + dx, current.y + dy)),
+        }
+    }
+}
+
+/// Bounding rectangle covering every mapped output, origin included.
+///
+/// This is the origin-aware equivalent of `derived.display` / `total_size`,
+/// which only track `max(x+w), max(y+h)` and silently drop negative layouts.
+/// Returns `None` when no output is mapped (tests, early startup).
+fn layout_bounds_from_space(state: &WaylandState) -> Option<Rectangle<i32, Logical>> {
+    state
+        .space
+        .outputs()
+        .filter_map(|output| state.space.output_geometry(output))
+        .reduce(|acc, geo| acc.merge(geo))
+}
+
+/// Niri-style relative barrier: voids block movement instead of hosting the cursor.
+///
+/// If the raw target is inside any output it is accepted as-is, so crossing
+/// works only through a shared edge. If it lands in a void, movement is
+/// clipped against the source output's inclusive bounds. If even the current
+/// position is in a void (e.g. its output was just unplugged), recover to the
+/// first output's center. Falls back to the old bounding-box clamp when no
+/// output is mapped.
+fn constrain_relative_to_space(
+    state: &WaylandState,
+    current: Point<f64, Logical>,
+    raw: Point<f64, Logical>,
+    fallback_w: i32,
+    fallback_h: i32,
+) -> Point<f64, Logical> {
+    if state.space.outputs().next().is_none() {
+        let max_x = fallback_w.saturating_sub(1).max(0) as f64;
+        let max_y = fallback_h.saturating_sub(1).max(0) as f64;
+        return Point::from((raw.x.clamp(0.0, max_x), raw.y.clamp(0.0, max_y)));
+    }
+    if state.space.output_under(raw).next().is_some() {
+        return raw;
+    }
+    if let Some(source) = state.space.output_under(current).next()
+        && let Some(geom) = state.space.output_geometry(source)
+    {
+        let geo = geom.to_f64();
+        let x = raw.x.clamp(geo.loc.x, geo.loc.x + geo.size.w - 1.0);
+        let y = raw.y.clamp(geo.loc.y, geo.loc.y + geo.size.h - 1.0);
+        return Point::from((x, y));
+    }
+    if let Some(first) = state.space.outputs().next()
+        && let Some(geom) = state.space.output_geometry(first)
+    {
+        let geo = geom.to_f64();
+        return Point::from((geo.loc.x + geo.size.w / 2.0, geo.loc.y + geo.size.h / 2.0));
+    }
+    raw
+}
+
+/// Origin-aware clamp for absolute/warp targets.
+///
+/// Unlike the old `0..width` clamp this respects layouts whose origin is
+/// negative (e.g. an output placed above with `y < 0`). Voids are allowed
+/// here like in niri: an absolute device dictates its position, and warps
+/// always target valid client/monitor centers anyway.
+fn clamp_absolute_to_layout(
+    state: &WaylandState,
+    point: Point<f64, Logical>,
+    fallback_w: i32,
+    fallback_h: i32,
+) -> Point<f64, Logical> {
+    let Some(bounds) = layout_bounds_from_space(state) else {
+        let max_x = fallback_w.saturating_sub(1).max(0) as f64;
+        let max_y = fallback_h.saturating_sub(1).max(0) as f64;
+        return Point::from((point.x.clamp(0.0, max_x), point.y.clamp(0.0, max_y)));
+    };
+    let bounds = bounds.to_f64();
+    let min_x = bounds.loc.x;
+    let min_y = bounds.loc.y;
+    let max_x = bounds.loc.x + bounds.size.w - 1.0;
+    let max_y = bounds.loc.y + bounds.size.h - 1.0;
+    if max_x < min_x || max_y < min_y {
+        return point;
+    }
+    Point::from((point.x.clamp(min_x, max_x), point.y.clamp(min_y, max_y)))
 }
 
 #[cfg(test)]
@@ -249,6 +341,68 @@ mod tests {
             "the active batch shares one ordering snapshot; only its first command needs old+new traversals"
         );
     }
+
+    use super::{clamp_absolute_to_layout, constrain_relative_to_space, layout_bounds_from_space};
+    use crate::types::Size;
+
+    fn two_output_space(
+        state: &mut crate::backend::wayland::compositor::WaylandState,
+    ) -> (smithay::output::Output, smithay::output::Output) {
+        let left = state.create_output("left", Size::new(1920, 1080), None);
+        let right = state.create_output("right", Size::new(1920, 1440), None);
+        // Top-aligned: left is short, so (100,1200) is a void below it.
+        state.space.map_output(&left, (0, 0));
+        state.space.map_output(&right, (1920, 0));
+        (left, right)
+    }
+
+    #[test]
+    fn relative_motion_into_a_void_is_clipped_to_the_source_output() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_left, _right) = two_output_space(&mut state);
+
+        let current = Point::from((100.0, 1000.0));
+        let raw = Point::from((100.0, 1200.0));
+        let clamped = constrain_relative_to_space(&state, current, raw, 3840, 1440);
+
+        // Must not park in the void below the short monitor.
+        assert_eq!(clamped, Point::from((100.0, 1079.0)));
+        assert!(state.space.output_under(clamped).next().is_some());
+    }
+
+    #[test]
+    fn relative_motion_across_a_shared_edge_is_accepted() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_left, _right) = two_output_space(&mut state);
+
+        let current = Point::from((1910.0, 500.0));
+        let raw = Point::from((1930.0, 500.0));
+        let clamped = constrain_relative_to_space(&state, current, raw, 3840, 1440);
+
+        assert_eq!(clamped, raw);
+    }
+
+    #[test]
+    fn absolute_motion_uses_layout_origin_for_negative_layouts() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let top = state.create_output("top", Size::new(1920, 1080), None);
+        let bottom = state.create_output("bottom", Size::new(1920, 1080), None);
+        state.space.map_output(&top, (0, -1080));
+        state.space.map_output(&bottom, (0, 0));
+
+        let bounds = layout_bounds_from_space(&state).expect("two outputs");
+        assert_eq!(bounds.loc.x, 0);
+        assert_eq!(bounds.loc.y, -1080);
+        assert_eq!(bounds.size.w, 1920);
+        assert_eq!(bounds.size.h, 2160);
+
+        // A target on the upper output must survive the clamp.
+        let clamped = clamp_absolute_to_layout(&state, Point::from((100.0, -500.0)), 1920, 1080);
+        assert_eq!(clamped, Point::from((100.0, -500.0)));
+    }
 }
 
 /// Process a queued backend pointer command through the single Wayland pointer
@@ -385,12 +539,27 @@ fn handle_pointer_motion(
 ) -> PointerMotionCache {
     state.runtime.cursor_hidden_by_touch = false;
 
-    let output_width = wm.core.derived.display.width;
-    let output_height = wm.core.derived.display.height;
+    let fallback_w = wm.core.derived.display.width;
+    let fallback_h = wm.core.derived.display.height;
 
     let current_location = state.runtime.pointer_location;
+    let raw_location = event.raw_location(current_location);
 
-    let potential_location = event.compute_location(current_location, output_width, output_height);
+    // Relative motion uses the niri barrier (voids block, no parking in gaps).
+    // Absolute/warp targets use the origin-aware layout clamp (voids allowed,
+    // matching niri: the device dictates its position).
+    let potential_location = match event {
+        MotionEvent::Relative { .. } => constrain_relative_to_space(
+            state,
+            current_location,
+            raw_location,
+            fallback_w,
+            fallback_h,
+        ),
+        MotionEvent::Absolute { .. } => {
+            clamp_absolute_to_layout(state, raw_location, fallback_w, fallback_h)
+        }
+    };
 
     let (cached_current_hit, mut hit_snapshot) = cache
         .map(|cache| (Some(cache.current_hit), cache.snapshot))

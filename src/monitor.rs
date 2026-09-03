@@ -439,26 +439,39 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 }
 
-fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Size {
-    let width = outputs
+fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Rect {
+    // Origin-aware bounding box: min origin to max edge, so negative positions
+    // (e.g. an output placed above with y < 0) keep both their size and origin.
+    let min_x = outputs.iter().map(|o| o.rect.x).min().unwrap_or(0);
+    let min_y = outputs.iter().map(|o| o.rect.y).min().unwrap_or(0);
+    let max_x = outputs
         .iter()
         .map(|o| o.rect.x.saturating_add(o.rect.w))
         .max()
-        .unwrap_or(1)
-        .max(1);
-    let height = outputs
+        .unwrap_or(1);
+    let max_y = outputs
         .iter()
         .map(|o| o.rect.y.saturating_add(o.rect.h))
         .max()
-        .unwrap_or(1)
-        .max(1);
-    Size::new(width, height)
+        .unwrap_or(1);
+    Rect::new(
+        min_x,
+        min_y,
+        max_x.saturating_sub(min_x).max(1),
+        max_y.saturating_sub(min_y).max(1),
+    )
 }
 
-fn sync_runtime_screen_size(derived: &mut DerivedState, layout_size: Size) -> bool {
-    if derived.display.width != layout_size.w || derived.display.height != layout_size.h {
-        derived.display.width = layout_size.w;
-        derived.display.height = layout_size.h;
+fn sync_runtime_screen_size(derived: &mut DerivedState, layout: Rect) -> bool {
+    if derived.display.x != layout.x
+        || derived.display.y != layout.y
+        || derived.display.width != layout.w
+        || derived.display.height != layout.h
+    {
+        derived.display.x = layout.x;
+        derived.display.y = layout.y;
+        derived.display.width = layout.w;
+        derived.display.height = layout.h;
         true
     } else {
         false
@@ -535,8 +548,14 @@ fn take_matching_monitor(
     None
 }
 
-/// Move clients whose monitor has disappeared onto a surviving monitor,
-/// updating both ownership and per-monitor membership lists.
+/// Move clients whose monitor has disappeared onto a surviving monitor.
+///
+/// A topology change must never leave an ordinary managed window reachable
+/// only through tags that are not projected anywhere. Preserve the clients'
+/// tag identity, but widen the survivor's current view to include every tag
+/// carried in from removed monitors. This makes unplugging an output a lossless
+/// operation from the user's point of view: no window is silently retagged and
+/// every migrated window is immediately reachable.
 fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorId) {
     let stale_wins: Vec<WindowId> = model
         .clients
@@ -545,9 +564,21 @@ fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorI
         .map(|c| c.win)
         .collect();
 
+    let mut reachable_tags = model
+        .monitor(survivor)
+        .map(Monitor::selected_tags)
+        .unwrap_or(TagMask::EMPTY);
     for win in stale_wins {
+        if let Some(client) = model.client(win)
+            && !client.is_scratchpad()
+        {
+            reachable_tags = reachable_tags | client.tags;
+        }
         let reassigned = model.reassign_client_monitor(win, survivor);
         debug_assert!(reassigned, "orphaned managed client must be re-homeable");
+    }
+    if let Some(monitor) = model.monitor_mut(survivor) {
+        monitor.set_selected_tags(reachable_tags);
     }
 }
 
@@ -849,8 +880,13 @@ mod transfer_focus_tests {
         model.insert_client(Client {
             win,
             monitor_id: removed,
+            tags: TagMask::single(2).unwrap(),
             ..Client::default()
         });
+        model
+            .monitor_mut(retained)
+            .unwrap()
+            .set_selected_tags(TagMask::single(1).unwrap());
         model.monitor_mut(removed).unwrap().clients.push(win);
 
         let outputs = [BackendOutputInfo {
@@ -871,6 +907,16 @@ mod transfer_focus_tests {
         );
         assert!(model.monitor(retained).is_some());
         assert_eq!(model.client(win).unwrap().monitor_id, retained);
+        assert_eq!(
+            model.monitor(retained).unwrap().selected_tags(),
+            TagMask::single(1).unwrap() | TagMask::single(2).unwrap()
+        );
+        assert!(
+            model
+                .client(win)
+                .unwrap()
+                .is_visible(model.monitor(retained).unwrap().selected_tags())
+        );
     }
 
     #[test]
@@ -916,5 +962,46 @@ mod transfer_focus_tests {
             .find_map(|(id, monitor)| (monitor.name == "HDMI-A-1").then_some(id))
             .expect("new HDMI monitor");
         assert_ne!(hdmi_id, retained);
+    }
+
+    #[test]
+    fn layout_extent_and_screen_size_keep_negative_origin() {
+        let outputs = [
+            BackendOutputInfo {
+                name: "top".to_string(),
+                rect: Rect::new(0, -1080, 1920, 1080),
+                scale: 1.0,
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: None,
+                vrr_enabled: false,
+            },
+            BackendOutputInfo {
+                name: "bottom".to_string(),
+                rect: Rect::new(0, 0, 1920, 1080),
+                scale: 1.0,
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: None,
+                vrr_enabled: false,
+            },
+        ];
+
+        assert_eq!(
+            super::output_layout_extent(&outputs),
+            Rect::new(0, -1080, 1920, 2160)
+        );
+
+        let mut derived = crate::core_state::DerivedState::default();
+        assert!(super::sync_runtime_screen_size(
+            &mut derived,
+            Rect::new(0, -1080, 1920, 2160)
+        ));
+        assert_eq!(derived.display.x, 0);
+        assert_eq!(derived.display.y, -1080);
+        assert_eq!(derived.display.width, 1920);
+        assert_eq!(derived.display.height, 2160);
+        assert_eq!(
+            derived.display.screen_rect(),
+            Rect::new(0, -1080, 1920, 2160)
+        );
     }
 }

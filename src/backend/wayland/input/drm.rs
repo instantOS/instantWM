@@ -158,8 +158,7 @@ pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
     wm: &mut Wm,
-    total_w: i32,
-    total_h: i32,
+    layout: crate::types::Rect,
 ) -> LibinputEventOutcome {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
@@ -222,8 +221,11 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::PointerMotionAbsolute { event } => {
-            let x = event.x_transformed(total_w);
-            let y = event.y_transformed(total_h);
+            // Map across the full layout bounds, origin included. The old
+            // `x_transformed(total_w)` assumed the layout starts at (0,0) and
+            // misplaced every absolute device on negative-origin layouts.
+            let x = layout.x as f64 + event.x_transformed(layout.w.max(1));
+            let y = layout.y as f64 + event.y_transformed(layout.h.max(1));
             state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
                 x,
                 y,
@@ -383,11 +385,11 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TabletToolAxis { event } => {
-            handle_tablet_tool_axis(state, &event, total_w, total_h);
+            handle_tablet_tool_axis(state, &event, layout);
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::TabletToolProximity { event } => {
-            handle_tablet_tool_proximity(state, &event, total_w, total_h);
+            handle_tablet_tool_proximity(state, &event, layout);
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::TabletToolTip { event } => {
@@ -405,12 +407,11 @@ pub fn dispatch_libinput_event(
 fn handle_tablet_tool_axis(
     state: &mut WaylandState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolAxisEvent,
-    total_w: i32,
-    total_h: i32,
+    layout: crate::types::Rect,
 ) {
     let tablet_seat = state.seat.tablet_seat();
-    let x = event.x_transformed(total_w);
-    let y = event.y_transformed(total_h);
+    let x = layout.x as f64 + event.x_transformed(layout.w.max(1));
+    let y = layout.y as f64 + event.y_transformed(layout.h.max(1));
     let pointer_location = smithay::utils::Point::from((x, y));
     state.runtime.pointer_location = pointer_location;
     if let Some(pointer) = state.seat.get_pointer() {
@@ -455,12 +456,11 @@ fn handle_tablet_tool_axis(
 fn handle_tablet_tool_proximity(
     state: &mut WaylandState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolProximityEvent,
-    total_w: i32,
-    total_h: i32,
+    layout: crate::types::Rect,
 ) {
     let tablet_seat = state.seat.tablet_seat();
-    let x = event.x_transformed(total_w);
-    let y = event.y_transformed(total_h);
+    let x = layout.x as f64 + event.x_transformed(layout.w.max(1));
+    let y = layout.y as f64 + event.y_transformed(layout.h.max(1));
     let pointer_location = smithay::utils::Point::from((x, y));
     state.runtime.pointer_location = pointer_location;
     if let Some(pointer) = state.seat.get_pointer() {

@@ -118,11 +118,11 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
             return;
         }
         println!(
-            "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
+            " {:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
             "ID", "TITLE", "PROTOCOL", "MONITOR", "TAGS", "STATE"
         );
         println!(
-            "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
+            " {:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
             "------",
             "--------------------------------------------------",
             "----------",
@@ -142,8 +142,10 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
                     .join(",")
             };
             let title = truncate_with_ellipsis(&w.title, 50);
+            let marker = if w.is_focused { "*" } else { " " };
             println!(
-                "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
+                "{}{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
+                marker,
                 w.id,
                 title,
                 format_window_protocol(w.protocol),
@@ -225,6 +227,7 @@ fn format_window_info(window: &WindowInfo, json: bool) {
         println!("title: {}", window.title);
         println!("protocol: {}", format_window_protocol(window.protocol));
         println!("monitor: {}", window.monitor_position);
+        println!("focused: {}", window.is_focused);
         println!("tags: {}", tags);
         println!(
             "geometry: {}x{}+{}+{}",
