@@ -26,3 +26,6 @@ pub const DISTANCE_THRESHOLD: i32 = 5;
 
 /// Default Wayland animation duration in milliseconds.
 pub const WAYLAND_DEFAULT_ANIMATION_MILLIS: u64 = 129;
+
+/// Duration in milliseconds for interactive window dragging animations.
+pub const INTERACTIVE_DRAG_ANIMATION_MILLIS: u64 = 50;

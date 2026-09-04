@@ -3,6 +3,7 @@
 //! Input transports decide how events are captured. Once captured, pointer and
 //! touch samples use these same motion and finish operations on every backend.
 
+use crate::constants::animation;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
@@ -255,6 +256,16 @@ fn apply_move_drag_motion(
         drag.win_start_geo().size(),
         &mut new_pos,
     );
+
+    let animated = ctx.core().behavior().animated;
+    let move_options = if animated {
+        MoveResizeOptions::animate_to(animation::INTERACTIVE_DRAG_ANIMATION_MILLIS)
+            .with_size_hints()
+            .with_interactive_bounds()
+    } else {
+        MoveResizeOptions::hinted_immediate(true)
+    };
+
     ctx.move_resize(
         drag.win(),
         Rect::new(
@@ -263,7 +274,7 @@ fn apply_move_drag_motion(
             drag.win_start_geo().w.max(1),
             drag.win_start_geo().h.max(1),
         ),
-        MoveResizeOptions::hinted_immediate(true),
+        move_options,
     );
 }
 
@@ -307,10 +318,20 @@ fn apply_resize_drag_motion(
             crate::mouse::resize::constrain_aspect_size(ctx, drag.win(), new_w, new_h)
         }
     };
+
+    let animated = ctx.core().behavior().animated;
+    let move_options = if animated {
+        MoveResizeOptions::animate_to(animation::INTERACTIVE_DRAG_ANIMATION_MILLIS)
+            .with_size_hints()
+            .with_interactive_bounds()
+    } else {
+        MoveResizeOptions::hinted_immediate(true)
+    };
+
     ctx.move_resize(
         drag.win(),
         Rect::new(new_x, new_y, new_w, new_h),
-        MoveResizeOptions::hinted_immediate(true),
+        move_options,
     );
 }
 
