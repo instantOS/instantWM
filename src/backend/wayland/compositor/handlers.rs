@@ -579,10 +579,25 @@ impl PointerConstraintsHandler for WaylandState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         pointer: &smithay::input::pointer::PointerHandle<Self>,
     ) {
+        let pointer_focus = pointer
+            .current_focus()
+            .and_then(|focus| focus.wl_surface().map(|surface| surface.into_owned()));
+        let surface_origin = self.pointer_constraint_surface_origin(surface);
+        let pointer_location = self.runtime.pointer_location;
         with_pointer_constraint(surface, pointer, |constraint| {
-            if let Some(constraint) = constraint {
-                constraint.activate();
+            let Some(constraint) = constraint else {
+                return;
+            };
+            if !crate::backend::wayland::input::pointer::new_constraint_should_activate(
+                pointer_focus.as_ref(),
+                constraint.region(),
+                pointer_location,
+                surface,
+                surface_origin,
+            ) {
+                return;
             }
+            constraint.activate();
         });
     }
 

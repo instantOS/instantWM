@@ -1,7 +1,7 @@
 //! Pointer motion handling.
 
 use smithay::input::keyboard::KeyboardHandle;
-use smithay::input::pointer::PointerHandle;
+use smithay::input::pointer::{CursorImageStatus, PointerHandle};
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 
 use crate::backend::wayland::commands::PointerMotionCommand;
@@ -241,6 +241,84 @@ mod tests {
         );
     }
 
+    mod cursor_image_ownership {
+        use smithay::input::pointer::CursorImageStatus;
+        use smithay::reexports::wayland_server::Resource;
+        use smithay::reexports::wayland_server::backend::ObjectId;
+        use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+        use smithay::utils::Point;
+
+        use super::super::{restore_client_cursor_image, synthetic_refresh_deferred};
+        use crate::backend::wayland::compositor::PointerFocusTarget;
+        use crate::backend::wayland::compositor::WaylandState;
+        use crate::backend::wayland::compositor::new_event_loop_and_state;
+
+        fn null_surface(state: &WaylandState) -> WlSurface {
+            WlSurface::from_id(&state.display_handle.clone(), ObjectId::null()).unwrap()
+        }
+
+        #[test]
+        fn a_games_hidden_cursor_survives_focus_churn_over_client_surfaces() {
+            let (_event_loop, mut state) = new_event_loop_and_state();
+            let surface = null_surface(&state);
+
+            // Smithay's focus-churn auto-reset landed during the dispatch…
+            state.cursor_image_status = CursorImageStatus::default_named();
+
+            // …but the pointer stayed over a client surface, so the client's
+            // hidden cursor must be restored.
+            restore_client_cursor_image(
+                &mut state,
+                CursorImageStatus::Hidden,
+                Some(&(
+                    PointerFocusTarget::WlSurface(surface),
+                    Point::from((0.0, 0.0)),
+                )),
+            );
+
+            assert_eq!(state.cursor_image_status, CursorImageStatus::Hidden);
+        }
+
+        #[test]
+        fn the_desktop_default_stands_when_the_pointer_reaches_the_root() {
+            let (_event_loop, mut state) = new_event_loop_and_state();
+            state.cursor_image_status = CursorImageStatus::default_named();
+
+            restore_client_cursor_image(&mut state, CursorImageStatus::Hidden, None);
+
+            assert_eq!(
+                state.cursor_image_status,
+                CursorImageStatus::default_named()
+            );
+        }
+
+        #[test]
+        fn an_unchanged_cursor_image_needs_no_restoration() {
+            let (_event_loop, mut state) = new_event_loop_and_state();
+            let surface = null_surface(&state);
+            state.cursor_image_status = CursorImageStatus::Hidden;
+
+            restore_client_cursor_image(
+                &mut state,
+                CursorImageStatus::Hidden,
+                Some(&(
+                    PointerFocusTarget::WlSurface(surface),
+                    Point::from((0.0, 0.0)),
+                )),
+            );
+
+            assert_eq!(state.cursor_image_status, CursorImageStatus::Hidden);
+        }
+
+        #[test]
+        fn synthetic_refresh_is_live_when_no_animation_moves_the_pointers_output() {
+            let (_event_loop, mut state) = new_event_loop_and_state();
+            state.runtime.pointer_location = Point::from((10.0, 10.0));
+
+            assert!(!synthetic_refresh_deferred(&state));
+        }
+    }
+
     #[test]
     fn sidebar_hover_still_advances_smithay_pointer_location() {
         let (_event_loop, mut state) =
@@ -405,6 +483,70 @@ mod tests {
     }
 }
 
+/// Dispatch a pointer motion through Smithay while enforcing sway-style
+/// cursor-image ownership.
+///
+/// Smithay resets the seat cursor image to the visible default whenever its
+/// internal pointer focus leaves a target or is replaced (the
+/// `PointerTarget::replace`/`leave` hooks). A client-chosen image must
+/// outlive that churn: games (notably through XWayland) re-assert a hidden
+/// cursor only on `wl_pointer::enter`, and while a pointer lock suppresses
+/// enter events a reset would strand a visible desktop cursor — unable to
+/// move — on top of a fullscreen game.
+///
+/// Any status change observed inside the synchronous `pointer_handle.motion`
+/// call is that auto-reset: client `set_cursor` requests are processed from
+/// the display dispatch and can never interleave with this call. While the
+/// new focus is still a client surface, the pre-dispatch image is restored
+/// (sway keeps the image until a client sets a new one); when the pointer
+/// moved to the root, the default stands.
+pub(crate) fn dispatch_smithay_pointer_motion(
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
+    event: &smithay::input::pointer::MotionEvent,
+) {
+    let image_before: CursorImageStatus = state.cursor_image_status.clone();
+    pointer_handle.motion(state, focus.clone(), event);
+    restore_client_cursor_image(state, image_before, focus.as_ref());
+}
+
+/// Sway keeps the focused client's last-set cursor image across focus churn
+/// and only falls back to the desktop default when the pointer sits over the
+/// root. Call after every Smithay motion dispatch: any status change observed
+/// there is Smithay's focus-churn auto-reset, since client `set_cursor`
+/// requests cannot interleave with the synchronous call.
+fn restore_client_cursor_image(
+    state: &mut WaylandState,
+    image_before: CursorImageStatus,
+    new_focus: Option<&(PointerFocusTarget, Point<f64, Logical>)>,
+) {
+    if new_focus.is_some() && state.cursor_image_status != image_before {
+        state.cursor_image_status = image_before;
+        state.request_render();
+    }
+}
+
+/// Niri-style transition guard for synthetic pointer refreshes.
+///
+/// While a geometry animation moves windows on the output under the pointer,
+/// hit testing reflects intermediate animation frames. Refreshing pointer
+/// focus then transiently drops it (`wl_pointer::leave`), which resets the
+/// seat cursor image, deactivates active pointer constraints, and can strand
+/// both a visible cursor and a dead lock over a just-fullscreened game. The
+/// refresh is re-issued once animations drain (see
+/// `process_animations_and_request_render`).
+fn synthetic_refresh_deferred(state: &WaylandState) -> bool {
+    state
+        .space
+        .output_under(state.runtime.pointer_location)
+        .next()
+        .is_some_and(|output| {
+            state.has_window_animations_on_output(output)
+                || state.has_active_layout_preview_animation()
+        })
+}
+
 /// Process a queued backend pointer command through the single Wayland pointer
 /// transaction path.
 pub fn process_pointer_motion_command(
@@ -493,6 +635,15 @@ pub(crate) fn process_pointer_motion_command_cached(
             update_active_drag,
         ),
         PointerMotionCommand::Refresh { time_msec } => {
+            if synthetic_refresh_deferred(state) {
+                // Recompute the current hit so a queued batch that resumes
+                // after the guard lifts starts from reality without a
+                // protocol dispatch.
+                return PointerMotionCache {
+                    current_hit: state.contents_under_pointer(state.runtime.pointer_location),
+                    snapshot: None,
+                };
+            }
             let location = state.runtime.pointer_location;
             handle_pointer_motion(
                 wm,
@@ -802,7 +953,7 @@ fn dispatch_pointer_motion(
         serial,
         time: time_msec,
     };
-    pointer_handle.motion(state, focus, &motion);
+    dispatch_smithay_pointer_motion(state, pointer_handle, focus, &motion);
     pointer_handle.frame(state);
 }
 
@@ -896,7 +1047,7 @@ fn handle_resize_drag_motion(
     };
     let focus =
         pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-    pointer_handle.motion(state, focus, &motion);
+    dispatch_smithay_pointer_motion(state, pointer_handle, focus, &motion);
     pointer_handle.frame(state);
     true
 }
@@ -927,7 +1078,7 @@ fn handle_bar_motion(
             serial,
             time: time_msec,
         };
-        pointer_handle.motion(state, focus, &motion);
+        dispatch_smithay_pointer_motion(state, pointer_handle, focus, &motion);
         pointer_handle.frame(state);
         return true;
     }

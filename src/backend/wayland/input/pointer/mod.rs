@@ -11,3 +11,5 @@ pub mod button;
 mod constraints;
 pub mod drag;
 pub mod motion;
+
+pub(crate) use constraints::new_constraint_should_activate;

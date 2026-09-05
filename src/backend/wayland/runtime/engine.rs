@@ -355,6 +355,13 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
         // the refresh above already ran; catch up once animations drain.
         if !state.has_active_animations() {
             state.refresh_all_foreign_toplevels();
+            // Window animations just drained, so the final geometry is now
+            // authoritative. Issue the pointer-focus refresh that the
+            // transition guard deferred while intermediate animation frames
+            // were the only hittable state.
+            state.push_command(crate::backend::wayland::commands::WmCommand::PointerMotion(
+                crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
+            ));
         }
     }
 
