@@ -6,6 +6,37 @@ use crate::types::Key;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
+pub(crate) fn apply_layout(
+    layout: &str,
+    variant: &str,
+    options: Option<&str>,
+    model: Option<&str>,
+) -> Result<(), String> {
+    layout_command(layout, variant, options, model)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("failed to run setxkbmap: {e}"))
+}
+
+fn layout_command(
+    layout: &str,
+    variant: &str,
+    options: Option<&str>,
+    model: Option<&str>,
+) -> std::process::Command {
+    let mut command = std::process::Command::new("setxkbmap");
+    // Explicitly clear the previous variant and options even when the new
+    // configuration leaves them empty (e.g. disabling caps:swapescape).
+    command.args(["-layout", layout, "-variant", variant, "-option", ""]);
+    if let Some(options) = options.filter(|value| !value.is_empty()) {
+        command.args(["-option", options]);
+    }
+    if let Some(model) = model.filter(|value| !value.is_empty()) {
+        command.args(["-model", model]);
+    }
+    command
+}
+
 fn grab_keys_for_key<C: Connection>(
     conn: &C,
     root: Window,
@@ -304,6 +335,34 @@ pub fn key_release() {}
 #[cfg(test)]
 mod mapping_tests {
     use crate::backend::x11::X11KeyboardMapping;
+
+    #[test]
+    fn layout_command_clears_previous_variant_and_options() {
+        let command = super::layout_command("us", "", None, None);
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(args, ["-layout", "us", "-variant", "", "-option", ""]);
+    }
+
+    #[test]
+    fn layout_command_resets_options_before_applying_the_new_configuration() {
+        let command = super::layout_command("us", "dvorak", Some("caps:swapescape"), Some("pc105"));
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(
+            args,
+            [
+                "-layout",
+                "us",
+                "-variant",
+                "dvorak",
+                "-option",
+                "",
+                "-option",
+                "caps:swapescape",
+                "-model",
+                "pc105",
+            ]
+        );
+    }
 
     #[test]
     fn cached_mapping_resolves_columns_without_server_access() {

@@ -79,8 +79,18 @@ impl Node {
     }
 
     fn replace_key(self, key: NodeKey, replacement: Node) -> Self {
+        self.replace_key_once(key, &mut Some(replacement))
+    }
+
+    fn replace_key_once(self, key: NodeKey, replacement: &mut Option<Node>) -> Self {
+        // Keys are unique: move the replacement into its one destination and
+        // leave subsequent branches untouched. Cloning it at every visited
+        // node makes replacing a large subtree quadratic in the tree size.
+        if replacement.is_none() {
+            return self;
+        }
         if self.key() == key {
-            return replacement;
+            return replacement.take().expect("replacement is still available");
         }
         match self {
             Self::Window(window) => Self::Window(window),
@@ -91,7 +101,7 @@ impl Node {
                     .children
                     .into_iter()
                     .map(|child| WeightedNode {
-                        node: child.node.replace_key(key, replacement.clone()),
+                        node: child.node.replace_key_once(key, replacement),
                         weight: child.weight,
                     })
                     .collect();

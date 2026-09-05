@@ -227,7 +227,7 @@ pub fn render_bar_buffers(
         core.config().systray.show,
         &snapshots,
     );
-    async_render::poll_result(core, painter);
+    async_render::poll_result(core, painter, key);
 
     if painter.cached_key != key {
         async_render::request_render(painter, key, snapshots);

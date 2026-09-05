@@ -1,7 +1,7 @@
 //! XKB keyboard layout management.
 //!
 //! Provides functions to switch between configured keyboard layouts (e.g.
-//! QWERTY, QWERTZ, Dvorak) via `setxkbmap`. Layouts are configured in the
+//! QWERTY, QWERTZ, Dvorak) through the active backend. Layouts are configured in the
 //! TOML config under `[keyboard]` and can be switched at runtime via
 //! keybindings or IPC.
 
@@ -10,10 +10,7 @@ use crate::types::KeyboardLayout;
 use crate::types::input::StackDirection;
 use std::process::Command;
 
-/// Apply the keyboard layout at the given index using `setxkbmap`.
-///
-/// This sets a single layout active (not the full list), which is the
-/// simplest and most portable approach across X11 and XWayland.
+/// Apply one configured layout through the active backend.
 fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().interaction().keyboard_layout;
     let layout = state
@@ -36,35 +33,7 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
         }
     }
 
-    let mut cmd = Command::new("setxkbmap");
-    cmd.arg("-layout").arg(&layout.name);
-    if !variant.is_empty() {
-        cmd.arg("-variant").arg(&variant);
-    }
-    if let Some(ref opts) = options
-        && !opts.is_empty()
-    {
-        cmd.arg("-option").arg("").arg("-option").arg(opts);
-    }
-    if let Some(ref m) = model
-        && !m.is_empty()
-    {
-        cmd.arg("-model").arg(m);
-    }
-
-    cmd.spawn()
-        .map_err(|e| format!("failed to run setxkbmap: {e}"))?;
-
-    // Native Wayland keymap state is compositor-owned. X11 was already
-    // configured by `setxkbmap` above, so it has no corresponding backend call.
-    if let WmCtx::Wayland(wayland) = ctx {
-        wayland.wayland.set_keyboard_layout(
-            &layout.name,
-            &variant,
-            options.as_deref(),
-            model.as_deref(),
-        );
-    }
+    ctx.apply_keyboard_layout(&layout.name, &variant, options.as_deref(), model.as_deref())?;
 
     ctx.core_mut().interaction_mut().keyboard_layout.current = index;
     Ok(())
@@ -232,4 +201,65 @@ pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), Strin
     let current = ctx.core().interaction().keyboard_layout.current;
     set_keyboard_layout(ctx, current);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_wayland_layout_switch_does_not_require_x11_utilities() {
+        const CHILD_ENV: &str = "INSTANTWM_KEYMAP_TEST_CHILD";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            // Keep PATH and display changes local to a subprocess: other
+            // tests can run concurrently without touching the host keymap.
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "keyboard_layout::tests::native_wayland_layout_switch_does_not_require_x11_utilities",
+                    "--nocapture",
+                ])
+                .env(CHILD_ENV, "1")
+                .env("PATH", "")
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+            return;
+        }
+
+        use crate::backend::{Backend, wayland::WaylandBackend};
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let backend = WaylandBackend::new();
+        backend.attach_state(&mut state);
+        let mut wm = crate::wm::Wm::new(Backend::new_wayland(backend));
+        wm.core.interaction.keyboard_layout.layouts =
+            vec![KeyboardLayout::new("us"), KeyboardLayout::new("de")];
+
+        apply_layout(&mut wm.ctx(), 1).unwrap();
+        assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
+        let symbol = state
+            .keyboard
+            .clone()
+            .with_xkb_state(&mut state, |context| {
+                let xkb = context.xkb().lock().unwrap();
+                // 29 is the xkb keycode of the Y key (evdev 21 + 8): 'y' on the
+                // US layout, 'z' once the German keymap is active.
+                xkb.raw_syms_for_key_in_layout(29u16.into(), xkb.active_layout())
+                    .first()
+                    .and_then(|symbol| symbol.key_char())
+            });
+        assert_eq!(
+            symbol,
+            Some('z'),
+            "German layout must replace the US keymap"
+        );
+    }
 }

@@ -345,6 +345,25 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    pub fn apply_keyboard_layout(
+        &mut self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<(), String> {
+        match self {
+            WmCtx::X11(_) => {
+                crate::backend::x11::keyboard::apply_layout(layout, variant, options, model)
+            }
+            WmCtx::Wayland(ctx) => {
+                ctx.wayland
+                    .set_keyboard_layout(layout, variant, options, model);
+                Ok(())
+            }
+        }
+    }
+
     pub fn backend_kind(&self) -> crate::backend::BackendKind {
         match self {
             WmCtx::X11(_) => crate::backend::BackendKind::X11,
