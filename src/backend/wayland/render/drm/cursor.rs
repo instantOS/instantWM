@@ -35,10 +35,25 @@ struct CursorFrame {
 #[derive(Clone)]
 pub struct XCursor {
     images: Vec<Image>,
-    animation_duration: u32,
+    animation_duration: u64,
 }
 
 impl XCursor {
+    fn from_images(mut images: Vec<Image>, size: i32) -> anyhow::Result<Self> {
+        let nominal_size = images
+            .iter()
+            .min_by_key(|image| (i64::from(size) - i64::from(image.size)).abs())
+            .map(|image| image.size)
+            .context("no images in cursor")?;
+        // Animation frames share a nominal size, not necessarily pixel dimensions.
+        images.retain(|image| image.size == nominal_size);
+        let animation_duration = images.iter().map(|image| u64::from(image.delay)).sum();
+        Ok(Self {
+            images,
+            animation_duration,
+        })
+    }
+
     pub fn frames(&self) -> &[Image] {
         &self.images
     }
@@ -48,21 +63,26 @@ impl XCursor {
             return (0, &self.images[0]);
         }
 
-        let millis = millis % self.animation_duration;
+        let millis = u64::from(millis) % self.animation_duration;
         let mut accumulated = 0;
 
         for (i, img) in self.images.iter().enumerate() {
-            if accumulated + img.delay > millis {
+            if accumulated + u64::from(img.delay) > millis {
                 return (i, img);
             }
-            accumulated += img.delay;
+            accumulated += u64::from(img.delay);
         }
 
         (0, &self.images[0])
     }
 
     pub fn is_animated(&self) -> bool {
-        self.images.len() > 1
+        self.images
+            .iter()
+            .filter(|image| image.delay > 0)
+            .take(2)
+            .count()
+            > 1
     }
 }
 
@@ -116,26 +136,8 @@ impl CursorManager {
         file.read_to_end(&mut buf)
             .context("error reading cursor icon file")?;
 
-        let mut images = parse_xcursor(&buf).context("error parsing cursor icon file")?;
-
-        if images.is_empty() {
-            anyhow::bail!("no images in cursor");
-        }
-
-        let (width, height) = images
-            .iter()
-            .min_by_key(|image| (size - image.size as i32).abs())
-            .map(|image| (image.width, image.height))
-            .unwrap();
-
-        images.retain(|image| image.width == width && image.height == height);
-
-        let animation_duration = images.iter().fold(0, |acc, img| acc + img.delay);
-
-        Ok(XCursor {
-            images,
-            animation_duration,
-        })
+        let images = parse_xcursor(&buf).context("error parsing cursor icon file")?;
+        XCursor::from_images(images, size)
     }
 
     fn get_cursor_with_name(&self, icon: CursorIcon, scale: i32) -> Option<Rc<XCursor>> {
@@ -310,5 +312,67 @@ impl CursorManager {
             None,
             Kind::Cursor,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn image(size: u32, width: u32, delay: u32) -> Image {
+        Image {
+            size,
+            width,
+            height: width,
+            xhot: 0,
+            yhot: 0,
+            delay,
+            pixels_rgba: Vec::new(),
+            pixels_argb: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn selects_nominal_size_and_preserves_differently_sized_frames() {
+        let cursor = XCursor::from_images(
+            vec![image(24, 32, 10), image(32, 32, 10), image(24, 28, 20)],
+            24,
+        )
+        .unwrap();
+        assert_eq!(cursor.frames().len(), 2);
+        assert!(cursor.frames().iter().all(|frame| frame.size == 24));
+        assert_eq!(cursor.frame(0).1.width, 32);
+        assert_eq!(cursor.frame(10).1.width, 28);
+        assert_eq!(cursor.frame(29).0, 1);
+        assert_eq!(cursor.frame(30).0, 0);
+    }
+
+    #[test]
+    fn static_frames_do_not_request_animation_redraws() {
+        for delays in [[0, 0], [0, 10], [10, 0]] {
+            let cursor = XCursor::from_images(
+                delays
+                    .into_iter()
+                    .map(|delay| image(24, 24, delay))
+                    .collect(),
+                24,
+            )
+            .unwrap();
+            assert!(!cursor.is_animated());
+            assert_eq!(cursor.frame(0).0, cursor.frame(100).0);
+        }
+    }
+
+    #[test]
+    fn large_frame_delays_and_nominal_sizes_do_not_overflow() {
+        let cursor = XCursor::from_images(
+            vec![image(u32::MAX, 24, u32::MAX), image(u32::MAX, 24, 10)],
+            24,
+        )
+        .unwrap();
+        assert_eq!(cursor.animation_duration, u64::from(u32::MAX) + 10);
+        assert_eq!(cursor.frame(u32::MAX).0, 1);
+        assert!(cursor.is_animated());
+        assert!(XCursor::from_images(Vec::new(), 24).is_err());
     }
 }

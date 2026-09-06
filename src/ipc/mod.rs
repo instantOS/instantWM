@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 const MAX_PENDING_CLIENTS: usize = 128;
+const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 const PENDING_CLIENT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub mod config;
@@ -61,7 +62,7 @@ fn drain_pending_client(client: &mut PendingClient) -> PendingRead {
             Ok(n) => {
                 client.last_activity = Instant::now();
                 client.buffer.extend_from_slice(&chunk[..n]);
-                if client.buffer.len() > 1024 * 1024 {
+                if client.buffer.len() > MAX_REQUEST_BYTES {
                     return PendingRead::RequestTooLarge;
                 }
             }
@@ -153,23 +154,16 @@ impl IpcServer {
             return false;
         }
 
-        let request: IpcRequest =
-            match bincode::decode_from_slice(&client.buffer, bincode::config::standard()) {
-                Ok((req, _)) => req,
-                Err(_) => {
-                    // Try JSON fallback for older/simpler clients if bincode fails
-                    match serde_json::from_slice(&client.buffer) {
-                        Ok(req) => req,
-                        Err(e) => {
-                            let _ = send_response(
-                                &mut client.stream,
-                                &Response::err(format!("deserialize error: {}", e)),
-                            );
-                            return false;
-                        }
-                    }
-                }
-            };
+        let request = match decode_request(&client.buffer) {
+            Ok(request) => request,
+            Err(error) => {
+                let _ = send_response(
+                    &mut client.stream,
+                    &Response::err(format!("deserialize error: {error}")),
+                );
+                return false;
+            }
+        };
 
         // Validate protocol version (skip if ignore_version is set)
         if let Err(e) = request.validate_version() {
@@ -225,6 +219,22 @@ fn get_available_socket_path() -> PathBuf {
             }
         }
         return path;
+    }
+}
+
+fn decode_request(bytes: &[u8]) -> Result<IpcRequest, String> {
+    if bytes.len() > MAX_REQUEST_BYTES {
+        return Err("request too large".into());
+    }
+    // Bound allocations from encoded lengths as well as the socket payload.
+    // A short malformed request can otherwise claim an arbitrarily large string.
+    match bincode::decode_from_slice(
+        bytes,
+        bincode::config::standard().with_limit::<MAX_REQUEST_BYTES>(),
+    ) {
+        Ok((request, consumed)) if consumed == bytes.len() => Ok(request),
+        Ok(_) => Err("trailing bytes after request".into()),
+        Err(_) => serde_json::from_slice(bytes).map_err(|error| error.to_string()),
     }
 }
 
@@ -377,6 +387,34 @@ mod tests {
     use std::io::Write;
     use std::net::Shutdown;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn request_decoder_accepts_binary_and_json() {
+        let request = IpcRequest::new(IpcCommand::GetTheme);
+        for bytes in [
+            bincode::encode_to_vec(&request, bincode::config::standard()).unwrap(),
+            serde_json::to_vec(&request).unwrap(),
+        ] {
+            let decoded = decode_request(&bytes).unwrap();
+            assert_eq!(decoded.version, request.version);
+            assert!(matches!(decoded.command, IpcCommand::GetTheme));
+        }
+    }
+
+    #[test]
+    fn request_decoder_rejects_impossible_allocations_and_trailing_data() {
+        // The first field is a string: this encodes its length, with no payload.
+        let bytes = bincode::encode_to_vec(u64::MAX, bincode::config::standard()).unwrap();
+        assert!(decode_request(&bytes).is_err());
+
+        let mut bytes = bincode::encode_to_vec(
+            IpcRequest::new(IpcCommand::GetTheme),
+            bincode::config::standard(),
+        )
+        .unwrap();
+        bytes.push(0);
+        assert!(decode_request(&bytes).is_err());
+    }
 
     #[test]
     fn idle_pending_clients_are_pruned_without_dropping_active_clients() {
