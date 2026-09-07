@@ -155,19 +155,6 @@ pub enum SchemeTag {
     Urgent,
 }
 
-/// State of a window title button in the bar (legacy flattened enum).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeWin {
-    Focus,
-    Normal,
-    Minimized,
-    Sticky,
-    StickyFocus,
-    EdgeScratchpad,
-    EdgeScratchpadFocus,
-    Urgent,
-}
-
 /// Persistent window role classification for bar styling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowRole {
@@ -265,19 +252,6 @@ pub struct WindowColorSet {
 }
 
 impl WindowColorSet {
-    pub fn colors_for(&self, role: SchemeWin) -> &ColorSchemeRgba {
-        match role {
-            SchemeWin::Focus => &self.focus,
-            SchemeWin::Normal => &self.normal,
-            SchemeWin::Minimized => &self.minimized,
-            SchemeWin::Sticky => &self.sticky,
-            SchemeWin::StickyFocus => &self.sticky_focus,
-            SchemeWin::EdgeScratchpad => &self.edge_scratchpad,
-            SchemeWin::EdgeScratchpadFocus => &self.edge_scratchpad_focus,
-            SchemeWin::Urgent => &self.urgent,
-        }
-    }
-
     /// Resolve color scheme by orthogonal role and focus state.
     pub fn role_colors(&self, role: WindowRole, focus: WindowFocus) -> &ColorSchemeRgba {
         match (role, focus) {
@@ -361,14 +335,6 @@ pub struct WindowColorConfigs {
 }
 
 impl WindowColorConfigs {
-    pub fn colors_for(&self, hover: SchemeHover, role: SchemeWin) -> &ColorSchemeRgba {
-        match hover {
-            SchemeHover::NoHover => &self.no_hover,
-            SchemeHover::Hover => &self.hover,
-        }
-        .colors_for(role)
-    }
-
     /// Resolve color scheme by orthogonal role and focus state.
     pub fn role_colors(
         &self,

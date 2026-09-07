@@ -989,8 +989,8 @@ mod tests {
     use crate::types::color::Rgba;
     use crate::types::{
         Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,
-        SchemeTag, SchemeWin, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs,
-        WindowId,
+        SchemeTag, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus,
+        WindowId, WindowRole,
     };
 
     fn marker(value: f32) -> ColorSchemeRgba {
@@ -1078,7 +1078,11 @@ mod tests {
         assert_eq!(
             scheme.background,
             colors
-                .colors_for(SchemeHover::NoHover, SchemeWin::StickyFocus)
+                .role_colors(
+                    SchemeHover::NoHover,
+                    WindowRole::Sticky,
+                    WindowFocus::Focused
+                )
                 .bg
         );
     }
