@@ -155,7 +155,7 @@ pub enum SchemeTag {
     Urgent,
 }
 
-/// State of a window title button in the bar.
+/// State of a window title button in the bar (legacy flattened enum).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeWin {
     Focus,
@@ -166,6 +166,22 @@ pub enum SchemeWin {
     EdgeScratchpad,
     EdgeScratchpadFocus,
     Urgent,
+}
+
+/// Persistent window role classification for bar styling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowRole {
+    Normal,
+    Sticky,
+    EdgeScratchpad,
+    Minimized,
+}
+
+/// Window focus state for bar styling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowFocus {
+    Normal,
+    Focused,
 }
 
 /// State of the close button widget.
@@ -261,6 +277,20 @@ impl WindowColorSet {
             SchemeWin::Urgent => &self.urgent,
         }
     }
+
+    /// Resolve color scheme by orthogonal role and focus state.
+    pub fn role_colors(&self, role: WindowRole, focus: WindowFocus) -> &ColorSchemeRgba {
+        match (role, focus) {
+            (WindowRole::Normal, WindowFocus::Normal) => &self.normal,
+            (WindowRole::Normal, WindowFocus::Focused) => &self.focus,
+            (WindowRole::Sticky, WindowFocus::Normal) => &self.sticky,
+            (WindowRole::Sticky, WindowFocus::Focused) => &self.sticky_focus,
+            (WindowRole::EdgeScratchpad, WindowFocus::Normal) => &self.edge_scratchpad,
+            (WindowRole::EdgeScratchpad, WindowFocus::Focused) => &self.edge_scratchpad_focus,
+            (WindowRole::Minimized, WindowFocus::Normal) => &self.minimized,
+            (WindowRole::Minimized, WindowFocus::Focused) => &self.focus,
+        }
+    }
 }
 
 /// Close button scheme groupings (non-hover or hover).
@@ -338,6 +368,28 @@ impl WindowColorConfigs {
         }
         .colors_for(role)
     }
+
+    /// Resolve color scheme by orthogonal role and focus state.
+    pub fn role_colors(
+        &self,
+        hover: SchemeHover,
+        role: WindowRole,
+        focus: WindowFocus,
+    ) -> &ColorSchemeRgba {
+        match hover {
+            SchemeHover::NoHover => &self.no_hover,
+            SchemeHover::Hover => &self.hover,
+        }
+        .role_colors(role, focus)
+    }
+
+    /// Resolve alert color scheme for urgent windows.
+    pub fn urgent_colors(&self, hover: SchemeHover) -> &ColorSchemeRgba {
+        match hover {
+            SchemeHover::NoHover => &self.no_hover.urgent,
+            SchemeHover::Hover => &self.hover.urgent,
+        }
+    }
 }
 
 /// Close button color configuration with named normal/hover variants.
@@ -358,6 +410,32 @@ impl CloseButtonColorConfigs {
             SchemeHover::Hover => &self.hover,
         }
         .colors_for(role)
+    }
+
+    /// Compose close button styling across orthogonal locked and fullscreen dimensions.
+    ///
+    /// Returns the base scheme and an optional detail override scheme (e.g. for fullscreen accent when locked).
+    pub fn composed_colors(
+        &self,
+        hover: SchemeHover,
+        is_locked: bool,
+        is_fullscreen: bool,
+    ) -> (&ColorSchemeRgba, Option<&ColorSchemeRgba>) {
+        let base = if is_locked {
+            self.colors_for(hover, SchemeClose::Locked)
+        } else if is_fullscreen {
+            self.colors_for(hover, SchemeClose::Fullscreen)
+        } else {
+            self.colors_for(hover, SchemeClose::Normal)
+        };
+
+        let detail_override = if is_locked && is_fullscreen {
+            Some(self.colors_for(hover, SchemeClose::Fullscreen))
+        } else {
+            None
+        };
+
+        (base, detail_override)
     }
 
     /// Theme color shared by the close button and destructive window gestures.

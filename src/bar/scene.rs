@@ -2,8 +2,8 @@ use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
 use crate::contexts::CoreCtx;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Client, CloseButtonColorConfigs,
-    Gesture, Monitor, MonitorId, Rect, SchemeClose, SchemeHover, SchemeTag, SchemeWin,
-    StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowId,
+    Gesture, Monitor, MonitorId, Rect, SchemeHover, SchemeTag, StatusColorConfig, TagColorConfigs,
+    TagMask, WindowColorConfigs, WindowFocus, WindowId, WindowRole,
 };
 
 const STARTMENU_ICON_SIZE: i32 = 14;
@@ -78,41 +78,45 @@ fn window_scheme(
     client: &Client,
     is_hover: bool,
 ) -> BarScheme {
+    let hover = if is_hover {
+        SchemeHover::Hover
+    } else {
+        SchemeHover::NoHover
+    };
+
     let is_selected = model
         .selected_monitor()
         .and_then(|monitor| monitor.selected)
         == Some(client.win);
-    let is_edge_scratchpad = client.is_edge_scratchpad();
-    let window_role = if is_selected {
-        if is_edge_scratchpad {
-            SchemeWin::EdgeScratchpadFocus
-        } else if client.is_sticky {
-            SchemeWin::StickyFocus
-        } else {
-            SchemeWin::Focus
-        }
-    } else if is_edge_scratchpad {
-        SchemeWin::EdgeScratchpad
-    } else if client.is_sticky {
-        SchemeWin::Sticky
-    } else if client.is_minimized() {
-        SchemeWin::Minimized
-    } else if client.is_urgent {
-        SchemeWin::Urgent
+    let focus = if is_selected {
+        WindowFocus::Focused
     } else {
-        SchemeWin::Normal
+        WindowFocus::Normal
     };
 
-    colors
-        .colors_for(
-            if is_hover {
-                SchemeHover::Hover
-            } else {
-                SchemeHover::NoHover
-            },
-            window_role,
-        )
-        .into()
+    let role = if client.is_edge_scratchpad() {
+        WindowRole::EdgeScratchpad
+    } else if client.is_sticky {
+        WindowRole::Sticky
+    } else if client.is_minimized() {
+        WindowRole::Minimized
+    } else {
+        WindowRole::Normal
+    };
+
+    if client.is_urgent {
+        let urgent = colors.urgent_colors(hover);
+        let role_colors = colors.role_colors(hover, role, focus);
+        let mut scheme = BarScheme::from(urgent);
+        // If the urgent window has a non-default role or is currently focused,
+        // preserve that distinction in the detail stripe while keeping the alert background/text
+        if role != WindowRole::Normal || focus == WindowFocus::Focused {
+            scheme.detail = role_colors.detail;
+        }
+        scheme
+    } else {
+        colors.role_colors(hover, role, focus).into()
+    }
 }
 
 fn close_button_scheme(
@@ -121,24 +125,18 @@ fn close_button_scheme(
     is_locked: bool,
     is_fullscreen: bool,
 ) -> BarScheme {
-    let close_role = if is_locked {
-        SchemeClose::Locked
-    } else if is_fullscreen {
-        SchemeClose::Fullscreen
+    let hover = if is_hover {
+        SchemeHover::Hover
     } else {
-        SchemeClose::Normal
+        SchemeHover::NoHover
     };
 
-    colors
-        .colors_for(
-            if is_hover {
-                SchemeHover::Hover
-            } else {
-                SchemeHover::NoHover
-            },
-            close_role,
-        )
-        .into()
+    let (base, detail_override) = colors.composed_colors(hover, is_locked, is_fullscreen);
+    let mut scheme = BarScheme::from(base);
+    if let Some(detail_color) = detail_override {
+        scheme.detail = detail_color.detail;
+    }
+    scheme
 }
 
 #[derive(Clone)]
@@ -1098,5 +1096,70 @@ mod tests {
                 .colors_for(SchemeHover::Hover, SchemeClose::Locked)
                 .bg
         );
+    }
+
+    #[test]
+    fn window_scheme_gives_urgent_state_precedence_over_sticky() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor::default());
+        model.monitors.set_selected(monitor_id);
+        let win = WindowId(42);
+        model.insert_client(Client {
+            win,
+            monitor_id,
+            is_sticky: true,
+            is_urgent: true,
+            ..Client::default()
+        });
+        let mut colors = WindowColorConfigs::default();
+        colors.no_hover.urgent = marker(0.9);
+        colors.no_hover.sticky = marker(0.3);
+
+        let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
+
+        assert_eq!(
+            scheme.background,
+            colors.urgent_colors(SchemeHover::NoHover).bg
+        );
+    }
+
+    #[test]
+    fn window_scheme_gives_urgent_state_precedence_over_minimized() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor::default());
+        model.monitors.set_selected(monitor_id);
+        let win = WindowId(42);
+        model.insert_client(Client {
+            win,
+            monitor_id,
+            is_hidden: true,
+            is_urgent: true,
+            ..Client::default()
+        });
+        let mut colors = WindowColorConfigs::default();
+        colors.no_hover.urgent = marker(0.9);
+        colors.no_hover.minimized = marker(0.2);
+
+        let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
+
+        assert_eq!(
+            scheme.background,
+            colors.urgent_colors(SchemeHover::NoHover).bg
+        );
+    }
+
+    #[test]
+    fn close_button_scheme_composes_locked_and_fullscreen() {
+        let mut colors = CloseButtonColorConfigs::default();
+        colors.hover.locked = marker(0.7);
+        let mut fs = marker(0.5);
+        fs.detail = Rgba::new(0.8, 0.8, 0.8, 1.0);
+        colors.hover.fullscreen = fs;
+
+        let scheme = close_button_scheme(&colors, true, true, true);
+
+        // Main button body reflects locked state, while detail stripe reflects fullscreen
+        assert_eq!(scheme.background, colors.hover.locked.bg);
+        assert_eq!(scheme.detail, colors.hover.fullscreen.detail);
     }
 }
