@@ -33,6 +33,7 @@ pub(crate) mod image_capture;
 pub(crate) mod layer_shell;
 pub mod output;
 pub mod protocols;
+pub mod render;
 pub mod screencopy;
 mod session_lock;
 mod state;
@@ -41,7 +42,7 @@ mod xdg_shell;
 mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
-pub(crate) use state::PendingRenderTargets;
+pub use render::PendingRenderTargets;
 pub(crate) use state::TOUCH_POINTER_BUTTON_CODE;
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};
 

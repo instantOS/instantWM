@@ -271,7 +271,6 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::ClientMessage(e) => handlers::client_message(&mut ctx, &e),
         x11rb::protocol::Event::ConfigureNotify(e) => handlers::configure_notify(&mut ctx, &e),
         x11rb::protocol::Event::ConfigureRequest(e) => handlers::configure_request(&mut ctx, &e),
-        x11rb::protocol::Event::CreateNotify(e) => handlers::create_notify(&e),
         x11rb::protocol::Event::DestroyNotify(e) => handlers::destroy_notify(&mut ctx, &e),
         x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(&mut ctx, &e),
         x11rb::protocol::Event::Expose(e) => handlers::expose(&mut ctx, &e),
@@ -279,7 +278,6 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::KeyPress(e) => {
             crate::backend::x11::keyboard::key_press(&mut ctx, &e)
         }
-        x11rb::protocol::Event::KeyRelease(_) => crate::backend::x11::keyboard::key_release(),
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),

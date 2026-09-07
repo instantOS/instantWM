@@ -428,6 +428,85 @@ impl WaylandState {
             self.queue_output_transaction(transaction);
         }
     }
+
+    pub fn set_output_vrr_support(&mut self, output_name: &str, support: BackendVrrSupport) {
+        let entry = self
+            .runtime
+            .output_metadata
+            .entry(output_name.to_string())
+            .or_insert(WaylandOutputMetadata {
+                vrr_support: support,
+                vrr_mode: VrrMode::default(),
+                vrr_enabled: false,
+            });
+        entry.vrr_support = support;
+    }
+
+    pub fn set_output_vrr_mode(&mut self, output_name: &str, mode: VrrMode) {
+        let entry = self
+            .runtime
+            .output_metadata
+            .entry(output_name.to_string())
+            .or_insert(WaylandOutputMetadata {
+                vrr_support: BackendVrrSupport::Unsupported,
+                vrr_mode: mode,
+                vrr_enabled: false,
+            });
+        entry.vrr_mode = mode;
+    }
+
+    pub(crate) fn project_output_vrr_state(
+        &mut self,
+        output_name: &str,
+        mode: VrrMode,
+        enabled: bool,
+    ) {
+        self.set_output_vrr_mode(output_name, mode);
+        self.runtime
+            .output_metadata
+            .get_mut(output_name)
+            .expect("setting the VRR mode initializes output metadata")
+            .vrr_enabled = enabled;
+    }
+
+    pub fn set_output_vrr_enabled(&mut self, output_name: &str, enabled: bool) {
+        let entry = self
+            .runtime
+            .output_metadata
+            .entry(output_name.to_string())
+            .or_insert(WaylandOutputMetadata {
+                vrr_support: BackendVrrSupport::Unsupported,
+                vrr_mode: VrrMode::default(),
+                vrr_enabled: enabled,
+            });
+        let changed = entry.vrr_enabled != enabled;
+        entry.vrr_enabled = enabled;
+        if changed
+            && let Some(output) = self
+                .output_management_state
+                .outputs()
+                .iter()
+                .find(|output| output.name() == output_name)
+                .cloned()
+        {
+            if let Some(output_state) = output.user_data().get::<OutputManagementOutputState>() {
+                output_state.set(output_state.enabled(), enabled);
+            }
+            self.output_management_state
+                .update_heads::<Self>(std::iter::once(&output));
+        }
+    }
+
+    pub fn output_vrr_metadata(&self, output_name: &str) -> Option<&WaylandOutputMetadata> {
+        self.runtime.output_metadata.get(output_name)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaylandOutputMetadata {
+    pub vrr_support: BackendVrrSupport,
+    pub vrr_mode: VrrMode,
+    pub vrr_enabled: bool,
 }
 
 #[cfg(test)]

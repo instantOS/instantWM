@@ -222,49 +222,6 @@ fn next_phase_delay(last: Instant, now: Instant, period: Duration) -> Duration {
         period - remainder
     }
 }
-
-#[cfg(test)]
-mod presentation_scheduler_tests {
-    use super::{commit_timing_wake_delay, next_phase_delay};
-    use std::time::{Duration, Instant};
-
-    #[test]
-    fn timed_commit_wakes_one_refresh_before_deadline() {
-        assert_eq!(
-            commit_timing_wake_delay(
-                Duration::from_millis(100),
-                Duration::from_millis(20),
-                Duration::from_millis(16),
-            ),
-            Duration::from_millis(64)
-        );
-    }
-
-    #[test]
-    fn imminent_and_stale_deadlines_wake_immediately() {
-        for deadline in [10, 20, 25] {
-            assert_eq!(
-                commit_timing_wake_delay(
-                    Duration::from_millis(deadline),
-                    Duration::from_millis(20),
-                    Duration::from_millis(16),
-                ),
-                Duration::ZERO
-            );
-        }
-    }
-
-    #[test]
-    fn callback_delay_stays_aligned_to_observed_presentation_phase() {
-        let phase = Instant::now();
-        let period = Duration::from_millis(10);
-        assert_eq!(
-            next_phase_delay(phase, phase + Duration::from_millis(24), period),
-            Duration::from_millis(6)
-        );
-        assert_eq!(next_phase_delay(phase, phase, period), period);
-    }
-}
 /// Run the shared Wayland tick and convert model changes into one compositor
 /// redraw request. DRM and winit then consume that request using their own
 /// output submission machinery.
@@ -369,5 +326,48 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     // affect arbitrary windows, so it remains conservatively global.
     if space_synced {
         state.request_render();
+    }
+}
+
+#[cfg(test)]
+mod presentation_scheduler_tests {
+    use super::{commit_timing_wake_delay, next_phase_delay};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn timed_commit_wakes_one_refresh_before_deadline() {
+        assert_eq!(
+            commit_timing_wake_delay(
+                Duration::from_millis(100),
+                Duration::from_millis(20),
+                Duration::from_millis(16),
+            ),
+            Duration::from_millis(64)
+        );
+    }
+
+    #[test]
+    fn imminent_and_stale_deadlines_wake_immediately() {
+        for deadline in [10, 20, 25] {
+            assert_eq!(
+                commit_timing_wake_delay(
+                    Duration::from_millis(deadline),
+                    Duration::from_millis(20),
+                    Duration::from_millis(16),
+                ),
+                Duration::ZERO
+            );
+        }
+    }
+
+    #[test]
+    fn callback_delay_stays_aligned_to_observed_presentation_phase() {
+        let phase = Instant::now();
+        let period = Duration::from_millis(10);
+        assert_eq!(
+            next_phase_delay(phase, phase + Duration::from_millis(24), period),
+            Duration::from_millis(6)
+        );
+        assert_eq!(next_phase_delay(phase, phase, period), period);
     }
 }

@@ -329,9 +329,6 @@ pub fn key_press(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let _ = crate::keyboard::handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
 }
 
-/// Handle an X11 `KeyRelease` event (currently a no‑op).
-pub fn key_release() {}
-
 #[cfg(test)]
 mod mapping_tests {
     use crate::backend::x11::X11KeyboardMapping;
