@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Test and build on Arch Linux
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     container:
       image: archlinux:latest
     env:
@@ -32,7 +32,7 @@ jobs:
           cache-bin: "false"
       - name: Clean leaked rustup from shared HOME
         run: |
-          # The self-hosted runner shares HOME=/github/home across container jobs.
+          # GitHub mounts HOME=/github/home across container jobs.
           # Release-plz (Ubuntu) installs rustup there, which interferes with
           # Arch's pacman-installed cargo-fmt (it detects ~/.rustup and tries
           # rustup toolchain resolution instead of using /usr/bin/rustfmt).
