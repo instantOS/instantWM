@@ -388,11 +388,12 @@ fn sni_smoke_child() {
     }
 
     // An SNI app: serve the item object, then hand its path to the watcher.
-    let item_conn = zbus::blocking::Connection::session().expect("item connects to the bus");
-    item_conn
-        .object_server()
-        .at("/StatusNotifierItem", FakeItem)
-        .expect("serve fake item");
+    let item_conn = zbus::blocking::connection::Builder::session()
+        .expect("item session builder")
+        .serve_at("/StatusNotifierItem", FakeItem)
+        .expect("serve fake item")
+        .build()
+        .expect("build fake item connection");
     {
         let watcher = super::uncached_proxy(
             &item_conn,
@@ -461,19 +462,19 @@ fn sni_smoke_child() {
 
 fn external_sni_smoke_child() {
     let items = Arc::new(Mutex::new(Vec::new()));
-    let watcher_conn = zbus::blocking::Connection::session().expect("watcher connects to bus");
-    watcher_conn
-        .object_server()
-        .at(
+    let watcher_conn = zbus::blocking::connection::Builder::session()
+        .expect("watcher session builder")
+        .name(super::WATCHER_SERVICE)
+        .expect("request watcher name")
+        .serve_at(
             super::WATCHER_PATH,
             FakeExternalWatcher {
                 items: Arc::clone(&items),
             },
         )
-        .expect("serve external watcher");
-    watcher_conn
-        .request_name(super::WATCHER_SERVICE)
-        .expect("own watcher name");
+        .expect("serve external watcher")
+        .build()
+        .expect("build external watcher connection");
 
     let worker = StatusNotifierWorker::spawn(None, None).expect("spawn systray worker");
     recv_until(
@@ -482,11 +483,12 @@ fn external_sni_smoke_child() {
         "external worker readiness",
     );
 
-    let item_conn = zbus::blocking::Connection::session().expect("item connects to bus");
-    item_conn
-        .object_server()
-        .at("/StatusNotifierItem", FakeItem)
-        .expect("serve fake item");
+    let item_conn = zbus::blocking::connection::Builder::session()
+        .expect("item session builder")
+        .serve_at("/StatusNotifierItem", FakeItem)
+        .expect("serve fake item")
+        .build()
+        .expect("build fake item connection");
     let id = format!(
         "{}/StatusNotifierItem",
         item_conn
@@ -525,6 +527,27 @@ fn external_sni_smoke_child() {
             .recv_timeout(Duration::from_millis(100))
             .is_err(),
         "duplicate registration triggered another icon fetch",
+    );
+
+    // Only the connection owning the watcher name may announce watcher
+    // events. Another session-bus client must not be able to hide an item by
+    // spoofing an unregistration signal with the same interface and path.
+    let attacker_conn = zbus::blocking::Connection::session().expect("attacker connects to bus");
+    attacker_conn
+        .emit_signal(
+            None::<&str>,
+            super::WATCHER_PATH,
+            super::WATCHER_IFACE,
+            "StatusNotifierItemUnregistered",
+            &id,
+        )
+        .expect("emit spoofed external unregistration");
+    assert!(
+        worker
+            .evt_rx
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "non-watcher connection spoofed an unregistration",
     );
 
     items.lock().unwrap().clear();

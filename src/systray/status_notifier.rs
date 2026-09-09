@@ -787,8 +787,8 @@ fn handle_registered(
         return;
     };
     let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path) else {
-        // Icon not available yet. Keep the registration known so duplicate
-        // signals stay cheap; the fallback reconcile retries every known id.
+        // Icon not available yet. Keep the registration known so NewIcon and
+        // the fallback reconcile can retry it.
         return;
     };
     evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
