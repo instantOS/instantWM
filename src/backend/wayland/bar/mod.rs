@@ -22,61 +22,51 @@ use crate::types::{Point, Rect, Size};
 use self::buffer::{BarBuffer, RawBarBuffer};
 use self::text::TextRasterizer;
 
-pub struct WaylandBarPainter {
-    text: TextRasterizer,
-    scheme: Option<BarScheme>,
-    pixels: Vec<u8>,
-    surface_rect: Rect,
-    buffers: Vec<BarBuffer>,
+/// Main-loop state for asynchronous bar rendering.
+///
+/// Font discovery, shaping, and the pixel scratch buffer deliberately live in
+/// [`BarRasterizer`] on the worker thread. Keeping them out of this type avoids
+/// constructing a second `FontSystem` that never paints anything.
+pub struct WaylandBarRenderer {
     cached_buffers: Vec<BarBuffer>,
     cached_key: u64,
-    async_runtime: Option<async_render::AsyncBarRenderRuntime>,
+    async_runtime: async_render::AsyncBarRenderRuntime,
 }
 
-impl Default for WaylandBarPainter {
+impl Default for WaylandBarRenderer {
     fn default() -> Self {
         Self {
-            text: TextRasterizer::default(),
-            scheme: None,
-            pixels: Vec::new(),
-            surface_rect: Rect::default(),
-            buffers: Vec::new(),
             cached_buffers: Vec::new(),
             cached_key: 0,
-            async_runtime: Some(async_render::AsyncBarRenderRuntime::spawn()),
+            async_runtime: async_render::AsyncBarRenderRuntime::spawn(),
         }
     }
 }
 
-impl WaylandBarPainter {
-    fn new_worker_painter() -> Self {
-        Self {
-            text: TextRasterizer::default(),
-            scheme: None,
-            pixels: Vec::new(),
-            surface_rect: Rect::default(),
-            buffers: Vec::new(),
-            cached_buffers: Vec::new(),
-            cached_key: 0,
-            async_runtime: None,
-        }
-    }
-
-    pub fn set_fonts(&mut self, fonts: &crate::core_state::FontConfig) {
-        self.text.set_fonts(fonts);
-    }
-
+impl WaylandBarRenderer {
     pub fn set_render_ping(
         &mut self,
         render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     ) {
-        let Some(runtime) = self.async_runtime.as_mut() else {
-            return;
-        };
-        runtime.set_render_ping(render_ping);
+        self.async_runtime.set_render_ping(render_ping);
+    }
+}
+
+/// Worker-local painter used to turn a bar snapshot into ARGB pixels.
+#[derive(Default)]
+struct BarRasterizer {
+    text: TextRasterizer,
+    scheme: Option<BarScheme>,
+    pixels: Vec<u8>,
+    surface_rect: Rect,
+}
+
+impl BarRasterizer {
+    fn set_fonts(&mut self, fonts: &crate::core_state::FontConfig) {
+        self.text.set_fonts(fonts);
     }
 
-    pub fn begin(&mut self, _scale: Scale<f64>, surface_rect: Rect) {
+    fn begin(&mut self, _scale: Scale<f64>, surface_rect: Rect) {
         self.scheme = None;
         self.surface_rect = surface_rect;
         let byte_len = if surface_rect.size().is_positive() {
@@ -91,24 +81,6 @@ impl WaylandBarPainter {
         self.pixels.resize(byte_len, 0);
     }
 
-    pub fn finish(&mut self) {
-        if !self.surface_rect.size().is_positive() {
-            return;
-        }
-        let buffer = MemoryRenderBuffer::from_slice(
-            &self.pixels,
-            Fourcc::Argb8888,
-            (self.surface_rect.w, self.surface_rect.h),
-            1,
-            Transform::Normal,
-            None,
-        );
-        self.buffers.push(BarBuffer {
-            buffer,
-            position: self.surface_rect.position(),
-        });
-    }
-
     fn finish_raw(&mut self) -> Option<RawBarBuffer> {
         if !self.surface_rect.size().is_positive() {
             return None;
@@ -119,16 +91,9 @@ impl WaylandBarPainter {
             rect: self.surface_rect,
         })
     }
-
-    pub fn take_buffers(&mut self) -> Vec<(MemoryRenderBuffer, Point)> {
-        self.buffers
-            .drain(..)
-            .map(|buffer| (buffer.buffer, buffer.position))
-            .collect()
-    }
 }
 
-impl BarPainter for WaylandBarPainter {
+impl BarPainter for BarRasterizer {
     fn text_width(&mut self, text: &str) -> i32 {
         self.text.width(text, self.surface_rect.h)
     }
@@ -216,7 +181,7 @@ impl BarPainter for WaylandBarPainter {
 
 pub fn render_bar_buffers(
     core: &mut CoreCtx,
-    painter: &mut WaylandBarPainter,
+    renderer: &mut WaylandBarRenderer,
     scale: Scale<f64>,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
     let snapshots = scene::build_monitor_snapshots(core, false, 0);
@@ -227,17 +192,17 @@ pub fn render_bar_buffers(
         core.config().systray.show,
         &snapshots,
     );
-    async_render::poll_result(core, painter, key);
+    async_render::poll_result(core, renderer, key);
 
-    if painter.cached_key != key {
-        async_render::request_render(painter, key, snapshots);
+    if renderer.cached_key != key {
+        async_render::request_render(renderer, key, snapshots);
     }
 
-    if painter.cached_key == key {
+    if renderer.cached_key == key {
         core.bar.mark_drawn();
     }
 
-    painter
+    renderer
         .cached_buffers
         .iter()
         .map(|buffer| (buffer.buffer.clone(), buffer.position))
@@ -331,7 +296,7 @@ mod tests {
 
     #[test]
     fn empty_text_still_paints_and_advances_the_complete_cell() {
-        let mut painter = WaylandBarPainter::new_worker_painter();
+        let mut painter = BarRasterizer::default();
         painter.begin(Scale::from(1.0), Rect::new(0, 0, 8, 4));
         painter.set_scheme(BarScheme {
             foreground: crate::types::Rgba::new(1.0, 0.0, 0.0, 1.0),

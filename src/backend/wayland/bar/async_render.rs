@@ -1,4 +1,3 @@
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use smithay::utils::Scale;
@@ -6,8 +5,8 @@ use smithay::utils::Scale;
 use crate::bar::scene;
 use crate::contexts::CoreCtx;
 
-use super::WaylandBarPainter;
 use super::buffer::RawBarBuffer;
+use super::{BarRasterizer, WaylandBarRenderer};
 
 #[derive(Clone)]
 struct AsyncBarRenderRequest {
@@ -24,36 +23,46 @@ struct AsyncBarRenderResult {
 }
 
 struct AsyncBarRenderShared {
-    pending: Mutex<PendingRender>,
+    state: Mutex<WorkerState>,
     wake: Condvar,
-    results_tx: Sender<AsyncBarRenderResult>,
     render_ping: Mutex<Option<smithay::reexports::calloop::ping::Ping>>,
 }
 
 #[derive(Default)]
-struct PendingRender {
+struct WorkerState {
     request: Option<AsyncBarRenderRequest>,
+    result: Option<AsyncBarRenderResult>,
     stopped: bool,
 }
 
 impl AsyncBarRenderShared {
     fn next_request(&self) -> Option<AsyncBarRenderRequest> {
-        let mut pending = self.pending.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         loop {
-            if pending.stopped {
+            if state.stopped {
                 return None;
             }
-            if let Some(request) = pending.request.take() {
+            if let Some(request) = state.request.take() {
                 return Some(request);
             }
-            pending = self.wake.wait(pending).unwrap();
+            state = self.wake.wait(state).unwrap();
         }
+    }
+
+    fn publish_result(&self, result: AsyncBarRenderResult) {
+        // A completed bar image is only useful until a newer one exists. An
+        // unbounded queue here turns status bursts into full-width pixel-buffer
+        // retention and can leave a large allocator high-water mark.
+        self.state.lock().unwrap().result = Some(result);
+    }
+
+    fn take_result(&self) -> Option<AsyncBarRenderResult> {
+        self.state.lock().unwrap().result.take()
     }
 }
 
 pub(super) struct AsyncBarRenderRuntime {
     shared: Arc<AsyncBarRenderShared>,
-    results_rx: Receiver<AsyncBarRenderResult>,
     pending_content_key: Option<u64>,
     pending_generation: u64,
     next_generation: u64,
@@ -61,11 +70,9 @@ pub(super) struct AsyncBarRenderRuntime {
 
 impl AsyncBarRenderRuntime {
     pub(super) fn spawn() -> Self {
-        let (results_tx, results_rx) = mpsc::channel();
         let shared = Arc::new(AsyncBarRenderShared {
-            pending: Mutex::new(PendingRender::default()),
+            state: Mutex::new(WorkerState::default()),
             wake: Condvar::new(),
-            results_tx,
             render_ping: Mutex::new(None),
         });
 
@@ -73,12 +80,10 @@ impl AsyncBarRenderRuntime {
         std::thread::Builder::new()
             .name("instantwm-wayland-bar".to_string())
             .spawn(move || {
-                let mut painter = WaylandBarPainter::new_worker_painter();
+                let mut painter = BarRasterizer::default();
                 while let Some(request) = worker_shared.next_request() {
                     let result = render_snapshot(&mut painter, request);
-                    if worker_shared.results_tx.send(result).is_err() {
-                        break;
-                    }
+                    worker_shared.publish_result(result);
                     if let Ok(guard) = worker_shared.render_ping.lock()
                         && let Some(ping) = guard.as_ref()
                     {
@@ -90,7 +95,6 @@ impl AsyncBarRenderRuntime {
 
         Self {
             shared,
-            results_rx,
             pending_content_key: None,
             pending_generation: 0,
             next_generation: 0,
@@ -107,51 +111,41 @@ impl AsyncBarRenderRuntime {
     }
 
     fn take_result(&mut self, content_key: u64) -> Option<AsyncBarRenderResult> {
-        let mut latest = None;
-        while let Ok(result) = self.results_rx.try_recv() {
-            if !is_current_generation(result.generation, self.pending_generation) {
-                continue;
-            }
-            self.pending_content_key = None;
-            // The scene may have reverted to its cached content while this
-            // render was in flight, without scheduling another generation.
-            if result.content_key == content_key {
-                latest = Some(result);
-            }
+        let result = self.shared.take_result()?;
+        if !is_current_generation(result.generation, self.pending_generation) {
+            return None;
         }
-        latest
+        self.pending_content_key = None;
+        // The scene may have reverted to its cached content while this render
+        // was in flight, without scheduling another generation.
+        (result.content_key == content_key).then_some(result)
     }
 }
 
 impl Drop for AsyncBarRenderRuntime {
     fn drop(&mut self) {
-        let mut pending = self
-            .shared
-            .pending
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        pending.stopped = true;
-        pending.request = None;
+        let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.stopped = true;
+        state.request = None;
+        state.result = None;
         self.shared.wake.notify_one();
     }
 }
 
 pub(super) fn request_render(
-    painter: &mut WaylandBarPainter,
+    renderer: &mut WaylandBarRenderer,
     key: u64,
     monitors: Vec<scene::MonitorBarSnapshot>,
 ) {
-    let Some(runtime) = painter.async_runtime.as_mut() else {
-        return;
-    };
+    let runtime = &mut renderer.async_runtime;
     if runtime.pending_content_key == Some(key) {
         return;
     }
 
     runtime.next_generation = runtime.next_generation.wrapping_add(1).max(1);
     let generation = runtime.next_generation;
-    let mut pending = runtime.shared.pending.lock().unwrap();
-    pending.request = Some(AsyncBarRenderRequest {
+    let mut state = runtime.shared.state.lock().unwrap();
+    state.request = Some(AsyncBarRenderRequest {
         generation,
         content_key: key,
         monitors,
@@ -161,17 +155,13 @@ pub(super) fn request_render(
     runtime.shared.wake.notify_one();
 }
 
-pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter, key: u64) {
-    let Some(runtime) = painter.async_runtime.as_mut() else {
+pub(super) fn poll_result(core: &mut CoreCtx, renderer: &mut WaylandBarRenderer, key: u64) {
+    let Some(result) = renderer.async_runtime.take_result(key) else {
         return;
     };
 
-    let Some(result) = runtime.take_result(key) else {
-        return;
-    };
-
-    painter.cached_buffers = result.buffers.iter().map(|b| b.into()).collect();
-    painter.cached_key = result.content_key;
+    renderer.cached_buffers = result.buffers.iter().map(|b| b.into()).collect();
+    renderer.cached_key = result.content_key;
 
     for update in result.monitor_updates {
         core.bar
@@ -187,7 +177,7 @@ fn is_current_generation(result: u64, pending: u64) -> bool {
 }
 
 fn render_snapshot(
-    painter: &mut WaylandBarPainter,
+    painter: &mut BarRasterizer,
     request: AsyncBarRenderRequest,
 ) -> AsyncBarRenderResult {
     let mut buffers = Vec::new();
@@ -222,17 +212,15 @@ fn render_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc;
 
     fn runtime_without_worker() -> AsyncBarRenderRuntime {
-        let (results_tx, results_rx) = mpsc::channel();
         AsyncBarRenderRuntime {
             shared: Arc::new(AsyncBarRenderShared {
-                pending: Mutex::new(PendingRender::default()),
+                state: Mutex::new(WorkerState::default()),
                 wake: Condvar::new(),
-                results_tx,
                 render_ping: Mutex::new(None),
             }),
-            results_rx,
             pending_content_key: Some(20),
             pending_generation: 2,
             next_generation: 2,
@@ -251,7 +239,7 @@ mod tests {
     #[test]
     fn reverting_to_cached_content_rejects_an_inflight_render() {
         let mut runtime = runtime_without_worker();
-        runtime.shared.results_tx.send(result(2, 20)).unwrap();
+        runtime.shared.publish_result(result(2, 20));
 
         assert!(runtime.take_result(10).is_none());
         // A later request for 20 must be allowed to render again.
@@ -261,13 +249,23 @@ mod tests {
     #[test]
     fn stale_result_does_not_clear_the_current_request() {
         let mut runtime = runtime_without_worker();
-        runtime.shared.results_tx.send(result(1, 10)).unwrap();
+        runtime.shared.publish_result(result(1, 10));
         assert!(runtime.take_result(20).is_none());
         assert_eq!(runtime.pending_content_key, Some(20));
 
-        runtime.shared.results_tx.send(result(2, 20)).unwrap();
+        runtime.shared.publish_result(result(2, 20));
         assert_eq!(runtime.take_result(20).unwrap().content_key, 20);
         assert_eq!(runtime.pending_content_key, None);
+    }
+
+    #[test]
+    fn completed_results_are_latest_only() {
+        let mut runtime = runtime_without_worker();
+        runtime.shared.publish_result(result(1, 10));
+        runtime.shared.publish_result(result(2, 20));
+
+        assert_eq!(runtime.take_result(20).unwrap().content_key, 20);
+        assert!(runtime.shared.take_result().is_none());
     }
 
     #[test]
@@ -291,7 +289,7 @@ mod tests {
     fn dropping_runtime_discards_pending_work() {
         let runtime = runtime_without_worker();
         let shared = Arc::clone(&runtime.shared);
-        shared.pending.lock().unwrap().request = Some(AsyncBarRenderRequest {
+        shared.state.lock().unwrap().request = Some(AsyncBarRenderRequest {
             generation: 2,
             content_key: 20,
             monitors: Vec::new(),
@@ -299,7 +297,7 @@ mod tests {
 
         drop(runtime);
         assert!(shared.next_request().is_none());
-        assert!(shared.pending.lock().unwrap().request.is_none());
+        assert!(shared.state.lock().unwrap().request.is_none());
     }
 
     #[test]

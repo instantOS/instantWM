@@ -193,7 +193,7 @@ pub struct X11BackendData {
 /// Wayland-specific backend data.
 pub struct WaylandBackendData {
     pub backend: WaylandBackend,
-    pub bar_painter: crate::backend::wayland::bar::WaylandBarPainter,
+    pub bar_renderer: crate::backend::wayland::bar::WaylandBarRenderer,
 }
 
 /// Owned backend implementation.
@@ -219,7 +219,7 @@ impl Backend {
     pub fn new_wayland(backend: WaylandBackend) -> Self {
         Self::Wayland(Box::new(WaylandBackendData {
             backend,
-            bar_painter: crate::backend::wayland::bar::WaylandBarPainter::default(),
+            bar_renderer: crate::backend::wayland::bar::WaylandBarRenderer::default(),
         }))
     }
 
