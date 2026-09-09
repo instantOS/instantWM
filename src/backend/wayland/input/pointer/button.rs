@@ -1,6 +1,6 @@
 //! Pointer button handling.
 
-use smithay::backend::input::ButtonState;
+use smithay::backend::input::{ButtonState, InputTime};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
 use smithay::utils::{Point, SERIAL_COUNTER};
@@ -31,7 +31,7 @@ pub(crate) fn handle_pointer_button(
 
     let button = ButtonPress {
         serial,
-        time: input.event.time_msec,
+        time: input.event.time,
         button_code: input.event.code,
         state: input.event.state,
         root,
@@ -63,7 +63,7 @@ pub(crate) fn handle_pointer_button(
 #[derive(Clone, Copy)]
 struct ButtonPress {
     serial: smithay::utils::Serial,
-    time: u32,
+    time: InputTime,
     button_code: u32,
     state: ButtonState,
     root: RootPoint,
@@ -132,7 +132,7 @@ fn handle_button_press(
         modifiers: clean_modifiers,
         clicked_window: clicked_win,
         source: crate::types::InteractionSource::Pointer,
-        time_msec: button.time,
+        time_msec: button.time.millis(),
     };
 
     let outcome = {
@@ -251,7 +251,7 @@ fn handle_button_release(
                 btn,
                 clean_modifier_state(keyboard_handle),
                 hover_target,
-                button.time,
+                button.time.millis(),
             ),
         );
         if outcome.captured() {

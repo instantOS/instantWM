@@ -215,8 +215,7 @@ pub fn dispatch_libinput_event(
                 dy: event.delta_y(),
                 dx_unaccel: event.delta_x_unaccel(),
                 dy_unaccel: event.delta_y_unaccel(),
-                time_msec: event.time_msec(),
-                time_usec: event.time(),
+                time: event.time(),
             }));
             LibinputEventOutcome::PointerMoved
         }
@@ -229,7 +228,7 @@ pub fn dispatch_libinput_event(
             state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
                 x,
                 y,
-                time_msec: event.time_msec(),
+                time: event.time(),
             }));
             LibinputEventOutcome::PointerMoved
         }
@@ -237,11 +236,12 @@ pub fn dispatch_libinput_event(
             state.push_command(WmCommand::PointerButton(PointerButtonCommand {
                 code: event.button_code(),
                 state: event.state(),
-                time_msec: event.time_msec(),
+                time: event.time(),
             }));
             LibinputEventOutcome::Activity
         }
         InputEvent::PointerAxis { event } => {
+            let time = event.time();
             state.push_command(WmCommand::PointerAxis(PointerAxisCommand {
                 source: event.source(),
                 horizontal: PointerAxis {
@@ -254,14 +254,14 @@ pub fn dispatch_libinput_event(
                     v120: event.amount_v120(Axis::Vertical),
                     relative_direction: event.relative_direction(Axis::Vertical),
                 },
-                time_msec: event.time_msec(),
+                time,
             }));
             LibinputEventOutcome::Activity
         }
         InputEvent::GesturePinchBegin { event } => {
             let smithay_event = GesturePinchBeginEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time: event.time(),
                 fingers: event.fingers(),
             };
             pointer_handle.gesture_pinch_begin(state, &smithay_event);
@@ -270,7 +270,7 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::GesturePinchUpdate { event } => {
             let smithay_event = GesturePinchUpdateEvent {
-                time: event.time_msec(),
+                time: event.time(),
                 delta: event.delta(),
                 scale: event.scale(),
                 rotation: event.rotation(),
@@ -282,7 +282,7 @@ pub fn dispatch_libinput_event(
         InputEvent::GesturePinchEnd { event } => {
             let smithay_event = GesturePinchEndEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time: event.time(),
                 cancelled: event.cancelled(),
             };
             pointer_handle.gesture_pinch_end(state, &smithay_event);
@@ -292,7 +292,7 @@ pub fn dispatch_libinput_event(
         InputEvent::GestureSwipeBegin { event } => {
             let smithay_event = GestureSwipeBeginEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time: event.time(),
                 fingers: event.fingers(),
             };
             pointer_handle.gesture_swipe_begin(state, &smithay_event);
@@ -301,7 +301,7 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::GestureSwipeUpdate { event } => {
             let smithay_event = GestureSwipeUpdateEvent {
-                time: event.time_msec(),
+                time: event.time(),
                 delta: event.delta(),
             };
             pointer_handle.gesture_swipe_update(state, &smithay_event);
@@ -311,7 +311,7 @@ pub fn dispatch_libinput_event(
         InputEvent::GestureSwipeEnd { event } => {
             let smithay_event = GestureSwipeEndEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time: event.time(),
                 cancelled: event.cancelled(),
             };
             pointer_handle.gesture_swipe_end(state, &smithay_event);
@@ -321,7 +321,7 @@ pub fn dispatch_libinput_event(
         InputEvent::GestureHoldBegin { event } => {
             let smithay_event = GestureHoldBeginEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time: event.time(),
                 fingers: event.fingers(),
             };
             pointer_handle.gesture_hold_begin(state, &smithay_event);
@@ -331,7 +331,7 @@ pub fn dispatch_libinput_event(
         InputEvent::GestureHoldEnd { event } => {
             let smithay_event = GestureHoldEndEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time: event.time(),
                 cancelled: event.cancelled(),
             };
             pointer_handle.gesture_hold_end(state, &smithay_event);
@@ -348,7 +348,7 @@ pub fn dispatch_libinput_event(
                     TouchPointEvent {
                         slot: event.slot(),
                         position,
-                        time_msec: event.time_msec(),
+                        time: event.time(),
                     },
                     &mapping,
                 );
@@ -365,7 +365,7 @@ pub fn dispatch_libinput_event(
                     TouchPointEvent {
                         slot: event.slot(),
                         position,
-                        time_msec: event.time_msec(),
+                        time: event.time(),
                     },
                     &mapping,
                 );
@@ -373,7 +373,7 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchUp { event } => {
-            handle_touch_up(wm, state, event.slot(), event.time_msec());
+            handle_touch_up(wm, state, event.slot(), event.time());
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchFrame { .. } => {
@@ -423,7 +423,7 @@ fn handle_tablet_tool_axis(
     let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
 
     let tool = tablet_seat.get_tool(&event.tool());
-    let time = event.time_msec();
+    let time = event.time();
 
     if let Some(tool) = tool {
         let frame = smithay::input::tablet::tool::AxisFrame {
@@ -500,7 +500,7 @@ fn handle_tablet_tool_proximity(
                         location: pointer_location,
                         axis: Some(frame),
                         serial: SERIAL_COUNTER.next_serial(),
-                        time: event.time_msec(),
+                        time: event.time(),
                     },
                 );
             }
@@ -509,13 +509,13 @@ fn handle_tablet_tool_proximity(
                     state,
                     &smithay::input::tablet::tool::ProximityOutEvent {
                         serial: SERIAL_COUNTER.next_serial(),
-                        time: event.time_msec(),
+                        time: event.time(),
                     },
                 );
             }
         }
 
-        tool.frame(state, event.time_msec());
+        tool.frame(state, event.time());
     }
 }
 
@@ -535,7 +535,7 @@ fn handle_tablet_tool_tip(
                     state,
                     &smithay::input::tablet::tool::DownEvent {
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                     },
                 );
 
@@ -551,13 +551,13 @@ fn handle_tablet_tool_tip(
                     state,
                     &smithay::input::tablet::tool::UpEvent {
                         serial,
-                        time: event.time_msec(),
+                        time: event.time(),
                     },
                 );
             }
         }
 
-        tool.frame(state, event.time_msec());
+        tool.frame(state, event.time());
     }
 }
 
@@ -575,11 +575,11 @@ fn handle_tablet_tool_button(
                 serial: SERIAL_COUNTER.next_serial(),
                 button: event.button(),
                 state: event.button_state().into(),
-                time: event.time_msec(),
+                time: event.time(),
             },
         );
 
-        tool.frame(state, event.time_msec());
+        tool.frame(state, event.time());
     }
 }
 

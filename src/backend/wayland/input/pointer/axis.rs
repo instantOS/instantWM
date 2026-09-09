@@ -65,7 +65,7 @@ pub(crate) fn handle_pointer_axis(
     }
 
     let mut frame =
-        smithay::input::pointer::AxisFrame::new(input.event.time_msec).source(input.event.source);
+        smithay::input::pointer::AxisFrame::new(input.event.time).source(input.event.source);
     let mut has_axis_content = false;
 
     for (axis, axis_input) in [
@@ -159,7 +159,7 @@ mod tests {
                     v120: Some(-120.0),
                     ..axis()
                 },
-                time_msec: 0,
+                time: smithay::backend::input::InputTime::from_millis(0),
             },
             location: smithay::utils::Point::from((root.x as f64, root.y as f64)),
         }

@@ -303,7 +303,7 @@ fn dispatch_winit_input(
             state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
                 x,
                 y,
-                time_msec: motion.time_msec(),
+                time: motion.time(),
             }));
         }
         InputEvent::PointerMotion { event: motion } => {
@@ -313,15 +313,14 @@ fn dispatch_winit_input(
                 dy: PointerMotionEvent::<WinitInput>::delta_y(&motion),
                 dx_unaccel: PointerMotionEvent::<WinitInput>::delta_x_unaccel(&motion),
                 dy_unaccel: PointerMotionEvent::<WinitInput>::delta_y_unaccel(&motion),
-                time_msec: Event::<WinitInput>::time_msec(&motion),
-                time_usec: Event::<WinitInput>::time(&motion),
+                time: Event::<WinitInput>::time(&motion),
             }));
         }
         InputEvent::PointerButton { event: btn } => {
             state.push_command(WmCommand::PointerButton(PointerButtonCommand {
                 code: btn.button_code(),
                 state: btn.state(),
-                time_msec: btn.time_msec(),
+                time: btn.time(),
             }));
         }
         InputEvent::PointerAxis { event: axis } => {
@@ -339,7 +338,7 @@ fn dispatch_winit_input(
                     v120: axis.amount_v120(vertical_axis),
                     relative_direction: axis.relative_direction(vertical_axis),
                 },
-                time_msec: axis.time_msec(),
+                time: axis.time(),
             }));
         }
         InputEvent::TouchDown { event } => {
@@ -354,7 +353,7 @@ fn dispatch_winit_input(
                         TouchPointEvent {
                             slot: event.slot(),
                             position,
-                            time_msec: event.time_msec(),
+                            time: event.time(),
                         },
                         &TouchMappingTarget::Output("winit".into()),
                     );
@@ -376,7 +375,7 @@ fn dispatch_winit_input(
                     TouchPointEvent {
                         slot: event.slot(),
                         position,
-                        time_msec: event.time_msec(),
+                        time: event.time(),
                     },
                     &TouchMappingTarget::Output("winit".into()),
                 );
@@ -386,7 +385,7 @@ fn dispatch_winit_input(
         InputEvent::TouchUp { event } => {
             if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
-                handle_touch_up(wm, state, event.slot(), event.time_msec());
+                handle_touch_up(wm, state, event.slot(), event.time());
             }
             handle_touch_frame(state);
         }

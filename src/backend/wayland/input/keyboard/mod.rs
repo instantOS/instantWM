@@ -131,7 +131,7 @@ pub fn handle_keyboard<B: InputBackend>(
         key_code,
         key_state,
         serial,
-        event.time_msec(),
+        event.time(),
         |data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
                 if data.release_shortcut_recovery_key(key_code) {

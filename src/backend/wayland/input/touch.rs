@@ -5,7 +5,7 @@
 //! surface, updates keyboard focus on touch-down, and emits native `wl_touch`
 //! events through Smithay.
 
-use smithay::backend::input::TouchSlot;
+use smithay::backend::input::{InputTime, TouchSlot};
 use smithay::input::touch::{DownEvent, MotionEvent, UpEvent};
 use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Transform};
@@ -69,7 +69,7 @@ impl NormalizedTouchPosition {
 pub struct TouchPointEvent {
     pub slot: TouchSlot,
     pub position: NormalizedTouchPosition,
-    pub time_msec: u32,
+    pub time: InputTime,
 }
 
 struct TouchHit {
@@ -113,7 +113,7 @@ pub fn handle_touch_down(
                 modifiers,
                 clicked_window: hit.hovered_window,
                 source: crate::types::InteractionSource::Touch(event.slot.into()),
-                time_msec: event.time_msec,
+                time_msec: event.time.millis(),
             };
             let outcome = {
                 let mut ctx = wm.ctx();
@@ -153,7 +153,7 @@ pub fn handle_touch_down(
             slot: event.slot,
             location,
             serial,
-            time: event.time_msec,
+            time: event.time,
         },
     );
     if should_emulate_pointer(
@@ -172,7 +172,7 @@ pub fn handle_touch_down(
             &smithay::input::pointer::MotionEvent {
                 location,
                 serial,
-                time: event.time_msec,
+                time: event.time,
             },
         );
         pointer.button(
@@ -181,7 +181,7 @@ pub fn handle_touch_down(
                 button: TOUCH_POINTER_BUTTON_CODE,
                 state: smithay::backend::input::ButtonState::Pressed,
                 serial,
-                time: event.time_msec,
+                time: event.time,
             },
         );
         pointer.frame(state);
@@ -214,7 +214,7 @@ pub fn handle_touch_motion(
             &smithay::input::pointer::MotionEvent {
                 location,
                 serial,
-                time: event.time_msec,
+                time: event.time,
             },
         );
         pointer.frame(state);
@@ -224,7 +224,7 @@ pub fn handle_touch_motion(
             &MotionEvent {
                 slot: event.slot,
                 location,
-                time: event.time_msec,
+                time: event.time,
             },
         );
         return;
@@ -236,16 +236,16 @@ pub fn handle_touch_motion(
         &MotionEvent {
             slot: event.slot,
             location,
-            time: event.time_msec,
+            time: event.time,
         },
     );
 }
 
 /// Deliver the end of a touch point.
-pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
+pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time: InputTime) {
     if state.runtime.wm_gesture_touch_slot == Some(slot) {
         state.runtime.wm_gesture_touch_slot = None;
-        finish_wm_gesture_touch(wm, state, slot, time_msec);
+        finish_wm_gesture_touch(wm, state, slot, time.millis());
         return;
     }
     let serial = SERIAL_COUNTER.next_serial();
@@ -258,19 +258,15 @@ pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, t
                 button: TOUCH_POINTER_BUTTON_CODE,
                 state: smithay::backend::input::ButtonState::Released,
                 serial,
-                time: time_msec,
+                time,
             },
         );
         pointer.frame(state);
     }
-    state.touch.clone().up(
-        state,
-        &UpEvent {
-            slot,
-            serial,
-            time: time_msec,
-        },
-    );
+    state
+        .touch
+        .clone()
+        .up(state, &UpEvent { slot, serial, time });
 }
 
 /// Finish a backend-provided touch frame.
@@ -283,7 +279,7 @@ pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
     if state.runtime.wm_gesture_touch_slot.take().is_some() {
         cancel_wm_gesture_touch(wm, state);
     }
-    state.cancel_touch_pointer_emulation(0);
+    state.cancel_touch_pointer_emulation(InputTime::now());
     state.touch.clone().cancel(state);
 }
 

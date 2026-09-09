@@ -19,7 +19,9 @@ use smithay::{
             KeyboardShortcutsInhibitor,
         },
         output::OutputHandler,
-        pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
+        pointer_constraints::{
+            ConstraintRemove, PointerConstraint, PointerConstraintsHandler, with_pointer_constraint,
+        },
         pointer_warp::PointerWarpHandler,
         seat::WaylandFocus,
         shm::ShmHandler,
@@ -621,7 +623,15 @@ impl PointerConstraintsHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         pointer: &smithay::input::pointer::PointerHandle<Self>,
+        reason: ConstraintRemove,
     ) {
+        if !matches!(
+            reason,
+            ConstraintRemove::Destroyed(PointerConstraint::Locked(_))
+        ) {
+            self.cursor_position_hint = None;
+            return;
+        }
         if let Some((hint_surface, hint_location)) = self.cursor_position_hint.take() {
             if &hint_surface == surface {
                 if let Some(origin) = self.pointer_constraint_surface_origin(&hint_surface) {
@@ -858,7 +868,12 @@ mod tests {
             .unwrap();
 
         // Without an active window/surface origin, unmatching surface hint remains untouched
-        PointerConstraintsHandler::remove_constraint(&mut state, &dummy_surface, &pointer);
+        PointerConstraintsHandler::remove_constraint(
+            &mut state,
+            &dummy_surface,
+            &pointer,
+            ConstraintRemove::PointerLeave(None),
+        );
 
         assert_eq!(state.runtime.pointer_location, Point::from((500.0, 500.0)));
         assert_eq!(pointer.current_location(), Point::from((500.0, 500.0)));

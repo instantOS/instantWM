@@ -64,7 +64,7 @@ pub(super) fn handle_layer_commit(
         // pointer focus: launchers map their input surface from a keybind, so
         // no motion event will refresh focus for them otherwise.
         state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
-            time_msec: 0,
+            time: smithay::backend::input::InputTime::now(),
         }));
         if let Some(output) = layer_output.as_ref() {
             state.request_output_render(output);
@@ -222,7 +222,7 @@ impl WlrLayerShellHandler for WaylandState {
         // Reclaim the space that this layer surface had exclusively reserved.
         self.push_command(WmCommand::SyncLayerExclusiveZones);
         self.push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
-            time_msec: 0,
+            time: smithay::backend::input::InputTime::now(),
         }));
         for output in affected_outputs {
             self.request_output_render(&output);

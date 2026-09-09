@@ -59,13 +59,10 @@ pub fn apply_pending_warp(
         crate::backend::wayland::compositor::WaylandState,
     >,
 ) -> bool {
-    use smithay::utils::{Clock, Monotonic};
-
     let Some(target) = state.take_pending_warp() else {
         return false;
     };
 
-    let time_msec = Clock::<Monotonic>::new().now().as_millis();
     crate::backend::wayland::input::pointer::motion::process_pointer_motion_command(
         wm,
         state,
@@ -74,7 +71,7 @@ pub fn apply_pending_warp(
         crate::backend::wayland::commands::PointerMotionCommand::Warp {
             x: target.x,
             y: target.y,
-            time_msec,
+            time: smithay::backend::input::InputTime::now(),
         },
     );
 

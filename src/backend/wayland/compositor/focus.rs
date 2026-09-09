@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use smithay::{
-    backend::input::KeyState,
+    backend::input::{InputTime, KeyState},
     desktop::{PopupKind, Window},
     input::{
         Seat,
@@ -201,7 +201,7 @@ impl DndFocus<WaylandState> for PointerFocusTarget {
         offer: Option<&mut Self::OfferData<S>>,
         seat: &Seat<WaylandState>,
         location: smithay::utils::Point<f64, smithay::utils::Logical>,
-        time: u32,
+        time: InputTime,
     ) {
         match self {
             PointerFocusTarget::Window(window) => {
@@ -385,7 +385,7 @@ impl<'a> WindowKeyboardTarget<'a> {
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
-        time: u32,
+        time: InputTime,
     ) {
         match self {
             Self::XWayland(x11) => {
@@ -487,7 +487,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
-        time: u32,
+        time: InputTime,
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
@@ -697,7 +697,13 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         });
     }
 
-    fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial, time: u32) {
+    fn leave(
+        &self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+        serial: Serial,
+        time: InputTime,
+    ) {
         self.with_surface(|surface| {
             smithay::input::pointer::PointerTarget::leave(surface, seat, data, serial, time)
         });

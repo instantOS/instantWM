@@ -102,7 +102,9 @@ pub(super) fn begin_app_resize_drag(state: &mut WaylandState, win: WindowId, dir
 /// Trigger a pointer focus update to ensure hover state is correct.
 pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
     state.push_command(super::super::commands::WmCommand::PointerMotion(
-        super::super::commands::PointerMotionCommand::Refresh { time_msec: 0 },
+        super::super::commands::PointerMotionCommand::Refresh {
+            time: smithay::backend::input::InputTime::now(),
+        },
     ));
 }
 
@@ -469,6 +471,7 @@ impl XwmHandler for WaylandState {
                     self.request_bar_redraw();
                 }
             }
+            WmWindowProperty::Other(_) => {}
         }
     }
 

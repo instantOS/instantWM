@@ -356,7 +356,10 @@ pub(crate) const TOUCH_POINTER_BUTTON_CODE: u32 = 0x110;
 
 impl WaylandState {
     /// Release a pointer button synthesized from a touch sequence, if active.
-    pub(crate) fn cancel_touch_pointer_emulation(&mut self, time_msec: u32) {
+    pub(crate) fn cancel_touch_pointer_emulation(
+        &mut self,
+        time: smithay::backend::input::InputTime,
+    ) {
         if self.runtime.pointer_touch_slot.take().is_none() {
             return;
         }
@@ -367,7 +370,7 @@ impl WaylandState {
                 button: TOUCH_POINTER_BUTTON_CODE,
                 state: smithay::backend::input::ButtonState::Released,
                 serial: smithay::utils::SERIAL_COUNTER.next_serial(),
-                time: time_msec,
+                time,
             },
         );
         pointer.frame(self);

@@ -411,6 +411,7 @@ fn output_layout_bounds(
     }
 }
 
+#[cfg(test)]
 fn output_layout_size(
     rects: impl IntoIterator<Item = crate::types::Rect>,
     fallback: crate::types::Size,

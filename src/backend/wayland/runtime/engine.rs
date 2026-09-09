@@ -252,7 +252,9 @@ pub(crate) fn event_loop_tick_and_request_render(
             state,
             &pointer,
             &keyboard,
-            crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
+            crate::backend::wayland::commands::PointerMotionCommand::Refresh {
+                time: smithay::backend::input::InputTime::now(),
+            },
         );
     }
     // Commit external protocol projections only after every shared and
@@ -317,7 +319,9 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
             // transition guard deferred while intermediate animation frames
             // were the only hittable state.
             state.push_command(crate::backend::wayland::commands::WmCommand::PointerMotion(
-                crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
+                crate::backend::wayland::commands::PointerMotionCommand::Refresh {
+                    time: smithay::backend::input::InputTime::now(),
+                },
             ));
         }
     }

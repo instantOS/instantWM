@@ -8,6 +8,7 @@
 //! authority for every configure generated in the meantime.
 
 use crate::types::WindowId;
+use smithay::backend::input::InputTime;
 
 /// Commit a fullscreen protocol request to authoritative WM state.
 ///
@@ -88,21 +89,20 @@ pub enum PointerMotionCommand {
         dy: f64,
         dx_unaccel: f64,
         dy_unaccel: f64,
-        time_msec: u32,
-        time_usec: u64,
+        time: InputTime,
     },
     Absolute {
         x: f64,
         y: f64,
-        time_msec: u32,
+        time: InputTime,
     },
     Warp {
         x: f64,
         y: f64,
-        time_msec: u32,
+        time: InputTime,
     },
     Refresh {
-        time_msec: u32,
+        time: InputTime,
     },
 }
 
@@ -110,7 +110,7 @@ pub enum PointerMotionCommand {
 pub struct PointerButtonCommand {
     pub code: u32,
     pub state: smithay::backend::input::ButtonState,
-    pub time_msec: u32,
+    pub time: InputTime,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -125,7 +125,7 @@ pub struct PointerAxisCommand {
     pub source: smithay::backend::input::AxisSource,
     pub horizontal: PointerAxis,
     pub vertical: PointerAxis,
-    pub time_msec: u32,
+    pub time: InputTime,
 }
 
 /// Parameters for mapping a new window into the WM.

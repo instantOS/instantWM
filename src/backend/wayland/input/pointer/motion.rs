@@ -1,5 +1,6 @@
 //! Pointer motion handling.
 
+use smithay::backend::input::InputTime;
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{CursorImageStatus, PointerHandle};
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
@@ -29,20 +30,20 @@ fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
 #[derive(Debug, Clone, Copy)]
 pub enum MotionEvent {
     /// Absolute position (winit backend, tablets, touch screens)
-    Absolute { x: f64, y: f64, time_msec: u32 },
+    Absolute { x: f64, y: f64, time: InputTime },
     /// Relative delta (libinput mouse)
     Relative {
         dx: f64,
         dy: f64,
         dx_unaccel: f64,
         dy_unaccel: f64,
-        time_msec: u32,
-        time_usec: u64,
+        time: InputTime,
     },
 }
 
 impl MotionEvent {
     /// Compute the new pointer location from the current position.
+    #[cfg(test)]
     pub fn compute_location(
         &self,
         current: Point<f64, smithay::utils::Logical>,
@@ -68,10 +69,10 @@ impl MotionEvent {
     }
 
     /// Get the event timestamp.
-    pub fn time_msec(&self) -> u32 {
+    pub fn time(&self) -> InputTime {
         match self {
-            MotionEvent::Absolute { time_msec, .. } => *time_msec,
-            MotionEvent::Relative { time_msec, .. } => *time_msec,
+            MotionEvent::Absolute { time, .. } => *time,
+            MotionEvent::Relative { time, .. } => *time,
         }
     }
 
@@ -182,6 +183,7 @@ mod tests {
         TagMask, WindowId,
     };
     use crate::wm::Wm;
+    use smithay::backend::input::InputTime;
     use smithay::utils::Point;
 
     #[test]
@@ -191,8 +193,7 @@ mod tests {
             dy: 100.0,
             dx_unaccel: 100.0,
             dy_unaccel: 100.0,
-            time_msec: 0,
-            time_usec: 0,
+            time: InputTime::from_millis(0),
         };
 
         assert_eq!(
@@ -206,7 +207,7 @@ mod tests {
         let event = MotionEvent::Absolute {
             x: 1920.0,
             y: 1080.0,
-            time_msec: 0,
+            time: InputTime::from_millis(0),
         };
 
         assert_eq!(
@@ -220,7 +221,7 @@ mod tests {
         let event = MotionEvent::Absolute {
             x: 10.0,
             y: 10.0,
-            time_msec: 0,
+            time: InputTime::from_millis(0),
         };
 
         assert_eq!(
@@ -343,7 +344,7 @@ mod tests {
             PointerMotionCommand::Absolute {
                 x: 1900.0,
                 y: 500.0,
-                time_msec: 1,
+                time: InputTime::from_millis(1),
             },
             None,
             true,
@@ -406,7 +407,7 @@ mod tests {
                 PointerMotionCommand::Absolute {
                     x: 400.0 + index as f64,
                     y: 500.0,
-                    time_msec: index as u32,
+                    time: InputTime::from_millis(index as u32),
                 },
                 cached_hit,
                 false,
@@ -595,8 +596,7 @@ pub(crate) fn process_pointer_motion_command_cached(
             dy,
             dx_unaccel,
             dy_unaccel,
-            time_msec,
-            time_usec,
+            time,
         } => handle_pointer_motion(
             wm,
             state,
@@ -607,34 +607,33 @@ pub(crate) fn process_pointer_motion_command_cached(
                 dy,
                 dx_unaccel,
                 dy_unaccel,
-                time_msec,
-                time_usec,
+                time,
             },
             PointerMotionSource::Device,
             cache,
             update_active_drag,
         ),
-        PointerMotionCommand::Absolute { x, y, time_msec } => handle_pointer_motion(
+        PointerMotionCommand::Absolute { x, y, time } => handle_pointer_motion(
             wm,
             state,
             pointer_handle,
             keyboard_handle,
-            MotionEvent::Absolute { x, y, time_msec },
+            MotionEvent::Absolute { x, y, time },
             PointerMotionSource::Device,
             cache,
             update_active_drag,
         ),
-        PointerMotionCommand::Warp { x, y, time_msec } => handle_pointer_motion(
+        PointerMotionCommand::Warp { x, y, time } => handle_pointer_motion(
             wm,
             state,
             pointer_handle,
             keyboard_handle,
-            MotionEvent::Absolute { x, y, time_msec },
+            MotionEvent::Absolute { x, y, time },
             PointerMotionSource::Synthetic,
             cache,
             update_active_drag,
         ),
-        PointerMotionCommand::Refresh { time_msec } => {
+        PointerMotionCommand::Refresh { time } => {
             if synthetic_refresh_deferred(state) {
                 // Recompute the current hit so a queued batch that resumes
                 // after the guard lifts starts from reality without a
@@ -653,7 +652,7 @@ pub(crate) fn process_pointer_motion_command_cached(
                 MotionEvent::Absolute {
                     x: location.x,
                     y: location.y,
-                    time_msec,
+                    time,
                 },
                 PointerMotionSource::Synthetic,
                 cache,
@@ -731,14 +730,13 @@ fn handle_pointer_motion(
         dy,
         dx_unaccel,
         dy_unaccel,
-        time_msec: _,
-        time_usec,
+        time,
     } = event
     {
         let rel_event = smithay::input::pointer::RelativeMotionEvent {
             delta: (dx, dy).into(),
             delta_unaccel: (dx_unaccel, dy_unaccel).into(),
-            utime: time_usec,
+            time,
         };
         let focus = current_hit
             .surface
@@ -800,7 +798,7 @@ fn handle_pointer_motion(
         pointer_handle,
         keyboard_handle,
         &final_hit,
-        event.time_msec(),
+        event.time(),
         source.hover_focus_trigger(),
         update_active_drag,
     );
@@ -830,7 +828,7 @@ fn dispatch_pointer_motion(
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     hit_test: &PointerContents,
-    time_msec: u32,
+    time: InputTime,
     hover_focus_trigger: crate::types::HoverFocusTrigger,
     update_active_drag: bool,
 ) {
@@ -855,7 +853,7 @@ fn dispatch_pointer_motion(
             state,
             pointer_handle,
             pointer_focus.clone(),
-            time_msec,
+            time,
             update_active_drag,
         )
     {
@@ -878,7 +876,7 @@ fn dispatch_pointer_motion(
         pointer_focus.clone(),
         in_bar_band,
         bar_pos,
-        time_msec,
+        time,
     ) {
         return;
     }
@@ -951,7 +949,7 @@ fn dispatch_pointer_motion(
     let motion = smithay::input::pointer::MotionEvent {
         location: pointer_location,
         serial,
-        time: time_msec,
+        time,
     };
     dispatch_smithay_pointer_motion(state, pointer_handle, focus, &motion);
     pointer_handle.frame(state);
@@ -1017,7 +1015,7 @@ fn handle_resize_drag_motion(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     pointer_focus: Option<SurfaceFocus>,
-    time_msec: u32,
+    time: InputTime,
     update_active_drag: bool,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
@@ -1043,7 +1041,7 @@ fn handle_resize_drag_motion(
     let motion = smithay::input::pointer::MotionEvent {
         location: pointer_location,
         serial,
-        time: time_msec,
+        time,
     };
     let focus =
         pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
@@ -1060,7 +1058,7 @@ fn handle_bar_motion(
     pointer_focus: Option<SurfaceFocus>,
     in_bar_band: bool,
     bar_pos: Option<BarPosition>,
-    time_msec: u32,
+    time: InputTime,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
     let is_drag = wm.core.interaction.drag.has_capture();
@@ -1076,7 +1074,7 @@ fn handle_bar_motion(
         let motion = smithay::input::pointer::MotionEvent {
             location: pointer_location,
             serial,
-            time: time_msec,
+            time,
         };
         dispatch_smithay_pointer_motion(state, pointer_handle, focus, &motion);
         pointer_handle.frame(state);
