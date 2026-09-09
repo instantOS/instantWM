@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/instantOS/instantWM/compare/v0.2.0...v0.2.1) - 2026-09-09
+
+### Changed
+
+- optimize mem usage
+
+### Fixed
+
+- failing dbus stuff
+
+### Other
+
+- make mouse drag preview respect animation setting
+- fix game cursor oddness
+- Performance fixes in rendering and keyboard layouts
+- some fixes
+- better color typing
+- remove legacy SchemeWin enum
+- refactor for separation of concerns
+- migrate off blacksmith
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- bump smithay
+
 ## [0.2.0](https://github.com/instantOS/instantWM/compare/v0.1.24...v0.2.0) - 2026-09-03
 
 ### Added
