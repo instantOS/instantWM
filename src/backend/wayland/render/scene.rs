@@ -61,11 +61,11 @@ pub fn build_bar_buffers(
             return Vec::new();
         };
 
-        data.bar_painter
+        data.bar_renderer
             .set_render_ping(state.runtime.render_ping.clone());
         crate::backend::wayland::bar::render_bar_buffers(
             &mut core,
-            &mut data.bar_painter,
+            &mut data.bar_renderer,
             smithay::utils::Scale::from(1.0),
         )
     } else {

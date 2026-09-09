@@ -14,9 +14,7 @@ use smithay::reexports::calloop::LoopHandle;
 pub(crate) fn create_wayland_wm_boxed() -> Box<Wm> {
     crate::backend::wayland::session::ensure_dbus_session();
     let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
-    if let Some(wayland) = wm.backend.wayland_data_mut() {
-        crate::backend::wayland::bootstrap::init_globals(&mut wm.core, wayland);
-    }
+    crate::backend::wayland::bootstrap::init_globals(&mut wm.core);
     wm
 }
 

@@ -68,8 +68,8 @@ impl Wm {
         if matches!(self.backend, Backend::X11(_)) {
             crate::backend::x11::startup::init_drw_and_schemes(self);
         }
-        if let Backend::Wayland(data) = &mut self.backend {
-            crate::backend::wayland::bootstrap::apply_bar_metrics(&mut self.core, data);
+        if matches!(self.backend, Backend::Wayland(_)) {
+            crate::backend::wayland::bootstrap::apply_bar_metrics(&mut self.core);
         }
     }
 

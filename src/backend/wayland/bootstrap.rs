@@ -1,6 +1,5 @@
 //! Backend-neutral Wayland WM initialization.
 
-use crate::backend::WaylandBackendData;
 use crate::config::load_startup_config;
 use crate::core_state::CoreState;
 
@@ -8,15 +7,14 @@ use crate::core_state::CoreState;
 // WM globals initialisation
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Apply font-derived bar metrics to the runtime config and bar painter.
+/// Apply font-derived bar metrics to the runtime config.
 ///
 /// Computes `bar_height` and `horizontal_padding` from the font config and
-/// applies them to the given `CoreState`. Also updates the bar painter's font
-/// size. Shared by both startup (`init_globals`) and reload.
-pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
+/// applies them to the given `CoreState`. The raster worker receives the full
+/// per-monitor font configuration in each render snapshot. Shared by both
+/// startup (`init_globals`) and reload.
+pub fn apply_bar_metrics(state: &mut CoreState) {
     let metrics = state.config.fonts.bar_metrics(state.config.bar.height);
-
-    data.bar_painter.set_fonts(&state.config.fonts);
 
     state.derived.bar_height = metrics.height;
     state.derived.bar_horizontal_padding = metrics.horizontal_padding;
@@ -28,10 +26,10 @@ pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
 /// dimensions for pre-output initialization, and configures bar metrics.
 /// Output discovery replaces the fallback dimensions and establishes monitor
 /// geometry after the compositor backend is ready.
-pub fn init_globals(state: &mut CoreState, wayland: &mut WaylandBackendData) {
+pub fn init_globals(state: &mut CoreState) {
     let cfg = load_startup_config(crate::backend::BackendKind::Wayland);
     state.derived.display.width = 1280;
     state.derived.display.height = 800;
     crate::core_state::apply_config(state, cfg);
-    apply_bar_metrics(state, wayland);
+    apply_bar_metrics(state);
 }

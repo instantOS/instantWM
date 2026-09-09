@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 use cosmic_text::{
     Attrs, Buffer, Color as CosmicColor, Family, FeatureTag, FontFeatures, FontSystem, Metrics,
@@ -12,12 +12,88 @@ use crate::types::{Point, Rect, Size};
 
 use super::pixels;
 
-const TEXT_CACHE_LIMIT: usize = 2048;
+// A normal bar has a few dozen stable labels. True LRU promotion keeps those
+// hot entries resident while clocks and counters churn through the remaining
+// space. The text budgets also prevent one pathological status value from
+// being retained indefinitely. They count source bytes rather than attempting
+// to guess cosmic-text's private allocation capacity.
+const MEASURE_CACHE_ENTRY_LIMIT: usize = 512;
+const MEASURE_CACHE_TEXT_LIMIT: usize = 64 * 1024;
+const RENDER_CACHE_ENTRY_LIMIT: usize = 256;
+const RENDER_CACHE_TEXT_LIMIT: usize = 32 * 1024;
+const FONT_CONFIG_LIMIT: usize = 8;
+
+struct CacheEntry<K, V> {
+    key: K,
+    value: V,
+    text_bytes: usize,
+}
+
+/// Small LRU that owns each key exactly once.
+///
+/// At these limits, searching from the hot end is cheap and avoids a second
+/// copy of every string in a hash map plus an eviction queue.
+struct SmallLru<K, V> {
+    entries: VecDeque<CacheEntry<K, V>>,
+    entry_limit: usize,
+    text_limit: usize,
+    text_bytes: usize,
+}
+
+impl<K, V> SmallLru<K, V> {
+    fn new(entry_limit: usize, text_limit: usize) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            entry_limit,
+            text_limit,
+            text_bytes: 0,
+        }
+    }
+
+    fn get_mut_by(&mut self, matches: impl Fn(&K) -> bool) -> Option<&mut V> {
+        let index = self.entries.iter().rposition(|entry| matches(&entry.key))?;
+        let entry = self.entries.remove(index).expect("LRU index must exist");
+        self.entries.push_back(entry);
+        Some(&mut self.entries.back_mut().expect("just inserted").value)
+    }
+
+    fn insert(&mut self, key: K, value: V, text_bytes: usize) -> bool {
+        if self.entry_limit == 0 || text_bytes > self.text_limit {
+            return false;
+        }
+        while self.entries.len() >= self.entry_limit
+            || self.text_bytes.saturating_add(text_bytes) > self.text_limit
+        {
+            let Some(evicted) = self.entries.pop_front() else {
+                break;
+            };
+            self.text_bytes -= evicted.text_bytes;
+        }
+        self.text_bytes += text_bytes;
+        self.entries.push_back(CacheEntry {
+            key,
+            value,
+            text_bytes,
+        });
+        true
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&K) -> bool) {
+        self.entries.retain(|entry| keep(&entry.key));
+        self.text_bytes = self.entries.iter().map(|entry| entry.text_bytes).sum();
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
 
 struct CachedFontConfig {
     configured: FontConfig,
     resolved: FontConfig,
     id: u64,
+    last_used: u64,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -26,39 +102,33 @@ struct RenderSize {
     height: i32,
 }
 
-#[derive(Default)]
 struct MeasureCache {
-    entries: HashMap<u64, HashMap<String, i32>>,
-    insertion_order: VecDeque<(u64, String)>,
-    len: usize,
+    entries: SmallLru<(u64, String), i32>,
 }
 
 impl MeasureCache {
-    fn insert(&mut self, font_config_id: u64, text: &str, width: i32) {
-        if self.len >= TEXT_CACHE_LIMIT
-            && let Some((old_config, old_text)) = self.insertion_order.pop_front()
-        {
-            let remove_config = self.entries.get_mut(&old_config).is_some_and(|entries| {
-                entries.remove(old_text.as_str());
-                entries.is_empty()
-            });
-            if remove_config {
-                self.entries.remove(&old_config);
-            }
-            self.len -= 1;
+    fn new() -> Self {
+        Self {
+            entries: SmallLru::new(MEASURE_CACHE_ENTRY_LIMIT, MEASURE_CACHE_TEXT_LIMIT),
         }
+    }
 
-        let owned = text.to_owned();
-        let replaced = self
-            .entries
-            .entry(font_config_id)
-            .or_default()
-            .insert(owned.clone(), width)
-            .is_some();
-        if !replaced {
-            self.insertion_order.push_back((font_config_id, owned));
-            self.len += 1;
+    fn get(&mut self, font_config_id: u64, text: &str) -> Option<i32> {
+        self.entries
+            .get_mut_by(|(id, cached)| *id == font_config_id && cached == text)
+            .copied()
+    }
+
+    fn insert(&mut self, font_config_id: u64, text: &str, width: i32) {
+        if text.len() > MEASURE_CACHE_TEXT_LIMIT {
+            return;
         }
+        self.entries
+            .insert((font_config_id, text.to_owned()), width, text.len());
+    }
+
+    fn remove_font_config(&mut self, id: u64) {
+        self.entries.retain(|(cached_id, _)| *cached_id != id);
     }
 }
 
@@ -66,56 +136,44 @@ struct CachedRenderedText {
     buffer: Buffer,
 }
 
-#[derive(Default)]
 struct RenderCache {
-    entries: HashMap<u64, HashMap<String, HashMap<RenderSize, CachedRenderedText>>>,
-    insertion_order: VecDeque<(u64, String, RenderSize)>,
-    len: usize,
+    entries: SmallLru<(u64, String, RenderSize), CachedRenderedText>,
 }
 
 impl RenderCache {
+    fn new() -> Self {
+        Self {
+            entries: SmallLru::new(RENDER_CACHE_ENTRY_LIMIT, RENDER_CACHE_TEXT_LIMIT),
+        }
+    }
+
+    fn get_mut(
+        &mut self,
+        font_config_id: u64,
+        text: &str,
+        size: RenderSize,
+    ) -> Option<&mut CachedRenderedText> {
+        self.entries.get_mut_by(|(id, cached, cached_size)| {
+            *id == font_config_id && cached == text && *cached_size == size
+        })
+    }
+
     fn insert(
         &mut self,
         font_config_id: u64,
         text: &str,
         size: RenderSize,
         rendered: CachedRenderedText,
-    ) {
-        if self.len >= TEXT_CACHE_LIMIT
-            && let Some((old_config, old_text, old_size)) = self.insertion_order.pop_front()
-        {
-            let mut remove_text = false;
-            let mut remove_config = false;
-            if let Some(texts) = self.entries.get_mut(&old_config) {
-                if let Some(sizes) = texts.get_mut(old_text.as_str()) {
-                    sizes.remove(&old_size);
-                    remove_text = sizes.is_empty();
-                }
-                if remove_text {
-                    texts.remove(old_text.as_str());
-                }
-                remove_config = texts.is_empty();
-            }
-            if remove_config {
-                self.entries.remove(&old_config);
-            }
-            self.len -= 1;
-        }
+    ) -> bool {
+        self.entries.insert(
+            (font_config_id, text.to_owned(), size),
+            rendered,
+            text.len(),
+        )
+    }
 
-        let owned = text.to_owned();
-        let replaced = self
-            .entries
-            .entry(font_config_id)
-            .or_default()
-            .entry(owned.clone())
-            .or_default()
-            .insert(size, rendered)
-            .is_some();
-        if !replaced {
-            self.insertion_order
-                .push_back((font_config_id, owned, size));
-            self.len += 1;
-        }
+    fn remove_font_config(&mut self, id: u64) {
+        self.entries.retain(|(cached_id, _, _)| *cached_id != id);
     }
 }
 
@@ -127,6 +185,7 @@ pub(super) struct TextRasterizer {
     font_configs: Vec<CachedFontConfig>,
     active_font_config: usize,
     next_font_config_id: u64,
+    font_config_clock: u64,
 }
 
 impl Default for TextRasterizer {
@@ -139,22 +198,26 @@ impl Default for TextRasterizer {
         Self {
             font_system: RefCell::new(font_system),
             swash_cache: RefCell::new(SwashCache::new()),
-            measure_cache: RefCell::new(MeasureCache::default()),
-            render_cache: RefCell::new(RenderCache::default()),
+            measure_cache: RefCell::new(MeasureCache::new()),
+            render_cache: RefCell::new(RenderCache::new()),
             font_configs: vec![CachedFontConfig {
                 configured,
                 resolved,
                 id: 0,
+                last_used: 0,
             }],
             active_font_config: 0,
             next_font_config_id: 1,
+            font_config_clock: 0,
         }
     }
 }
 
 impl TextRasterizer {
     pub(super) fn set_fonts(&mut self, configured: &FontConfig) {
+        self.font_config_clock = self.font_config_clock.wrapping_add(1);
         if self.font_configs[self.active_font_config].configured == *configured {
+            self.font_configs[self.active_font_config].last_used = self.font_config_clock;
             return;
         }
 
@@ -164,6 +227,7 @@ impl TextRasterizer {
             .position(|cached| cached.configured == *configured)
         {
             self.active_font_config = index;
+            self.font_configs[index].last_used = self.font_config_clock;
             return;
         }
 
@@ -178,10 +242,32 @@ impl TextRasterizer {
             .next_font_config_id
             .checked_add(1)
             .expect("font configuration ID space exhausted");
+
+        if self.font_configs.len() >= FONT_CONFIG_LIMIT {
+            let evicted = self
+                .font_configs
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, cached)| cached.last_used)
+                .map(|(index, _)| index)
+                .expect("font cache is non-empty");
+            let evicted_id = self.font_configs.remove(evicted).id;
+            self.measure_cache.get_mut().remove_font_config(evicted_id);
+            self.render_cache.get_mut().remove_font_config(evicted_id);
+            // SwashCache has no selective eviction API. Configuration churn is
+            // rare, and resetting it here prevents glyph images for evicted
+            // font sizes and families from accumulating forever.
+            *self.swash_cache.get_mut() = SwashCache::new();
+            if self.active_font_config > evicted {
+                self.active_font_config -= 1;
+            }
+        }
+
         self.font_configs.push(CachedFontConfig {
             configured: configured.clone(),
             resolved,
             id,
+            last_used: self.font_config_clock,
         });
         self.active_font_config = self.font_configs.len() - 1;
     }
@@ -192,14 +278,8 @@ impl TextRasterizer {
         }
         let font_config_id = self.active_fonts().id;
 
-        if let Some(width) = self
-            .measure_cache
-            .borrow()
-            .entries
-            .get(&font_config_id)
-            .and_then(|entries| entries.get(text))
-        {
-            return *width;
+        if let Some(width) = self.measure_cache.borrow_mut().get(font_config_id, text) {
+            return width;
         }
 
         let width = {
@@ -248,11 +328,10 @@ impl TextRasterizer {
 
         let is_cached = self
             .render_cache
-            .borrow()
-            .entries
-            .get(&font_config_id)
-            .and_then(|entries| entries.get(text))
-            .is_some_and(|entries| entries.contains_key(&size));
+            .borrow_mut()
+            .get_mut(font_config_id, text, size)
+            .is_some();
+        let mut uncached = None;
         if !is_cached {
             let mut fs = self.font_system.borrow_mut();
             let metrics = Metrics::new(font_size, bounds.h as f32);
@@ -262,23 +341,28 @@ impl TextRasterizer {
             self.set_buffer_text(&mut buffer, text, bounds.h);
             buffer.shape_until_scroll(&mut fs, false);
 
-            self.render_cache.borrow_mut().insert(
-                font_config_id,
-                text,
-                size,
-                CachedRenderedText { buffer },
-            );
+            let rendered = CachedRenderedText { buffer };
+            if text.len() <= RENDER_CACHE_TEXT_LIMIT {
+                let inserted =
+                    self.render_cache
+                        .borrow_mut()
+                        .insert(font_config_id, text, size, rendered);
+                debug_assert!(inserted);
+            } else {
+                // Oversized status strings are rendered normally but are not
+                // allowed to evict the useful working set or stay resident.
+                uncached = Some(rendered);
+            }
         }
 
         let mut fs = self.font_system.borrow_mut();
         let mut sc = self.swash_cache.borrow_mut();
         let mut cache = self.render_cache.borrow_mut();
-        let Some(cached) = cache
-            .entries
-            .get_mut(&font_config_id)
-            .and_then(|entries| entries.get_mut(text))
-            .and_then(|entries| entries.get_mut(&size))
-        else {
+        let cached = if let Some(uncached) = uncached.as_mut() {
+            uncached
+        } else if let Some(cached) = cache.get_mut(font_config_id, text, size) {
+            cached
+        } else {
             return;
         };
 
@@ -363,7 +447,11 @@ fn resolve_family(font_system: &FontSystem, configured: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{FontConfig, MeasureCache, TEXT_CACHE_LIMIT, TextRasterizer, attrs_for_run};
+    use super::{
+        FONT_CONFIG_LIMIT, MEASURE_CACHE_ENTRY_LIMIT, MeasureCache, SmallLru, TextRasterizer,
+        attrs_for_run,
+    };
+    use crate::core_state::FontConfig;
     use cosmic_text::Metrics;
 
     #[test]
@@ -429,27 +517,86 @@ mod tests {
         let base = FontConfig::default();
         rasterizer.set_fonts(&base);
         rasterizer.width("cache me", 30);
-        let base_entries = rasterizer.measure_cache.get_mut().len;
+        let base_entries = rasterizer.measure_cache.get_mut().entries.len();
         assert!(base_entries > 0);
 
         rasterizer.set_fonts(&base.scaled(2.0));
         rasterizer.width("cache me", 60);
-        assert!(rasterizer.measure_cache.get_mut().len > base_entries);
+        assert!(rasterizer.measure_cache.get_mut().entries.len() > base_entries);
 
         rasterizer.set_fonts(&base);
-        assert_eq!(rasterizer.measure_cache.get_mut().len, base_entries + 1);
+        assert_eq!(
+            rasterizer.measure_cache.get_mut().entries.len(),
+            base_entries + 1
+        );
         assert_eq!(rasterizer.font_configs.len(), 2);
     }
 
     #[test]
-    fn measurement_cache_evicts_one_entry_instead_of_clearing_everything() {
-        let mut cache = MeasureCache::default();
-        for index in 0..=TEXT_CACHE_LIMIT {
+    fn measurement_cache_is_bounded_and_evicts_the_oldest_entry() {
+        let mut cache = MeasureCache::new();
+        for index in 0..=MEASURE_CACHE_ENTRY_LIMIT {
             cache.insert(0, &format!("entry-{index}"), index as i32);
         }
 
-        assert_eq!(cache.len, TEXT_CACHE_LIMIT);
-        assert!(!cache.entries[&0].contains_key("entry-0"));
-        assert!(cache.entries[&0].contains_key(format!("entry-{TEXT_CACHE_LIMIT}").as_str()));
+        assert_eq!(cache.entries.len(), MEASURE_CACHE_ENTRY_LIMIT);
+        assert_eq!(cache.get(0, "entry-0"), None);
+        assert_eq!(
+            cache.get(0, &format!("entry-{MEASURE_CACHE_ENTRY_LIMIT}")),
+            Some(MEASURE_CACHE_ENTRY_LIMIT as i32)
+        );
+    }
+
+    #[test]
+    fn recently_used_entries_survive_churn() {
+        let mut cache = SmallLru::new(3, 100);
+        assert!(cache.insert("stable", 1, 6));
+        assert!(cache.insert("old", 2, 3));
+        assert!(cache.insert("newer", 3, 5));
+        assert_eq!(cache.get_mut_by(|key| *key == "stable"), Some(&mut 1));
+
+        assert!(cache.insert("newest", 4, 6));
+        assert!(cache.get_mut_by(|key| *key == "old").is_none());
+        assert_eq!(cache.get_mut_by(|key| *key == "stable"), Some(&mut 1));
+    }
+
+    #[test]
+    fn text_budget_rejects_one_oversized_entry_and_bounds_total_text() {
+        let mut cache = SmallLru::new(10, 8);
+        assert!(!cache.insert("oversized", (), 9));
+        assert!(cache.insert("first", (), 5));
+        assert!(cache.insert("second", (), 5));
+
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.text_bytes, 5);
+        assert!(cache.get_mut_by(|key| *key == "second").is_some());
+    }
+
+    #[test]
+    fn font_configuration_churn_has_a_fixed_working_set() {
+        let mut rasterizer = TextRasterizer::default();
+        for index in 0..FONT_CONFIG_LIMIT + 4 {
+            rasterizer.set_fonts(&FontConfig {
+                text_size: 10.0 + index as f32,
+                ..FontConfig::default()
+            });
+            rasterizer.width(&format!("font-{index}"), 30);
+        }
+
+        assert_eq!(rasterizer.font_configs.len(), FONT_CONFIG_LIMIT);
+        let retained_ids: Vec<_> = rasterizer
+            .font_configs
+            .iter()
+            .map(|config| config.id)
+            .collect();
+        assert!(
+            rasterizer
+                .measure_cache
+                .get_mut()
+                .entries
+                .entries
+                .iter()
+                .all(|entry| retained_ids.contains(&entry.key.0))
+        );
     }
 }
