@@ -695,10 +695,22 @@ impl SignalWatcher {
             "type='signal',interface='org.kde.StatusNotifierItem',member='NewIcon'",
         )?;
         match mode {
-            WatcherMode::External => add_match(
-                &dbus,
-                "type='signal',sender='org.kde.StatusNotifierWatcher',interface='org.kde.StatusNotifierWatcher'",
-            )?,
+            WatcherMode::External => {
+                // Some D-Bus daemons only match signal senders against the
+                // unique owner name, while others also accept the well-known
+                // watcher name. Subscribe to both so external watcher signals
+                // are received reliably across environments.
+                add_match(
+                    &dbus,
+                    "type='signal',sender='org.kde.StatusNotifierWatcher',interface='org.kde.StatusNotifierWatcher'",
+                )?;
+                if let Ok(owner) = dbus.call::<_, _, String>("GetNameOwner", &(WATCHER_SERVICE,)) {
+                    let rule = format!(
+                        "type='signal',sender='{owner}',interface='org.kde.StatusNotifierWatcher'"
+                    );
+                    add_match(&dbus, &rule)?;
+                }
+            }
             WatcherMode::Embedded(_) => add_match(
                 &dbus,
                 "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged'",
