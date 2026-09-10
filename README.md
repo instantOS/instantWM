@@ -4,28 +4,56 @@
     <img width="300" height="300" src="https://raw.githubusercontent.com/instantOS/instantLOGO/main/png/wm.png">
 </div>
 
-instantWM the window manager of instantOS.
+instantWM: a really nice WM
 
-Tiled windows use a persistent manual tree on both X11 and Wayland. See the
-[manual layout guide](docs/manual-layout.md) for tree invariants, migrated
-layout commands, default Super bindings, pointer placement, and configuration.
-General configuration features, including ordered key action sequences, are
-documented in `instantwmctl config default` output and `docs/manual-layout.md`.
+Yes, X11 and Wayland. 
+
+Yes, Mouse and Keyboard. 
+
+Yes, very customizeable. 
+
+Yes, looks nice and is fast. Have your WM and eat it too. 
 
 ![img](https://github.com/instantOS/instantLOGO/blob/main/screeenshots/screenshot1.png)
 
 ## Installation
 
-InstantWM is preinstalled on instantOS.
-You can manually install the git build at your own risk by cloning the repo and then running build.sh,
-however you'll likely be missing a lot of other tools if you're not on instantOS.
-It is not recommended to use instantWM with other distributions.
+Please keep in mind that instantWM is not a full desktop environment and relies
+on external tools like instantMENU, instantCLI or i3status-rust for some functionality. 
+
+### instantOS
+
+InstantWM is preinstalled and preconfigured on instantOS.
+
+### Arch
+
+Either add the `https://packages.instantos.io` repo to your pacman.conf or
+download the latest pkg file from the GitHub releases. 
+
+### Ubuntu/Debian
+
+Download the latest deb file from the GitHub releases. 
+
+### From Source
+
 
 ```sh
 git clone --depth=1 https://github.com/instantOS/instantWM.git
 cd instantWM
 just install
 ```
+
+This requires the depdenencies listed below or equivalents thereoff to be installed. 
+
+#### Arch Dependencies
+
+```bash
+sudo pacman -Sy needed libx11 libxcb libxkbcommon libxcursor libxinerama libxrandr libxss libxtst libxfixes libxdamage libxcomposite libxrender libxft libxi libxres libxvmc libxxf86vm libxt libxmu libxpm libxaw fontconfig freetype2 libdrm mesa wayland libinput seatd libglvnd libevdev libwacom dbus systemd xdg-desktop-portal-wlr
+```
+
+#### Ubuntu/Debian Dependencies
+
+TODO
 
 ### Wayland screen sharing and screenshots
 
@@ -68,15 +96,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for version bump and release rules.
   * Tag system
   * Overview mode
   * Edge-anchored scratchpads
+- Mouse support
+  * Drag windows by grabbing the title
+  * Drag windows onto other tags
+  * Rio-like drawing feature
 - Graphical Features
   * Animations
   * Hover indicators
   * Status markup
   * Color indicators for sticky windows, tag status etc.
-- Mouse support
-  * Drag windows by grabbing the title
-  * Drag windows onto other tags
-  * Rio-like drawing feature
 
 This is just a quick list of some features. For a full list and explanation,
 please refer to the documentation.
