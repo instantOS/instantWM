@@ -43,7 +43,7 @@ cd instantWM
 just install
 ```
 
-This requires the depdenencies listed below or equivalents thereoff to be installed. 
+This requires the dependencies listed below or equivalents thereoff to be installed. 
 
 #### Arch Dependencies
 
@@ -53,7 +53,30 @@ sudo pacman -Sy needed libx11 libxcb libxkbcommon libxcursor libxinerama libxran
 
 #### Ubuntu/Debian Dependencies
 
-TODO
+Verified on Ubuntu 24.04 (Noble):
+
+```bash
+sudo apt-get install -y --no-install-recommends \
+    build-essential pkg-config \
+    libx11-dev libxinerama-dev libxft-dev libxrender-dev \
+    libfontconfig-dev libfreetype-dev libxkbcommon-dev \
+    libudev-dev libseat-dev libinput-dev libgbm-dev
+```
+
+On older Debian releases, `libfontconfig-dev` is called `libfontconfig1-dev`.
+
+Ubuntu 24.04 ships rustc 1.75, which is too old for instantWM (edition 2024
+requires rustc 1.85+). Install a current toolchain via rustup instead:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+```
+
+This is the same package list CI installs, see
+`scripts/ci/install-deps-ubuntu.sh`.
+
+Running the test suite additionally requires at least one real system font
+(e.g. `fonts-dejavu-core`), otherwise the text rasterizer tests fail.
 
 ### Wayland screen sharing and screenshots
 
