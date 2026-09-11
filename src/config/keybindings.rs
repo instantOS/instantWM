@@ -45,11 +45,23 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | MOD1, XK_K => KeyAction::named(NamedAction::KeyResizeUp)),
         key!(MODKEY | MOD1, XK_L => KeyAction::named(NamedAction::KeyResizeRight)),
         key!(MODKEY | MOD1, XK_H => KeyAction::named(NamedAction::KeyResizeLeft)),
+        // Super+plus/minus grow and shrink the focused window along its most
+        // local split. The '+' chord covers every keymap spelling: unshifted
+        // '+' keys, shift held on such keys, and US layouts where typed '+'
+        // resolves from the '=' base keysym.
         key!(MODKEY, XK_PLUS => KeyAction::named(NamedAction::TreeGrow)),
         key!(MODKEY | SHIFT, XK_PLUS => KeyAction::named(NamedAction::TreeGrow)),
-        // X11 resolves the shifted '+' key from its base '=' keysym.
         key!(MODKEY | SHIFT, XK_EQUAL => KeyAction::named(NamedAction::TreeGrow)),
         key!(MODKEY, XK_MINUS => KeyAction::named(NamedAction::TreeShrink)),
+        // Super+Ctrl+plus/minus resize the tiling gaps. Control never changes
+        // the base keysym, so these chords mean the same thing on every keymap;
+        // the shifted spellings cover layouts that type '+' or '-' with shift.
+        key!(MODKEY | CONTROL, XK_PLUS => KeyAction::named(NamedAction::IncGaps)),
+        key!(MODKEY | CONTROL, XK_EQUAL => KeyAction::named(NamedAction::IncGaps)),
+        key!(MODKEY | CONTROL | SHIFT, XK_PLUS => KeyAction::named(NamedAction::IncGaps)),
+        key!(MODKEY | CONTROL | SHIFT, XK_EQUAL => KeyAction::named(NamedAction::IncGaps)),
+        key!(MODKEY | CONTROL, XK_MINUS => KeyAction::named(NamedAction::DecGaps)),
+        key!(MODKEY | CONTROL | SHIFT, XK_MINUS => KeyAction::named(NamedAction::DecGaps)),
         key!(MODKEY | SHIFT, XK_J => KeyAction::named(NamedAction::KeyMoveDown)),
         key!(MODKEY | SHIFT, XK_K => KeyAction::named(NamedAction::KeyMoveUp)),
         key!(MODKEY | SHIFT, XK_L => KeyAction::named(NamedAction::KeyMoveRight)),
@@ -276,6 +288,55 @@ mod tests {
         assert_eq!(
             default_named_action(MODKEY | SHIFT, XK_S),
             Some(NamedAction::ScratchpadRestore)
+        );
+    }
+
+    #[test]
+    fn gap_defaults_are_on_super_ctrl_plus_and_minus() {
+        // Plain Super+plus/minus keep growing and shrinking the focused
+        // window's split, in every base-keysym spelling.
+        assert_eq!(
+            default_named_action(MODKEY, XK_PLUS),
+            Some(NamedAction::TreeGrow)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | SHIFT, XK_PLUS),
+            Some(NamedAction::TreeGrow)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | SHIFT, XK_EQUAL),
+            Some(NamedAction::TreeGrow)
+        );
+        assert_eq!(
+            default_named_action(MODKEY, XK_MINUS),
+            Some(NamedAction::TreeShrink)
+        );
+
+        // The Super+Ctrl chords resize gaps and are keymap independent; the
+        // shifted spellings cover layouts that type '+' or '-' with shift.
+        assert_eq!(
+            default_named_action(MODKEY | CONTROL, XK_PLUS),
+            Some(NamedAction::IncGaps)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | CONTROL, XK_EQUAL),
+            Some(NamedAction::IncGaps)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | CONTROL | SHIFT, XK_EQUAL),
+            Some(NamedAction::IncGaps)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | CONTROL | SHIFT, XK_PLUS),
+            Some(NamedAction::IncGaps)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | CONTROL, XK_MINUS),
+            Some(NamedAction::DecGaps)
+        );
+        assert_eq!(
+            default_named_action(MODKEY | CONTROL | SHIFT, XK_MINUS),
+            Some(NamedAction::DecGaps)
         );
     }
 

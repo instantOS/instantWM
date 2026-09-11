@@ -138,6 +138,15 @@ fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), Stri
             }
             Ok(())
         }
+        IncGaps | DecGaps => {
+            expect_arg_count(action.name(), args, 0, 1)?;
+            if let Some(value) = args.first() {
+                value
+                    .parse::<i32>()
+                    .map_err(|_| format!("invalid gap delta '{value}'; expected an integer"))?;
+            }
+            Ok(())
+        }
         KeyboardLayout | SetMode | ModeToggle | SetLayout | FocusStack | ViewTag | FocusMon
         | SendMon | FollowMon | SetFocusFollowsMouse => expect_arg_count(action.name(), args, 1, 1),
         SetBorder => {
@@ -299,6 +308,23 @@ fn move_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
     }
 }
 
+/// Logical pixels added per unconfigured gap key press. Bindings can pass an
+/// explicit integer argument to use a different step.
+const DEFAULT_GAP_STEP: i32 = 2;
+
+/// Move both tiling gaps by `delta` logical pixels and re-arrange.
+///
+/// Inner and outer gaps move together because users think of "the gap size"
+/// as one knob; per-axis values stay reachable through config and IPC. Both
+/// clamp at zero: placement treats zero gaps as disabled, so decreasing at
+/// the floor simply keeps gapless tiling instead of inverting windows.
+fn adjust_gaps(ctx: &mut WmCtx<'_>, delta: i32) {
+    let layout = &mut ctx.core_mut().config_mut().layout;
+    layout.inner_gap = layout.inner_gap.saturating_add(delta).max(0);
+    layout.outer_gap = layout.outer_gap.saturating_add(delta).max(0);
+    crate::layouts::manager::arrange(ctx, None);
+}
+
 define_named_actions!(
     Zoom => { name: "zoom", arg_example: None, doc: "zoom client into master area", run: |ctx, _args| { zoom(ctx); } },
     None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
@@ -319,6 +345,8 @@ define_named_actions!(
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
+    IncGaps => { name: "inc_gaps", arg_example: Some("[PIXELS]"), doc: "increase tiled inner and outer gaps", run: |ctx, args| { adjust_gaps(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_GAP_STEP)); } },
+    DecGaps => { name: "dec_gaps", arg_example: Some("[PIXELS]"), doc: "decrease tiled inner and outer gaps", run: |ctx, args| { adjust_gaps(ctx, -args.first().and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_GAP_STEP)); } },
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
     KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "grow a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
@@ -564,6 +592,38 @@ mod tests {
         assert!(validate_action_args(NamedAction::FocusNext, &["unexpected".to_string()]).is_err());
         assert!(validate_action_args(NamedAction::SetLayout, &[]).is_err());
         assert!(validate_action_args(NamedAction::SetBorder, &["-1".to_string()]).is_err());
+        assert!(validate_action_args(NamedAction::IncGaps, &["x".to_string()]).is_err());
+        assert!(
+            validate_action_args(NamedAction::DecGaps, &["2".to_string(), "3".to_string()])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn gap_actions_move_both_gaps_and_clamp_at_zero() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        assert_eq!(parse_named_action("inc_gaps"), Some(NamedAction::IncGaps));
+        assert_eq!(parse_named_action("dec_gaps"), Some(NamedAction::DecGaps));
+
+        wm.core.config.layout.inner_gap = 4;
+        wm.core.config.layout.outer_gap = 8;
+
+        execute_named_action(&mut wm.ctx(), NamedAction::IncGaps, &["3".to_string()]).unwrap();
+        assert_eq!(wm.core.config.layout.inner_gap, 7);
+        assert_eq!(wm.core.config.layout.outer_gap, 11);
+
+        // The default step applies when no argument is passed.
+        execute_named_action(&mut wm.ctx(), NamedAction::DecGaps, &[]).unwrap();
+        assert_eq!(wm.core.config.layout.inner_gap, 5);
+        assert_eq!(wm.core.config.layout.outer_gap, 9);
+
+        // Decreasing past the floor clamps instead of disabling windows into
+        // negative gaps.
+        for _ in 0..10 {
+            execute_named_action(&mut wm.ctx(), NamedAction::DecGaps, &[]).unwrap();
+        }
+        assert_eq!(wm.core.config.layout.inner_gap, 0);
+        assert_eq!(wm.core.config.layout.outer_gap, 0);
     }
 
     #[test]
