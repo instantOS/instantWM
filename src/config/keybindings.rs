@@ -94,6 +94,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_PERIOD => KeyAction::named_args(NamedAction::FocusMon, &["next"])),
         key!(MODKEY | MOD1, XK_COMMA => KeyAction::named_args(NamedAction::FollowMon, &["prev"])),
         key!(MODKEY | MOD1, XK_PERIOD => KeyAction::named_args(NamedAction::FollowMon, &["next"])),
+        // Super+Shift+,/. move the focused client without following it. Shift is
+        // part of the modifier mask; the base comma/period keysym is unchanged.
+        key!(MODKEY | SHIFT, XK_COMMA => KeyAction::named_args(NamedAction::SendMon, &["prev"])),
+        key!(MODKEY | SHIFT, XK_PERIOD => KeyAction::named_args(NamedAction::SendMon, &["next"])),
         key!(MODKEY | SHIFT, XK_RETURN => KeyAction::named(NamedAction::Zoom)),
         key!(MODKEY | SHIFT, XK_SPACE => KeyAction::named(NamedAction::ToggleFloating)),
         key!(MODKEY | CONTROL, XK_D => KeyAction::named(NamedAction::DistributeClients)),
@@ -257,6 +261,16 @@ mod tests {
             })
     }
 
+    fn default_named_args(modifiers: u32, keysym: u32) -> Option<(NamedAction, Vec<String>)> {
+        get_keys()
+            .into_iter()
+            .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
+            .and_then(|key| match key.action {
+                KeyAction::Named { action, args } => Some((action, args)),
+                _ => None,
+            })
+    }
+
     #[test]
     fn scratchpad_restore_has_a_default_binding() {
         assert_eq!(
@@ -289,6 +303,40 @@ mod tests {
             assert_eq!(default_named_action(MODKEY, vim), Some(action));
             assert_eq!(default_named_action(MODKEY, arrow), Some(action));
         }
+    }
+
+    #[test]
+    fn monitor_transfer_defaults_separate_following_from_plain_move() {
+        // Super+Alt+,/. carry the focused client to the adjacent monitor and
+        // follow it there.
+        assert_eq!(
+            default_named_args(MODKEY | MOD1, XK_COMMA),
+            Some((NamedAction::FollowMon, vec!["prev".to_string()]))
+        );
+        assert_eq!(
+            default_named_args(MODKEY | MOD1, XK_PERIOD),
+            Some((NamedAction::FollowMon, vec!["next".to_string()]))
+        );
+
+        // Super+Shift+,/. move the focused client without following it, so the
+        // plain comma/period focus bindings stay untouched.
+        assert_eq!(
+            default_named_args(MODKEY | SHIFT, XK_COMMA),
+            Some((NamedAction::SendMon, vec!["prev".to_string()]))
+        );
+        assert_eq!(
+            default_named_args(MODKEY | SHIFT, XK_PERIOD),
+            Some((NamedAction::SendMon, vec!["next".to_string()]))
+        );
+
+        assert_eq!(
+            default_named_action(MODKEY, XK_COMMA),
+            Some(NamedAction::FocusMon)
+        );
+        assert_eq!(
+            default_named_action(MODKEY, XK_PERIOD),
+            Some(NamedAction::FocusMon)
+        );
     }
 
     #[test]

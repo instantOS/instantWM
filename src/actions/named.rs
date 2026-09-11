@@ -139,7 +139,7 @@ fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), Stri
             Ok(())
         }
         KeyboardLayout | SetMode | ModeToggle | SetLayout | FocusStack | ViewTag | FocusMon
-        | TagMon | FollowMon | SetFocusFollowsMouse => expect_arg_count(action.name(), args, 1, 1),
+        | SendMon | FollowMon | SetFocusFollowsMouse => expect_arg_count(action.name(), args, 1, 1),
         SetBorder => {
             expect_arg_count("set_border", args, 0, 1)?;
             if let Some(value) = args.first() {
@@ -436,8 +436,8 @@ define_named_actions!(
         crate::tags::view::view_tags(ctx, mask);
     } },
     WarpFocus => { name: "warp_focus", arg_example: None, doc: "warp the pointer to the focused window", run: |ctx, _args| { crate::mouse::warp::warp_to_focus(ctx); } },
-    FocusMon => { name: "focus_mon", arg_example: Some("next|prev"), doc: "focus another monitor", run: |ctx, args| { focus_monitor(ctx, parse_monitor_direction(&args[0])?); } },
-    TagMon => { name: "tag_mon", arg_example: Some("next|prev"), doc: "move the focused tag view to another monitor", run: |ctx, args| { send_to_monitor(ctx, parse_monitor_direction(&args[0])?); } },
+    FocusMon => { name: "focus_mon", arg_example: Some("next|prev"), doc: "focus another monitor, warping the pointer to it", run: |ctx, args| { focus_monitor(ctx, parse_monitor_direction(&args[0])?); } },
+    SendMon => { name: "send_mon", arg_example: Some("next|prev"), doc: "move the focused client to another monitor without following", run: |ctx, args| { send_to_monitor(ctx, parse_monitor_direction(&args[0])?); } },
     FollowMon => { name: "follow_mon", arg_example: Some("next|prev"), doc: "move the focused client to another monitor and follow", run: |ctx, args| { move_to_monitor_and_follow(ctx, parse_monitor_direction(&args[0])?); } },
     SetBorder => { name: "set_border", arg_example: Some("[WIDTH]"), doc: "set the focused window border width", run: |ctx, args| {
         let width = args.first().map(|value| value.parse::<i32>()).transpose().map_err(|_| format!("invalid border width '{}'", args[0]))?.unwrap_or(crate::config::mod_consts::BORDER_PX);

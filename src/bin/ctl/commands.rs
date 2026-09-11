@@ -455,8 +455,8 @@ pub enum CommandKind {
     },
     /// Warp the pointer to the focused window.
     WarpFocus,
-    /// Move the focused tag view to another monitor.
-    TagMon {
+    /// Move the focused client to another monitor without following.
+    SendMon {
         #[arg(default_value = "next")]
         direction: MonitorDirection,
     },
@@ -838,8 +838,8 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::Toggle { action } => toggle_command(action),
             CommandKind::Spawn { command } => run_action("spawn", command),
             CommandKind::WarpFocus => run_action("warp_focus", Vec::new()),
-            CommandKind::TagMon { direction } => {
-                run_action("tag_mon", vec![direction_arg(direction)])
+            CommandKind::SendMon { direction } => {
+                run_action("send_mon", vec![direction_arg(direction)])
             }
             CommandKind::FollowMon { direction } => {
                 run_action("follow_mon", vec![direction_arg(direction)])

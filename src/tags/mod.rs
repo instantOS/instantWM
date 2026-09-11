@@ -7,7 +7,7 @@ pub mod shift;
 pub mod sticky;
 pub mod view;
 
-mod tag_mon_impl;
+mod send_mon_impl;
 
 /// Type-safe tag operations with improved DX.
 ///
@@ -25,4 +25,4 @@ pub use crate::overview::{cancel_overview, toggle_overview};
 
 pub use shift::{move_client_follow_view, shift_tag};
 
-pub use tag_mon_impl::send_to_monitor;
+pub use send_mon_impl::send_to_monitor;

@@ -368,6 +368,7 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     };
 
     crate::focus::select_monitor(ctx, target);
+    crate::mouse::warp::warp_pointer_to_monitor(ctx, target);
 }
 
 pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
@@ -383,6 +384,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
     };
 
     crate::focus::select_monitor(ctx, target);
+    crate::mouse::warp::warp_pointer_to_monitor(ctx, target);
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
