@@ -21,6 +21,12 @@ pub struct PressInput {
 }
 
 /// The outcome of evaluating the press policy.
+///
+/// `CapturedInteraction` doubles as the backend transport signal: backends
+/// keep owning the pointer and deliver the completing release into the
+/// interaction state machine only for this outcome. A press whose binding
+/// armed a capture must therefore never be reported as `Consumed` — the
+/// capture would stay armed and block every later interaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PressOutcome {
     /// A WM interaction or gesture was started (e.g. overview card drag,
@@ -128,6 +134,13 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
                     },
                     numlockmask,
                 );
+                // Bar bindings may arm a capture (tag drag, title drag). The
+                // capture's completing release is only delivered when the
+                // press reports `CapturedInteraction`, so promote it here just
+                // like the BottomBar branch.
+                if ctx.core().interaction().drag.captured_source() == Some(input.source) {
+                    return PressOutcome::CapturedInteraction { button: btn };
+                }
             }
             return PressOutcome::Consumed;
         }
@@ -486,5 +499,111 @@ mod tests {
             wm.core.interaction.drag.hover_offer(),
             crate::core_state::HoverOffer::None
         );
+    }
+
+    /// A monitor with a visible bar whose installed hit cache places Tag 0 at
+    /// local x in [0, 100) and the client's title cell at [200, 300) (clear of
+    /// the close [0, 32) and resize last-30px hit zones of the cell).
+    fn bar_hit_wm() -> (Wm, WindowId, MonitorId) {
+        let (mut wm, win, monitor_id) = setup_wm();
+        {
+            let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+            monitor.show_bar = true;
+            monitor.set_bar_height(30);
+        }
+        wm.bar.replace_hit_cache(
+            monitor_id,
+            crate::bar::MonitorHitCache {
+                tag_ranges: vec![crate::bar::TagHitRange {
+                    start: 0,
+                    end: 100,
+                    tag_index: 0,
+                }],
+                title_ranges: vec![crate::bar::TitleHitRange {
+                    start: 200,
+                    end: 300,
+                    win,
+                }],
+                status_hit_x: 400,
+                ..Default::default()
+            },
+        );
+        (wm, win, monitor_id)
+    }
+
+    fn left_click_at(x: i32) -> PressInput {
+        PressInput {
+            root: Point::new(x, 15),
+            button: Some(MouseButton::Left),
+            raw_button: 1,
+            modifiers: 0,
+            clicked_window: None,
+            source: InteractionSource::Pointer,
+            time_msec: 100,
+        }
+    }
+
+    #[test]
+    fn tag_click_binding_arms_capture_and_reports_captured_interaction() {
+        let (mut wm, _, _) = bar_hit_wm();
+        wm.core.config.bindings.buttons = vec![Button {
+            target: ButtonTarget::Bar(BarPosition::Tag(0)),
+            mask: 0,
+            button: MouseButton::Left,
+            action: ButtonAction::DragTagBegin,
+        }];
+
+        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(50));
+
+        assert_eq!(
+            outcome,
+            PressOutcome::CapturedInteraction {
+                button: MouseButton::Left
+            }
+        );
+        assert_eq!(
+            wm.core.interaction.drag.captured_button(),
+            Some(MouseButton::Left)
+        );
+    }
+
+    #[test]
+    fn title_click_binding_arms_capture_and_reports_captured_interaction() {
+        let (mut wm, win, _) = bar_hit_wm();
+        wm.core.config.bindings.buttons = vec![Button {
+            target: ButtonTarget::Bar(BarPosition::WinTitle(win)),
+            mask: 0,
+            button: MouseButton::Left,
+            action: ButtonAction::WindowTitleMouseHandler,
+        }];
+
+        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(250));
+
+        assert_eq!(
+            outcome,
+            PressOutcome::CapturedInteraction {
+                button: MouseButton::Left
+            }
+        );
+        assert_eq!(
+            wm.core.interaction.drag.captured_button(),
+            Some(MouseButton::Left)
+        );
+    }
+
+    #[test]
+    fn press_only_bar_binding_still_reports_consumed() {
+        let (mut wm, win, _) = bar_hit_wm();
+        wm.core.config.bindings.buttons = vec![Button {
+            target: ButtonTarget::Bar(BarPosition::WinTitle(win)),
+            mask: 0,
+            button: MouseButton::Left,
+            action: ButtonAction::ToggleClickedViewTag,
+        }];
+
+        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(250));
+
+        assert_eq!(outcome, PressOutcome::Consumed);
+        assert_eq!(wm.core.interaction.drag.captured_source(), None);
     }
 }
