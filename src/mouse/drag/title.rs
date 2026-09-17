@@ -214,20 +214,15 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// the window anchor and never warps or consults the compositor pointer.
 pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     let root = input.position();
-    let Some(armed) = ctx.core().interaction().drag.armed_interaction() else {
-        return false;
-    };
-
     // The armed target may have been invalidated above the input layer
     // (e.g. a mid-press keybind switching tags). Cancel instead of activating
     // a drag that would promote and un-hide an invisible window.
-    if !crate::mouse::drag::window_drag_target_visible(ctx) {
-        crate::mouse::interaction::cancel_pointer_capture(
-            ctx,
-            crate::core_state::DragCancelReason::WindowHidden,
-        );
+    if crate::mouse::drag::cancel_invalid_window_drag(ctx) {
         return false;
     }
+    let Some(armed) = ctx.core().interaction().drag.armed_interaction() else {
+        return false;
+    };
 
     if root.manhattan_distance(&armed.start_point()) <= DRAG_THRESHOLD {
         ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));

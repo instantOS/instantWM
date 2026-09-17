@@ -627,13 +627,7 @@ fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelRea
     let mut ctx = wm.ctx();
     let _ = crate::mouse::interaction::handle(
         &mut ctx,
-        crate::mouse::interaction::InteractionEvent {
-            source: crate::mouse::interaction::InteractionSource::Pointer,
-            phase: crate::mouse::interaction::InteractionPhase::Cancel { reason },
-            root: Default::default(),
-            modifiers: 0,
-            sidebar_hover: None,
-        },
+        crate::mouse::interaction::InteractionEvent::pointer_cancel(reason),
     );
 }
 

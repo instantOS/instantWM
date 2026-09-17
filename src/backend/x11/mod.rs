@@ -180,11 +180,13 @@ impl X11KeyboardMapping {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PointerGrabKind {
-    /// Modal drag/resize loop in [`crate::backend::x11::grab`].
-    Drag,
-    /// Pointer ownership lent to an armed hover-resize offer. Held without a
-    /// modal loop and released as soon as the offer clears; it must never be
-    /// taken from, or released over, an ongoing drag.
+    /// Event-loop-driven WM interaction. The native grab remains until this
+    /// physical button is released, even if shared interaction state cancels
+    /// earlier, so no client receives an unmatched release.
+    Interaction(crate::types::MouseButton),
+    /// Pointer ownership lent to an armed hover-resize offer. Released as soon
+    /// as the offer clears; it must never be taken from, or released over, an
+    /// ongoing interaction.
     HoverOffer,
 }
 

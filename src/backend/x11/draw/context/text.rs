@@ -242,10 +242,8 @@ impl DrawContext {
                 if utf8strlen > 0 {
                     // A semantic boundary needs its own run even if both roles
                     // ended up using the same face for .notdef.
-                    if self.charges_boundary_gap(
-                        text[..text_pos].chars().next_back(),
-                        Some(ch),
-                    ) || self.font_for_char(ch) != usedfont_idx
+                    if self.charges_boundary_gap(text[..text_pos].chars().next_back(), Some(ch))
+                        || self.font_for_char(ch) != usedfont_idx
                     {
                         break;
                     }

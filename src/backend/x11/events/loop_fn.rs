@@ -84,6 +84,12 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
             crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
 
+            // IPC and other calloop sources may invalidate a captured target.
+            let ctx = wm.ctx();
+            if let crate::contexts::WmCtx::X11(mut ctx) = ctx {
+                crate::backend::x11::grab::reconcile_wm_interaction(&mut ctx);
+            }
+
             // X11 focus is projected synchronously. End the shared selection
             // transaction here so changes from separate ticks never coalesce.
             let _ = wm.focus.take_pending_selection();
@@ -121,6 +127,7 @@ fn has_x11_animations(wm: &Wm) -> bool {
 /// Drain all pending X11 events from the connection and dispatch them.
 fn drain_x11_events(wm: &mut Wm) {
     let mut raw_motion_pending = false;
+    let mut captured_motion_pending = None;
     while let Some((conn, _)) = wm.backend.x11_conn() {
         match conn.poll_for_event() {
             Ok(Some(x11rb::protocol::Event::XinputRawMotion(_))) => {
@@ -129,9 +136,21 @@ fn drain_x11_events(wm: &mut Wm) {
                 // Collapse a queued run into one root-position snapshot so a
                 // high-rate device cannot force one synchronous QueryPointer
                 // round trip per sample.
-                raw_motion_pending = true;
+                if !has_wm_interaction_grab(wm) {
+                    raw_motion_pending = true;
+                }
+            }
+            Ok(Some(event @ x11rb::protocol::Event::MotionNotify(_)))
+                if has_wm_interaction_grab(wm) =>
+            {
+                // Active grabs use core motion because XI2 raw delivery is not
+                // guaranteed. Keep only the newest absolute sample in a run.
+                captured_motion_pending = Some(event);
             }
             Ok(Some(event)) => {
+                if let Some(motion) = captured_motion_pending.take() {
+                    dispatch_event(wm, motion);
+                }
                 if raw_motion_pending && event_requires_current_pointer_state(&event) {
                     dispatch_raw_motion(wm);
                     raw_motion_pending = false;
@@ -139,6 +158,9 @@ fn drain_x11_events(wm: &mut Wm) {
                 dispatch_event(wm, event);
             }
             Ok(None) => {
+                if let Some(motion) = captured_motion_pending.take() {
+                    dispatch_event(wm, motion);
+                }
                 if raw_motion_pending {
                     dispatch_raw_motion(wm);
                     raw_motion_pending = false;
@@ -158,6 +180,18 @@ fn drain_x11_events(wm: &mut Wm) {
             }
         }
     }
+}
+
+fn has_wm_interaction_grab(wm: &Wm) -> bool {
+    wm.backend.x11_data().is_some_and(|data| {
+        matches!(
+            data.x11_runtime.active_pointer_grab,
+            Some(crate::backend::x11::ActivePointerGrab {
+                kind: crate::backend::x11::PointerGrabKind::Interaction(_),
+                ..
+            })
+        )
+    })
 }
 
 /// Events whose semantics depend on hover state established by earlier
@@ -275,6 +309,9 @@ pub(crate) fn dispatch_event_in_context(
     ctx: &mut crate::contexts::WmCtxX11<'_>,
     event: &x11rb::protocol::Event,
 ) {
+    if crate::backend::x11::grab::dispatch_captured_pointer_event(ctx, event) {
+        return;
+    }
     match event {
         x11rb::protocol::Event::Error(e) => handlers::handle_x11_error(ctx, e),
         x11rb::protocol::Event::ButtonPress(e) => handlers::button_press(ctx, e),
@@ -304,4 +341,5 @@ pub(crate) fn dispatch_event_in_context(
         x11rb::protocol::Event::LeaveNotify(e) => handlers::leave_notify(ctx, e),
         _ => {}
     };
+    crate::backend::x11::grab::reconcile_wm_interaction(ctx);
 }

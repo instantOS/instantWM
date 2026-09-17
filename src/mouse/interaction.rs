@@ -54,6 +54,16 @@ impl InteractionEvent {
             sidebar_hover,
         }
     }
+
+    pub fn pointer_cancel(reason: DragCancelReason) -> Self {
+        Self {
+            source: InteractionSource::Pointer,
+            phase: InteractionPhase::Cancel { reason },
+            root: Default::default(),
+            modifiers: 0,
+            sidebar_hover: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

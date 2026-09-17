@@ -116,7 +116,7 @@ fn hover_ownership_update(
 /// The native grab is an X11 projection detail and is never exposed to shared
 /// interaction policy.
 fn ensure_hover_offer_pointer_ownership(ctx: &mut WmCtxX11<'_>, cursor: AltCursor) {
-    // A modal drag owns its native transport separately. Never replace it.
+    // An active interaction owns its native transport separately. Never replace it.
     if ctx.x11_runtime.active_pointer_grab.is_some() {
         return;
     }
@@ -178,7 +178,7 @@ mod cursor_tests {
 
     fn active(cursor: AltCursor) -> ActivePointerGrab {
         ActivePointerGrab {
-            kind: PointerGrabKind::Drag,
+            kind: PointerGrabKind::Interaction(crate::types::MouseButton::Left),
             event_mask: EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             cursor,
         }
@@ -232,7 +232,12 @@ mod cursor_tests {
             HoverOwnershipUpdate::Release
         );
         assert_eq!(
-            hover_ownership_update(Some(PointerGrabKind::Drag), PointerDelivery::Default,),
+            hover_ownership_update(
+                Some(PointerGrabKind::Interaction(
+                    crate::types::MouseButton::Left
+                )),
+                PointerDelivery::Default,
+            ),
             HoverOwnershipUpdate::Keep
         );
     }

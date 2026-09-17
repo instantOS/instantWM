@@ -71,7 +71,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     match outcome {
         crate::mouse::press::PressOutcome::CapturedInteraction { button } => {
             thaw_pointer_grab(ctx);
-            let _ = crate::backend::x11::grab::drive_wm_interaction(ctx, button);
+            let _ = crate::backend::x11::grab::begin_wm_interaction(ctx, button);
         }
         crate::mouse::press::PressOutcome::Consumed => {
             let conn = ctx.x11.conn;

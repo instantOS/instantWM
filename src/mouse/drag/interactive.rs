@@ -189,10 +189,16 @@ pub fn hover_drag_begin(
 /// are unaffected. Bar-title drags that started on a hidden window
 /// (`was_hidden`) own a hidden target by design and stay valid.
 pub fn window_drag_target_visible(ctx: &WmCtx<'_>) -> bool {
-    let Some(state) = ctx.core().interaction().drag.capture().and_then(|capture| match capture {
-        crate::core_state::CapturedInteraction::Window(state) => Some(state),
-        _ => None,
-    }) else {
+    let Some(state) = ctx
+        .core()
+        .interaction()
+        .drag
+        .capture()
+        .and_then(|capture| match capture {
+            crate::core_state::CapturedInteraction::Window(state) => Some(state),
+            _ => None,
+        })
+    else {
         return true;
     };
     let started_hidden = match state {
@@ -212,6 +218,21 @@ pub fn window_drag_target_visible(ctx: &WmCtx<'_>) -> bool {
     client.is_visible(monitor.selected_tags())
 }
 
+/// Cancel a captured window interaction whose target can no longer be steered.
+///
+/// Input adapters call this after state-changing events; motion handlers call
+/// it before applying a sample. Keeping the policy here gives every backend
+/// the same invalidation reason and teardown path.
+pub fn cancel_invalid_window_drag(ctx: &mut WmCtx<'_>) -> bool {
+    if window_drag_target_visible(ctx) {
+        return false;
+    }
+    crate::mouse::interaction::cancel_pointer_capture(
+        ctx,
+        crate::core_state::DragCancelReason::WindowHidden,
+    )
+}
+
 /// Apply one absolute motion sample to an engaged window drag.
 ///
 /// Handles the `Active` phase of `WindowDragState`: the press has already
@@ -225,11 +246,7 @@ pub fn window_drag_target_visible(ctx: &WmCtx<'_>) -> bool {
 pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     // The drag target may have been invalidated above the input layer since
     // the last sample. Cancel instead of steering an invisible window.
-    if !window_drag_target_visible(ctx) {
-        crate::mouse::interaction::cancel_pointer_capture(
-            ctx,
-            crate::core_state::DragCancelReason::WindowHidden,
-        );
+    if cancel_invalid_window_drag(ctx) {
         return false;
     }
     let Some(drag) = ctx.core().interaction().drag.active_interaction().cloned() else {
@@ -405,7 +422,7 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32)
 
 #[cfg(test)]
 mod tests {
-    use super::apply_active_drag_motion;
+    use super::{apply_active_drag_motion, window_drag_target_visible};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::types::{
         Client, ClientMode, InteractionSource, Monitor, MouseButton, Point, Rect, ResizeDirection,
@@ -589,15 +606,15 @@ mod tests {
         // Dragging a hidden window's bar title owns a hidden target by design.
         arm(&mut wm, true);
         wm.core.model.client_mut(win).unwrap().is_hidden = true;
-        assert!(crate::mouse::drag::window_drag_target_visible(&wm.ctx()));
+        assert!(window_drag_target_visible(&wm.ctx()));
         wm.core.interaction.drag.cancel_capture().unwrap();
 
         // The same drag armed on a visible window must invalidate when a
         // mid-press keybind hides the target.
         wm.core.model.client_mut(win).unwrap().is_hidden = false;
         arm(&mut wm, false);
-        assert!(crate::mouse::drag::window_drag_target_visible(&wm.ctx()));
+        assert!(window_drag_target_visible(&wm.ctx()));
         wm.core.model.client_mut(win).unwrap().is_hidden = true;
-        assert!(!crate::mouse::drag::window_drag_target_visible(&wm.ctx()));
+        assert!(!window_drag_target_visible(&wm.ctx()));
     }
 }
