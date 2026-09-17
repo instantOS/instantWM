@@ -262,6 +262,9 @@ pub enum DragCancelReason {
     /// A concurrent action (e.g. a mid-drag keybind switching tags) hid the
     /// dragged window while it stayed managed.
     WindowHidden,
+    /// The target remains managed but its monitor relationship is no longer
+    /// resolvable at a stable transaction boundary.
+    WindowUnavailable,
     SessionLocked,
     InputDeviceRemoved,
     InputCaptureLost,

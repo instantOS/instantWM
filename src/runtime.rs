@@ -64,6 +64,7 @@ pub fn event_loop_tick_with_options(
 
     {
         let mut ctx = wm.ctx();
+        let _ = crate::mouse::interaction::reconcile_capture(&mut ctx);
         ctx.redraw_bars_if_dirty();
     }
     TickResult {

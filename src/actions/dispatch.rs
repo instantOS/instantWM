@@ -40,11 +40,19 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
 /// arguments and rejected state changes are reported instead of silently
 /// succeeding.
 pub fn try_execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) -> Result<(), String> {
+    let result = try_execute_key_action_inner(ctx, action);
+    let _ = crate::mouse::interaction::reconcile_capture(ctx);
+    result
+}
+
+/// Execute one complete key-action transaction. Nested sequences stay inside
+/// this function so capture reconciliation observes only their final state.
+fn try_execute_key_action_inner(ctx: &mut WmCtx<'_>, action: &KeyAction) -> Result<(), String> {
     crate::overview::prepare_key_action(ctx, action);
     match action {
         KeyAction::Sequence(actions) => {
             for action in actions {
-                try_execute_key_action(ctx, action)?;
+                try_execute_key_action_inner(ctx, action)?;
             }
         }
         KeyAction::Named { action, args } => execute_named_action(ctx, *action, args)?,
@@ -89,6 +97,15 @@ pub fn try_execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) -> Result
 }
 
 pub fn execute_button_action(
+    ctx: &mut WmCtx<'_>,
+    action: &ButtonAction,
+    arg: crate::types::ButtonArg,
+) {
+    execute_button_action_inner(ctx, action, arg);
+    let _ = crate::mouse::interaction::reconcile_capture(ctx);
+}
+
+fn execute_button_action_inner(
     ctx: &mut WmCtx<'_>,
     action: &ButtonAction,
     arg: crate::types::ButtonArg,

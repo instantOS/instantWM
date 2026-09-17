@@ -152,16 +152,6 @@ pub fn begin_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     true
 }
 
-pub fn has_wm_interaction_grab(ctx: &WmCtxX11<'_>) -> bool {
-    matches!(
-        ctx.x11_runtime.active_pointer_grab,
-        Some(crate::backend::x11::ActivePointerGrab {
-            kind: PointerGrabKind::Interaction(_),
-            ..
-        })
-    )
-}
-
 /// Consume pointer events owned by an active WM interaction grab.
 ///
 /// Once shared state cancels, motion remains swallowed and the native grab is
@@ -217,13 +207,5 @@ pub fn dispatch_captured_pointer_event(
             true
         }
         _ => false,
-    }
-}
-
-/// Reconcile state changes caused by non-pointer events or IPC without ending
-/// native ownership before the corresponding physical release.
-pub fn reconcile_wm_interaction(ctx: &mut WmCtxX11<'_>) {
-    if has_wm_interaction_grab(ctx) {
-        let _ = crate::mouse::drag::cancel_invalid_window_drag(&mut WmCtx::X11(ctx.reborrow()));
     }
 }

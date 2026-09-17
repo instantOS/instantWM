@@ -27,8 +27,8 @@
 //!               └─► bottom-bar gesture
 //! ```
 //!
-//! X11's native grab loop and Wayland's event-driven pointer/touch adapters
-//! feed the same state machine. They do not implement gesture behavior.
+//! X11 and Wayland's event-driven pointer/touch adapters feed the same state
+//! machine. They do not implement gesture behavior.
 
 pub mod bindings;
 pub mod constants;

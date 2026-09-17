@@ -77,9 +77,8 @@ pub(crate) fn bar_local_x_on_monitor(
 }
 
 pub use interactive::{
-    active_drag_finish, apply_active_drag_motion, cancel_invalid_window_drag,
-    directional_resize_begin, directional_resize_begin_with_policy, hover_drag_begin,
-    tree_resize_begin,
+    active_drag_finish, apply_active_drag_motion, directional_resize_begin,
+    directional_resize_begin_with_policy, hover_drag_begin, tree_resize_begin,
 };
 
 /// Shared post-move-drag teardown used by both X11 and Wayland backends.

@@ -84,11 +84,60 @@ pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcom
     {
         return InteractionOutcome::Ignored;
     }
+    if !matches!(event.phase, InteractionPhase::Cancel { .. }) && reconcile_capture(ctx).is_some() {
+        // This event still belonged to the capture at arrival. Consume it even
+        // though reconciliation cancelled the now-invalid logical gesture.
+        return InteractionOutcome::Captured;
+    }
     match event.phase {
         InteractionPhase::Update => update(ctx, event),
         InteractionPhase::End { button, time_msec } => finish(ctx, event, button, time_msec),
         InteractionPhase::Cancel { reason } => cancel(ctx, reason),
     }
+}
+
+/// Reconcile a captured interaction against stable shared model state.
+///
+/// Backends call this at completed event/tick boundaries. Owner input events
+/// also pass through it before update or finish semantics are applied. Native
+/// input ownership is deliberately outside this function: X11 may retain a
+/// grab until physical release, while Wayland retains its protocol semantics.
+pub fn reconcile_capture(ctx: &mut WmCtx<'_>) -> Option<DragCancelReason> {
+    let reason = window_capture_invalidation(ctx)?;
+    cancel_capture(ctx, reason).then_some(reason)
+}
+
+fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
+    let state = ctx
+        .core()
+        .interaction()
+        .drag
+        .capture()
+        .and_then(|capture| match capture {
+            CapturedInteraction::Window(state) => Some(state),
+            _ => None,
+        })?;
+
+    let Some(client) = ctx.core().model().client(state.win()) else {
+        return Some(DragCancelReason::WindowDestroyed);
+    };
+    let Some(monitor) = ctx.core().model().monitor(client.monitor_id) else {
+        return Some(DragCancelReason::WindowUnavailable);
+    };
+
+    // A bar-title gesture may intentionally start on an explicitly hidden
+    // client. That exception covers only the hidden bit: changing workspace
+    // still invalidates the target.
+    let started_hidden = match state {
+        WindowDragState::Armed(drag) => drag.was_hidden(),
+        WindowDragState::Reordering(drag, _) => drag.was_hidden(),
+        WindowDragState::Active(_) => false,
+    };
+    let on_current_workspace = client.is_on_selected_tags(monitor.selected_tags());
+    if !on_current_workspace || (client.is_hidden && !started_hidden) {
+        return Some(DragCancelReason::WindowHidden);
+    }
+    None
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
@@ -167,19 +216,15 @@ fn finish(
 }
 
 fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
-    if cancel_pointer_capture(ctx, reason) {
+    if cancel_capture(ctx, reason) {
         InteractionOutcome::Captured
     } else {
         InteractionOutcome::Ignored
     }
 }
 
-/// Cancel the currently captured interaction for `reason`, if any.
-///
-/// Besides transport-dispatched `Cancel` phases, gestures can be invalidated
-/// above the input layer — e.g. a concurrent action hiding the dragged
-/// window mid-drag. Returns `true` when something was cancelled.
-pub fn cancel_pointer_capture(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> bool {
+/// Cancel the currently captured pointer or touch interaction for `reason`.
+fn cancel_capture(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> bool {
     let (cancelled_interactive, cancelled_other) = ctx.transition_pointer_interaction(|drag| {
         let cancelled_interactive = crate::mouse::drag::lifecycle::cancel(drag, reason).is_some();
         let cancelled_other = drag.cancel_capture().is_some();
@@ -247,6 +292,24 @@ mod tests {
             modifiers: 0,
             sidebar_hover: None,
         }
+    }
+
+    fn arm_title_drag(wm: &mut Wm, win: WindowId, was_hidden: bool) {
+        wm.core
+            .interaction
+            .drag
+            .arm_title_drag(crate::core_state::ArmedDragStart {
+                win,
+                button: MouseButton::Left,
+                source: InteractionSource::Pointer,
+                origin: crate::core_state::ArmedDragOrigin::BarTitle,
+                start: Point::new(150, 12),
+                restore_geometry: Rect::new(100, 100, 500, 300),
+                was_focused: false,
+                was_hidden,
+                suppress_click_action: true,
+            })
+            .unwrap();
     }
 
     #[test]
@@ -578,5 +641,134 @@ mod tests {
             InteractionOutcome::Ignored
         );
         assert!(wm.core.interaction.drag.active_interaction().is_some());
+    }
+
+    #[test]
+    fn owner_update_consumes_and_cancels_a_window_hidden_by_a_tag_change() {
+        for source in [InteractionSource::Pointer, InteractionSource::Touch(4)] {
+            let (mut wm, win) = floating_drag_fixture(source);
+            let monitor_id = wm.core.model.client(win).unwrap().monitor_id;
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .set_selected_tags(TagMask::single(2).unwrap());
+
+            assert_eq!(
+                handle(&mut wm.ctx(), update(source, Point::new(350, 275))),
+                InteractionOutcome::Captured
+            );
+            assert!(wm.core.interaction.drag.capture().is_none());
+            assert_eq!(
+                wm.core.model.client(win).unwrap().geo,
+                Rect::new(100, 100, 500, 300)
+            );
+        }
+    }
+
+    #[test]
+    fn wrong_source_does_not_reconcile_the_capture_owner() {
+        let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
+        let monitor_id = wm.core.model.client(win).unwrap().monitor_id;
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(2).unwrap());
+
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Touch(9), Point::new(350, 275))
+            ),
+            InteractionOutcome::Ignored
+        );
+        assert!(wm.core.interaction.drag.capture().is_some());
+
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(350, 275))
+            ),
+            InteractionOutcome::Captured
+        );
+        assert!(wm.core.interaction.drag.capture().is_none());
+    }
+
+    #[test]
+    fn reconciliation_reports_destroyed_and_unavailable_targets() {
+        let (mut destroyed_wm, win) = floating_drag_fixture(InteractionSource::Pointer);
+        assert!(destroyed_wm.core.model.remove_client(win).is_some());
+        assert_eq!(
+            reconcile_capture(&mut destroyed_wm.ctx()),
+            Some(DragCancelReason::WindowDestroyed)
+        );
+        assert!(destroyed_wm.core.interaction.drag.capture().is_none());
+
+        let (mut unavailable_wm, win) = floating_drag_fixture(InteractionSource::Pointer);
+        let stale_monitor = unavailable_wm.core.model.monitors.allocate_id();
+        unavailable_wm
+            .core
+            .model
+            .client_mut(win)
+            .unwrap()
+            .monitor_id = stale_monitor;
+        assert_eq!(
+            reconcile_capture(&mut unavailable_wm.ctx()),
+            Some(DragCancelReason::WindowUnavailable)
+        );
+        assert!(unavailable_wm.core.interaction.drag.capture().is_none());
+    }
+
+    #[test]
+    fn an_armed_hidden_title_remains_valid_only_on_its_original_workspace() {
+        let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
+        wm.core.interaction.drag.cancel_capture().unwrap();
+        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        arm_title_drag(&mut wm, win, true);
+
+        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert!(wm.core.interaction.drag.capture().is_some());
+
+        let monitor_id = wm.core.model.client(win).unwrap().monitor_id;
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(2).unwrap());
+        assert_eq!(
+            reconcile_capture(&mut wm.ctx()),
+            Some(DragCancelReason::WindowHidden)
+        );
+        assert!(wm.core.interaction.drag.capture().is_none());
+    }
+
+    #[test]
+    fn an_armed_visible_title_cancels_when_explicitly_hidden() {
+        let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
+        wm.core.interaction.drag.cancel_capture().unwrap();
+        arm_title_drag(&mut wm, win, false);
+
+        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        assert_eq!(
+            reconcile_capture(&mut wm.ctx()),
+            Some(DragCancelReason::WindowHidden)
+        );
+        assert!(wm.core.interaction.drag.capture().is_none());
+    }
+
+    #[test]
+    fn reconciliation_does_not_apply_window_policy_to_other_captures() {
+        let (mut wm, monitor_id) = bottom_bar_fixture();
+        begin_bottom_bar_drag(&mut wm, monitor_id, Point::new(100, 1060));
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(3).unwrap());
+
+        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert!(wm.core.interaction.drag.bottom_bar_gesture_active());
     }
 }

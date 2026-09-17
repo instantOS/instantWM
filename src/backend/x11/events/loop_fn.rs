@@ -84,12 +84,6 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
             crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
 
-            // IPC and other calloop sources may invalidate a captured target.
-            let ctx = wm.ctx();
-            if let crate::contexts::WmCtx::X11(mut ctx) = ctx {
-                crate::backend::x11::grab::reconcile_wm_interaction(&mut ctx);
-            }
-
             // X11 focus is projected synchronously. End the shared selection
             // transaction here so changes from separate ticks never coalesce.
             let _ = wm.focus.take_pending_selection();
@@ -136,12 +130,12 @@ fn drain_x11_events(wm: &mut Wm) {
                 // Collapse a queued run into one root-position snapshot so a
                 // high-rate device cannot force one synchronous QueryPointer
                 // round trip per sample.
-                if !has_wm_interaction_grab(wm) {
+                if !has_native_interaction_grab(wm) {
                     raw_motion_pending = true;
                 }
             }
             Ok(Some(event @ x11rb::protocol::Event::MotionNotify(_)))
-                if has_wm_interaction_grab(wm) =>
+                if has_native_interaction_grab(wm) =>
             {
                 // Active grabs use core motion because XI2 raw delivery is not
                 // guaranteed. Keep only the newest absolute sample in a run.
@@ -182,7 +176,11 @@ fn drain_x11_events(wm: &mut Wm) {
     }
 }
 
-fn has_wm_interaction_grab(wm: &Wm) -> bool {
+/// Whether X11 currently owns the physical pointer for a shared interaction.
+///
+/// This is transport state only. Logical capture validity is reconciled by
+/// `mouse::interaction`, independently of the backend.
+fn has_native_interaction_grab(wm: &Wm) -> bool {
     wm.backend.x11_data().is_some_and(|data| {
         matches!(
             data.x11_runtime.active_pointer_grab,
@@ -341,5 +339,7 @@ pub(crate) fn dispatch_event_in_context(
         x11rb::protocol::Event::LeaveNotify(e) => handlers::leave_notify(ctx, e),
         _ => {}
     };
-    crate::backend::x11::grab::reconcile_wm_interaction(ctx);
+    let _ = crate::mouse::interaction::reconcile_capture(&mut crate::contexts::WmCtx::X11(
+        ctx.reborrow(),
+    ));
 }
