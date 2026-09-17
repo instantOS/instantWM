@@ -18,11 +18,16 @@ pacman -S --noconfirm --needed \
   git \
   cmake \
   jq \
+  python \
   pacman-contrib \
   fzf \
   sudo \
   xorg-server \
   xorg-server-xvfb \
+  xorg-xev \
+  xorg-xmessage \
+  xorg-xprop \
+  xdotool \
   libx11 \
   libxext \
   libxrandr \

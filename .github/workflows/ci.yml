@@ -45,6 +45,10 @@ jobs:
         run: cargo test --locked --verbose
       - name: Build debug binary
         run: cargo build --locked
+      - name: Run X11 integration tests
+        run: |
+          xvfb-run -a cargo test --locked backend::x11::draw::context::text::tests -- --ignored --test-threads=1
+          python tests/x11_drag.py
       # Note: E2E tests require a running Wayland compositor and seatd session
       # They are best run locally or on a dedicated CI runner with display support
       # To run e2e tests locally: ./tests/e2e.sh
