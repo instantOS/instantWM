@@ -259,6 +259,9 @@ pub struct DragNotArmed;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DragCancelReason {
     WindowDestroyed,
+    /// A concurrent action (e.g. a mid-drag keybind switching tags) hid the
+    /// dragged window while it stayed managed.
+    WindowHidden,
     SessionLocked,
     InputDeviceRemoved,
     InputCaptureLost,

@@ -157,6 +157,19 @@ fn finish(
 }
 
 fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
+    if cancel_pointer_capture(ctx, reason) {
+        InteractionOutcome::Captured
+    } else {
+        InteractionOutcome::Ignored
+    }
+}
+
+/// Cancel the currently captured interaction for `reason`, if any.
+///
+/// Besides transport-dispatched `Cancel` phases, gestures can be invalidated
+/// above the input layer — e.g. a concurrent action hiding the dragged
+/// window mid-drag. Returns `true` when something was cancelled.
+pub fn cancel_pointer_capture(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> bool {
     let (cancelled_interactive, cancelled_other) = ctx.transition_pointer_interaction(|drag| {
         let cancelled_interactive = crate::mouse::drag::lifecycle::cancel(drag, reason).is_some();
         let cancelled_other = drag.cancel_capture().is_some();
@@ -166,9 +179,9 @@ fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
         ctx.core_mut().bar.hover.clear();
         ctx.update_layout_preview(None);
         ctx.request_bar_update();
-        InteractionOutcome::Captured
+        true
     } else {
-        InteractionOutcome::Ignored
+        false
     }
 }
 
@@ -223,6 +236,37 @@ mod tests {
             root,
             modifiers: 0,
             sidebar_hover: None,
+        }
+    }
+
+    #[test]
+    fn removing_drag_target_cancels_pointer_and_touch_before_late_input() {
+        for source in [InteractionSource::Pointer, InteractionSource::Touch(4)] {
+            let (mut wm, win) = floating_drag_fixture(source);
+            assert!(crate::client::lifecycle::remove_managed_client(&mut wm.ctx(), win).is_some());
+            assert!(wm.core.interaction.drag.capture().is_none());
+            assert!(wm.core.model.client(win).is_none());
+            for phase in [
+                InteractionPhase::Update,
+                InteractionPhase::End {
+                    button: MouseButton::Left,
+                    time_msec: 1,
+                },
+            ] {
+                assert_eq!(
+                    handle(
+                        &mut wm.ctx(),
+                        InteractionEvent {
+                            source,
+                            phase,
+                            root: Point::new(350, 275),
+                            modifiers: 0,
+                            sidebar_hover: None,
+                        }
+                    ),
+                    InteractionOutcome::Ignored
+                );
+            }
         }
     }
 

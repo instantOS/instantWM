@@ -3,20 +3,9 @@
 //! This module adapts X11's modal pointer grab to the shared WM interaction
 //! transport. Gesture recognition and behavior do not live here.
 //!
-//! # Typical drag loop skeleton
-//!
-//! ```text
-//! if !grab_pointer(ctx, x11_runtime, cursor) { return; }
-//! loop {
-//!     let Some(event) = wait_event(ctx) else { break };
-//!     match event {
-//!         ButtonRelease(_) => break,
-//!         MotionNotify(m)  => { /* update geometry */ }
-//!         _                => {}
-//!     }
-//! }
-//! ungrab(&x11, x11_runtime);
-//! ```
+//! Captured pointer events are handled here; other events go through the same
+//! protocol dispatcher as the main loop. A pointer grab must never suppress
+//! window lifecycle or property updates.
 
 use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
 use crate::contexts::{WmCtx, WmCtxX11};
@@ -161,33 +150,9 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
 
 /// Dispatch an event consumed by X11's modal pointer loop.
 fn dispatch_grabbed_event(ctx: &mut WmCtxX11<'_>, event: &x11rb::protocol::Event) {
-    // The modal grab loop consumes X11 events before the normal calloop
-    // dispatcher can see them. Preserve bar damage notifications here; the
-    // following deferred-work pump will coalesce and render them.
-    if let x11rb::protocol::Event::Expose(expose) = event {
-        crate::backend::x11::events::handlers::expose(ctx, expose);
-        return;
-    }
-    if let x11rb::protocol::Event::XinputTouchBegin(touch) = event {
-        crate::backend::x11::events::handlers::touch_begin(ctx, touch);
-        return;
-    }
-
-    // A dragged window can be closed by its own application mid-drag (e.g. an
-    // updater that finishes while the pointer grab is held). Its `UnmapNotify`
-    // and `DestroyNotify` then arrive while this loop owns the connection and
-    // used to be dropped, leaving the client managed forever — a ghost title in
-    // the bar. Dispatch lifecycle events so unmanage runs as usual; the
-    // drag state itself is cancelled by `remove_managed_client`.
-    if let x11rb::protocol::Event::DestroyNotify(e) = event {
-        crate::backend::x11::events::handlers::destroy_notify(ctx, e);
-        return;
-    }
-    if let x11rb::protocol::Event::UnmapNotify(e) = event {
-        crate::backend::x11::events::handlers::unmap_notify(ctx, e);
-        return;
-    }
-
+    // Only captured pointer input belongs to this adapter. All other protocol
+    // events use the same dispatcher as the main loop, including future handlers.
+    // In particular, never discard lifecycle, map, property or configure events.
     if let x11rb::protocol::Event::MotionNotify(motion) = event {
         let _ = crate::mouse::interaction::handle(
             &mut WmCtx::X11(ctx.reborrow()),
@@ -196,7 +161,53 @@ fn dispatch_grabbed_event(ctx: &mut WmCtxX11<'_>, event: &x11rb::protocol::Event
                 u16::from(motion.state) as u32,
             ),
         );
+    } else if !matches!(
+        event,
+        x11rb::protocol::Event::ButtonPress(_) | x11rb::protocol::Event::ButtonRelease(_)
+    ) {
+        // Additional button presses must not start a nested pointer interaction;
+        // the matching release is handled by the loop itself.
+        crate::backend::x11::events::loop_fn::dispatch_event_in_context(ctx, event);
     }
+}
+
+fn owns_pointer_capture(ctx: &WmCtxX11<'_>, btn: MouseButton) -> bool {
+    ctx.core.interaction().drag.captured_button() == Some(btn)
+        && ctx.core.interaction().drag.captured_source()
+            == Some(crate::types::InteractionSource::Pointer)
+}
+
+/// A transport-level `Cancel` event for the pointer source.
+fn cancel_event(
+    reason: crate::core_state::DragCancelReason,
+) -> crate::mouse::interaction::InteractionEvent {
+    crate::mouse::interaction::InteractionEvent {
+        source: crate::types::InteractionSource::Pointer,
+        phase: crate::mouse::interaction::InteractionPhase::Cancel { reason },
+        root: Default::default(),
+        modifiers: 0,
+        sidebar_hover: None,
+    }
+}
+
+/// Re-check that the modal loop still owns a drivable capture.
+///
+/// Events dispatched inside the loop can end the interaction themselves (a
+/// lifecycle event cancelling the capture, a quit binding) or invalidate it:
+/// a keybind that switches tags hides the dragged window while it stays
+/// managed, and the loop must cancel instead of steering an invisible window.
+fn capture_remains_drivable(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
+    if !owns_pointer_capture(ctx, btn) || !ctx.core.is_running() {
+        return false;
+    }
+    if !crate::mouse::drag::window_drag_target_visible(&WmCtx::X11(ctx.reborrow())) {
+        let _ = crate::mouse::interaction::handle(
+            &mut WmCtx::X11(ctx.reborrow()),
+            cancel_event(crate::core_state::DragCancelReason::WindowHidden),
+        );
+        return false;
+    }
+    true
 }
 
 /// Generic X11 mouse-drag event loop.
@@ -260,8 +271,14 @@ fn run_interaction_grab_loop(
                             dispatch_grabbed_event(ctx, &next_evt);
                             pump_deferred_work(ctx);
 
-                            // We've processed the peeked event; continue the
-                            // main loop without applying the motion twice.
+                            // A lifecycle event or action may have cancelled
+                            // capture or hidden the dragged window. Do not
+                            // block waiting for a release after its target
+                            // has disappeared.
+                            if !capture_remains_drivable(ctx, btn) {
+                                break 'events;
+                            }
+                            // Do not apply the compressed motion twice.
                             continue 'events;
                         }
                     }
@@ -291,7 +308,7 @@ fn run_interaction_grab_loop(
 
         pump_deferred_work(ctx);
 
-        if !should_continue {
+        if !should_continue || !capture_remains_drivable(ctx, btn) {
             break;
         }
     }
@@ -307,10 +324,7 @@ fn run_interaction_grab_loop(
 /// Gesture semantics remain in `mouse::interaction`, alongside Wayland
 /// pointer and touch handling.
 pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    if ctx.core.interaction().drag.captured_button() != Some(btn)
-        || ctx.core.interaction().drag.captured_source()
-            != Some(crate::types::InteractionSource::Pointer)
-    {
+    if !owns_pointer_capture(ctx, btn) {
         return false;
     }
     let cursor = ctx.core.interaction().drag.projection().cursor;
@@ -320,15 +334,7 @@ pub fn drive_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     let Some(release) = release else {
         let _ = crate::mouse::interaction::handle(
             &mut crate::contexts::WmCtx::X11(ctx.reborrow()),
-            crate::mouse::interaction::InteractionEvent {
-                source: crate::types::InteractionSource::Pointer,
-                phase: crate::mouse::interaction::InteractionPhase::Cancel {
-                    reason: crate::core_state::DragCancelReason::InputCaptureLost,
-                },
-                root: Default::default(),
-                modifiers: 0,
-                sidebar_hover: None,
-            },
+            cancel_event(crate::core_state::DragCancelReason::InputCaptureLost),
         );
         return true;
     };

@@ -620,21 +620,7 @@ fn finalize_wayland_client(
 }
 
 fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
-    let mut ctx = wm.ctx();
-    let cancelled_drag = ctx
-        .transition_pointer_interaction(|drag| {
-            crate::mouse::drag::lifecycle::cancel_window(
-                drag,
-                win,
-                crate::core_state::DragCancelReason::WindowDestroyed,
-            )
-        })
-        .is_some();
-    if cancelled_drag {
-        ctx.update_layout_preview(None);
-        crate::mouse::drag::clear_bar_hover(&mut ctx);
-    }
-    crate::client::lifecycle::remove_managed_client(&mut ctx, win);
+    crate::client::lifecycle::remove_managed_client(&mut wm.ctx(), win);
 }
 
 fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelReason) {

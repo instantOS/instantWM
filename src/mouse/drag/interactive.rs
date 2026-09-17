@@ -181,6 +181,37 @@ pub fn hover_drag_begin(
     true
 }
 
+/// Whether the captured window drag's target can still be visibly steered.
+///
+/// A concurrent action dispatched mid-drag (a keybind switching tags, an IPC
+/// command) can hide or retag the dragged window while it stays managed.
+/// Vacuously `true` when no window drag is captured, so non-window captures
+/// are unaffected. Bar-title drags that started on a hidden window
+/// (`was_hidden`) own a hidden target by design and stay valid.
+pub fn window_drag_target_visible(ctx: &WmCtx<'_>) -> bool {
+    let Some(state) = ctx.core().interaction().drag.capture().and_then(|capture| match capture {
+        crate::core_state::CapturedInteraction::Window(state) => Some(state),
+        _ => None,
+    }) else {
+        return true;
+    };
+    let started_hidden = match state {
+        crate::core_state::WindowDragState::Armed(drag) => drag.was_hidden(),
+        crate::core_state::WindowDragState::Reordering(drag, _) => drag.was_hidden(),
+        crate::core_state::WindowDragState::Active(_) => false,
+    };
+    if started_hidden {
+        return true;
+    }
+    let Some(client) = ctx.core().model().client(state.win()) else {
+        return false;
+    };
+    let Some(monitor) = ctx.core().model().monitor(client.monitor_id) else {
+        return false;
+    };
+    client.is_visible(monitor.selected_tags())
+}
+
 /// Apply one absolute motion sample to an engaged window drag.
 ///
 /// Handles the `Active` phase of `WindowDragState`: the press has already
@@ -192,6 +223,15 @@ pub fn hover_drag_begin(
 /// not consumed); `true` when the sample was applied to the ongoing move,
 /// resize, or tree-resize.
 pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
+    // The drag target may have been invalidated above the input layer since
+    // the last sample. Cancel instead of steering an invisible window.
+    if !window_drag_target_visible(ctx) {
+        crate::mouse::interaction::cancel_pointer_capture(
+            ctx,
+            crate::core_state::DragCancelReason::WindowHidden,
+        );
+        return false;
+    }
     let Some(drag) = ctx.core().interaction().drag.active_interaction().cloned() else {
         return false;
     };
@@ -383,6 +423,11 @@ mod tests {
             ..Monitor::default()
         });
         wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
         let win = WindowId(17);
         let geometry = Rect::new(100, 100, 500, 300);
         wm.core.model.insert_client(Client {
@@ -433,5 +478,126 @@ mod tests {
             .unwrap();
 
         assert!(!apply_active_drag_motion(&mut wm.ctx(), Point::new(20, 10)));
+    }
+
+    #[test]
+    fn mid_drag_tag_switch_cancels_instead_of_steering_a_hidden_window() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
+        let win = WindowId(17);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::floating(),
+            geo: Rect::new(100, 100, 500, 300),
+            ..Client::default()
+        });
+        wm.core
+            .interaction
+            .drag
+            .begin_move(
+                win,
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(150, 150),
+                Rect::new(100, 100, 500, 300),
+            )
+            .unwrap();
+
+        // A mid-drag keybind views another tag: the window stays managed but
+        // is no longer on the monitor's selected tags.
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(2).unwrap());
+
+        // The next motion sample cancels the invalidated drag instead of
+        // steering the hidden window, and later samples are ignored.
+        assert!(!apply_active_drag_motion(
+            &mut wm.ctx(),
+            Point::new(350, 275)
+        ));
+        assert!(wm.core.interaction.drag.capture().is_none());
+        assert_eq!(
+            crate::mouse::interaction::handle(
+                &mut wm.ctx(),
+                crate::mouse::interaction::InteractionEvent::pointer_update(
+                    Point::new(360, 280),
+                    0
+                ),
+            ),
+            crate::mouse::interaction::InteractionOutcome::Ignored
+        );
+        // The window itself stays managed.
+        assert!(wm.core.model.client(win).is_some());
+    }
+
+    #[test]
+    fn armed_drag_of_a_visible_window_cancels_when_hidden_but_was_hidden_ones_stay_valid() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
+        let win = WindowId(17);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            geo: Rect::new(100, 100, 500, 300),
+            ..Client::default()
+        });
+        let arm = |wm: &mut Wm, was_hidden: bool| {
+            wm.core
+                .interaction
+                .drag
+                .arm_title_drag(crate::core_state::ArmedDragStart {
+                    win,
+                    button: MouseButton::Left,
+                    origin: crate::core_state::ArmedDragOrigin::BarTitle,
+                    source: InteractionSource::Pointer,
+                    start: Point::new(150, 12),
+                    restore_geometry: Rect::new(100, 100, 500, 300),
+                    was_focused: false,
+                    was_hidden,
+                    suppress_click_action: true,
+                })
+                .unwrap();
+        };
+
+        // Dragging a hidden window's bar title owns a hidden target by design.
+        arm(&mut wm, true);
+        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        assert!(crate::mouse::drag::window_drag_target_visible(&wm.ctx()));
+        wm.core.interaction.drag.cancel_capture().unwrap();
+
+        // The same drag armed on a visible window must invalidate when a
+        // mid-press keybind hides the target.
+        wm.core.model.client_mut(win).unwrap().is_hidden = false;
+        arm(&mut wm, false);
+        assert!(crate::mouse::drag::window_drag_target_visible(&wm.ctx()));
+        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        assert!(!crate::mouse::drag::window_drag_target_visible(&wm.ctx()));
     }
 }

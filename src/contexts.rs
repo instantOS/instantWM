@@ -116,6 +116,10 @@ impl<'a> CoreCtx<'a> {
         *self.running = false;
     }
 
+    pub fn is_running(&self) -> bool {
+        *self.running
+    }
+
     pub fn queue_layout_for_all_monitors(&mut self) {
         self.work.layout.mark_all();
     }

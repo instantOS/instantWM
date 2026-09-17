@@ -3,7 +3,54 @@ use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::WindowId;
 use x11rb::connection::Connection;
+use x11rb::errors::ReplyError;
+use x11rb::protocol::ErrorKind;
 use x11rb::protocol::xproto::*;
+use x11rb::x11_utils::X11Error;
+
+#[cfg(test)]
+mod tests;
+
+/// Recover a managed client whose destruction notification was missed.
+///
+/// Errors are asynchronous: by the time we see BadWindow, its XID may belong
+/// to a live replacement. Confirm that this specific window is still absent
+/// before using the ordinary destroyed-client cleanup path. Connection failures
+/// and unrelated protocol errors are not evidence of destruction.
+pub fn handle_x11_error(ctx: &mut WmCtxX11<'_>, error: &X11Error) {
+    let stale = confirmed_stale_client(ctx.core.model(), error, |window| {
+        ctx.x11
+            .conn
+            .get_window_attributes(window)
+            .map_err(ReplyError::from)?
+            .reply()
+            .map(|_| ())
+    });
+    if let Some(window) = stale {
+        log::debug!("Recovering stale X11 client {window:?} after BadWindow");
+        unmanage(ctx, window, true);
+    }
+}
+
+fn confirmed_stale_client(
+    model: &crate::model::WmModel,
+    error: &X11Error,
+    query_attributes: impl FnOnce(Window) -> Result<(), ReplyError>,
+) -> Option<WindowId> {
+    if error.error_kind != ErrorKind::Window {
+        return None;
+    }
+    let window = WindowId::from(error.bad_value);
+    model.client(window)?;
+    match query_attributes(error.bad_value) {
+        Err(ReplyError::X11Error(reply))
+            if reply.error_kind == ErrorKind::Window && reply.bad_value == error.bad_value =>
+        {
+            Some(window)
+        }
+        _ => None,
+    }
+}
 
 pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     let event_win = WindowId::from(e.window);

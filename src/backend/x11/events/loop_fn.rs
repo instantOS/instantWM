@@ -266,34 +266,42 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         return;
     };
 
+    dispatch_event_in_context(&mut ctx, &event);
+}
+
+/// The single protocol dispatcher, shared by the main loop and pointer capture.
+/// Capture-specific input is intercepted by the grab adapter, not duplicated here.
+pub(crate) fn dispatch_event_in_context(
+    ctx: &mut crate::contexts::WmCtxX11<'_>,
+    event: &x11rb::protocol::Event,
+) {
     match event {
-        x11rb::protocol::Event::ButtonPress(e) => handlers::button_press(&mut ctx, &e),
-        x11rb::protocol::Event::ClientMessage(e) => handlers::client_message(&mut ctx, &e),
-        x11rb::protocol::Event::ConfigureNotify(e) => handlers::configure_notify(&mut ctx, &e),
-        x11rb::protocol::Event::ConfigureRequest(e) => handlers::configure_request(&mut ctx, &e),
-        x11rb::protocol::Event::DestroyNotify(e) => handlers::destroy_notify(&mut ctx, &e),
-        x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(&mut ctx, &e),
-        x11rb::protocol::Event::Expose(e) => handlers::expose(&mut ctx, &e),
-        x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(&mut ctx, &e),
-        x11rb::protocol::Event::KeyPress(e) => {
-            crate::backend::x11::keyboard::key_press(&mut ctx, &e)
-        }
-        x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
-        x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
-        x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),
-        x11rb::protocol::Event::RandrNotify(_) => handlers::randr_notify(&mut ctx),
+        x11rb::protocol::Event::Error(e) => handlers::handle_x11_error(ctx, e),
+        x11rb::protocol::Event::ButtonPress(e) => handlers::button_press(ctx, e),
+        x11rb::protocol::Event::ClientMessage(e) => handlers::client_message(ctx, e),
+        x11rb::protocol::Event::ConfigureNotify(e) => handlers::configure_notify(ctx, e),
+        x11rb::protocol::Event::ConfigureRequest(e) => handlers::configure_request(ctx, e),
+        x11rb::protocol::Event::DestroyNotify(e) => handlers::destroy_notify(ctx, e),
+        x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(ctx, e),
+        x11rb::protocol::Event::Expose(e) => handlers::expose(ctx, e),
+        x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(ctx, e),
+        x11rb::protocol::Event::KeyPress(e) => crate::backend::x11::keyboard::key_press(ctx, e),
+        x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(ctx, e),
+        x11rb::protocol::Event::MapRequest(e) => handlers::map_request(ctx, e),
+        x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(ctx, e),
+        x11rb::protocol::Event::RandrNotify(_) => handlers::randr_notify(ctx),
         x11rb::protocol::Event::RandrScreenChangeNotify(e) => {
-            handlers::randr_screen_change_notify(&mut ctx, &e)
+            handlers::randr_screen_change_notify(ctx, e)
         }
         // Raw motion is coalesced by `drain_x11_events`; dispatching an
         // individual sample would reintroduce a QueryPointer round trip per
         // device event.
         x11rb::protocol::Event::XinputRawMotion(_) => {}
-        x11rb::protocol::Event::XinputTouchBegin(e) => handlers::touch_begin(&mut ctx, &e),
-        x11rb::protocol::Event::PropertyNotify(e) => handlers::property_notify(&mut ctx, &e),
-        x11rb::protocol::Event::ResizeRequest(e) => handlers::resize_request(&mut ctx, &e),
-        x11rb::protocol::Event::UnmapNotify(e) => handlers::unmap_notify(&mut ctx, &e),
-        x11rb::protocol::Event::LeaveNotify(e) => handlers::leave_notify(&mut ctx, &e),
+        x11rb::protocol::Event::XinputTouchBegin(e) => handlers::touch_begin(ctx, e),
+        x11rb::protocol::Event::PropertyNotify(e) => handlers::property_notify(ctx, e),
+        x11rb::protocol::Event::ResizeRequest(e) => handlers::resize_request(ctx, e),
+        x11rb::protocol::Event::UnmapNotify(e) => handlers::unmap_notify(ctx, e),
+        x11rb::protocol::Event::LeaveNotify(e) => handlers::leave_notify(ctx, e),
         _ => {}
     };
 }
