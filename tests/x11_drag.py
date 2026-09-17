@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """X11 capture regressions on a private Xvfb (debug binaries must be built).
 
-Requires Xvfb, xdotool, xmessage, xprop and an icon font for the normal bar.
+Requires Xvfb, xdotool, xmessage, xprop, xev, stdbuf and an icon font for the normal bar.
 No running desktop is needed. All child processes and input belong to our Xvfb.
 """
 import json
@@ -26,7 +26,7 @@ def wait_for(check, description, timeout=8):
 
 
 def main():
-    for tool in ("Xvfb", "xdotool", "xmessage", "xprop"):
+    for tool in ("Xvfb", "xdotool", "xmessage", "xprop", "xev", "stdbuf"):
         if not shutil.which(tool):
             raise SystemExit(f"Missing test dependency: {tool}")
     processes = []
@@ -80,41 +80,37 @@ def main():
                         wait_for(lambda: any(w["id"] == window for w in windows()), f"{name} managed")
                     return process, window
 
-                def captured():
-                    # A held modal grab keeps the WM's IPC unanswerable
-                    # indefinitely, so require two consecutive timeouts: a
-                    # one-off scheduling stall must not read as a capture.
-                    for _ in range(2):
-                        try:
-                            ctl("status", timeout=0.25)
-                        except subprocess.TimeoutExpired:
-                            continue
-                        return False
-                    return True
+                def geometry(window):
+                    return next(w["geometry"] for w in windows() if w["id"] == window)
 
                 def begin(window):
                     ctl("window", "focus", str(window))
-                    geometry = next(w["geometry"] for w in windows() if w["id"] == window)
-                    x, y = geometry["x"] + geometry["width"] // 2, geometry["y"] + geometry["height"] // 2
+                    initial = geometry(window)
+                    x = initial["x"] + initial["width"] // 2
+                    y = initial["y"] + initial["height"] // 2
                     run("xdotool", "mousemove", str(x), str(y), "keydown", "Super_L", "mousedown", "1")
-                    time.sleep(0.1)
                     # Keep the pointer moving while polling for engagement: a
                     # busy WM can process the press after the first follow-up
                     # motion, so no single motion sample may be load-bearing.
                     deadline = time.monotonic() + 5
                     offset = 70
-                    while not captured():
-                        if time.monotonic() > deadline:
-                            raise AssertionError("Test did not engage the modal pointer capture")
+                    while True:
                         offset += 10
                         run("xdotool", "mousemove", str(x + offset), str(y + offset // 2))
+                        current = geometry(window)
+                        if (current["x"], current["y"]) != (initial["x"], initial["y"]):
+                            # Capture is event-loop driven: control-plane work
+                            # remains responsive while the button is held.
+                            assert ctl("status", timeout=0.5).returncode == 0
+                            return current
+                        if time.monotonic() > deadline:
+                            raise AssertionError("Test did not engage pointer capture")
 
                 def release():
                     run("xdotool", "mouseup", "1", "keyup", "Super_L")
                     wait_for(ready, "main loop after release")
 
                 def client_ids():
-                    # Root EWMH state is observable even while IPC is blocked by capture.
                     result = run("xprop", "-root", "_NET_CLIENT_LIST").stdout
                     return [int(token.strip(","), 16) for token in result.split() if token.startswith("0x")]
 
@@ -128,7 +124,10 @@ def main():
                 second.terminate()
                 second.wait(timeout=3)
                 wait_for(lambda: second_id not in client_ids(), "unrelated destruction")
-                assert captured(), "Unrelated destruction cancelled the dragged window"
+                before = geometry(first_id)
+                run("xdotool", "mousemove_relative", "--", "40", "20")
+                wait_for(lambda: geometry(first_id) != before,
+                         "drag remains active after unrelated destruction")
                 release()
                 wait_for(lambda: any(w["title"] == "updated-during-drag" for w in windows()), "PropertyNotify forwarded")
                 first.terminate()
@@ -136,8 +135,8 @@ def main():
                 wait_for(lambda: not windows(), "control removal")
                 print("PASS: map/property forwarding and unrelated-window removal")
 
-                # Both destroy and unmap must remove the target and return to the
-                # main loop before mouse-up; subsequent motion/release must be safe.
+                # Both destroy and unmap must remove the target before mouse-up;
+                # subsequent motion/release must be safe.
                 for operation in ("destroy", "unmap"):
                     process, window = spawn(f"iwm-drag-{operation}")
                     begin(window)
@@ -146,8 +145,8 @@ def main():
                         process.wait(timeout=3)
                     else:
                         run("xdotool", "windowunmap", str(window))
-                    wait_for(ready, f"capture cancelled after {operation}, before mouse-up")
-                    assert window not in [w["id"] for w in windows()], f"Ghost after {operation}"
+                    wait_for(lambda: window not in [w["id"] for w in windows()],
+                             f"capture cancelled after {operation}, before mouse-up")
                     run("xdotool", "mousemove", "800", "600")
                     release()
                     assert not windows(), f"Ghost after release following {operation}"
@@ -156,7 +155,47 @@ def main():
                         process.wait(timeout=3)
                     print(f"PASS: {operation} cancels capture and removes client before mouse-up")
 
-                # A keybind dispatched inside the grab loop that hides the
+                # Cancelling logical interaction state must retain native
+                # ownership until release, so another client cannot receive a
+                # ButtonRelease for a press it never saw.
+                watcher = subprocess.Popen(
+                    ["stdbuf", "-oL", "xev", "-name", "iwm-release-sink", "-event", "button"],
+                    env=env, text=True, stdout=subprocess.PIPE, stderr=log)
+                processes.append(watcher)
+                sink_id = wait_for(
+                    lambda: (lambda result: int(result.stdout.splitlines()[0])
+                             if result.stdout.strip() else None)(
+                                 run("xdotool", "search", "--name", "^iwm-release-sink$", check=False)),
+                    "release sink X window")
+                wait_for(lambda: any(w["id"] == sink_id for w in windows()),
+                         "release sink managed")
+                time.sleep(0.1)  # Let xev install its event mask before release.
+                victim, victim_id = spawn("iwm-release-victim")
+                ctl("window", "focus", str(victim_id))
+                ctl("action", "toggle_floating")
+                begin(victim_id)
+                victim.kill()
+                victim.wait(timeout=3)
+                wait_for(lambda: victim_id not in [w["id"] for w in windows()],
+                         "release victim removed")
+                sink_geo = geometry(sink_id)
+                run("xdotool", "mousemove",
+                    str(sink_geo["x"] + sink_geo["width"] // 2),
+                    str(sink_geo["y"] + sink_geo["height"] // 2))
+                release()
+                # Prove the watcher is live with an ordinary post-grab click;
+                # only the quarantined initiating button must be absent.
+                run("xdotool", "click", "3")
+                time.sleep(0.1)
+                watcher.terminate()
+                sink_output, _ = watcher.communicate(timeout=3)
+                assert "button 3," in sink_output, sink_output
+                assert "button 1," not in sink_output, sink_output
+                wait_for(lambda: sink_id not in [w["id"] for w in windows()],
+                         "release sink removed")
+                print("PASS: early cancellation quarantines the matching release")
+
+                # A keybind dispatched during capture that hides the
                 # dragged window (Super+2 views another tag) must cancel the
                 # capture instead of steering the parked window.
                 process, window = spawn("iwm-drag-keybind")
@@ -168,7 +207,6 @@ def main():
                     return int(fields["X"]) < 0
 
                 run("xdotool", "key", "2")  # Super is still held by begin()
-                wait_for(ready, "capture cancelled after tag-switch keybind, before mouse-up")
                 desktop = run("xprop", "-root", "_NET_CURRENT_DESKTOP").stdout
                 assert desktop.strip().endswith("= 1"), f"Tag switch did not apply: {desktop}"
                 wait_for(parked_off_screen, "target parked off-screen by tag switch")
