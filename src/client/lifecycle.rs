@@ -19,6 +19,22 @@ pub(crate) fn remove_managed_client(
     ctx: &mut crate::contexts::WmCtx<'_>,
     win: WindowId,
 ) -> Option<crate::types::Client> {
+    // Cancel before removing the client so both backends reconcile the native
+    // interaction projection while the target's metadata is still available.
+    let cancelled_drag = ctx
+        .transition_pointer_interaction(|drag| {
+            crate::mouse::drag::lifecycle::cancel_window(
+                drag,
+                win,
+                crate::core_state::DragCancelReason::WindowDestroyed,
+            )
+        })
+        .is_some();
+    if cancelled_drag {
+        ctx.update_layout_preview(None);
+        crate::mouse::drag::clear_bar_hover(ctx);
+    }
+
     let previous_focus = ctx.core().model().selected_win();
     let removed = ctx
         .core_mut()

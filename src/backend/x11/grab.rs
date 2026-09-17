@@ -173,6 +173,21 @@ fn dispatch_grabbed_event(ctx: &mut WmCtxX11<'_>, event: &x11rb::protocol::Event
         return;
     }
 
+    // A dragged window can be closed by its own application mid-drag (e.g. an
+    // updater that finishes while the pointer grab is held). Its `UnmapNotify`
+    // and `DestroyNotify` then arrive while this loop owns the connection and
+    // used to be dropped, leaving the client managed forever — a ghost title in
+    // the bar. Dispatch lifecycle events so unmanage runs as usual; the
+    // drag state itself is cancelled by `remove_managed_client`.
+    if let x11rb::protocol::Event::DestroyNotify(e) = event {
+        crate::backend::x11::events::handlers::destroy_notify(ctx, e);
+        return;
+    }
+    if let x11rb::protocol::Event::UnmapNotify(e) = event {
+        crate::backend::x11::events::handlers::unmap_notify(ctx, e);
+        return;
+    }
+
     if let x11rb::protocol::Event::MotionNotify(motion) = event {
         let _ = crate::mouse::interaction::handle(
             &mut WmCtx::X11(ctx.reborrow()),
