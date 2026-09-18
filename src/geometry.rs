@@ -273,6 +273,13 @@ pub(crate) fn move_resize(
             ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
         }
         MoveResizeMode::AnimateTo | MoveResizeMode::AnimateFrom(_) => {
+            // Repeated integer coordinates (subpixel motion or edge snapping)
+            // must not discard and restart a transition to the same target.
+            if options.mode == MoveResizeMode::AnimateTo
+                && ctx.has_inflight_animation_to(win, final_rect)
+            {
+                return;
+            }
             let from = match options.mode {
                 MoveResizeMode::AnimateTo => ctx
                     .take_current_animation_rect(win, Instant::now())

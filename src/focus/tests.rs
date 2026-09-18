@@ -402,6 +402,44 @@ fn maximized_stack_uses_tree_order_and_excludes_floating_clients() {
 }
 
 #[test]
+fn maximized_cycle_skips_minimized_tree_positions() {
+    let tag = TagMask::single(1).unwrap();
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(tag);
+    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
+    monitor.per_tag_state().layout_tree.apply_preset(
+        crate::layouts::tree::Preset::MasterStack,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        1,
+    );
+    monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let mut client = Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            };
+            if win == WindowId(2) {
+                client.is_hidden = true;
+            }
+            (win, client)
+        })
+        .collect();
+
+    // The minimized entry keeps its title position but cannot receive focus.
+    assert_eq!(
+        monitor.bar_client_order(&clients),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+    assert_eq!(
+        get_visible_stack(&monitor, &clients),
+        vec![WindowId(1), WindowId(3)]
+    );
+}
+
+#[test]
 fn bounded_stack_navigation_follows_order_and_stops_at_outer_edges() {
     let order = [WindowId(3), WindowId(1), WindowId(4)];
 

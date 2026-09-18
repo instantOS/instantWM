@@ -164,6 +164,18 @@ impl Client {
         self.placement() == ClientPlacement::Tiling && self.is_visible(selected_tags)
     }
 
+    /// Whether this client holds a position in the persistent tree's order.
+    ///
+    /// In maximized presentation the tree is the tab/cycle order rather than a
+    /// tiling topology, so a hidden (minimized) tiled client keeps its leaf and
+    /// its bar title stays in place. Tiling geometry keeps using
+    /// [`Self::is_tiling_tree_member`], which excludes hidden clients so they
+    /// never claim tiling space.
+    #[inline]
+    pub fn is_tree_order_member(&self, selected_tags: TagMask) -> bool {
+        self.placement() == ClientPlacement::Tiling && self.is_on_selected_tags(selected_tags)
+    }
+
     /// Clear the urgency flag for this client.
     pub fn clear_urgency(&mut self) {
         self.is_urgent = false;

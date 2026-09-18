@@ -234,7 +234,11 @@ fn reconcile_manual_tree(
     resize_hints: bool,
     bar_height: i32,
 ) {
-    let tiled = monitor.collect_tiling_tree_members(clients);
+    // Maximized presentation reconciles the tree for order, not geometry: a
+    // hidden (minimized) client keeps its leaf so its bar title and cycle
+    // position survive minimization. The constraint computation below stays
+    // visibility-filtered, so hidden clients never claim tiling space.
+    let tiled = monitor.collect_tree_order_members(clients);
     let windows = tiled.iter().map(|client| client.win).collect::<Vec<_>>();
     let (placement, minimums) =
         compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);

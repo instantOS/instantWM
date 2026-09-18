@@ -302,3 +302,61 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
         vec![WindowId(3), WindowId(1), WindowId(2), WindowId(4)]
     );
 }
+
+#[test]
+fn minimized_tiled_titles_keep_their_position_in_maximized_presentation() {
+    let tag = TagMask::single(1).unwrap();
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(tag);
+    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
+    monitor.per_tag_state().layout_tree.apply_preset(
+        crate::layouts::tree::Preset::MasterStack,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        1,
+    );
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
+
+    let mut clients: HashMap<_, _> = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let client = Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            };
+            (win, client)
+        })
+        .collect();
+    clients.get_mut(&WindowId(2)).unwrap().is_hidden = true;
+
+    // Order role: minimizing via the bar must not move the title.
+    assert_eq!(
+        monitor.tiled_tree_order(&clients),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+    assert_eq!(
+        monitor.bar_client_order(&clients),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+
+    // The maximized arrange path retains the leaf for order maintenance.
+    let order_members = monitor.collect_tree_order_members(&clients);
+    let windows: Vec<_> = order_members.iter().map(|client| client.win).collect();
+    monitor.per_tag_state().layout_tree.reconcile_for_layout(
+        &windows,
+        crate::config::config_toml::NewWindowPlacement::default(),
+        Rect::new(0, 0, 800, 600),
+        &HashMap::new(),
+    );
+    assert_eq!(
+        monitor.per_tag().unwrap().layout_tree.leaves(),
+        vec![WindowId(1), WindowId(2), WindowId(3)],
+        "minimized client must keep its tree leaf"
+    );
+
+    // Geometry role stays visibility-filtered: the minimized client claims no
+    // tiling space.
+    assert_eq!(monitor.collect_tree_order_members(&clients).len(), 3);
+    assert_eq!(monitor.collect_tiling_tree_members(&clients).len(), 2);
+    assert_eq!(monitor.collect_tiled(&clients).len(), 2);
+}
