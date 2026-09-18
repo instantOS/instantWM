@@ -61,6 +61,80 @@ fn mode_refresh_millihertz(mode: &randr::ModeInfo) -> Option<u32> {
     u32::try_from(numerator / divisor).ok()
 }
 
+/// Return every mode advertised by a connected RandR output.
+pub fn get_output_modes(
+    conn: &RustConnection,
+    root: Window,
+    output_name: &str,
+) -> Vec<crate::backend::output::OutputMode> {
+    if let Some(resources) = conn
+        .randr_get_screen_resources_current(root)
+        .ok()
+        .and_then(|request| request.reply().ok())
+    {
+        let modes = output_modes_from_resources(
+            conn,
+            &resources.outputs,
+            resources.config_timestamp,
+            &resources.modes,
+            output_name,
+        );
+        if !modes.is_empty() {
+            return modes;
+        }
+    }
+
+    let Some(resources) = conn
+        .randr_get_screen_resources(root)
+        .ok()
+        .and_then(|request| request.reply().ok())
+    else {
+        return Vec::new();
+    };
+    output_modes_from_resources(
+        conn,
+        &resources.outputs,
+        resources.config_timestamp,
+        &resources.modes,
+        output_name,
+    )
+}
+
+fn output_modes_from_resources(
+    conn: &RustConnection,
+    output_ids: &[randr::Output],
+    config_timestamp: u32,
+    resource_modes: &[randr::ModeInfo],
+    output_name: &str,
+) -> Vec<crate::backend::output::OutputMode> {
+    let Some(output) = fetch_output_infos(conn, output_ids, config_timestamp)
+        .into_iter()
+        .map(|(_, output)| output)
+        .find(|output| {
+            output.connection == randr::Connection::CONNECTED
+                && String::from_utf8_lossy(&output.name) == output_name
+        })
+    else {
+        return Vec::new();
+    };
+
+    let mut modes: Vec<_> = output
+        .modes
+        .iter()
+        .filter_map(|id| resource_modes.iter().find(|mode| mode.id == *id))
+        .filter_map(|mode| {
+            Some(crate::backend::output::OutputMode {
+                width: i32::from(mode.width),
+                height: i32::from(mode.height),
+                refresh_millihertz: i32::try_from(mode_refresh_millihertz(mode)?).ok()?,
+            })
+        })
+        .collect();
+    modes.sort_by_key(|mode| (mode.width, mode.height, mode.refresh_millihertz));
+    modes.dedup();
+    modes
+}
+
 /// Get outputs using XRandR.
 ///
 /// Returns active outputs with their names and geometries.
