@@ -76,6 +76,16 @@ $SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland.desktop" "${DEST
 $SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
 $SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 
+# Remove orphans from the Jul 2026 session rename: the Wayland session used to
+# ship as wayland-sessions/instantwm.desktop (session id `instantwm`) with an
+# `instantwm-wayland` helper wrapper. That id collides with the X11 session id,
+# and GDM resolves same-basename collisions in favour of Wayland, so a leftover
+# file silently redirects "instantWM (X11)" logins into a Wayland session.
+# Package upgrades clean their own tracked files; these removals cover copies
+# left behind by earlier install.sh runs (e.g. under a different PREFIX).
+$SUPERTOOL rm -f "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+$SUPERTOOL rm -f "${DESTDIR}${PREFIX}/bin/instantwm-wayland" "${DESTDIR}/usr/bin/instantwm-wayland" "${DESTDIR}/usr/local/bin/instantwm-wayland"
+
 # Portal routing for Wayland screen sharing/screenshot support
 $SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-portals.conf" "${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
 

@@ -3,6 +3,6 @@ Name=instantWM (Wayland)
 Comment=instantOS window manager (Wayland)
 Exec=instantwm --backend drm
 TryExec=instantwm
-DesktopNames=instantwm
+DesktopNames=instantwm;
 Icon=instantwm
 Type=Application

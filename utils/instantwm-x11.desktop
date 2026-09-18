@@ -3,6 +3,6 @@ Name=instantWM (X11)
 Comment=instantOS window manager (X11)
 Exec=startinstantos
 TryExec=startinstantos
-DesktopNames=instantwm
+DesktopNames=instantwm;
 Icon=instantwm
 Type=Application

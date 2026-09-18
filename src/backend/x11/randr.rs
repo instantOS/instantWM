@@ -38,17 +38,27 @@ pub fn max_active_refresh_millihertz(conn: &RustConnection, root: Window) -> Opt
         .filter_map(|request| {
             let crtc = request.reply().ok()?;
             let mode = resources.modes.iter().find(|mode| mode.id == crtc.mode)?;
-            mode_refresh_millihertz(mode.dot_clock, mode.htotal, mode.vtotal)
+            mode_refresh_millihertz(mode)
         })
         .max()
 }
 
-fn mode_refresh_millihertz(dot_clock: u32, htotal: u16, vtotal: u16) -> Option<u32> {
-    let divisor = u64::from(htotal).checked_mul(u64::from(vtotal))?;
-    if dot_clock == 0 || divisor == 0 {
+fn mode_refresh_millihertz(mode: &randr::ModeInfo) -> Option<u32> {
+    let mut numerator = u64::from(mode.dot_clock).saturating_mul(1000);
+    let mut divisor = u64::from(mode.htotal).checked_mul(u64::from(mode.vtotal))?;
+    if numerator == 0 || divisor == 0 {
         return None;
     }
-    u32::try_from(u64::from(dot_clock).saturating_mul(1000) / divisor).ok()
+
+    let flags = u32::from(mode.mode_flags);
+    if flags & u32::from(randr::ModeFlag::INTERLACE) != 0 {
+        numerator = numerator.saturating_mul(2);
+    }
+    if flags & u32::from(randr::ModeFlag::DOUBLE_SCAN) != 0 {
+        divisor = divisor.saturating_mul(2);
+    }
+
+    u32::try_from(numerator / divisor).ok()
 }
 
 /// Get outputs using XRandR.
@@ -487,15 +497,12 @@ fn apply_output_config(
         return None;
     }
 
-    let mode = if let Some(ref resolution) = config.resolution {
-        parse_resolution(resolution)
-            .and_then(|(w, h)| find_mode_by_resolution(modes, w, h))
-            .or_else(|| find_preferred_mode(output_info, modes))
-    } else {
-        current_crtc
-            .and_then(|current| modes.iter().find(|mode| mode.id == current.mode).copied())
-            .or_else(|| find_preferred_mode(output_info, modes))
-    };
+    let mode = select_output_mode(
+        output_info,
+        current_crtc.map(|current| current.mode),
+        config,
+        modes,
+    );
 
     let mode_info = mode?;
 
@@ -672,6 +679,26 @@ fn set_framebuffer_size(conn: &RustConnection, root: Window, width: u16, height:
     }
 }
 
+/// Select the requested mode while preserving an active mode when the exact
+/// request is unavailable. This matches the Wayland backend's behavior and
+/// avoids unexpectedly switching to a preferred mode with another resolution.
+fn select_output_mode(
+    output_info: &randr::GetOutputInfoReply,
+    current_mode: Option<randr::Mode>,
+    config: &MonitorConfig,
+    modes: &[randr::ModeInfo],
+) -> Option<randr::ModeInfo> {
+    let requested = config.resolution.as_deref().and_then(|resolution| {
+        parse_resolution(resolution)
+            .and_then(|(w, h)| find_mode_by_resolution(modes, w, h, config.refresh_rate))
+    });
+    let current = current_mode.and_then(|id| modes.iter().find(|mode| mode.id == id).copied());
+
+    requested
+        .or(current)
+        .or_else(|| find_preferred_mode(output_info, modes))
+}
+
 /// Find the preferred mode for an output.
 ///
 /// The preferred mode is the first one in the output's modes list
@@ -687,16 +714,35 @@ fn find_preferred_mode(
         .and_then(|mode_id| modes.iter().find(|m| &m.id == mode_id).copied())
 }
 
-/// Find a mode by resolution.
+/// Find a mode by resolution, honouring an optional refresh-rate request.
+///
+/// `refresh_rate` is in Hz, matching `MonitorConfig::refresh_rate`. When set,
+/// only modes within 0.1 Hz of the request match (same tolerance as the
+/// Wayland backend); when unset, the first mode with the resolution wins, as
+/// before. Returns `None` when nothing matches so callers can preserve the
+/// current mode instead of silently applying the wrong refresh rate.
 fn find_mode_by_resolution(
     modes: &[randr::ModeInfo],
     width: u16,
     height: u16,
+    refresh_rate: Option<f32>,
 ) -> Option<randr::ModeInfo> {
     modes
         .iter()
-        .find(|m| m.width == width && m.height == height)
+        .filter(|m| m.width == width && m.height == height)
+        .find(|m| refresh_rate_matches(m, refresh_rate))
         .copied()
+}
+
+/// Whether a RandR mode satisfies an optional refresh-rate request in Hz.
+fn refresh_rate_matches(mode: &randr::ModeInfo, refresh_rate: Option<f32>) -> bool {
+    let Some(requested) = refresh_rate else {
+        return true;
+    };
+    let Some(actual) = mode_refresh_millihertz(mode) else {
+        return false;
+    };
+    (f64::from(actual) / 1000.0 - f64::from(requested)).abs() < 0.1
 }
 
 /// Parse a resolution string like "1920x1080".
@@ -748,7 +794,8 @@ fn collect_output_rects(
 mod refresh_tests {
     use super::{
         automatic_output_position, crtc_configuration_matches, effective_monitor_config,
-        mode_refresh_millihertz, new_auto_enable_candidates, planned_automatic_positions,
+        find_mode_by_resolution, mode_refresh_millihertz, new_auto_enable_candidates,
+        planned_automatic_positions, refresh_rate_matches, select_output_mode,
     };
     use crate::backend::{BackendOutputInfo, BackendVrrSupport};
     use crate::config::config_toml::MonitorConfig;
@@ -758,19 +805,126 @@ mod refresh_tests {
     #[test]
     fn calculates_standard_and_high_refresh_modes() {
         assert_eq!(
-            mode_refresh_millihertz(148_500_000, 2200, 1125),
+            mode_refresh_millihertz(&test_mode(1, 1920, 1080, 148_500_000, 2200, 1125)),
             Some(60_000)
         );
         assert_eq!(
-            mode_refresh_millihertz(585_953_280, 2720, 1496),
+            mode_refresh_millihertz(&test_mode(2, 2560, 1440, 585_953_280, 2720, 1496)),
             Some(144_000)
         );
     }
 
     #[test]
+    fn adjusts_refresh_for_interlaced_and_doublescan_modes() {
+        let mut mode = test_mode(1, 1920, 1080, 74_250_000, 2200, 1125);
+        mode.mode_flags = x11rb::protocol::randr::ModeFlag::INTERLACE;
+        assert_eq!(mode_refresh_millihertz(&mode), Some(60_000));
+
+        mode.dot_clock = 148_500_000;
+        mode.mode_flags = x11rb::protocol::randr::ModeFlag::DOUBLE_SCAN;
+        assert_eq!(mode_refresh_millihertz(&mode), Some(30_000));
+    }
+
+    #[test]
     fn rejects_incomplete_mode_timings() {
-        assert_eq!(mode_refresh_millihertz(0, 2200, 1125), None);
-        assert_eq!(mode_refresh_millihertz(148_500_000, 0, 1125), None);
+        assert_eq!(
+            mode_refresh_millihertz(&test_mode(1, 1920, 1080, 0, 2200, 1125)),
+            None
+        );
+        assert_eq!(
+            mode_refresh_millihertz(&test_mode(1, 1920, 1080, 148_500_000, 0, 1125)),
+            None
+        );
+    }
+
+    fn test_mode(
+        id: u32,
+        width: u16,
+        height: u16,
+        dot_clock: u32,
+        htotal: u16,
+        vtotal: u16,
+    ) -> x11rb::protocol::randr::ModeInfo {
+        x11rb::protocol::randr::ModeInfo {
+            id,
+            width,
+            height,
+            dot_clock,
+            htotal,
+            vtotal,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn refresh_rate_request_selects_matching_mode() {
+        // 1920x1080 timings sharing the same blanking: 148.5 MHz is 60 Hz,
+        // 356.4 MHz is 144 Hz.
+        let modes = vec![
+            test_mode(1, 1920, 1080, 148_500_000, 2200, 1125),
+            test_mode(2, 1920, 1080, 356_400_000, 2200, 1125),
+        ];
+        assert_eq!(
+            find_mode_by_resolution(&modes, 1920, 1080, Some(144.0)).map(|mode| mode.id),
+            Some(2)
+        );
+        assert_eq!(
+            find_mode_by_resolution(&modes, 1920, 1080, Some(60.0)).map(|mode| mode.id),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn unset_refresh_rate_keeps_first_match_and_unknown_rate_falls_back() {
+        let modes = vec![
+            test_mode(1, 1920, 1080, 148_500_000, 2200, 1125),
+            test_mode(2, 1920, 1080, 356_400_000, 2200, 1125),
+        ];
+        assert_eq!(
+            find_mode_by_resolution(&modes, 1920, 1080, None).map(|mode| mode.id),
+            Some(1)
+        );
+        assert_eq!(
+            find_mode_by_resolution(&modes, 1920, 1080, Some(165.0)).map(|mode| mode.id),
+            None
+        );
+    }
+
+    #[test]
+    fn unavailable_requested_mode_preserves_current_mode() {
+        let modes = vec![
+            test_mode(1, 1920, 1080, 148_500_000, 2200, 1125),
+            test_mode(2, 3840, 2160, 594_000_000, 4400, 2250),
+        ];
+        let output_info = x11rb::protocol::randr::GetOutputInfoReply {
+            modes: vec![2, 1],
+            ..Default::default()
+        };
+        let config = MonitorConfig {
+            resolution: Some("1920x1080".to_string()),
+            refresh_rate: Some(165.0),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            select_output_mode(&output_info, Some(1), &config, &modes).map(|mode| mode.id),
+            Some(1)
+        );
+        assert_eq!(
+            select_output_mode(&output_info, None, &config, &modes).map(|mode| mode.id),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn refresh_rate_tolerance_matches_wayland_backend() {
+        let sixty = test_mode(1, 1920, 1080, 148_500_000, 2200, 1125);
+        assert!(refresh_rate_matches(&sixty, Some(60.0)));
+        assert!(refresh_rate_matches(&sixty, Some(59.94)));
+        assert!(!refresh_rate_matches(&sixty, Some(165.0)));
+        assert!(refresh_rate_matches(&sixty, None));
+        let broken = test_mode(2, 1920, 1080, 0, 2200, 1125);
+        assert!(!refresh_rate_matches(&broken, Some(60.0)));
     }
 
     #[test]
