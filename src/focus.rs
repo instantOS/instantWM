@@ -590,8 +590,19 @@ fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<
 
     if mon.is_maximized_layout() {
         // The persistent tree is a stable, user-controlled order. Unlike
-        // z-order it does not change merely because a window was focused.
-        let stack = mon.tiled_tree_order(clients);
+        // z-order it does not change merely because a window was focused, and
+        // minimized entries keep their tree position so their bar title stays
+        // put. They cannot receive focus until explicitly restored, so the
+        // cycle skips them.
+        let stack: Vec<WindowId> = mon
+            .tiled_tree_order(clients)
+            .into_iter()
+            .filter(|win| {
+                clients
+                    .get(win)
+                    .is_some_and(|client| client.is_visible(selected))
+            })
+            .collect();
         if !stack.is_empty() {
             return stack;
         }

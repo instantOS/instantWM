@@ -183,6 +183,11 @@ fn read_launch_context(
     x11_runtime: &X11RuntimeConfig,
     window: WindowId,
 ) -> Option<crate::client::LaunchContext> {
+    // Startup metadata is only useful when matching a launch we recorded.
+    // Avoid a synchronous property-query batch for every other new window.
+    if pending_launches.is_empty() {
+        return None;
+    }
     let x11_window: Window = window.into();
     let startup_cookie = x11.conn.get_property(
         false,

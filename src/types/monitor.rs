@@ -428,6 +428,22 @@ impl Monitor {
         })
     }
 
+    /// Collect clients that hold a leaf position in the persistent tree for
+    /// order maintenance.
+    ///
+    /// Unlike [`Self::collect_tiling_tree_members`], this includes hidden
+    /// (minimized) tiled clients: in maximized presentation the tree is the
+    /// tab/cycle order, so a minimized client must not lose its position.
+    pub fn collect_tree_order_members(
+        &self,
+        clients: &HashMap<WindowId, Client>,
+    ) -> Vec<TiledClientInfo> {
+        let selected_tags = self.visible_tags();
+        self.collect_client_info(clients, |client| {
+            client.is_tree_order_member(selected_tags)
+        })
+    }
+
     fn collect_client_info(
         &self,
         clients: &HashMap<WindowId, Client>,
@@ -445,6 +461,10 @@ impl Monitor {
     /// Tiled clients in the stable order represented by the current manual
     /// tree. A newly managed client is appended defensively if reconciliation
     /// has not reached the tree yet.
+    ///
+    /// This is the order role of the tree: hidden (minimized) tiled clients
+    /// keep their position so their bar title and cycle slot stay in place.
+    /// Tiling geometry instead uses [`Self::collect_tiling_tree_members`].
     pub fn tiled_tree_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
         let selected = self.visible_tags();
         let mut ordered = self
@@ -455,7 +475,7 @@ impl Monitor {
             .filter(|win| {
                 clients
                     .get(win)
-                    .is_some_and(|client| client.is_tiled(selected))
+                    .is_some_and(|client| client.is_tree_order_member(selected))
             })
             .collect::<Vec<_>>();
         let mut seen: HashSet<WindowId> = ordered.iter().copied().collect();
@@ -463,7 +483,7 @@ impl Monitor {
         for &win in &self.clients {
             if clients
                 .get(&win)
-                .is_some_and(|client| client.is_tiled(selected))
+                .is_some_and(|client| client.is_tree_order_member(selected))
                 && seen.insert(win)
             {
                 ordered.push(win);

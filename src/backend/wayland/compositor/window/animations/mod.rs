@@ -9,6 +9,57 @@ mod transition;
 
 pub(crate) use transition::WaylandWindowAnimation;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::geometry::MoveResizeOptions;
+    use crate::types::{Client, Monitor};
+    use crate::wm::Wm;
+
+    #[test]
+    fn repeated_move_target_keeps_the_existing_animation() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let backend = WaylandBackend::new();
+        backend.attach_state(&mut state);
+        let mut wm = Wm::new(Backend::new_wayland(backend));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        let win = WindowId(1);
+        let from = Rect::new(0, 0, 600, 400);
+        let target = Rect::new(200, 100, 600, 400);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            geo: target,
+            ..Client::default()
+        });
+        state.window_animations.insert(
+            win,
+            WaylandWindowAnimation::new(
+                from,
+                target,
+                Size::from((600, 400)),
+                None,
+                Duration::from_millis(50),
+                Instant::now(),
+                2,
+                2,
+            ),
+        );
+
+        // No surface is needed: an unchanged target must never reach native
+        // placement or consume the existing animation in the first place.
+        wm.ctx()
+            .move_resize(win, target, MoveResizeOptions::animate_to(50));
+        assert_eq!(state.displayed_animation_frame(win), Some(from));
+        assert!(state.animation_targets_outer_rect(win, target));
+    }
+}
+
 /// Backend-resolved placement mode for a Wayland window — the Wayland
 /// compositor's counterpart to the core `MoveResizeMode`. Unlike the core
 /// enum (caller intent), these variants carry *resolved* semantics:
@@ -296,7 +347,11 @@ impl WaylandState {
         if let Some(actual_loc) = actual_loc {
             animation.preserve_surface_continuity(actual_size, actual_loc);
         }
-        animation.prepare_resize_timing(&self.output_rects());
+        // A position-only transition has no configure to schedule. Avoid
+        // building output rectangles and running offscreen resize policy.
+        if animation.requires_resize() {
+            animation.prepare_resize_timing(&self.output_rects());
+        }
         let start_loc = animation.displayed_surface_location(actual_size);
         if actual_loc != Some(start_loc) {
             self.remap_element_preserving_z_order(&element, start_loc, false);

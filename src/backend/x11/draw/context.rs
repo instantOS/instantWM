@@ -51,6 +51,76 @@ use crate::types::Rect as WmRect;
 /// find a fallback font for the same unrenderable character.
 const NOMATCHES_LEN: usize = 64;
 const TEXT_WIDTH_CACHE_LIMIT: usize = 2048;
+const BAR_SCHEME_CACHE_LIMIT: usize = 256;
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use crate::bar::paint::BarScheme;
+    use crate::types::Rgba;
+
+    #[test]
+    #[ignore = "requires a dedicated Xvfb display"]
+    fn changing_status_colors_keeps_allocations_bounded() {
+        let mut ctx = DrawContext::new(None).expect("test requires Xvfb");
+        // Theme colors have a separate lifetime and must survive eviction.
+        let theme = ctx.clr_create("#ffffff").unwrap();
+        for index in 0..BAR_SCHEME_CACHE_LIMIT * 3 {
+            let scheme = BarScheme {
+                foreground: Rgba::rgb(index as f32 / 1024.0, 0.5, 0.0),
+                background: Rgba::rgb(0.0, 0.0, 0.0),
+                detail: Rgba::rgb(1.0, 1.0, 1.0),
+            };
+            ctx.set_bar_scheme(&scheme);
+            let count = ctx.bar_scheme_cache.len();
+            let selected = ctx.get_scheme().unwrap().clone();
+            ctx.set_bar_scheme(&scheme);
+            assert_eq!(ctx.get_scheme(), Some(&selected));
+            assert_eq!(ctx.bar_scheme_cache.len(), count);
+            assert!(count <= BAR_SCHEME_CACHE_LIMIT);
+            assert_eq!(ctx.bar_scheme_order.len(), count);
+            assert_eq!(ctx.allocated_colors.len(), 1);
+            assert_eq!(
+                ctx.bar_scheme_cache
+                    .values()
+                    .map(|entry| entry.allocations.len())
+                    .sum::<usize>(),
+                count * 3,
+            );
+            ctx.rect(WmRect::new(0, 0, 1, 1), true, false);
+        }
+        let clone = ctx.clone();
+        assert!(
+            clone
+                .bar_scheme_cache
+                .values()
+                .all(|entry| entry.allocations.is_empty())
+        );
+        drop(clone);
+        ctx.set_scheme(ColorScheme::from_single(theme));
+        ctx.rect(WmRect::new(0, 0, 1, 1), true, false);
+        unsafe extern "C" {
+            fn XSync(display: *mut libc::c_void, discard: c_int) -> c_int;
+        }
+        unsafe { XSync(ctx.display, 0) };
+    }
+}
+
+struct CachedBarScheme {
+    scheme: ColorScheme,
+    // Keep the original allocation values (before alpha adjustment) for Xft.
+    allocations: Vec<XftColor>,
+}
+
+impl Clone for CachedBarScheme {
+    fn clone(&self) -> Self {
+        Self {
+            scheme: self.scheme.clone(),
+            // Shallow drawing contexts borrow the original's colors.
+            allocations: Vec::new(),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct BarSchemeKey {
@@ -99,7 +169,8 @@ pub struct DrawContext {
 
     /// Bar colors allocated on this X display. Keeping this cache with the
     /// owning context avoids allocating the same Xft colors on every redraw.
-    bar_scheme_cache: HashMap<BarSchemeKey, ColorScheme>,
+    bar_scheme_cache: HashMap<BarSchemeKey, CachedBarScheme>,
+    bar_scheme_order: VecDeque<BarSchemeKey>,
     allocated_colors: Vec<XftColor>,
 
     /// Loaded fontset (vector of fonts for fallback chain).
@@ -142,6 +213,7 @@ impl Clone for DrawContext {
             xft_draw: self.xft_draw,
             scheme: self.scheme.clone(),
             bar_scheme_cache: self.bar_scheme_cache.clone(),
+            bar_scheme_order: self.bar_scheme_order.clone(),
             // A shallow context borrows color handles owned by the original.
             allocated_colors: Vec::new(),
             fonts: self.fonts.clone(),
@@ -167,6 +239,11 @@ impl Drop for DrawContext {
         // context owns the shared pixmap, GC, fonts, and display connection.
         unsafe {
             if !self.display.is_null() {
+                for entry in self.bar_scheme_cache.values_mut() {
+                    for color in &mut entry.allocations {
+                        XftColorFree(self.display, self.visual, self.colormap, color);
+                    }
+                }
                 for color in &mut self.allocated_colors {
                     XftColorFree(self.display, self.visual, self.colormap, color);
                 }
@@ -272,6 +349,7 @@ impl DrawContext {
                 xft_draw,
                 scheme: None,
                 bar_scheme_cache: HashMap::new(),
+                bar_scheme_order: VecDeque::new(),
                 allocated_colors: Vec::new(),
                 fonts: None,
                 depth: depth as u8,
@@ -573,22 +651,40 @@ impl DrawContext {
         self.scheme = Some(scheme);
     }
 
-    /// Select a backend-neutral bar scheme, allocating each distinct Xft color
-    /// at most once for the lifetime of this display connection.
+    /// Select a backend-neutral bar scheme from a bounded cache. Status
+    /// producers can change colors indefinitely, so evicted schemes release
+    /// their Xft allocations instead of retaining them until display shutdown.
     pub(crate) fn set_bar_scheme(&mut self, scheme: &crate::bar::paint::BarScheme) {
         let key = BarSchemeKey::from(scheme);
         let allocated = if let Some(existing) = self.bar_scheme_cache.get(&key) {
-            existing.clone()
+            existing.scheme.clone()
         } else {
+            let allocation_start = self.allocated_colors.len();
             let allocated = ColorScheme {
                 fg: self.clr_create_rgba(scheme.foreground),
                 bg: self.clr_create_rgba(scheme.background),
                 detail: self.clr_create_rgba(scheme.detail),
             };
-            self.bar_scheme_cache.insert(key, allocated.clone());
+            let allocations = self.allocated_colors.split_off(allocation_start);
+            self.bar_scheme_cache.insert(
+                key,
+                CachedBarScheme {
+                    scheme: allocated.clone(),
+                    allocations,
+                },
+            );
+            self.bar_scheme_order.push_back(key);
             allocated
         };
         self.set_scheme(allocated);
+        if self.bar_scheme_cache.len() > BAR_SCHEME_CACHE_LIMIT
+            && let Some(oldest) = self.bar_scheme_order.pop_front()
+            && let Some(mut entry) = self.bar_scheme_cache.remove(&oldest)
+        {
+            for color in &mut entry.allocations {
+                unsafe { XftColorFree(self.display, self.visual, self.colormap, color) };
+            }
+        }
     }
 
     /// Read-only access to the active color scheme, if one is set.

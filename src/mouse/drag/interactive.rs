@@ -3,7 +3,6 @@
 //! Input transports decide how events are captured. Once captured, pointer and
 //! touch samples use these same motion and finish operations on every backend.
 
-use crate::constants::animation;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
@@ -257,15 +256,8 @@ fn apply_move_drag_motion(
         &mut new_pos,
     );
 
-    let animated = ctx.core().behavior().animated;
-    let move_options = if animated {
-        MoveResizeOptions::animate_to(animation::INTERACTIVE_DRAG_ANIMATION_MILLIS)
-            .with_size_hints()
-            .with_interactive_bounds()
-    } else {
-        MoveResizeOptions::hinted_immediate(true)
-    };
-
+    // Pointer samples already describe continuous movement. Decorative mode
+    // transitions may animate, but active dragging must not trail the pointer.
     ctx.move_resize(
         drag.win(),
         Rect::new(
@@ -274,7 +266,7 @@ fn apply_move_drag_motion(
             drag.win_start_geo().w.max(1),
             drag.win_start_geo().h.max(1),
         ),
-        move_options,
+        MoveResizeOptions::hinted_immediate(true),
     );
 }
 
@@ -319,19 +311,10 @@ fn apply_resize_drag_motion(
         }
     };
 
-    let animated = ctx.core().behavior().animated;
-    let move_options = if animated {
-        MoveResizeOptions::animate_to(animation::INTERACTIVE_DRAG_ANIMATION_MILLIS)
-            .with_size_hints()
-            .with_interactive_bounds()
-    } else {
-        MoveResizeOptions::hinted_immediate(true)
-    };
-
     ctx.move_resize(
         drag.win(),
         Rect::new(new_x, new_y, new_w, new_h),
-        move_options,
+        MoveResizeOptions::hinted_immediate(true),
     );
 }
 
@@ -372,6 +355,147 @@ mod tests {
         TagMask, WindowId,
     };
     use crate::wm::Wm;
+
+    #[test]
+    #[ignore = "requires a dedicated Xvfb display"]
+    fn pointer_motion_is_immediate_while_floating_transitions_still_animate() {
+        use x11rb::connection::Connection;
+        use x11rb::protocol::xproto::{ConnectionExt, CreateWindowAux, WindowClass};
+
+        let (conn, screen) = x11rb::connect(None).expect("test requires Xvfb");
+        let root = conn.setup().roots[screen].root;
+        let xid = conn.generate_id().unwrap();
+        conn.create_window(
+            x11rb::COPY_DEPTH_FROM_PARENT,
+            xid,
+            root,
+            100,
+            100,
+            500,
+            300,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            0,
+            &CreateWindowAux::new(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        let mut wm = Wm::new(Backend::new_x11(conn, screen));
+        wm.core.behavior.animated = true;
+        wm.core.derived.display.width = 1920;
+        wm.core.derived.display.height = 1080;
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            show_bar: false,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
+        let win = WindowId::from(xid);
+        let original = Rect::new(100, 100, 500, 300);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::floating(),
+            geo: original,
+            size_hints_valid: true,
+            border_width: 0,
+            ..Client::default()
+        });
+        wm.core
+            .interaction
+            .drag
+            .begin_move(
+                win,
+                MouseButton::Left,
+                InteractionSource::Pointer,
+                Point::new(150, 150),
+                original,
+            )
+            .unwrap();
+        assert!(apply_active_drag_motion(
+            &mut wm.ctx(),
+            Point::new(350, 300)
+        ));
+        let moved = wm.core.model.client(win).unwrap().geo;
+        assert_eq!(moved, Rect::new(300, 250, 500, 300));
+        assert!(
+            wm.backend
+                .x11_data()
+                .unwrap()
+                .x11_runtime
+                .window_animations
+                .is_empty()
+        );
+        let actual = wm
+            .backend
+            .x11_data()
+            .unwrap()
+            .conn
+            .get_geometry(xid)
+            .unwrap()
+            .reply()
+            .unwrap();
+        assert_eq!((actual.x, actual.y), (300, 250));
+
+        wm.core.interaction.drag.cancel_capture().unwrap();
+        wm.core
+            .interaction
+            .drag
+            .begin_resize(
+                win,
+                MouseButton::Right,
+                InteractionSource::Pointer,
+                ResizeDirection::Right,
+                Point::new(moved.right() - 1, moved.y),
+                moved,
+            )
+            .unwrap();
+        assert!(apply_active_drag_motion(
+            &mut wm.ctx(),
+            Point::new(moved.x + 699, moved.y)
+        ));
+        assert!(
+            wm.backend
+                .x11_data()
+                .unwrap()
+                .x11_runtime
+                .window_animations
+                .is_empty()
+        );
+        let actual = wm
+            .backend
+            .x11_data()
+            .unwrap()
+            .conn
+            .get_geometry(xid)
+            .unwrap()
+            .reply()
+            .unwrap();
+        assert_eq!(actual.width, 700);
+
+        wm.core.interaction.drag.cancel_capture().unwrap();
+        wm.ctx().move_resize(
+            win,
+            original,
+            crate::geometry::MoveResizeOptions::for_floating_transition(),
+        );
+        assert!(
+            wm.backend
+                .x11_data()
+                .unwrap()
+                .x11_runtime
+                .window_animation_targets(win, original)
+        );
+    }
 
     #[test]
     fn end_edge_resize_accounts_for_the_modelled_border() {

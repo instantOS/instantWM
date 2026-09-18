@@ -179,13 +179,15 @@ struct UnmapEventSuppression<'a> {
 
 impl<'a> UnmapEventSuppression<'a> {
     fn new(conn: &'a x11rb::rust_connection::RustConnection, root: Window, win: Window) -> Self {
-        let root_mask = conn
-            .get_window_attributes(root)
+        // Both masks are independent. Send both requests before waiting so
+        // minimizing only needs one query batch while the server is grabbed.
+        let root_attributes = conn.get_window_attributes(root);
+        let window_attributes = conn.get_window_attributes(win);
+        let root_mask = root_attributes
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .map(|attrs| attrs.your_event_mask);
-        let window_mask = conn
-            .get_window_attributes(win)
+        let window_mask = window_attributes
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .map(|attrs| attrs.your_event_mask);
