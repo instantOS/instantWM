@@ -18,10 +18,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Install dependencies
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed git python pacman-contrib sudo
+      - name: Checkout workflow repo
+        uses: actions/checkout@v7
+      - name: Setup Arch container
+        uses: ./.github/actions/setup-arch
+        with:
+          packages: git python pacman-contrib sudo
+          include-test-base: "false"
       - name: Create builder user
         run: |
           useradd -m builder
