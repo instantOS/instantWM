@@ -121,7 +121,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
     let selmon_idx = ctx.core().model().selected_monitor_id();
 
-    ctx.refresh_monitor_top_bar(selmon_idx);
+    ctx.refresh_top_bars();
 
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
 

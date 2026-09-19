@@ -53,6 +53,3 @@ pub use color::{BorderScheme, ColorScheme, Cursor};
 
 // The main drawing context.
 pub use context::DrawContext;
-
-// Raw FFI symbols used externally.
-pub use ffi::XFlush;

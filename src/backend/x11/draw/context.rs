@@ -465,12 +465,11 @@ impl DrawContext {
         }
     }
 
-    /// Configure an Xlib-owned presentation target.
+    /// Queue geometry for an Xlib-owned presentation target.
     ///
-    /// Flush this request immediately: hiding a bar moves it off-screen and
-    /// deliberately skips the subsequent draw that would otherwise flush the
-    /// Xlib connection.
-    pub fn move_resize_window(&self, window: Window, bounds: WmRect) {
+    /// The owner must call [`Self::flush`] at its transaction boundary. This
+    /// keeps geometry batching explicit without relying on a later draw.
+    pub fn queue_move_resize_window(&self, window: Window, bounds: WmRect) {
         if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
             return;
         }
@@ -483,7 +482,15 @@ impl DrawContext {
                 bounds.w as u32,
                 bounds.h as u32,
             );
-            let _ = XFlush(self.display);
+        }
+    }
+
+    /// Commit queued Xlib presentation requests without blocking for a reply.
+    pub fn flush(&self) {
+        if !self.display.is_null() {
+            unsafe {
+                let _ = XFlush(self.display);
+            }
         }
     }
 

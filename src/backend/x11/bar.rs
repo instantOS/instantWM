@@ -7,15 +7,8 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
 
-pub fn update_status(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
-    systray: &mut Option<crate::types::XEmbedTray>,
-) {
+pub fn update_status(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
     let selmon_idx = core.model().selected_monitor_id();
-
-    crate::backend::x11::systray::update_systray(core, x11, x11_runtime, systray);
     draw_bar(core, x11_runtime, selmon_idx);
 }
 
@@ -91,25 +84,27 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
     core.bar.mark_drawn();
 }
 
-/// Resize bar window with dependency injection.
-pub fn resize_bar_win(
-    globals: &crate::core_state::CoreState,
+fn sync_monitor_bar_window(
+    core: &CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: Option<&XEmbedTray>,
-    m: &Monitor,
+    monitor_id: MonitorId,
 ) {
-    // Note: x11_runtime is not mutated here, we only read from it.
-    // The systray width calculation only needs immutable access.
-    let bar_height = globals.derived.bar_height;
-    let showsystray = globals.config.systray.show;
-    let is_selmon = globals.model.expect_selected_monitor().num == m.num;
+    let tray_monitor =
+        crate::backend::x11::systray::systray_to_mon(core.model(), &core.config().systray, None);
+    let Some(m) = core.model().monitor(monitor_id) else {
+        return;
+    };
+    let bar_height = core.derived().bar_height;
+    let showsystray = core.config().systray.show;
+    let is_tray_monitor = monitor_id == tray_monitor;
 
     let mut w = m.work_rect().w as u32;
-    if showsystray && is_selmon {
+    if showsystray && is_tray_monitor {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
-            &globals.config.systray,
-            globals.derived.bar_height,
+            &core.config().systray,
+            core.derived().bar_height,
             systray,
         ));
     }
@@ -117,7 +112,7 @@ pub fn resize_bar_win(
     let x11_bar_win: Window = m.bar_win.into();
     let bounds = Rect::new(m.work_rect().x, m.bar_y(), w as i32, bar_height);
     if let Some(draw) = x11_runtime.draw.as_ref() {
-        draw.move_resize_window(x11_bar_win, bounds);
+        draw.queue_move_resize_window(x11_bar_win, bounds);
     } else {
         let _ = x11.conn.configure_window(
             x11_bar_win,
@@ -128,6 +123,30 @@ pub fn resize_bar_win(
                 .height(bounds.h as u32),
         );
     }
+}
+
+/// Commit the complete native top-bar projection.
+///
+/// The main bars and XEmbed tray are separate X11 windows, but callers never
+/// synchronize them independently. Recommitting every monitor also releases
+/// tray width from the previously selected monitor when the tray follows
+/// selection.
+pub fn sync_top_bar_surfaces(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    systray: &mut Option<XEmbedTray>,
+) {
+    let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
+    for monitor_id in monitor_ids {
+        sync_monitor_bar_window(core, x11, x11_runtime, systray.as_ref(), monitor_id);
+    }
+    if let Some(draw) = x11_runtime.draw.as_ref() {
+        draw.flush();
+    }
+    crate::backend::x11::systray::sync_xembed_tray(core, x11, x11_runtime, systray);
+    let _ = x11.conn.flush();
+    core.bar.mark_dirty();
 }
 
 /// Move/resize the bottom bar window to its current monitor strip and re-apply
@@ -172,7 +191,7 @@ pub fn resize_bottom_bar_win(
     }
 }
 
-pub fn update_bars(
+fn create_missing_bar_windows(
     globals: &mut crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
@@ -320,10 +339,16 @@ pub fn update_bars(
         }
     }
 
+    let created_top_bars = !created.is_empty();
     for (i, win_id) in created {
         if let Some(mon) = globals.model.monitor_mut(i) {
             mon.bar_win = WindowId::from(win_id);
         }
+    }
+    // Geometry and painting use the Xlib connection. Complete creation on the
+    // XCB connection before another client connection references these IDs.
+    if created_top_bars && let Ok(cookie) = conn.get_input_focus() {
+        let _ = cookie.reply();
     }
     // Assign bottom windows, then refresh every existing bottom window's
     // geometry/background (reloads, monitor moves, config color changes).
@@ -337,4 +362,16 @@ pub fn update_bars(
             resize_bottom_bar_win(globals, x11, x11_runtime, m);
         }
     }
+}
+
+/// Reconcile all native bar windows with the shared monitor model.
+pub fn reconcile_bar_windows(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    systray: &mut Option<XEmbedTray>,
+) {
+    create_missing_bar_windows(core.state_mut(), x11, x11_runtime, systray.as_ref());
+
+    sync_top_bar_surfaces(core, x11, x11_runtime, systray);
 }

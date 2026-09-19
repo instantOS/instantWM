@@ -439,9 +439,7 @@ impl Monitor {
         clients: &HashMap<WindowId, Client>,
     ) -> Vec<TiledClientInfo> {
         let selected_tags = self.visible_tags();
-        self.collect_client_info(clients, |client| {
-            client.is_tree_order_member(selected_tags)
-        })
+        self.collect_client_info(clients, |client| client.is_tree_order_member(selected_tags))
     }
 
     fn collect_client_info(

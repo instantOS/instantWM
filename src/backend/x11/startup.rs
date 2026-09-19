@@ -78,18 +78,13 @@ fn wm_init(wm: &mut Wm) {
         let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx() else {
             return;
         };
-        crate::backend::x11::bar::update_bars(
-            ctx.core.state_mut(),
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray.as_ref(),
-        );
-        crate::backend::x11::bar::update_status(
+        crate::backend::x11::bar::reconcile_bar_windows(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
+        crate::backend::x11::bar::update_status(&mut ctx.core, ctx.x11_runtime);
         if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
             log::warn!("initial X11 keyboard mapping read failed; retrying once");
             assert!(

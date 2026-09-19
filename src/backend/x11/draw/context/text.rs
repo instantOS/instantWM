@@ -393,6 +393,19 @@ impl DrawContext {
     }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+pub(super) fn zero_glyph_info() -> XGlyphInfo {
+    XGlyphInfo {
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        x_off: 0,
+        y_off: 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,18 +558,5 @@ mod tests {
             assert_eq!(remaining, width - expected);
         }
         assert_measure_and_render(ctx, "", 0);
-    }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-pub(super) fn zero_glyph_info() -> XGlyphInfo {
-    XGlyphInfo {
-        width: 0,
-        height: 0,
-        x: 0,
-        y: 0,
-        x_off: 0,
-        y_off: 0,
     }
 }
