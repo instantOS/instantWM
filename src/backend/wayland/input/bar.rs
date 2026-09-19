@@ -27,7 +27,10 @@ fn core_ctx(wm: &mut Wm) -> crate::contexts::CoreCtx<'_> {
 }
 
 pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point, clean_state: u32) {
-    let button = if delta > 0.0 {
+    // libinput/wl_pointer report vertical axis values as positive when
+    // scrolling down (toward the user), matching X11 where the wheel arrives
+    // as button 5 (ScrollDown) / button 4 (ScrollUp).
+    let button = if delta < 0.0 {
         MouseButton::ScrollUp
     } else {
         MouseButton::ScrollDown

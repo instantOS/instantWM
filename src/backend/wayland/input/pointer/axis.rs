@@ -118,6 +118,9 @@ mod tests {
 
         let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
+        // Backends derive this from real output metrics at bootstrap; arrange
+        // copies it back onto the monitor, so a headless Wm must set it here.
+        wm.core.derived.bar_height = 30;
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1200, 800),
@@ -126,6 +129,12 @@ mod tests {
             show_bar: true,
             ..Monitor::default()
         });
+        let template = wm.core.config.tag_template.clone();
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .init_tags(&template);
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(41), WindowId(42)];
         for win in windows {
@@ -163,6 +172,97 @@ mod tests {
             },
             location: smithay::utils::Point::from((root.x as f64, root.y as f64)),
         }
+    }
+
+    fn wheel_scroll_at_with_delta(root: Point, delta: f64) -> PointerAxisInput {
+        let mut input = wheel_scroll_at(root);
+        input.event.vertical.amount = Some(delta);
+        input.event.vertical.v120 = Some(delta);
+        input
+    }
+
+    /// Root-space center x of tag `index` (0-based), scanned through the
+    /// shared hit-test so the test cannot drift from the renderer's layout.
+    fn tag_cell_center(wm: &mut crate::wm::Wm, index: usize) -> i32 {
+        let mut span: Option<(i32, i32)> = None;
+        let mut core = crate::contexts::CoreCtx::new(
+            &mut wm.core,
+            &mut wm.work,
+            &mut wm.running,
+            &mut wm.bar,
+            &mut wm.focus,
+        );
+        for x in 0..1200 {
+            if let Some((_, crate::types::BarPosition::Tag(tag))) =
+                crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))
+                && tag == index
+            {
+                match span {
+                    Some((start, _)) => span = Some((start, x)),
+                    None => span = Some((x, x)),
+                }
+            }
+        }
+        let (start, end) = span.expect("tag cell must be rendered");
+        (start + end + 1) / 2
+    }
+
+    /// Wheel-down over a tag cell must view the next tag and wheel-up the
+    /// previous one, matching X11 where the wheel arrives as button 5
+    /// (ScrollDown) / button 4 (ScrollUp).
+    #[test]
+    fn tag_scroll_direction_matches_x11_button_convention() {
+        let (mut wm, monitor_id, _first, _second) = wm_with_title_strip();
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (Some(pointer), Some(keyboard)) = (state.seat.get_pointer(), state.seat.get_keyboard())
+        else {
+            panic!("test seat must provide pointer and keyboard handles");
+        };
+
+        // View tag 2 (1-based) so a scroll has room in both directions.
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(2).unwrap());
+        let tag_root = Point::new(tag_cell_center(&mut wm, 1), 10);
+        let selected = |wm: &mut crate::wm::Wm| {
+            wm.core
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags()
+                .first_tag()
+        };
+
+        // Wheel down (positive axis delta) -> ScrollDown -> tag 3.
+        handle_pointer_axis(
+            &mut wm,
+            &mut state,
+            &pointer,
+            &keyboard,
+            wheel_scroll_at_with_delta(tag_root, 120.0),
+        );
+        assert_eq!(
+            selected(&mut wm),
+            Some(3),
+            "wheel down must view the next tag"
+        );
+
+        // Wheel up (negative axis delta) -> ScrollUp -> tag 2.
+        handle_pointer_axis(
+            &mut wm,
+            &mut state,
+            &pointer,
+            &keyboard,
+            wheel_scroll_at_with_delta(tag_root, -120.0),
+        );
+        assert_eq!(
+            selected(&mut wm),
+            Some(2),
+            "wheel up must view the previous tag"
+        );
     }
 
     /// Root-space center x of `win`'s title cell, scanned through the shared
