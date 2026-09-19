@@ -465,10 +465,11 @@ impl DrawContext {
         }
     }
 
-    /// Configure an Xlib-owned presentation target. Bar geometry and bar
-    /// blits use this same connection, so their request order is explicit
-    /// without a blocking cross-connection synchronization.
-    pub fn move_resize_window(&self, window: Window, bounds: WmRect) {
+    /// Queue geometry for an Xlib-owned presentation target.
+    ///
+    /// The owner must call [`Self::flush`] at its transaction boundary. This
+    /// keeps geometry batching explicit without relying on a later draw.
+    pub fn queue_move_resize_window(&self, window: Window, bounds: WmRect) {
         if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
             return;
         }
@@ -481,6 +482,15 @@ impl DrawContext {
                 bounds.w as u32,
                 bounds.h as u32,
             );
+        }
+    }
+
+    /// Commit queued Xlib presentation requests without blocking for a reply.
+    pub fn flush(&self) {
+        if !self.display.is_null() {
+            unsafe {
+                let _ = XFlush(self.display);
+            }
         }
     }
 

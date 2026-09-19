@@ -123,7 +123,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let _ = conn.flush();
 
-    crate::backend::x11::systray::update_systray(
+    crate::backend::x11::bar::sync_top_bar_surfaces(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,

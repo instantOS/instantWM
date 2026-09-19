@@ -874,22 +874,17 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Re-measure and resize the top bar for one monitor after a visibility
-    /// or geometry change. X11 owns real bar windows; the Wayland
-    /// compositor re-renders its scene on the next frame.
-    pub fn refresh_monitor_top_bar(&mut self, monitor_id: MonitorId) {
+    /// Reconcile the backend's complete top-bar projection after visibility,
+    /// selection, tray, or monitor geometry changes.
+    pub fn refresh_top_bars(&mut self) {
         match self {
             WmCtx::X11(ctx) => {
-                if let Some(monitor) = ctx.core.model().monitors.get(monitor_id).cloned() {
-                    crate::backend::x11::bar::resize_bar_win(
-                        ctx.core.state(),
-                        &ctx.x11,
-                        &*ctx.x11_runtime,
-                        ctx.xembed_tray.as_ref(),
-                        &monitor,
-                    );
-                }
-                ctx.core.bar.mark_dirty();
+                crate::backend::x11::bar::sync_top_bar_surfaces(
+                    &mut ctx.core,
+                    &ctx.x11,
+                    ctx.x11_runtime,
+                    ctx.xembed_tray,
+                );
             }
             WmCtx::Wayland(ctx) => {
                 if !ctx.wayland.request_bar_redraw() {
@@ -899,7 +894,7 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Bottom-bar counterpart of [`Self::refresh_monitor_top_bar`].
+    /// Refresh one monitor's bottom-bar projection.
     pub fn refresh_monitor_bottom_bar(&mut self, monitor_id: MonitorId) {
         match self {
             WmCtx::X11(ctx) => {
@@ -962,11 +957,11 @@ impl<'a> WmCtx<'a> {
     /// layout changes. Wayland re-renders from the shared snapshot.
     pub fn refresh_bar_content(&mut self) {
         match self {
-            WmCtx::X11(ctx) => crate::backend::x11::bar::update_bars(
-                ctx.core.state_mut(),
+            WmCtx::X11(ctx) => crate::backend::x11::bar::reconcile_bar_windows(
+                &mut ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
-                ctx.xembed_tray.as_ref(),
+                ctx.xembed_tray,
             ),
             WmCtx::Wayland(_) => {}
         }
@@ -975,12 +970,9 @@ impl<'a> WmCtx<'a> {
     /// Republish the parsed status line through backend-owned bar surfaces.
     pub fn refresh_status_content(&mut self) {
         match self {
-            WmCtx::X11(ctx) => crate::backend::x11::bar::update_status(
-                &mut ctx.core,
-                &ctx.x11,
-                ctx.x11_runtime,
-                ctx.xembed_tray,
-            ),
+            WmCtx::X11(ctx) => {
+                crate::backend::x11::bar::update_status(&mut ctx.core, ctx.x11_runtime)
+            }
             WmCtx::Wayland(_) => {}
         }
     }
@@ -1005,7 +997,7 @@ impl<'a> WmCtx<'a> {
     /// Refresh bar rendering and synchronize backend-owned bar geometry for
     /// one monitor. Tag changes use this because bar visibility is per-tag.
     pub fn request_bar_geometry_update(&mut self, monitor_id: MonitorId) {
-        self.refresh_monitor_top_bar(monitor_id);
+        self.refresh_top_bars();
         self.refresh_monitor_bottom_bar(monitor_id);
     }
 

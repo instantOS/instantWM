@@ -27,6 +27,7 @@ pacman -S --noconfirm --needed \
   xorg-xev \
   xorg-xmessage \
   xorg-xprop \
+  xorg-xwininfo \
   xdotool \
   libx11 \
   libxext \

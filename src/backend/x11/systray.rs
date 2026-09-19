@@ -205,27 +205,25 @@ pub fn update_systray_icon_state(
     }
 }
 
-/// Update systray using dependency injection.
-pub fn update_systray(
+/// Synchronize the native XEmbed tray window with the shared tray model.
+///
+/// The top-bar owner calls this as one part of its complete native-surface
+/// transaction; protocol event handlers must not call it independently.
+pub(super) fn sync_xembed_tray(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,
 ) {
     if !core.config().systray.show {
+        core.bar.runtime.external_tray_width = 0;
+        if let Some(tray) = systray.as_ref() {
+            let _ = x11.conn.unmap_window(Window::from(tray.win));
+        }
         return;
     }
 
-    if x11_runtime.xlibdisplay.0.is_null() {
-        return;
-    }
-
-    // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
-    unsafe {
-        crate::backend::x11::draw::XFlush(x11_runtime.xlibdisplay.0);
-    }
-
-    let (tray_right, bar_x, full_bar_width, bar_y, bar_win) = {
+    let (tray_right, bar_y, bar_win) = {
         let m = systray_to_mon(core.model(), &core.config().systray, None);
         let mon = match core.model().monitor(m) {
             Some(mon) => mon,
@@ -233,8 +231,6 @@ pub fn update_systray(
         };
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
-            mon.work_rect().x,
-            mon.work_rect().w,
             mon.bar_y(),
             mon.bar_win,
         )
@@ -374,7 +370,6 @@ pub fn update_systray(
     let reserved_width = layout.width;
     let manager_width = reserved_width.max(MIN_MANAGER_WINDOW_WIDTH);
     let tray_x = tray_right - manager_width as i32;
-    let bar_width = full_bar_width.saturating_sub(reserved_width as i32).max(1) as u32;
 
     core.bar.runtime.external_tray_width = reserved_width as i32;
     core.bar.mark_dirty();
@@ -397,25 +392,10 @@ pub fn update_systray(
             .sibling(x11_bar_win),
     );
 
-    let _ = conn.configure_window(
-        x11_bar_win,
-        &ConfigureWindowAux::new()
-            .x(bar_x)
-            .y(bar_y)
-            .width(bar_width)
-            .height(bar_height as u32),
-    );
-
     let _ = conn.map_window(x11_systray_win);
-
-    let _ = conn.flush();
 }
 
-pub fn is_systray_icon(systray_show: bool, systray: Option<&XEmbedTray>, win: WindowId) -> bool {
-    if !systray_show {
-        return false;
-    }
-
+pub fn is_systray_icon(systray: Option<&XEmbedTray>, win: WindowId) -> bool {
     systray.is_some_and(|tray| tray.icon(win).is_some())
 }
 

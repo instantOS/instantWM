@@ -94,7 +94,7 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             event_win,
             requested_size,
         );
-        crate::backend::x11::systray::update_systray(
+        crate::backend::x11::bar::sync_top_bar_surfaces(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -119,15 +119,11 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if crate::backend::x11::systray::is_systray_icon(
-        ctx.core.config().systray.show,
-        ctx.xembed_tray.as_ref(),
-        event_win,
-    ) {
+    if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         // Remove tray-owned state before recomputing the paired tray/bar
         // geometry so the destroyed icon no longer reserves a cell.
         crate::backend::x11::systray::remove_systray_icon(ctx.xembed_tray.as_mut(), event_win);
-        crate::backend::x11::systray::update_systray(
+        crate::backend::x11::bar::sync_top_bar_surfaces(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -186,12 +182,8 @@ pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if crate::backend::x11::systray::is_systray_icon(
-        ctx.core.config().systray.show,
-        ctx.xembed_tray.as_ref(),
-        event_win,
-    ) {
-        crate::backend::x11::systray::update_systray(
+    if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
+        crate::backend::x11::bar::sync_top_bar_surfaces(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -216,11 +208,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
 
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if crate::backend::x11::systray::is_systray_icon(
-        ctx.core.config().systray.show,
-        ctx.xembed_tray.as_ref(),
-        event_win,
-    ) {
+    if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         if e.atom == ctx.x11_runtime.xatom.xembed_info {
             crate::backend::x11::systray::update_systray_icon_state(
                 &ctx.x11,
@@ -230,7 +218,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 Some(e),
             );
         }
-        crate::backend::x11::systray::update_systray(
+        crate::backend::x11::bar::sync_top_bar_surfaces(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -314,18 +302,14 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
 
 pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if crate::backend::x11::systray::is_systray_icon(
-        ctx.core.config().systray.show,
-        ctx.xembed_tray.as_ref(),
-        event_win,
-    ) {
+    if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         crate::backend::x11::systray::update_systray_icon_geom(
             ctx.core.derived().bar_height,
             ctx.xembed_tray.as_mut(),
             event_win,
             crate::types::Size::new(e.width as i32, e.height as i32),
         );
-        crate::backend::x11::systray::update_systray(
+        crate::backend::x11::bar::sync_top_bar_surfaces(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -336,14 +320,10 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if crate::backend::x11::systray::is_systray_icon(
-        ctx.core.config().systray.show,
-        ctx.xembed_tray.as_ref(),
-        event_win,
-    ) {
+    if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         // XEmbed icons remain owned by the tray while unmapped. Recompute the
         // paired tray/bar geometry; mapped state comes from _XEMBED_INFO.
-        crate::backend::x11::systray::update_systray(
+        crate::backend::x11::bar::sync_top_bar_surfaces(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
