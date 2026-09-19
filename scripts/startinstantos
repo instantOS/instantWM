@@ -21,6 +21,7 @@ PID_FILE="$RTD/wmpid"
 OVERRIDE_FILE="$RTD/wmoverride"
 LOG_FILE="$HOME/.local/share/instantos.log"
 WMPID=""
+REAPPLY_PID=""
 FIRST_START=true
 SESSION_AUTOSTART="${INSTANTWM_AUTOSTART:-1}"
 
@@ -32,9 +33,43 @@ stop_session() {
         kill "$WMPID" 2>/dev/null || true
         wait "$WMPID" 2>/dev/null || true
     fi
+    if [[ -n "$REAPPLY_PID" ]] && kill -0 "$REAPPLY_PID" 2>/dev/null; then
+        kill "$REAPPLY_PID" 2>/dev/null || true
+    fi
     exit 0
 }
 trap stop_session HUP INT TERM
+
+wm_ipc_socket() {
+    if [[ -n "${INSTANTWM_SOCKET:-}" ]]; then
+        printf '%s\n' "$INSTANTWM_SOCKET"
+    else
+        printf '/tmp/instantwm-%s.sock\n' "$(id -u)"
+    fi
+}
+
+# Wait until the WM has bound its IPC socket so instantwmctl can reach it.
+wait_for_wm_socket() {
+    local socket i
+    socket="$(wm_ipc_socket)"
+    for ((i = 0; i < 50; i++)); do
+        [[ -S "$socket" ]] && return 0
+        sleep 0.1
+    done
+    return 1
+}
+
+# In-place WM restarts skip `ins autostart` (via INSTANTWM_AUTOSTART=0) so a
+# crashing WM does not rerun heavyweight session setup. The settings applied
+# by autostart — keyboard layouts, wallpaper, mouse behaviour, ... — are
+# runtime state of the old WM process though, so reapply just the settings
+# to bring the restarted WM back to the user's configuration.
+reapply_settings() {
+    command -v ins >/dev/null 2>&1 || return 0
+    wait_for_wm_socket || return 0
+    echo "reapplying settings for restarted window manager" >>"$LOG_FILE"
+    ins settings apply >>"$LOG_FILE" 2>&1
+}
 
 cd "$HOME" || echo "failed to access home directory" >&2
 
@@ -82,6 +117,10 @@ while [[ -e "$RUNNING_FILE" ]]; do
             FIRST_START=false
         else
             export INSTANTWM_AUTOSTART=0
+            if [[ "$SESSION_AUTOSTART" != "0" ]]; then
+                reapply_settings &
+                REAPPLY_PID=$!
+            fi
         fi
         if [[ -n "${INSTANTDEBUG:-}" ]]; then
             instantwm --backend x11 >>"$LOG_FILE" 2>&1 &
