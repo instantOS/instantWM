@@ -7,6 +7,7 @@ No running desktop is needed. All child processes and input belong to our Xvfb.
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -26,7 +27,9 @@ def wait_for(check, description, timeout=8):
 
 
 def main():
-    for tool in ("Xvfb", "xdotool", "xmessage", "xprop", "xev", "stdbuf"):
+    for tool in (
+        "Xvfb", "xdotool", "xmessage", "xprop", "xev", "xwininfo", "stdbuf",
+    ):
         if not shutil.which(tool):
             raise SystemExit(f"Missing test dependency: {tool}")
     processes = []
@@ -67,6 +70,57 @@ def main():
                         return False
 
                 wait_for(ready, "WM startup", 20)
+
+                def x_geometry(window):
+                    result = run("xdotool", "getwindowgeometry", "--shell", str(window))
+                    return dict(
+                        line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+                    )
+
+                root_tree = run("xwininfo", "-root", "-tree").stdout
+                root_children = [
+                    int(match.group(1), 16)
+                    for line in root_tree.splitlines()
+                    if (match := re.match(r"^\s+(0x[0-9a-f]+)\s", line))
+                ]
+                display_width = int(run("xdotool", "getdisplaygeometry").stdout.split()[0])
+                root_geometry = {
+                    window: x_geometry(window) for window in root_children
+                }
+                bar = next(
+                    window
+                    for window in root_children
+                    if int(root_geometry[window]["X"]) == 0
+                    and int(root_geometry[window]["Y"]) == 0
+                    and int(root_geometry[window]["WIDTH"]) == display_width
+                    and 1 < int(root_geometry[window]["HEIGHT"]) < 200
+                )
+                bar_height = int(root_geometry[bar]["HEIGHT"])
+                tray = next(
+                    window
+                    for window in root_children
+                    if window != bar
+                    and int(root_geometry[window]["Y"]) == 0
+                    and int(root_geometry[window]["HEIGHT"]) == bar_height
+                    and int(root_geometry[window]["X"])
+                    + int(root_geometry[window]["WIDTH"])
+                    == display_width
+                    and int(root_geometry[window]["WIDTH"]) <= bar_height
+                )
+
+                ctl("action", "toggle_bar")
+                wait_for(
+                    lambda: int(x_geometry(bar)["Y"]) == -int(x_geometry(bar)["HEIGHT"]),
+                    "top bar moved off-screen",
+                )
+                wait_for(
+                    lambda: int(x_geometry(tray)["Y"]) == -int(x_geometry(tray)["HEIGHT"]),
+                    "XEmbed tray moved off-screen with the bar",
+                )
+                ctl("action", "toggle_bar")
+                wait_for(lambda: int(x_geometry(bar)["Y"]) == 0, "top bar restored")
+                wait_for(lambda: int(x_geometry(tray)["Y"]) == 0, "XEmbed tray restored")
+                print("PASS: bar toggle synchronizes X11 bar and tray windows")
 
                 def spawn(name, during_capture=False):
                     process = subprocess.Popen(["xmessage", "-name", name, "hello"], env=env,

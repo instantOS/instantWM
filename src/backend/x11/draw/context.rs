@@ -465,9 +465,11 @@ impl DrawContext {
         }
     }
 
-    /// Configure an Xlib-owned presentation target. Bar geometry and bar
-    /// blits use this same connection, so their request order is explicit
-    /// without a blocking cross-connection synchronization.
+    /// Configure an Xlib-owned presentation target.
+    ///
+    /// Flush this request immediately: hiding a bar moves it off-screen and
+    /// deliberately skips the subsequent draw that would otherwise flush the
+    /// Xlib connection.
     pub fn move_resize_window(&self, window: Window, bounds: WmRect) {
         if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
             return;
@@ -481,6 +483,7 @@ impl DrawContext {
                 bounds.w as u32,
                 bounds.h as u32,
             );
+            let _ = XFlush(self.display);
         }
     }
 

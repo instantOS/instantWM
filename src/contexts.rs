@@ -888,6 +888,15 @@ impl<'a> WmCtx<'a> {
                         ctx.xembed_tray.as_ref(),
                         &monitor,
                     );
+                    // The XEmbed tray is a separate X11 window beside the
+                    // bar. Keep it on the same visible/off-screen strip when
+                    // bar visibility or monitor geometry changes.
+                    crate::backend::x11::systray::update_systray(
+                        &mut ctx.core,
+                        &ctx.x11,
+                        ctx.x11_runtime,
+                        ctx.xembed_tray,
+                    );
                 }
                 ctx.core.bar.mark_dirty();
             }
