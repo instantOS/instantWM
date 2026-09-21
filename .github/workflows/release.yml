@@ -152,6 +152,9 @@ jobs:
           shared-key: cross-deps
           key: cross-${{ matrix.target }}
       - name: Cross compile
+        # Container jobs default to `sh`, which is dash on Ubuntu and does
+        # not support `pipefail`.
+        shell: bash
         env:
           TRIPLE: ${{ matrix.triple }}
         run: |
@@ -190,6 +193,15 @@ jobs:
       - build
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
+      # The archlinux:latest base image no longer ships git, and checkout must
+      # run before the composite setup-arch action (which needs the repo).
+      # Without git, actions/checkout silently falls back to a REST API
+      # tarball download that has no .git, breaking `git archive` below.
+      - name: Install git for checkout
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm git
       - name: Checkout
         uses: actions/checkout@v7
       - name: Setup Arch container
