@@ -11,6 +11,8 @@ compile_commands.json
 /rust/target
 /tags
 target
+# Cross-compilation sysroots built by scripts/ci/install-deps-ubuntu.sh
+sysroot
 
 # Stakpak session files
 .stakpak/session*

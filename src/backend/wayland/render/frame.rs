@@ -88,12 +88,15 @@ fn constraint_matches_output(
 
 /// Clear FIFO constraints after an output refresh has accepted the commit
 /// which established them. This unblocks the following queued surface commit.
+///
+/// Keep the surface registered after signaling: a queued commit can install
+/// another barrier when `blocker_cleared` applies it. Its pre-commit hook has
+/// already run, so removing the surface here would lose that new barrier.
 pub fn release_fifo_barriers(state: &mut WaylandState, output: &Output) {
     let mut clients: Vec<Client> = Vec::new();
-    let surfaces: Vec<_> = state.fifo_constraint_surfaces.iter().cloned().collect();
-    for surface in surfaces {
-        let barrier = smithay::wayland::compositor::with_states(&surface, |states| {
-            constraint_matches_output(state, &surface, states, output).then(|| {
+    for surface in &state.fifo_constraint_surfaces {
+        let barrier = smithay::wayland::compositor::with_states(surface, |states| {
+            constraint_matches_output(state, surface, states, output).then(|| {
                 states
                     .cached_state
                     .get::<FifoBarrierCachedState>()
@@ -106,7 +109,6 @@ pub fn release_fifo_barriers(state: &mut WaylandState, output: &Output) {
         let Some(barrier) = barrier else {
             continue;
         };
-        state.fifo_constraint_surfaces.remove(&surface);
         barrier.signal();
         if let Some(client) = surface.client() {
             remember_client(&mut clients, client);

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/instantOS/instantWM/compare/v0.3.0...v0.3.1) - 2026-09-21
+
+### Fixed
+
+- CI
+
+## [0.3.0](https://github.com/instantOS/instantWM/compare/v0.2.1...v0.3.0) - 2026-09-21
+
+### Added
+
+- more rules
+
+### Fixed
+
+- keep keyboard focus on the lock surface while the session is locked
+- better lock sceren tests
+
+### Other
+
+- parallelize more
+- Merge branch 'fix/session-lock-keyboard-focus' into dev
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- add more lock tests
+- Merge branch 'main' into dev
+
 ## [0.2.1](https://github.com/instantOS/instantWM/compare/v0.2.0...v0.2.1) - 2026-09-19
 
 ### Changed
