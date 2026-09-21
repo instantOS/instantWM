@@ -8,7 +8,7 @@
 //! See [`crate::client::rules`] for the matching/consumption path.
 
 use crate::ipc_types::{PendingTmpRuleCmd, PendingTmpRuleInfo, Response};
-use crate::types::{MonitorRule, Rule, RuleFloat, TagMask};
+use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
 use crate::wm::Wm;
 use std::borrow::Cow;
 use std::time::{Duration, Instant};
@@ -30,6 +30,8 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
             is_floating,
             tag,
             on_monitor,
+            geometry,
+            borderless,
             timeout_ms,
         } => {
             if timeout_ms == 0 {
@@ -44,12 +46,29 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
             // pass for that window (see client/rules.rs). Require at least one
             // of either so a typo'd or empty `add` is rejected up front.
             let has_matcher = class.is_some() || instance.is_some() || title.is_some();
-            let has_effect = is_floating.is_some() || tag.is_some() || on_monitor.is_some();
+            let has_effect = is_floating.is_some()
+                || tag.is_some()
+                || on_monitor
+                    .as_ref()
+                    .is_some_and(|selector| !matches!(selector, MonitorSelector::Any))
+                || geometry.is_some()
+                || borderless;
             if !has_matcher && !has_effect {
                 return Response::err(
                     "pending-tmp-rule needs at least one matcher \
-                     (class/instance/title) or effect (floating/tag/on-monitor)",
+                     (class/instance/title) or effect (floating/tag/on-monitor/geometry/borderless)",
                 );
+            }
+
+            if let Some(geometry) = geometry {
+                if !geometry.is_valid() {
+                    return Response::err("geometry must have positive width and height");
+                }
+                if is_floating == Some(false) {
+                    return Response::err(
+                        "geometry implies floating placement; drop --tile or the geometry",
+                    );
+                }
             }
 
             // Validate the 1-indexed tag against the *runtime* tag count, not
@@ -63,19 +82,16 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                 return Response::err(format!("tag must be in 1..={num_tags}"));
             }
 
-            // Reject monitor indices that no present monitor owns, so the
+            // Reject monitor selectors that no present monitor owns, so the
             // one-shot isn't silently consumed by a no-op move at apply time
             // (`apply_monitor_rule` can only target existing monitors).
-            if let Some(num) = on_monitor
-                && !wm
-                    .ctx()
-                    .core()
-                    .model()
-                    .monitors_iter()
-                    .any(|(_, m)| m.num == num)
+            if let Some(selector) = &on_monitor
+                && !matches!(selector, MonitorSelector::Any)
+                && crate::monitor::resolve_monitor_selector(wm.ctx().core().model(), selector)
+                    .is_none()
             {
                 return Response::err(format!(
-                    "on-monitor {num} does not match any connected monitor"
+                    "on-monitor {selector} does not match any connected monitor"
                 ));
             }
 
@@ -93,10 +109,9 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                         RuleFloat::Tiled
                     }
                 }),
-                monitor: match on_monitor {
-                    Some(num) => MonitorRule::Index(num as usize),
-                    None => MonitorRule::Any,
-                },
+                monitor: on_monitor.unwrap_or_default(),
+                geometry,
+                borderless,
             };
 
             let id = NEXT_PENDING_TMP_RULE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -136,10 +151,12 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                         None => None,
                     },
                     tag: p.rule.tags.first_tag().map(|i| i as u32),
-                    on_monitor: match p.rule.monitor {
-                        MonitorRule::Any => None,
-                        MonitorRule::Index(idx) => Some(idx as i32),
+                    on_monitor: match &p.rule.monitor {
+                        MonitorSelector::Any => None,
+                        selector => Some(selector.to_string()),
                     },
+                    geometry: p.rule.geometry.map(|g| g.to_string()),
+                    borderless: p.rule.borderless,
                     ms_remaining: p
                         .deadline
                         .checked_duration_since(now)
@@ -174,7 +191,7 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Monitor, PendingTmpRule, Rule, TagMask};
+    use crate::types::{Monitor, MonitorSelector, PendingTmpRule, Rule, TagMask};
     use crate::wm::Wm;
 
     /// Build a Wm with `num_tags` tags and a single monitor reporting `num=0`.
@@ -189,7 +206,11 @@ mod tests {
     }
 
     /// Minimal Add command: only the given knobs are set, rest left to defaults.
-    fn add(class: Option<&str>, tag: Option<u32>, on_monitor: Option<i32>) -> PendingTmpRuleCmd {
+    fn add(
+        class: Option<&str>,
+        tag: Option<u32>,
+        on_monitor: Option<MonitorSelector>,
+    ) -> PendingTmpRuleCmd {
         PendingTmpRuleCmd::Add {
             class: class.map(str::to_owned),
             instance: None,
@@ -197,6 +218,8 @@ mod tests {
             is_floating: None,
             tag,
             on_monitor,
+            geometry: None,
+            borderless: false,
             timeout_ms: 5_000,
         }
     }
@@ -212,7 +235,9 @@ mod tests {
                     title: None,
                     tags: TagMask::EMPTY,
                     is_floating: None,
-                    monitor: MonitorRule::Any,
+                    monitor: MonitorSelector::Any,
+                    geometry: None,
+                    borderless: false,
                 },
                 deadline: Instant::now() - Duration::from_secs(1),
             });
@@ -242,10 +267,153 @@ mod tests {
     fn on_monitor_with_no_matching_monitor_is_rejected() {
         let mut wm = wm_with(9); // only monitor num 0 exists
         assert!(matches!(
-            handle_pending_tmp_rule(&mut wm, add(Some("x"), None, Some(0))),
+            handle_pending_tmp_rule(
+                &mut wm,
+                add(Some("x"), None, Some(MonitorSelector::Index(0)))
+            ),
             Response::PendingTmpRuleAdded { .. }
         ));
-        let resp = handle_pending_tmp_rule(&mut wm, add(Some("x"), None, Some(1)));
+        let resp = handle_pending_tmp_rule(
+            &mut wm,
+            add(Some("x"), None, Some(MonitorSelector::Index(1))),
+        );
+        assert!(matches!(resp, Response::Err(_)), "{resp:?}");
+    }
+
+    #[test]
+    fn on_monitor_name_resolves_against_connected_monitors() {
+        let mut wm = wm_with(9);
+        wm.core.model.monitors.push(Monitor {
+            name: "DP-1".to_owned(),
+            ..Monitor::default()
+        });
+        assert!(matches!(
+            handle_pending_tmp_rule(
+                &mut wm,
+                add(
+                    Some("x"),
+                    None,
+                    Some(MonitorSelector::Name("DP-1".to_owned()))
+                )
+            ),
+            Response::PendingTmpRuleAdded { .. }
+        ));
+        let resp = handle_pending_tmp_rule(
+            &mut wm,
+            add(
+                Some("x"),
+                None,
+                Some(MonitorSelector::Name("HDMI-9".to_owned())),
+            ),
+        );
+        assert!(matches!(resp, Response::Err(_)), "{resp:?}");
+    }
+
+    #[test]
+    fn geometry_add_is_valid_and_counts_as_effect() {
+        let mut wm = wm_with(9);
+        let resp = handle_pending_tmp_rule(
+            &mut wm,
+            PendingTmpRuleCmd::Add {
+                class: Some("pin-me".to_owned()),
+                instance: None,
+                title: None,
+                is_floating: None,
+                tag: None,
+                on_monitor: None,
+                geometry: Some(crate::types::RuleGeometry {
+                    x: 100,
+                    y: 50,
+                    width: 800,
+                    height: 600,
+                }),
+                borderless: false,
+                timeout_ms: 5_000,
+            },
+        );
+        assert!(
+            matches!(resp, Response::PendingTmpRuleAdded { .. }),
+            "{resp:?}"
+        );
+    }
+
+    #[test]
+    fn geometry_with_degenerate_size_is_rejected() {
+        let mut wm = wm_with(9);
+        let resp = handle_pending_tmp_rule(
+            &mut wm,
+            PendingTmpRuleCmd::Add {
+                class: Some("pin-me".to_owned()),
+                instance: None,
+                title: None,
+                is_floating: None,
+                tag: None,
+                on_monitor: None,
+                geometry: Some(crate::types::RuleGeometry {
+                    x: 0,
+                    y: 0,
+                    width: 0,
+                    height: 600,
+                }),
+                borderless: false,
+                timeout_ms: 5_000,
+            },
+        );
+        assert!(matches!(resp, Response::Err(_)), "{resp:?}");
+    }
+
+    #[test]
+    fn tile_conflicts_with_geometry() {
+        let mut wm = wm_with(9);
+        let resp = handle_pending_tmp_rule(
+            &mut wm,
+            PendingTmpRuleCmd::Add {
+                class: Some("pin-me".to_owned()),
+                instance: None,
+                title: None,
+                is_floating: Some(false),
+                tag: None,
+                on_monitor: None,
+                geometry: Some(crate::types::RuleGeometry {
+                    x: 0,
+                    y: 0,
+                    width: 800,
+                    height: 600,
+                }),
+                borderless: false,
+                timeout_ms: 5_000,
+            },
+        );
+        assert!(matches!(resp, Response::Err(_)), "{resp:?}");
+    }
+
+    #[test]
+    fn borderless_only_add_counts_as_effect() {
+        let mut wm = wm_with(9);
+        let resp = handle_pending_tmp_rule(
+            &mut wm,
+            PendingTmpRuleCmd::Add {
+                class: None,
+                instance: None,
+                title: None,
+                is_floating: None,
+                tag: None,
+                on_monitor: None,
+                geometry: None,
+                borderless: true,
+                timeout_ms: 5_000,
+            },
+        );
+        assert!(
+            matches!(resp, Response::PendingTmpRuleAdded { .. }),
+            "{resp:?}"
+        );
+    }
+
+    #[test]
+    fn any_monitor_without_a_matcher_or_other_effect_is_rejected() {
+        let mut wm = wm_with(9);
+        let resp = handle_pending_tmp_rule(&mut wm, add(None, None, Some(MonitorSelector::Any)));
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 

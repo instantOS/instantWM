@@ -323,12 +323,7 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
     use crate::overview::ExitMode::{RestorePrevious, ToSelectedWindow};
 
     match cmd {
-        IpcCommand::Monitor(
-            MonitorCommand::Switch { .. }
-            | MonitorCommand::Next { .. }
-            | MonitorCommand::Prev { .. }
-            | MonitorCommand::Set { .. },
-        ) => Some(RestorePrevious),
+        IpcCommand::Monitor(MonitorCommand::Set { .. }) => Some(RestorePrevious),
         IpcCommand::Window(
             WindowCommand::Resize { .. } | WindowCommand::Close(None) | WindowCommand::Focus(_),
         )
@@ -344,7 +339,13 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         | IpcCommand::Reload
         | IpcCommand::RunAction { .. }
         | IpcCommand::UpdateStatus(_)
-        | IpcCommand::Monitor(MonitorCommand::List | MonitorCommand::Modes { .. })
+        | IpcCommand::Monitor(
+            MonitorCommand::List
+            | MonitorCommand::Modes { .. }
+            | MonitorCommand::Switch { .. }
+            | MonitorCommand::Next { .. }
+            | MonitorCommand::Prev { .. },
+        )
         | IpcCommand::Scratchpad(
             ScratchpadCommand::List
             | ScratchpadCommand::Toggle(_)
@@ -414,6 +415,22 @@ mod tests {
         .unwrap();
         bytes.push(0);
         assert!(decode_request(&bytes).is_err());
+    }
+
+    #[test]
+    fn monitor_navigation_defers_overview_exit_until_a_switch_succeeds() {
+        use crate::ipc_types::MonitorCommand;
+        use crate::types::MonitorSelector;
+
+        for command in [
+            MonitorCommand::Switch {
+                monitor: MonitorSelector::Name("missing".to_owned()),
+            },
+            MonitorCommand::Next { count: 1 },
+            MonitorCommand::Prev { count: 1 },
+        ] {
+            assert!(ipc_overview_exit(&IpcCommand::Monitor(command)).is_none());
+        }
     }
 
     #[test]

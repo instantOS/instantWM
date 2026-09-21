@@ -371,20 +371,24 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     crate::mouse::warp::warp_pointer_to_monitor(ctx, target);
 }
 
-pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
-    let target = {
-        let mgr = &ctx.core().model().monitors;
-        if mgr.len() <= 1 {
-            return;
-        }
-        match mgr.id_at_position(position.min(mgr.len() - 1)) {
-            Some(id) => id,
-            None => return,
-        }
-    };
-
-    crate::focus::select_monitor(ctx, target);
-    crate::mouse::warp::warp_pointer_to_monitor(ctx, target);
+/// Resolve a [`MonitorSelector`] against the current monitor set.
+///
+/// Returns `None` for [`MonitorSelector::Any`] (callers treat that as "leave
+/// alone") and for selectors that match no connected monitor.
+pub fn resolve_monitor_selector(
+    model: &crate::model::WmModel,
+    selector: &MonitorSelector,
+) -> Option<crate::types::MonitorId> {
+    match selector {
+        MonitorSelector::Any => None,
+        MonitorSelector::Focused => model.selected_monitor().map(|monitor| monitor.id()),
+        MonitorSelector::Primary => model.monitors.id_at_position(0),
+        MonitorSelector::Index(position) => model.monitors.id_at_position(*position),
+        MonitorSelector::Name(name) => model
+            .monitors_iter()
+            .find(|(_, monitor)| &monitor.name == name)
+            .map(|(id, _)| id),
+    }
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {

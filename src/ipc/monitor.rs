@@ -1,14 +1,13 @@
 use crate::backend::OutputOps;
 use crate::ipc_types::{MonitorCommand, Response};
-use crate::monitor::{focus_monitor, focus_n_mon};
-use crate::types::MonitorDirection;
+use crate::monitor::{focus_monitor, resolve_monitor_selector};
+use crate::types::{MonitorDirection, MonitorSelector};
 use crate::wm::Wm;
 use std::collections::HashMap;
-
 pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
     match cmd {
         MonitorCommand::List => list_monitors(wm),
-        MonitorCommand::Switch { index } => switch_monitor(wm, index as i32),
+        MonitorCommand::Switch { monitor } => switch_monitor(wm, monitor),
         MonitorCommand::Next { count } => next_monitor(wm, count as i32),
         MonitorCommand::Prev { count } => prev_monitor(wm, count as i32),
         MonitorCommand::Set {
@@ -72,9 +71,24 @@ fn list_monitors(wm: &Wm) -> Response {
     Response::MonitorList(monitors)
 }
 
-fn switch_monitor(wm: &mut Wm, index: i32) -> Response {
-    focus_n_mon(&mut wm.ctx(), index.max(0) as usize);
-    Response::ok()
+fn switch_monitor(wm: &mut Wm, selector: MonitorSelector) -> Response {
+    if matches!(selector, MonitorSelector::Any) {
+        return Response::err(
+            "monitor switch needs a concrete monitor: name, position, \"focused\" or \"primary\"",
+        );
+    }
+    match resolve_monitor_selector(&wm.core.model, &selector) {
+        Some(target) => {
+            let changed = crate::focus::select_monitor(&mut wm.ctx(), target);
+            if changed {
+                crate::mouse::warp::warp_pointer_to_monitor(&mut wm.ctx(), target);
+            }
+            Response::ok()
+        }
+        None => Response::err(format!(
+            "monitor '{selector}' does not match any connected monitor"
+        )),
+    }
 }
 
 fn next_monitor(wm: &mut Wm, count: i32) -> Response {
@@ -197,5 +211,50 @@ mod tests {
         assert_eq!(monitors[0].position, 0);
         assert_eq!(monitors[1].id, second.get());
         assert_eq!(monitors[1].position, 1);
+    }
+
+    #[test]
+    fn monitor_switch_resolves_output_name() {
+        use crate::ipc_types::MonitorCommand;
+        use crate::types::MonitorSelector;
+
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.monitors.push(Monitor::default());
+        let side_id = wm.core.model.monitors.push(Monitor {
+            name: "DP-1".to_owned(),
+            ..Monitor::default()
+        });
+
+        let resp = super::handle_monitor_command(
+            &mut wm,
+            MonitorCommand::Switch {
+                monitor: MonitorSelector::Name("DP-1".to_owned()),
+            },
+        );
+        assert!(matches!(resp, Response::Ok), "{resp:?}");
+        assert_eq!(wm.core.model.selected_monitor_id(), side_id);
+
+        let resp = super::handle_monitor_command(
+            &mut wm,
+            MonitorCommand::Switch {
+                monitor: MonitorSelector::Name("HDMI-9".to_owned()),
+            },
+        );
+        assert!(matches!(resp, Response::Err(_)), "{resp:?}");
+    }
+
+    #[test]
+    fn focused_switch_requires_a_connected_monitor() {
+        use crate::ipc_types::MonitorCommand;
+        use crate::types::MonitorSelector;
+
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let resp = super::handle_monitor_command(
+            &mut wm,
+            MonitorCommand::Switch {
+                monitor: MonitorSelector::Focused,
+            },
+        );
+        assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 }

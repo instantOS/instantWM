@@ -4,7 +4,7 @@
 //! matching rule wins.  A `None` field is a wildcard that matches anything.
 
 use super::commands::SCRATCHPAD_CLASS;
-use crate::types::{MonitorRule, Rule, RuleFloat, TagMask};
+use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
 
 use std::borrow::Cow;
 
@@ -36,7 +36,9 @@ pub fn get_rules() -> Vec<Rule> {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::FloatCenter),
-            monitor: MonitorRule::Any,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
         },
         // --- Scratchpad ---
         Rule {
@@ -45,7 +47,9 @@ pub fn get_rules() -> Vec<Rule> {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::Scratchpad),
-            monitor: MonitorRule::Any,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
         },
         // --- Fullscreen floating (takes full screen but stays floating) ---
         fullscreen_float("kdeconnect.daemon"),
@@ -68,7 +72,9 @@ fn float(class: &'static str) -> Rule {
         title: None,
         tags: TagMask::EMPTY,
         is_floating: Some(RuleFloat::Float),
-        monitor: MonitorRule::Any,
+        monitor: MonitorSelector::Any,
+        geometry: None,
+        borderless: false,
     }
 }
 
@@ -80,6 +86,8 @@ fn fullscreen_float(class: &'static str) -> Rule {
         title: None,
         tags: TagMask::EMPTY,
         is_floating: Some(RuleFloat::FloatFullscreen),
-        monitor: MonitorRule::Any,
+        monitor: MonitorSelector::Any,
+        geometry: None,
+        borderless: false,
     }
 }

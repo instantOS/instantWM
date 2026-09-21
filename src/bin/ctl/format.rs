@@ -69,12 +69,21 @@ fn format_pending_tmp_rule_list(rules: &[instantwm::ipc_types::PendingTmpRuleInf
         }
     }
     println!(
-        "{:<5} {:<14} {:<14} {:<14} {:<7} {:<4} {:<10} {:<8}",
-        "ID", "CLASS", "INSTANCE", "TITLE", "FLOAT", "TAG", "MONITOR", "REMAINING"
+        "{:<5} {:<14} {:<14} {:<14} {:<7} {:<4} {:<10} {:<16} {:<6} {:<8}",
+        "ID",
+        "CLASS",
+        "INSTANCE",
+        "TITLE",
+        "FLOAT",
+        "TAG",
+        "MONITOR",
+        "GEOMETRY",
+        "BORDER",
+        "REMAINING"
     );
     for r in rules {
         println!(
-            "{:<5} {:<14} {:<14} {:<14} {:<7} {:<4} {:<10} {:<8}",
+            "{:<5} {:<14} {:<14} {:<14} {:<7} {:<4} {:<10} {:<16} {:<6} {:<8}",
             r.id,
             render(r.class.as_ref().map(|s| truncate_with_ellipsis(s, 14))),
             render(r.instance.as_ref().map(|s| truncate_with_ellipsis(s, 14))),
@@ -85,7 +94,9 @@ fn format_pending_tmp_rule_list(rules: &[instantwm::ipc_types::PendingTmpRuleInf
                 None => "-",
             },
             render(r.tag),
-            render(r.on_monitor),
+            render(r.on_monitor.clone()),
+            render(r.geometry.clone()),
+            if r.borderless { "none" } else { "-" },
             render_ms(r.ms_remaining)
         );
     }

@@ -3,7 +3,7 @@ use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::mouse::slop::is_valid_window_size;
-use crate::types::{Rect, WindowId};
+use crate::types::{MonitorSelector, Rect, WindowId};
 use crate::wm::Wm;
 
 pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
@@ -115,7 +115,7 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
 fn resize_window(
     wm: &mut Wm,
     parsed_id: Option<WindowId>,
-    monitor_arg: Option<String>,
+    monitor: Option<MonitorSelector>,
     requested_rect: Rect,
 ) -> Response {
     let target = parsed_id.or_else(|| wm.core.model.selected_win());
@@ -130,11 +130,10 @@ fn resize_window(
         ),
         None => return Response::err("window not found"),
     };
-    let target_monitor_id =
-        match resolve_resize_monitor(wm, current_monitor_id, monitor_arg.as_deref()) {
-            Ok(id) => id,
-            Err(msg) => return Response::err(msg),
-        };
+    let target_monitor_id = match resolve_resize_monitor(wm, current_monitor_id, monitor.as_ref()) {
+        Ok(id) => id,
+        Err(msg) => return Response::err(msg),
+    };
     let Some(target_monitor_rect) = wm
         .core
         .model
@@ -184,20 +183,15 @@ fn resize_window(
 fn resolve_resize_monitor(
     wm: &Wm,
     current_monitor_id: crate::types::MonitorId,
-    monitor_arg: Option<&str>,
+    monitor: Option<&MonitorSelector>,
 ) -> Result<crate::types::MonitorId, String> {
-    match monitor_arg {
+    match monitor {
         None => Ok(current_monitor_id),
-        Some("focused") => Ok(wm.core.model.selected_monitor_id()),
-        Some(raw) => {
-            let pos = raw
-                .parse::<usize>()
-                .map_err(|_| format!("invalid monitor '{}'", raw))?;
-            wm.core
-                .model
-                .monitors
-                .id_at_position(pos)
-                .ok_or_else(|| format!("monitor {pos} not found"))
-        }
+        Some(MonitorSelector::Any) => Err(
+            "window resize needs a concrete monitor: name, position, \"focused\" or \"primary\""
+                .to_owned(),
+        ),
+        Some(selector) => crate::monitor::resolve_monitor_selector(&wm.core.model, selector)
+            .ok_or_else(|| format!("monitor '{selector}' does not match any connected monitor")),
     }
 }

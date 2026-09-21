@@ -1,6 +1,6 @@
 pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
-pub use crate::types::{KeyboardLayout, TagMask};
+pub use crate::types::{KeyboardLayout, MonitorSelector, RuleGeometry, TagMask};
 use bincode::{Decode, Encode};
 
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
@@ -98,7 +98,7 @@ impl std::fmt::Display for Transform {
 pub enum MonitorCommand {
     List,
     Switch {
-        index: u32,
+        monitor: MonitorSelector,
     },
     Next {
         count: u32,
@@ -206,9 +206,14 @@ pub enum PendingTmpRuleCmd {
         /// 1-indexed tag number to assign; `None` leaves tags alone.
         /// Stored on the server as a [`crate::types::TagMask`].
         tag: Option<u32>,
-        /// Backend monitor `num` (the integer the backend reports, distinct
-        /// from the spatial position). `None` leaves the placement alone.
-        on_monitor: Option<i32>,
+        /// Monitor to place the matched window on. `None`/`Any` leaves the
+        /// placement alone.
+        on_monitor: Option<MonitorSelector>,
+        /// Exact floating placement relative to the target monitor's work
+        /// area. Implies floating placement.
+        geometry: Option<RuleGeometry>,
+        /// Manage the matched window without a WM border.
+        borderless: bool,
         /// Time-to-live in milliseconds. `0` is invalid at the CLI layer.
         timeout_ms: u64,
     },
@@ -227,7 +232,12 @@ pub struct PendingTmpRuleInfo {
     pub title: Option<String>,
     pub is_floating: Option<bool>,
     pub tag: Option<u32>,
-    pub on_monitor: Option<i32>,
+    /// Monitor the rule targets, in selector syntax (`"DP-1"`, `"focused"`,
+    /// `"primary"` or a layout position). `None` targets any monitor.
+    pub on_monitor: Option<String>,
+    /// Exact placement, if the rule pins one.
+    pub geometry: Option<String>,
+    pub borderless: bool,
     /// Milliseconds remaining until the rule expires.
     pub ms_remaining: u64,
 }
@@ -238,7 +248,7 @@ pub enum WindowCommand {
     Focus(Option<u32>),
     Resize {
         window_id: Option<u32>,
-        monitor: Option<String>,
+        monitor: Option<MonitorSelector>,
         x: i32,
         y: i32,
         width: i32,

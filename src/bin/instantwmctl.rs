@@ -399,6 +399,7 @@ mod tests {
     use crate::ctl::commands::ScratchpadAction;
     use clap::Parser;
     use instantwm::ipc_types::{ScratchpadInitialStatus, WindowCommand};
+    use instantwm::types::MonitorSelector;
 
     #[test]
     fn parses_reload_command() {
@@ -620,6 +621,59 @@ mod tests {
     }
 
     #[test]
+    fn parses_pending_tmp_rule_add_geometry_borderless_and_monitor_name() {
+        use instantwm::ipc_types::PendingTmpRuleCmd;
+        use instantwm::types::{MonitorSelector, RuleGeometry};
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "pending-tmp-rule",
+            "add",
+            "--class",
+            "ins_freeze",
+            "--float",
+            "--borderless",
+            "--geometry",
+            "100,50,800,600",
+            "--on-monitor",
+            "DP-1",
+        ]);
+        let cmd: IpcCommand = cli.command.into();
+        if let IpcCommand::PendingTmpRule(PendingTmpRuleCmd::Add {
+            on_monitor,
+            geometry,
+            borderless,
+            ..
+        }) = cmd
+        {
+            assert_eq!(on_monitor, Some(MonitorSelector::Name("DP-1".to_owned())));
+            assert_eq!(
+                geometry,
+                Some(RuleGeometry {
+                    x: 100,
+                    y: 50,
+                    width: 800,
+                    height: 600,
+                })
+            );
+            assert!(borderless);
+        } else {
+            panic!("expected PendingTmpRule command");
+        }
+    }
+
+    #[test]
+    fn parses_monitor_switch_by_name() {
+        use instantwm::ipc_types::MonitorCommand;
+        use instantwm::types::MonitorSelector;
+        let cli = Cli::parse_from(["instantwmctl", "monitor", "switch", "DP-1"]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Switch { monitor }) if monitor == MonitorSelector::Name("DP-1".to_owned())
+        ));
+    }
+
+    #[test]
     fn parses_scratchpad_create_status_flag() {
         let cli = Cli::parse_from([
             "instantwmctl",
@@ -819,7 +873,7 @@ mod tests {
                 y: 20,
                 width: 800,
                 height: 600,
-            }) if monitor == "1"
+            }) if monitor == MonitorSelector::Index(1)
         ));
     }
 

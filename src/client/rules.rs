@@ -4,7 +4,8 @@ use crate::client::LaunchContext;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
 use crate::types::{
-    ClientMode, ClientPlacement, MonitorRule, Rect, RuleFloat, SizeHints, TagMask, WindowId,
+    ClientMode, ClientPlacement, MonitorSelector, Rect, RuleFloat, RuleGeometry, SizeHints,
+    TagMask, WindowId,
 };
 
 /// Properties used for rule matching.
@@ -338,7 +339,12 @@ fn apply_rule(
     };
 
     if let Some(c) = state.model.client_mut(win) {
-        if let Some(ref float_rule) = rule.is_floating {
+        // A geometry is a floating placement instruction even when the rule
+        // does not spell out `is_floating`.
+        let effective_float = rule
+            .is_floating
+            .or_else(|| rule.geometry.is_some().then_some(RuleFloat::Float));
+        if let Some(ref float_rule) = effective_float {
             apply_float_rule(c, float_rule, mon_geo, bar_height);
             *placement = match float_rule {
                 RuleFloat::FloatCenter => InitialRulePlacement::Center,
@@ -346,32 +352,58 @@ fn apply_rule(
                 _ => InitialRulePlacement::Default,
             };
         }
+        if let Some(geometry) = rule.geometry {
+            apply_geometry_rule(c, geometry, mon_geo);
+            *placement = InitialRulePlacement::Preserve;
+        }
+        if rule.borderless {
+            c.is_borderless = true;
+            c.border_width = 0;
+            c.old_border_width = 0;
+        }
         c.update_tag_mask(|tags| tags | rule.tags);
     }
 }
 
 /// Move `win` to the monitor named in `rule.monitor`, if any.
 fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types::Rule) {
-    let MonitorRule::Index(target_num) = rule.monitor else {
+    if matches!(rule.monitor, MonitorSelector::Any) {
+        return;
+    }
+
+    let Some(target_mid) = crate::monitor::resolve_monitor_selector(&state.model, &rule.monitor)
+    else {
         return;
     };
 
-    let target_mid = state
-        .model
-        .monitors_iter()
-        .find(|(_i, m)| m.num == target_num as i32)
-        .map(|(i, _)| i);
+    let reassigned = state.model.reassign_client_monitor(win, target_mid);
+    debug_assert!(reassigned, "rule target must be a valid managed monitor");
+}
 
-    if let Some(mid) = target_mid {
-        let reassigned = state.model.reassign_client_monitor(win, mid);
-        debug_assert!(reassigned, "rule target must be a valid managed monitor");
-    }
+/// Pin a floating window to an exact rectangle relative to the target
+/// monitor's work area, mirroring the geometry `FloatFullscreen` assigns.
+fn apply_geometry_rule(
+    client: &mut crate::types::client::Client,
+    geometry: RuleGeometry,
+    mon_geo: (Rect, Rect, bool),
+) {
+    let (_, work_rect, _) = mon_geo;
+    client.set_placement(ClientPlacement::Floating);
+    client.geo = Rect::new(
+        work_rect.x + geometry.x,
+        work_rect.y + geometry.y,
+        geometry.width.max(1),
+        geometry.height.max(1),
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct RuleStateSnapshot {
     mode: ClientMode,
     is_sticky: bool,
+    is_borderless: bool,
+    border_width: i32,
+    old_border_width: i32,
     monitor_id: crate::types::MonitorId,
     tags: TagMask,
     geo: Rect,
@@ -391,6 +423,9 @@ impl PropertyStateSnapshot {
             rule: RuleStateSnapshot {
                 mode: c.mode(),
                 is_sticky: c.is_sticky,
+                is_borderless: c.is_borderless,
+                border_width: c.border_width,
+                old_border_width: c.old_border_width,
                 monitor_id: c.monitor_id,
                 tags: c.tags,
                 geo: c.geo,
@@ -430,6 +465,9 @@ fn rule_state_snapshot(state: &CoreState, win: WindowId) -> Option<RuleStateSnap
     Some(RuleStateSnapshot {
         mode: c.mode(),
         is_sticky: c.is_sticky,
+        is_borderless: c.is_borderless,
+        border_width: c.border_width,
+        old_border_width: c.old_border_width,
         monitor_id: c.monitor_id,
         tags: c.tags,
         geo: c.geo,
@@ -537,7 +575,7 @@ mod tests {
 
     #[test]
     fn property_rule_change_queues_layout_for_old_and_new_monitors() {
-        use crate::types::{MonitorRule, Rule, RuleFloat};
+        use crate::types::{MonitorSelector, Rule, RuleFloat};
         use std::borrow::Cow;
 
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
@@ -555,7 +593,9 @@ mod tests {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::Tiled),
-            monitor: MonitorRule::Index(1),
+            monitor: MonitorSelector::Index(1),
+            geometry: None,
+            borderless: false,
         }];
         let win = WindowId(42);
         wm.core.model.insert_client(Client {
@@ -739,7 +779,9 @@ mod tests {
                     title: None,
                     tags: TagMask::EMPTY,
                     is_floating: Some(RuleFloat::Float),
-                    monitor: crate::types::MonitorRule::Any,
+                    monitor: crate::types::MonitorSelector::Any,
+                    geometry: None,
+                    borderless: false,
                 },
                 deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
             });
@@ -760,7 +802,7 @@ mod tests {
 
     #[test]
     fn property_rule_changes_restore_mode_without_exiting_fullscreen() {
-        use crate::types::{MonitorRule, Rule, RuleFloat};
+        use crate::types::{MonitorSelector, Rule, RuleFloat};
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
@@ -771,7 +813,9 @@ mod tests {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::Tiled),
-            monitor: MonitorRule::Any,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
         }];
         let win = WindowId(44);
         state.model.insert_client(Client {
@@ -798,7 +842,7 @@ mod tests {
 
     #[test]
     fn rules_can_force_tiling_if_explicitly_specified() {
-        use crate::types::{Monitor, MonitorRule, Rule, RuleFloat};
+        use crate::types::{Monitor, MonitorSelector, Rule, RuleFloat};
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
@@ -810,7 +854,9 @@ mod tests {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::Tiled), // Explicitly Tiled
-            monitor: MonitorRule::Any,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
         }];
 
         let win = WindowId(42);
@@ -838,7 +884,7 @@ mod tests {
 
     #[test]
     fn initial_float_center_rule_overrides_backend_position() {
-        use crate::types::{MonitorRule, Rule, RuleFloat};
+        use crate::types::{MonitorSelector, Rule, RuleFloat};
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
@@ -852,7 +898,9 @@ mod tests {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::FloatCenter),
-            monitor: MonitorRule::Any,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
         }];
 
         let win = WindowId(43);
@@ -969,7 +1017,7 @@ mod tests {
 
     #[test]
     fn initial_fullscreen_float_rule_preserves_assigned_geometry() {
-        use crate::types::{MonitorRule, Rect, Rule, RuleFloat};
+        use crate::types::{MonitorSelector, Rect, Rule, RuleFloat};
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
@@ -986,7 +1034,9 @@ mod tests {
             title: None,
             tags: TagMask::EMPTY,
             is_floating: Some(RuleFloat::FloatFullscreen),
-            monitor: MonitorRule::Any,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
         }];
 
         let win = WindowId(44);
@@ -1011,5 +1061,214 @@ mod tests {
             state.model.client(win).unwrap().geo,
             Rect::new(1920, 0, 1920, 1048)
         );
+    }
+
+    #[test]
+    fn initial_geometry_rule_pins_work_area_relative_geometry() {
+        use crate::types::{ClientPlacement, MonitorSelector, Rect, Rule, RuleGeometry};
+        use std::borrow::Cow;
+
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 1;
+        let mut monitor = Monitor::new_with_values(true);
+        monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.bar_height = 32;
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        let work_area = monitor.work_rect();
+        state.model.monitors.push(monitor);
+        state.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("pin-me")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            is_floating: None, // geometry implies floating
+            monitor: MonitorSelector::Any,
+            geometry: Some(RuleGeometry {
+                x: 100,
+                y: 50,
+                width: 800,
+                height: 600,
+            }),
+            borderless: true,
+        }];
+
+        let win = WindowId(45);
+        state.model.insert_client(Client {
+            win,
+            monitor_id: MonitorId::default(),
+            ..Default::default()
+        });
+
+        let outcome = apply_initial_rules(
+            &mut state,
+            win,
+            &WindowProperties {
+                class: "pin-me".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert_eq!(outcome.placement, InitialRulePlacement::Preserve);
+        let client = state.model.client(win).unwrap();
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+        assert!(client.is_borderless);
+        assert_eq!(client.border_width, 0);
+        assert_eq!(client.old_border_width, 0);
+        assert_eq!(
+            client.geo,
+            Rect::new(work_area.x + 100, work_area.y + 50, 800, 600)
+        );
+    }
+
+    #[test]
+    fn borderless_rule_sets_flag_without_forcing_float() {
+        use crate::types::{MonitorSelector, Rule};
+        use std::borrow::Cow;
+
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 1;
+        state.model.monitors.push(Monitor::default());
+        state.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("naked")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            is_floating: None,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: true,
+        }];
+
+        let win = WindowId(46);
+        state.model.insert_client(Client {
+            win,
+            monitor_id: MonitorId::default(),
+            ..Default::default()
+        });
+
+        let outcome = apply_initial_rules(
+            &mut state,
+            win,
+            &WindowProperties {
+                class: "naked".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert_eq!(outcome.placement, InitialRulePlacement::Default);
+        let client = state.model.client(win).unwrap();
+        assert!(client.is_borderless);
+        assert_eq!(client.border_width, 0);
+    }
+
+    #[test]
+    fn property_refresh_projects_and_preserves_borderless_rules() {
+        use crate::types::{MonitorSelector, Rule};
+        use std::borrow::Cow;
+
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 1;
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let default_border = wm.core.config.window.border_width_px;
+        wm.core.config.bindings.rules = vec![Rule {
+            class: None,
+            instance: None,
+            title: Some(Cow::Borrowed("borderless-now")),
+            tags: TagMask::EMPTY,
+            is_floating: None,
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: true,
+        }];
+        let win = WindowId(49);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            border_width: default_border,
+            old_border_width: default_border,
+            ..Default::default()
+        });
+
+        {
+            let mut ctx = wm.ctx();
+            update_window_properties(
+                ctx.core_mut(),
+                win,
+                &WindowProperties {
+                    title: "borderless-now".to_owned(),
+                    ..Default::default()
+                },
+            );
+        }
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.is_borderless);
+        assert_eq!(client.border_width, 0);
+        assert!(wm.work.layout.is_pending());
+
+        // Like floating/tag effects, a one-shot rule effect becomes client
+        // state rather than disappearing on unrelated metadata churn.
+        wm.work.layout.clear();
+        {
+            let mut ctx = wm.ctx();
+            update_window_properties(
+                ctx.core_mut(),
+                win,
+                &WindowProperties {
+                    title: "ordinary-again".to_owned(),
+                    ..Default::default()
+                },
+            );
+        }
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.is_borderless);
+        assert_eq!(client.old_border_width, 0);
+        assert!(!wm.work.layout.is_pending());
+    }
+
+    #[test]
+    fn initial_monitor_rule_resolves_output_name() {
+        use crate::types::{MonitorSelector, Rule};
+        use std::borrow::Cow;
+
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 1;
+        state.model.monitors.push(Monitor::default());
+        let side_id = state.model.monitors.push(Monitor {
+            name: "DP-1".to_owned(),
+            ..Monitor::default()
+        });
+        state.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("side-me")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            is_floating: None,
+            monitor: MonitorSelector::Name("DP-1".to_owned()),
+            geometry: None,
+            borderless: false,
+        }];
+
+        let win = WindowId(48);
+        let first_id = state.model.monitors.id_at_position(0).unwrap();
+        state.model.insert_client(Client {
+            win,
+            monitor_id: first_id,
+            ..Default::default()
+        });
+
+        apply_initial_rules(
+            &mut state,
+            win,
+            &WindowProperties {
+                class: "side-me".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert_eq!(state.model.client(win).unwrap().monitor_id, side_id);
     }
 }

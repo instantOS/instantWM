@@ -4,7 +4,9 @@ use instantwm::ipc_types::{
     PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand, TestCommand,
     Transform, VrrMode, WindowCommand,
 };
-use instantwm::types::{FocusFollowsMouseMode, MonitorDirection, ToggleAction};
+use instantwm::types::{
+    FocusFollowsMouseMode, MonitorDirection, MonitorSelector, RuleGeometry, ToggleAction,
+};
 use std::process;
 
 const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
@@ -13,8 +15,12 @@ const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 pub enum MonitorAction {
     /// List connected monitors and their current configuration.
     List { window_id: Option<u32> },
-    /// Switch to a monitor by index.
-    Switch { index: u32 },
+    /// Switch focus to a monitor by output name, layout position,
+    /// "focused" or "primary".
+    Switch {
+        #[arg(value_name = "MONITOR")]
+        monitor: MonitorSelector,
+    },
     /// Focus the next monitor.
     Next {
         #[arg(default_value = "1")]
@@ -161,8 +167,10 @@ pub enum WindowAction {
     /// Resize and optionally move a managed window.
     Resize {
         window_id: Option<u32>,
-        #[arg(long)]
-        monitor: Option<String>,
+        /// Monitor whose top-left corner the coordinates are relative to:
+        /// output name, layout position, "focused" or "primary".
+        #[arg(long, value_name = "MONITOR")]
+        monitor: Option<MonitorSelector>,
         #[arg(long)]
         x: i32,
         #[arg(long)]
@@ -399,9 +407,17 @@ pub enum PendingTmpRuleAction {
         /// 1-indexed tag number to assign to the matched window.
         #[arg(long)]
         tag: Option<u32>,
-        /// Backend monitor index to place the matched window on.
-        #[arg(long, value_name = "INDEX")]
-        on_monitor: Option<i32>,
+        /// Monitor to place the matched window on: output name, layout
+        /// position, "focused" or "primary".
+        #[arg(long, value_name = "MONITOR")]
+        on_monitor: Option<MonitorSelector>,
+        /// Exact floating placement relative to the target monitor's work
+        /// area. Implies --float.
+        #[arg(long, value_name = "X,Y,W,H", conflicts_with = "tile")]
+        geometry: Option<RuleGeometry>,
+        /// Manage the matched window without a WM border.
+        #[arg(long)]
+        borderless: bool,
         /// Time-to-live in milliseconds. Must be > 0; default 30_000.
         #[arg(long, default_value_t = 30_000)]
         timeout_ms: u64,
@@ -543,7 +559,7 @@ impl From<MonitorAction> for MonitorCommand {
     fn from(action: MonitorAction) -> Self {
         match action {
             MonitorAction::List { .. } => Self::List,
-            MonitorAction::Switch { index } => Self::Switch { index },
+            MonitorAction::Switch { monitor } => Self::Switch { monitor },
             MonitorAction::Next { count } => Self::Next { count },
             MonitorAction::Prev { count } => Self::Prev { count },
             MonitorAction::Set {
@@ -801,6 +817,8 @@ impl From<PendingTmpRuleAction> for PendingTmpRuleCmd {
                 tile,
                 tag,
                 on_monitor,
+                geometry,
+                borderless,
                 timeout_ms,
             } => Self::Add {
                 class,
@@ -815,6 +833,8 @@ impl From<PendingTmpRuleAction> for PendingTmpRuleCmd {
                 },
                 tag,
                 on_monitor,
+                geometry,
+                borderless,
                 timeout_ms,
             },
             PendingTmpRuleAction::List => Self::List,

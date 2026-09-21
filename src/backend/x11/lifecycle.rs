@@ -218,6 +218,7 @@ fn read_launch_context(
 
 fn apply_default_border(model: &mut crate::model::WmModel, border_px: i32, window: WindowId) {
     if let Some(client) = model.client_mut(window) {
+        let border_px = if client.is_borderless { 0 } else { border_px };
         client.border_width = border_px;
         client.old_border_width = border_px;
     }
@@ -264,10 +265,11 @@ fn configure_client_border(
         return;
     };
 
-    let border_width = if client.mode().is_normal_tiling()
-        && is_maximized
-        && client.geo.w > monitor_rect.w - 30
-        && client.geo.h > monitor_rect.h - 30 - bar_height
+    let border_width = if client.is_borderless
+        || (client.mode().is_normal_tiling()
+            && is_maximized
+            && client.geo.w > monitor_rect.w - 30
+            && client.geo.h > monitor_rect.h - 30 - bar_height)
     {
         0
     } else {

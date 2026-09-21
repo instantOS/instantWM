@@ -73,6 +73,8 @@ pub struct Client {
     pub is_locked: bool,
     /// Whether the window is sticky (visible on all tags).
     pub is_sticky: bool,
+    /// Whether a rule pinned this window to be managed without a WM border.
+    pub is_borderless: bool,
     /// Whether the window is minimized/hidden.
     pub is_hidden: bool,
     /// Current snap position.
