@@ -123,6 +123,11 @@ pub fn handle_keyboard<B: InputBackend>(
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
+    // Protocols can install keyboard grabs without a compositor focus
+    // request. Reassert the lock policy before any key can reach such a grab.
+    if state.is_locked() {
+        state.set_keyboard_focus(None, serial);
+    }
     let suppression = shortcut_suppression(state, keyboard_handle);
     let key_code = event.key_code();
     let key_state = event.state();

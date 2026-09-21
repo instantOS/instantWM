@@ -42,6 +42,11 @@ impl WaylandState {
             target
         };
         if let Some(keyboard) = self.seat.get_keyboard() {
+            // A grab can ignore set_focus or redirect the next key event to
+            // its own client. No pre-lock grab may survive into the lock.
+            if self.is_locked() && keyboard.is_grabbed() {
+                keyboard.unset_grab(self);
+            }
             keyboard.set_focus(self, effective, serial);
         }
     }

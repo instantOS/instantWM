@@ -510,6 +510,9 @@ impl XdgShellHandler for WaylandState {
         _seat: wl_seat::WlSeat,
         serial: smithay::utils::Serial,
     ) {
+        if self.is_locked() {
+            return;
+        }
         let kind = PopupKind::Xdg(surface);
         let root_surface = match find_popup_root_surface(&kind) {
             Ok(s) => s,

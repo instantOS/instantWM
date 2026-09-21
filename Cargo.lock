@@ -1143,6 +1143,8 @@ dependencies = [
  "tokio",
  "toml",
  "unicode-segmentation",
+ "wayland-client",
+ "wayland-protocols",
  "x11rb",
  "xcursor",
  "zbus",

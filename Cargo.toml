@@ -52,6 +52,10 @@ serde_json = "1.0"
 
 [build-dependencies]
 
+[dev-dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+
 [patch.crates-io]
 # Force calloop 0.14.4 for all transitive dependencies that require 0.13.0
 calloop = { git = "https://github.com/Smithay/calloop.git", tag = "v0.14.4" }

@@ -452,6 +452,9 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         seat: smithay::input::Seat<Self>,
         grab: smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrab<Self>,
     ) {
+        if self.is_locked() {
+            return;
+        }
         if self.shortcut_recovery_bypasses(&surface) {
             log::debug!("denied XWayland keyboard re-grab after user recovery");
             return;
