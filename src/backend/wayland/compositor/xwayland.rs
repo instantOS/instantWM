@@ -27,13 +27,9 @@ pub(super) fn focus_overlay_if_launcher(
     }
 
     let serial = SERIAL_COUNTER.next_serial();
-    if let Some(keyboard) = state.seat.get_keyboard() {
-        keyboard.set_focus(
-            state,
-            Some(KeyboardFocusTarget::Window(element.clone())),
-            serial,
-        );
-    }
+    // Session-lock aware: while locked this re-anchors to the lock surface
+    // instead of the launcher.
+    state.set_keyboard_focus(Some(KeyboardFocusTarget::Window(element.clone())), serial);
 }
 
 /// Map a Smithay XWayland resize edge to a [`ResizeDirection`].

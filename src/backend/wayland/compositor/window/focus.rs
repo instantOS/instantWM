@@ -22,6 +22,30 @@ impl WaylandState {
         self.push_command(WmCommand::FocusWindow(window));
     }
 
+    /// Apply a keyboard focus request on the seat, honoring an active session
+    /// lock.
+    ///
+    /// While the session is locked, the lock client owns the keyboard: the
+    /// requested target is replaced by the lock surface, or by no client at
+    /// all while the lock client has not mapped a surface. Every seat keyboard
+    /// focus change must go through this so that WM focus churn (window
+    /// close/unmap, overlays, popup grabs, layer surfaces) cannot pull the
+    /// keyboard away from the lock screen.
+    pub(crate) fn set_keyboard_focus(
+        &mut self,
+        target: Option<KeyboardFocusTarget>,
+        serial: smithay::utils::Serial,
+    ) {
+        let effective = if self.is_locked() {
+            self.locked_keyboard_focus()
+        } else {
+            target
+        };
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, effective, serial);
+        }
+    }
+
     /// Apply keyboard focus to a window on the Smithay seat.
     ///
     /// This is a **seat-only** operation. It:
@@ -80,7 +104,7 @@ impl WaylandState {
                     log::debug!("set_focus: cancelling keyboard grab anchored to another focus");
                     keyboard.unset_grab(self);
                 }
-                keyboard.set_focus(self, focus, serial);
+                self.set_keyboard_focus(focus, serial);
             } else {
                 log::warn!(
                     "set_focus: no keyboard seat available for window {:?}",
@@ -167,9 +191,7 @@ impl WaylandState {
     /// layer will reconcile `mon.sel` separately.
     pub(crate) fn clear_seat_focus(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
-        }
+        self.set_keyboard_focus(None::<KeyboardFocusTarget>, serial);
     }
 
     /// Clear seat focus if the given window currently holds it.

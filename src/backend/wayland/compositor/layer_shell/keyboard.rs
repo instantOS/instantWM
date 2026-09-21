@@ -82,10 +82,12 @@ impl WaylandState {
         if !LayerKeyboardPolicy::for_root_surface(&root).allows(request) {
             return false;
         }
-        let Some(keyboard) = self.seat.get_keyboard() else {
+        if self.seat.get_keyboard().is_none() {
             return false;
-        };
-        keyboard.set_focus(self, Some(KeyboardFocusTarget::WlSurface(root)), serial);
+        }
+        // Session-lock aware: while locked this re-anchors to the lock
+        // surface instead of the layer surface.
+        self.set_keyboard_focus(Some(KeyboardFocusTarget::WlSurface(root)), serial);
         true
     }
 
