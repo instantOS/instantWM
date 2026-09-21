@@ -1,5 +1,4 @@
 name: Version bump PR
-
 on:
   push:
     branches:
@@ -24,7 +23,6 @@ on:
           - patch
           - minor
           - major
-
 jobs:
   version-bump:
     name: Prepare release PR

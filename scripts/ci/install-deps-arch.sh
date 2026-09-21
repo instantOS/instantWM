@@ -2,11 +2,8 @@
 set -euo pipefail
 
 # Install all build/test dependencies for instantWM on Arch Linux.
-# Used by CI (ci.yml, release.yml) and can be run locally.
-
-pacman-key --init
-pacman-key --populate archlinux
-pacman -Syu --noconfirm
+# Used by CI (.github/actions/setup-arch, which handles pacman keyring init
+# and -Syu first) and can be run locally on an already-initialised system.
 
 # cosmic-text (bar text rasterizer) panics with "no default font found"
 # when shaping text on a system without any fonts, so tests need a real

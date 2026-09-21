@@ -5,15 +5,41 @@ set -euo pipefail
 # Used by CI (release.yml cross-compile and deb jobs) and can be run locally.
 #
 # Usage:
-#   bash scripts/ci/install-deps-ubuntu.sh            # base X11/Wayland dev libs
-#   bash scripts/ci/install-deps-ubuntu.sh --cross    # also install cross-compile
-#                                                     # toolchains plus arm64/armhf
-#                                                     # dev libs for cross builds
+#   bash scripts/ci/install-deps-ubuntu.sh                 # base X11/Wayland dev libs
+#   bash scripts/ci/install-deps-ubuntu.sh --cross arm64   # aarch64 toolchain + :arm64 dev libs
+#   bash scripts/ci/install-deps-ubuntu.sh --cross armhf   # armhf toolchain + :armhf dev libs
+#   bash scripts/ci/install-deps-ubuntu.sh --cross         # both cross architectures
+#
+# The release workflow's cross-compile matrix invokes this once per target so
+# each parallel job only installs the toolchain and dev libs it needs.
 
-CROSS_COMPILE=false
+# Cross architectures to prepare; empty means native-only.
+CROSS_ARCHS=()
 if [[ "${1:-}" == "--cross" ]]; then
-  CROSS_COMPILE=true
+  shift
+  if [[ $# -gt 0 ]]; then
+    CROSS_ARCHS=("$@")
+  else
+    CROSS_ARCHS=(arm64 armhf)
+  fi
+  for arch in "${CROSS_ARCHS[@]}"; do
+    case "$arch" in
+      arm64 | armhf) ;;
+      *)
+        echo "Unsupported cross architecture: '$arch' (expected arm64 or armhf)" >&2
+        exit 1
+        ;;
+    esac
+  done
 fi
+
+# Map a dpkg cross architecture to its GNU triplet.
+arch_triple() {
+  case "$1" in
+    arm64) echo "aarch64-linux-gnu" ;;
+    armhf) echo "arm-linux-gnueabihf" ;;
+  esac
+}
 
 # Native dev libraries needed to build instantwm against the host glibc.
 # When cross-compiling we also need an :arm64 / :armhf copy of each of these
@@ -71,7 +97,7 @@ PKGS=(
   "${DEV_LIBS[@]}"
 )
 
-if $CROSS_COMPILE; then
+if ((${#CROSS_ARCHS[@]} > 0)); then
   # archive.ubuntu.com only carries amd64/i386 binaries, while arm64/armhf
   # live on ports.ubuntu.com. Constrain the default sources to amd64 and add
   # a separate ports source for the cross architectures so apt doesn't try to
@@ -84,19 +110,22 @@ if $CROSS_COMPILE; then
     fi
   fi
 
-  if [[ ! -f /etc/apt/sources.list.d/ubuntu-ports.sources ]]; then
-    cat > /etc/apt/sources.list.d/ubuntu-ports.sources <<'EOF'
+  for arch in "${CROSS_ARCHS[@]}"; do
+    dpkg --add-architecture "$arch"
+  done
+
+  # Include all enabled foreign architectures in ports sources so re-running
+  # the script for different architectures (e.g. locally) stays consistent.
+  mapfile -t ports_archs < <(dpkg --print-foreign-architectures)
+
+  cat > /etc/apt/sources.list.d/ubuntu-ports.sources <<EOF
 Types: deb
 URIs: http://ports.ubuntu.com/ubuntu-ports
 Suites: noble noble-updates noble-backports noble-security
 Components: main restricted universe multiverse
-Architectures: arm64 armhf
+Architectures: ${ports_archs[*]}
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
-  fi
-
-  dpkg --add-architecture arm64
-  dpkg --add-architecture armhf
 
   # Some :arm64 / :armhf packages (e.g. python3.12-minimal) run their own
   # foreign-arch interpreter from their postinst script. Without a qemu
@@ -112,30 +141,32 @@ EOF
   apt-get update
   apt-get install -y --no-install-recommends qemu-user-static binfmt-support
 
+  for arch in "${CROSS_ARCHS[@]}"; do
+    triple="$(arch_triple "$arch")"
+    PKGS+=("gcc-${triple}" "g++-${triple}")
+  done
+  # NOTE: the per-triple `pkg-config-<triple>` packages used to ship in
+  # Ubuntu bionic but no longer exist in noble (24.04). In noble the cross
+  # wrappers live inside `pkgconf:<arch>`, which conflicts with the native
+  # `pkgconf:amd64` on `/usr/bin/pkg-config`, so we cannot co-install them.
+  # We synthesise the wrappers ourselves below.
   PKGS+=(
-    gcc-aarch64-linux-gnu
-    g++-aarch64-linux-gnu
-    gcc-arm-linux-gnueabihf
-    g++-arm-linux-gnueabihf
-    # NOTE: the per-triple `pkg-config-<triple>` packages used to ship in
-    # Ubuntu bionic but no longer exist in noble (24.04). In noble the cross
-    # wrappers live inside `pkgconf:<arch>`, which conflicts with the native
-    # `pkgconf:amd64` on `/usr/bin/pkg-config`, so we cannot co-install them.
-    # We synthesise the wrappers ourselves below.
     unzip
     curl
     ca-certificates
   )
 
-  # Mirror DEV_LIBS for arm64/armhf so smithay/wayland/X11 -sys crates can
-  # find their native deps via the cross pkg-config wrappers.
-  for lib in "${DEV_LIBS[@]}"; do
-    PKGS+=("${lib}:arm64" "${lib}:armhf")
+  # Mirror DEV_LIBS for each cross architecture so smithay/wayland/X11 -sys
+  # crates can find their native deps via the cross pkg-config wrappers.
+  for arch in "${CROSS_ARCHS[@]}"; do
+    for lib in "${DEV_LIBS[@]}"; do
+      PKGS+=("${lib}:${arch}")
+    done
   done
 fi
 
 apt-get update
-if $CROSS_COMPILE; then
+if ((${#CROSS_ARCHS[@]} > 0)); then
   # Ubuntu 24.04 multi-arch packages like libgudev-1.0-dev ship .gir files in
   # /usr/share/gir-1.0/ that differ across architectures but share the same
   # path. dpkg treats this as a fatal conflict unless we force the overwrite.
@@ -155,7 +186,7 @@ else
   apt-get install -y --no-install-recommends "${PKGS[@]}"
 fi
 
-if $CROSS_COMPILE; then
+if ((${#CROSS_ARCHS[@]} > 0)); then
   # Create per-triple pkg-config wrappers so the `pkg-config` Rust crate (used
   # by libudev-sys, libinput-sys, etc.) picks up arm64/armhf .pc files.
   # cargo's pkg-config helper auto-detects `<triple>-pkg-config` on PATH when
@@ -174,6 +205,8 @@ exec env \\
 EOF
     chmod +x "/usr/local/bin/${triple}-pkg-config"
   }
-  install_cross_pkgconfig aarch64-linux-gnu     aarch64-linux-gnu
-  install_cross_pkgconfig arm-linux-gnueabihf   arm-linux-gnueabihf
+  for arch in "${CROSS_ARCHS[@]}"; do
+    triple="$(arch_triple "$arch")"
+    install_cross_pkgconfig "$triple" "$triple"
+  done
 fi

@@ -1,0 +1,41 @@
+name: Setup Arch container
+description: |
+  Initialise pacman (keyring init, populate, sync update) and install
+  dependencies for instantWM's Arch jobs. Optionally installs the standard
+  build/test dependency set used across the project's Arch jobs.
+inputs:
+  packages:
+    description: Space-separated list of additional pacman packages to install.
+    required: false
+    default: ""
+  include-test-base:
+    description: |
+      When 'true' (default), also install the standard Rust build/test
+      dependency set via scripts/ci/install-deps-arch.sh. Set to 'false' for
+      jobs that don't build or test the project (e.g. PKGBUILD jobs).
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Initialise pacman
+      shell: bash
+      run: |
+        pacman-key --init
+        pacman-key --populate archlinux
+        pacman -Syu --noconfirm
+    - name: Install build and test dependencies
+      if: inputs.include-test-base == 'true'
+      shell: bash
+      # The dependency list lives in scripts/ci/install-deps-arch.sh so it can
+      # also be run locally; this action has already initialised pacman, so
+      # the script no longer does keyring init or -Syu itself.
+      run: bash scripts/ci/install-deps-arch.sh
+    - name: Install extra packages
+      if: inputs.packages != ''
+      shell: bash
+      env:
+        EXTRA_PACKAGES: ${{ inputs.packages }}
+      run: |
+        # shellcheck disable=SC2086
+        pacman -S --noconfirm --needed $EXTRA_PACKAGES
