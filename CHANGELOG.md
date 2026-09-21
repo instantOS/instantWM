@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/instantOS/instantWM/compare/v0.2.0...v0.2.1) - 2026-09-19
+
+### Changed
+
+- optimize mem usage
+- remove separate loop
+- unify more X11 and Wayland Mouse stuff
+- X11 bar
+
+### Fixed
+
+- failing dbus stuff
+- tests
+- drag animations and bar ordering
+- reverse mouse stuff
+
+### Other
+
+- make mouse drag preview respect animation setting
+- fix game cursor oddness
+- Performance fixes in rendering and keyboard layouts
+- some fixes
+- better color typing
+- remove legacy SchemeWin enum
+- refactor for separation of concerns
+- migrate off blacksmith
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- bump smithay
+- new readme
+- document ubuntu deps
+- better default binds and names
+- add gaps keybinds
+- fix top bar button pressing
+- bump stuff
+- fix ghost windows on X11
+- route X11 grab events through one dispatcher and recover stale clients
+- CI testing deps
+- bump
+- Merge branch 'dev' of ufr:~/stuff/instantWM into dev
+- Fix X11 mode selection and clean stale Wayland sessions
+- Use RandR APIs to list X11 monitor modes
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- reapply settings upon restart
+- fix bar not hiding correctly on X11
+- Merge branch 'main' into dev
+
 ## [0.2.0](https://github.com/instantOS/instantWM/compare/v0.1.24...v0.2.0) - 2026-09-03
 
 ### Added
