@@ -153,9 +153,9 @@ pub struct WaylandState {
     pub dmabuf_global: Option<DmabufGlobal>,
     pub drm_syncobj_state: Option<DrmSyncobjState>,
     pub fifo_manager_state: FifoManagerState,
-    /// Surfaces with a FIFO barrier that still needs a presentation event.
-    /// Populated from the pre-commit path so blocked first commits are tracked
-    /// before they can enter the desktop surface tree.
+    /// Live surfaces that have requested a FIFO barrier. Keep each surface
+    /// until destruction because a blocked commit can install its next barrier
+    /// after the current one is signaled, without another pre-commit callback.
     pub fifo_constraint_surfaces: HashSet<WlSurface>,
     /// Surfaces with commit-timing barriers that have not all become eligible.
     pub commit_timing_surfaces: HashSet<WlSurface>,
