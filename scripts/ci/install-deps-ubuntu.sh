@@ -1,50 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install build dependencies for instantWM on Ubuntu 24.04 (Noble).
-# Used by CI (release.yml cross-compile and deb jobs) and can be run locally.
+# Build dependencies for instantWM's CI (and for local use).
 #
-# Usage:
-#   bash scripts/ci/install-deps-ubuntu.sh                 # base X11/Wayland dev libs
-#   bash scripts/ci/install-deps-ubuntu.sh --cross arm64   # aarch64 toolchain + :arm64 dev libs
-#   bash scripts/ci/install-deps-ubuntu.sh --cross armhf   # armhf toolchain + :armhf dev libs
-#   bash scripts/ci/install-deps-ubuntu.sh --cross         # both cross architectures
+#   bash scripts/ci/install-deps-ubuntu.sh                      # host dev libs
+#   bash scripts/ci/install-deps-ubuntu.sh --cross arm64 <dir>  # cross toolchain + sysroot
+#   eval "$(scripts/ci/install-deps-ubuntu.sh --env arm64 <dir>)"
 #
-# The release workflow's cross-compile matrix invokes this once per target so
-# each parallel job only installs the toolchain and dev libs it needs.
+# Native mode installs the X11/Wayland dev libraries the project links
+# against into the host.
+#
+# Cross mode installs the cross toolchain plus a self-contained target sysroot
+# and prints the environment (--env) that points cargo/pkg-config/cc at it:
+#
+#   sysroot="$(pwd)/sysroot/arm64"
+#   scripts/ci/install-deps-ubuntu.sh --cross arm64 "$sysroot"
+#   eval "$(scripts/ci/install-deps-ubuntu.sh --env arm64 "$sysroot")"
+#   cargo build --release --target aarch64-unknown-linux-gnu
+#
+# Cross mode deliberately does NOT use Debian multiarch. Co-installing amd64
+# and arm64 packages into one dpkg database forces every Multi-Arch: same
+# package to have the SAME version on both architectures, and archive.ubuntu.com
+# and ports.ubuntu.com publish SRUs at slightly different times - so a package
+# can be updated on one mirror but not the other, which makes the foreign-arch
+# candidate "not installable" and breaks the whole apt transaction (CI hit this
+# repeatedly: libexpat1 on noble, libexpat1-dev on resolute/armhf).
+#
+# With a sysroot there is nothing to keep in sync: the target libraries are
+# resolved against the ports mirror with a private apt root and unpacked with
+# dpkg-deb -x, exactly like `debootstrap --foreign`'s first stage. Nothing in
+# the sysroot is ever executed, so no qemu/binfmt handlers are required either.
+# A package being newer on one mirror simply means that architecture is a
+# little ahead - harmless, because no cross-arch version constraint exists.
 
-# Cross architectures to prepare; empty means native-only.
-CROSS_ARCHS=()
-if [[ "${1:-}" == "--cross" ]]; then
-  shift
-  if [[ $# -gt 0 ]]; then
-    CROSS_ARCHS=("$@")
-  else
-    CROSS_ARCHS=(arm64 armhf)
-  fi
-  for arch in "${CROSS_ARCHS[@]}"; do
-    case "$arch" in
-      arm64 | armhf) ;;
-      *)
-        echo "Unsupported cross architecture: '$arch' (expected arm64 or armhf)" >&2
-        exit 1
-        ;;
-    esac
-  done
-fi
-
-# Map a dpkg cross architecture to its GNU triplet.
-arch_triple() {
-  case "$1" in
-    arm64) echo "aarch64-linux-gnu" ;;
-    armhf) echo "arm-linux-gnueabihf" ;;
-  esac
-}
-
-# Native dev libraries needed to build instantwm against the host glibc.
-# When cross-compiling we also need an :arm64 / :armhf copy of each of these
-# (multi-arch). Architecture-independent helpers like wayland-protocols only
-# need to be installed once.
 DEV_LIBS=(
   libx11-dev
   libxext-dev
@@ -85,128 +73,177 @@ DEV_LIBS=(
   libudev-dev
 )
 
-PKGS=(
-  build-essential
-  pkg-config
-  wayland-protocols
-  # cosmic-text (bar text rasterizer) panics with "no default font found"
-  # when shaping text on a system without any fonts, so tests need a real
-  # font package, not just the fontconfig/freetype dev libraries.
-  # Architecture-independent, so it is not mirrored per cross arch.
-  fonts-dejavu-core
-  "${DEV_LIBS[@]}"
-)
+# Map a dpkg architecture to its Rust target triple and GNU triplet.
+arch_target() {
+  case "$1" in
+    arm64) echo "aarch64-unknown-linux-gnu" ;;
+    armhf) echo "armv7-unknown-linux-gnueabihf" ;;
+  esac
+}
 
-if ((${#CROSS_ARCHS[@]} > 0)); then
-  # archive.ubuntu.com only carries amd64/i386 binaries, while arm64/armhf
-  # live on ports.ubuntu.com. Constrain the default sources to amd64 and add
-  # a separate ports source for the cross architectures so apt doesn't try to
-  # fetch arm64 packages from a mirror that doesn't have them.
-  if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
-    # Ubuntu 24.04 ships sources in deb822 format. Add an `Architectures:`
-    # field to every stanza so we keep pulling amd64 from archive.ubuntu.com.
-    if ! grep -q '^Architectures:' /etc/apt/sources.list.d/ubuntu.sources; then
-      sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
-    fi
-  fi
+arch_triple() {
+  case "$1" in
+    arm64) echo "aarch64-linux-gnu" ;;
+    armhf) echo "arm-linux-gnueabihf" ;;
+  esac
+}
 
-  for arch in "${CROSS_ARCHS[@]}"; do
-    dpkg --add-architecture "$arch"
-  done
+# Name of the dynamic loader as referenced by the linker (e.g. the interpreter
+# entry in produced executables).
+arch_loader() {
+  case "$1" in
+    arm64) echo "ld-linux-aarch64.so.1" ;;
+    armhf) echo "ld-linux-armhf.so.3" ;;
+  esac
+}
 
-  # Include all enabled foreign architectures in ports sources so re-running
-  # the script for different architectures (e.g. locally) stays consistent.
-  mapfile -t ports_archs < <(dpkg --print-foreign-architectures)
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  install-deps-ubuntu.sh                  Install host build dependencies
+  install-deps-ubuntu.sh --cross <arch> [dir]   Build cross toolchain + sysroot
+  install-deps-ubuntu.sh --env <arch> [dir]     Print the cross build environment
 
-  cat > /etc/apt/sources.list.d/ubuntu-ports.sources <<EOF
-Types: deb
-URIs: http://ports.ubuntu.com/ubuntu-ports
-Suites: noble noble-updates noble-backports noble-security
-Components: main restricted universe multiverse
-Architectures: ${ports_archs[*]}
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+  <arch> is arm64 or armhf. [dir] defaults to $PWD/sysroot/<arch>.
+EOF
+  exit 1
+}
+
+native_install() {
+  # fonts-dejavu-core: cosmic-text (bar text rasterizer) panics with "no
+  # default font found" when shaping text on a system without any fonts, so
+  # tests need a real font package, not just fontconfig/freetype dev headers.
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    wayland-protocols \
+    fonts-dejavu-core \
+    curl \
+    ca-certificates \
+    "${DEV_LIBS[@]}"
+}
+
+cross_sysroot_dir() {
+  echo "${1:-$PWD/sysroot/$2}"
+}
+
+cross_install() {
+  local arch="$1" sysroot="$2" codename triple
+  codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
+  triple="$(arch_triple "$arch")"
+
+  echo "==> Installing ${triple} cross toolchain"
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    "binutils-${triple}" \
+    "gcc-${triple}" \
+    "g++-${triple}" \
+    pkg-config \
+    ca-certificates
+
+  echo "==> Resolving ${arch} packages for the sysroot"
+  local aptroot
+  aptroot="$(mktemp -d)"
+  trap 'rm -rf "$aptroot"' RETURN
+
+  mkdir -p \
+    "$aptroot/etc/apt/preferences.d" \
+    "$aptroot/var/lib/dpkg/info" \
+    "$aptroot/var/lib/dpkg/updates" \
+    "$aptroot/var/cache/apt/archives/partial"
+  : >"$aptroot/var/lib/dpkg/status"
+
+  # arch= and signed-by= are explicit so the private apt root needs neither the
+  # host's sources nor its trusted keyring configuration.
+  cat >"$aptroot/etc/apt/sources.list" <<EOF
+deb [arch=${arch} signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://ports.ubuntu.com/ubuntu-ports ${codename} main restricted universe multiverse
+deb [arch=${arch} signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://ports.ubuntu.com/ubuntu-ports ${codename}-updates main restricted universe multiverse
+deb [arch=${arch} signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://ports.ubuntu.com/ubuntu-ports ${codename}-security main restricted universe multiverse
 EOF
 
-  # Some :arm64 / :armhf packages (e.g. python3.12-minimal) run their own
-  # foreign-arch interpreter from their postinst script. Without a qemu
-  # user-mode binfmt handler registered, the kernel returns ENOEXEC and the
-  # whole apt transaction aborts. Install qemu-user-static + binfmt-support
-  # in a separate pass first so the handlers are registered before we pull
-  # in any :arm64 / :armhf packages.
-  #
-  # NOTE: this requires /proc/sys/fs/binfmt_misc to be available inside the
-  # container (true on standard Docker setups). If running in a container
-  # where it isn't mounted, register handlers once on the host with:
-  #   docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-  apt-get update
-  apt-get install -y --no-install-recommends qemu-user-static binfmt-support
-
-  for arch in "${CROSS_ARCHS[@]}"; do
-    triple="$(arch_triple "$arch")"
-    PKGS+=("gcc-${triple}" "g++-${triple}")
-  done
-  # NOTE: the per-triple `pkg-config-<triple>` packages used to ship in
-  # Ubuntu bionic but no longer exist in noble (24.04). In noble the cross
-  # wrappers live inside `pkgconf:<arch>`, which conflicts with the native
-  # `pkgconf:amd64` on `/usr/bin/pkg-config`, so we cannot co-install them.
-  # We synthesise the wrappers ourselves below.
-  PKGS+=(
-    unzip
-    curl
-    ca-certificates
+  local -a apt_opts=(
+    -o "Dir=${aptroot}"
+    -o "Dir::Etc::sourcelist=${aptroot}/etc/apt/sources.list"
+    -o "Dir::Etc::sourceparts=-"
+    -o "Dir::State::status=${aptroot}/var/lib/dpkg/status"
+    -o "APT::Architecture=${arch}"
+    -o "APT::Architectures::=${arch}"
+    -o "APT::Get::List-Cleanup=0"
   )
 
-  # Mirror DEV_LIBS for each cross architecture so smithay/wayland/X11 -sys
-  # crates can find their native deps via the cross pkg-config wrappers.
-  for arch in "${CROSS_ARCHS[@]}"; do
-    for lib in "${DEV_LIBS[@]}"; do
-      PKGS+=("${lib}:${arch}")
+  # An empty dpkg status means apt resolves the full dependency closure of the
+  # requested packages; --download-only stops before any configuration step.
+  apt-get "${apt_opts[@]}" update
+  apt-get "${apt_opts[@]}" install --download-only --no-install-recommends -y \
+    libc6-dev \
+    wayland-protocols \
+    "${DEV_LIBS[@]}"
+
+  echo "==> Unpacking into ${sysroot}"
+  rm -rf "$sysroot"
+  mkdir -p "$sysroot"
+  find "$aptroot/var/cache/apt/archives" -maxdepth 1 -name '*.deb' \
+    -exec dpkg-deb -x '{}' "$sysroot" \;
+
+  # The merged-/usr symlinks (including the dynamic loader the linker records as
+  # the interpreter of the produced binaries) are created by libc6's postinst,
+  # which we deliberately never run. Recreate the one the linker needs; without
+  # it linking fails with "cannot find /lib/<loader> inside <sysroot>".
+  local loader
+  loader="$(arch_loader "$arch")"
+  ln -sfn usr/lib "$sysroot/lib"
+  ln -sfn "${triple}/${loader}" "$sysroot/lib/${loader}"
+
+  # Prepending this directory to PATH makes the C compilers rustc/cc-rs invoke
+  # for the target add --sysroot automatically, so the target headers and
+  # libraries are found without patching every crate's build script.
+  mkdir -p "$sysroot/bin"
+  local name
+  for prefix in "$triple" "$(arch_target "$arch")"; do
+    for cc in gcc g++; do
+      name="$sysroot/bin/${prefix}-${cc}"
+      cat >"$name" <<EOF
+#!/bin/sh
+exec /usr/bin/${triple}-${cc} --sysroot=${sysroot} "\$@"
+EOF
+      chmod +x "$name"
     done
   done
-fi
+}
 
-apt-get update
-if ((${#CROSS_ARCHS[@]} > 0)); then
-  # Ubuntu 24.04 multi-arch packages like libgudev-1.0-dev ship .gir files in
-  # /usr/share/gir-1.0/ that differ across architectures but share the same
-  # path. dpkg treats this as a fatal conflict unless we force the overwrite.
-  # This is a known packaging issue on Noble; the files are GObject
-  # Introspection metadata and are not required for C/Rust compilation.
-  apt-get install -y --no-install-recommends \
-    -o Dpkg::Options::="--force-overwrite" \
-    "${PKGS[@]}"
+cross_env() {
+  local arch="$1" sysroot="$2" triple target target_env
+  triple="$(arch_triple "$arch")"
+  target="$(arch_target "$arch")"
+  target_env="$(printf '%s' "$target" | tr 'a-z-' 'A-Z_')"
 
-  # Some foreign-arch postinst scripts (e.g. libglib2.0-0t64) try to run
-  # arch-specific helper binaries that may fail under qemu-user-static if
-  # binfmt_misc isn't perfectly set up in the container. Those failures leave
-  # packages half-configured, which is harmless for linking but can break
-  # later apt operations. Attempt to finish configuration and ignore any errors.
-  dpkg --configure -a || true
-else
-  apt-get install -y --no-install-recommends "${PKGS[@]}"
-fi
-
-if ((${#CROSS_ARCHS[@]} > 0)); then
-  # Create per-triple pkg-config wrappers so the `pkg-config` Rust crate (used
-  # by libudev-sys, libinput-sys, etc.) picks up arm64/armhf .pc files.
-  # cargo's pkg-config helper auto-detects `<triple>-pkg-config` on PATH when
-  # cross-compiling; pointing PKG_CONFIG_LIBDIR at the arch-specific pkgconfig
-  # directory plus the arch-independent /usr/share/pkgconfig is what wayland-
-  # protocols and friends rely on.
-  install_cross_pkgconfig() {
-    local triple="$1" libdir="$2"
-    cat > "/usr/local/bin/${triple}-pkg-config" <<EOF
-#!/bin/sh
-exec env \\
-  PKG_CONFIG_LIBDIR="/usr/lib/${libdir}/pkgconfig:/usr/share/pkgconfig" \\
-  PKG_CONFIG_SYSROOT_DIR="\${PKG_CONFIG_SYSROOT_DIR:-/}" \\
-  PKG_CONFIG_ALLOW_CROSS=1 \\
-  pkg-config "\$@"
+  cat <<EOF
+export PATH='${sysroot}/bin':"\$PATH"
+export CARGO_TARGET_${target_env}_LINKER='${sysroot}/bin/${triple}-gcc'
+export PKG_CONFIG_ALLOW_CROSS=1
+export PKG_CONFIG_SYSROOT_DIR='${sysroot}'
+export PKG_CONFIG_LIBDIR='${sysroot}/usr/lib/${triple}/pkgconfig:${sysroot}/usr/share/pkgconfig'
 EOF
-    chmod +x "/usr/local/bin/${triple}-pkg-config"
-  }
-  for arch in "${CROSS_ARCHS[@]}"; do
-    triple="$(arch_triple "$arch")"
-    install_cross_pkgconfig "$triple" "$triple"
-  done
-fi
+}
+
+case "${1:-}" in
+  "" | --native)
+    native_install
+    ;;
+  --cross)
+    [[ $# -ge 2 ]] || usage
+    arch="$2"
+    case "$arch" in arm64 | armhf) ;; *) usage ;; esac
+    cross_install "$arch" "$(cross_sysroot_dir "${3:-}" "$arch")"
+    ;;
+  --env)
+    [[ $# -ge 2 ]] || usage
+    arch="$2"
+    case "$arch" in arm64 | armhf) ;; *) usage ;; esac
+    cross_env "$arch" "$(cross_sysroot_dir "${3:-}" "$arch")"
+    ;;
+  *)
+    usage
+    ;;
+esac

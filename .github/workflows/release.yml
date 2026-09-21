@@ -104,13 +104,14 @@ jobs:
     # those packages. Bringing musl back will require either a dedicated
     # cross-rs image that builds those libs against musl, or a sysroot-based
     # approach (e.g. via Alpine in a chroot).
-    # See the multi-arch (arm64/armhf) setup below for the equivalent dance on
-    # the glibc side as a starting point.
+    # Unlike the old multi-arch setup this never co-installs two
+    # architectures into one dpkg database, so per-mirror publish timing can no
+    # longer make the build unsatisfiable (see install-deps-ubuntu.sh).
     name: Cross-compile ${{ matrix.target }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     container:
-      image: ubuntu:24.04
+      image: ubuntu:26.04
     needs: metadata
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
     strategy:
@@ -133,10 +134,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Install build dependencies
-        # Installs the cross toolchain and :arm64/:armhf dev libs for this
-        # matrix leg only (see scripts/ci/install-deps-ubuntu.sh).
-        run: bash scripts/ci/install-deps-ubuntu.sh --cross ${{ matrix.arch }}
+      - name: Install host build dependencies
+        run: bash scripts/ci/install-deps-ubuntu.sh
       - name: Install Rust toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -151,22 +150,18 @@ jobs:
         with:
           shared-key: cross-deps
           key: cross-${{ matrix.target }}
+      - name: Build cross sysroot
+        run: bash scripts/ci/install-deps-ubuntu.sh --cross ${{ matrix.arch }} "$PWD/sysroot/${{ matrix.arch }}"
       - name: Cross compile
         # Container jobs default to `sh`, which is dash on Ubuntu and does
         # not support `pipefail`.
         shell: bash
         env:
-          TRIPLE: ${{ matrix.triple }}
+          SYSROOT: ${{ github.workspace }}/sysroot/${{ matrix.arch }}
         run: |
           set -euo pipefail
-          target="${{ matrix.target }}"
-          # Derive cargo's per-target env vars from the target and triple, e.g.
-          # CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER and
-          # PKG_CONFIG_aarch64_unknown_linux_gnu.
-          target_env="$(printf '%s' "$target" | tr -- '-a-z' '_A-Z')"
-          export "CARGO_TARGET_${target_env}_LINKER=${TRIPLE}-gcc"
-          export "PKG_CONFIG_${target//-/_}=${TRIPLE}-pkg-config"
-          cargo build --locked --release --target "$target"
+          eval "$(bash scripts/ci/install-deps-ubuntu.sh --env ${{ matrix.arch }} "$SYSROOT")"
+          cargo build --locked --release --target "${{ matrix.target }}"
       - name: Strip binary
         run: |
           "${{ matrix.triple }}-strip" "target/${{ matrix.target }}/release/instantwm" "target/${{ matrix.target }}/release/instantwmctl"
