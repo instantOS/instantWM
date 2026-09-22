@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/instantOS/instantWM/compare/v0.3.1...v0.3.2) - 2026-09-21
+
+### Fixed
+
+- mpv freezes
+
+### Other
+
+- bump stuff
+- upgrade CI to ubuntu 26
+- Merge branch 'main' into dev
+
 ## [0.3.1](https://github.com/instantOS/instantWM/compare/v0.3.0...v0.3.1) - 2026-09-21
 
 ### Fixed
