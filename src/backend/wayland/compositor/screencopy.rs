@@ -17,9 +17,15 @@
 //!
 //! # Y-inversion
 //!
-//! OpenGL framebuffer reads are bottom-to-top. Screencopy clients such as
-//! `grim` and `wf-recorder` interpret this correctly when the `Y_INVERT` flag
-//! is set, so we always send that flag.
+//! Framebuffer reads through Smithay's `copy_framebuffer` yield rows in
+//! top-to-bottom (screen) order: Smithay's render projection already
+//! compensates for OpenGL's bottom-up convention. The copied buffer is
+//! therefore *not* y-inverted, and we report that by sending an empty flags
+//! set. Sending `Y_INVERT` here would make clients such as `grim` and
+//! `wf-recorder` flip an already-upright image, producing upside-down
+//! screenshots and recordings. The flags event is still sent every frame
+//! (even when empty) because clients like `wf-recorder` keep the last flag
+//! value per buffer.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -422,9 +428,11 @@ pub fn submit_pending_screencopies(
                 .damage(0, 0, region.size.w as u32, region.size.h as u32);
         }
 
+        // The copied buffer is in screen (top-to-bottom) order — see the
+        // module docs on Y-inversion — so report it as not y-inverted.
         screencopy
             .frame
-            .flags(zwlr_screencopy_frame_v1::Flags::YInvert);
+            .flags(zwlr_screencopy_frame_v1::Flags::empty());
 
         let presented = super::capture_common::monotonic_timestamp();
         let tv_sec_hi = (presented.as_secs() >> 32) as u32;
