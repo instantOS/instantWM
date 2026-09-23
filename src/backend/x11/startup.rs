@@ -35,6 +35,9 @@ pub fn run() {
         }
     };
 
+    // Before autostart and session services read the environment.
+    crate::backend::x11::session::export_session_env();
+
     let mut wm = Wm::new(WmBackend::new_x11(conn, screen_num));
     wm_init(&mut wm);
     crate::backend::x11::events::setup(&mut wm);

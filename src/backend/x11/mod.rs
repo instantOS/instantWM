@@ -274,6 +274,7 @@ pub mod mouse;
 pub mod policy;
 pub mod properties;
 pub mod randr;
+pub mod session;
 pub mod startup;
 pub mod systray;
 pub mod visibility;
