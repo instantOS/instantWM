@@ -8,7 +8,7 @@
 //! [[keybinds]]
 //! modifiers = ["super"]
 //! key = "Return"
-//! action = ["spawn", "kitty"]        # name followed by its arguments
+//! action = { spawn = ["kitty"] }
 //!
 //! [[keybinds]]
 //! modifiers = ["super"]
@@ -35,13 +35,14 @@ pub struct KeybindSpec {
 }
 
 /// A configured action: an action name (`"zoom"`, or `"none"` to unbind), a
-/// name followed by its arguments (`["set_layout", "grid"]`), or a sequence.
+/// name followed by its arguments (`["set_layout", "grid"]`), or a structured
+/// action (`{ set_layout = "grid" }`).
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(untagged)]
 pub enum ActionSpec {
     Named(String),
     WithArgs(Vec<String>),
-    Sequence { sequence: Vec<ActionSpec> },
+    Structured(toml::Table),
 }
 
 impl ActionSpec {
@@ -106,17 +107,52 @@ pub(crate) fn compile_action(spec: &ActionSpec) -> Result<KeyAction, String> {
             Some((name, args)) => NamedAction::parse(name, args).map(KeyAction::Named),
             None => Err("action must not be empty".to_string()),
         },
-        ActionSpec::Sequence { sequence } => {
-            if sequence.is_empty() {
-                return Err("'sequence' must contain at least one action".to_string());
-            }
-            sequence
-                .iter()
-                .map(compile_action)
-                .collect::<Result<_, _>>()
-                .map(KeyAction::Sequence)
-        }
+        ActionSpec::Structured(table) => compile_structured_action(table),
     }
+}
+
+fn compile_structured_action(table: &toml::Table) -> Result<KeyAction, String> {
+    if table.len() != 1 {
+        return Err("an action table must contain exactly one action".to_string());
+    }
+    let (name, value) = table.iter().next().expect("table has one entry");
+
+    if name == "sequence" {
+        let toml::Value::Array(steps) = value else {
+            return Err("'sequence' must be an array of actions".to_string());
+        };
+        if steps.is_empty() {
+            return Err("'sequence' must contain at least one action".to_string());
+        }
+        return steps
+            .iter()
+            .map(|step| {
+                let action: ActionSpec = step
+                    .clone()
+                    .try_into()
+                    .map_err(|error| format!("invalid action in sequence: {error}"))?;
+                compile_action(&action)
+            })
+            .collect::<Result<_, _>>()
+            .map(KeyAction::Sequence);
+    }
+
+    let values = match value {
+        toml::Value::Array(values) => values.as_slice(),
+        value => std::slice::from_ref(value),
+    };
+    let args = values
+        .iter()
+        .map(|value| match value {
+            toml::Value::String(text) => Ok(text.clone()),
+            toml::Value::Integer(number) => Ok(number.to_string()),
+            toml::Value::Boolean(boolean) => Ok(boolean.to_string()),
+            _ => Err(format!(
+                "action '{name}' expects a string, integer, boolean, or array of those values"
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    NamedAction::parse(name, &args).map(KeyAction::Named)
 }
 
 fn compile_keybind(spec: &KeybindSpec) -> Result<((u32, u32), Option<KeyAction>), String> {

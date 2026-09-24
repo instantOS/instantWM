@@ -4,7 +4,7 @@
 //! [[hooks]]
 //! event = "monitor_connected"
 //! monitor = "HDMI-A-1"          # optional: only fire for this output
-//! action = ["spawn", "notify-send", "Monitor connected"]
+//! action = { spawn = ["notify-send", "Monitor connected"] }
 //! ```
 //!
 //! `action` accepts exactly the same values as a keybind action (a name, a
