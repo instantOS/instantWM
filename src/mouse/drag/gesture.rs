@@ -68,15 +68,9 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
     }
 
     let command = if steps > 0 {
-        ctx.core()
-            .config()
-            .external_commands
-            .get(crate::config::commands::Cmd::UpVol)
+        crate::config::commands_common::media::UP_VOL
     } else {
-        ctx.core()
-            .config()
-            .external_commands
-            .get(crate::config::commands::Cmd::DownVol)
+        crate::config::commands_common::media::DOWN_VOL
     };
     for _ in 0..steps.unsigned_abs() {
         let _ = crate::util::spawn(ctx, command);

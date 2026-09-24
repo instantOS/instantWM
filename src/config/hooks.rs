@@ -4,12 +4,12 @@
 //! [[hooks]]
 //! event = "monitor_connected"
 //! monitor = "HDMI-A-1"          # optional: only fire for this output
-//! action = { spawn = ["notify-send", "Monitor connected"] }
+//! action = ["spawn", "notify-send", "Monitor connected"]
 //! ```
 //!
-//! `action` accepts exactly the same values as a keybind action (named
-//! actions, `spawn`, `sequence`, ...), so everything a key can do, a hook can
-//! do too. Unlike keybinds, invalid hooks are configuration errors instead of
+//! `action` accepts exactly the same values as a keybind action (a name, a
+//! name with arguments, or a `sequence`), so everything a key can do, a hook
+//! can do too. Unlike keybinds, invalid hooks are configuration errors instead of
 //! being silently skipped. Dispatch lives in [`crate::hooks`].
 
 use serde::{Deserialize, Serialize};
@@ -77,14 +77,6 @@ impl Hook {
     }
 }
 
-fn validate_action(action: &KeyAction) -> Result<(), String> {
-    match action {
-        KeyAction::Sequence(actions) => actions.iter().try_for_each(validate_action),
-        KeyAction::Named { action, args } => crate::actions::validate_action_args(*action, args),
-        _ => Ok(()),
-    }
-}
-
 /// Validate and compile `[[hooks]]` entries.
 pub fn resolve_hooks(specs: Vec<HookSpec>) -> Result<Vec<Hook>, String> {
     specs
@@ -104,7 +96,6 @@ pub fn resolve_hooks(specs: Vec<HookSpec>) -> Result<Vec<Hook>, String> {
                 }
             }
             let action = compile_action(&spec.action).map_err(context)?;
-            validate_action(&action).map_err(context)?;
             Ok(Hook {
                 event: spec.event,
                 monitor: spec.monitor,
@@ -131,11 +122,11 @@ mod tests {
             [[hooks]]
             event = "monitor_connected"
             monitor = "HDMI-A-1"
-            action = { spawn = ["notify-send", "hi"] }
+            action = ["spawn", "notify-send", "hi"]
 
             [[hooks]]
             event = "monitor_disconnected"
-            action = { sequence = ["toggle_bar", { set_layout = "tile" }] }
+            action = { sequence = ["toggle_bar", ["set_layout", "tile"]] }
 
             [[hooks]]
             event = "monitors_changed"
@@ -165,7 +156,7 @@ mod tests {
             // not executable
             "[[hooks]]\nevent = \"monitor_connected\"\naction = \"none\"",
             // missing required argument
-            "[[hooks]]\nevent = \"monitor_connected\"\naction = { spawn = [] }",
+            "[[hooks]]\nevent = \"monitor_connected\"\naction = [\"spawn\"]",
             "[[hooks]]\nevent = \"monitor_connected\"\naction = \"set_layout\"",
             // empty filter
             "[[hooks]]\nevent = \"monitor_connected\"\nmonitor = \"\"\naction = \"toggle_bar\"",

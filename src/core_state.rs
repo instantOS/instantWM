@@ -1,7 +1,6 @@
 use crate::client::PendingLaunch;
 use crate::config::ModeConfig;
 use crate::config::appearance::ColorConfig;
-use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
 use std::collections::{BTreeSet, HashMap, VecDeque};
@@ -327,7 +326,6 @@ pub struct EffectiveConfig {
     pub theme: crate::config::config_toml::ColorTheme,
     pub bindings: BindingConfig,
     pub fonts: FontConfig,
-    pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
     /// Resolved keyboard settings. The current layout index remains runtime

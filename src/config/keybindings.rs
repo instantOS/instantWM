@@ -1,8 +1,13 @@
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
 use crate::actions::{KeyAction, NamedAction};
+use crate::backend::BackendKind;
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, screenshot};
-use crate::types::{Key, KeybindOrigin};
+use crate::config::generated_keybinds::{
+    backend_launcher, resolve_lockscreen_command, resolve_terminal_command,
+};
+use crate::layouts::LayoutCommand;
+use crate::types::{Key, KeybindOrigin, MonitorDirection};
 
 use super::keysyms::*;
 
@@ -39,7 +44,7 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     ]
 }
 
-pub fn get_keys() -> Vec<Key> {
+pub fn get_keys(backend: BackendKind) -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         key!(MODKEY | MOD1, XK_J => KeyAction::named(NamedAction::KeyResizeDown)),
         key!(MODKEY | MOD1, XK_K => KeyAction::named(NamedAction::KeyResizeUp)),
@@ -56,24 +61,24 @@ pub fn get_keys() -> Vec<Key> {
         // Super+Ctrl+plus/minus resize the tiling gaps. Control never changes
         // the base keysym, so these chords mean the same thing on every keymap;
         // the shifted spellings cover layouts that type '+' or '-' with shift.
-        key!(MODKEY | CONTROL, XK_PLUS => KeyAction::named(NamedAction::IncGaps)),
-        key!(MODKEY | CONTROL, XK_EQUAL => KeyAction::named(NamedAction::IncGaps)),
-        key!(MODKEY | CONTROL | SHIFT, XK_PLUS => KeyAction::named(NamedAction::IncGaps)),
-        key!(MODKEY | CONTROL | SHIFT, XK_EQUAL => KeyAction::named(NamedAction::IncGaps)),
-        key!(MODKEY | CONTROL, XK_MINUS => KeyAction::named(NamedAction::DecGaps)),
-        key!(MODKEY | CONTROL | SHIFT, XK_MINUS => KeyAction::named(NamedAction::DecGaps)),
+        key!(MODKEY | CONTROL, XK_PLUS => KeyAction::named(NamedAction::IncGaps(None))),
+        key!(MODKEY | CONTROL, XK_EQUAL => KeyAction::named(NamedAction::IncGaps(None))),
+        key!(MODKEY | CONTROL | SHIFT, XK_PLUS => KeyAction::named(NamedAction::IncGaps(None))),
+        key!(MODKEY | CONTROL | SHIFT, XK_EQUAL => KeyAction::named(NamedAction::IncGaps(None))),
+        key!(MODKEY | CONTROL, XK_MINUS => KeyAction::named(NamedAction::DecGaps(None))),
+        key!(MODKEY | CONTROL | SHIFT, XK_MINUS => KeyAction::named(NamedAction::DecGaps(None))),
         key!(MODKEY | SHIFT, XK_J => KeyAction::named(NamedAction::KeyMoveDown)),
         key!(MODKEY | SHIFT, XK_K => KeyAction::named(NamedAction::KeyMoveUp)),
         key!(MODKEY | SHIFT, XK_L => KeyAction::named(NamedAction::KeyMoveRight)),
         key!(MODKEY | SHIFT, XK_H => KeyAction::named(NamedAction::KeyMoveLeft)),
-        key!(MODKEY, XK_I => KeyAction::named_args(NamedAction::IncMasterCount, &["1"])),
-        key!(MODKEY, XK_D => KeyAction::named_args(NamedAction::IncMasterCount, &["-1"])),
+        key!(MODKEY, XK_I => KeyAction::named(NamedAction::IncMasterCount(Some(1)))),
+        key!(MODKEY, XK_D => KeyAction::named(NamedAction::IncMasterCount(Some(-1)))),
         key!(MODKEY, XK_H => KeyAction::named(NamedAction::FocusLeft)),
         key!(MODKEY, XK_J => KeyAction::named(NamedAction::FocusDown)),
         key!(MODKEY, XK_K => KeyAction::named(NamedAction::FocusUp)),
         key!(MODKEY, XK_L => KeyAction::named(NamedAction::FocusRight)),
         key!(MODKEY, XK_T => KeyAction::named(NamedAction::EdgeScratchpadToggle)),
-        key!(MODKEY, XK_C => KeyAction::named_args(NamedAction::SetLayout, &["grid"])),
+        key!(MODKEY, XK_C => KeyAction::named(NamedAction::SetLayout(LayoutCommand::Grid))),
         key!(MODKEY, XK_F => KeyAction::named(NamedAction::LayoutFloat)),
         key!(MODKEY, XK_W => KeyAction::named(NamedAction::ToggleTilingMaximized)),
         key!(MODKEY | CONTROL, XK_COMMA => KeyAction::named(NamedAction::CycleLayoutPrev)),
@@ -102,14 +107,14 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_0 => KeyAction::named(NamedAction::ViewAll)),
         key!(MODKEY | SHIFT, XK_0 => KeyAction::named(NamedAction::TagAll)),
         key!(MODKEY, XK_O => KeyAction::named(NamedAction::WinView)),
-        key!(MODKEY, XK_COMMA => KeyAction::named_args(NamedAction::FocusMon, &["prev"])),
-        key!(MODKEY, XK_PERIOD => KeyAction::named_args(NamedAction::FocusMon, &["next"])),
-        key!(MODKEY | MOD1, XK_COMMA => KeyAction::named_args(NamedAction::FollowMon, &["prev"])),
-        key!(MODKEY | MOD1, XK_PERIOD => KeyAction::named_args(NamedAction::FollowMon, &["next"])),
+        key!(MODKEY, XK_COMMA => KeyAction::named(NamedAction::FocusMon(MonitorDirection::Prev))),
+        key!(MODKEY, XK_PERIOD => KeyAction::named(NamedAction::FocusMon(MonitorDirection::Next))),
+        key!(MODKEY | MOD1, XK_COMMA => KeyAction::named(NamedAction::FollowMon(MonitorDirection::Prev))),
+        key!(MODKEY | MOD1, XK_PERIOD => KeyAction::named(NamedAction::FollowMon(MonitorDirection::Next))),
         // Super+Shift+,/. move the focused client without following it. Shift is
         // part of the modifier mask; the base comma/period keysym is unchanged.
-        key!(MODKEY | SHIFT, XK_COMMA => KeyAction::named_args(NamedAction::SendMon, &["prev"])),
-        key!(MODKEY | SHIFT, XK_PERIOD => KeyAction::named_args(NamedAction::SendMon, &["next"])),
+        key!(MODKEY | SHIFT, XK_COMMA => KeyAction::named(NamedAction::SendMon(MonitorDirection::Prev))),
+        key!(MODKEY | SHIFT, XK_PERIOD => KeyAction::named(NamedAction::SendMon(MonitorDirection::Next))),
         key!(MODKEY | SHIFT, XK_RETURN => KeyAction::named(NamedAction::Zoom)),
         key!(MODKEY | SHIFT, XK_SPACE => KeyAction::named(NamedAction::ToggleFloating)),
         key!(MODKEY | CONTROL, XK_D => KeyAction::named(NamedAction::DistributeClients)),
@@ -122,54 +127,54 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_S => KeyAction::named(NamedAction::ScratchpadToggle)),
         key!(MODKEY | SHIFT, XK_S => KeyAction::named(NamedAction::ScratchpadRestore)),
         key!(MODKEY, XK_B => KeyAction::named(NamedAction::ToggleBar)),
-        key!(MODKEY | SHIFT, XK_B => KeyAction::named(NamedAction::ToggleBottomBar)),
+        key!(MODKEY | SHIFT, XK_B => KeyAction::named(NamedAction::ToggleBottomBar(None))),
         key!(MODKEY | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleSticky)),
-        key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAltTag)),
-        key!(MODKEY | SHIFT | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAnimated)),
-        key!(MODKEY | SHIFT | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleHideTags)),
+        key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAltTag(None))),
+        key!(MODKEY | SHIFT | MOD1, XK_S => KeyAction::named(NamedAction::ToggleAnimated(None))),
+        key!(MODKEY | SHIFT | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleHideTags(None))),
         key!(MODKEY | MOD1, XK_SPACE => KeyAction::named(NamedAction::NextKeyboardLayout)),
-        key!(MODKEY | SHIFT | CONTROL | MOD1, XK_TAB => KeyAction::named_args(NamedAction::ModeToggle, &["desktop"])),
+        key!(MODKEY | SHIFT | CONTROL | MOD1, XK_TAB => KeyAction::named(NamedAction::ModeToggle("desktop".into()))),
         key!(MODKEY | CONTROL, XK_H => KeyAction::named(NamedAction::Hide)),
         key!(MODKEY | CONTROL | MOD1, XK_H => KeyAction::named(NamedAction::UnhideAll)),
         key!(MODKEY, XK_Q => KeyAction::named(NamedAction::ShutKill)),
         key!(MOD1, XK_F4 => KeyAction::named(NamedAction::Kill)),
         key!(MODKEY | SHIFT | CONTROL, XK_Q => KeyAction::named(NamedAction::Quit)),
-        key!(MODKEY, XK_F2 => KeyAction::named_args(NamedAction::ModeToggle, &["prefix"])),
-        key!(MODKEY, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, defaults::TERMINAL)),
-        key!(MODKEY, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, menu::SMART)),
-        key!(MODKEY | CONTROL, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, menu::RUN)),
-        key!(MODKEY, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::CLIP)),
-        key!(MODKEY | MOD1, XK_MINUS => KeyAction::named_args(NamedAction::Spawn, menu::ST)),
-        key!(MODKEY | SHIFT, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::QUICK)),
-        key!(MODKEY, XK_N => KeyAction::named_args(NamedAction::Spawn, defaults::FILEMANAGER)),
-        key!(MODKEY, XK_R => KeyAction::named_args(NamedAction::Spawn, defaults::TERM_FILEMANAGER)),
-        key!(MODKEY, XK_Y => KeyAction::named_args(NamedAction::Spawn, defaults::APPMENU)),
-        key!(MODKEY, XK_X => KeyAction::named_args(NamedAction::Spawn, &["iswitch"])),
-        key!(MODKEY, XK_A => KeyAction::named_args(NamedAction::Spawn, &["ins", "assist"])),
-        key!(MODKEY, XK_QUESTION => KeyAction::named_args(NamedAction::Spawn, defaults::KEYHELP)),
-        key!(MODKEY | SHIFT, XK_QUESTION => KeyAction::named_args(NamedAction::Spawn, defaults::KEYHELP)),
-        key!(MODKEY | SHIFT, XK_SLASH => KeyAction::named_args(NamedAction::Spawn, defaults::KEYHELP)),
-        key!(MOD1, XK_TAB => KeyAction::named_args(NamedAction::Spawn, &["iswitch"])),
-        key!(MODKEY, XK_DEAD_CIRCUMFLEX => KeyAction::named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
-        key!(MODKEY | CONTROL, XK_L => KeyAction::named_args(NamedAction::Spawn, defaults::LOCKSCREEN)),
-        key!(MODKEY | CONTROL, XK_C => KeyAction::named_args(NamedAction::Spawn, defaults::SETTINGS)),
-        key!(MODKEY | CONTROL, XK_Q => KeyAction::named_args(NamedAction::Spawn, &["instantshutdown"])),
-        key!(MODKEY | MOD1, XK_F => KeyAction::named_args(NamedAction::Spawn, &["instantsearch"])),
-        key!(MODKEY | SHIFT, XK_ESCAPE => KeyAction::named_args(NamedAction::Spawn, defaults::SYSTEMMONITOR)),
-        key!(MODKEY, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::AREA)),
-        key!(MODKEY | SHIFT, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::FULL)),
-        key!(MODKEY | CONTROL, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::CLIPBOARD)),
-        key!(MODKEY | MOD1, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::FULL_CLIPBOARD)),
-        key!(0, XF86XK_MON_BRIGHTNESS_UP => KeyAction::named_args(NamedAction::Spawn, media::up_bright())),
-        key!(0, XF86XK_MON_BRIGHTNESS_DOWN => KeyAction::named_args(NamedAction::Spawn, media::down_bright())),
-        key!(0, XF86XK_AUDIO_LOWER_VOLUME => KeyAction::named_args(NamedAction::Spawn, media::down_vol())),
-        key!(0, XF86XK_AUDIO_MUTE => KeyAction::named_args(NamedAction::Spawn, media::mute_vol())),
-        key!(0, XF86XK_AUDIO_RAISE_VOLUME => KeyAction::named_args(NamedAction::Spawn, media::up_vol())),
-        key!(0, XF86XK_AUDIO_MIC_MUTE => KeyAction::named_args(NamedAction::Spawn, media::mic_mute())),
-        key!(0, XF86XK_AUDIO_PLAY => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "play-pause"])),
-        key!(0, XF86XK_AUDIO_PAUSE => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "play-pause"])),
-        key!(0, XF86XK_AUDIO_NEXT => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "next"])),
-        key!(0, XF86XK_AUDIO_PREV => KeyAction::named_args(NamedAction::Spawn, &["playerctl", "previous"])),
+        key!(MODKEY, XK_F2 => KeyAction::named(NamedAction::ModeToggle("prefix".into()))),
+        key!(MODKEY, XK_RETURN => KeyAction::spawn(&[resolve_terminal_command()])),
+        key!(MODKEY, XK_SPACE => KeyAction::spawn(&[backend_launcher(backend)])),
+        key!(MODKEY | CONTROL, XK_SPACE => KeyAction::spawn(menu::RUN)),
+        key!(MODKEY, XK_V => KeyAction::spawn(menu::CLIP)),
+        key!(MODKEY | MOD1, XK_MINUS => KeyAction::spawn(menu::ST)),
+        key!(MODKEY | SHIFT, XK_V => KeyAction::spawn(menu::QUICK)),
+        key!(MODKEY, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
+        key!(MODKEY, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
+        key!(MODKEY, XK_Y => KeyAction::spawn(defaults::APPMENU)),
+        key!(MODKEY, XK_X => KeyAction::spawn(&["iswitch"])),
+        key!(MODKEY, XK_A => KeyAction::spawn(&["ins", "assist"])),
+        key!(MODKEY, XK_QUESTION => KeyAction::spawn(defaults::KEYHELP)),
+        key!(MODKEY | SHIFT, XK_QUESTION => KeyAction::spawn(defaults::KEYHELP)),
+        key!(MODKEY | SHIFT, XK_SLASH => KeyAction::spawn(defaults::KEYHELP)),
+        key!(MOD1, XK_TAB => KeyAction::spawn(&["iswitch"])),
+        key!(MODKEY, XK_DEAD_CIRCUMFLEX => KeyAction::spawn(ROFI_WINDOW_SWITCH)),
+        key!(MODKEY | CONTROL, XK_L => KeyAction::spawn(&[resolve_lockscreen_command(backend)])),
+        key!(MODKEY | CONTROL, XK_C => KeyAction::spawn(defaults::SETTINGS)),
+        key!(MODKEY | CONTROL, XK_Q => KeyAction::spawn(&["instantshutdown"])),
+        key!(MODKEY | MOD1, XK_F => KeyAction::spawn(&["instantsearch"])),
+        key!(MODKEY | SHIFT, XK_ESCAPE => KeyAction::spawn(defaults::SYSTEMMONITOR)),
+        key!(MODKEY, XK_PRINT => KeyAction::spawn(screenshot::AREA)),
+        key!(MODKEY | SHIFT, XK_PRINT => KeyAction::spawn(screenshot::FULL)),
+        key!(MODKEY | CONTROL, XK_PRINT => KeyAction::spawn(screenshot::CLIPBOARD)),
+        key!(MODKEY | MOD1, XK_PRINT => KeyAction::spawn(screenshot::FULL_CLIPBOARD)),
+        key!(0, XF86XK_MON_BRIGHTNESS_UP => KeyAction::spawn(media::UP_BRIGHT)),
+        key!(0, XF86XK_MON_BRIGHTNESS_DOWN => KeyAction::spawn(media::DOWN_BRIGHT)),
+        key!(0, XF86XK_AUDIO_LOWER_VOLUME => KeyAction::spawn(media::DOWN_VOL)),
+        key!(0, XF86XK_AUDIO_MUTE => KeyAction::spawn(media::MUTE_VOL)),
+        key!(0, XF86XK_AUDIO_RAISE_VOLUME => KeyAction::spawn(media::UP_VOL)),
+        key!(0, XF86XK_AUDIO_MIC_MUTE => KeyAction::spawn(media::MIC_MUTE)),
+        key!(0, XF86XK_AUDIO_PLAY => KeyAction::spawn(&["playerctl", "play-pause"])),
+        key!(0, XF86XK_AUDIO_PAUSE => KeyAction::spawn(&["playerctl", "play-pause"])),
+        key!(0, XF86XK_AUDIO_NEXT => KeyAction::spawn(&["playerctl", "next"])),
+        key!(0, XF86XK_AUDIO_PREV => KeyAction::spawn(&["playerctl", "previous"])),
     ];
 
     for tag_idx in 0..9 {
@@ -181,16 +186,16 @@ pub fn get_keys() -> Vec<Key> {
 
 pub fn get_desktop_keybinds() -> Vec<Key> {
     vec![
-        key!(0, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, defaults::TERMINAL)),
-        key!(0, XK_R => KeyAction::named_args(NamedAction::Spawn, defaults::TERM_FILEMANAGER)),
-        key!(0, XK_E => KeyAction::named_args(NamedAction::Spawn, defaults::EDITOR)),
-        key!(0, XK_N => KeyAction::named_args(NamedAction::Spawn, defaults::FILEMANAGER)),
-        key!(0, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, defaults::APPMENU)),
-        key!(0, XK_Y => KeyAction::named_args(NamedAction::Spawn, menu::SMART)),
-        key!(0, XK_F => KeyAction::named_args(NamedAction::Spawn, defaults::BROWSER)),
-        key!(0, XK_TAB => KeyAction::named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
-        key!(0, XK_PLUS => KeyAction::named_args(NamedAction::Spawn, media::up_vol())),
-        key!(0, XK_MINUS => KeyAction::named_args(NamedAction::Spawn, media::down_vol())),
+        key!(0, XK_RETURN => KeyAction::spawn(defaults::TERMINAL)),
+        key!(0, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
+        key!(0, XK_E => KeyAction::spawn(defaults::EDITOR)),
+        key!(0, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
+        key!(0, XK_SPACE => KeyAction::spawn(defaults::APPMENU)),
+        key!(0, XK_Y => KeyAction::spawn(menu::SMART)),
+        key!(0, XK_F => KeyAction::spawn(defaults::BROWSER)),
+        key!(0, XK_TAB => KeyAction::spawn(ROFI_WINDOW_SWITCH)),
+        key!(0, XK_PLUS => KeyAction::spawn(media::UP_VOL)),
+        key!(0, XK_MINUS => KeyAction::spawn(media::DOWN_VOL)),
         key!(0, XK_H => KeyAction::named(NamedAction::ScrollLeft)),
         key!(0, XK_L => KeyAction::named(NamedAction::ScrollRight)),
         key!(0, XK_LEFT => KeyAction::named(NamedAction::ScrollLeft)),
@@ -258,27 +263,17 @@ mod tests {
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
             .and_then(|key| match key.action {
-                KeyAction::Named { action, .. } => Some(action),
+                KeyAction::Named(action) => Some(action),
                 _ => None,
             })
     }
 
     fn default_named_action(modifiers: u32, keysym: u32) -> Option<NamedAction> {
-        get_keys()
+        get_keys(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
             .and_then(|key| match key.action {
-                KeyAction::Named { action, .. } => Some(action),
-                _ => None,
-            })
-    }
-
-    fn default_named_args(modifiers: u32, keysym: u32) -> Option<(NamedAction, Vec<String>)> {
-        get_keys()
-            .into_iter()
-            .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
-            .and_then(|key| match key.action {
-                KeyAction::Named { action, args } => Some((action, args)),
+                KeyAction::Named(action) => Some(action),
                 _ => None,
             })
     }
@@ -316,27 +311,27 @@ mod tests {
         // shifted spellings cover layouts that type '+' or '-' with shift.
         assert_eq!(
             default_named_action(MODKEY | CONTROL, XK_PLUS),
-            Some(NamedAction::IncGaps)
+            Some(NamedAction::IncGaps(None))
         );
         assert_eq!(
             default_named_action(MODKEY | CONTROL, XK_EQUAL),
-            Some(NamedAction::IncGaps)
+            Some(NamedAction::IncGaps(None))
         );
         assert_eq!(
             default_named_action(MODKEY | CONTROL | SHIFT, XK_EQUAL),
-            Some(NamedAction::IncGaps)
+            Some(NamedAction::IncGaps(None))
         );
         assert_eq!(
             default_named_action(MODKEY | CONTROL | SHIFT, XK_PLUS),
-            Some(NamedAction::IncGaps)
+            Some(NamedAction::IncGaps(None))
         );
         assert_eq!(
             default_named_action(MODKEY | CONTROL, XK_MINUS),
-            Some(NamedAction::DecGaps)
+            Some(NamedAction::DecGaps(None))
         );
         assert_eq!(
             default_named_action(MODKEY | CONTROL | SHIFT, XK_MINUS),
-            Some(NamedAction::DecGaps)
+            Some(NamedAction::DecGaps(None))
         );
     }
 
@@ -371,32 +366,32 @@ mod tests {
         // Super+Alt+,/. carry the focused client to the adjacent monitor and
         // follow it there.
         assert_eq!(
-            default_named_args(MODKEY | MOD1, XK_COMMA),
-            Some((NamedAction::FollowMon, vec!["prev".to_string()]))
+            default_named_action(MODKEY | MOD1, XK_COMMA),
+            Some(NamedAction::FollowMon(MonitorDirection::Prev))
         );
         assert_eq!(
-            default_named_args(MODKEY | MOD1, XK_PERIOD),
-            Some((NamedAction::FollowMon, vec!["next".to_string()]))
+            default_named_action(MODKEY | MOD1, XK_PERIOD),
+            Some(NamedAction::FollowMon(MonitorDirection::Next))
         );
 
         // Super+Shift+,/. move the focused client without following it, so the
         // plain comma/period focus bindings stay untouched.
         assert_eq!(
-            default_named_args(MODKEY | SHIFT, XK_COMMA),
-            Some((NamedAction::SendMon, vec!["prev".to_string()]))
+            default_named_action(MODKEY | SHIFT, XK_COMMA),
+            Some(NamedAction::SendMon(MonitorDirection::Prev))
         );
         assert_eq!(
-            default_named_args(MODKEY | SHIFT, XK_PERIOD),
-            Some((NamedAction::SendMon, vec!["next".to_string()]))
+            default_named_action(MODKEY | SHIFT, XK_PERIOD),
+            Some(NamedAction::SendMon(MonitorDirection::Next))
         );
 
         assert_eq!(
             default_named_action(MODKEY, XK_COMMA),
-            Some(NamedAction::FocusMon)
+            Some(NamedAction::FocusMon(MonitorDirection::Prev))
         );
         assert_eq!(
             default_named_action(MODKEY, XK_PERIOD),
-            Some(NamedAction::FocusMon)
+            Some(NamedAction::FocusMon(MonitorDirection::Next))
         );
     }
 
@@ -418,15 +413,47 @@ mod tests {
     }
 
     #[test]
+    fn system_dependent_spawn_defaults_are_resolved_into_the_table() {
+        assert_eq!(
+            default_spawn_args_for(BackendKind::X11, MODKEY, XK_SPACE),
+            Some(vec!["instantmenu_smartrun".to_string()])
+        );
+        assert_eq!(
+            default_spawn_args_for(BackendKind::Wayland, MODKEY, XK_SPACE),
+            Some(vec!["fuzzel".to_string()])
+        );
+        for backend in [BackendKind::X11, BackendKind::Wayland] {
+            assert!(default_spawn_args_for(backend, MODKEY | CONTROL, XK_L).is_some());
+            assert!(default_spawn_args_for(backend, MODKEY, XK_RETURN).is_some());
+            let chords = get_keys(backend)
+                .iter()
+                .filter(|key| key.mod_mask == MODKEY && key.keysym == XK_RETURN)
+                .count();
+            assert_eq!(chords, 1);
+        }
+    }
+
+    fn default_spawn_args_for(
+        backend: BackendKind,
+        modifiers: u32,
+        keysym: u32,
+    ) -> Option<Vec<String>> {
+        get_keys(backend)
+            .into_iter()
+            .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
+            .and_then(|key| match key.action {
+                KeyAction::Named(NamedAction::Spawn(args)) => Some(args),
+                _ => None,
+            })
+    }
+
+    #[test]
     fn super_ctrl_c_launches_settings_gui() {
-        let spawn_args = get_keys()
+        let spawn_args = get_keys(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == MODKEY | CONTROL && key.keysym == XK_C)
             .and_then(|key| match key.action {
-                KeyAction::Named {
-                    action: NamedAction::Spawn,
-                    args,
-                } => Some(args),
+                KeyAction::Named(NamedAction::Spawn(args)) => Some(args),
                 _ => None,
             });
 
@@ -441,14 +468,11 @@ mod tests {
     }
 
     fn default_spawn_args(modifiers: u32, keysym: u32) -> Option<Vec<String>> {
-        get_keys()
+        get_keys(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
             .and_then(|key| match key.action {
-                KeyAction::Named {
-                    action: NamedAction::Spawn,
-                    args,
-                } => Some(args),
+                KeyAction::Named(NamedAction::Spawn(args)) => Some(args),
                 _ => None,
             })
     }
@@ -484,14 +508,11 @@ mod tests {
 
     #[test]
     fn super_r_launches_terminal_file_manager_through_default_aliases() {
-        let spawn_args = get_keys()
+        let spawn_args = get_keys(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == MODKEY && key.keysym == XK_R)
             .and_then(|key| match key.action {
-                KeyAction::Named {
-                    action: NamedAction::Spawn,
-                    args,
-                } => Some(args),
+                KeyAction::Named(NamedAction::Spawn(args)) => Some(args),
                 _ => None,
             });
 

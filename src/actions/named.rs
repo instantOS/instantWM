@@ -1,8 +1,9 @@
-use crate::actions::ActionMeta;
+use crate::actions::ActionInfo;
 use crate::client::fullscreen::toggle_fake_fullscreen;
 use crate::client::{kill_client, shut_kill, zoom};
 use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
+use crate::floating::scratchpad::DEFAULT_SCRATCHPAD_NAME;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
     key_move, key_resize, scratchpad_create, scratchpad_hide_name, scratchpad_restore,
@@ -10,7 +11,7 @@ use crate::floating::{
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack, focus_stack_neighbor};
 use crate::ipc_types::ScratchpadInitialStatus;
-use crate::keyboard::{down_key, up_key};
+use crate::keyboard::alt_tab_key;
 use crate::layouts::tree::Side;
 use crate::layouts::{
     LayoutCommand, MaximizedStackReorder, begin_tree_placement, center_keyboard_tree_placement,
@@ -22,6 +23,7 @@ use crate::layouts::{
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
+use crate::overview::ActionTransition;
 use crate::tags::{
     cancel_overview, follow_view, last_view, move_client_follow_view, send_to_monitor, shift_tag,
     shift_view, toggle_overview, win_view,
@@ -30,148 +32,314 @@ use crate::toggles::{
     toggle_alt_tag, toggle_bar, toggle_hide_tags, toggle_mode, toggle_sticky, unhide_all,
 };
 use crate::types::{
-    EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, TagSelection,
-    ToggleAction, VerticalDirection,
+    EdgeDirection, FocusFollowsMouseMode, HorizontalDirection, MonitorDirection, StackDirection,
+    TagMask, TagSelection, ToggleAction, VerticalDirection,
 };
 use crate::util::spawn;
 use std::collections::HashMap;
 
+/// Typed arguments of a named action, parsed once from their textual form
+/// (config arrays, `instantwmctl action NAME ARGS...`) and rendered back for
+/// display and IPC.
+pub(crate) trait ActionArgs: Sized {
+    fn parse(args: &[String]) -> Result<Self, String>;
+    fn render(&self) -> Vec<String>;
+    fn usage() -> String;
+}
+
+/// One textual argument value.
+trait ArgValue: Sized {
+    fn parse_value(value: &str) -> Result<Self, String>;
+    fn render_value(&self) -> String;
+    fn usage() -> String;
+}
+
+macro_rules! value_enum_arg {
+    ($($ty:ty),+) => {$(
+        impl ArgValue for $ty {
+            fn parse_value(value: &str) -> Result<Self, String> {
+                <$ty as clap::ValueEnum>::from_str(value, true).map_err(|_| {
+                    format!("invalid value '{value}'; expected {}", <Self as ArgValue>::usage())
+                })
+            }
+
+            fn render_value(&self) -> String {
+                clap::ValueEnum::to_possible_value(self)
+                    .expect("no skipped variants")
+                    .get_name()
+                    .to_string()
+            }
+
+            fn usage() -> String {
+                <$ty as clap::ValueEnum>::value_variants()
+                    .iter()
+                    .filter_map(clap::ValueEnum::to_possible_value)
+                    .map(|value| value.get_name().to_string())
+                    .collect::<Vec<_>>()
+                    .join("|")
+            }
+        }
+    )+};
+}
+
+value_enum_arg!(
+    ToggleAction,
+    MonitorDirection,
+    StackDirection,
+    FocusFollowsMouseMode
+);
+
+impl ArgValue for String {
+    fn parse_value(value: &str) -> Result<Self, String> {
+        Ok(value.to_string())
+    }
+
+    fn render_value(&self) -> String {
+        self.clone()
+    }
+
+    fn usage() -> String {
+        "NAME".to_string()
+    }
+}
+
+impl ArgValue for i32 {
+    fn parse_value(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("invalid value '{value}'; expected an integer"))
+    }
+
+    fn render_value(&self) -> String {
+        self.to_string()
+    }
+
+    fn usage() -> String {
+        "N".to_string()
+    }
+}
+
+impl ArgValue for u32 {
+    fn parse_value(value: &str) -> Result<Self, String> {
+        value
+            .parse()
+            .map_err(|_| format!("invalid value '{value}'; expected a non-negative integer"))
+    }
+
+    fn render_value(&self) -> String {
+        self.to_string()
+    }
+
+    fn usage() -> String {
+        "N".to_string()
+    }
+}
+
+impl ArgValue for LayoutCommand {
+    fn parse_value(value: &str) -> Result<Self, String> {
+        LayoutCommand::from_name(value).ok_or_else(|| {
+            format!(
+                "invalid layout '{value}'; expected {}",
+                <Self as ArgValue>::usage()
+            )
+        })
+    }
+
+    fn render_value(&self) -> String {
+        self.name().to_string()
+    }
+
+    fn usage() -> String {
+        LayoutCommand::all()
+            .iter()
+            .map(|layout| layout.name())
+            .collect::<Vec<_>>()
+            .join("|")
+    }
+}
+
+macro_rules! single_value_args {
+    ($($ty:ty),+) => {$(
+        impl ActionArgs for $ty {
+            fn parse(args: &[String]) -> Result<Self, String> {
+                match args {
+                    [value] => Self::parse_value(value),
+                    _ => Err(format!("expected 1 argument, got {}", args.len())),
+                }
+            }
+
+            fn render(&self) -> Vec<String> {
+                vec![self.render_value()]
+            }
+
+            fn usage() -> String {
+                <Self as ArgValue>::usage()
+            }
+        }
+    )+};
+}
+
+single_value_args!(
+    String,
+    u32,
+    LayoutCommand,
+    MonitorDirection,
+    StackDirection,
+    FocusFollowsMouseMode
+);
+
+impl<T: ArgValue> ActionArgs for Option<T> {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        match args {
+            [] => Ok(None),
+            [value] => T::parse_value(value).map(Some),
+            _ => Err(format!("expected at most 1 argument, got {}", args.len())),
+        }
+    }
+
+    fn render(&self) -> Vec<String> {
+        self.iter().map(ArgValue::render_value).collect()
+    }
+
+    fn usage() -> String {
+        format!("[{}]", T::usage())
+    }
+}
+
+/// A command line: program followed by its arguments.
+impl ActionArgs for Vec<String> {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        if args.is_empty() {
+            return Err("expected a command".to_string());
+        }
+        Ok(args.to_vec())
+    }
+
+    fn render(&self) -> Vec<String> {
+        self.clone()
+    }
+
+    fn usage() -> String {
+        "COMMAND [ARG ...]".to_string()
+    }
+}
+
+/// Declares every named action once: its name, overview policy (default:
+/// confirm, so a new mutating action never operates on the overview
+/// projection), documentation, typed argument and behaviour.
 macro_rules! define_named_actions {
+    (@transition) => { ActionTransition::Confirm };
+    (@transition $transition:ident) => { ActionTransition::$transition };
+    (@usage) => { None };
+    (@usage $arg:ty) => { Some(<$arg as ActionArgs>::usage()) };
+    (@render) => { Vec::new() };
+    (@render $value:ident) => { ActionArgs::render($value) };
+    (@parse $name:literal, $variant:ident, $args:ident) => {
+        if $args.is_empty() {
+            Self::$variant
+        } else {
+            return Err(format!("action '{}' takes no arguments", $name));
+        }
+    };
+    (@parse $name:literal, $variant:ident, $args:ident, $arg:ty) => {
+        Self::$variant(
+            <$arg as ActionArgs>::parse($args)
+                .map_err(|error| format!("action '{}': {error}", $name))?,
+        )
+    };
     ($(
-        $variant:ident => {
+        $variant:ident $(($arg:ty))? => {
             name: $name:literal,
-            arg_example: $arg_example:expr,
+            $(overview: $transition:ident,)?
             doc: $doc:literal,
-            run: |$ctx:ident, $args:ident| $body:block
+            run: |$ctx:ident $(, $value:ident)?| $body:block
         }
     ),+ $(,)?) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, PartialEq)]
         pub enum NamedAction {
-            $($variant,)+
+            $($variant $(($arg))?,)+
         }
 
         impl NamedAction {
-            pub const fn name(self) -> &'static str {
+            pub const fn name(&self) -> &'static str {
                 match self {
-                    $(NamedAction::$variant => $name,)+
+                    $(Self::$variant { .. } => $name,)+
                 }
             }
-        }
 
-        pub fn get_action_metadata() -> Vec<ActionMeta> {
-            vec![
-                $(ActionMeta { name: $name, doc: $doc, arg_example: $arg_example }),+
-            ]
-        }
-
-        pub fn parse_named_action(name: &str) -> Option<NamedAction> {
-            Some(match name.to_ascii_lowercase().as_str() {
-                $($name => NamedAction::$variant,)+
-                _ => return None,
-            })
-        }
-
-        pub fn execute_named_action(
-            ctx: &mut WmCtx<'_>,
-            action: NamedAction,
-            args: &[String],
-        ) -> Result<(), String> {
-            validate_action_args(action, args)?;
-            crate::overview::prepare_named_action(ctx, action);
-            match action {
-                $(NamedAction::$variant => {
-                    let $ctx = ctx;
-                    let $args = args;
-                    $body;
-                    Ok(())
-                }),+
+            /// Parse an action from its name and textual arguments.
+            pub fn parse(name: &str, args: &[String]) -> Result<Self, String> {
+                Ok(match name {
+                    $($name => define_named_actions!(@parse $name, $variant, args $(, $arg)?),)+
+                    _ => return Err(format!("unknown action '{name}'")),
+                })
             }
+
+            /// The textual arguments [`Self::parse`] accepts for this action.
+            pub fn args(&self) -> Vec<String> {
+                match self {
+                    $(Self::$variant $(($value))? => define_named_actions!(@render $($value)?),)+
+                }
+            }
+
+            pub(crate) fn overview_transition(&self) -> ActionTransition {
+                match self {
+                    $(Self::$variant { .. } => define_named_actions!(@transition $($transition)?),)+
+                }
+            }
+
+            pub(crate) fn execute(&self, ctx: &mut WmCtx<'_>) -> Result<(), String> {
+                crate::overview::prepare_named_action(ctx, self);
+                match self {
+                    $(Self::$variant $(($value))? => {
+                        let $ctx = &mut *ctx;
+                        $body
+                    })+
+                }
+                Ok(())
+            }
+        }
+
+        /// Every named action with its documentation, sorted by name.
+        pub fn action_infos() -> Vec<ActionInfo> {
+            let mut infos = vec![
+                $(ActionInfo {
+                    name: $name,
+                    description: $doc,
+                    arg_example: define_named_actions!(@usage $($arg)?),
+                }),+
+            ];
+            infos.sort_by_key(|info| info.name);
+            infos
         }
     };
 }
 
-fn expect_arg_count(name: &str, args: &[String], min: usize, max: usize) -> Result<(), String> {
-    if (min..=max).contains(&args.len()) {
-        Ok(())
-    } else if min == max {
-        Err(format!(
-            "action '{name}' expects {min} argument(s), got {}",
-            args.len()
-        ))
-    } else {
-        Err(format!(
-            "action '{name}' expects {min}..={max} arguments, got {}",
-            args.len()
-        ))
+impl NamedAction {
+    /// Human-readable form, e.g. `spawn ins settings --gui`.
+    pub fn describe(&self) -> String {
+        std::iter::once(self.name().to_string())
+            .chain(self.args())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
-fn parse_toggle_action(value: Option<&str>) -> Result<ToggleAction, String> {
-    match value.map(str::to_ascii_lowercase).as_deref() {
-        None | Some("toggle") => Ok(ToggleAction::Toggle),
-        Some("on" | "true" | "1") => Ok(ToggleAction::SetTrue),
-        Some("off" | "false" | "0") => Ok(ToggleAction::SetFalse),
-        Some(value) => Err(format!(
-            "invalid toggle action '{value}'; expected toggle, on, or off"
-        )),
+impl From<HorizontalDirection> for Side {
+    fn from(direction: HorizontalDirection) -> Self {
+        match direction {
+            HorizontalDirection::Left => Side::Left,
+            HorizontalDirection::Right => Side::Right,
+        }
     }
 }
 
-fn parse_monitor_direction(value: &str) -> Result<MonitorDirection, String> {
-    value
-        .parse()
-        .map_err(|()| format!("invalid monitor direction '{value}'; expected next or prev"))
-}
-
-pub(crate) fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), String> {
-    use NamedAction::*;
-
-    match action {
-        Spawn if args.is_empty() => Err("action 'spawn' expects a command".to_string()),
-        Spawn => Ok(()),
-        IncMasterCount => {
-            expect_arg_count("inc_master_count", args, 0, 1)?;
-            if let Some(value) = args.first() {
-                value.parse::<i32>().map_err(|_| {
-                    format!("invalid master-count delta '{value}'; expected an integer")
-                })?;
-            }
-            Ok(())
+impl From<VerticalDirection> for Side {
+    fn from(direction: VerticalDirection) -> Self {
+        match direction {
+            VerticalDirection::Up => Side::Top,
+            VerticalDirection::Down => Side::Bottom,
         }
-        IncGaps | DecGaps => {
-            expect_arg_count(action.name(), args, 0, 1)?;
-            if let Some(value) = args.first() {
-                value
-                    .parse::<i32>()
-                    .map_err(|_| format!("invalid gap delta '{value}'; expected an integer"))?;
-            }
-            Ok(())
-        }
-        KeyboardLayout | SetMode | ModeToggle | SetLayout | FocusStack | ViewTag | FocusMon
-        | SendMon | FollowMon | SetFocusFollowsMouse => expect_arg_count(action.name(), args, 1, 1),
-        SetBorder => {
-            expect_arg_count("set_border", args, 0, 1)?;
-            if let Some(value) = args.first() {
-                let width = value.parse::<i32>().map_err(|_| {
-                    format!("invalid border width '{value}'; expected a non-negative integer")
-                })?;
-                if width < 0 {
-                    return Err(format!(
-                        "invalid border width '{value}'; expected a non-negative integer"
-                    ));
-                }
-            }
-            Ok(())
-        }
-        ToggleAltTag
-        | ToggleAnimated
-        | ToggleHideTags
-        | ToggleBottomBar
-        | ToggleFocusFollowsFloatMouse => {
-            expect_arg_count(action.name(), args, 0, 1)?;
-            parse_toggle_action(args.first().map(String::as_str)).map(|_| ())
-        }
-        _ => expect_arg_count(action.name(), args, 0, 0),
     }
 }
 
@@ -205,21 +373,13 @@ fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
         .expect_selected_monitor()
         .is_maximized_layout()
     {
-        let stack_direction = match direction {
-            HorizontalDirection::Left => StackDirection::Previous,
-            HorizontalDirection::Right => StackDirection::Next,
-        };
-        if !focus_stack_neighbor(ctx, stack_direction) {
+        if !focus_stack_neighbor(ctx, direction.into()) {
             crate::animation::scroll_view_with_slide(ctx, direction);
         }
         return;
     }
 
-    let side = match direction {
-        HorizontalDirection::Left => Side::Left,
-        HorizontalDirection::Right => Side::Right,
-    };
-    if !focus_tree_neighbor(ctx, side) && !direction_focus(ctx, direction.into()) {
+    if !focus_tree_neighbor(ctx, direction.into()) && !direction_focus(ctx, direction.into()) {
         crate::animation::scroll_view_with_slide(ctx, direction);
     }
 }
@@ -229,39 +389,21 @@ fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
         crate::overview::focus_direction(ctx, direction.into());
         return;
     }
-    if ctx
+    let maximized = ctx
         .core()
         .model()
         .expect_selected_monitor()
-        .is_maximized_layout()
+        .is_maximized_layout();
+    if maximized
+        || (!focus_tree_neighbor(ctx, direction.into())
+            && !direction_focus(ctx, direction.into()))
     {
-        let stack_direction = match direction {
-            VerticalDirection::Up => StackDirection::Previous,
-            VerticalDirection::Down => StackDirection::Next,
-        };
-        focus_stack(ctx, stack_direction);
-        return;
-    }
-
-    let side = match direction {
-        VerticalDirection::Up => Side::Top,
-        VerticalDirection::Down => Side::Bottom,
-    };
-    if !focus_tree_neighbor(ctx, side) && !direction_focus(ctx, direction.into()) {
-        let stack_direction = match direction {
-            VerticalDirection::Up => StackDirection::Previous,
-            VerticalDirection::Down => StackDirection::Next,
-        };
-        focus_stack(ctx, stack_direction);
+        focus_stack(ctx, direction.into());
     }
 }
 
 fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
-    let stack_direction = match direction {
-        HorizontalDirection::Left => StackDirection::Previous,
-        HorizontalDirection::Right => StackDirection::Next,
-    };
-    match reorder_maximized_stack(ctx, stack_direction) {
+    match reorder_maximized_stack(ctx, direction.into()) {
         MaximizedStackReorder::Reordered | MaximizedStackReorder::ReconcileRequired => return,
         MaximizedStackReorder::Boundary => {
             let _ = move_client_follow_view(ctx, direction);
@@ -270,11 +412,7 @@ fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
         MaximizedStackReorder::NotApplicable => {}
     }
 
-    let side = match direction {
-        HorizontalDirection::Left => Side::Left,
-        HorizontalDirection::Right => Side::Right,
-    };
-    if swap_tree_neighbor(ctx, side) {
+    if swap_tree_neighbor(ctx, direction.into()) {
         return;
     }
     let Some(win) = ctx.core().model().selected_win() else {
@@ -286,25 +424,25 @@ fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
 }
 
 fn move_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
-    let stack_direction = match direction {
-        VerticalDirection::Up => StackDirection::Previous,
-        VerticalDirection::Down => StackDirection::Next,
-    };
     if !matches!(
-        reorder_maximized_stack(ctx, stack_direction),
+        reorder_maximized_stack(ctx, direction.into()),
         MaximizedStackReorder::NotApplicable
     ) {
         return;
     }
 
-    let side = match direction {
-        VerticalDirection::Up => Side::Top,
-        VerticalDirection::Down => Side::Bottom,
-    };
-    if !swap_tree_neighbor(ctx, side)
+    if !swap_tree_neighbor(ctx, direction.into())
         && let Some(win) = ctx.core().model().selected_win()
     {
         key_move(ctx, win, direction.into());
+    }
+}
+
+fn key_resize_or_tree(ctx: &mut WmCtx<'_>, side: Side, direction: crate::types::Direction) {
+    if !resize_tree(ctx, side)
+        && let Some(win) = ctx.core().model().selected_win()
+    {
+        key_resize(ctx, win, direction);
     }
 }
 
@@ -325,153 +463,11 @@ fn adjust_gaps(ctx: &mut WmCtx<'_>, delta: i32) {
     crate::layouts::manager::arrange(ctx, None);
 }
 
-define_named_actions!(
-    Zoom => { name: "zoom", arg_example: None, doc: "zoom client into master area", run: |ctx, _args| { zoom(ctx); } },
-    None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
-    Kill => { name: "kill", arg_example: None, doc: "close focused window gracefully", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { kill_client(ctx, win); } } },
-    ShutKill => { name: "shut_kill", arg_example: None, doc: "force kill focused window", run: |ctx, _args| { shut_kill(ctx); } },
-    Quit => { name: "quit", arg_example: None, doc: "quit instantwm", run: |ctx, _args| { ctx.core_mut().quit(); } },
-    FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
-    FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
-    FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
-    FocusUp => { name: "focus_up", arg_example: None, doc: "focus above; cycle backward in bar order when no window is above", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
-    FocusDown => { name: "focus_down", arg_example: None, doc: "focus below; cycle forward in bar order when no window is below", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
-    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, or move backward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
-    FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
-    DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
-    UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
-    LayoutFloat => { name: "layout_float", arg_example: None, doc: "toggle floating layout presentation without changing per-window floating state", run: |ctx, _args| { toggle_floating_presentation(ctx); } },
-    ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle maximized-stack presentation, or restore manual tiling from floating layout", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
-    CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
-    CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
-    IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
-    IncGaps => { name: "inc_gaps", arg_example: Some("[PIXELS]"), doc: "increase tiled inner and outer gaps", run: |ctx, args| { adjust_gaps(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_GAP_STEP)); } },
-    DecGaps => { name: "dec_gaps", arg_example: Some("[PIXELS]"), doc: "decrease tiled inner and outer gaps", run: |ctx, args| { adjust_gaps(ctx, -args.first().and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_GAP_STEP)); } },
-    CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
-    DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
-    KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "grow a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
-    KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "shrink a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
-    KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "shrink a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Left) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
-    KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "grow a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
-    KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "move toward the previous maximized title, swap a tiled window upward, or move a floating window", run: |ctx, _args| { move_vertical(ctx, VerticalDirection::Up); } },
-    KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "move toward the next maximized title, swap a tiled window downward, or move a floating window", run: |ctx, _args| { move_vertical(ctx, VerticalDirection::Down); } },
-    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move toward the previous maximized title or move left, carrying the window to the adjacent tag at the boundary", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Left); } },
-    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move toward the next maximized title or move right, carrying the window to the adjacent tag at the boundary", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Right); } },
-    TreeGrow => { name: "tree_grow", arg_example: None, doc: "grow the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, true); } },
-    TreeShrink => { name: "tree_shrink", arg_example: None, doc: "shrink the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, false); } },
-    PushUp => { name: "push_up", arg_example: None, doc: "swap a tiled window upward (legacy action)", run: |ctx, _args| { swap_tree_neighbor(ctx, Side::Top); } },
-    PushDown => { name: "push_down", arg_example: None, doc: "swap a tiled window downward (legacy action)", run: |ctx, _args| { swap_tree_neighbor(ctx, Side::Bottom); } },
-    LastView => { name: "last_view", arg_example: None, doc: "view previously viewed tags", run: |ctx, _args| { last_view(ctx); } },
-    FollowView => { name: "follow_view", arg_example: None, doc: "follow client to its tags", run: |ctx, _args| { follow_view(ctx); } },
-    WinView => { name: "win_view", arg_example: None, doc: "view tags of focused client", run: |ctx, _args| { win_view(ctx); } },
-    ScrollLeft => { name: "scroll_left", arg_example: None, doc: "scroll tags left", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Left); } },
-    ScrollRight => { name: "scroll_right", arg_example: None, doc: "scroll tags right", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Right); } },
-    MoveClientLeft => { name: "move_client_left", arg_example: None, doc: "move client to tag on left", run: |ctx, _args| { move_client_follow_view(ctx, HorizontalDirection::Left); } },
-    MoveClientRight => { name: "move_client_right", arg_example: None, doc: "move client to tag on right", run: |ctx, _args| { move_client_follow_view(ctx, HorizontalDirection::Right); } },
-    ShiftTagLeft => { name: "shift_tag_left", arg_example: None, doc: "shift client to tag on left", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Left.into(), 1); } },
-    ShiftTagRight => { name: "shift_tag_right", arg_example: None, doc: "shift client to tag on right", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Right.into(), 1); } },
-    ShiftViewLeft => { name: "shift_view_left", arg_example: None, doc: "shift view to tag on left", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Left); } },
-    ShiftViewRight => { name: "shift_view_right", arg_example: None, doc: "shift view to tag on right", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Right); } },
-    ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::tag_ops::view_selection(ctx, TagSelection::All); } },
-    TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); } } },
-    ToggleOverview => { name: "toggle_overview", arg_example: None, doc: "toggle overview mode", run: |ctx, _args| { toggle_overview(ctx, TagMask::ALL_BITS); } },
-    CancelOverview => { name: "cancel_overview", arg_example: None, doc: "leave overview and restore previous view", run: |ctx, _args| { cancel_overview(ctx, TagMask::ALL_BITS); } },
-    EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", arg_example: None, doc: "toggle the default edge scratchpad", run: |ctx, _args| { scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME)); } },
-    EdgeScratchpadCreate => { name: "edge_scratchpad_create", arg_example: None, doc: "toggle the default edge scratchpad (create from the focused window, or restore if it exists)", run: |ctx, _args| { edge_scratchpad_create(ctx); } },
-    EdgeScratchpadShow => { name: "edge_scratchpad_show", arg_example: None, doc: "show the default edge scratchpad", run: |ctx, _args| { let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
-    EdgeScratchpadHide => { name: "edge_scratchpad_hide", arg_example: None, doc: "hide the default edge scratchpad", run: |ctx, _args| { scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
-    EdgeScratchpadDirectionUp => { name: "edge_scratchpad_direction_up", arg_example: None, doc: "set default edge scratchpad direction to top", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Top); } },
-    EdgeScratchpadDirectionDown => { name: "edge_scratchpad_direction_down", arg_example: None, doc: "set default edge scratchpad direction to bottom", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Bottom); } },
-    EdgeScratchpadDirectionLeft => { name: "edge_scratchpad_direction_left", arg_example: None, doc: "set default edge scratchpad direction to left", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Left); } },
-    EdgeScratchpadDirectionRight => { name: "edge_scratchpad_direction_right", arg_example: None, doc: "set default edge scratchpad direction to right", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Right); } },
-    ScratchpadToggle => {
-        name: "scratchpad_toggle",
-        arg_example: None,
-        doc: "toggle scratchpad, creating it from current window if it doesn't exist",
-        run: |ctx, _args| {
-            const DEFAULT_NAME: &str = "instantwm_scratchpad";
-            if ctx.core().model().scratchpad_find(DEFAULT_NAME).is_some() {
-                scratchpad_toggle(ctx, Some(DEFAULT_NAME));
-            } else {
-                let _ = scratchpad_create(ctx, DEFAULT_NAME, None, None, ScratchpadInitialStatus::Shown);
-            }
-        }
-    },
-    ScratchpadRestore => {
-        name: "scratchpad_restore",
-        arg_example: None,
-        doc: "restore the focused scratchpad as an ordinary window",
-        run: |ctx, _args| { let _ = scratchpad_restore(ctx, None, None); }
-    },
-    ToggleBar => { name: "toggle_bar", arg_example: None, doc: "toggle status bar", run: |ctx, _args| { toggle_bar(ctx); } },
-    ToggleBottomBar => { name: "toggle_bottom_bar", arg_example: Some("[toggle|on|off]"), doc: "toggle or set bottom bar visibility", run: |ctx, args| {
-        let action = parse_toggle_action(args.first().map(String::as_str))?;
-        let mut shown = ctx.core().model().expect_selected_monitor().shows_bottom_bar();
-        action.apply(&mut shown);
-        crate::toggles::set_bottom_bar_shown(ctx, shown);
-    } },
-    ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
-    ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { toggle_sticky(ctx, win); } } },
-    ToggleAltTag => { name: "toggle_alt_tag", arg_example: Some("[toggle|on|off]"), doc: "toggle or set alt-tag mode", run: |ctx, args| { toggle_alt_tag(ctx, parse_toggle_action(args.first().map(String::as_str))?); } },
-    ToggleAnimated => { name: "toggle_animated", arg_example: Some("[toggle|on|off]"), doc: "toggle or set window animations", run: |ctx, args| { let action = parse_toggle_action(args.first().map(String::as_str))?; ctx.with_behavior_mut(|behavior| behavior.toggle_animated(action)); } },
-    ToggleHideTags => { name: "toggle_hide_tags", arg_example: Some("[toggle|on|off]"), doc: "toggle or set hiding empty tags in the bar", run: |ctx, args| { toggle_hide_tags(ctx, parse_toggle_action(args.first().map(String::as_str))?); } },
-    ToggleFocusFollowsFloatMouse => { name: "toggle_focus_follows_float_mouse", arg_example: Some("[toggle|on|off]"), doc: "toggle or set focus-follows-mouse for floating windows", run: |ctx, args| { let action = parse_toggle_action(args.first().map(String::as_str))?; ctx.with_behavior_mut(|behavior| behavior.toggle_focus_follows_float_mouse(action)); } },
-    SetFocusFollowsMouse => { name: "set_focus_follows_mouse", arg_example: Some("off|normal|force"), doc: "set focus-follows-mouse behavior", run: |ctx, args| {
-        let mode = match args[0].to_ascii_lowercase().as_str() {
-            "off" => crate::types::FocusFollowsMouseMode::Off,
-            "normal" => crate::types::FocusFollowsMouseMode::Normal,
-            "force" => crate::types::FocusFollowsMouseMode::Force,
-            value => return Err(format!("invalid focus-follows-mouse mode '{value}'; expected off, normal, or force")),
-        };
-        ctx.with_behavior_mut(|behavior| behavior.set_focus_follows_mouse(mode));
-    } },
-    ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { validate_mode_name(&ctx.core().config().bindings.modes, &args[0])?; toggle_mode(ctx, &args[0]); } },
-    UnhideAll => { name: "unhide_all", arg_example: None, doc: "show all hidden windows", run: |ctx, _args| { unhide_all(ctx); } },
-    Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::client::hide_for_user(ctx, win); } } },
-    ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen", run: |ctx, _args| { toggle_fake_fullscreen(ctx); } },
-    DrawWindow => { name: "draw_window", arg_example: None, doc: "start dragging/resizing window", run: |ctx, _args| { draw_window(ctx); } },
-    BeginTreePlacement => { name: "begin_tree_placement", arg_example: None, doc: "place the focused tiled window within its layout tree", run: |ctx, _args| { let _ = begin_tree_placement(ctx); } },
-    PlacementLeft => { name: "placement_left", arg_example: None, doc: "select the placement target to the left", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Left); } },
-    PlacementRight => { name: "placement_right", arg_example: None, doc: "select the placement target to the right", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Right); } },
-    PlacementUp => { name: "placement_up", arg_example: None, doc: "select the placement target above", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Top); } },
-    PlacementDown => { name: "placement_down", arg_example: None, doc: "select the placement target below", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Bottom); } },
-    PlacementSwapLeft => { name: "placement_swap_left", arg_example: None, doc: "swap the armed window with its left neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Left); } },
-    PlacementSwapRight => { name: "placement_swap_right", arg_example: None, doc: "swap the armed window with its right neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Right); } },
-    PlacementSwapUp => { name: "placement_swap_up", arg_example: None, doc: "swap the armed window with its upper neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Top); } },
-    PlacementSwapDown => { name: "placement_swap_down", arg_example: None, doc: "swap the armed window with its lower neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Bottom); } },
-    PlacementResizeLeft => { name: "placement_resize_left", arg_example: None, doc: "resize the armed window at its left edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Left); } },
-    PlacementResizeRight => { name: "placement_resize_right", arg_example: None, doc: "resize the armed window at its right edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Right); } },
-    PlacementResizeUp => { name: "placement_resize_up", arg_example: None, doc: "resize the armed window at its upper edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Top); } },
-    PlacementResizeDown => { name: "placement_resize_down", arg_example: None, doc: "resize the armed window at its lower edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Bottom); } },
-    PlacementNext => { name: "placement_next", arg_example: None, doc: "select the next placement target", run: |ctx, _args| { cycle_keyboard_tree_placement(ctx, false); } },
-    PlacementPrevious => { name: "placement_previous", arg_example: None, doc: "select the previous placement target", run: |ctx, _args| { cycle_keyboard_tree_placement(ctx, true); } },
-    PlacementCenter => { name: "placement_center", arg_example: None, doc: "select the center replacement target", run: |ctx, _args| { center_keyboard_tree_placement(ctx); } },
-    PlacementApply => { name: "placement_apply", arg_example: None, doc: "apply the pending tree placement", run: |ctx, _args| { finish_keyboard_tree_placement(ctx, true); } },
-    PlacementCancel => { name: "placement_cancel", arg_example: None, doc: "cancel the pending tree placement", run: |ctx, _args| { finish_keyboard_tree_placement(ctx, false); } },
-    NextKeyboardLayout => { name: "next_keyboard_layout", arg_example: None, doc: "cycle to next keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Next); } },
-    PrevKeyboardLayout => { name: "prev_keyboard_layout", arg_example: None, doc: "cycle to previous keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
-    KeyboardLayout => { name: "keyboard_layout", arg_example: Some("us(intl)"), doc: "set keyboard layout", run: |ctx, args| { if let Some(name) = args.first() { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name); } } },
-    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { validate_mode_name(&ctx.core().config().bindings.modes, &args[0])?; ctx.set_current_mode(args[0].clone()); } },
-    Spawn => { name: "spawn", arg_example: Some("COMMAND [ARG ...]"), doc: "spawn a command without shell expansion", run: |ctx, args| { spawn(ctx, args)?; } },
-    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { let Some(layout) = LayoutCommand::from_name(&args[0]) else { return Err(format!("invalid layout '{}'", args[0])); }; set_layout(ctx, layout); } },
-    ResetLayout => { name: "reset_layout", arg_example: None, doc: "reset the active layout to stock geometry", run: |ctx, _args| { reset_active_layout(ctx); } },
-    FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { let Some(direction) = StackDirection::from_name(&args[0]) else { return Err(format!("invalid stack direction '{}'", args[0])); }; focus_stack(ctx, direction); } },
-    ViewTag => { name: "view_tag", arg_example: Some("NUMBER"), doc: "view a tag by its 1-based number", run: |ctx, args| {
-        let number = args[0].parse::<usize>().map_err(|_| format!("invalid tag number '{}'", args[0]))?;
-        let index = number.checked_sub(1).ok_or_else(|| "tag number must be at least 1".to_string())?;
-        if number > ctx.core().model().tags.num_tags { return Err(format!("tag number {number} is out of range")); }
-        let mask = TagMask::from_index(index).ok_or_else(|| format!("tag number {number} is out of range"))?;
-        crate::tags::view::view_tags(ctx, mask);
-    } },
-    WarpFocus => { name: "warp_focus", arg_example: None, doc: "warp the pointer to the focused window", run: |ctx, _args| { crate::mouse::warp::warp_to_focus(ctx); } },
-    FocusMon => { name: "focus_mon", arg_example: Some("next|prev"), doc: "focus another monitor, warping the pointer to it", run: |ctx, args| { focus_monitor(ctx, parse_monitor_direction(&args[0])?); } },
-    SendMon => { name: "send_mon", arg_example: Some("next|prev"), doc: "move the focused client to another monitor without following", run: |ctx, args| { send_to_monitor(ctx, parse_monitor_direction(&args[0])?); } },
-    FollowMon => { name: "follow_mon", arg_example: Some("next|prev"), doc: "move the focused client to another monitor and follow", run: |ctx, args| { move_to_monitor_and_follow(ctx, parse_monitor_direction(&args[0])?); } },
-    SetBorder => { name: "set_border", arg_example: Some("[WIDTH]"), doc: "set the focused window border width", run: |ctx, args| {
-        let width = args.first().map(|value| value.parse::<i32>()).transpose().map_err(|_| format!("invalid border width '{}'", args[0]))?.unwrap_or(crate::config::mod_consts::BORDER_PX);
-        if let Some(win) = ctx.core().model().selected_win() { ctx.set_border(win, width); }
-    } }
-);
+fn with_selected_win(ctx: &mut WmCtx<'_>, f: impl FnOnce(&mut WmCtx<'_>, crate::types::WindowId)) {
+    if let Some(win) = ctx.core().model().selected_win() {
+        f(ctx, win);
+    }
+}
 
 fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
     if let Some(win) = ctx
@@ -483,12 +479,144 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
     }
 }
 
+define_named_actions!(
+    Zoom => { name: "zoom", doc: "zoom client into master area", run: |ctx| { zoom(ctx); } },
+    Kill => { name: "kill", doc: "close focused window gracefully", run: |ctx| { with_selected_win(ctx, kill_client); } },
+    ShutKill => { name: "shut_kill", doc: "force kill focused window", run: |ctx| { shut_kill(ctx); } },
+    Quit => { name: "quit", doc: "quit instantwm", run: |ctx| { ctx.core_mut().quit(); } },
+    FocusNext => { name: "focus_next", overview: Preserve, doc: "focus next window in stack", run: |ctx| { focus_stack(ctx, StackDirection::Next); } },
+    FocusPrev => { name: "focus_prev", overview: Preserve, doc: "focus previous window in stack", run: |ctx| { focus_stack(ctx, StackDirection::Previous); } },
+    FocusLast => { name: "focus_last", overview: Cancel, doc: "focus last focused window", run: |ctx| { focus_last_client(ctx); } },
+    FocusUp => { name: "focus_up", overview: Preserve, doc: "focus above; cycle backward in bar order when no window is above", run: |ctx| { focus_vertical(ctx, VerticalDirection::Up); } },
+    FocusDown => { name: "focus_down", overview: Preserve, doc: "focus below; cycle forward in bar order when no window is below", run: |ctx| { focus_vertical(ctx, VerticalDirection::Down); } },
+    FocusLeft => { name: "focus_left", overview: Preserve, doc: "focus left, or move backward through bar order in maximized presentation; switch tags at the boundary", run: |ctx| { focus_horizontal(ctx, HorizontalDirection::Left); } },
+    FocusRight => { name: "focus_right", overview: Preserve, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx| { focus_horizontal(ctx, HorizontalDirection::Right); } },
+    DownKey => { name: "down_key", overview: Preserve, doc: "alt-tab forward", run: |ctx| { alt_tab_key(ctx, VerticalDirection::Down); } },
+    UpKey => { name: "up_key", overview: Preserve, doc: "alt-tab backward", run: |ctx| { alt_tab_key(ctx, VerticalDirection::Up); } },
+    LayoutFloat => { name: "layout_float", doc: "toggle floating layout presentation without changing per-window floating state", run: |ctx| { toggle_floating_presentation(ctx); } },
+    ToggleTilingMaximized => { name: "toggle_tiling_maximized", doc: "toggle maximized-stack presentation, or restore manual tiling from floating layout", run: |ctx| { toggle_tiling_maximized(ctx); } },
+    CycleLayoutNext => { name: "cycle_layout_next", doc: "cycle to next layout", run: |ctx| { cycle_layout_direction(ctx, true); } },
+    CycleLayoutPrev => { name: "cycle_layout_prev", doc: "cycle to previous layout", run: |ctx| { cycle_layout_direction(ctx, false); } },
+    IncMasterCount(Option<i32>) => { name: "inc_master_count", doc: "change the master window count (default +1)", run: |ctx, delta| { inc_master_count_by(ctx, delta.unwrap_or(1)); } },
+    IncGaps(Option<i32>) => { name: "inc_gaps", doc: "increase tiled inner and outer gaps", run: |ctx, delta| { adjust_gaps(ctx, delta.unwrap_or(DEFAULT_GAP_STEP)); } },
+    DecGaps(Option<i32>) => { name: "dec_gaps", doc: "decrease tiled inner and outer gaps", run: |ctx, delta| { adjust_gaps(ctx, -delta.unwrap_or(DEFAULT_GAP_STEP)); } },
+    CenterWindow => { name: "center_window", doc: "center focused window", run: |ctx| { with_selected_win(ctx, center_window); } },
+    DistributeClients => { name: "distribute_clients", doc: "distribute windows evenly", run: |ctx| { distribute_clients(ctx); } },
+    KeyResizeUp => { name: "key_resize_up", doc: "grow a tiled window vertically or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Top, VerticalDirection::Up.into()); } },
+    KeyResizeDown => { name: "key_resize_down", doc: "shrink a tiled window vertically or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Bottom, VerticalDirection::Down.into()); } },
+    KeyResizeLeft => { name: "key_resize_left", doc: "shrink a tiled window horizontally or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Left, HorizontalDirection::Left.into()); } },
+    KeyResizeRight => { name: "key_resize_right", doc: "grow a tiled window horizontally or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Right, HorizontalDirection::Right.into()); } },
+    KeyMoveUp => { name: "key_move_up", doc: "move toward the previous maximized title, swap a tiled window upward, or move a floating window", run: |ctx| { move_vertical(ctx, VerticalDirection::Up); } },
+    KeyMoveDown => { name: "key_move_down", doc: "move toward the next maximized title, swap a tiled window downward, or move a floating window", run: |ctx| { move_vertical(ctx, VerticalDirection::Down); } },
+    KeyMoveLeft => { name: "key_move_left", doc: "move toward the previous maximized title or move left, carrying the window to the adjacent tag at the boundary", run: |ctx| { move_horizontal(ctx, HorizontalDirection::Left); } },
+    KeyMoveRight => { name: "key_move_right", doc: "move toward the next maximized title or move right, carrying the window to the adjacent tag at the boundary", run: |ctx| { move_horizontal(ctx, HorizontalDirection::Right); } },
+    TreeGrow => { name: "tree_grow", doc: "grow the focused window along its most local split", run: |ctx| { resize_tree_smart(ctx, true); } },
+    TreeShrink => { name: "tree_shrink", doc: "shrink the focused window along its most local split", run: |ctx| { resize_tree_smart(ctx, false); } },
+    PushUp => { name: "push_up", doc: "swap a tiled window upward (legacy action)", run: |ctx| { swap_tree_neighbor(ctx, Side::Top); } },
+    PushDown => { name: "push_down", doc: "swap a tiled window downward (legacy action)", run: |ctx| { swap_tree_neighbor(ctx, Side::Bottom); } },
+    LastView => { name: "last_view", overview: Cancel, doc: "view previously viewed tags", run: |ctx| { last_view(ctx); } },
+    FollowView => { name: "follow_view", doc: "follow client to its tags", run: |ctx| { follow_view(ctx); } },
+    WinView => { name: "win_view", doc: "view tags of focused client", run: |ctx| { win_view(ctx); } },
+    ScrollLeft => { name: "scroll_left", overview: Cancel, doc: "scroll tags left", run: |ctx| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Left); } },
+    ScrollRight => { name: "scroll_right", overview: Cancel, doc: "scroll tags right", run: |ctx| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Right); } },
+    MoveClientLeft => { name: "move_client_left", doc: "move client to tag on left", run: |ctx| { move_client_follow_view(ctx, HorizontalDirection::Left); } },
+    MoveClientRight => { name: "move_client_right", doc: "move client to tag on right", run: |ctx| { move_client_follow_view(ctx, HorizontalDirection::Right); } },
+    ShiftTagLeft => { name: "shift_tag_left", doc: "shift client to tag on left", run: |ctx| { shift_tag(ctx, HorizontalDirection::Left.into(), 1); } },
+    ShiftTagRight => { name: "shift_tag_right", doc: "shift client to tag on right", run: |ctx| { shift_tag(ctx, HorizontalDirection::Right.into(), 1); } },
+    ShiftViewLeft => { name: "shift_view_left", overview: Cancel, doc: "shift view to tag on left", run: |ctx| { shift_view(ctx, HorizontalDirection::Left); } },
+    ShiftViewRight => { name: "shift_view_right", overview: Cancel, doc: "shift view to tag on right", run: |ctx| { shift_view(ctx, HorizontalDirection::Right); } },
+    ViewAll => { name: "view_all", overview: Cancel, doc: "view all tags", run: |ctx| { crate::tags::tag_ops::view_selection(ctx, TagSelection::All); } },
+    TagAll => { name: "tag_all", doc: "tag client with all tags", run: |ctx| { with_selected_win(ctx, |ctx, win| crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS)); } },
+    ToggleOverview => { name: "toggle_overview", overview: Preserve, doc: "toggle overview mode", run: |ctx| { toggle_overview(ctx, TagMask::ALL_BITS); } },
+    CancelOverview => { name: "cancel_overview", overview: Preserve, doc: "leave overview and restore previous view", run: |ctx| { cancel_overview(ctx, TagMask::ALL_BITS); } },
+    EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", overview: Preserve, doc: "toggle the default edge scratchpad", run: |ctx| { scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME)); } },
+    EdgeScratchpadCreate => { name: "edge_scratchpad_create", doc: "toggle the default edge scratchpad (create from the focused window, or restore if it exists)", run: |ctx| { edge_scratchpad_create(ctx); } },
+    EdgeScratchpadShow => { name: "edge_scratchpad_show", overview: Preserve, doc: "show the default edge scratchpad", run: |ctx| { let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
+    EdgeScratchpadHide => { name: "edge_scratchpad_hide", overview: Preserve, doc: "hide the default edge scratchpad", run: |ctx| { scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
+    EdgeScratchpadDirectionUp => { name: "edge_scratchpad_direction_up", overview: Preserve, doc: "set default edge scratchpad direction to top", run: |ctx| { edge_scratchpad_set_direction(ctx, EdgeDirection::Top); } },
+    EdgeScratchpadDirectionDown => { name: "edge_scratchpad_direction_down", overview: Preserve, doc: "set default edge scratchpad direction to bottom", run: |ctx| { edge_scratchpad_set_direction(ctx, EdgeDirection::Bottom); } },
+    EdgeScratchpadDirectionLeft => { name: "edge_scratchpad_direction_left", overview: Preserve, doc: "set default edge scratchpad direction to left", run: |ctx| { edge_scratchpad_set_direction(ctx, EdgeDirection::Left); } },
+    EdgeScratchpadDirectionRight => { name: "edge_scratchpad_direction_right", overview: Preserve, doc: "set default edge scratchpad direction to right", run: |ctx| { edge_scratchpad_set_direction(ctx, EdgeDirection::Right); } },
+    ScratchpadToggle => {
+        name: "scratchpad_toggle",
+        doc: "toggle scratchpad, creating it from current window if it doesn't exist",
+        run: |ctx| {
+            if ctx.core().model().scratchpad_find(DEFAULT_SCRATCHPAD_NAME).is_some() {
+                scratchpad_toggle(ctx, Some(DEFAULT_SCRATCHPAD_NAME));
+            } else {
+                let _ = scratchpad_create(ctx, DEFAULT_SCRATCHPAD_NAME, None, None, ScratchpadInitialStatus::Shown);
+            }
+        }
+    },
+    ScratchpadRestore => { name: "scratchpad_restore", doc: "restore the focused scratchpad as an ordinary window", run: |ctx| { let _ = scratchpad_restore(ctx, None, None); } },
+    ToggleBar => { name: "toggle_bar", overview: Preserve, doc: "toggle status bar", run: |ctx| { toggle_bar(ctx); } },
+    ToggleBottomBar(Option<ToggleAction>) => { name: "toggle_bottom_bar", overview: Preserve, doc: "toggle or set bottom bar visibility", run: |ctx, action| {
+        let mut shown = ctx.core().model().expect_selected_monitor().shows_bottom_bar();
+        action.unwrap_or_default().apply(&mut shown);
+        crate::toggles::set_bottom_bar_shown(ctx, shown);
+    } },
+    ToggleFloating => { name: "toggle_floating", doc: "toggle focused window between tiled and floating", run: |ctx| { toggle_floating(ctx); } },
+    ToggleSticky => { name: "toggle_sticky", doc: "toggle sticky (visible on all tags)", run: |ctx| { with_selected_win(ctx, toggle_sticky); } },
+    ToggleAltTag(Option<ToggleAction>) => { name: "toggle_alt_tag", overview: Preserve, doc: "toggle or set alt-tag mode", run: |ctx, action| { toggle_alt_tag(ctx, action.unwrap_or_default()); } },
+    ToggleAnimated(Option<ToggleAction>) => { name: "toggle_animated", overview: Preserve, doc: "toggle or set window animations", run: |ctx, action| { let action = action.unwrap_or_default(); ctx.with_behavior_mut(|behavior| behavior.toggle_animated(action)); } },
+    ToggleHideTags(Option<ToggleAction>) => { name: "toggle_hide_tags", overview: Preserve, doc: "toggle or set hiding empty tags in the bar", run: |ctx, action| { toggle_hide_tags(ctx, action.unwrap_or_default()); } },
+    ToggleFocusFollowsFloatMouse(Option<ToggleAction>) => { name: "toggle_focus_follows_float_mouse", overview: Preserve, doc: "toggle or set focus-follows-mouse for floating windows", run: |ctx, action| { let action = action.unwrap_or_default(); ctx.with_behavior_mut(|behavior| behavior.toggle_focus_follows_float_mouse(action)); } },
+    SetFocusFollowsMouse(FocusFollowsMouseMode) => { name: "set_focus_follows_mouse", overview: Preserve, doc: "set focus-follows-mouse behavior", run: |ctx, mode| { let mode = *mode; ctx.with_behavior_mut(|behavior| behavior.set_focus_follows_mouse(mode)); } },
+    ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; toggle_mode(ctx, mode); } },
+    UnhideAll => { name: "unhide_all", doc: "show all hidden windows", run: |ctx| { unhide_all(ctx); } },
+    Hide => { name: "hide", doc: "minimize focused window or hide the visible scratchpad", run: |ctx| { with_selected_win(ctx, crate::client::hide_for_user); } },
+    ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", doc: "toggle fake fullscreen", run: |ctx| { toggle_fake_fullscreen(ctx); } },
+    DrawWindow => { name: "draw_window", doc: "start dragging/resizing window", run: |ctx| { draw_window(ctx); } },
+    BeginTreePlacement => { name: "begin_tree_placement", doc: "place the focused tiled window within its layout tree", run: |ctx| { let _ = begin_tree_placement(ctx); } },
+    PlacementLeft => { name: "placement_left", doc: "select the placement target to the left", run: |ctx| { step_keyboard_tree_placement(ctx, Side::Left); } },
+    PlacementRight => { name: "placement_right", doc: "select the placement target to the right", run: |ctx| { step_keyboard_tree_placement(ctx, Side::Right); } },
+    PlacementUp => { name: "placement_up", doc: "select the placement target above", run: |ctx| { step_keyboard_tree_placement(ctx, Side::Top); } },
+    PlacementDown => { name: "placement_down", doc: "select the placement target below", run: |ctx| { step_keyboard_tree_placement(ctx, Side::Bottom); } },
+    PlacementSwapLeft => { name: "placement_swap_left", doc: "swap the armed window with its left neighbour", run: |ctx| { swap_keyboard_tree_placement(ctx, Side::Left); } },
+    PlacementSwapRight => { name: "placement_swap_right", doc: "swap the armed window with its right neighbour", run: |ctx| { swap_keyboard_tree_placement(ctx, Side::Right); } },
+    PlacementSwapUp => { name: "placement_swap_up", doc: "swap the armed window with its upper neighbour", run: |ctx| { swap_keyboard_tree_placement(ctx, Side::Top); } },
+    PlacementSwapDown => { name: "placement_swap_down", doc: "swap the armed window with its lower neighbour", run: |ctx| { swap_keyboard_tree_placement(ctx, Side::Bottom); } },
+    PlacementResizeLeft => { name: "placement_resize_left", doc: "resize the armed window at its left edge", run: |ctx| { resize_keyboard_tree_placement(ctx, Side::Left); } },
+    PlacementResizeRight => { name: "placement_resize_right", doc: "resize the armed window at its right edge", run: |ctx| { resize_keyboard_tree_placement(ctx, Side::Right); } },
+    PlacementResizeUp => { name: "placement_resize_up", doc: "resize the armed window at its upper edge", run: |ctx| { resize_keyboard_tree_placement(ctx, Side::Top); } },
+    PlacementResizeDown => { name: "placement_resize_down", doc: "resize the armed window at its lower edge", run: |ctx| { resize_keyboard_tree_placement(ctx, Side::Bottom); } },
+    PlacementNext => { name: "placement_next", doc: "select the next placement target", run: |ctx| { cycle_keyboard_tree_placement(ctx, false); } },
+    PlacementPrevious => { name: "placement_previous", doc: "select the previous placement target", run: |ctx| { cycle_keyboard_tree_placement(ctx, true); } },
+    PlacementCenter => { name: "placement_center", doc: "select the center replacement target", run: |ctx| { center_keyboard_tree_placement(ctx); } },
+    PlacementApply => { name: "placement_apply", doc: "apply the pending tree placement", run: |ctx| { finish_keyboard_tree_placement(ctx, true); } },
+    PlacementCancel => { name: "placement_cancel", doc: "cancel the pending tree placement", run: |ctx| { finish_keyboard_tree_placement(ctx, false); } },
+    NextKeyboardLayout => { name: "next_keyboard_layout", overview: Preserve, doc: "cycle to next keyboard layout", run: |ctx| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Next); } },
+    PrevKeyboardLayout => { name: "prev_keyboard_layout", overview: Preserve, doc: "cycle to previous keyboard layout", run: |ctx| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
+    KeyboardLayout(String) => { name: "keyboard_layout", overview: Preserve, doc: "set keyboard layout, e.g. us(intl)", run: |ctx, layout| { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, layout); } },
+    SetMode(String) => { name: "set_mode", doc: "set WM mode (sway-like modes)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; ctx.set_current_mode(mode.clone()); } },
+    Spawn(Vec<String>) => { name: "spawn", overview: Preserve, doc: "spawn a command without shell expansion", run: |ctx, argv| { spawn(ctx, argv)?; } },
+    SetLayout(LayoutCommand) => { name: "set_layout", doc: "set layout", run: |ctx, layout| { set_layout(ctx, *layout); } },
+    ResetLayout => { name: "reset_layout", doc: "reset the active layout to stock geometry", run: |ctx| { reset_active_layout(ctx); } },
+    FocusStack(StackDirection) => { name: "focus_stack", overview: Preserve, doc: "focus stack direction", run: |ctx, direction| { focus_stack(ctx, *direction); } },
+    ViewTag(u32) => { name: "view_tag", overview: Cancel, doc: "view a tag by its 1-based number", run: |ctx, number| {
+        let number = *number as usize;
+        if number == 0 || number > ctx.core().model().tags.num_tags {
+            return Err(format!("tag number {number} is out of range"));
+        }
+        let mask = TagMask::from_index(number - 1).ok_or_else(|| format!("tag number {number} is out of range"))?;
+        crate::tags::view::view_tags(ctx, mask);
+    } },
+    WarpFocus => { name: "warp_focus", overview: Preserve, doc: "warp the pointer to the focused window", run: |ctx| { crate::mouse::warp::warp_to_focus(ctx); } },
+    FocusMon(MonitorDirection) => { name: "focus_mon", overview: Cancel, doc: "focus another monitor, warping the pointer to it", run: |ctx, direction| { focus_monitor(ctx, *direction); } },
+    SendMon(MonitorDirection) => { name: "send_mon", doc: "move the focused client to another monitor without following", run: |ctx, direction| { send_to_monitor(ctx, *direction); } },
+    FollowMon(MonitorDirection) => { name: "follow_mon", doc: "move the focused client to another monitor and follow", run: |ctx, direction| { move_to_monitor_and_follow(ctx, *direction); } },
+    SetBorder(Option<u32>) => { name: "set_border", doc: "set the focused window border width", run: |ctx, width| {
+        let width = match width {
+            Some(width) => i32::try_from(*width).map_err(|_| format!("border width {width} is too large"))?,
+            None => crate::config::mod_consts::BORDER_PX,
+        };
+        with_selected_win(ctx, |ctx, win| ctx.set_border(win, width));
+    } }
+);
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        NamedAction, execute_named_action, focus_vertical, move_horizontal, move_vertical,
-        parse_named_action, validate_action_args,
-    };
+    use super::{NamedAction, focus_vertical, move_horizontal, move_vertical};
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
@@ -496,7 +624,7 @@ mod tests {
     use crate::layouts::{LayoutCommand, PresentationMode};
     use crate::types::{
         Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,
-        VerticalDirection, WindowId,
+        ToggleAction, VerticalDirection, WindowId,
     };
     use crate::wm::Wm;
 
@@ -549,114 +677,99 @@ mod tests {
         assert_eq!(LayoutCommand::from_name("bad"), None);
     }
 
-    #[test]
-    fn stack_direction_from_name_accepts_aliases() {
-        assert_eq!(
-            StackDirection::from_name("next"),
-            Some(StackDirection::Next)
-        );
-        assert_eq!(
-            StackDirection::from_name("backward"),
-            Some(StackDirection::Previous)
-        );
-        assert_eq!(StackDirection::from_name("bad"), None);
+    fn parse(name: &str, args: &[&str]) -> Result<NamedAction, String> {
+        let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+        NamedAction::parse(name, &args)
     }
 
     #[test]
-    fn named_actions_parse_by_canonical_name() {
+    fn actions_parse_typed_arguments_once() {
         assert_eq!(
-            parse_named_action("edge_scratchpad_toggle"),
-            Some(NamedAction::EdgeScratchpadToggle)
+            parse("edge_scratchpad_direction_left", &[]),
+            Ok(NamedAction::EdgeScratchpadDirectionLeft)
         );
         assert_eq!(
-            parse_named_action("edge_scratchpad_direction_left"),
-            Some(NamedAction::EdgeScratchpadDirectionLeft)
+            parse("focus_stack", &["backward"]),
+            Ok(NamedAction::FocusStack(StackDirection::Previous))
         );
         assert_eq!(
-            parse_named_action("toggle_tiling_maximized"),
-            Some(NamedAction::ToggleTilingMaximized)
+            parse("toggle_alt_tag", &[]),
+            Ok(NamedAction::ToggleAltTag(None))
         );
         assert_eq!(
-            parse_named_action("begin_tree_placement"),
-            Some(NamedAction::BeginTreePlacement)
+            parse("toggle_alt_tag", &["on"]),
+            Ok(NamedAction::ToggleAltTag(Some(ToggleAction::SetTrue)))
         );
+        assert_eq!(
+            parse("set_layout", &["bottom-stack"]),
+            Ok(NamedAction::SetLayout(LayoutCommand::BottomStack))
+        );
+
+        for (name, args) in [
+            ("toggle_alt_tag", &["sometimes"][..]),
+            ("focus_next", &["unexpected"]),
+            ("set_layout", &[]),
+            ("set_layout", &["not-a-layout"]),
+            ("set_border", &["-1"]),
+            ("inc_gaps", &["x"]),
+            ("dec_gaps", &["2", "3"]),
+            ("spawn", &[]),
+            ("none", &[]),
+        ] {
+            assert!(parse(name, args).is_err(), "{name} {args:?} should fail");
+        }
     }
 
     #[test]
-    fn action_arguments_are_validated_before_dispatch() {
-        assert!(validate_action_args(NamedAction::ToggleAltTag, &[]).is_ok());
-        assert!(validate_action_args(NamedAction::ToggleAltTag, &["on".to_string()]).is_ok());
-        assert!(
-            validate_action_args(NamedAction::ToggleAltTag, &["sometimes".to_string()]).is_err()
-        );
-        assert!(validate_action_args(NamedAction::FocusNext, &["unexpected".to_string()]).is_err());
-        assert!(validate_action_args(NamedAction::SetLayout, &[]).is_err());
-        assert!(validate_action_args(NamedAction::SetBorder, &["-1".to_string()]).is_err());
-        assert!(validate_action_args(NamedAction::IncGaps, &["x".to_string()]).is_err());
-        assert!(
-            validate_action_args(NamedAction::DecGaps, &["2".to_string(), "3".to_string()])
-                .is_err()
-        );
+    fn rendered_arguments_parse_back_to_the_same_action() {
+        for action in [
+            NamedAction::Spawn(vec!["printf".into(), "hello world".into()]),
+            NamedAction::FocusMon(crate::types::MonitorDirection::Prev),
+            NamedAction::ToggleAnimated(Some(ToggleAction::SetFalse)),
+            NamedAction::IncMasterCount(Some(-1)),
+            NamedAction::SetBorder(None),
+        ] {
+            assert_eq!(NamedAction::parse(action.name(), &action.args()), Ok(action));
+        }
     }
 
     #[test]
     fn gap_actions_move_both_gaps_and_clamp_at_zero() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        assert_eq!(parse_named_action("inc_gaps"), Some(NamedAction::IncGaps));
-        assert_eq!(parse_named_action("dec_gaps"), Some(NamedAction::DecGaps));
-
         wm.core.config.layout.inner_gap = 4;
         wm.core.config.layout.outer_gap = 8;
 
-        execute_named_action(&mut wm.ctx(), NamedAction::IncGaps, &["3".to_string()]).unwrap();
+        NamedAction::IncGaps(Some(3)).execute(&mut wm.ctx()).unwrap();
         assert_eq!(wm.core.config.layout.inner_gap, 7);
         assert_eq!(wm.core.config.layout.outer_gap, 11);
 
         // The default step applies when no argument is passed.
-        execute_named_action(&mut wm.ctx(), NamedAction::DecGaps, &[]).unwrap();
+        NamedAction::DecGaps(None).execute(&mut wm.ctx()).unwrap();
         assert_eq!(wm.core.config.layout.inner_gap, 5);
         assert_eq!(wm.core.config.layout.outer_gap, 9);
 
         // Decreasing past the floor clamps instead of disabling windows into
         // negative gaps.
         for _ in 0..10 {
-            execute_named_action(&mut wm.ctx(), NamedAction::DecGaps, &[]).unwrap();
+            NamedAction::DecGaps(None).execute(&mut wm.ctx()).unwrap();
         }
         assert_eq!(wm.core.config.layout.inner_gap, 0);
         assert_eq!(wm.core.config.layout.outer_gap, 0);
     }
 
     #[test]
-    fn action_dispatch_reports_invalid_values_and_can_set_toggles_idempotently() {
+    fn toggle_actions_can_set_idempotently() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-
-        execute_named_action(
-            &mut wm.ctx(),
-            NamedAction::ToggleAltTag,
-            &["on".to_string()],
-        )
-        .unwrap();
-        execute_named_action(
-            &mut wm.ctx(),
-            NamedAction::ToggleAltTag,
-            &["on".to_string()],
-        )
-        .unwrap();
+        let action = NamedAction::ToggleAltTag(Some(ToggleAction::SetTrue));
+        action.execute(&mut wm.ctx()).unwrap();
+        action.execute(&mut wm.ctx()).unwrap();
         assert!(wm.core.model.tags.show_alternative_names);
-
-        let error = execute_named_action(
-            &mut wm.ctx(),
-            NamedAction::SetLayout,
-            &["not-a-layout".to_string()],
-        )
-        .unwrap_err();
-        assert!(error.contains("invalid layout"));
     }
 
     #[test]
     fn quit_action_uses_the_normal_wm_shutdown_flag() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        execute_named_action(&mut wm.ctx(), NamedAction::Quit, &[]).unwrap();
+        NamedAction::Quit.execute(&mut wm.ctx()).unwrap();
         assert!(!wm.running);
     }
 
@@ -664,20 +777,15 @@ mod tests {
     fn action_dispatch_rejects_unknown_and_interaction_owned_modes() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
 
-        let unknown = execute_named_action(
-            &mut wm.ctx(),
-            NamedAction::SetMode,
-            &["does-not-exist".to_string()],
-        )
-        .unwrap_err();
+        let unknown = NamedAction::SetMode("does-not-exist".to_string())
+            .execute(&mut wm.ctx())
+            .unwrap_err();
         assert!(unknown.contains("not found"));
 
-        let placement = execute_named_action(
-            &mut wm.ctx(),
-            NamedAction::SetMode,
-            &[crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string()],
-        )
-        .unwrap_err();
+        let placement =
+            NamedAction::SetMode(crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string())
+                .execute(&mut wm.ctx())
+                .unwrap_err();
         assert!(placement.contains("begin_tree_placement"));
     }
 

@@ -24,7 +24,7 @@ fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
             up: Box::new(ButtonAction::named(
                 crate::actions::NamedAction::ToggleOverview,
             )),
-            click: Box::new(ButtonAction::named(crate::actions::NamedAction::Spawn)),
+            click: Box::new(ButtonAction::spawn(&["true"])),
             hold: Box::new(ButtonAction::named(
                 crate::actions::NamedAction::ToggleOverview,
             )),
@@ -89,24 +89,15 @@ fn bottom_bar_drag_exposes_bound_directional_actions() {
     let drag = bottom_bar_drag(100, 1000);
     assert!(matches!(
         drag.left(),
-        ButtonAction::Named {
-            action: crate::actions::NamedAction::ScrollLeft,
-            ..
-        }
+        ButtonAction::Named(crate::actions::NamedAction::ScrollLeft)
     ));
     assert!(matches!(
         drag.right(),
-        ButtonAction::Named {
-            action: crate::actions::NamedAction::ScrollRight,
-            ..
-        }
+        ButtonAction::Named(crate::actions::NamedAction::ScrollRight)
     ));
     assert!(matches!(
         drag.up(),
-        ButtonAction::Named {
-            action: crate::actions::NamedAction::ToggleOverview,
-            ..
-        }
+        ButtonAction::Named(crate::actions::NamedAction::ToggleOverview)
     ));
 }
 

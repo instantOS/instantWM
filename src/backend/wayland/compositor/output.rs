@@ -600,12 +600,8 @@ impl WaylandState {
                 head.enabled = enable;
             }
 
-            if let Some(transform) = config
-                .transform
-                .as_ref()
-                .and_then(|t| OutputTransform::parse(t))
-            {
-                head.transform = transform;
+            if let Some(transform) = config.transform {
+                head.transform = transform.into();
             }
 
             if let Some(ref pos) = config.position

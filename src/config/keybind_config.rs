@@ -3,14 +3,26 @@
 //! Parses `[[keybinds]]` and `[[desktop_keybinds]]` entries from the config
 //! file and merges them with the compiled defaults. TOML entries override
 //! defaults where `(mod_mask, keysym)` matches; unmatched entries are appended.
+//!
+//! ```toml
+//! [[keybinds]]
+//! modifiers = ["super"]
+//! key = "Return"
+//! action = ["spawn", "kitty"]        # name followed by its arguments
+//!
+//! [[keybinds]]
+//! modifiers = ["super"]
+//! key = "q"
+//! action = "none"                    # remove the default binding
+//! ```
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use smithay::input::keyboard::xkb;
 
-use crate::actions::{ActionMeta, KeyAction, NamedAction, get_action_metadata, parse_named_action};
+use crate::actions::{KeyAction, NamedAction};
 use crate::config::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
-use crate::config::keysyms::*;
 use crate::types::{Key, KeybindOrigin};
 
 /// A single keybind entry from the TOML config.
@@ -22,425 +34,170 @@ pub struct KeybindSpec {
     pub action: ActionSpec,
 }
 
+/// A configured action: an action name (`"zoom"`, or `"none"` to unbind), a
+/// name followed by its arguments (`["set_layout", "grid"]`), or a sequence.
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(untagged)]
 pub enum ActionSpec {
     Named(String),
-    Structured(StructuredAction),
+    WithArgs(Vec<String>),
+    Sequence { sequence: Vec<ActionSpec> },
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StructuredAction {
-    /// Execute each action in order.
-    Sequence(Vec<ActionSpec>),
-    Spawn(Vec<String>),
-    Unbind(bool),
-    None,
-    SetLayout(String),
-    FocusStack(String),
-    IncMasterCount(i32),
-    KeyboardLayout(String),
-    SetMode(String),
+impl ActionSpec {
+    /// `"none"` removes a binding instead of running anything.
+    fn is_unbind(&self) -> bool {
+        matches!(self, Self::Named(name) if name == "none")
+    }
 }
 
-pub fn parse_modifiers(mods: &[String]) -> Option<u32> {
-    let mut mask = 0u32;
-    for m in mods {
-        match m.to_ascii_lowercase().as_str() {
-            "super" | "mod" | "mod4" | "modkey" => mask |= MODKEY,
-            "shift" => mask |= SHIFT,
-            "control" | "ctrl" => mask |= CONTROL,
-            "alt" | "mod1" => mask |= MOD1,
-            "" => {}
-            other => {
-                eprintln!("instantwm: unknown modifier '{other}' in keybind config");
-                return None;
-            }
+pub fn parse_modifiers(mods: &[String]) -> Result<u32, String> {
+    mods.iter().try_fold(0, |mask, m| {
+        Ok(mask
+            | match m.to_ascii_lowercase().as_str() {
+                "super" | "mod" | "mod4" | "modkey" => MODKEY,
+                "shift" => SHIFT,
+                "control" | "ctrl" => CONTROL,
+                "alt" | "mod1" => MOD1,
+                "" => 0,
+                other => return Err(format!("unknown modifier '{other}'")),
+            })
+    })
+}
+
+/// Resolve a key name: any XKB keysym name (case-insensitive, e.g. `Return`,
+/// `bracketleft`, `XF86AudioMute`), a single character (`-`, `/`), or one of
+/// a few short aliases.
+pub fn parse_keysym(name: &str) -> Result<u32, String> {
+    let mut chars = name.chars();
+    if let (Some(ch), None) = (chars.next(), chars.next())
+        && !ch.is_alphanumeric()
+    {
+        let keysym = xkb::utf32_to_keysym(ch as u32).raw();
+        if keysym != 0 {
+            return Ok(keysym);
         }
     }
-    Some(mask)
-}
-
-pub fn parse_keysym(name: &str) -> Option<u32> {
-    let lower = name.to_ascii_lowercase();
-    if lower.len() == 1 {
-        let ch = lower.chars().next().unwrap();
-        match ch {
-            'a'..='z' => return Some(XK_A + (ch as u32 - 'a' as u32)),
-            '0'..='9' => return Some(XK_0 + (ch as u32 - '0' as u32)),
-            '-' => return Some(XK_MINUS),
-            '+' => return Some(XK_PLUS),
-            ',' => return Some(XK_COMMA),
-            '.' => return Some(XK_PERIOD),
-            '/' => return Some(XK_SLASH),
-            '?' => return Some(XK_QUESTION),
-            ';' => return Some(XK_SEMICOLON),
-            ':' => return Some(XK_COLON),
-            '=' => return Some(XK_EQUAL),
-            '[' => return Some(XK_BRACKET_LEFT),
-            ']' => return Some(XK_BRACKET_RIGHT),
-            '\\' => return Some(XK_BACKSLASH),
-            '`' => return Some(XK_GRAVE),
-            '\'' => return Some(XK_APOSTROPHE),
-            _ => {}
-        }
-    }
-
-    match lower.as_str() {
-        "return" | "enter" => Some(XK_RETURN),
-        "backspace" => Some(XK_BACKSPACE),
-        "tab" => Some(XK_TAB),
-        "escape" | "esc" => Some(XK_ESCAPE),
-        "delete" => Some(XK_DELETE),
-        "home" => Some(XK_HOME),
-        "end" => Some(XK_END),
-        "insert" => Some(XK_INSERT),
-        "left" => Some(XK_LEFT),
-        "up" => Some(XK_UP),
-        "right" => Some(XK_RIGHT),
-        "down" => Some(XK_DOWN),
-        "page_up" | "pageup" | "prior" => Some(XK_PAGE_UP),
-        "page_down" | "pagedown" | "next" => Some(XK_PAGE_DOWN),
-        "f1" => Some(XK_F1),
-        "f2" => Some(XK_F2),
-        "f3" => Some(XK_F3),
-        "f4" => Some(XK_F4),
-        "f5" => Some(XK_F5),
-        "f6" => Some(XK_F6),
-        "f7" => Some(XK_F7),
-        "f8" => Some(XK_F8),
-        "f9" => Some(XK_F9),
-        "f10" => Some(XK_F10),
-        "f11" => Some(XK_F11),
-        "f12" => Some(XK_F12),
-        "space" => Some(XK_SPACE),
-        "minus" => Some(XK_MINUS),
-        "plus" => Some(XK_PLUS),
-        "comma" => Some(XK_COMMA),
-        "period" | "dot" => Some(XK_PERIOD),
-        "slash" => Some(XK_SLASH),
-        "question" | "questionmark" => Some(XK_QUESTION),
-        "semicolon" => Some(XK_SEMICOLON),
-        "colon" => Some(XK_COLON),
-        "equal" | "equals" => Some(XK_EQUAL),
-        "bracket_left" | "bracketleft" => Some(XK_BRACKET_LEFT),
-        "bracket_right" | "bracketright" => Some(XK_BRACKET_RIGHT),
-        "backslash" => Some(XK_BACKSLASH),
-        "grave" | "backtick" => Some(XK_GRAVE),
-        "apostrophe" => Some(XK_APOSTROPHE),
-        "print" | "printscreen" => Some(XK_PRINT),
-        "dead_circumflex" => Some(XK_DEAD_CIRCUMFLEX),
-        "xf86monbrightnessup" | "brightnessup" => Some(XF86XK_MON_BRIGHTNESS_UP),
-        "xf86monbrightnessdown" | "brightnessdown" => Some(XF86XK_MON_BRIGHTNESS_DOWN),
-        "xf86audiolowervolume" | "volumedown" => Some(XF86XK_AUDIO_LOWER_VOLUME),
-        "xf86audiomute" | "volumemute" | "mute" => Some(XF86XK_AUDIO_MUTE),
-        "xf86audiomicmute" | "micmute" => Some(XF86XK_AUDIO_MIC_MUTE),
-        "xf86audioraisevolume" | "volumeup" => Some(XF86XK_AUDIO_RAISE_VOLUME),
-        "xf86audioplay" | "audioplay" => Some(XF86XK_AUDIO_PLAY),
-        "xf86audiopause" | "audiopause" => Some(XF86XK_AUDIO_PAUSE),
-        "xf86audionext" | "audionext" => Some(XF86XK_AUDIO_NEXT),
-        "xf86audioprev" | "audioprev" => Some(XF86XK_AUDIO_PREV),
-        _ => {
-            eprintln!("instantwm: unknown key name '{name}' in keybind config");
-            None
-        }
+    let name = match name.to_ascii_lowercase().as_str() {
+        "enter" => "Return",
+        "esc" => "Escape",
+        "pageup" => "Prior",
+        "pagedown" => "Next",
+        _ => name,
+    };
+    match xkb::keysym_from_name(name, xkb::KEYSYM_CASE_INSENSITIVE).raw() {
+        0 => Err(format!("unknown key name '{name}'")),
+        keysym => Ok(keysym),
     }
 }
 
-pub fn get_all_actions() -> Vec<ActionMeta> {
-    let mut actions = get_action_metadata();
-    actions.sort_by(|a, b| a.name.cmp(b.name));
-    actions
-}
-
-pub fn get_actions_for_ipc() -> Vec<crate::ipc_types::ActionInfo> {
-    get_all_actions()
-        .into_iter()
-        .map(|a| crate::ipc_types::ActionInfo {
-            name: a.name.to_string(),
-            description: Some(a.doc.to_string()),
-            arg_example: a.arg_example.map(|s| s.to_string()),
-        })
-        .collect()
-}
-
-pub fn format_action_list_text(actions: &[crate::ipc_types::ActionInfo]) -> String {
-    let mut output = String::new();
-    let max_name_len = actions.iter().map(|a| a.name.len()).max().unwrap_or(0);
-    let name_width = max_name_len.max(8);
-
-    use std::fmt::Write;
-    writeln!(
-        output,
-        "{:<width$} | {:<20} | DESCRIPTION",
-        "ACTION",
-        "ARGUMENTS",
-        width = name_width
-    )
-    .unwrap();
-    writeln!(
-        output,
-        "{:-<width$}-|-{:-<20}-|-{:-<30}",
-        "",
-        "",
-        "",
-        width = name_width
-    )
-    .unwrap();
-
-    for action in actions {
-        let args = action.arg_example.as_deref().unwrap_or("-");
-        let desc = action.description.as_deref().unwrap_or("");
-        writeln!(
-            output,
-            "{:<width$} | {:<20} | {}",
-            action.name,
-            args,
-            desc,
-            width = name_width
-        )
-        .unwrap();
-    }
-    output
-}
-
-pub fn print_actions(json: bool) {
-    let actions: Vec<crate::ipc_types::ActionInfo> = get_all_actions()
-        .into_iter()
-        .map(|a| crate::ipc_types::ActionInfo {
-            name: a.name.to_string(),
-            description: Some(a.doc.to_string()),
-            arg_example: a.arg_example.map(|s| s.to_string()),
-        })
-        .collect();
-
-    if json {
-        if let Ok(output) = serde_json::to_string_pretty(&actions) {
-            println!("{}", output);
-        } else {
-            eprintln!("Error generating JSON");
-        }
-        return;
-    }
-
-    print!("{}", format_action_list_text(&actions));
-}
-
-/// Compile an action spec into an executable action, explaining rejections.
+/// Compile an action spec into an executable action.
 ///
 /// Shared by keybinds and event hooks so both accept exactly the same action
-/// vocabulary. `none`/`unbind` are binding-table directives, not executable
-/// actions, and are therefore rejected here.
+/// vocabulary. `"none"` is a binding-table directive, not an executable
+/// action, and is therefore rejected here.
 pub(crate) fn compile_action(spec: &ActionSpec) -> Result<KeyAction, String> {
-    let named = |action: NamedAction, args: Vec<String>| Ok(KeyAction::Named { action, args });
     match spec {
-        ActionSpec::Structured(StructuredAction::Unbind(_))
-        | ActionSpec::Structured(StructuredAction::None) => {
-            Err("'none'/'unbind' is not an executable action".to_string())
+        ActionSpec::Named(name) if spec.is_unbind() => {
+            Err(format!("'{name}' is not an executable action"))
         }
-        ActionSpec::Structured(StructuredAction::Sequence(specs)) => {
-            if specs.is_empty() {
+        ActionSpec::Named(name) => NamedAction::parse(name, &[]).map(KeyAction::Named),
+        ActionSpec::WithArgs(parts) => match parts.split_first() {
+            Some((name, args)) => NamedAction::parse(name, args).map(KeyAction::Named),
+            None => Err("action must not be empty".to_string()),
+        },
+        ActionSpec::Sequence { sequence } => {
+            if sequence.is_empty() {
                 return Err("'sequence' must contain at least one action".to_string());
             }
-            let actions = specs
+            sequence
                 .iter()
                 .map(compile_action)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(KeyAction::Sequence(actions))
-        }
-        ActionSpec::Structured(StructuredAction::Spawn(argv)) => {
-            named(NamedAction::Spawn, argv.clone())
-        }
-        ActionSpec::Structured(StructuredAction::SetLayout(name)) => {
-            named(NamedAction::SetLayout, vec![name.clone()])
-        }
-        ActionSpec::Structured(StructuredAction::FocusStack(dir)) => {
-            named(NamedAction::FocusStack, vec![dir.clone()])
-        }
-        ActionSpec::Structured(StructuredAction::IncMasterCount(n)) => {
-            named(NamedAction::IncMasterCount, vec![n.to_string()])
-        }
-        ActionSpec::Structured(StructuredAction::KeyboardLayout(name)) => {
-            named(NamedAction::KeyboardLayout, vec![name.clone()])
-        }
-        ActionSpec::Structured(StructuredAction::SetMode(name)) => {
-            named(NamedAction::SetMode, vec![name.clone()])
-        }
-        ActionSpec::Named(name) if name.eq_ignore_ascii_case("none") => {
-            Err("'none' is not an executable action".to_string())
-        }
-        ActionSpec::Named(name) => {
-            let action =
-                parse_named_action(name).ok_or_else(|| format!("unknown action '{name}'"))?;
-            named(action, Vec::new())
+                .collect::<Result<_, _>>()
+                .map(KeyAction::Sequence)
         }
     }
 }
 
+fn compile_keybind(spec: &KeybindSpec) -> Result<((u32, u32), Option<KeyAction>), String> {
+    let combo = (parse_modifiers(&spec.modifiers)?, parse_keysym(&spec.key)?);
+    if spec.action.is_unbind() {
+        return Ok((combo, None));
+    }
+    Ok((combo, Some(compile_action(&spec.action)?)))
+}
+
+/// Overlay `specs` on `defaults`. Invalid entries are reported and skipped so
+/// one typo does not discard the rest of the configuration.
 pub fn merge_keybinds(
     defaults: Vec<Key>,
     specs: &[KeybindSpec],
     origin: KeybindOrigin,
 ) -> Vec<Key> {
     let mut keys: Vec<Option<Key>> = defaults.into_iter().map(Some).collect();
-    let mut index: HashMap<(u32, u32), usize> = HashMap::new();
-    for (i, k) in keys.iter().enumerate() {
-        if let Some(k) = k {
-            index.insert((k.mod_mask, k.keysym), i);
-        }
-    }
+    let mut index: HashMap<(u32, u32), usize> = keys
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(i, k)| ((k.mod_mask, k.keysym), i))
+        .collect();
 
     for spec in specs {
-        let mod_mask = match parse_modifiers(&spec.modifiers) {
-            Some(m) => m,
-            None => continue,
+        let ((mod_mask, keysym), action) = match compile_keybind(spec) {
+            Ok(compiled) => compiled,
+            Err(error) => {
+                eprintln!("instantwm: ignoring keybind for '{}': {error}", spec.key);
+                continue;
+            }
         };
-        let keysym = match parse_keysym(&spec.key) {
-            Some(k) => k,
-            None => continue,
+        let slot = match action {
+            None => None,
+            Some(action) => Some(Key {
+                mod_mask,
+                keysym,
+                action,
+                origin,
+            }),
         };
-
-        let combo = (mod_mask, keysym);
-
-        match &spec.action {
-            ActionSpec::Structured(StructuredAction::Unbind(true))
-            | ActionSpec::Structured(StructuredAction::None) => {
-                if let Some(&idx) = index.get(&combo) {
-                    keys[idx] = None;
-                    index.remove(&combo);
-                }
+        match (index.get(&(mod_mask, keysym)), slot) {
+            (Some(&idx), slot) => keys[idx] = slot,
+            (None, Some(key)) => {
+                index.insert((mod_mask, keysym), keys.len());
+                keys.push(Some(key));
             }
-            ActionSpec::Named(name) if name.eq_ignore_ascii_case("none") => {
-                if let Some(&idx) = index.get(&combo) {
-                    keys[idx] = None;
-                    index.remove(&combo);
-                }
-            }
-            _ => {
-                if let Ok(action) = compile_action(&spec.action) {
-                    let new_key = Key {
-                        mod_mask,
-                        keysym,
-                        action,
-                        origin,
-                    };
-                    if let Some(&idx) = index.get(&combo) {
-                        keys[idx] = Some(new_key);
-                    } else {
-                        let idx = keys.len();
-                        keys.push(Some(new_key));
-                        index.insert(combo, idx);
-                    }
-                }
-            }
+            (None, None) => {}
         }
     }
 
     keys.into_iter().flatten().collect()
 }
 
-// ---------------------------------------------------------------------------
-// Reverse maps: render a (mod_mask, keysym) pair as the user would type it.
-//
-// These are the inverses of `parse_modifiers` / `parse_keysym`, used by
-// `instantwmctl keybinds` to show chords readably. They deliberately mirror the
-// accepted input names so what the user types in config.toml is what they see
-// back.
-// ---------------------------------------------------------------------------
-
 /// Render a modifier mask as `Super + Ctrl + Shift` (empty when no modifiers).
 pub fn format_modifiers(mask: u32) -> String {
-    let mut parts: Vec<&str> = Vec::new();
-    if mask & MODKEY != 0 {
-        parts.push("Super");
-    }
-    if mask & CONTROL != 0 {
-        parts.push("Ctrl");
-    }
-    if mask & SHIFT != 0 {
-        parts.push("Shift");
-    }
-    if mask & MOD1 != 0 {
-        parts.push("Alt");
-    }
-    parts.join(" + ")
+    [(MODKEY, "Super"), (CONTROL, "Ctrl"), (SHIFT, "Shift"), (MOD1, "Alt")]
+        .into_iter()
+        .filter(|(bit, _)| mask & bit != 0)
+        .map(|(_, name)| name)
+        .collect::<Vec<_>>()
+        .join(" + ")
 }
 
-/// Render a keysym as a short, human-friendly key name.
+/// Render a keysym as the user would type it: printable symbols as the
+/// character itself, everything else by its XKB name.
 pub fn format_keysym(keysym: u32) -> String {
-    // Letter keysyms are lowercase-only (`XK_A` is 0x61), so the printable
-    // ASCII branches below cover `a`-`z` and `0`-`9`; there is no uppercase
-    // keysym range.
-    if (b'a' as u32..=b'z' as u32).contains(&keysym) {
-        return (keysym as u8 as char).to_string();
+    let keysym = xkb::Keysym::new(keysym);
+    let text = xkb::keysym_to_utf8(keysym);
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(ch), None) if ch.is_ascii_graphic() => text,
+        _ => xkb::keysym_get_name(keysym),
     }
-    if (b'0' as u32..=b'9' as u32).contains(&keysym) {
-        return (keysym as u8 as char).to_string();
-    }
-
-    let name = match keysym {
-        XK_RETURN => "Return",
-        XK_BACKSPACE => "Backspace",
-        XK_TAB => "Tab",
-        XK_ESCAPE => "Esc",
-        XK_DELETE => "Delete",
-        XK_HOME => "Home",
-        XK_END => "End",
-        XK_INSERT => "Insert",
-        XK_LEFT => "Left",
-        XK_UP => "Up",
-        XK_RIGHT => "Right",
-        XK_DOWN => "Down",
-        XK_PAGE_UP => "PageUp",
-        XK_PAGE_DOWN => "PageDown",
-        XK_SPACE => "Space",
-        XK_MINUS => "-",
-        XK_PLUS => "+",
-        XK_COMMA => ",",
-        XK_PERIOD => ".",
-        XK_SLASH => "/",
-        XK_QUESTION => "?",
-        XK_SEMICOLON => ";",
-        XK_COLON => ":",
-        XK_EQUAL => "=",
-        XK_BRACKET_LEFT => "[",
-        XK_BRACKET_RIGHT => "]",
-        XK_BACKSLASH => "\\",
-        XK_GRAVE => "`",
-        XK_APOSTROPHE => "'",
-        XK_DEAD_CIRCUMFLEX => "DeadCircumflex",
-        XK_PRINT => "Print",
-        XK_F1 => "F1",
-        XK_F2 => "F2",
-        XK_F3 => "F3",
-        XK_F4 => "F4",
-        XK_F5 => "F5",
-        XK_F6 => "F6",
-        XK_F7 => "F7",
-        XK_F8 => "F8",
-        XK_F9 => "F9",
-        XK_F10 => "F10",
-        XK_F11 => "F11",
-        XK_F12 => "F12",
-        XF86XK_MON_BRIGHTNESS_UP => "BrightnessUp",
-        XF86XK_MON_BRIGHTNESS_DOWN => "BrightnessDown",
-        XF86XK_AUDIO_LOWER_VOLUME => "VolumeDown",
-        XF86XK_AUDIO_MUTE => "Mute",
-        XF86XK_AUDIO_MIC_MUTE => "MicMute",
-        XF86XK_AUDIO_RAISE_VOLUME => "VolumeUp",
-        XF86XK_AUDIO_PLAY => "AudioPlay",
-        XF86XK_AUDIO_PAUSE => "AudioPause",
-        XF86XK_AUDIO_NEXT => "AudioNext",
-        XF86XK_AUDIO_PREV => "AudioPrev",
-        _ => return format!("0x{keysym:04X}"),
-    };
-    name.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::keysyms::*;
 
     fn parse_keybind(source: &str) -> KeybindSpec {
         #[derive(Deserialize)]
@@ -451,80 +208,75 @@ mod tests {
         toml::from_str::<Wrapper>(source).unwrap().keybind
     }
 
-    #[test]
-    fn test_merge_keybinds_none_action_removes_default() {
-        let defaults = vec![Key {
+    fn default_key(keysym: u32) -> Key {
+        Key {
             mod_mask: MOD1,
-            keysym: XK_P,
-            action: KeyAction::Named {
-                action: NamedAction::None,
-                args: Vec::new(),
-            },
+            keysym,
+            action: KeyAction::named(NamedAction::Zoom),
             origin: KeybindOrigin::CompiledDefault,
-        }];
-
-        let specs = vec![KeybindSpec {
-            modifiers: vec!["Mod1".to_string()],
-            key: "p".to_string(),
-            action: ActionSpec::Named("none".to_string()),
-        }];
-
-        let merged = merge_keybinds(defaults, &specs, KeybindOrigin::User);
-        assert_eq!(merged.len(), 0);
+        }
     }
 
     #[test]
-    fn test_merge_keybinds_structured_none_removes_default() {
-        let defaults = vec![Key {
-            mod_mask: MOD1,
-            keysym: XK_P,
-            action: KeyAction::Named {
-                action: NamedAction::None,
-                args: Vec::new(),
-            },
-            origin: KeybindOrigin::CompiledDefault,
-        }];
-
-        let specs = vec![KeybindSpec {
-            modifiers: vec!["Mod1".to_string()],
-            key: "p".to_string(),
-            action: ActionSpec::Structured(StructuredAction::None),
-        }];
-
-        let merged = merge_keybinds(defaults, &specs, KeybindOrigin::User);
-        assert_eq!(merged.len(), 0);
+    fn none_action_removes_default() {
+        let spec = parse_keybind(
+            r#"
+            [keybind]
+            modifiers = ["Mod1"]
+            key = "p"
+            action = "none"
+            "#,
+        );
+        let merged = merge_keybinds(vec![default_key(XK_P)], &[spec], KeybindOrigin::User);
+        assert!(merged.is_empty());
     }
 
     #[test]
-    fn test_merge_keybinds_adds_and_overrides() {
-        let defaults = vec![Key {
-            mod_mask: MOD1,
-            keysym: XK_P,
-            action: KeyAction::Named {
-                action: NamedAction::None,
-                args: Vec::new(),
-            },
-            origin: KeybindOrigin::CompiledDefault,
-        }];
-
-        let specs = vec![
-            KeybindSpec {
-                modifiers: vec!["Mod1".to_string()],
-                key: "p".to_string(),
-                action: ActionSpec::Named("toggle_bar".to_string()),
-            },
-            KeybindSpec {
-                modifiers: vec!["Mod1".to_string()],
-                key: "o".to_string(),
-                action: ActionSpec::Named("focus_left".to_string()),
-            },
+    fn merge_keybinds_adds_and_overrides() {
+        let specs = [
+            parse_keybind(
+                r#"
+                [keybind]
+                modifiers = ["Mod1"]
+                key = "p"
+                action = "toggle_bar"
+                "#,
+            ),
+            parse_keybind(
+                r#"
+                [keybind]
+                modifiers = ["alt"]
+                key = "o"
+                action = ["set_layout", "grid"]
+                "#,
+            ),
         ];
 
-        let merged = merge_keybinds(defaults, &specs, KeybindOrigin::User);
+        let merged = merge_keybinds(vec![default_key(XK_P)], &specs, KeybindOrigin::User);
         assert_eq!(merged.len(), 2);
-        assert_eq!(merged[0].keysym, XK_P);
+        assert!(matches!(
+            merged[0].action,
+            KeyAction::Named(NamedAction::ToggleBar)
+        ));
         assert_eq!(merged[1].keysym, XK_O);
+        assert!(matches!(
+            merged[1].action,
+            KeyAction::Named(NamedAction::SetLayout(crate::layouts::LayoutCommand::Grid))
+        ));
         assert!(merged.iter().all(|key| key.origin == KeybindOrigin::User));
+    }
+
+    #[test]
+    fn invalid_entries_are_skipped_without_touching_defaults() {
+        let specs = [
+            parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = \"does_not_exist\""),
+            parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = [\"set_layout\"]"),
+            parse_keybind("[keybind]\nkey = \"nokey\"\naction = \"zoom\""),
+            parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"hyper\"]\naction = \"zoom\""),
+        ];
+        let merged = merge_keybinds(vec![default_key(XK_P)], &specs, KeybindOrigin::User);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].origin, KeybindOrigin::CompiledDefault);
     }
 
     #[test]
@@ -535,8 +287,9 @@ mod tests {
             modifiers = []
             key = "f"
             action = { sequence = [
-                { set_mode = "default" },
-                { spawn = ["ins", "assist", "run", "sf"] },
+                ["set_mode", "default"],
+                ["spawn", "ins", "assist", "run", "sf"],
+                { sequence = ["zoom", "quit"] },
             ] }
             "#,
         );
@@ -548,76 +301,76 @@ mod tests {
         let KeyAction::Sequence(actions) = &key.action else {
             panic!("expected a sequence action");
         };
-        assert_eq!(actions.len(), 2);
+        assert_eq!(actions.len(), 3);
         assert!(matches!(
             &actions[0],
-            KeyAction::Named { action: NamedAction::SetMode, args }
-                if args == &["default".to_string()]
+            KeyAction::Named(NamedAction::SetMode(mode)) if mode == "default"
         ));
         assert!(matches!(
             &actions[1],
-            KeyAction::Named { action: NamedAction::Spawn, args }
-                if args == &[
-                    "ins".to_string(),
-                    "assist".to_string(),
-                    "run".to_string(),
-                    "sf".to_string(),
-                ]
+            KeyAction::Named(NamedAction::Spawn(argv)) if argv == &["ins", "assist", "run", "sf"]
         ));
+        assert!(matches!(&actions[2], KeyAction::Sequence(inner) if inner.len() == 2));
     }
 
     #[test]
     fn sequence_action_rejects_empty_or_non_executable_members() {
-        let empty = parse_keybind(
-            r#"
-            [keybind]
-            modifiers = []
-            key = "f"
-            action = { sequence = [] }
-            "#,
-        );
-        let containing_none = parse_keybind(
-            r#"
-            [keybind]
-            modifiers = []
-            key = "f"
-            action = { sequence = [{ set_mode = "default" }, { unbind = true }] }
-            "#,
-        );
-
-        assert!(merge_keybinds(Vec::new(), &[empty], KeybindOrigin::User).is_empty());
-        assert!(merge_keybinds(Vec::new(), &[containing_none], KeybindOrigin::User).is_empty());
+        for action in [
+            "{ sequence = [] }",
+            r#"{ sequence = [["set_mode", "default"], "none"] }"#,
+            "[]",
+        ] {
+            let spec = parse_keybind(&format!(
+                "[keybind]\nmodifiers = []\nkey = \"f\"\naction = {action}"
+            ));
+            assert!(
+                merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User).is_empty(),
+                "{action}"
+            );
+        }
     }
 
     #[test]
-    fn nested_sequences_are_supported() {
-        let spec = parse_keybind(
-            r#"
-            [keybind]
-            modifiers = []
-            key = "f"
-            action = { sequence = [
-                { set_mode = "default" },
-                { sequence = [
-                    { spawn = ["first"] },
-                    { spawn = ["second"] },
-                ] },
-            ] }
-            "#,
-        );
-
-        let merged = merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User);
-        let KeyAction::Sequence(actions) = &merged[0].action else {
-            panic!("expected a sequence action");
-        };
-        assert!(matches!(actions.get(1), Some(KeyAction::Sequence(inner)) if inner.len() == 2));
+    fn key_names_resolve_through_xkb() {
+        for (name, keysym) in [
+            ("return", XK_RETURN),
+            ("Return", XK_RETURN),
+            ("enter", XK_RETURN),
+            ("esc", XK_ESCAPE),
+            ("page_up", XK_PAGE_UP),
+            ("f12", XK_F12),
+            ("A", XK_A),
+            ("7", XK_0 + 7),
+            ("dead_circumflex", XK_DEAD_CIRCUMFLEX),
+            ("XF86AudioMute", XF86XK_AUDIO_MUTE),
+        ] {
+            assert_eq!(parse_keysym(name), Ok(keysym), "{name}");
+        }
+        assert!(parse_keysym("nokey").is_err());
     }
 
     #[test]
-    fn supported_dead_circumflex_keysym_formats_by_name() {
-        let keysym = parse_keysym("dead_circumflex").expect("supported keysym");
-
-        assert_eq!(format_keysym(keysym), "DeadCircumflex");
+    fn punctuation_keysyms_parse_by_symbol_and_name_and_format_as_symbol() {
+        for (sym, name, keysym) in [
+            ("-", "minus", XK_MINUS),
+            ("+", "plus", XK_PLUS),
+            (",", "comma", XK_COMMA),
+            (".", "period", XK_PERIOD),
+            ("/", "slash", XK_SLASH),
+            (";", "semicolon", XK_SEMICOLON),
+            ("=", "equal", XK_EQUAL),
+            ("[", "bracketleft", XK_BRACKET_LEFT),
+            ("\\", "backslash", XK_BACKSLASH),
+            ("`", "grave", XK_GRAVE),
+            ("'", "apostrophe", XK_APOSTROPHE),
+        ] {
+            assert_eq!(parse_keysym(sym), Ok(keysym));
+            assert_eq!(parse_keysym(name), Ok(keysym));
+            assert_eq!(format_keysym(keysym), sym);
+        }
+        assert_eq!(format_keysym(XK_A), "a");
+        assert_eq!(format_keysym(XK_RETURN), "Return");
+        assert_eq!(format_keysym(XK_DEAD_CIRCUMFLEX), "dead_circumflex");
     }
 
     #[test]
@@ -629,30 +382,5 @@ mod tests {
             format_modifiers(MODKEY | CONTROL | SHIFT | MOD1),
             "Super + Ctrl + Shift + Alt"
         );
-    }
-
-    #[test]
-    fn punctuation_keysyms_parse_and_format_bidirectionally() {
-        let symbols = [
-            ("-", "minus", XK_MINUS),
-            ("+", "plus", XK_PLUS),
-            (",", "comma", XK_COMMA),
-            (".", "period", XK_PERIOD),
-            ("/", "slash", XK_SLASH),
-            (";", "semicolon", XK_SEMICOLON),
-            (":", "colon", XK_COLON),
-            ("=", "equal", XK_EQUAL),
-            ("[", "bracket_left", XK_BRACKET_LEFT),
-            ("]", "bracket_right", XK_BRACKET_RIGHT),
-            ("\\", "backslash", XK_BACKSLASH),
-            ("`", "grave", XK_GRAVE),
-            ("'", "apostrophe", XK_APOSTROPHE),
-        ];
-
-        for (sym, name, expected_keysym) in symbols {
-            assert_eq!(parse_keysym(sym), Some(expected_keysym));
-            assert_eq!(parse_keysym(name), Some(expected_keysym));
-            assert_eq!(format_keysym(expected_keysym), sym);
-        }
     }
 }

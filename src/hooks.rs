@@ -208,10 +208,7 @@ mod tests {
             wm.core.config.hooks.push(Hook {
                 event,
                 monitor: monitor.map(str::to_string),
-                action: KeyAction::Named {
-                    action: NamedAction::SetMode,
-                    args: vec![mode.to_string()],
-                },
+                action: KeyAction::Named(NamedAction::SetMode(mode.to_string())),
             });
         }
         wm

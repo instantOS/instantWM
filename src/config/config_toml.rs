@@ -205,7 +205,19 @@ impl AnimationConfig {
 }
 
 /// A built-in base colour theme. Names use kebab-case in TOML.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Decode, Encode)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    Decode,
+    Encode,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColorTheme {
     Classic,
@@ -219,43 +231,11 @@ pub enum ColorTheme {
 }
 
 impl ColorTheme {
-    /// All built-in themes, in the order shown by `instantwmctl theme --list`.
-    pub const ALL: &[ColorTheme] = &[
-        ColorTheme::Classic,
-        ColorTheme::CatppuccinLatte,
-        ColorTheme::CatppuccinFrappe,
-        ColorTheme::CatppuccinMacchiato,
-        ColorTheme::CatppuccinMocha,
-        ColorTheme::Nord,
-        ColorTheme::Gruvbox,
-    ];
-}
-
-impl std::fmt::Display for ColorTheme {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Keep these spellings aligned with the enum's serde names. `FromStr`
-        // delegates to serde, and `display_names_match_serde_names_for_every_variant`
-        // exhaustively checks the mapping whenever a variant is added or renamed.
-        let name = match self {
-            Self::Classic => "classic",
-            Self::CatppuccinLatte => "catppuccin-latte",
-            Self::CatppuccinFrappe => "catppuccin-frappe",
-            Self::CatppuccinMacchiato => "catppuccin-macchiato",
-            Self::CatppuccinMocha => "catppuccin-mocha",
-            Self::Nord => "nord",
-            Self::Gruvbox => "gruvbox",
-        };
-        f.write_str(name)
-    }
-}
-
-impl std::str::FromStr for ColorTheme {
-    type Err = String;
-
-    fn from_str(name: &str) -> Result<Self, Self::Err> {
-        toml::Value::String(name.to_string())
-            .try_into()
-            .map_err(|_| format!("unknown color theme: {name}"))
+    pub fn name(self) -> String {
+        clap::ValueEnum::to_possible_value(&self)
+            .expect("every theme has a name")
+            .get_name()
+            .to_string()
     }
 }
 
@@ -391,22 +371,32 @@ impl Default for CursorConfig {
 }
 
 /// Monitor configuration from the TOML `[monitors]` section.
-#[derive(Debug, Deserialize, Clone, Serialize, Default)]
+///
+/// Doubles as the `instantwmctl monitor set` patch: `None` fields keep the
+/// current value.
+#[derive(Debug, Deserialize, Clone, Serialize, Default, Encode, Decode, clap::Args)]
 #[serde(default)]
 pub struct MonitorConfig {
     /// Resolution in "WIDTHxHEIGHT" format (e.g., "1920x1080").
+    #[arg(long, short = 'r')]
     pub resolution: Option<String>,
     /// Refresh rate in Hz (e.g., 60.0).
+    #[arg(long, short = 'f')]
     pub refresh_rate: Option<f32>,
     /// Position in "X,Y" format (e.g., "1920,0") or relative (e.g., "left-of:DP-1").
+    #[arg(long, short = 'p')]
     pub position: Option<String>,
     /// Scale factor (e.g., 1.0, 2.0).
+    #[arg(long, short = 's')]
     pub scale: Option<f32>,
-    /// Transform (e.g., "normal", "90", "180", "270", "flipped", "flipped-90", "flipped-180", "flipped-270").
-    pub transform: Option<String>,
+    /// Output rotation and reflection.
+    #[arg(long, short = 't')]
+    pub transform: Option<Transform>,
     /// Whether the monitor is enabled.
+    #[arg(long)]
     pub enable: Option<bool>,
     /// Variable refresh rate policy for this output.
+    #[arg(long)]
     pub vrr: Option<VrrMode>,
     /// Name of the source output this output mirrors ("clone"). The mirror head
     /// shows the source's region of the desktop, and both heads form a single
@@ -416,11 +406,66 @@ pub struct MonitorConfig {
     /// cannot scale and derives the mirror's mode from the source. A mirror
     /// whose source is disconnected or disabled is an ordinary output until
     /// the source returns. Empty/`none` clears the mirror.
+    #[arg(long, value_name = "OUTPUT|none")]
     pub mirror: Option<String>,
     /// How the mirror fits its source's content when the two framebuffers'
     /// aspect ratios differ. Only meaningful together with `mirror`; ignored
     /// (and cleared at apply time) on a non-mirror output. Wayland only.
+    #[arg(long)]
     pub mirror_fit: Option<MirrorFit>,
+}
+
+/// Output transform, named as in config and on the command line.
+#[derive(
+    Debug,
+    Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Encode,
+    Decode,
+    clap::ValueEnum,
+)]
+pub enum Transform {
+    #[serde(rename = "normal")]
+    Normal,
+    #[serde(rename = "90")]
+    #[value(name = "90")]
+    Rotate90,
+    #[serde(rename = "180")]
+    #[value(name = "180")]
+    Rotate180,
+    #[serde(rename = "270")]
+    #[value(name = "270")]
+    Rotate270,
+    #[serde(rename = "flipped")]
+    Flipped,
+    #[serde(rename = "flipped-90")]
+    #[value(name = "flipped-90")]
+    Flipped90,
+    #[serde(rename = "flipped-180")]
+    #[value(name = "flipped-180")]
+    Flipped180,
+    #[serde(rename = "flipped-270")]
+    #[value(name = "flipped-270")]
+    Flipped270,
+}
+
+impl From<Transform> for crate::backend::output::OutputTransform {
+    fn from(transform: Transform) -> Self {
+        match transform {
+            Transform::Normal => Self::Normal,
+            Transform::Rotate90 => Self::Rotate90,
+            Transform::Rotate180 => Self::Rotate180,
+            Transform::Rotate270 => Self::Rotate270,
+            Transform::Flipped => Self::Flipped,
+            Transform::Flipped90 => Self::Flipped90,
+            Transform::Flipped180 => Self::Flipped180,
+            Transform::Flipped270 => Self::Flipped270,
+        }
+    }
 }
 
 #[derive(
@@ -472,25 +517,21 @@ pub enum MirrorFit {
 }
 
 /// Toggle setting for boolean-like input options (tap, natural_scroll).
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(
+    Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize, Encode, Decode, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ToggleSetting {
+    #[value(alias = "on")]
     Enabled,
+    #[value(alias = "off")]
     Disabled,
 }
 
-impl From<bool> for ToggleSetting {
-    fn from(enabled: bool) -> Self {
-        if enabled {
-            Self::Enabled
-        } else {
-            Self::Disabled
-        }
-    }
-}
-
 /// Acceleration profile for pointer devices.
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(
+    Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize, Encode, Decode, clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum AccelProfile {
     Flat,
@@ -963,11 +1004,11 @@ mod theme_tests {
     }
 
     #[test]
-    fn display_names_match_serde_names_for_every_variant() {
-        for theme in ColorTheme::ALL {
-            assert_eq!(theme.to_string().parse(), Ok(*theme));
+    fn cli_names_match_serde_names_for_every_variant() {
+        for theme in <ColorTheme as clap::ValueEnum>::value_variants() {
+            let value = toml::Value::String(theme.name());
+            assert_eq!(value.try_into::<ColorTheme>().unwrap(), *theme);
         }
-        assert!("not-a-theme".parse::<ColorTheme>().is_err());
     }
 
     #[test]

@@ -7,10 +7,6 @@
 //!
 //! **Persistence:** edits made through this command live in the running
 //! WM only — `reload` reloads from disk and discards them.
-//!
-//! **Read-only fields:** `display.width`/`display.height` are derived from
-//! the actual outputs, so the entire `display` section is hidden from
-//! `get`/`set`/`list`.
 
 use crate::ipc_types::{ConfigCommand, Response};
 use crate::wm::Wm;
@@ -18,13 +14,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
-// ---------------------------------------------------------------------------
-// Typed section registry. Parsing strings once and dispatching exhaustively on
-// this enum prevents get/set/list and the CLI validator from silently drifting.
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeConfigSection {
+enum RuntimeConfigSection {
     Window,
     Bar,
     Systray,
@@ -35,11 +26,10 @@ pub enum RuntimeConfigSection {
     Fonts,
     Input,
     Monitors,
-    Display,
 }
 
 impl RuntimeConfigSection {
-    pub const EXPOSED: [Self; 10] = [
+    const ALL: [Self; 10] = [
         Self::Window,
         Self::Bar,
         Self::Systray,
@@ -52,7 +42,7 @@ impl RuntimeConfigSection {
         Self::Monitors,
     ];
 
-    pub const fn name(self) -> &'static str {
+    const fn name(self) -> &'static str {
         match self {
             Self::Window => "window",
             Self::Bar => "bar",
@@ -64,36 +54,17 @@ impl RuntimeConfigSection {
             Self::Fonts => "fonts",
             Self::Input => "input",
             Self::Monitors => "monitors",
-            Self::Display => "display",
         }
     }
 
-    pub fn parse(name: &str) -> Option<Self> {
-        Self::EXPOSED
+    fn parse(name: &str) -> Result<Self, String> {
+        Self::ALL
             .into_iter()
-            .chain([Self::Display])
             .find(|section| section.name() == name)
-    }
-}
-
-/// How a top-level section name is exposed by this IPC surface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SectionStatus {
-    /// Normal section: listed and read/written (`window`, `layout`, …).
-    Exposed,
-    /// Real section, but derived from outputs — hidden from get/set/list.
-    Hidden,
-    /// Not a section this IPC surface knows about.
-    Unknown,
-}
-
-/// Classify a top-level section name. Lets the client produce helpful errors
-/// for `config list <bad-section>` without duplicating the section list.
-pub fn section_status(name: &str) -> SectionStatus {
-    match RuntimeConfigSection::parse(name) {
-        Some(RuntimeConfigSection::Display) => SectionStatus::Hidden,
-        Some(_) => SectionStatus::Exposed,
-        None => SectionStatus::Unknown,
+            .ok_or_else(|| {
+                let known: Vec<_> = Self::ALL.into_iter().map(Self::name).collect();
+                format!("unknown section '{name}' (known: {})", known.join(", "))
+            })
     }
 }
 
@@ -101,7 +72,7 @@ pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
     match cmd {
         ConfigCommand::Get { key } => get(wm, &key),
         ConfigCommand::Set { key, value } => set(wm, &key, value),
-        ConfigCommand::List => list(wm),
+        ConfigCommand::List { prefix } => list(wm, prefix.as_deref()),
     }
 }
 
@@ -109,8 +80,9 @@ fn get(wm: &Wm, key: &str) -> Response {
     let Some((section_name, rest)) = key.split_once('.') else {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
     };
-    let Some(section) = RuntimeConfigSection::parse(section_name) else {
-        return Response::err(format!("unknown section '{section_name}'"));
+    let section = match RuntimeConfigSection::parse(section_name) {
+        Ok(section) => section,
+        Err(error) => return Response::err(error),
     };
     let state = &wm.core;
     let val = match section {
@@ -126,9 +98,6 @@ fn get(wm: &Wm, key: &str) -> Response {
         RuntimeConfigSection::Monitors => {
             return map_get(&state.config.monitors, section.name(), rest);
         }
-        RuntimeConfigSection::Display => {
-            return Response::err("display.* is derived from outputs and not exposed at runtime");
-        }
     };
     val.map(Response::ConfigValue).unwrap_or_else(|| {
         Response::err(format!(
@@ -142,8 +111,9 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
     let Some((section_name, rest)) = key.split_once('.') else {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
     };
-    let Some(section) = RuntimeConfigSection::parse(section_name) else {
-        return Response::err(format!("unknown section '{section_name}'"));
+    let section = match RuntimeConfigSection::parse(section_name) {
+        Ok(section) => section,
+        Err(error) => return Response::err(error),
     };
 
     let state = &mut wm.core;
@@ -201,9 +171,6 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
             }
             return resp;
         }
-        RuntimeConfigSection::Display => {
-            return Response::err("display.* is derived from outputs and cannot be set at runtime");
-        }
     };
     if let Err(e) = result {
         return Response::err(e);
@@ -212,11 +179,25 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
     Response::ok()
 }
 
-fn list(wm: &Wm) -> Response {
-    let state = &wm.core;
+/// List every key, or only those equal to or beneath `prefix` (a section,
+/// `section.id` or a full key).
+fn list(wm: &Wm, prefix: Option<&str>) -> Response {
     let mut entries = Vec::new();
-    for section in RuntimeConfigSection::EXPOSED {
-        collect_section(state, section, &mut entries);
+    match prefix {
+        None => {
+            for section in RuntimeConfigSection::ALL {
+                collect_section(&wm.core, section, &mut entries);
+            }
+        }
+        Some(prefix) => {
+            let section_name = prefix.split_once('.').map_or(prefix, |(section, _)| section);
+            match RuntimeConfigSection::parse(section_name) {
+                Ok(section) => collect_section(&wm.core, section, &mut entries),
+                Err(error) => return Response::err(error),
+            }
+            let nested = format!("{prefix}.");
+            entries.retain(|(key, _)| key == prefix || key.starts_with(&nested));
+        }
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     Response::ConfigList(entries)
@@ -247,7 +228,6 @@ fn collect_section(
                 collect(config, &format!("{prefix}.{id}"), entries);
             }
         }
-        RuntimeConfigSection::Display => unreachable!("hidden runtime-config section"),
     }
 }
 
@@ -395,9 +375,7 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
         RuntimeConfigSection::Systray => {
             wm.bar.mark_dirty();
         }
-        RuntimeConfigSection::Input
-        | RuntimeConfigSection::Monitors
-        | RuntimeConfigSection::Display => {}
+        RuntimeConfigSection::Input | RuntimeConfigSection::Monitors => {}
     }
 }
 
@@ -449,7 +427,19 @@ mod tests {
         )
     }
     fn do_list(wm: &mut Wm) -> Response {
-        handle_config_command(wm, ConfigCommand::List)
+        handle_config_command(wm, ConfigCommand::List { prefix: None })
+    }
+    fn list_keys(wm: &mut Wm, prefix: &str) -> Result<Vec<String>, String> {
+        match handle_config_command(
+            wm,
+            ConfigCommand::List {
+                prefix: Some(prefix.into()),
+            },
+        ) {
+            Response::ConfigList(entries) => Ok(entries.into_iter().map(|(k, _)| k).collect()),
+            Response::Err(error) => Err(error),
+            other => panic!("expected ConfigList, got {other:?}"),
+        }
     }
 
     #[test]
@@ -607,16 +597,6 @@ mod tests {
             do_set(&mut wm, "window.nonexistent", "1"),
             Response::Err(_)
         ));
-        // display section is hidden — both fields are derived from outputs.
-        assert!(matches!(
-            do_set(&mut wm, "display.width", "1920"),
-            Response::Err(_)
-        ));
-        assert!(matches!(
-            do_set(&mut wm, "display.height", "1080"),
-            Response::Err(_)
-        ));
-        assert!(matches!(do_get(&mut wm, "display.width"), Response::Err(_)));
     }
 
     #[test]
@@ -688,14 +668,26 @@ mod tests {
     }
 
     #[test]
-    fn list_excludes_display_section() {
+    fn list_filters_by_section_key_and_map_entry_prefix() {
         let mut wm = test_wm();
-        match do_list(&mut wm) {
-            Response::ConfigList(entries) => {
-                assert!(entries.iter().all(|(k, _)| !k.starts_with("display.")));
-            }
-            other => panic!("expected ConfigList, got {other:?}"),
-        }
+        do_set(&mut wm, "input.type:touchpad.tap", r#""enabled""#);
+
+        let fonts = list_keys(&mut wm, "fonts").unwrap();
+        assert!(!fonts.is_empty());
+        assert!(fonts.iter().all(|key| key.starts_with("fonts.")));
+
+        assert_eq!(
+            list_keys(&mut wm, "fonts.icon_size").unwrap(),
+            ["fonts.icon_size"]
+        );
+        assert!(
+            list_keys(&mut wm, "input.type:touchpad")
+                .unwrap()
+                .iter()
+                .all(|key| key.starts_with("input.type:touchpad."))
+        );
+        assert!(list_keys(&mut wm, "fonts.nonexistent").unwrap().is_empty());
+        assert!(list_keys(&mut wm, "frobnicate").is_err());
     }
 
     #[test]
@@ -733,7 +725,7 @@ mod tests {
                 .collect(),
             other => panic!("expected ConfigList, got {other:?}"),
         };
-        let expected: std::collections::BTreeSet<String> = RuntimeConfigSection::EXPOSED
+        let expected: std::collections::BTreeSet<String> = RuntimeConfigSection::ALL
             .into_iter()
             .map(|section| section.name().to_string())
             .collect();
@@ -741,14 +733,6 @@ mod tests {
             emitted, expected,
             "typed runtime-config registry drifted from list() output"
         );
-    }
-
-    #[test]
-    fn section_status_classifies_each_kind() {
-        assert_eq!(section_status("layout"), SectionStatus::Exposed);
-        assert_eq!(section_status("input"), SectionStatus::Exposed);
-        assert_eq!(section_status("display"), SectionStatus::Hidden);
-        assert_eq!(section_status("nope"), SectionStatus::Unknown);
     }
 
     #[test]

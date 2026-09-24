@@ -9,8 +9,6 @@ use crate::mouse::{handle_window_title_mouse, resize_aspect_mouse};
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
 
-use super::named::execute_named_action;
-
 fn button_target_client(
     model: &WmModel,
     arg: &crate::types::ButtonArg,
@@ -55,7 +53,7 @@ fn try_execute_key_action_inner(ctx: &mut WmCtx<'_>, action: &KeyAction) -> Resu
                 try_execute_key_action_inner(ctx, action)?;
             }
         }
-        KeyAction::Named { action, args } => execute_named_action(ctx, *action, args)?,
+        KeyAction::Named(action) => action.execute(ctx)?,
         KeyAction::ViewTag { tag_idx } => {
             if let Some(mask) = TagMask::from_index(*tag_idx) {
                 crate::tags::view::view_tags(ctx, mask);
@@ -112,8 +110,8 @@ fn execute_button_action_inner(
 ) {
     crate::overview::prepare_button_action(ctx, action);
     match action {
-        ButtonAction::Named { action, args } => {
-            if let Err(error) = execute_named_action(ctx, *action, args) {
+        ButtonAction::Named(action) => {
+            if let Err(error) = action.execute(ctx) {
                 log::warn!("instantwm: button action failed: {error}");
             }
         }
@@ -266,21 +264,10 @@ mod tests {
                 .modes
                 .insert(name.to_string(), crate::config::ModeConfig::default());
         }
+        let set_mode = |name: &str| KeyAction::named(NamedAction::SetMode(name.to_string()));
         let action = KeyAction::Sequence(vec![
-            KeyAction::Named {
-                action: NamedAction::SetMode,
-                args: vec!["first".to_string()],
-            },
-            KeyAction::Sequence(vec![
-                KeyAction::Named {
-                    action: NamedAction::SetMode,
-                    args: vec!["second".to_string()],
-                },
-                KeyAction::Named {
-                    action: NamedAction::SetMode,
-                    args: vec!["final".to_string()],
-                },
-            ]),
+            set_mode("first"),
+            KeyAction::Sequence(vec![set_mode("second"), set_mode("final")]),
         ]);
 
         execute_key_action(&mut wm.ctx(), &action);
