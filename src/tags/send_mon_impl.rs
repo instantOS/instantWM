@@ -181,14 +181,14 @@ mod tests {
         let mut model = WmModel::new();
         model.monitors.push(Monitor::default());
 
-        assert_eq!(plan_send_to_monitor(&model, MonitorDirection::NEXT), None);
+        assert_eq!(plan_send_to_monitor(&model, MonitorDirection::Next), None);
     }
 
     #[test]
     fn planner_returns_none_when_only_one_monitor() {
         let model = model_with_selected_client(ClientMode::tiled(), 1);
 
-        assert_eq!(plan_send_to_monitor(&model, MonitorDirection::NEXT), None);
+        assert_eq!(plan_send_to_monitor(&model, MonitorDirection::Next), None);
     }
 
     #[test]
@@ -197,11 +197,11 @@ mod tests {
         let selected_id = model.selected_monitor_id();
         let target_id = model
             .monitors
-            .id_in_direction(selected_id, MonitorDirection::NEXT)
+            .id_in_direction(selected_id, MonitorDirection::Next)
             .unwrap();
 
         assert_eq!(
-            plan_send_to_monitor(&model, MonitorDirection::NEXT),
+            plan_send_to_monitor(&model, MonitorDirection::Next),
             Some(SendToMonitorPlan {
                 win: WindowId(42),
                 target_id,
@@ -216,11 +216,11 @@ mod tests {
         let selected_id = model.selected_monitor_id();
         let target_id = model
             .monitors
-            .id_in_direction(selected_id, MonitorDirection::NEXT)
+            .id_in_direction(selected_id, MonitorDirection::Next)
             .unwrap();
 
         assert_eq!(
-            plan_send_to_monitor(&model, MonitorDirection::NEXT),
+            plan_send_to_monitor(&model, MonitorDirection::Next),
             Some(SendToMonitorPlan {
                 win: WindowId(42),
                 target_id,

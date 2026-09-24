@@ -988,9 +988,9 @@ mod tests {
     use crate::model::WmModel;
     use crate::types::color::Rgba;
     use crate::types::{
-        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,
-        SchemeTag, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus,
-        WindowId, WindowRole,
+        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeHover, SchemeTag,
+        StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus, WindowId,
+        WindowRole,
     };
 
     fn marker(value: f32) -> ColorSchemeRgba {
@@ -1094,12 +1094,7 @@ mod tests {
 
         let scheme = close_button_scheme(&colors, true, true, true);
 
-        assert_eq!(
-            scheme.background,
-            colors
-                .colors_for(SchemeHover::Hover, SchemeClose::Locked)
-                .bg
-        );
+        assert_eq!(scheme.background, colors.hover.locked.bg);
     }
 
     #[test]

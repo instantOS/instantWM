@@ -3,10 +3,11 @@
 //! Rules are matched against newly-mapped windows in order.  The first
 //! matching rule wins.  A `None` field is a wildcard that matches anything.
 
-use super::commands::SCRATCHPAD_CLASS;
 use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
 
 use std::borrow::Cow;
+
+const SCRATCHPAD_CLASS: &str = "scratchpad_default";
 
 /// Merge default rules with TOML-configured rules.
 ///

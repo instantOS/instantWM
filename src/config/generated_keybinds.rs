@@ -1,16 +1,12 @@
+//! Default commands resolved against the installed system when the
+//! configuration is built.
+
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use crate::backend::BackendKind;
-use crate::config::config_toml::UserConfig;
-use crate::config::keybind_config::{
-    ActionSpec, KeybindSpec, StructuredAction, merge_keybinds, parse_keysym, parse_modifiers,
-};
-use crate::config::keybindings::{CONTROL, MODKEY, get_desktop_keybinds, get_keys};
-use crate::config::keysyms::{XK_L, XK_RETURN, XK_SPACE};
-use crate::types::{Key, KeybindOrigin};
 
 const TERMINAL_CANDIDATES: &[&str] = &["kitty", "ghostty", "wezterm", "xterm", "st"];
 const WAYLAND_LOCKSCREEN_CANDIDATES: &[&str] = &[
@@ -23,74 +19,8 @@ const WAYLAND_LOCKSCREEN_CANDIDATES: &[&str] = &[
 ];
 const X11_LOCKSCREEN_CANDIDATES: &[&str] = &["slock", "instantlock", "i3lock", "xlock"];
 
-pub struct DefaultKeybinds {
-    pub keys: Vec<Key>,
-    pub desktop_keybinds: Vec<Key>,
-}
-
-pub fn build_default_keybinds(backend: BackendKind, theme: &UserConfig) -> DefaultKeybinds {
-    let generated_keys = build_generated_keybind_specs(backend, &theme.keybinds);
-
-    DefaultKeybinds {
-        keys: merge_keybinds(get_keys(), &generated_keys, KeybindOrigin::CompiledDefault),
-        desktop_keybinds: get_desktop_keybinds(),
-    }
-}
-
-fn build_generated_keybind_specs(
-    backend: BackendKind,
-    user_keybinds: &[KeybindSpec],
-) -> Vec<KeybindSpec> {
-    let mut specs = Vec::new();
-
-    if !has_override(user_keybinds, MODKEY, XK_RETURN) {
-        specs.push(spawn_keybind_spec(
-            vec!["super".to_string()],
-            "return",
-            vec![resolve_terminal_command().to_string()],
-        ));
-    }
-
-    if !has_override(user_keybinds, MODKEY, XK_SPACE) {
-        specs.push(spawn_keybind_spec(
-            vec!["super".to_string()],
-            "space",
-            vec![backend_launcher(backend).to_string()],
-        ));
-    }
-
-    if !has_override(user_keybinds, MODKEY | CONTROL, XK_L) {
-        specs.push(spawn_keybind_spec(
-            vec!["super".to_string(), "ctrl".to_string()],
-            "l",
-            vec![resolve_lockscreen_command(backend).to_string()],
-        ));
-    }
-
-    specs
-}
-
-fn spawn_keybind_spec(modifiers: Vec<String>, key: &str, command: Vec<String>) -> KeybindSpec {
-    KeybindSpec {
-        modifiers,
-        key: key.to_string(),
-        action: ActionSpec::Structured(StructuredAction::Spawn(command)),
-    }
-}
-
-fn has_override(specs: &[KeybindSpec], mod_mask: u32, keysym: u32) -> bool {
-    specs.iter().any(|spec| {
-        let Some(spec_mod_mask) = parse_modifiers(&spec.modifiers) else {
-            return false;
-        };
-        let Some(spec_keysym) = parse_keysym(&spec.key) else {
-            return false;
-        };
-        spec_mod_mask == mod_mask && spec_keysym == keysym
-    })
-}
-
-fn backend_launcher(backend: BackendKind) -> &'static str {
+/// Application launcher bound to Super+Space.
+pub fn backend_launcher(backend: BackendKind) -> &'static str {
     match backend {
         BackendKind::Wayland => "fuzzel",
         BackendKind::X11 => "instantmenu_smartrun",
@@ -111,7 +41,8 @@ pub fn resolve_lockscreen_command(backend: BackendKind) -> &'static str {
     first_installed_command(candidates, command_exists).unwrap_or(default_script)
 }
 
-fn resolve_terminal_command() -> &'static str {
+/// Terminal bound to Super+Return.
+pub fn resolve_terminal_command() -> &'static str {
     let default_script = ".config/instantos/default/terminal";
     if command_exists(default_script) {
         return default_script;
@@ -161,85 +92,11 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::{KeyAction, NamedAction};
-
-    fn spawn_args_for(keys: &[Key], mod_mask: u32, keysym: u32) -> Option<&[String]> {
-        keys.iter().find_map(|key| {
-            if key.mod_mask != mod_mask || key.keysym != keysym {
-                return None;
-            }
-
-            match &key.action {
-                KeyAction::Named {
-                    action: NamedAction::Spawn,
-                    args,
-                } => Some(args.as_slice()),
-                _ => None,
-            }
-        })
-    }
 
     #[test]
     fn first_installed_command_uses_first_available_candidate() {
         let terminal =
             first_installed_command(&["wezterm", "xterm"], |candidate| candidate == "xterm");
         assert_eq!(terminal, Some("xterm"));
-    }
-
-    #[test]
-    fn generated_super_enter_is_skipped_when_user_overrides_it() {
-        let mut theme = UserConfig::default();
-        theme.keybinds.push(KeybindSpec {
-            modifiers: vec!["super".to_string()],
-            key: "return".to_string(),
-            action: ActionSpec::Structured(StructuredAction::Spawn(vec!["alacritty".to_string()])),
-        });
-
-        let defaults = build_default_keybinds(BackendKind::X11, &theme);
-        let args = spawn_args_for(&defaults.keys, MODKEY, XK_RETURN).expect("missing super+enter");
-
-        assert_eq!(args, &[".config/instantos/default/terminal".to_string()]);
-    }
-
-    #[test]
-    fn generated_super_space_depends_on_backend() {
-        let x11 = build_default_keybinds(BackendKind::X11, &UserConfig::default());
-        let wayland = build_default_keybinds(BackendKind::Wayland, &UserConfig::default());
-
-        assert_eq!(
-            spawn_args_for(&x11.keys, MODKEY, XK_SPACE),
-            Some(&["instantmenu_smartrun".to_string()][..]),
-        );
-        assert_eq!(
-            spawn_args_for(&wayland.keys, MODKEY, XK_SPACE),
-            Some(&["fuzzel".to_string()][..]),
-        );
-    }
-
-    #[test]
-    fn generated_lockscreen_binds_super_ctrl_l() {
-        let x11 = build_default_keybinds(BackendKind::X11, &UserConfig::default());
-        let wayland = build_default_keybinds(BackendKind::Wayland, &UserConfig::default());
-
-        assert!(spawn_args_for(&x11.keys, MODKEY | CONTROL, XK_L).is_some());
-        assert!(spawn_args_for(&wayland.keys, MODKEY | CONTROL, XK_L).is_some());
-    }
-
-    #[test]
-    fn generated_bindings_keep_compiled_default_origin() {
-        let defaults = build_default_keybinds(BackendKind::Wayland, &UserConfig::default());
-
-        for (mod_mask, keysym) in [
-            (MODKEY, XK_RETURN),
-            (MODKEY, XK_SPACE),
-            (MODKEY | CONTROL, XK_L),
-        ] {
-            let key = defaults
-                .keys
-                .iter()
-                .find(|key| key.mod_mask == mod_mask && key.keysym == keysym)
-                .expect("missing generated default keybinding");
-            assert_eq!(key.origin, KeybindOrigin::CompiledDefault);
-        }
     }
 }

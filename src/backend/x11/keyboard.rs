@@ -67,9 +67,7 @@ pub fn grab_keys(
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
     let bindings = crate::keyboard::passive_bindings(
-        globals.config.bindings.keys.as_slice(),
-        globals.config.bindings.desktop_keybinds.as_slice(),
-        &globals.config.bindings.modes,
+        &globals.config.bindings,
         globals.model.selected_win(),
         &globals.behavior.current_mode,
     );

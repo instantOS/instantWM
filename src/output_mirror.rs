@@ -705,7 +705,7 @@ mod tests {
                 resolution: Some("2560x1440".into()),
                 refresh_rate: Some(144.0),
                 scale: Some(2.0),
-                transform: Some("90".into()),
+                transform: Some(crate::config::config_toml::Transform::Rotate90),
                 mirror_fit: Some(MirrorFit::Cover),
                 ..MonitorConfig::default()
             },
@@ -726,7 +726,10 @@ mod tests {
         // Mode and transform describe the physical head, which keeps them.
         assert_eq!(sanitized.resolution.as_deref(), Some("2560x1440"));
         assert_eq!(sanitized.refresh_rate, Some(144.0));
-        assert_eq!(sanitized.transform.as_deref(), Some("90"));
+        assert_eq!(
+            sanitized.transform,
+            Some(crate::config::config_toml::Transform::Rotate90)
+        );
         assert_eq!(sanitized.mirror_fit, Some(MirrorFit::Cover));
     }
 
@@ -876,7 +879,7 @@ mod tests {
             MonitorConfig {
                 mirror: Some("eDP-1".into()),
                 resolution: Some("1920x1080".into()),
-                transform: Some("90".into()),
+                transform: Some(crate::config::config_toml::Transform::Rotate90),
                 ..MonitorConfig::default()
             },
         ));

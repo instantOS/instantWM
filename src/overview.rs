@@ -16,7 +16,7 @@ pub enum ExitMode {
 }
 
 #[derive(Clone, Copy)]
-enum ActionTransition {
+pub(crate) enum ActionTransition {
     Preserve,
     Confirm,
     Cancel,
@@ -40,58 +40,9 @@ fn prepare_action(ctx: &mut WmCtx<'_>, transition: ActionTransition) {
     }
 }
 
-/// Let overview consume its own navigation, cancel before explicit workspace
-/// navigation, and confirm before every other action. The confirm default is
-/// intentional: a newly added mutating action cannot operate on a projection.
-pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
-    use ActionTransition::{Cancel, Confirm, Preserve};
-
-    let transition = match action {
-        NamedAction::None
-        | NamedAction::FocusNext
-        | NamedAction::FocusPrev
-        | NamedAction::FocusUp
-        | NamedAction::FocusDown
-        | NamedAction::FocusLeft
-        | NamedAction::FocusRight
-        | NamedAction::DownKey
-        | NamedAction::UpKey
-        | NamedAction::ToggleOverview
-        | NamedAction::CancelOverview
-        | NamedAction::EdgeScratchpadToggle
-        | NamedAction::EdgeScratchpadShow
-        | NamedAction::EdgeScratchpadHide
-        | NamedAction::EdgeScratchpadDirectionUp
-        | NamedAction::EdgeScratchpadDirectionDown
-        | NamedAction::EdgeScratchpadDirectionLeft
-        | NamedAction::EdgeScratchpadDirectionRight
-        | NamedAction::ToggleBar
-        | NamedAction::ToggleBottomBar
-        | NamedAction::ToggleAltTag
-        | NamedAction::ToggleAnimated
-        | NamedAction::ToggleHideTags
-        | NamedAction::ToggleFocusFollowsFloatMouse
-        | NamedAction::SetFocusFollowsMouse
-        | NamedAction::NextKeyboardLayout
-        | NamedAction::PrevKeyboardLayout
-        | NamedAction::KeyboardLayout
-        | NamedAction::Spawn
-        | NamedAction::WarpFocus
-        | NamedAction::FocusStack => Preserve,
-
-        NamedAction::FocusLast
-        | NamedAction::LastView
-        | NamedAction::ScrollLeft
-        | NamedAction::ScrollRight
-        | NamedAction::ShiftViewLeft
-        | NamedAction::ShiftViewRight
-        | NamedAction::ViewAll
-        | NamedAction::ViewTag
-        | NamedAction::FocusMon => Cancel,
-
-        _ => Confirm,
-    };
-    prepare_action(ctx, transition);
+/// Apply the per-action overview policy declared in the named-action table.
+pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: &NamedAction) {
+    prepare_action(ctx, action.overview_transition());
 }
 
 pub(crate) fn prepare_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {

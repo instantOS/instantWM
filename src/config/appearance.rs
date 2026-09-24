@@ -324,13 +324,13 @@ mod tests {
 
     #[test]
     fn every_builtin_close_button_has_visible_detail() {
-        for theme in ColorTheme::ALL {
+        for theme in <ColorTheme as clap::ValueEnum>::value_variants() {
             let close = ColorConfig::from(*theme).close_button;
             for set in [&close.no_hover, &close.hover] {
                 for scheme in [&set.normal, &set.locked, &set.fullscreen] {
                     assert_ne!(
                         scheme.bg, scheme.detail,
-                        "{} close-button detail must contrast with its fill",
+                        "{:?} close-button detail must contrast with its fill",
                         theme
                     );
                 }
@@ -340,11 +340,11 @@ mod tests {
 
     #[test]
     fn every_builtin_status_hover_contrasts_with_the_bar() {
-        for theme in ColorTheme::ALL {
+        for theme in <ColorTheme as clap::ValueEnum>::value_variants() {
             let status = ColorConfig::from(*theme).status;
             assert_ne!(
                 status.hover, status.bg,
-                "{} status hover must contrast with the bar background",
+                "{:?} status hover must contrast with the bar background",
                 theme
             );
         }
@@ -352,16 +352,16 @@ mod tests {
 
     #[test]
     fn every_builtin_status_separator_is_muted_and_visible() {
-        for theme in ColorTheme::ALL {
+        for theme in <ColorTheme as clap::ValueEnum>::value_variants() {
             let status = ColorConfig::from(*theme).status;
             assert_ne!(
                 status.separator, status.bg,
-                "{} status separator must contrast with the bar background",
+                "{:?} status separator must contrast with the bar background",
                 theme
             );
             assert_ne!(
                 status.separator, status.fg,
-                "{} status separator must be muted relative to foreground text",
+                "{:?} status separator must be muted relative to foreground text",
                 theme
             );
         }

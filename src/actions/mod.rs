@@ -2,24 +2,51 @@ mod dispatch;
 mod named;
 
 pub use dispatch::{execute_button_action, execute_key_action, try_execute_key_action};
-pub(crate) use named::validate_action_args;
-pub use named::{NamedAction, get_action_metadata, parse_named_action};
+pub use named::{NamedAction, action_infos};
 
-#[derive(Debug, Clone, Copy)]
-pub struct ActionMeta {
+/// Documentation of one named action, as listed by `instantwm --list-actions`
+/// and `instantwmctl action --list`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ActionInfo {
     pub name: &'static str,
-    pub doc: &'static str,
-    pub arg_example: Option<&'static str>,
+    pub description: &'static str,
+    pub arg_example: Option<String>,
+}
+
+/// Render [`action_infos`] as an aligned text table.
+pub fn format_action_list(actions: &[ActionInfo]) -> String {
+    use std::fmt::Write;
+
+    let name_width = actions
+        .iter()
+        .map(|action| action.name.len())
+        .max()
+        .unwrap_or(0)
+        .max("ACTION".len());
+    let mut output = String::new();
+    let _ = writeln!(
+        output,
+        "{:<name_width$} | {:<20} | DESCRIPTION",
+        "ACTION", "ARGUMENTS"
+    );
+    let _ = writeln!(output, "{:-<name_width$}-|-{:-<20}-|-{:-<30}", "", "", "");
+    for action in actions {
+        let _ = writeln!(
+            output,
+            "{:<name_width$} | {:<20} | {}",
+            action.name,
+            action.arg_example.as_deref().unwrap_or("-"),
+            action.description
+        );
+    }
+    output
 }
 
 #[derive(Debug, Clone)]
 pub enum KeyAction {
     /// Execute multiple key actions in order.
     Sequence(Vec<KeyAction>),
-    Named {
-        action: NamedAction,
-        args: Vec<String>,
-    },
+    Named(NamedAction),
     ViewTag {
         tag_idx: usize,
     },
@@ -42,10 +69,7 @@ pub enum KeyAction {
 
 #[derive(Debug, Clone)]
 pub enum ButtonAction {
-    Named {
-        action: NamedAction,
-        args: Vec<String>,
-    },
+    Named(NamedAction),
     WindowTitleMouseHandler,
     CloseClickedTitleWindow,
     DragTagBegin,
@@ -82,23 +106,17 @@ pub enum ButtonAction {
     },
 }
 
-pub fn argv(args: &[&str]) -> Vec<String> {
+fn argv(args: &[&str]) -> Vec<String> {
     args.iter().map(|s| (*s).to_string()).collect()
 }
 
 impl KeyAction {
     pub fn named(action: NamedAction) -> Self {
-        Self::Named {
-            action,
-            args: Vec::new(),
-        }
+        Self::Named(action)
     }
 
-    pub fn named_args(action: NamedAction, args: &[&str]) -> Self {
-        Self::Named {
-            action,
-            args: argv(args),
-        }
+    pub fn spawn(command: &[&str]) -> Self {
+        Self::Named(NamedAction::Spawn(argv(command)))
     }
 
     /// Render this action as a short, human-readable string (e.g.
@@ -110,13 +128,7 @@ impl KeyAction {
     /// does without re-parsing the internal action tree.
     pub fn describe(&self) -> String {
         match self {
-            KeyAction::Named { action, args } => {
-                if args.is_empty() {
-                    action.name().to_string()
-                } else {
-                    format!("{} {}", action.name(), args.join(" "))
-                }
-            }
+            KeyAction::Named(action) => action.describe(),
             KeyAction::Sequence(actions) => {
                 let parts: Vec<String> = actions.iter().map(KeyAction::describe).collect();
                 format!("sequence [{}]", parts.join(", "))
@@ -133,17 +145,11 @@ impl KeyAction {
 
 impl ButtonAction {
     pub fn named(action: NamedAction) -> Self {
-        Self::Named {
-            action,
-            args: Vec::new(),
-        }
+        Self::Named(action)
     }
 
-    pub fn named_args(action: NamedAction, args: &[&str]) -> Self {
-        Self::Named {
-            action,
-            args: argv(args),
-        }
+    pub fn spawn(command: &[&str]) -> Self {
+        Self::Named(NamedAction::Spawn(argv(command)))
     }
 }
 
@@ -158,12 +164,12 @@ mod tests {
             "focus_next"
         );
         assert_eq!(
-            KeyAction::named_args(NamedAction::Spawn, &["ins", "settings", "--gui"]).describe(),
+            KeyAction::spawn(&["ins", "settings", "--gui"]).describe(),
             "spawn ins settings --gui"
         );
         assert_eq!(
             KeyAction::Sequence(vec![
-                KeyAction::named_args(NamedAction::SetMode, &["default"]),
+                KeyAction::named(NamedAction::SetMode("default".into())),
                 KeyAction::named(NamedAction::Quit),
             ])
             .describe(),

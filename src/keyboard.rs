@@ -1,13 +1,10 @@
 use crate::actions::{KeyAction, execute_key_action};
-use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
 use crate::core_state::{ActiveWmMode, BindingConfig};
 use crate::floating::change_snap;
 use crate::focus::focus_stack;
 
 use crate::types::*;
-use crate::types::{Direction, StackDirection, VerticalDirection};
-use std::collections::HashMap;
 
 fn normalize_binding_keysym(keysym: u32) -> u32 {
     if (b'A' as u32..=b'Z' as u32).contains(&keysym) {
@@ -48,7 +45,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         return true;
     }
 
-    let (action, transient) = resolve_key_action(
+    let resolved = resolve_key_action(
         &ctx.core().config().bindings,
         ctx.core().model().selected_win(),
         ctx.current_mode(),
@@ -56,10 +53,9 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         binding_mask,
         numlockmask,
     )
-    .map(|resolution| (Some(resolution.action), resolution.transient))
-    .unwrap_or((None, false));
+    .map(|(action, transient)| (action.clone(), transient));
 
-    if let Some(action) = action {
+    if let Some((action, transient)) = resolved {
         execute_key_action(ctx, &action);
         if transient {
             ctx.reset_mode();
@@ -77,12 +73,6 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     }
 }
 
-#[derive(Clone)]
-struct KeyResolution {
-    action: KeyAction,
-    transient: bool,
-}
-
 pub(crate) fn desktop_bindings_enabled(
     selected_client: Option<WindowId>,
     mode: &ActiveWmMode,
@@ -90,156 +80,109 @@ pub(crate) fn desktop_bindings_enabled(
     !matches!(mode, ActiveWmMode::Default) || selected_client.is_none()
 }
 
-/// Bindings that a backend with passive/global grabs must currently own.
+/// Binding tables consulted for `mode`, in priority order, and whether the
+/// mode is transient.
 ///
-/// This deliberately mirrors [`resolve_key_action`]. A backend must not grab
-/// bindings from inactive modes: unlike a compositor, X11 cannot forward an
-/// unmatched passively-grabbed key to the focused client after the fact.
+/// This is the single definition of binding scope for both dispatch and
+/// passive grabs: a backend must not grab bindings from inactive modes, since
+/// unlike a compositor, X11 cannot forward an unmatched passively-grabbed key
+/// to the focused client after the fact.
+fn binding_scopes<'a>(
+    bindings: &'a BindingConfig,
+    selected_client: Option<WindowId>,
+    mode: &ActiveWmMode,
+) -> ([&'a [Key]; 3], bool) {
+    let mode_keys = |name: &str| {
+        bindings
+            .modes
+            .get(name)
+            .map_or(&[][..], |mode| mode.keybinds.as_slice())
+    };
+    match mode {
+        ActiveWmMode::TreePlacement(_) => (
+            [
+                mode_keys(crate::core_state::TREE_PLACEMENT_MODE_NAME),
+                &[],
+                &[],
+            ],
+            false,
+        ),
+        ActiveWmMode::Named(name) => (
+            [mode_keys(name), &bindings.keys, &bindings.desktop_keybinds],
+            bindings.modes.get(name).is_some_and(|mode| mode.transient),
+        ),
+        _ => {
+            let desktop: &[Key] = if desktop_bindings_enabled(selected_client, mode) {
+                &bindings.desktop_keybinds
+            } else {
+                &[]
+            };
+            ([&bindings.keys, desktop, &[]], false)
+        }
+    }
+}
+
+/// Bindings that a backend with passive/global grabs must currently own.
 pub(crate) fn passive_bindings<'a>(
-    keys: &'a [Key],
-    desktop_keybinds: &'a [Key],
-    modes: &'a HashMap<String, ModeConfig>,
+    bindings: &'a BindingConfig,
     selected_client: Option<WindowId>,
     mode: &ActiveWmMode,
 ) -> Vec<&'a Key> {
-    let mut bindings = Vec::new();
-    match mode {
-        ActiveWmMode::TreePlacement(_) => {
-            if let Some(mode) = modes.get(crate::core_state::TREE_PLACEMENT_MODE_NAME) {
-                bindings.extend(&mode.keybinds);
-            }
-        }
-        ActiveWmMode::Named(name) => {
-            if let Some(mode) = modes.get(name) {
-                bindings.extend(&mode.keybinds);
-            }
-            bindings.extend(keys);
-            bindings.extend(desktop_keybinds);
-        }
-        _ => {
-            bindings.extend(keys);
-            if desktop_bindings_enabled(selected_client, mode) {
-                bindings.extend(desktop_keybinds);
-            }
-        }
-    }
-    bindings
+    binding_scopes(bindings, selected_client, mode)
+        .0
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
-fn find_matching_action(
-    keys: &[Key],
+/// The action bound to a chord in the current mode, and whether the mode is
+/// transient.
+fn resolve_key_action<'a>(
+    bindings: &'a BindingConfig,
+    selected_client: Option<WindowId>,
+    mode: &ActiveWmMode,
     keysym: u32,
     cleaned: u16,
     numlockmask: u32,
-) -> Option<KeyAction> {
-    keys.iter()
+) -> Option<(&'a KeyAction, bool)> {
+    let (scopes, transient) = binding_scopes(bindings, selected_client, mode);
+    scopes
+        .into_iter()
+        .flatten()
         .find(|key| {
             keysym == key.keysym
                 && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
         })
-        .map(|key| key.action.clone())
+        .map(|key| (&key.action, transient))
 }
 
-fn resolve_key_action(
-    bindings: &BindingConfig,
-    selected_client: Option<WindowId>,
-    mode: &ActiveWmMode,
-    keysym: u32,
-    cleaned: u16,
-    numlockmask: u32,
-) -> Option<KeyResolution> {
-    let find = |binds: &[Key]| find_matching_action(binds, keysym, cleaned, numlockmask);
-
-    match mode {
-        ActiveWmMode::TreePlacement(_) => bindings
-            .modes
-            .get(crate::core_state::TREE_PLACEMENT_MODE_NAME)
-            .and_then(|mode| find(&mode.keybinds))
-            .map(|action| KeyResolution {
-                action,
-                transient: false,
-            }),
-        ActiveWmMode::Named(name) => {
-            let mode_cfg = bindings.modes.get(name.as_str());
-            let transient = mode_cfg.is_some_and(|m| m.transient);
-            let action = mode_cfg
-                .and_then(|m| find(&m.keybinds))
-                .or_else(|| find(&bindings.keys))
-                .or_else(|| find(&bindings.desktop_keybinds));
-            action.map(|action| KeyResolution { action, transient })
-        }
-        _ => {
-            // Default & Overview: global bindings → desktop bindings (if enabled)
-            find(&bindings.keys)
-                .or_else(|| {
-                    if desktop_bindings_enabled(selected_client, mode) {
-                        find(&bindings.desktop_keybinds)
-                    } else {
-                        None
-                    }
-                })
-                .map(|action| KeyResolution {
-                    action,
-                    transient: false,
-                })
-        }
-    }
-}
-
-pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = ctx.core().model().is_overview_active();
-
-    if is_overview {
-        crate::overview::focus_direction(ctx, VerticalDirection::Up.into());
+/// Alt-tab style navigation: overview focus, snapping for floating layouts,
+/// otherwise the focus stack.
+pub fn alt_tab_key(ctx: &mut WmCtx, direction: VerticalDirection) {
+    if ctx.core().model().is_overview_active() {
+        crate::overview::focus_direction(ctx, direction.into());
         return;
     }
 
-    let has_tiling = ctx
+    if ctx
         .core()
         .model()
         .expect_selected_monitor()
-        .is_tiling_layout();
-
-    if !has_tiling {
-        if let Some(win) = ctx.core().model().selected_win() {
-            ctx.refresh_client_border_color(win, false);
-            change_snap(ctx, win, Direction::Up);
-        }
-        return;
+        .is_tiling_layout()
+    {
+        focus_stack(ctx, direction.into());
+    } else if let Some(win) = ctx.core().model().selected_win() {
+        change_snap(ctx, win, direction.into());
     }
-
-    focus_stack(ctx, direction);
-}
-
-pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = ctx.core().model().is_overview_active();
-
-    if is_overview {
-        crate::overview::focus_direction(ctx, VerticalDirection::Down.into());
-        return;
-    }
-
-    let has_tiling = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout();
-
-    if !has_tiling {
-        if let Some(win) = ctx.core().model().selected_win() {
-            change_snap(ctx, win, Direction::Down);
-        }
-        return;
-    }
-
-    focus_stack(ctx, direction);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::actions::NamedAction;
+    use crate::config::ModeConfig;
     use crate::core_state::ActiveWmMode;
+    use std::collections::HashMap;
 
     fn placement_mode() -> ActiveWmMode {
         let state = crate::core_state::KeyboardTreePlacement::new(
@@ -292,12 +235,13 @@ mod tests {
             },
         );
 
+        let bindings = BindingConfig {
+            keys: vec![global_key],
+            modes,
+            ..BindingConfig::default()
+        };
         let resolved = resolve_key_action(
-            &BindingConfig {
-                keys: vec![global_key],
-                modes,
-                ..BindingConfig::default()
-            },
+            &bindings,
             None,
             &ActiveWmMode::Named("resize".to_string()),
             42,
@@ -306,11 +250,11 @@ mod tests {
         )
         .expect("expected action");
 
-        match resolved.action {
-            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::FocusNext),
-            _ => panic!("unexpected action kind"),
-        }
-        assert!(resolved.transient);
+        assert!(matches!(
+            resolved.0,
+            KeyAction::Named(NamedAction::FocusNext)
+        ));
+        assert!(resolved.1);
     }
 
     #[test]
@@ -347,16 +291,10 @@ mod tests {
         let resolved = resolve_key_action(&bindings, None, &mode, 42, 0, 0)
             .expect("configured placement action");
         assert!(matches!(
-            resolved.action,
-            KeyAction::Named {
-                action: NamedAction::PlacementLeft,
-                ..
-            }
+            resolved.0,
+            KeyAction::Named(NamedAction::PlacementLeft)
         ));
-        assert!(
-            !resolved.transient,
-            "placement is intrinsically non-transient"
-        );
+        assert!(!resolved.1, "placement is intrinsically non-transient");
         assert!(resolve_key_action(&bindings, None, &mode, 43, 0, 0).is_none());
     }
 
@@ -369,34 +307,29 @@ mod tests {
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
 
-        let resolved = resolve_key_action(
-            &BindingConfig {
-                desktop_keybinds: vec![desktop_key],
-                ..BindingConfig::default()
-            },
-            None,
-            &ActiveWmMode::Default,
-            9,
-            0,
-            0,
-        )
-        .expect("expected desktop action");
+        let bindings = BindingConfig {
+            desktop_keybinds: vec![desktop_key],
+            ..BindingConfig::default()
+        };
+        let resolved = resolve_key_action(&bindings, None, &ActiveWmMode::Default, 9, 0, 0)
+            .expect("expected desktop action");
 
-        match resolved.action {
-            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::ToggleBar),
-            _ => panic!("unexpected action kind"),
-        }
+        assert!(matches!(
+            resolved.0,
+            KeyAction::Named(NamedAction::ToggleBar)
+        ));
 
+        let blocked_bindings = BindingConfig {
+            desktop_keybinds: vec![Key {
+                mod_mask: 0,
+                keysym: 9,
+                action: KeyAction::named(NamedAction::ToggleBar),
+                origin: crate::types::KeybindOrigin::CompiledDefault,
+            }],
+            ..BindingConfig::default()
+        };
         let blocked = resolve_key_action(
-            &BindingConfig {
-                desktop_keybinds: vec![Key {
-                    mod_mask: 0,
-                    keysym: 9,
-                    action: KeyAction::named(NamedAction::ToggleBar),
-                    origin: crate::types::KeybindOrigin::CompiledDefault,
-                }],
-                ..BindingConfig::default()
-            },
+            &blocked_bindings,
             Some(WindowId(1)),
             &ActiveWmMode::Default,
             9,
@@ -433,24 +366,18 @@ mod tests {
         );
 
         // The global binding wins; the configured "overview" mode is ignored.
-        let resolved = resolve_key_action(
-            &BindingConfig {
-                keys: vec![global_key],
-                modes,
-                ..BindingConfig::default()
-            },
-            None,
-            &ActiveWmMode::Overview,
-            42,
-            1,
-            0,
-        )
-        .expect("expected global action in overview");
-        match resolved.action {
-            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::FocusNext),
-            _ => panic!("unexpected action kind"),
-        }
-        assert!(!resolved.transient);
+        let bindings = BindingConfig {
+            keys: vec![global_key],
+            modes,
+            ..BindingConfig::default()
+        };
+        let resolved = resolve_key_action(&bindings, None, &ActiveWmMode::Overview, 42, 1, 0)
+            .expect("expected global action in overview");
+        assert!(matches!(
+            resolved.0,
+            KeyAction::Named(NamedAction::FocusNext)
+        ));
+        assert!(!resolved.1);
     }
 
     #[test]
@@ -500,13 +427,13 @@ mod tests {
             },
         );
 
-        let grabbed = passive_bindings(
-            std::slice::from_ref(&global),
-            std::slice::from_ref(&desktop),
-            &modes,
-            Some(WindowId(1)),
-            &ActiveWmMode::Default,
-        );
+        let bindings = BindingConfig {
+            keys: vec![global.clone()],
+            desktop_keybinds: vec![desktop.clone()],
+            modes,
+            ..BindingConfig::default()
+        };
+        let grabbed = passive_bindings(&bindings, Some(WindowId(1)), &ActiveWmMode::Default);
 
         assert_eq!(grabbed.len(), 1);
         assert_eq!(grabbed[0].keysym, global.keysym);
@@ -547,12 +474,14 @@ mod tests {
             },
         );
 
-        let global = [global];
-        let desktop = [desktop];
+        let bindings = BindingConfig {
+            keys: vec![global],
+            desktop_keybinds: vec![desktop],
+            modes,
+            ..BindingConfig::default()
+        };
         let grabbed = passive_bindings(
-            &global,
-            &desktop,
-            &modes,
+            &bindings,
             Some(WindowId(1)),
             &ActiveWmMode::Named("resize".to_string()),
         );
