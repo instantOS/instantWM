@@ -7,9 +7,9 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<PlacementTarget> {
-        self.raw_resolved_placement_targets(source, layout_rect, edge_fraction)
+        self.placement_candidates(source, layout_rect, edge_fraction)
             .into_iter()
-            .map(|resolved| resolved.target)
+            .map(|(target, _)| target)
             .collect()
     }
 
@@ -19,10 +19,10 @@ impl LayoutTree {
         target: PlacementTarget,
         layout_rect: Rect,
     ) -> Option<placement::PlacementTopology> {
-        self.raw_resolved_placement_targets(source, layout_rect, 0.34)
+        self.placement_candidates(source, layout_rect, 0.34)
             .into_iter()
-            .find(|resolved| resolved.target == target)?
-            .candidate
+            .find(|(candidate, _)| *candidate == target)?
+            .1
             .root
             .as_ref()
             .map(placement::placement_topology)
@@ -54,7 +54,11 @@ fn session_targets(
     layout_rect: Rect,
     edge_fraction: f64,
 ) -> Vec<PlacementTarget> {
-    placement_session(tree, source, layout_rect, edge_fraction).targets()
+    tree.placement_targets(source, layout_rect, edge_fraction, &HashMap::new())
+}
+
+fn keyboard_config() -> CommandConfig {
+    (&crate::config::config_toml::LayoutConfig::default()).into()
 }
 
 fn apply_point_plan(
@@ -64,7 +68,7 @@ fn apply_point_plan(
     layout_rect: Rect,
     edge_fraction: f64,
 ) -> bool {
-    let Some(plan) = placement_session(tree, source, layout_rect, edge_fraction).plan_point(point)
+    let Some(plan) = placement_session(tree, source, layout_rect, edge_fraction).into_plan(point)
     else {
         return false;
     };
@@ -292,7 +296,7 @@ fn manual_edit_ends_adaptive_force_sequence() {
     );
     assert!(!tree.untouched_force_windows.is_empty());
 
-    assert!(tree.resize(WindowId(2), Side::Bottom));
+    assert!(tree.resize(WindowId(2), Side::Bottom, keyboard_config()));
     assert!(tree.untouched_force_windows.is_empty());
     tree.reconcile_for_layout(
         &windows(4),
@@ -347,12 +351,11 @@ fn closing_a_force_spawned_window_preserves_adaptive_sequence() {
 fn reconciliation_retains_surviving_topology_and_collapses_parents() {
     let mut tree = LayoutTree::default();
     reconcile(&mut tree, &windows(4));
-    let before = tree.bounds(Rect::new(0, 0, 100, 100));
     assert_eq!(tree.len(), 4);
     reconcile(&mut tree, &[WindowId(1), WindowId(3), WindowId(4)]);
     assert_eq!(tree.len(), 3);
     assert!(!tree.leaves().contains(&WindowId(2)));
-    assert!(before.contains_key(&WindowId(1)));
+    assert_canonical(&tree);
 }
 
 #[test]
@@ -423,7 +426,7 @@ fn grid_is_a_persistent_tree_transformation() {
     let rects = tree.bounds(Rect::new(0, 0, 100, 100));
     assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 50, 50));
     assert_eq!(rects[&WindowId(4)], Rect::new(50, 50, 50, 50));
-    assert!(tree.resize(WindowId(1), Side::Right));
+    assert!(tree.resize(WindowId(1), Side::Right, keyboard_config()));
     assert_ne!(tree.bounds(Rect::new(0, 0, 100, 100)), rects);
 }
 
@@ -446,7 +449,7 @@ fn traversal_uses_first_structural_seam() {
 fn resize_preserves_peer_ratios() {
     let mut tree = LayoutTree::default();
     tree.root = equal_run(&windows(3), Axis::Vertical, &mut || tree.allocate());
-    assert!(tree.resize(WindowId(2), Side::Right));
+    assert!(tree.resize(WindowId(2), Side::Right, keyboard_config()));
     let rects = tree.bounds(Rect::new(0, 0, 300, 100));
     assert!(rects[&WindowId(2)].w > 100);
     assert_eq!(rects[&WindowId(1)].w, rects[&WindowId(3)].w);
@@ -500,7 +503,7 @@ fn resize_stops_at_the_local_run_across_an_orthogonal_parent() {
         ],
     );
     let before = tree.bounds(Rect::new(0, 0, 100, 100));
-    assert!(tree.resize(WindowId(1), Side::Right));
+    assert!(tree.resize(WindowId(1), Side::Right, keyboard_config()));
     let after = tree.bounds(Rect::new(0, 0, 100, 100));
     assert_eq!(after[&WindowId(4)].w, before[&WindowId(4)].w);
     assert!(after[&WindowId(1)].w > before[&WindowId(1)].w);
@@ -698,30 +701,30 @@ fn outer_edge_can_target_a_contiguous_child_range() {
     );
     let rect = Rect::new(0, 0, 1000, 800);
     let desired_slot = Rect::new(500, 0, 500, 400);
-    let raw = tree.resolved_edge_candidates(source, WindowId(2), Side::Right);
+    let raw = tree.edge_candidates(source, WindowId(2), Side::Right);
     assert!(
         raw.iter()
-            .any(|(_, candidate)| candidate.bounds(rect)[&source] == desired_slot),
+            .any(|candidate| candidate.bounds(rect)[&source] == desired_slot),
         "the outer edge of the top window must expose the top-two child range"
     );
 
-    let normalized = LayoutTree::normalized_soft_constrained_candidates(
+    let normalized = placement::normalized_plans(
         source,
         rect,
         &HashMap::new(),
         raw.into_iter()
             .enumerate()
-            .map(
-                |(candidate_index, (_, candidate))| ResolvedPlacementTarget {
-                    target: PlacementTarget {
+            .map(|(candidate_index, candidate)| {
+                (
+                    PlacementTarget {
                         target: WindowId(2),
                         side: Some(Side::Right),
                         candidate_index,
                         position: Point::new(0, 0),
                     },
                     candidate,
-                },
-            ),
+                )
+            }),
     );
     assert!(
         normalized
@@ -741,8 +744,8 @@ fn keyboard_and_pointer_targets_apply_the_same_semantic_candidate() {
         .find(|target| target.side.is_some())
         .unwrap();
 
-    let keyboard = placement_session(&original, WindowId(1), rect, 0.34)
-        .plan_target(target)
+    let keyboard = original
+        .plan_placement(WindowId(1), target, rect, &HashMap::new())
         .unwrap()
         .into_tree();
     let mut pointer = original;
@@ -931,33 +934,24 @@ fn normalization_preserves_different_topologies_with_identical_geometry() {
         placement::placement_topology(columns.root.as_ref().unwrap()),
         placement::placement_topology(rows.root.as_ref().unwrap())
     );
-    let candidates = vec![
-        (
-            ResolvedPlacementTarget {
-                target: PlacementTarget {
+    let candidates = [columns, rows]
+        .into_iter()
+        .enumerate()
+        .map(|(candidate_index, candidate)| {
+            (
+                PlacementTarget {
                     target: WindowId(1),
                     side: Some(Side::Right),
-                    candidate_index: 0,
+                    candidate_index,
                     position: Point::new(0, 0),
                 },
-                candidate: columns,
-            },
-            (),
-        ),
-        (
-            ResolvedPlacementTarget {
-                target: PlacementTarget {
-                    target: WindowId(1),
-                    side: Some(Side::Right),
-                    candidate_index: 1,
-                    position: Point::new(0, 0),
-                },
-                candidate: rows,
-            },
-            (),
-        ),
-    ];
-    assert_eq!(placement::topology_representatives(candidates).len(), 2);
+                candidate,
+            )
+        });
+    assert_eq!(
+        placement::normalized_plans(WindowId(1), rect, &HashMap::new(), candidates).len(),
+        2
+    );
 }
 
 #[test]
@@ -1042,27 +1036,6 @@ fn keyboard_navigation_steps_through_distinct_topologies() {
 }
 
 #[test]
-fn session_normalization_matches_topology_reference() {
-    let rect = Rect::new(0, 0, 1600, 900);
-    for preset in [Preset::Grid, Preset::MasterStack, Preset::BottomStack] {
-        let mut tree = LayoutTree::default();
-        tree.apply_preset(preset, &windows(8), 2);
-
-        let candidates = tree
-            .raw_resolved_placement_targets(WindowId(1), rect, 0.34)
-            .into_iter()
-            .map(|resolved| (resolved, ()))
-            .collect();
-        let reference = placement::topology_representatives(candidates)
-            .into_iter()
-            .map(|(resolved, ())| resolved.target)
-            .collect::<Vec<_>>();
-
-        assert_eq!(session_targets(&tree, WindowId(1), rect, 0.34), reference);
-    }
-}
-
-#[test]
 fn soft_constrained_normalization_preserves_every_distinct_viable_outcome() {
     let rect = Rect::new(0, 0, 2000, 1200);
     let minimums = windows(20)
@@ -1073,27 +1046,20 @@ fn soft_constrained_normalization_preserves_every_distinct_viable_outcome() {
         let mut tree = LayoutTree::default();
         tree.apply_preset(preset, &windows(20), 2);
 
-        let candidates = tree
-            .raw_resolved_placement_targets(WindowId(1), rect, 0.34)
+        let viable = tree
+            .placement_candidates(WindowId(1), rect, 0.34)
             .into_iter()
-            .filter_map(|resolved| {
-                let slot = resolved
-                    .candidate
-                    .soft_constrained_bounds(rect, &minimums)
-                    .0
-                    .get(&WindowId(1))
-                    .copied()?;
-                Some((resolved, slot))
+            .filter_map(|(target, candidate)| {
+                PlacementPlan::new(target, candidate, WindowId(1), rect, &minimums)
             })
             .collect();
-        let reference = placement::topology_representatives(candidates)
+        let reference = placement::topology_representatives(viable)
             .into_iter()
-            .map(|(resolved, _)| resolved.target)
+            .map(|plan| plan.target)
             .collect::<Vec<_>>();
 
         assert_eq!(
-            TreePlacementSession::new(tree.clone(), WindowId(1), rect, 0.34, minimums.clone(),)
-                .targets(),
+            tree.placement_targets(WindowId(1), rect, 0.34, &minimums),
             reference,
             "constraint filtering must happen before distinct viable outcomes are normalized"
         );
@@ -1106,33 +1072,19 @@ fn placement_preview_is_exact_and_does_not_mutate_the_tree() {
     tree.apply_preset(Preset::Grid, &windows(4), 1);
     let rect = Rect::new(0, 0, 400, 300);
     let before = tree.bounds(rect);
-    let session = placement_session(&tree, WindowId(1), rect, 0.34);
-    let target = session
-        .targets()
+    let target = session_targets(&tree, WindowId(1), rect, 0.34)
         .into_iter()
         .find(|target| target.target == WindowId(4) && target.side == Some(Side::Left))
         .unwrap();
 
-    let plan = session.plan_target(target).unwrap();
+    let plan = tree
+        .plan_placement(WindowId(1), target, rect, &HashMap::new())
+        .unwrap();
     let preview = plan.source_slot();
     assert_eq!(tree.bounds(rect), before);
 
     let applied = plan.into_tree();
     assert_eq!(applied.bounds(rect)[&WindowId(1)], preview);
-}
-
-#[test]
-fn keyboard_session_work_does_not_compute_pointer_hit_bounds() {
-    let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::Grid, &windows(6), 1);
-    let rect = Rect::new(20, 30, 600, 400);
-    let session = placement_session(&tree, WindowId(1), rect, 0.34);
-    assert!(session.bounds.is_none());
-
-    let target = session.targets().into_iter().next().unwrap();
-    assert!(session.bounds.is_none());
-    assert!(session.plan_target(target).is_some());
-    assert!(session.bounds.is_none());
 }
 
 #[test]
@@ -1150,7 +1102,7 @@ fn pointer_placement_preview_matches_release_and_does_not_mutate() {
 
     for point in points {
         let plan = placement_session(&tree, WindowId(1), rect, 0.34)
-            .plan_point(point)
+            .into_plan(point)
             .expect("advertised placement point must be valid");
         let preview = plan.source_slot();
         assert_eq!(tree.bounds(rect), before);
@@ -1172,13 +1124,13 @@ fn placement_session_reuses_a_target_edge_without_changing_its_preview() {
     let mut session = placement_session(&tree, WindowId(1), rect, 0.34);
 
     assert_eq!(session.preview_point(point), Some(expected));
-    assert_eq!(session.edge_resolutions.len(), 1);
+    assert_eq!(session.plans.len(), 1);
     assert_eq!(
         session.preview_point(Point::new(point.x + 1, point.y)),
         Some(expected)
     );
     assert_eq!(
-        session.edge_resolutions.len(),
+        session.plans.len(),
         1,
         "motion within one target edge must reuse its solved candidates"
     );
@@ -1203,26 +1155,23 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
                 .map(move |side| (target, side))
         })
         .find_map(|(target, side)| {
-            let raw = tree.resolved_edge_candidates(source, target, side);
+            let raw = tree.edge_candidates(source, target, side);
             let raw_count = raw.len();
             let resolved = raw
                 .into_iter()
                 .enumerate()
-                .map(
-                    |(candidate_index, (_, candidate))| ResolvedPlacementTarget {
-                        target: PlacementTarget {
+                .map(|(candidate_index, candidate)| {
+                    (
+                        PlacementTarget {
                             target,
                             side: Some(side),
                             candidate_index,
                             position: bounds[&target].center(),
                         },
                         candidate,
-                    },
-                )
-                .collect::<Vec<_>>();
-            let normalized = LayoutTree::normalized_soft_constrained_candidates(
-                source, rect, &minimums, resolved,
-            );
+                    )
+                });
+            let normalized = placement::normalized_plans(source, rect, &minimums, resolved);
             (normalized.len() < raw_count).then_some((target, side, raw_count, normalized))
         })
         .expect("the 20-window grid should exercise weight-only topology duplicates");
@@ -1236,7 +1185,6 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
     let target_rect = bounds[&target];
     let inset_x = (f64::from(target_rect.w) * 0.34).max(1.0);
     let inset_y = (f64::from(target_rect.h) * 0.34).max(1.0);
-    let mut session = TreePlacementSession::new(tree.clone(), source, rect, 0.34, minimums);
     for (index, expected) in normalized.iter().enumerate() {
         let distance = (index as f64 + 0.5) / normalized.len() as f64;
         let point = match side {
@@ -1257,10 +1205,18 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
                 target_rect.bottom() - (inset_y * distance).round() as i32,
             ),
         };
+        let mut session =
+            TreePlacementSession::new(tree.clone(), source, rect, 0.34, minimums.clone());
+        assert_eq!(session.preview_point(point), Some(expected.source_slot()));
+        assert_eq!(
+            session.plans[&(target, Some(side))].len(),
+            normalized.len(),
+            "only normalized outcomes may consume pointer hitbox width"
+        );
         let actual = session
-            .plan_point(point)
+            .into_plan(point)
             .expect("the midpoint of every normalized band must resolve");
-        assert_eq!(actual.target(), expected.target());
+        assert_eq!(actual.target, expected.target);
         assert_eq!(actual.source_slot(), expected.source_slot());
 
         let applied = actual.into_tree();
@@ -1270,12 +1226,6 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
             "preview and release must use the same retained semantic candidate"
         );
     }
-
-    assert_eq!(
-        session.edge_resolutions[&(target, side)].len(),
-        normalized.len(),
-        "only normalized outcomes may consume pointer hitbox width"
-    );
 }
 
 #[test]
@@ -1287,54 +1237,37 @@ fn twenty_window_pointer_candidates_collapse_weight_only_variants() {
     let mut found_weight_only_duplicates = false;
     for target in tree.leaves().into_iter().filter(|window| *window != source) {
         for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
-            let raw = tree.resolved_edge_candidates(source, target, side);
+            let raw = tree.edge_candidates(source, target, side);
             let viable = raw
                 .into_iter()
                 .enumerate()
-                .filter_map(|(candidate_index, (_, candidate))| {
-                    let slot = candidate
-                        .constrained_bounds(rect, &HashMap::new())?
-                        .get(&source)
-                        .copied()?;
-                    Some((
-                        ResolvedPlacementTarget {
-                            target: PlacementTarget {
-                                target,
-                                side: Some(side),
-                                candidate_index,
-                                position: Point::new(0, 0),
-                            },
-                            candidate,
+                .filter(|(_, candidate)| {
+                    candidate
+                        .constrained_bounds(rect, &HashMap::new())
+                        .is_some_and(|bounds| bounds.contains_key(&source))
+                })
+                .map(|(candidate_index, candidate)| {
+                    (
+                        PlacementTarget {
+                            target,
+                            side: Some(side),
+                            candidate_index,
+                            position: Point::new(0, 0),
                         },
-                        slot,
-                    ))
+                        candidate,
+                    )
                 })
                 .collect::<Vec<_>>();
             let topology_count = viable
                 .iter()
-                .filter_map(|(resolved, _)| {
-                    resolved
-                        .candidate
-                        .root
-                        .as_ref()
-                        .map(placement::placement_topology)
+                .filter_map(|(_, candidate)| {
+                    candidate.root.as_ref().map(placement::placement_topology)
                 })
                 .collect::<HashSet<_>>()
                 .len();
             found_weight_only_duplicates |= viable.len() > topology_count;
 
-            let representatives = placement::topology_representatives(viable.clone());
-            assert_eq!(
-                representatives.len(),
-                topology_count,
-                "each unweighted canonical topology must have exactly one representative"
-            );
-            let normalized = LayoutTree::normalized_soft_constrained_candidates(
-                source,
-                rect,
-                &HashMap::new(),
-                viable.into_iter().map(|(resolved, _)| resolved),
-            );
+            let normalized = placement::normalized_plans(source, rect, &HashMap::new(), viable);
             assert_eq!(
                 normalized.len(),
                 topology_count,
@@ -1355,7 +1288,7 @@ fn pointer_resize_tracks_the_grabbed_edge_in_pixels() {
     let layout = Rect::new(0, 0, 1000, 600);
     let before = tree.bounds(layout)[&WindowId(1)];
 
-    assert!(tree.resize_by_pixels(WindowId(1), Side::Right, 120, layout, 0.15));
+    assert!(tree.resize_edge_by_pixels(WindowId(1), Side::Right, 120, layout, 0.15));
     let after = tree.bounds(layout)[&WindowId(1)];
 
     assert_eq!(after.w - before.w, 120);
@@ -1404,7 +1337,14 @@ fn pointer_outer_edge_resize_matches_keyboard_peer_redistribution() {
     let mut pointer = keyboard.clone();
     let layout = Rect::new(0, 0, 1000, 600);
 
-    assert!(keyboard.resize_by_pixels(WindowId(1), Side::Right, 100, layout, 0.15));
+    assert!(keyboard.resize(
+        WindowId(1),
+        Side::Right,
+        CommandConfig {
+            resize_step: 0.1,
+            minimum_weight: 0.15,
+        },
+    ));
     assert!(pointer.resize_edge_by_pixels(WindowId(1), Side::Right, 100, layout, 0.15));
 
     assert_eq!(pointer.bounds(layout), keyboard.bounds(layout));
@@ -1549,21 +1489,23 @@ fn leading_edge_motion_has_the_opposite_weight_sign() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::MasterStack, &windows(2), 1);
     let layout = Rect::new(0, 0, 1000, 600);
-    let before = tree.bounds(layout)[&WindowId(1)];
+    let before = tree.bounds(layout)[&WindowId(2)];
 
-    assert!(tree.resize_by_pixels(WindowId(1), Side::Left, 100, layout, 0.15));
-    let after = tree.bounds(layout)[&WindowId(1)];
+    assert!(tree.resize_edge_by_pixels(WindowId(2), Side::Left, 100, layout, 0.15));
+    let after = tree.bounds(layout)[&WindowId(2)];
 
     assert_eq!(before.w - after.w, 100);
+    assert_eq!(after.x - before.x, 100);
 }
 
 #[test]
-fn resize_axis_reports_only_structural_runs() {
+fn resize_sides_report_only_structural_seams() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::MasterStack, &windows(2), 1);
 
-    assert!(tree.can_resize_axis(WindowId(1), Axis::Vertical));
-    assert!(!tree.can_resize_axis(WindowId(1), Axis::Horizontal));
+    assert!(tree.can_resize_side(WindowId(1), Side::Right));
+    assert!(!tree.can_resize_side(WindowId(1), Side::Left));
+    assert!(!tree.can_resize_side(WindowId(1), Side::Top));
 }
 
 #[test]
@@ -1601,9 +1543,9 @@ fn every_public_mutation_preserves_canonical_invariants() {
         let mut tree = LayoutTree::default();
         tree.apply_preset(preset, &wins, 2);
         assert_canonical(&tree);
-        tree.resize(WindowId(4), Side::Right);
-        tree.resize_smart(WindowId(5), false);
-        tree.resize_with_config(
+        tree.resize(WindowId(4), Side::Right, keyboard_config());
+        tree.resize_smart(WindowId(5), false, keyboard_config());
+        tree.resize(
             WindowId(3),
             Side::Left,
             CommandConfig {
@@ -1617,8 +1559,13 @@ fn every_public_mutation_preserves_canonical_invariants() {
             .into_iter()
             .find(|target| target.side.is_some());
         if let Some(target) = target {
-            tree = placement_session(&tree, WindowId(7), Rect::new(0, 0, 700, 500), 0.34)
-                .plan_target(target)
+            tree = tree
+                .plan_placement(
+                    WindowId(7),
+                    target,
+                    Rect::new(0, 0, 700, 500),
+                    &HashMap::new(),
+                )
                 .unwrap()
                 .into_tree();
         }
@@ -1638,32 +1585,11 @@ fn every_public_mutation_preserves_canonical_invariants() {
 }
 
 #[test]
-fn verify_redistribute_bug_demo() {
-    let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::MasterStack, &windows(3), 1);
-    let before = tree.bounds(Rect::new(0, 0, 1000, 1000));
-    let master_w_before = before[&WindowId(1)].w;
-    eprintln!("master width before insert: {}", master_w_before);
-
-    reconcile(
-        &mut tree,
-        &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
-    );
-    let after = tree.bounds(Rect::new(0, 0, 1000, 1000));
-    let master_w_after = after[&WindowId(1)].w;
-    eprintln!(
-        "master width after insert: {} (bug: drops to ~250)",
-        master_w_after
-    );
-    assert_canonical(&tree);
-}
-
-#[test]
 fn reapplying_master_stack_preserves_ratio_from_the_tree() {
     let mut tree = LayoutTree::default();
     let area = Rect::new(0, 0, 1000, 600);
     tree.apply_preset(Preset::MasterStack, &windows(2), 1);
-    assert!(tree.resize_by_pixels(WindowId(1), Side::Right, 120, area, 0.15));
+    assert!(tree.resize_edge_by_pixels(WindowId(1), Side::Right, 120, area, 0.15));
     let before = tree.bounds(area)[&WindowId(1)].w;
 
     tree.apply_preset(Preset::MasterStack, &windows(3), 1);

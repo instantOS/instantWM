@@ -163,88 +163,37 @@ impl Node {
         }
     }
 
-    fn replace_window(self, target: WindowId, replacement: Node) -> Self {
-        match self {
-            Self::Window(window) if window == target => replacement,
-            Self::Window(window) => Self::Window(window),
-            Self::Split(split) => {
-                let children = split
-                    .children
-                    .into_iter()
-                    .map(|child| WeightedNode {
-                        node: child.node.replace_window(target, replacement.clone()),
-                        weight: child.weight,
-                    })
-                    .collect();
-                make_split(split.id, split.axis, children)
-                    .expect("replacing a leaf cannot empty a split")
-            }
-        }
-    }
-
-    fn bounds(&self, rect: FRect, output: &mut HashMap<WindowId, FRect>) {
-        match self {
-            Self::Window(window) => {
-                output.insert(*window, rect);
-            }
-            Self::Split(split) => {
-                let mut offset = 0.0;
-                for (index, child) in split.children.iter().enumerate() {
-                    // End the final child at the parent edge to contain accumulated
-                    // floating point error.
-                    let extent = if index + 1 == split.children.len() {
-                        1.0 - offset
-                    } else {
-                        child.weight
-                    };
-                    let child_rect = match split.axis {
-                        Axis::Vertical => FRect {
-                            x: rect.x + rect.w * offset,
-                            y: rect.y,
-                            w: rect.w * extent,
-                            h: rect.h,
-                        },
-                        Axis::Horizontal => FRect {
-                            x: rect.x,
-                            y: rect.y + rect.h * offset,
-                            w: rect.w,
-                            h: rect.h * extent,
-                        },
-                    };
-                    child.node.bounds(child_rect, output);
-                    offset += extent;
-                }
-            }
-        }
-    }
-
-    fn all_bounds(&self, rect: FRect, output: &mut HashMap<NodeKey, FRect>) {
-        output.insert(self.key(), rect);
-        if let Self::Split(split) = self {
-            let mut offset = 0.0;
-            for (index, child) in split.children.iter().enumerate() {
-                let extent = if index + 1 == split.children.len() {
-                    1.0 - offset
-                } else {
-                    child.weight
-                };
-                let child_rect = match split.axis {
-                    Axis::Vertical => FRect {
-                        x: rect.x + rect.w * offset,
-                        y: rect.y,
-                        w: rect.w * extent,
-                        h: rect.h,
-                    },
-                    Axis::Horizontal => FRect {
-                        x: rect.x,
-                        y: rect.y + rect.h * offset,
-                        w: rect.w,
-                        h: rect.h * extent,
-                    },
-                };
-                child.node.all_bounds(child_rect, output);
-                offset += extent;
-            }
+    /// Visit every node with its rectangle inside `rect`.
+    fn layout(&self, rect: FRect, visit: &mut impl FnMut(&Node, FRect)) {
+        visit(self, rect);
+        let Self::Split(split) = self else {
+            return;
+        };
+        let mut offset = 0.0;
+        for (index, child) in split.children.iter().enumerate() {
+            // End the final child at the parent edge to contain accumulated
+            // floating point error.
+            let extent = if index + 1 == split.children.len() {
+                1.0 - offset
+            } else {
+                child.weight
+            };
+            let child_rect = match split.axis {
+                Axis::Vertical => FRect {
+                    x: rect.x + rect.w * offset,
+                    y: rect.y,
+                    w: rect.w * extent,
+                    h: rect.h,
+                },
+                Axis::Horizontal => FRect {
+                    x: rect.x,
+                    y: rect.y + rect.h * offset,
+                    w: rect.w,
+                    h: rect.h * extent,
+                },
+            };
+            child.node.layout(child_rect, visit);
+            offset += extent;
         }
     }
 }
@@ -275,12 +224,6 @@ struct EdgeCandidate {
     scope_depth: usize,
 }
 
-#[derive(Debug, Clone)]
-struct ResolvedPlacementTarget {
-    target: PlacementTarget,
-    candidate: LayoutTree,
-}
-
 /// A fully materialized placement outcome. Preview reads `source_slot`; apply
 /// commits `candidate`, so both operations necessarily describe the same tree.
 #[derive(Debug, Clone)]
@@ -291,10 +234,6 @@ pub(crate) struct PlacementPlan {
 }
 
 impl PlacementPlan {
-    pub(crate) fn target(&self) -> PlacementTarget {
-        self.target
-    }
-
     pub(crate) fn source_slot(&self) -> Rect {
         self.source_slot
     }
@@ -302,12 +241,6 @@ impl PlacementPlan {
     pub(crate) fn into_tree(self) -> LayoutTree {
         self.candidate
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PlacementResolution {
-    target: PlacementTarget,
-    source_slot: Rect,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -348,6 +281,14 @@ fn sane_weight(weight: f64) -> f64 {
     } else {
         1.0
     }
+}
+
+fn take_split_id(next: &mut u64) -> SplitId {
+    let id = SplitId(*next);
+    *next = next
+        .checked_add(1)
+        .expect("manual-layout split id space exhausted");
+    id
 }
 
 fn finite_clamp(value: f64, minimum: f64, maximum: f64, fallback: f64) -> f64 {
@@ -416,13 +357,7 @@ fn build_grouped_nodes(
     first_split_id: u64,
 ) -> (Node, u64) {
     let mut next_split_id = first_split_id;
-    let mut allocate = || {
-        let id = SplitId(next_split_id);
-        next_split_id = next_split_id
-            .checked_add(1)
-            .expect("manual-layout split id space exhausted");
-        id
-    };
+    let mut allocate = || take_split_id(&mut next_split_id);
     let mut offset = 0;
     let mut groups = Vec::with_capacity(group_sizes.len());
     for &group_size in group_sizes {
@@ -464,6 +399,13 @@ struct FRect {
 }
 
 impl FRect {
+    const UNIT: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        w: 1.0,
+        h: 1.0,
+    };
+
     fn from_rect(rect: Rect) -> Self {
         Self {
             x: f64::from(rect.x),
@@ -515,11 +457,11 @@ pub struct LayoutTree {
     untouched_force_windows: Vec<WindowId>,
 }
 
-/// Canonical placement engine for one stable layout snapshot.
+/// Pointer placement engine for one stable layout snapshot.
 ///
-/// Keyboard selection and pointer hit-testing both produce `PlacementPlan`s.
-/// Edge candidates are materialized lazily because pointer motion repeatedly
-/// queries the same target while dragging.
+/// Plans are materialized lazily per hovered target and edge, because pointer
+/// motion repeatedly queries the same target while dragging. Preview and drop
+/// read the same cached plan.
 #[derive(Debug, Clone)]
 pub(crate) struct TreePlacementSession {
     tree: LayoutTree,
@@ -528,8 +470,7 @@ pub(crate) struct TreePlacementSession {
     edge_fraction: f64,
     minimums: HashMap<WindowId, Size>,
     bounds: Option<HashMap<WindowId, Rect>>,
-    center_resolutions: HashMap<WindowId, Option<PlacementResolution>>,
-    edge_resolutions: HashMap<(WindowId, Side), Vec<PlacementResolution>>,
+    plans: HashMap<(WindowId, Option<Side>), Vec<PlacementPlan>>,
 }
 
 impl Default for LayoutTree {
@@ -544,23 +485,15 @@ impl Default for LayoutTree {
 
 impl LayoutTree {
     fn allocate(&mut self) -> SplitId {
-        let id = SplitId(self.next_split_id);
-        self.next_split_id = self
-            .next_split_id
-            .checked_add(1)
-            .expect("manual-layout split id space exhausted");
-        id
+        take_split_id(&mut self.next_split_id)
     }
 
-    fn invalidate_force_provenance(&mut self) {
-        self.untouched_force_windows.clear();
-    }
-
-    /// Drop force-insertion provenance, e.g. when a tree is restored from a
-    /// layout slot: its "consecutive force insertion" era ended when the slot
-    /// was left, so later insertions must not repack those leaves.
+    /// Drop force-insertion provenance. Every manual edit does this, as does
+    /// restoring a tree from a layout slot: its "consecutive force insertion"
+    /// era ended when the slot was left, so later insertions must not repack
+    /// those leaves.
     pub fn clear_insertion_provenance(&mut self) {
-        self.invalidate_force_provenance();
+        self.untouched_force_windows.clear();
     }
 
     pub fn is_empty(&self) -> bool {

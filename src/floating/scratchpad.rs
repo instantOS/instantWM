@@ -172,23 +172,6 @@ impl ScratchpadInfo {
     }
 }
 
-fn selected_or_explicit_window(model: &WmModel, window_id: Option<WindowId>) -> Option<WindowId> {
-    window_id.or_else(|| model.selected_win())
-}
-
-fn attach_client_to_monitor_top(model: &mut WmModel, win: WindowId, monitor_id: MonitorId) {
-    let reassigned = model.reassign_client_monitor(win, monitor_id);
-    debug_assert!(reassigned, "scratchpad target must be a managed monitor");
-}
-
-fn sync_scratchpad_backend_projection(ctx: &mut WmCtx<'_>, win: WindowId) {
-    ctx.sync_client_tag_props(win);
-}
-
-fn prepare_scratchpad_for_show(model: &mut WmModel, win: WindowId, monitor_id: MonitorId) {
-    attach_client_to_monitor_top(model, win, monitor_id);
-}
-
 fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
     let was_hidden = ctx
         .core()
@@ -220,30 +203,37 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bo
     crate::layouts::sync_monitor_z_order(ctx, mid);
 }
 
-fn scratchpad_names(model: &WmModel, visible: bool) -> Vec<String> {
+fn scratchpad_windows(model: &WmModel, visible: bool) -> Vec<WindowId> {
     model
         .clients
         .values()
         .filter(|c| c.is_scratchpad() && c.is_scratchpad_visible() == visible)
-        .filter_map(|c| c.scratchpad().map(|sp| sp.name().to_string()))
+        .map(|c| c.win)
         .collect()
 }
 
-/// Resolve a scratchpad only while its backend window still exists.
+/// Whether the backend window still exists; drops the client otherwise.
 ///
 /// Destruction events are the primary cleanup path. This check is deliberately
 /// shared by every scratchpad action so a missed backend event cannot leave a
 /// model-only scratchpad that can be toggled forever.
+fn is_live(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
+    if ctx.window_backend().window_exists(win) {
+        return true;
+    }
+    crate::client::lifecycle::remove_managed_client(ctx, win);
+    false
+}
+
 fn find_live_scratchpad(ctx: &mut WmCtx<'_>, name: &str) -> Result<WindowId, String> {
     let Some(win) = ctx.core().model().scratchpad_find(name) else {
         return Err(format!("scratchpad '{}' not found", name));
     };
-    if ctx.window_backend().window_exists(win) {
-        return Ok(win);
+    if is_live(ctx, win) {
+        Ok(win)
+    } else {
+        Err(format!("scratchpad '{}' no longer exists", name))
     }
-
-    crate::client::lifecycle::remove_managed_client(ctx, win);
-    Err(format!("scratchpad '{}' no longer exists", name))
 }
 
 pub fn scratchpad_create(
@@ -263,8 +253,9 @@ pub fn scratchpad_create(
         ));
     }
 
-    let target = selected_or_explicit_window(ctx.core().model(), window_id);
-    let selected_window = target.ok_or_else(|| "no window selected".to_string())?;
+    let selected_window = window_id
+        .or_else(|| ctx.core().model().selected_win())
+        .ok_or_else(|| "no window selected".to_string())?;
 
     if find_live_scratchpad(ctx, name).is_ok() {
         return Err(format!("scratchpad '{}' already exists", name));
@@ -291,28 +282,20 @@ pub fn scratchpad_create(
     // Resolve geometry from the target window's monitor, not whichever output
     // happens to be selected by the invoking backend or IPC client.
     let (mon_ww, mon_wh, regular_rect) = {
-        let monitor_id = ctx
-            .core()
-            .model()
-            .client(selected_window)
-            .map(|client| client.monitor_id)
-            .ok_or_else(|| format!("window {} is not managed", selected_window.0))?;
-        let mon = ctx
-            .core()
-            .model()
-            .monitor(monitor_id)
+        let model = ctx.core().model();
+        let view = model
+            .client_view(selected_window)
             .ok_or_else(|| format!("window {} has no managed monitor", selected_window.0))?;
-        let client = ctx
-            .core()
-            .model()
-            .client(selected_window)
-            .expect("validated target client must remain managed");
-        let content = mon.visible_content_rect(&ctx.core().model().clients);
+        let content = view.monitor.visible_content_rect(&model.clients);
         let regular_rect = direction
             .is_none()
-            .then(|| default_regular_scratchpad_rect(content, client.border_width))
+            .then(|| default_regular_scratchpad_rect(content, view.client.border_width))
             .transpose()?;
-        (mon.work_rect().w, mon.work_rect().h, regular_rect)
+        (
+            view.monitor.work_rect().w,
+            view.monitor.work_rect().h,
+            regular_rect,
+        )
     };
 
     let client = ctx
@@ -327,12 +310,14 @@ pub fn scratchpad_create(
         client.set_preferred_floating_size(rect.size());
     }
 
-    sync_scratchpad_backend_projection(ctx, selected_window);
+    ctx.sync_client_tag_props(selected_window);
 
     crate::client::hide(ctx, selected_window);
 
     if matches!(status, ScratchpadInitialStatus::Shown) {
-        scratchpad_show_name(ctx, name)?;
+        let options = ScratchpadShowOptions::focused(ctx);
+        show_scratchpad_window_with_options(ctx, selected_window, options)
+            .map_err(|error| format!("scratchpad '{}': {}", name, error))?;
     }
 
     Ok(format!("created scratchpad '{}'", name))
@@ -422,7 +407,7 @@ pub(crate) fn scratchpad_restore_window(
         arrange(ctx, Some(target_monitor));
     }
 
-    sync_scratchpad_backend_projection(ctx, window);
+    ctx.sync_client_tag_props(window);
 
     Ok(format!("restored scratchpad '{}' as a normal window", name))
 }
@@ -435,7 +420,8 @@ pub fn scratchpad_restore(
     let window = if let Some(name) = name {
         find_live_scratchpad(ctx, name)?
     } else {
-        selected_or_explicit_window(ctx.core().model(), window_id)
+        window_id
+            .or_else(|| ctx.core().model().selected_win())
             .ok_or_else(|| "no scratchpad name, window ID, or selected window".to_string())?
     };
     scratchpad_restore_window(ctx, window, None)
@@ -448,13 +434,27 @@ pub(crate) struct ScratchpadShowOptions {
     pub warp_pointer: bool,
 }
 
+impl ScratchpadShowOptions {
+    /// Show on the selected monitor and focus, as user commands do.
+    fn focused(ctx: &WmCtx) -> Self {
+        Self {
+            monitor_id: ctx.core().model().selected_monitor_id(),
+            focus: true,
+            warp_pointer: ctx.core().behavior().focus_follows_mouse.is_enabled(),
+        }
+    }
+}
+
 pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, String> {
-    let options = ScratchpadShowOptions {
-        monitor_id: ctx.core().model().selected_monitor_id(),
-        focus: true,
-        warp_pointer: ctx.core().behavior().focus_follows_mouse.is_enabled(),
-    };
-    scratchpad_show_name_with_options(ctx, name, options)
+    let found = find_live_scratchpad(ctx, name)?;
+    let options = ScratchpadShowOptions::focused(ctx);
+    let shown = show_scratchpad_window_with_options(ctx, found, options)
+        .map_err(|error| format!("scratchpad '{}': {}", name, error))?;
+    if shown {
+        Ok(format!("shown scratchpad '{}'", name))
+    } else {
+        Ok(format!("scratchpad '{}' is already visible", name))
+    }
 }
 
 /// Resize and center a regular scratchpad as a percentage of usable monitor space.
@@ -491,23 +491,6 @@ pub fn scratchpad_resize_name(
         "resized scratchpad '{}' to {}% x {}%",
         name, width_percent, height_percent
     ))
-}
-
-pub(crate) fn scratchpad_show_name_with_options(
-    ctx: &mut WmCtx,
-    name: &str,
-    options: ScratchpadShowOptions,
-) -> Result<String, String> {
-    let found = find_live_scratchpad(ctx, name)?;
-    // The window-level helper cannot name the scratchpad (the transfer path
-    // has no name to give); re-attach it here for user-facing errors.
-    let shown = show_scratchpad_window_with_options(ctx, found, options)
-        .map_err(|error| format!("scratchpad '{}': {}", name, error))?;
-    if shown {
-        Ok(format!("shown scratchpad '{}'", name))
-    } else {
-        Ok(format!("scratchpad '{}' is already visible", name))
-    }
 }
 
 fn show_scratchpad_window_with_options(
@@ -553,8 +536,10 @@ fn show_scratchpad_window_with_options(
         .and_then(|monitor| monitor.selected)
         .filter(|&selected| selected != found);
     let previous_focus = ctx.core().model().selected_win();
-    ctx.core_mut()
-        .mutate_selection(|model| prepare_scratchpad_for_show(model, found, target_monitor));
+    ctx.core_mut().mutate_selection(|model| {
+        let reassigned = model.reassign_client_monitor(found, target_monitor);
+        debug_assert!(reassigned, "scratchpad target must be a managed monitor");
+    });
     // A reversed slide-out keeps the focus target remembered when it was
     // first shown; overwriting it here would degrade the eventual hand-off.
     if !reversing_slide_out
@@ -641,54 +626,35 @@ pub(crate) fn show_transferred_scratchpad(ctx: &mut WmCtx, win: WindowId, monito
     );
 }
 
+fn plural_summary(verb: &str, count: usize) -> Option<String> {
+    (count > 0).then(|| {
+        format!(
+            "{verb} {count} scratchpad{}",
+            if count == 1 { "" } else { "s" }
+        )
+    })
+}
+
 pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
-    let scratchpad_names = scratchpad_names(ctx.core().model(), false);
-
     let mut shown_count = 0;
-
-    for name in scratchpad_names {
-        if scratchpad_show_name(ctx, &name).is_ok() {
+    for win in scratchpad_windows(ctx.core().model(), false) {
+        let options = ScratchpadShowOptions::focused(ctx);
+        if is_live(ctx, win) && show_scratchpad_window_with_options(ctx, win, options).is_ok() {
             shown_count += 1;
         }
     }
-
-    if shown_count > 0 {
-        Some(format!(
-            "shown {} scratchpad{}",
-            shown_count,
-            if shown_count == 1 { "" } else { "s" }
-        ))
-    } else {
-        None
-    }
+    plural_summary("shown", shown_count)
 }
 
 pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
-    let scratchpad_names = scratchpad_names(ctx.core().model(), true);
-
     let mut hidden_count = 0;
-
-    for name in scratchpad_names {
-        let was_visible = ctx.core().model().clients.values().any(|c| {
-            c.is_scratchpad()
-                && c.scratchpad().is_some_and(|sp| sp.name() == name)
-                && c.is_scratchpad_visible()
-        });
-        scratchpad_hide_name(ctx, &name);
-        if was_visible {
+    for win in scratchpad_windows(ctx.core().model(), true) {
+        if is_live(ctx, win) {
+            hide_scratchpad_window(ctx, win);
             hidden_count += 1;
         }
     }
-
-    if hidden_count > 0 {
-        Some(format!(
-            "hid {} scratchpad{}",
-            hidden_count,
-            if hidden_count == 1 { "" } else { "s" }
-        ))
-    } else {
-        None
-    }
+    plural_summary("hid", hidden_count)
 }
 
 pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
@@ -704,30 +670,24 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
 /// hide until the backend reports the animation finished; see
 /// [`finish_scratchpad_hides`].
 pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) {
-    let direction = ctx
-        .core()
-        .state()
-        .model
-        .client(found)
-        .and_then(|c| c.scratchpad().and_then(|sp| sp.direction()));
-
     let slide = {
-        let Some(client) = ctx.core().model().client(found) else {
+        let model = ctx.core().model();
+        let Some(view) = model.client_view(found) else {
             return;
         };
-        if !client.is_scratchpad_visible() {
+        if !view.client.is_scratchpad_visible() {
             return;
         }
-        let Some(mon) = ctx.core().model().monitor(client.monitor_id) else {
-            return;
-        };
-        direction.map(|direction| {
-            EdgeSlideRects::new(
-                mon.visible_content_rect(&ctx.core().model().clients),
-                direction,
-                client.geo.size(),
-            )
-        })
+        view.client
+            .scratchpad()
+            .and_then(|scratchpad| scratchpad.direction())
+            .map(|direction| {
+                EdgeSlideRects::new(
+                    view.monitor.visible_content_rect(&model.clients),
+                    direction,
+                    view.client.geo.size(),
+                )
+            })
     };
 
     match slide {
@@ -785,36 +745,37 @@ pub fn finish_scratchpad_hides(ctx: &mut WmCtx, wins: &[WindowId]) {
     }
 }
 
-pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
-    let name = match name {
-        Some(n) => n,
-        None => return,
-    };
-
-    let is_overview = ctx.core().model().is_overview_active();
-
-    if is_overview {
+/// Hide the named scratchpad when shown, otherwise reveal it via `show`.
+fn toggle_named_scratchpad(ctx: &mut WmCtx, name: &str, show: impl FnOnce(&mut WmCtx, WindowId)) {
+    if ctx.core().model().is_overview_active() {
         return;
     }
-
-    let found = match find_live_scratchpad(ctx, name) {
-        Ok(w) => w,
-        Err(_) => return,
-    };
-
-    let Some(client) = ctx.core().model().client(found) else {
+    let Ok(found) = find_live_scratchpad(ctx, name) else {
         return;
     };
     // A pending hide means the slide-out is still playing; the next toggle
     // must reverse it rather than restart an identical slide-out.
-    let is_visible = client.is_scratchpad_visible()
+    let is_shown = ctx
+        .core()
+        .model()
+        .client(found)
+        .is_some_and(|client| client.is_scratchpad_visible())
         && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
-
-    if is_visible {
-        scratchpad_hide_name(ctx, name);
+    if is_shown {
+        hide_scratchpad_window(ctx, found);
     } else {
-        let _ = scratchpad_show_name(ctx, name);
+        show(ctx, found);
     }
+}
+
+pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
+    let Some(name) = name else {
+        return;
+    };
+    toggle_named_scratchpad(ctx, name, |ctx, win| {
+        let options = ScratchpadShowOptions::focused(ctx);
+        let _ = show_scratchpad_window_with_options(ctx, win, options);
+    });
 }
 
 /// Toggle a scratchpad on a specific monitor without moving the pointer.
@@ -826,40 +787,20 @@ pub(crate) fn scratchpad_toggle_from_hot_corner(
     name: &str,
     monitor_id: MonitorId,
 ) {
-    if ctx.core().model().is_overview_active() {
-        return;
-    }
-    let Ok(found) = find_live_scratchpad(ctx, name) else {
-        return;
-    };
-    let Some(is_visible) = ctx
-        .core()
-        .model()
-        .client(found)
-        .map(|client| client.is_sticky)
-    else {
-        return;
-    };
-    // A pending hide means the slide-out is still playing; the next trigger
-    // must reverse it rather than restart an identical slide-out.
-    let is_visible = is_visible && !ctx.core().pending_work().has_pending_scratchpad_hide(found);
-
-    if is_visible {
-        scratchpad_hide_name(ctx, name);
-    } else {
+    toggle_named_scratchpad(ctx, name, |ctx, win| {
         // Focusing is monitor-relative in the WM model. Make the corner's
         // monitor current before attaching and focusing the scratchpad there.
         crate::focus::select_monitor(ctx, monitor_id);
-        let _ = scratchpad_show_name_with_options(
+        let _ = show_scratchpad_window_with_options(
             ctx,
-            name,
+            win,
             ScratchpadShowOptions {
                 monitor_id,
                 focus: true,
                 warp_pointer: false,
             },
         );
-    }
+    });
 }
 
 pub fn collect_scratchpad_info(model: &WmModel) -> Vec<ScratchpadInfo> {
@@ -874,26 +815,14 @@ pub fn collect_scratchpad_info(model: &WmModel) -> Vec<ScratchpadInfo> {
 }
 
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
-    let was_visible = ctx
-        .core()
-        .state()
-        .model
-        .client(win)
-        .is_some_and(|c| c.is_scratchpad_visible());
-
-    let (mon_ww, mon_wh) = {
-        let Some(monitor_id) = ctx
-            .core()
-            .model()
-            .client(win)
-            .map(|client| client.monitor_id)
-        else {
-            return;
-        };
-        let Some(mon) = ctx.core().model().monitor(monitor_id) else {
-            return;
-        };
-        (mon.work_rect().w, mon.work_rect().h)
+    let Some((was_visible, mon_ww, mon_wh)) = ctx.core().model().client_view(win).map(|view| {
+        (
+            view.client.is_scratchpad_visible(),
+            view.monitor.work_rect().w,
+            view.monitor.work_rect().h,
+        )
+    }) else {
+        return;
     };
 
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win)
@@ -910,17 +839,9 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
     }
 
     if was_visible {
-        let Some(name) = ctx
-            .core()
-            .state()
-            .model
-            .client(win)
-            .and_then(|c| c.scratchpad().map(|sp| sp.name().to_string()))
-        else {
-            return;
-        };
-        scratchpad_hide_name(ctx, &name);
-        let _ = scratchpad_show_name(ctx, &name);
+        hide_scratchpad_window(ctx, win);
+        let options = ScratchpadShowOptions::focused(ctx);
+        let _ = show_scratchpad_window_with_options(ctx, win, options);
     }
 }
 

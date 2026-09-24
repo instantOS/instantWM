@@ -1,7 +1,6 @@
 use super::{
-    available_tree_resize_direction, compute_monitor_z_order,
-    manual_tree_pointer_interaction_allowed, pointer_tree_gap_resize_start,
-    pointer_tree_resize_allowed, shifted_master_count,
+    available_tree_resize_direction, compute_monitor_z_order, pointer_tree_gap_resize_start,
+    shifted_master_count,
 };
 use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
@@ -21,9 +20,17 @@ fn visible_client(win: WindowId) -> Client {
     client
 }
 
+fn wayland_wm() -> crate::wm::Wm {
+    crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ))
+}
+
+/// Select a new bar-less monitor showing `windows` tiled on tag 1, with the
+/// first one focused.
 fn add_tiled_monitor(
     wm: &mut crate::wm::Wm,
-    win: WindowId,
+    windows: &[WindowId],
     monitor_rect: Rect,
 ) -> crate::types::MonitorId {
     let tags = TagMask::single(1).unwrap();
@@ -33,57 +40,65 @@ fn add_tiled_monitor(
         show_bar: false,
         ..Monitor::default()
     });
-    assert!(wm.core.model.insert_client(Client {
-        win,
-        monitor_id,
-        tags,
-        mode: ClientMode::tiled(),
-        ..Client::default()
-    }));
+    wm.core.model.monitors.set_selected(monitor_id);
+    for &win in windows {
+        assert!(wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::tiled(),
+            ..Client::default()
+        }));
+    }
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tags);
-    monitor.clients.push(win);
-    monitor.selected = Some(win);
+    monitor.clients = windows.to_vec();
+    monitor.selected = windows.first().copied();
     monitor_id
+}
+
+fn apply_preset(
+    wm: &mut crate::wm::Wm,
+    monitor_id: crate::types::MonitorId,
+    preset: Preset,
+    windows: &[WindowId],
+) {
+    wm.core
+        .model
+        .monitor_mut(monitor_id)
+        .unwrap()
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(preset, windows, 1);
+}
+
+fn keyboard_config() -> crate::layouts::tree::CommandConfig {
+    (&LayoutConfig::default()).into()
 }
 
 #[test]
 fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+    let mut wm = wayland_wm();
     wm.core.behavior.animated = false;
     wm.core.config.layout.inner_gap = 20;
     wm.core.config.layout.outer_gap = 20;
     let first = WindowId(1);
     let second = WindowId(2);
-    let monitor_id = add_tiled_monitor(&mut wm, first, Rect::new(0, 0, 800, 600));
-    assert!(wm.core.model.insert_client(Client {
-        win: second,
-        monitor_id,
-        tags: TagMask::single(1).unwrap(),
-        mode: ClientMode::tiled(),
-        ..Client::default()
-    }));
-    wm.core
-        .model
-        .monitor_mut(monitor_id)
-        .unwrap()
-        .clients
-        .push(second);
+    let monitor_id = add_tiled_monitor(&mut wm, &[first, second], Rect::new(0, 0, 800, 600));
     super::arrange(&mut wm.ctx(), Some(monitor_id));
 
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
-    let geom = super::arrange::compute_tiling_geometry(
-        monitor,
-        &wm.core.model.clients,
-        &wm.core.config.layout,
-        wm.core.config.window.resize_hints,
-        wm.core.derived.bar_height,
-    )
-    .unwrap();
-    let first_geo = geom.placement.client_rect(geom.slots[&first], 0);
-    let second_geo = geom.placement.client_rect(geom.slots[&second], 0);
+    let tiling = super::selected_tiling(&wm.ctx());
+    let (slots, _) = tiling.slots(
+        &wm.core
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .per_tag()
+            .unwrap()
+            .layout_tree,
+    );
+    let first_geo = tiling.placement.client_rect(slots[&first], 0);
+    let second_geo = tiling.placement.client_rect(slots[&second], 0);
     let gap = if first_geo.right() <= second_geo.x {
         Point::new((first_geo.right() + second_geo.x) / 2, first_geo.center().y)
     } else if second_geo.right() <= first_geo.x {
@@ -115,13 +130,11 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
 
 #[test]
 fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+    let mut wm = wayland_wm();
     let first = WindowId(1);
     let second = WindowId(2);
-    let first_monitor = add_tiled_monitor(&mut wm, first, Rect::new(0, 0, 800, 600));
-    let second_monitor = add_tiled_monitor(&mut wm, second, Rect::new(800, 0, 800, 600));
+    let first_monitor = add_tiled_monitor(&mut wm, &[first], Rect::new(0, 0, 800, 600));
+    let second_monitor = add_tiled_monitor(&mut wm, &[second], Rect::new(800, 0, 800, 600));
     wm.work.layout.clear();
     {
         let mut ctx = wm.ctx();
@@ -145,12 +158,10 @@ fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
 
 #[test]
 fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+    let mut wm = wayland_wm();
     let live = WindowId(1);
     let destroyed = WindowId(2);
-    let unrelated_monitor = add_tiled_monitor(&mut wm, live, Rect::new(800, 0, 800, 600));
+    let unrelated_monitor = add_tiled_monitor(&mut wm, &[live], Rect::new(800, 0, 800, 600));
     let arranged_monitor = wm.core.model.monitors.push(Monitor {
         monitor_rect: Rect::new(0, 0, 800, 600),
         available_rect: Rect::new(0, 0, 800, 600),
@@ -171,11 +182,9 @@ fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
 
 #[test]
 fn disabled_animation_is_still_consumed_after_first_layout() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+    let mut wm = wayland_wm();
     let win = WindowId(1);
-    let monitor_id = add_tiled_monitor(&mut wm, win, Rect::new(0, 0, 800, 600));
+    let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
     wm.core.behavior.animated = false;
     wm.work.spawn_animations.insert(win);
 
@@ -186,35 +195,11 @@ fn disabled_animation_is_still_consumed_after_first_layout() {
 
 #[test]
 fn arrange_invalidates_pointer_placement_candidates() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
-    let tags = TagMask::single(1).unwrap();
+    let mut wm = wayland_wm();
     let source = WindowId(1);
-    let target = WindowId(2);
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 400, 300),
-        available_rect: Rect::new(0, 0, 400, 300),
-        ..Monitor::default()
-    });
-    wm.core.model.monitors.set_selected(monitor_id);
-    for win in [source, target] {
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-    }
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-    monitor.set_selected_tags(tags);
-    monitor.clients = vec![source, target];
-    monitor.selected = Some(source);
-    monitor
-        .per_tag_state()
-        .layout_tree
-        .apply_preset(Preset::Grid, &[source, target], 1);
+    let windows = [source, WindowId(2)];
+    let monitor_id = add_tiled_monitor(&mut wm, &windows, Rect::new(0, 0, 400, 300));
+    apply_preset(&mut wm, monitor_id, Preset::Grid, &windows);
 
     assert!(super::preview_tree_at_point(&mut wm.ctx(), source, Point::new(201, 150),).is_some());
     assert!(wm.core.interaction.pointer_placement_cache.is_some());
@@ -225,35 +210,10 @@ fn arrange_invalidates_pointer_placement_candidates() {
 
 #[test]
 fn pointer_preview_and_release_share_the_normalized_candidate() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
-    let tags = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 2000, 1000),
-        available_rect: Rect::new(0, 0, 2000, 1000),
-        show_bar: false,
-        ..Monitor::default()
-    });
-    wm.core.model.monitors.set_selected(monitor_id);
+    let mut wm = wayland_wm();
     let windows = (1..=20).map(WindowId).collect::<Vec<_>>();
-    for &win in &windows {
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-    }
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-    monitor.set_selected_tags(tags);
-    monitor.clients = windows.clone();
-    monitor.selected = Some(windows[0]);
-    monitor
-        .per_tag_state()
-        .layout_tree
-        .apply_preset(Preset::Grid, &windows, 1);
+    let monitor_id = add_tiled_monitor(&mut wm, &windows, Rect::new(0, 0, 2000, 1000));
+    apply_preset(&mut wm, monitor_id, Preset::Grid, &windows);
     super::arrange(&mut wm.ctx(), Some(monitor_id));
 
     let source = windows[0];
@@ -262,24 +222,18 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
         .expect("the test point must select a normalized edge candidate");
 
     assert!(super::place_tree_at_point(&mut wm.ctx(), source, point));
-    let (placement, minimums) =
-        super::selected_tiling_constraints(&wm.ctx()).expect("fixture has a selected monitor");
-    let applied_slot = wm
-        .core
-        .model
-        .expect_selected_monitor()
-        .per_tag()
-        .unwrap()
-        .layout_tree
-        .constrained_bounds(placement.work_rect(), &minimums)
-        .unwrap()[&source];
-    let applied_preview = crate::layouts::keyboard_placement::tree_slot_outer_rect(
-        &wm.ctx(),
-        source,
-        placement,
-        applied_slot,
-    )
-    .unwrap();
+    let tiling = super::selected_tiling(&wm.ctx());
+    let (slots, constraints_fit) = tiling.slots(
+        &wm.core
+            .model
+            .expect_selected_monitor()
+            .per_tag()
+            .unwrap()
+            .layout_tree,
+    );
+    assert!(constraints_fit);
+    let applied_preview =
+        tiling.outer_rect(wm.core.model.client(source).unwrap(), slots[&source], true);
     assert_eq!(
         applied_preview, preview,
         "release must apply the exact candidate displayed by pointer preview"
@@ -297,27 +251,20 @@ fn master_count_is_bounded_by_the_current_tiled_window_count() {
 
 #[test]
 fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+    let mut wm = wayland_wm();
     let first = WindowId(1);
     let second = WindowId(2);
-    let monitor_id = add_tiled_monitor(&mut wm, first, Rect::new(0, 0, 800, 600));
-    let tags = TagMask::single(1).unwrap();
-    assert!(wm.core.model.insert_client(Client {
-        win: second,
-        monitor_id,
-        tags,
-        mode: ClientMode::tiled(),
-        ..Client::default()
-    }));
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-    monitor.clients.push(second);
-    monitor
-        .per_tag_state()
+    let monitor_id = add_tiled_monitor(&mut wm, &[first, second], Rect::new(0, 0, 800, 600));
+    apply_preset(&mut wm, monitor_id, Preset::MasterStack, &[first, second]);
+    let origin = wm
+        .core
+        .model
+        .monitor(monitor_id)
+        .unwrap()
+        .per_tag()
+        .unwrap()
         .layout_tree
-        .apply_preset(Preset::MasterStack, &[first, second], 1);
-    let origin = monitor.per_tag().unwrap().layout_tree.clone();
+        .clone();
 
     wm.core
         .interaction
@@ -403,87 +350,17 @@ fn pointer_resize_keeps_requested_corner_when_both_axes_exist() {
 }
 
 #[test]
-fn pointer_tree_resize_preserves_the_requested_floating_fallbacks() {
-    assert!(!manual_tree_pointer_interaction_allowed(
-        PresentationMode::Tiled,
-        true,
-        1,
-    ));
-    assert!(!manual_tree_pointer_interaction_allowed(
-        PresentationMode::Maximized,
-        true,
-        3,
-    ));
-    assert!(manual_tree_pointer_interaction_allowed(
-        PresentationMode::Tiled,
-        true,
-        3,
-    ));
-
-    assert!(!pointer_tree_resize_allowed(
-        PresentationMode::Tiled,
-        true,
-        1,
-        true,
-        false,
-    ));
-    assert!(!pointer_tree_resize_allowed(
-        PresentationMode::Maximized,
-        true,
-        3,
-        true,
-        true,
-    ));
-    assert!(!pointer_tree_resize_allowed(
-        PresentationMode::Tiled,
-        false,
-        3,
-        true,
-        true,
-    ));
-    assert!(pointer_tree_resize_allowed(
-        PresentationMode::Tiled,
-        true,
-        3,
-        true,
-        false,
-    ));
-}
-
-#[test]
 fn pointer_tree_resize_remains_active_when_client_minimums_are_impossible() {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
-    let tags = TagMask::single(1).unwrap();
+    let mut wm = wayland_wm();
     let windows = [WindowId(1), WindowId(2)];
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 300, 100),
-        available_rect: Rect::new(0, 0, 300, 100),
-        show_bar: false,
-        ..Monitor::default()
-    });
-    wm.core.model.monitors.set_selected(monitor_id);
+    let monitor_id = add_tiled_monitor(&mut wm, &windows, Rect::new(0, 0, 300, 100));
     for win in windows {
-        let mut client = Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        };
+        let client = wm.core.model.client_mut(win).unwrap();
         client.size_hints.min_width = 200;
         client.size_hints.min_height = 50;
-        wm.core.model.insert_client(client);
     }
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-    monitor.set_selected_tags(tags);
-    monitor.clients = windows.to_vec();
-    monitor.selected = Some(windows[0]);
-    monitor
-        .per_tag_state()
-        .layout_tree
-        .apply_preset(Preset::MasterStack, &windows, 1);
+    apply_preset(&mut wm, monitor_id, Preset::MasterStack, &windows);
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
     let origin = monitor.per_tag().unwrap().layout_tree.clone();
     let before = origin.bounds(monitor.available_rect)[&windows[0]];
 
@@ -631,12 +508,11 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         .apply_preset(Preset::Grid, &windows, 1);
 
     let first = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
-    assert!(
-        monitor
-            .per_tag_state()
-            .layout_tree
-            .resize(WindowId(1), Side::Right)
-    );
+    assert!(monitor.per_tag_state().layout_tree.resize(
+        WindowId(1),
+        Side::Right,
+        keyboard_config()
+    ));
     let second = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     let first_rect = first
@@ -1125,29 +1001,8 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
 use crate::layouts::LayoutCommand;
 
 fn slotted_wm(windows: &[WindowId]) -> (crate::wm::Wm, crate::types::MonitorId) {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
-    let tags = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 1200, 800),
-        available_rect: Rect::new(0, 0, 1200, 800),
-        show_bar: false,
-        ..Monitor::default()
-    });
-    for &win in windows {
-        assert!(wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        }));
-    }
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-    monitor.set_selected_tags(tags);
-    monitor.clients = windows.to_vec();
-    monitor.selected = windows.first().copied();
+    let mut wm = wayland_wm();
+    let monitor_id = add_tiled_monitor(&mut wm, windows, Rect::new(0, 0, 1200, 800));
     (wm, monitor_id)
 }
 
@@ -1180,7 +1035,7 @@ fn switching_layouts_back_and_forth_restores_manual_edits() {
             .unwrap()
             .per_tag_state()
             .layout_tree
-            .resize(WindowId(1), Side::Right)
+            .resize(WindowId(1), Side::Right, keyboard_config())
     );
     let adjusted = slot_tree_bounds(&wm, monitor_id);
 
@@ -1206,7 +1061,7 @@ fn reactivating_the_visible_layout_resets_manual_edits() {
             .unwrap()
             .per_tag_state()
             .layout_tree
-            .resize(WindowId(1), Side::Right)
+            .resize(WindowId(1), Side::Right, keyboard_config())
     );
     assert_ne!(slot_tree_bounds(&wm, monitor_id), stock);
 
@@ -1263,7 +1118,7 @@ fn layout_key_lifts_a_lens_without_resetting_the_slot() {
             .unwrap()
             .per_tag_state()
             .layout_tree
-            .resize(WindowId(1), Side::Right)
+            .resize(WindowId(1), Side::Right, keyboard_config())
     );
     let adjusted = slot_tree_bounds(&wm, monitor_id);
 
@@ -1424,7 +1279,7 @@ fn cycling_a_full_lap_restores_the_starting_layout_without_resetting_it() {
             .unwrap()
             .per_tag_state()
             .layout_tree
-            .resize(WindowId(1), Side::Right)
+            .resize(WindowId(1), Side::Right, keyboard_config())
     );
     let adjusted = slot_tree_bounds(&wm, monitor_id);
 
@@ -1517,7 +1372,7 @@ fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
             .unwrap()
             .per_tag_state()
             .layout_tree
-            .resize(WindowId(1), Side::Right)
+            .resize(WindowId(1), Side::Right, keyboard_config())
     );
 
     // Hidden behind a lens, the reset still targets the active slot and
@@ -1530,19 +1385,16 @@ fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
 
 #[test]
 fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
-    // Regression: `arrange` used to read the *unscaled* global
-    // `derived.bar_height` and write it back onto the monitor, undoing the
-    // per-output scaling applied by the monitor-sync path. On a 2x output that
-    // left a 1x-tall bar alongside 2x padding and start-menu width.
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+    // Regression: `arrange` used to write the *unscaled* global bar height
+    // back onto the monitor, undoing the per-output scaling applied by the
+    // monitor-sync path. On a 2x output that left a 1x-tall bar alongside 2x
+    // padding and start-menu width.
+    let mut wm = wayland_wm();
     wm.core.behavior.animated = false;
-    wm.core.derived.bar_height = 30;
     wm.core.derived.bar_horizontal_padding = 15;
 
     let win = WindowId(1);
-    let monitor_id = add_tiled_monitor(&mut wm, win, Rect::new(0, 0, 1600, 1200));
+    let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 1600, 1200));
     wm.core
         .model
         .monitor_mut(monitor_id)

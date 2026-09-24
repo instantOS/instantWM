@@ -4,33 +4,20 @@ use crate::contexts::WmCtx;
 
 use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};
+use crate::types::{HorizontalDirection, Rect, TagMask, WindowId};
 
 pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> bool {
     let Some(win) = ctx.core().model().selected_win() else {
         return false;
     };
-    let current_tags = ctx.core().model().expect_selected_monitor().selected_tags();
-    let Some(target_tags) =
-        crate::tags::view::adjacent_scroll_mask(current_tags, dir, ctx.core().model().tags.count())
-    else {
+    let Some(target_tags) = shift_tag(ctx, dir) else {
         return false;
     };
-    shift_tag(ctx, dir.into(), 1);
-    let moved = ctx
-        .core()
-        .model()
-        .client(win)
-        .is_some_and(|client| client.tags.intersects(target_tags));
-    if !moved {
-        return false;
-    }
     crate::tags::view::view_tags(ctx, target_tags);
 
-    // `shift_tag` and `scroll_view` deliberately use generic focus fallback,
+    // `shift_tag` and `view_tags` deliberately use generic focus fallback,
     // but this combined command promises to keep interacting with the window
-    // it moved. Verify that the move reached the displayed view before
-    // restoring that explicit focus target.
+    // it moved, provided it is actually shown there.
     let monitor_id = ctx.core().model().selected_monitor_id();
     if !ctx
         .core()
@@ -50,100 +37,54 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     true
 }
 
-pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    let (win, current_tag, tagset, tagmask, animated) = {
-        let mon = ctx.core().model().expect_selected_monitor();
-        let Some(win) = mon.selected else {
-            return;
-        };
-        let Some(current_tag) = mon.current_tag_number() else {
-            return;
-        };
-        (
-            win,
-            current_tag,
-            mon.selected_tags(),
-            ctx.core().model().tags.mask(),
-            ctx.core().behavior().animated,
-        )
+/// Move the selected client from the single viewed tag to its neighbour.
+/// Returns the destination tag when the client moved.
+pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
+    let (win, current_tag, target_tags) = {
+        let model = ctx.core().model();
+        let mon = model.expect_selected_monitor();
+        let current_tags = mon.selected_tags() & model.tags.mask();
+        let target_tags =
+            crate::tags::view::adjacent_scroll_mask(current_tags, dir, model.tags.count())?;
+        (mon.selected?, current_tags.first_tag(), target_tags)
     };
 
-    if dir == Direction::Left && current_tag <= 1 {
-        return;
-    }
-    if dir == Direction::Right && current_tag >= 20 {
-        return;
-    }
-
-    if !(tagset & tagmask).is_single() {
-        return;
-    }
-
-    if ctx
-        .core()
-        .model()
-        .client(win)
-        .is_some_and(|client| client.is_scratchpad())
-    {
-        let target_tag = match dir {
-            Direction::Left => current_tag.checked_sub(offset as usize),
-            Direction::Right => current_tag.checked_add(offset as usize),
-            Direction::Up | Direction::Down => None,
-        };
-        let Some(target_mask) = target_tag
-            .and_then(TagMask::single)
-            .map(|mask| mask & tagmask)
-            .filter(|mask| !mask.is_empty())
-        else {
-            return;
-        };
+    if ctx.core().model().client(win)?.is_scratchpad() {
         let monitor_id = ctx.core().model().selected_monitor_id();
-        let _ = crate::floating::scratchpad::scratchpad_restore_window(
+        return crate::floating::scratchpad::scratchpad_restore_window(
             ctx,
             win,
-            Some((monitor_id, target_mask)),
-        );
-        return;
+            Some((monitor_id, target_tags)),
+        )
+        .is_ok()
+        .then_some(target_tags);
     }
 
-    let target_tags = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .current_tag_number();
+    ctx.core_mut()
+        .model_mut()
+        .client_mut(win)?
+        .reset_sticky(current_tag);
 
-    // Get mutable borrow for reset_sticky, then drop it
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-        client.reset_sticky(target_tags);
-    }
-
-    if animated {
+    if ctx.core().behavior().animated {
         play_slide_animation(ctx, win, dir);
     }
 
-    // Re-borrow for tag mask update
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-        match dir {
-            Direction::Left if current_tag > 1 => {
-                client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() >> offset));
-            }
-            Direction::Right
-                if current_tag < 20
-                    && tagset.intersects(TagMask::from_bits(tagmask.bits() >> 1)) =>
-            {
-                client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() << offset));
-            }
-            _ => return,
-        }
-    }
+    ctx.core_mut()
+        .model_mut()
+        .client_mut(win)?
+        .update_tag_mask(|tags| match dir {
+            HorizontalDirection::Left => TagMask::from_bits(tags.bits() >> 1),
+            HorizontalDirection::Right => TagMask::from_bits(tags.bits() << 1),
+        });
 
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
     crate::focus::focus(ctx, None);
     ctx.core_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
+    Some(target_tags)
 }
 
-fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection) {
     ctx.window_backend().raise_window_visual_only(win);
     let mon_w = ctx.core().model().expect_selected_monitor().monitor_rect.w;
     let Some(geo) = ctx.core().client_geo(win) else {
@@ -152,10 +93,8 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 
     let anim_dx = (mon_w / 10)
         * match dir {
-            Direction::Left => -1,
-            Direction::Right => 1,
-            Direction::Up => -1,
-            Direction::Down => 1,
+            HorizontalDirection::Left => -1,
+            HorizontalDirection::Right => 1,
         };
 
     ctx.move_resize(

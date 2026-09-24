@@ -262,9 +262,9 @@ impl FromStr for LayoutCommand {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 pub use keyboard_placement::{
-    TreePlacementStart, begin_tree_placement, center_keyboard_tree_placement,
-    cycle_keyboard_tree_placement, finish_keyboard_tree_placement, resize_keyboard_tree_placement,
-    step_keyboard_tree_placement, swap_keyboard_tree_placement,
+    begin_tree_placement, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
+    finish_keyboard_tree_placement, resize_keyboard_tree_placement, step_keyboard_tree_placement,
+    swap_keyboard_tree_placement,
 };
 pub use manager::{
     MaximizedStackReorder, apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor,
