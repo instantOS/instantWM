@@ -123,7 +123,7 @@ fn parse_monitor_direction(value: &str) -> Result<MonitorDirection, String> {
         .map_err(|()| format!("invalid monitor direction '{value}'; expected next or prev"))
 }
 
-fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), String> {
+pub(crate) fn validate_action_args(action: NamedAction, args: &[String]) -> Result<(), String> {
     use NamedAction::*;
 
     match action {

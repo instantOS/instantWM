@@ -339,6 +339,7 @@ pub struct EffectiveConfig {
     pub cursor: crate::config::config_toml::CursorConfig,
     pub exec_once: Vec<String>,
     pub exec: Vec<String>,
+    pub hooks: Vec<crate::config::hooks::Hook>,
 }
 
 impl Default for EffectiveConfig {
@@ -383,6 +384,9 @@ pub struct CoreState {
     pub behavior: WmBehavior,
     pub interaction: InteractionState,
     pub pending_launches: VecDeque<PendingLaunch>,
+    /// Extra environment for processes spawned while a hook runs, so hook
+    /// commands can see which event and monitor triggered them.
+    pub(crate) hook_env: Vec<(&'static str, String)>,
 }
 
 impl CoreState {
@@ -765,6 +769,9 @@ pub struct PendingWork {
     pub cursor_config: bool,
     /// Pending layout work.
     pub layout: PendingLayoutWork,
+    /// Monitor topology last observed by `[[hooks]]`; empty until the first
+    /// tick with monitors records the startup topology.
+    pub(crate) hooked_monitors: Vec<crate::hooks::MonitorSnapshot>,
     /// Newly managed windows waiting for their first authoritative arrange
     /// before the one-time spawn transition can be started.
     pub(crate) spawn_animations: BTreeSet<WindowId>,
@@ -785,6 +792,7 @@ impl Default for PendingWork {
             monitor_config: false,
             cursor_config: false,
             layout,
+            hooked_monitors: Vec::new(),
             spawn_animations: BTreeSet::new(),
             pending_scratchpad_hides: BTreeSet::new(),
         }

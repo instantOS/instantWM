@@ -2,6 +2,7 @@ mod dispatch;
 mod named;
 
 pub use dispatch::{execute_button_action, execute_key_action, try_execute_key_action};
+pub(crate) use named::validate_action_args;
 pub use named::{NamedAction, get_action_metadata, parse_named_action};
 
 #[derive(Debug, Clone, Copy)]

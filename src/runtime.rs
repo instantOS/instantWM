@@ -92,6 +92,8 @@ pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkRes
         result.monitor_config_applied = true;
     }
 
+    crate::hooks::run_monitor_hooks(wm);
+
     // Edge scratchpads finish their slide-out through backend animation
     // bookkeeping; complete the deferred logical hide once it drained.
     let pending_hides = wm.work.pending_scratchpad_hide_windows();

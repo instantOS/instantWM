@@ -17,6 +17,7 @@ mod geometry;
 mod core_state;
 mod floating;
 mod focus;
+mod hooks;
 pub mod ipc;
 pub mod ipc_types;
 mod keyboard;

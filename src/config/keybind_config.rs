@@ -227,54 +227,54 @@ pub fn print_actions(json: bool) {
     print!("{}", format_action_list_text(&actions));
 }
 
-pub fn compile_named_action(name: &str) -> Option<KeyAction> {
-    let action = parse_named_action(name)?;
-    Some(KeyAction::Named {
-        action,
-        args: Vec::new(),
-    })
-}
-
-fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
+/// Compile an action spec into an executable action, explaining rejections.
+///
+/// Shared by keybinds and event hooks so both accept exactly the same action
+/// vocabulary. `none`/`unbind` are binding-table directives, not executable
+/// actions, and are therefore rejected here.
+pub(crate) fn compile_action(spec: &ActionSpec) -> Result<KeyAction, String> {
+    let named = |action: NamedAction, args: Vec<String>| Ok(KeyAction::Named { action, args });
     match spec {
-        ActionSpec::Structured(StructuredAction::Unbind(_)) => None,
-        ActionSpec::Structured(StructuredAction::None) => None,
+        ActionSpec::Structured(StructuredAction::Unbind(_))
+        | ActionSpec::Structured(StructuredAction::None) => {
+            Err("'none'/'unbind' is not an executable action".to_string())
+        }
         ActionSpec::Structured(StructuredAction::Sequence(specs)) => {
+            if specs.is_empty() {
+                return Err("'sequence' must contain at least one action".to_string());
+            }
             let actions = specs
                 .iter()
                 .map(compile_action)
-                .collect::<Option<Vec<_>>>()?;
-            if actions.is_empty() {
-                None
-            } else {
-                Some(KeyAction::Sequence(actions))
-            }
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(KeyAction::Sequence(actions))
         }
-        ActionSpec::Structured(StructuredAction::Spawn(argv)) => Some(KeyAction::Named {
-            action: NamedAction::Spawn,
-            args: argv.clone(),
-        }),
-        ActionSpec::Structured(StructuredAction::SetLayout(name)) => Some(KeyAction::Named {
-            action: NamedAction::SetLayout,
-            args: vec![name.clone()],
-        }),
-        ActionSpec::Structured(StructuredAction::FocusStack(dir)) => Some(KeyAction::Named {
-            action: NamedAction::FocusStack,
-            args: vec![dir.clone()],
-        }),
-        ActionSpec::Structured(StructuredAction::IncMasterCount(n)) => Some(KeyAction::Named {
-            action: NamedAction::IncMasterCount,
-            args: vec![n.to_string()],
-        }),
-        ActionSpec::Structured(StructuredAction::KeyboardLayout(name)) => Some(KeyAction::Named {
-            action: NamedAction::KeyboardLayout,
-            args: vec![name.clone()],
-        }),
-        ActionSpec::Structured(StructuredAction::SetMode(name)) => Some(KeyAction::Named {
-            action: NamedAction::SetMode,
-            args: vec![name.clone()],
-        }),
-        ActionSpec::Named(name) => compile_named_action(name),
+        ActionSpec::Structured(StructuredAction::Spawn(argv)) => {
+            named(NamedAction::Spawn, argv.clone())
+        }
+        ActionSpec::Structured(StructuredAction::SetLayout(name)) => {
+            named(NamedAction::SetLayout, vec![name.clone()])
+        }
+        ActionSpec::Structured(StructuredAction::FocusStack(dir)) => {
+            named(NamedAction::FocusStack, vec![dir.clone()])
+        }
+        ActionSpec::Structured(StructuredAction::IncMasterCount(n)) => {
+            named(NamedAction::IncMasterCount, vec![n.to_string()])
+        }
+        ActionSpec::Structured(StructuredAction::KeyboardLayout(name)) => {
+            named(NamedAction::KeyboardLayout, vec![name.clone()])
+        }
+        ActionSpec::Structured(StructuredAction::SetMode(name)) => {
+            named(NamedAction::SetMode, vec![name.clone()])
+        }
+        ActionSpec::Named(name) if name.eq_ignore_ascii_case("none") => {
+            Err("'none' is not an executable action".to_string())
+        }
+        ActionSpec::Named(name) => {
+            let action =
+                parse_named_action(name).ok_or_else(|| format!("unknown action '{name}'"))?;
+            named(action, Vec::new())
+        }
     }
 }
 
@@ -318,7 +318,7 @@ pub fn merge_keybinds(
                 }
             }
             _ => {
-                if let Some(action) = compile_action(&spec.action) {
+                if let Ok(action) = compile_action(&spec.action) {
                     let new_key = Key {
                         mod_mask,
                         keysym,

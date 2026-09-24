@@ -87,6 +87,7 @@ pub(crate) fn prepare_spawn_command(ctx: &WmCtx, command: &mut Command) -> Spawn
     let context = current_launch_context(ctx.core().model());
     let startup_id = new_startup_id();
     command.env("DESKTOP_STARTUP_ID", &startup_id);
+    command.envs(ctx.core().state().hook_env.iter().map(|(k, v)| (k, v)));
     ctx.prepare_launch_environment(command, context);
 
     // Launched applications must not retain the compositor's terminal or log

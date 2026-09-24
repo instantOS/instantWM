@@ -72,6 +72,9 @@ pub struct UserConfig {
     /// Commands to execute at startup and on every config reload (like sway `exec_always`).
     #[serde(default)]
     pub exec: Vec<String>,
+    /// Actions to run in response to events such as monitor hotplug.
+    #[serde(default)]
+    pub hooks: Vec<crate::config::hooks::HookSpec>,
 }
 
 /// Status bar settings shared by the user schema and effective configuration.

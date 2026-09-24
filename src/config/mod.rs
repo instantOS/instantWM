@@ -27,6 +27,7 @@ pub mod commands;
 pub mod commands_common;
 pub mod config_toml;
 pub mod generated_keybinds;
+pub mod hooks;
 pub mod keybind_config;
 pub mod keybindings;
 pub mod keysyms;
@@ -248,6 +249,7 @@ pub fn resolve_config(
     }
 
     let bar = theme.bar.validated()?;
+    let hooks = hooks::resolve_hooks(std::mem::take(&mut theme.hooks))?;
     let mut keyboard = theme.keyboard;
     if keyboard.layouts.is_empty() {
         let layout = env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
@@ -307,6 +309,7 @@ pub fn resolve_config(
         cursor: theme.cursor,
         exec_once: theme.exec_once,
         exec: theme.exec,
+        hooks,
     })
 }
 
