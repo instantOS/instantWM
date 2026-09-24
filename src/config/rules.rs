@@ -21,42 +21,24 @@ pub fn merge_rules(defaults: Vec<Rule>, toml_rules: Vec<Rule>) -> Vec<Rule> {
 pub fn get_rules() -> Vec<Rule> {
     vec![
         // --- Floating dialogs / tools ---
-        float("Pavucontrol"),
-        float("Onboard"),
-        float("floatmenu"),
-        float("Welcome.py"),
-        float("Pamac-installer"),
-        float("xpad"),
-        float("Guake"),
-        float("wl-copy"),
+        rule("Pavucontrol", RuleFloat::Float),
+        rule("Onboard", RuleFloat::Float),
+        rule("floatmenu", RuleFloat::Float),
+        rule("Welcome.py", RuleFloat::Float),
+        rule("Pamac-installer", RuleFloat::Float),
+        rule("xpad", RuleFloat::Float),
+        rule("Guake", RuleFloat::Float),
+        rule("wl-copy", RuleFloat::Float),
         // --- Centered floating ---
-        Rule {
-            class: Some(Cow::Borrowed("instantfloat")),
-            instance: None,
-            title: None,
-            tags: TagMask::EMPTY,
-            is_floating: Some(RuleFloat::FloatCenter),
-            monitor: MonitorSelector::Any,
-            geometry: None,
-            borderless: false,
-        },
+        rule("instantfloat", RuleFloat::FloatCenter),
         // --- Scratchpad ---
-        Rule {
-            class: Some(Cow::Borrowed(SCRATCHPAD_CLASS)),
-            instance: None,
-            title: None,
-            tags: TagMask::EMPTY,
-            is_floating: Some(RuleFloat::Scratchpad),
-            monitor: MonitorSelector::Any,
-            geometry: None,
-            borderless: false,
-        },
+        rule(SCRATCHPAD_CLASS, RuleFloat::Scratchpad),
         // --- Fullscreen floating (takes full screen but stays floating) ---
-        fullscreen_float("kdeconnect.daemon"),
-        fullscreen_float("Panther"),
+        rule("kdeconnect.daemon", RuleFloat::FloatFullscreen),
+        rule("Panther", RuleFloat::FloatFullscreen),
         // --- Misc floating ---
-        float("org-wellkord-globonote-Main"),
-        float("Peek"),
+        rule("org-wellkord-globonote-Main", RuleFloat::Float),
+        rule("Peek", RuleFloat::Float),
     ]
 }
 
@@ -64,28 +46,14 @@ pub fn get_rules() -> Vec<Rule> {
 // Helpers — avoids repeating the full Rule literal for the common cases
 // ---------------------------------------------------------------------------
 
-/// A rule that makes `class` float freely.
-fn float(class: &'static str) -> Rule {
+/// A rule that matches `class` and applies `float` as its placement behavior.
+fn rule(class: &'static str, float: RuleFloat) -> Rule {
     Rule {
         class: Some(Cow::Borrowed(class)),
         instance: None,
         title: None,
         tags: TagMask::EMPTY,
-        is_floating: Some(RuleFloat::Float),
-        monitor: MonitorSelector::Any,
-        geometry: None,
-        borderless: false,
-    }
-}
-
-/// A rule that makes `class` float at fullscreen size.
-fn fullscreen_float(class: &'static str) -> Rule {
-    Rule {
-        class: Some(Cow::Borrowed(class)),
-        instance: None,
-        title: None,
-        tags: TagMask::EMPTY,
-        is_floating: Some(RuleFloat::FloatFullscreen),
+        is_floating: Some(float),
         monitor: MonitorSelector::Any,
         geometry: None,
         borderless: false,
