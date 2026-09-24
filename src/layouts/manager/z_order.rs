@@ -126,7 +126,13 @@ pub(super) fn compute_monitor_z_order(
     // layer prevents a modal dialog from disappearing while its parent remains
     // blocked waiting for a response.
     let mut stack = tiled_stack;
-    stack.push(bar_win);
+    // A monitor whose bar window does not exist yet must not inject the "no
+    // bar" placeholder: `apply_z_order` chains every sibling off its
+    // predecessor, so one BadWindow for window 0 would abort the restack at
+    // this point and leave everything above the bar unstacked.
+    if bar_win != WindowId::default() {
+        stack.push(bar_win);
+    }
     if bottom_bar_win != WindowId::default() {
         stack.push(bottom_bar_win);
     }

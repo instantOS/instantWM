@@ -624,12 +624,24 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         )
     });
     changed |= reconciliation.changed;
+    let added_monitors = reconciliation.added_monitors;
 
     for bar_win in reconciliation.removed_bar_windows {
         ctx.destroy_monitor_bar_window(bar_win);
     }
 
     notify_monitor_layout_changed(ctx, changed);
+
+    // A freshly built monitor starts without backend bar resources, and no
+    // other step on the topology path creates them: reconciling here is what
+    // makes a runtime hot-plug show a bar instead of an empty strip. It runs
+    // after the layout notification so bar geometry and the systray reservation
+    // use the post-change selection. Existing windows are only re-synced, and
+    // the Wayland branch is a no-op because its bars render from the model.
+    if added_monitors {
+        ctx.refresh_bar_content();
+    }
+
     if ctx.core().model().selected_win() != previous_focus {
         refresh_focus_after_selection(ctx, previous_focus, None);
     }
@@ -639,14 +651,18 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
 #[derive(Debug)]
 struct MonitorReconciliation {
     changed: bool,
+    /// A monitor was constructed instead of matched, so it carries no backend
+    /// bar resources yet.
+    added_monitors: bool,
     removed_bar_windows: Vec<WindowId>,
 }
 
 /// Reconcile backend output descriptions with the authoritative monitor graph.
 ///
 /// This operation owns stable-ID reuse, new-monitor construction, and client
-/// rehoming. It returns backend resources that the orchestration layer must
-/// destroy rather than performing backend I/O while mutating the model.
+/// rehoming. It reports backend resources that the orchestration layer must
+/// destroy and monitors it constructed (which still need theirs created)
+/// rather than performing backend I/O while mutating the model.
 fn reconcile_monitor_model(
     model: &mut crate::model::WmModel,
     outputs: &[BackendOutputInfo],
@@ -657,6 +673,7 @@ fn reconcile_monitor_model(
 ) -> MonitorReconciliation {
     debug_assert_eq!(outputs.len(), metrics.len());
     let mut changed = model.monitors.len() != outputs.len();
+    let mut added_monitors = false;
 
     // Drain old monitors into a pool. They keep their stable ids + workspace
     // state; matched ones are reused, the rest are dropped after the rebuild.
@@ -677,6 +694,7 @@ fn reconcile_monitor_model(
             }
             None => {
                 changed = true;
+                added_monitors = true;
                 let id = model.monitors.allocate_id();
                 let mut m = Monitor::new_with_values(show_bar);
                 m.show_bottom_bar = show_bottom_bar;
@@ -708,6 +726,7 @@ fn reconcile_monitor_model(
 
     MonitorReconciliation {
         changed,
+        added_monitors,
         removed_bar_windows,
     }
 }
@@ -907,6 +926,7 @@ mod transfer_focus_tests {
             reconcile_monitor_model(&mut model, &outputs, &[(20, 4, 30)], &[], true, false);
 
         assert!(result.changed);
+        assert!(!result.added_monitors);
         assert_eq!(
             result.removed_bar_windows,
             [removed_bar, removed_bottom_bar]
@@ -960,6 +980,7 @@ mod transfer_focus_tests {
         );
 
         assert!(result.changed);
+        assert!(result.added_monitors, "the new output built a monitor");
         assert!(result.removed_bar_windows.is_empty());
         assert_eq!(model.monitors.len(), 2);
         assert_eq!(model.monitor(retained).unwrap().name, "eDP-1");
@@ -968,6 +989,40 @@ mod transfer_focus_tests {
             .find_map(|(id, monitor)| (monitor.name == "HDMI-A-1").then_some(id))
             .expect("new HDMI monitor");
         assert_ne!(hdmi_id, retained);
+    }
+
+    #[test]
+    fn geometry_only_reconciliation_does_not_flag_added_monitors() {
+        let mut model = crate::model::WmModel::new();
+        let retained = model.monitors.push(Monitor {
+            name: "eDP-1".to_string(),
+            ..Monitor::default()
+        });
+        let bar_win = WindowId(90);
+        model.monitor_mut(retained).unwrap().bar_win = bar_win;
+        let outputs = [BackendOutputInfo {
+            name: "eDP-1".to_string(),
+            rect: Rect::new(0, 0, 2560, 1440),
+            scale: 1.0,
+            vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        }];
+
+        let result =
+            reconcile_monitor_model(&mut model, &outputs, &[(20, 4, 30)], &[], true, false);
+
+        // Only the geometry moved: the monitor keeps its identity and its bar
+        // window, so the caller must not rebuild bar resources.
+        assert!(result.changed);
+        assert!(!result.added_monitors);
+        assert!(result.removed_bar_windows.is_empty());
+        assert_eq!(model.monitors.first(), Some(retained));
+        assert_eq!(model.monitor(retained).unwrap().bar_win, bar_win);
+        assert_eq!(
+            model.monitor(retained).unwrap().monitor_rect,
+            Rect::new(0, 0, 2560, 1440)
+        );
     }
 
     #[test]

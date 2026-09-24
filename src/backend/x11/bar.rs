@@ -365,12 +365,21 @@ fn create_missing_bar_windows(
 }
 
 /// Reconcile all native bar windows with the shared monitor model.
+///
+/// Safe to call from any point of the topology path, including before backend
+/// initialisation: a `[monitors]` config applies from `init_globals`, before
+/// the DrawContext and atoms exist. Bar windows and the XEmbed tray need both,
+/// so that early call is a no-op and startup reconciles again once ready.
 pub fn reconcile_bar_windows(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,
 ) {
+    if x11_runtime.xlibdisplay.0.is_null() || x11_runtime.draw.is_none() {
+        return;
+    }
+
     create_missing_bar_windows(core.state_mut(), x11, x11_runtime, systray.as_ref());
 
     sync_top_bar_surfaces(core, x11, x11_runtime, systray);
