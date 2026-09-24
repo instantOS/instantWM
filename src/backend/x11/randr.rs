@@ -336,10 +336,11 @@ impl<'a> RandrConfigurator<'a> {
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .map(|reply| reply.status);
-        if status != Some(randr::SetConfig::SUCCESS) {
+        if status == Some(randr::SetConfig::SUCCESS) {
+            self.stale = true;
+        } else {
             log::warn!("RandR rejected the configuration of output {name}: {status:?}");
         }
-        self.stale = true;
     }
 
     fn screen_size(&self) -> Option<(u16, u16)> {
