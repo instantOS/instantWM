@@ -149,7 +149,7 @@ fn apply_rules_impl(
     // Pending tmp rules are tried before config rules, only on initial
     // application (not on property refreshes). On a match the rule is
     // removed from the pending list; expired entries are dropped lazily.
-    let mut matched_pending_id: Option<u64> = None;
+    let mut matched_pending = false;
     if application == RuleApplication::Initial && !state.behavior.pending_tmp_rules.is_empty() {
         let now = std::time::Instant::now();
         // Sweep expired entries, then locate the first match by index.
@@ -169,19 +169,21 @@ fn apply_rules_impl(
         if let Some(idx) = matched_idx {
             let entry = state.behavior.pending_tmp_rules.remove(idx);
             apply_rule(state, win, &entry.rule, &mut placement);
-            matched_pending_id = Some(entry.id);
+            matched_pending = true;
         }
     }
 
     // Fall through to config-loaded rules when no pending rule consumed.
-    if matched_pending_id.is_none() {
-        let rules = state.config.bindings.rules.clone();
-        for rule in &rules {
-            if !rule.matches(&props.class, &props.instance, &props.title) {
-                continue;
-            }
-            apply_rule(state, win, rule, &mut placement);
-            break;
+    if !matched_pending {
+        let matched_rule = state
+            .config
+            .bindings
+            .rules
+            .iter()
+            .find(|rule| rule.matches(&props.class, &props.instance, &props.title))
+            .cloned();
+        if let Some(rule) = matched_rule {
+            apply_rule(state, win, &rule, &mut placement);
         }
     }
 

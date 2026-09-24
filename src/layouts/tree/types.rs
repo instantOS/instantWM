@@ -3,6 +3,7 @@
 //! These types deliberately contain no tree representation. Callers can ask
 //! for semantic operations, but cannot construct malformed nodes or splits.
 
+use crate::config::config_toml::LayoutConfig;
 use crate::types::{Point, WindowId};
 
 pub(super) const DEFAULT_RESIZE_STEP: f64 = 0.05;
@@ -14,11 +15,11 @@ pub struct CommandConfig {
     pub minimum_weight: f64,
 }
 
-impl Default for CommandConfig {
-    fn default() -> Self {
+impl From<&LayoutConfig> for CommandConfig {
+    fn from(config: &LayoutConfig) -> Self {
         Self {
-            resize_step: DEFAULT_RESIZE_STEP,
-            minimum_weight: DEFAULT_MINIMUM_WEIGHT,
+            resize_step: config.keyboard_resize_step,
+            minimum_weight: config.minimum_weight,
         }
     }
 }

@@ -1,333 +1,235 @@
 //! Keyboard-driven manual-tree placement session orchestration.
 
 use crate::contexts::WmCtx;
-use crate::layouts::PresentationMode;
-use crate::layouts::placement::LayoutPlacement;
-use crate::types::{Rect, WindowId};
+use crate::core_state::{ActiveWmMode, KeyboardTreePlacement};
+use crate::layouts::tree::{LayoutTree, PlacementTarget, Side};
+use crate::types::{Point, Rect, WindowId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TreePlacementStart {
-    Started,
-    /// The selected window belongs to the manual tiled layout, but that tree
-    /// currently has nowhere meaningful to move it.
-    NoTargets,
-    /// Tree placement was applicable but its backend-owned modal interaction
-    /// could not be established safely.
-    Unavailable,
-    /// The selected window is not eligible for tree placement.
-    NotApplicable,
-}
+use super::manager::{finish_layout_change, selected_tiling};
 
-pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
+/// Enter keyboard placement for the selected tiled window. Returns whether
+/// placement mode is active afterwards.
+pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
     match ctx.current_mode() {
-        crate::core_state::ActiveWmMode::TreePlacement(_) => return TreePlacementStart::Started,
-        crate::core_state::ActiveWmMode::Overview => ctx.reset_mode(),
-        crate::core_state::ActiveWmMode::Default | crate::core_state::ActiveWmMode::Named(_) => {}
+        ActiveWmMode::TreePlacement(_) => return true,
+        ActiveWmMode::Overview => ctx.reset_mode(),
+        ActiveWmMode::Default | ActiveWmMode::Named(_) => {}
     }
-    let (source, monitor_id, tags, targets, source_center) = {
-        let monitor = ctx.core().model().expect_selected_monitor();
+    let state = {
+        let model = ctx.core().model();
+        let monitor = model.expect_selected_monitor();
         let Some(source) = monitor.selected else {
-            return TreePlacementStart::NotApplicable;
+            return false;
         };
         if !monitor.is_tiling_layout()
-            || !ctx
-                .core()
-                .model()
+            || !model
                 .client(source)
                 .is_some_and(|client| client.mode().is_normal_tiling())
         {
-            return TreePlacementStart::NotApplicable;
+            return false;
         }
         let Some(tree) = monitor.per_tag().map(|state| &state.layout_tree) else {
-            return TreePlacementStart::Unavailable;
+            return false;
         };
-        let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
-        let layout_rect = LayoutPlacement::new(
-            &ctx.core().config().layout,
-            monitor,
-            PresentationMode::Tiled,
-            tiled_count,
-        )
-        .work_rect();
-        let targets = super::manager::tree_placement_targets(ctx, source);
+        let work_rect = selected_tiling(ctx).work_rect();
         let source_center = tree
-            .bounds(layout_rect)
+            .bounds(work_rect)
             .get(&source)
-            .map_or_else(|| layout_rect.center(), |rect| rect.center());
-        (
+            .map_or_else(|| work_rect.center(), |rect| rect.center());
+        let Some(state) = KeyboardTreePlacement::new_nearest(
             source,
             monitor.id(),
             monitor.selected_tags(),
-            targets,
+            placement_targets(ctx, source),
             source_center,
-        )
-    };
-    if targets.is_empty() {
-        return TreePlacementStart::NoTargets;
-    }
-    let Some(state) = crate::core_state::KeyboardTreePlacement::new_nearest(
-        source,
-        monitor_id,
-        tags,
-        targets,
-        source_center,
-    ) else {
-        return TreePlacementStart::Unavailable;
+        ) else {
+            return false;
+        };
+        state
     };
     if !ctx.begin_modal_keyboard() {
-        return TreePlacementStart::Unavailable;
+        return false;
     }
-    let selected_target = state.selected_target();
-    let Some(preview_rect) = tree_placement_preview_rect(ctx, source, selected_target) else {
+    let Some(preview) = preview_rect(ctx, state.source, state.selected_target()) else {
         ctx.end_modal_keyboard();
-        return TreePlacementStart::Unavailable;
+        return false;
     };
-    ctx.set_current_mode(crate::core_state::ActiveWmMode::TreePlacement(state));
+    ctx.set_current_mode(ActiveWmMode::TreePlacement(state));
     // Placement keys own the pointer until the session ends; a hover-resize
     // offer armed beforehand must give up its cursor and pointer borrow.
     crate::mouse::clear_hover_offer(ctx);
-    ctx.update_layout_preview(Some(preview_rect));
-    TreePlacementStart::Started
+    ctx.update_layout_preview(Some(preview));
+    true
 }
 
-fn tree_placement_preview_rect(
-    ctx: &WmCtx<'_>,
-    source: WindowId,
-    target: crate::layouts::tree::PlacementTarget,
-) -> Option<Rect> {
-    let (placement, slot) = super::manager::preview_tree_target(ctx, source, target)?;
-    tree_slot_outer_rect(ctx, source, placement, slot)
+fn placement_targets(ctx: &WmCtx<'_>, source: WindowId) -> Vec<PlacementTarget> {
+    let tiling = selected_tiling(ctx);
+    ctx.core()
+        .model()
+        .expect_selected_monitor()
+        .per_tag()
+        .map(|state| {
+            state.layout_tree.placement_targets(
+                source,
+                tiling.work_rect(),
+                ctx.core().config().layout.pointer_edge_fraction,
+                &tiling.minimums,
+            )
+        })
+        .unwrap_or_default()
 }
 
-pub(super) fn tree_slot_outer_rect(
-    ctx: &WmCtx<'_>,
-    source: WindowId,
-    placement: LayoutPlacement,
-    slot: Rect,
-) -> Option<Rect> {
-    let view = ctx.core().model().client_view(source)?;
-    let client = view.client;
-    let border = client.border_width.max(0);
-    let mut content = placement.client_rect(slot, border);
-    let available = content.size();
-    content.enforce_minimum(view.monitor.bar_height, view.monitor.bar_height);
-    if ctx.core().config().window.resize_hints {
-        let constrained =
-            client
-                .size_hints
-                .constrain_size(content.size(), client.min_aspect, client.max_aspect);
-        content.w = constrained.w.min(content.w).max(1);
-        content.h = constrained.h.min(content.h).max(1);
-    }
-    // Overcommitted tiled layouts deliberately soften client and decoration
-    // minimums. A placement preview must never grow beyond its actual slot.
-    content.w = content.w.min(available.w);
-    content.h = content.h.min(available.h);
-    Some(Rect::new(
-        content.x,
-        content.y,
-        content.w + 2 * border,
-        content.h + 2 * border,
+/// Outer rectangle `source` would occupy after applying `target`.
+fn preview_rect(ctx: &WmCtx<'_>, source: WindowId, target: PlacementTarget) -> Option<Rect> {
+    let model = ctx.core().model();
+    let tiling = selected_tiling(ctx);
+    let plan = model
+        .expect_selected_monitor()
+        .per_tag()?
+        .layout_tree
+        .plan_placement(source, target, tiling.work_rect(), &tiling.minimums)?;
+    Some(tiling.outer_rect(
+        model.client(source)?,
+        plan.source_slot(),
+        ctx.core().config().window.resize_hints,
     ))
 }
 
-fn refresh_keyboard_tree_preview(ctx: &mut WmCtx<'_>) {
-    let selected = ctx
-        .core()
-        .behavior()
-        .current_mode
+fn refresh_preview(ctx: &mut WmCtx<'_>) {
+    let preview = ctx
+        .current_mode()
         .tree_placement()
-        .map(|state| (state.source, state.selected_target()));
-    let preview =
-        selected.and_then(|(source, target)| tree_placement_preview_rect(ctx, source, target));
+        .and_then(|state| preview_rect(ctx, state.source, state.selected_target()));
     ctx.update_layout_preview(preview);
 }
 
-pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
+/// The active placement session, or `None` after ending one whose
+/// monitor/tag/tree context is no longer current.
+fn current_placement<'a>(ctx: &'a mut WmCtx<'_>) -> Option<&'a mut KeyboardTreePlacement> {
     if !ctx
         .current_mode()
         .tree_placement_is_current_for(ctx.core().model())
     {
         ctx.reset_mode();
-        return true;
+        return None;
     }
-    {
-        let state = ctx
-            .core_mut()
-            .behavior_mut()
-            .current_mode
-            .tree_placement_mut()
-            .expect("placement was checked above");
-        if !state.select_direction(side) {
-            return true;
-        }
+    ctx.core_mut()
+        .behavior_mut()
+        .current_mode
+        .tree_placement_mut()
+}
+
+pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
+    if current_placement(ctx).is_some_and(|state| state.select_direction(side)) {
+        refresh_preview(ctx);
     }
-    refresh_keyboard_tree_preview(ctx);
+    true
+}
+
+pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bool {
+    if let Some(state) = current_placement(ctx) {
+        state.cycle(backwards);
+        refresh_preview(ctx);
+    }
+    true
+}
+
+pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
+    if current_placement(ctx).is_some_and(|state| state.select_center_of_current_window()) {
+        refresh_preview(ctx);
+    }
     true
 }
 
 /// Swap the originally armed window with its visual neighbour while keeping
 /// keyboard placement active.
-pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !ctx
-        .current_mode()
-        .tree_placement_is_current_for(ctx.core().model())
-    {
-        return finish_keyboard_tree_placement(ctx, false);
-    }
-    let (source, cursor) = {
-        let state = ctx
-            .core()
-            .behavior()
-            .current_mode
-            .tree_placement()
-            .expect("placement was checked above");
-        (state.source, state.selected_target().position)
-    };
-    let changed = ctx
-        .core_mut()
-        .model_mut()
-        .expect_selected_monitor_mut()
-        .per_tag_state()
-        .layout_tree
-        .swap_with_neighbor(source, side)
-        .is_some();
-    if changed {
-        super::manager::finish_layout_change(ctx);
-        rebuild_keyboard_tree_targets(ctx, cursor);
-    }
-    true
+pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
+    edit_around_source(ctx, |tree, source| {
+        tree.swap_with_neighbor(source, side).is_some()
+    })
 }
 
 /// Resize the originally armed window while keeping keyboard placement active.
-pub fn resize_keyboard_tree_placement(
+pub fn resize_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
+    let config = (&ctx.core().config().layout).into();
+    edit_around_source(ctx, |tree, source| tree.resize(source, side, config))
+}
+
+fn edit_around_source(
     ctx: &mut WmCtx<'_>,
-    side: crate::layouts::tree::Side,
+    edit: impl FnOnce(&mut LayoutTree, WindowId) -> bool,
 ) -> bool {
-    if !ctx
-        .current_mode()
-        .tree_placement_is_current_for(ctx.core().model())
-    {
-        return finish_keyboard_tree_placement(ctx, false);
-    }
-    let (source, cursor) = {
-        let state = ctx
-            .core()
-            .behavior()
-            .current_mode
-            .tree_placement()
-            .expect("placement was checked above");
-        (state.source, state.selected_target().position)
+    let Some(state) = current_placement(ctx) else {
+        return true;
     };
-    let layout_config = ctx.core().config().layout;
-    let changed = ctx
+    let (source, cursor) = (state.source, state.selected_target().position);
+    let tree = &mut ctx
         .core_mut()
         .model_mut()
         .expect_selected_monitor_mut()
         .per_tag_state()
-        .layout_tree
-        .resize_with_config(
-            source,
-            side,
-            crate::layouts::tree::CommandConfig {
-                resize_step: layout_config.keyboard_resize_step,
-                minimum_weight: layout_config.minimum_weight,
-            },
-        );
-    if changed {
-        super::manager::finish_layout_change(ctx);
-        rebuild_keyboard_tree_targets(ctx, cursor);
+        .layout_tree;
+    if edit(tree, source) {
+        finish_layout_change(ctx);
+        rebuild_targets(ctx, cursor);
     }
     true
 }
 
-fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::Point) {
-    let targets = {
-        let Some(state) = ctx.current_mode().tree_placement() else {
-            return;
-        };
-        super::manager::tree_placement_targets(ctx, state.source)
-    };
-    if targets.is_empty() {
-        let _ = finish_keyboard_tree_placement(ctx, false);
+fn rebuild_targets(ctx: &mut WmCtx<'_>, preferred: Point) {
+    let Some(source) = ctx
+        .current_mode()
+        .tree_placement()
+        .map(|state| state.source)
+    else {
         return;
-    }
-    let state = ctx
+    };
+    let targets = placement_targets(ctx, source);
+    let rebuilt = ctx
         .core_mut()
         .behavior_mut()
         .current_mode
         .tree_placement_mut()
-        .expect("placement remains active while rebuilding targets");
-    let _ = state.replace_targets_near(targets, preferred);
-    refresh_keyboard_tree_preview(ctx);
-}
-
-pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bool {
-    if !ctx
-        .current_mode()
-        .tree_placement_is_current_for(ctx.core().model())
-    {
-        ctx.reset_mode();
-        return true;
+        .is_some_and(|state| state.replace_targets_near(targets, preferred));
+    if rebuilt {
+        refresh_preview(ctx);
+    } else {
+        finish_keyboard_tree_placement(ctx, false);
     }
-    {
-        let Some(state) = ctx
-            .core_mut()
-            .behavior_mut()
-            .current_mode
-            .tree_placement_mut()
-        else {
-            return false;
-        };
-        state.cycle(backwards);
-    }
-    refresh_keyboard_tree_preview(ctx);
-    true
-}
-
-pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
-    if !ctx
-        .current_mode()
-        .tree_placement_is_current_for(ctx.core().model())
-    {
-        ctx.reset_mode();
-        return true;
-    }
-    {
-        let Some(state) = ctx
-            .core_mut()
-            .behavior_mut()
-            .current_mode
-            .tree_placement_mut()
-        else {
-            return false;
-        };
-        if !state.select_center_of_current_window() {
-            return true;
-        }
-    }
-    refresh_keyboard_tree_preview(ctx);
-    true
 }
 
 pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool {
     let previous = ctx.transition_current_mode(
-        crate::core_state::ActiveWmMode::Default,
+        ActiveWmMode::Default,
         crate::overview::ExitMode::RestorePrevious,
     );
-    let crate::core_state::ActiveWmMode::TreePlacement(state) = previous else {
+    let ActiveWmMode::TreePlacement(state) = previous else {
         return false;
     };
-    let context_is_current = state.is_current_for(ctx.core().model());
-    let changed = context_is_current
-        && apply
-        && super::manager::apply_tree_target(ctx, state.source, state.selected_target());
-    if context_is_current {
-        crate::focus::focus(ctx, Some(state.source));
+    if !state.is_current_for(ctx.core().model()) {
+        return true;
     }
+    let changed = apply && apply_target(ctx, state.source, state.selected_target());
+    crate::focus::focus(ctx, Some(state.source));
     if changed {
-        super::manager::finish_layout_change(ctx);
+        finish_layout_change(ctx);
     }
+    true
+}
+
+fn apply_target(ctx: &mut WmCtx<'_>, source: WindowId, target: PlacementTarget) -> bool {
+    let tiling = selected_tiling(ctx);
+    let tree = &mut ctx
+        .core_mut()
+        .model_mut()
+        .expect_selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree;
+    let Some(plan) = tree.plan_placement(source, target, tiling.work_rect(), &tiling.minimums)
+    else {
+        return false;
+    };
+    *tree = plan.into_tree();
     true
 }
 
@@ -337,177 +239,112 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
-    use crate::types::{Client, ClientMode, Monitor, Rect, TagMask, WindowId};
+    use crate::types::{Client, ClientMode, Monitor, TagMask};
     use crate::wm::Wm;
 
-    #[test]
-    fn keyboard_placement_navigation_keeps_focus_on_its_source() {
+    /// A selected monitor showing `clients` in a master-stack tree, with the
+    /// first client selected.
+    fn tiled_wm(rect: Rect, clients: Vec<Client>) -> Wm {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
+            monitor_rect: rect,
+            available_rect: rect,
             ..Monitor::default()
         });
         wm.core.model.monitors.set_selected(monitor_id);
-        let source = WindowId(1);
-        let peer = WindowId(2);
-        for win in [source, peer] {
+        let windows = clients.iter().map(|client| client.win).collect::<Vec<_>>();
+        for client in clients {
             wm.core.model.insert_client(Client {
-                win,
                 monitor_id,
                 tags,
                 mode: ClientMode::tiled(),
-                ..Client::default()
+                ..client
             });
         }
         let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
         monitor.set_selected_tags(tags);
-        monitor.clients = vec![source, peer];
-        monitor.selected = Some(source);
+        monitor.selected = windows.first().copied();
         monitor
             .per_tag_state()
             .layout_tree
-            .apply_preset(Preset::MasterStack, &[source, peer], 1);
+            .apply_preset(Preset::MasterStack, &windows, 1);
+        monitor.clients = windows;
+        wm
+    }
 
-        assert_eq!(
-            begin_tree_placement(&mut wm.ctx()),
-            TreePlacementStart::Started
-        );
+    fn client(win: u32) -> Client {
+        Client {
+            win: WindowId(win),
+            ..Client::default()
+        }
+    }
+
+    fn client_with_minimum(win: u32, min_width: i32, min_height: i32) -> Client {
+        let mut client = client(win);
+        client.size_hints.min_width = min_width;
+        client.size_hints.min_height = min_height;
+        client
+    }
+
+    #[test]
+    fn keyboard_placement_navigation_keeps_focus_on_its_source() {
+        let mut wm = tiled_wm(Rect::new(0, 0, 1200, 800), vec![client(1), client(2)]);
+        let source = WindowId(1);
+
+        assert!(begin_tree_placement(&mut wm.ctx()));
         assert_eq!(wm.core.model.selected_win(), Some(source));
 
         assert!(cycle_keyboard_tree_placement(&mut wm.ctx(), false));
         assert_eq!(wm.core.model.selected_win(), Some(source));
 
-        assert!(step_keyboard_tree_placement(
-            &mut wm.ctx(),
-            crate::layouts::tree::Side::Right,
-        ));
+        assert!(step_keyboard_tree_placement(&mut wm.ctx(), Side::Right));
         assert_eq!(wm.core.model.selected_win(), Some(source));
     }
 
     #[test]
     fn single_tiled_window_has_no_tree_placement_targets() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            ..Monitor::default()
-        });
-        wm.core.model.monitors.set_selected(monitor_id);
-        let source = WindowId(1);
-        wm.core.model.insert_client(Client {
-            win: source,
-            monitor_id,
-            tags,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![source];
-        monitor.selected = Some(source);
-        monitor
-            .per_tag_state()
-            .layout_tree
-            .apply_preset(Preset::MasterStack, &[source], 1);
+        let mut wm = tiled_wm(Rect::new(0, 0, 1200, 800), vec![client(1)]);
 
-        assert_eq!(
-            begin_tree_placement(&mut wm.ctx()),
-            TreePlacementStart::NoTargets
-        );
+        assert!(!begin_tree_placement(&mut wm.ctx()));
         assert!(matches!(
             wm.core.behavior.current_mode,
-            crate::core_state::ActiveWmMode::Default
+            ActiveWmMode::Default
         ));
         assert_eq!(wm.core.interaction.layout_preview, None);
     }
 
     #[test]
     fn keyboard_placement_keeps_targets_when_minimum_sizes_cannot_fit() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 300, 100),
-            available_rect: Rect::new(0, 0, 300, 100),
-            ..Monitor::default()
-        });
-        wm.core.model.monitors.set_selected(monitor_id);
-        let source = WindowId(1);
-        let peer = WindowId(2);
-        for win in [source, peer] {
-            let mut client = Client {
-                win,
-                monitor_id,
-                tags,
-                mode: ClientMode::tiled(),
-                ..Client::default()
-            };
-            client.size_hints.min_width = 140;
-            client.size_hints.min_height = 60;
-            wm.core.model.insert_client(client);
-        }
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![source, peer];
-        monitor.selected = Some(source);
-        monitor
-            .per_tag_state()
-            .layout_tree
-            .apply_preset(Preset::MasterStack, &[source, peer], 1);
-
-        let targets = crate::layouts::manager::tree_placement_targets(&wm.ctx(), source);
-
-        assert!(!targets.is_empty());
-        assert!(targets.iter().any(|target| matches!(
-            target.side,
-            Some(crate::layouts::tree::Side::Top | crate::layouts::tree::Side::Bottom)
-        )));
-        assert_eq!(
-            begin_tree_placement(&mut wm.ctx()),
-            TreePlacementStart::Started
+        let mut wm = tiled_wm(
+            Rect::new(0, 0, 300, 100),
+            vec![
+                client_with_minimum(1, 140, 60),
+                client_with_minimum(2, 140, 60),
+            ],
         );
+
+        let targets = placement_targets(&wm.ctx(), WindowId(1));
+
+        assert!(
+            targets
+                .iter()
+                .any(|target| matches!(target.side, Some(Side::Top | Side::Bottom)))
+        );
+        assert!(begin_tree_placement(&mut wm.ctx()));
     }
 
     #[test]
     fn placement_preview_does_not_expand_beyond_an_overcommitted_slot() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 100, 100),
-            available_rect: Rect::new(0, 0, 100, 100),
-            ..Monitor::default()
-        });
-        wm.core.model.monitors.set_selected(monitor_id);
-        let source = WindowId(1);
-        let mut client = Client {
-            win: source,
-            monitor_id,
-            tags,
-            mode: ClientMode::tiled(),
-            border_width: 0,
-            ..Client::default()
-        };
-        client.size_hints.min_width = 140;
-        client.size_hints.min_height = 60;
-        wm.core.model.insert_client(client);
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![source];
-        monitor.selected = Some(source);
-
-        let placement = LayoutPlacement::new(
-            &wm.core.config.layout,
-            wm.core.model.monitor(monitor_id).unwrap(),
-            PresentationMode::Tiled,
-            1,
-        );
+        let mut client = client_with_minimum(1, 140, 60);
+        client.border_width = 0;
+        let mut wm = tiled_wm(Rect::new(0, 0, 100, 100), vec![client]);
+        let tiling = selected_tiling(&wm.ctx());
         let slot = Rect::new(10, 20, 10, 8);
 
         assert_eq!(
-            tree_slot_outer_rect(&wm.ctx(), source, placement, slot),
-            Some(slot)
+            tiling.outer_rect(wm.core.model.client(WindowId(1)).unwrap(), slot, true),
+            slot
         );
     }
 }

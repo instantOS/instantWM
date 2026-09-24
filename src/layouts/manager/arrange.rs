@@ -1,6 +1,7 @@
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
+use crate::layouts::tree::LayoutTree;
 use crate::layouts::{ArrangePlan, LayoutOutput, PresentationMode};
 use crate::types::{Client, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
 use std::collections::{BTreeSet, HashMap};
@@ -134,11 +135,6 @@ impl Monitor {
         resize_hints: bool,
         animated: bool,
     ) -> ArrangePlan {
-        // Layout is a pure reader of bar geometry. The monitor's scaled bar
-        // height is owned by the monitor-sync path (`sync_monitors_from_outputs`
-        // and `resync_monitor_ui_metrics`); writing it here would clobber the
-        // per-output scale with the unscaled global `DerivedState` value.
-        let bar_height = self.bar_height;
         let borders = compute_borders(self, clients);
 
         // Border and geometry updates form one transaction. Layout against
@@ -156,10 +152,10 @@ impl Monitor {
         } else {
             let moves = match self.current_layout() {
                 PresentationMode::Tiled => {
-                    compute_manual_tree(self, clients, layout_cfg, resize_hints, bar_height)
+                    compute_manual_tree(self, clients, layout_cfg, resize_hints)
                 }
                 PresentationMode::Maximized => {
-                    reconcile_manual_tree(self, clients, layout_cfg, resize_hints, bar_height);
+                    reconcile_manual_tree(self, clients, layout_cfg, resize_hints);
                     crate::layouts::algo::maximized(self, clients, layout_cfg, animated)
                 }
                 PresentationMode::Floating => {
@@ -186,42 +182,89 @@ impl Monitor {
     }
 }
 
+/// The single source of tiling geometry for one monitor: arrange, pointer
+/// resize, placement previews, and promotion all read this, so gaps and
+/// minimum slot sizes cannot drift between them.
 #[derive(Debug, Clone)]
-pub(crate) struct TilingGeometry {
+pub(crate) struct TilingContext {
+    /// Persistent tree members (fullscreen and maximized ones included), in
+    /// monitor client order.
+    pub members: Vec<TiledClientInfo>,
     pub placement: LayoutPlacement,
-    pub slots: HashMap<WindowId, Rect>,
+    pub minimums: HashMap<WindowId, Size>,
+    /// The monitor's own (scaled) bar height. Layout is a pure reader of bar
+    /// geometry, which the monitor-sync path owns.
+    bar_height: i32,
 }
 
-pub(crate) fn compute_tiling_constraints(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-    layout_cfg: &crate::config::config_toml::LayoutConfig,
-    resize_hints: bool,
-    bar_height: i32,
-) -> (LayoutPlacement, HashMap<WindowId, Size>) {
-    let tiled = monitor.collect_tiling_tree_members(clients);
-    let placement = LayoutPlacement::new(
-        layout_cfg,
-        monitor,
-        PresentationMode::Tiled,
-        tiled.len() as u32,
-    );
-    let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
-    (placement, minimums)
-}
+impl TilingContext {
+    pub(crate) fn for_monitor(
+        monitor: &Monitor,
+        clients: &HashMap<WindowId, Client>,
+        layout_cfg: &crate::config::config_toml::LayoutConfig,
+        resize_hints: bool,
+    ) -> Self {
+        let members = monitor.collect_tiling_tree_members(clients);
+        let placement = LayoutPlacement::new(
+            layout_cfg,
+            monitor,
+            PresentationMode::Tiled,
+            members.len() as u32,
+        );
+        let bar_height = monitor.bar_height.max(1);
+        let minimums = members
+            .iter()
+            .filter_map(|info| {
+                let client = clients.get(&info.win)?;
+                let mut size = placement.minimum_slot_size(client, resize_hints);
+                let decoration = 2 * client.border_width.max(0) + placement.inner_gap();
+                size.w = size.w.max(bar_height.saturating_add(decoration));
+                size.h = size.h.max(bar_height.saturating_add(decoration));
+                Some((client.win, size))
+            })
+            .collect();
+        Self {
+            members,
+            placement,
+            minimums,
+            bar_height,
+        }
+    }
 
-pub(crate) fn compute_tiling_geometry(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-    layout_cfg: &crate::config::config_toml::LayoutConfig,
-    resize_hints: bool,
-    bar_height: i32,
-) -> Option<TilingGeometry> {
-    let (placement, minimums) =
-        compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);
-    let tree = &monitor.per_tag()?.layout_tree;
-    let (slots, _) = tree.soft_constrained_bounds(placement.work_rect(), &minimums);
-    Some(TilingGeometry { placement, slots })
+    pub(crate) fn work_rect(&self) -> Rect {
+        self.placement.work_rect()
+    }
+
+    pub(crate) fn slots(&self, tree: &LayoutTree) -> (HashMap<WindowId, Rect>, bool) {
+        tree.soft_constrained_bounds(self.work_rect(), &self.minimums)
+    }
+
+    /// Outer rectangle `client` will occupy when assigned `slot`.
+    pub(crate) fn outer_rect(&self, client: &Client, slot: Rect, resize_hints: bool) -> Rect {
+        let border = client.border_width.max(0);
+        let mut content = self.placement.client_rect(slot, border);
+        let available = content.size();
+        content.enforce_minimum(self.bar_height, self.bar_height);
+        if resize_hints {
+            let constrained = client.size_hints.constrain_size(
+                content.size(),
+                client.min_aspect,
+                client.max_aspect,
+            );
+            content.w = constrained.w.min(content.w).max(1);
+            content.h = constrained.h.min(content.h).max(1);
+        }
+        // Overcommitted tiled layouts deliberately soften client and decoration
+        // minimums. A preview must never grow beyond its actual slot.
+        content.w = content.w.min(available.w);
+        content.h = content.h.min(available.h);
+        Rect::new(
+            content.x,
+            content.y,
+            content.w + 2 * border,
+            content.h + 2 * border,
+        )
+    }
 }
 
 fn reconcile_manual_tree(
@@ -229,21 +272,22 @@ fn reconcile_manual_tree(
     clients: &HashMap<WindowId, Client>,
     layout_cfg: &crate::config::config_toml::LayoutConfig,
     resize_hints: bool,
-    bar_height: i32,
 ) {
     // Maximized presentation reconciles the tree for order, not geometry: a
     // hidden (minimized) client keeps its leaf so its bar title and cycle
     // position survive minimization. The constraint computation below stays
     // visibility-filtered, so hidden clients never claim tiling space.
-    let tiled = monitor.collect_tree_order_members(clients);
-    let windows = tiled.iter().map(|client| client.win).collect::<Vec<_>>();
-    let (placement, minimums) =
-        compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);
+    let windows = monitor
+        .collect_tree_order_members(clients)
+        .iter()
+        .map(|client| client.win)
+        .collect::<Vec<_>>();
+    let tiling = TilingContext::for_monitor(monitor, clients, layout_cfg, resize_hints);
     monitor.per_tag_state().layout_tree.reconcile_for_layout(
         &windows,
         layout_cfg.new_window_placement,
-        placement.work_rect(),
-        &minimums,
+        tiling.work_rect(),
+        &tiling.minimums,
     );
 }
 
@@ -252,25 +296,29 @@ fn compute_manual_tree(
     clients: &HashMap<WindowId, Client>,
     layout_cfg: &crate::config::config_toml::LayoutConfig,
     resize_hints: bool,
-    bar_height: i32,
 ) -> Vec<LayoutOutput> {
-    let tiled = monitor.collect_tiling_tree_members(clients);
-    let windows: Vec<_> = tiled.iter().map(|client| client.win).collect();
-    let (placement, minimums) =
-        compute_tiling_constraints(monitor, clients, layout_cfg, resize_hints, bar_height);
-    let work_rect = placement.work_rect();
+    let tiling = TilingContext::for_monitor(monitor, clients, layout_cfg, resize_hints);
+    let windows: Vec<_> = tiling.members.iter().map(|client| client.win).collect();
     let (slots, constraints_fit) = {
         let tree = &mut monitor.per_tag_state().layout_tree;
         tree.reconcile_for_layout(
             &windows,
             layout_cfg.new_window_placement,
-            work_rect,
-            &minimums,
+            tiling.work_rect(),
+            &tiling.minimums,
         );
-        tree.soft_constrained_bounds(work_rect, &minimums)
+        tiling.slots(tree)
     };
-    tiled
-        .into_iter()
+    let options = if resize_hints && constraints_fit {
+        MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_ANIMATION_MILLIS)
+            .with_size_hints()
+            .with_layout_bounds()
+    } else {
+        MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_ANIMATION_MILLIS)
+    };
+    tiling
+        .members
+        .iter()
         .filter_map(|client| {
             if !clients
                 .get(&client.win)
@@ -281,39 +329,9 @@ fn compute_manual_tree(
             let slot = slots.get(&client.win).copied()?;
             Some(LayoutOutput {
                 win: client.win,
-                rect: placement.client_rect(slot, client.border_width),
-                options: if resize_hints && constraints_fit {
-                    MoveResizeOptions::animate_to(
-                        crate::constants::animation::DEFAULT_ANIMATION_MILLIS,
-                    )
-                    .with_size_hints()
-                    .with_layout_bounds()
-                } else {
-                    MoveResizeOptions::animate_to(
-                        crate::constants::animation::DEFAULT_ANIMATION_MILLIS,
-                    )
-                },
+                rect: tiling.placement.client_rect(slot, client.border_width),
+                options,
             })
-        })
-        .collect()
-}
-
-fn tiling_minimum_slots(
-    placement: &LayoutPlacement,
-    tiled: &[TiledClientInfo],
-    clients: &HashMap<WindowId, Client>,
-    resize_hints: bool,
-    bar_height: i32,
-) -> HashMap<WindowId, Size> {
-    tiled
-        .iter()
-        .filter_map(|info| {
-            let client = clients.get(&info.win)?;
-            let mut size = placement.minimum_slot_size(client, resize_hints);
-            let decoration = 2 * client.border_width.max(0) + placement.inner_gap();
-            size.w = size.w.max(bar_height.max(1).saturating_add(decoration));
-            size.h = size.h.max(bar_height.max(1).saturating_add(decoration));
-            Some((client.win, size))
         })
         .collect()
 }

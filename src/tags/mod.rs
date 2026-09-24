@@ -9,19 +9,11 @@ pub mod view;
 
 mod send_mon_impl;
 
-/// Type-safe tag operations with improved DX.
-///
-/// This module provides ergonomic wrappers using `TagMask` and `TagSelection`
-/// types, offering better type safety and clearer semantics than raw `u32` bitmasks.
-pub mod tag_ops;
-
 pub use naming::{name_tag, reset_name_tag};
 
 pub use view::{follow_view, last_view, shift_view, win_view};
 
 pub use crate::overview::{cancel_overview, toggle_overview};
-
-// Re-export TagMask for convenience
 
 pub use shift::{move_client_follow_view, shift_tag};
 

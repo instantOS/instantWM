@@ -1,7 +1,7 @@
 //! View (workspace) navigation.
 
 use crate::contexts::WmCtx;
-use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
+use crate::types::{HorizontalDirection, MonitorId, TagMask, TagSelection, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     ctx.update_ewmh_desktop_props();
@@ -42,6 +42,17 @@ pub(crate) fn commit_view_selection(
     } else {
         None
     }
+}
+
+pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
+    let model = ctx.core().model();
+    let monitor = model.expect_selected_monitor();
+    let mask = selection.to_mask(
+        monitor.selected_tags(),
+        monitor.prev_tag,
+        model.tags.count(),
+    );
+    view_tags(ctx, mask);
 }
 
 /// View tags using type-safe mask.

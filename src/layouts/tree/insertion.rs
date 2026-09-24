@@ -60,7 +60,7 @@ impl LayoutTree {
             ],
         )
         .expect("two leaves create a split");
-        root.replace_window(target, split)
+        root.replace_key(NodeKey::Window(target), split)
     }
 
     fn root_split(
@@ -179,7 +179,7 @@ impl LayoutTree {
     ) {
         let Some(root) = self.root.take() else {
             self.root = Some(Node::Window(window));
-            self.invalidate_force_provenance();
+            self.clear_insertion_provenance();
             return;
         };
         if root.contains(window) {
@@ -195,7 +195,7 @@ impl LayoutTree {
         self.root = Some(match policy {
             NewWindowPlacement::Force => unreachable!("handled above"),
             NewWindowPlacement::Auto | NewWindowPlacement::AutoResize => {
-                self.invalidate_force_provenance();
+                self.clear_insertion_provenance();
                 let Some(candidate) = Self::automatic_insertion(&root, window, work_rect, minimums)
                 else {
                     self.root = Some(root);
@@ -355,7 +355,7 @@ impl LayoutTree {
             if !self.remove(window) {
                 return None;
             }
-            self.invalidate_force_provenance();
+            self.clear_insertion_provenance();
             self.insert_new(window, NewWindowPlacement::Force, work_rect, minimums);
             Some(window)
         } else {

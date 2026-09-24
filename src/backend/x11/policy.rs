@@ -92,7 +92,7 @@ pub(crate) fn apply_xwayland_policy(
     // transaction. Policy reconciliation must not bypass that boundary by
     // mutating the client-local mode directly.
     let fullscreen_transition = model.set_fullscreen(win, update.is_fullscreen)?;
-    debug_assert_eq!(fullscreen_transition.monitor_id(), monitor_id);
+    debug_assert_eq!(fullscreen_transition.monitor_id, monitor_id);
     let mut presentation_rect = fullscreen_transition.presentation_rect();
     let mut raise = fullscreen_transition.entered();
     // An absent maximize atom is not an unmaximize request during initial
@@ -102,7 +102,7 @@ pub(crate) fn apply_xwayland_policy(
     // carries useful initial intent.
     if update.is_maximized {
         let maximized_transition = model.apply_client_maximize_intent(win, true)?;
-        debug_assert_eq!(maximized_transition.monitor_id(), monitor_id);
+        debug_assert_eq!(maximized_transition.monitor_id, monitor_id);
         if let Some(rect) = maximized_transition.presentation_rect() {
             presentation_rect = Some(rect);
         }

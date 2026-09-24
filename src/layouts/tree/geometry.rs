@@ -2,14 +2,15 @@ use super::*;
 
 impl LayoutTree {
     pub fn bounds(&self, rect: Rect) -> HashMap<WindowId, Rect> {
-        let mut float_bounds = HashMap::new();
+        let mut output = HashMap::new();
         if let Some(root) = &self.root {
-            root.bounds(FRect::from_rect(rect), &mut float_bounds);
+            root.layout(FRect::from_rect(rect), &mut |node, rect| {
+                if let Node::Window(window) = node {
+                    output.insert(*window, rect.to_rect());
+                }
+            });
         }
-        float_bounds
-            .into_iter()
-            .map(|(window, rect)| (window, rect.to_rect()))
-            .collect()
+        output
     }
 
     /// Resolve tree slots while enforcing each leaf's minimum outer size.
@@ -53,36 +54,9 @@ impl LayoutTree {
         }
     }
 
-    pub(super) fn float_bounds(&self) -> HashMap<WindowId, FRect> {
-        let mut output = HashMap::new();
-        if let Some(root) = &self.root {
-            root.bounds(
-                FRect {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 1.0,
-                    h: 1.0,
-                },
-                &mut output,
-            );
-        }
-        output
-    }
-
-    pub(super) fn all_float_bounds(&self) -> HashMap<NodeKey, FRect> {
-        let mut output = HashMap::new();
-        if let Some(root) = &self.root {
-            root.all_bounds(
-                FRect {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 1.0,
-                    h: 1.0,
-                },
-                &mut output,
-            );
-        }
-        output
+    /// Every node's rectangle within a unit square.
+    pub(super) fn unit_bounds(&self) -> HashMap<NodeKey, FRect> {
+        self.root.as_ref().map(unit_bounds).unwrap_or_default()
     }
 
     pub fn apply_preset(
@@ -91,7 +65,7 @@ impl LayoutTree {
         ordered_windows: &[WindowId],
         master_count: usize,
     ) {
-        self.invalidate_force_provenance();
+        self.clear_insertion_provenance();
         let master_ratio = match preset {
             Preset::MasterStack => self.root_leading_ratio(Axis::Vertical),
             Preset::BottomStack => self.root_leading_ratio(Axis::Horizontal),
@@ -116,13 +90,7 @@ impl LayoutTree {
             return;
         }
         let next = &mut self.next_split_id;
-        let mut allocate = || {
-            let id = SplitId(*next);
-            *next = next
-                .checked_add(1)
-                .expect("manual-layout split id space exhausted");
-            id
-        };
+        let mut allocate = || take_split_id(next);
         self.root = match preset {
             Preset::MasterStack => build_master_stack(
                 &windows,

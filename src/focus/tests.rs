@@ -9,6 +9,54 @@ use crate::core_state::{CoreState, PendingWork};
 use crate::types::{Client, Monitor, MonitorId, StackDirection, TagMask, WindowId};
 use std::cell::Cell;
 
+#[test]
+fn directional_focus_prefers_the_aligned_client() {
+    let source = WindowId(1);
+    let aligned = WindowId(2);
+    let diagonal = WindowId(3);
+    let tags = TagMask::single(1).unwrap();
+    let clients = std::collections::HashMap::from([
+        (
+            source,
+            Client {
+                win: source,
+                tags,
+                geo: crate::types::Rect::new(0, 0, 100, 100),
+                ..Client::default()
+            },
+        ),
+        (
+            aligned,
+            Client {
+                win: aligned,
+                tags,
+                geo: crate::types::Rect::new(120, 0, 100, 100),
+                ..Client::default()
+            },
+        ),
+        (
+            diagonal,
+            Client {
+                win: diagonal,
+                tags,
+                geo: crate::types::Rect::new(100, 300, 100, 100),
+                ..Client::default()
+            },
+        ),
+    ]);
+    assert_eq!(
+        super::get_directional_candidate(
+            &[source, diagonal, aligned],
+            &clients,
+            tags,
+            source,
+            crate::types::Point::new(50, 50),
+            crate::types::Direction::Right,
+        ),
+        Some(aligned)
+    );
+}
+
 #[derive(Default)]
 struct RecordingBackend {
     focused: Cell<usize>,
@@ -35,7 +83,7 @@ fn focus_generic(
     refresh: BackendRefresh,
 ) -> anyhow::Result<Option<MonitorId>> {
     let previous = core.model().selected_win();
-    focus_generic_impl(core, win, previous, backend, refresh)
+    Ok(focus_generic_impl(core, win, previous, backend, refresh))
 }
 
 fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, FocusState) {

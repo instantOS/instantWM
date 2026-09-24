@@ -105,60 +105,46 @@ pub(super) fn immediate_parent_axis(node: &Node, target: WindowId) -> Option<Axi
 }
 
 pub(super) fn resize_deepest_run(
-    node: Node,
+    node: &mut Node,
     target: WindowId,
     axis: Axis,
     grow: bool,
     config: CommandConfig,
-) -> (Node, bool) {
+) -> bool {
     let step = finite_clamp(config.resize_step, 0.001, 0.5, DEFAULT_RESIZE_STEP);
     let delta = if grow { step } else { -step };
     resize_deepest_run_by(node, target, axis, delta, config.minimum_weight)
 }
 
-pub(super) fn resize_deepest_run_by(
-    node: Node,
+fn resize_deepest_run_by(
+    node: &mut Node,
     target: WindowId,
     axis: Axis,
     delta: f64,
     minimum_weight: f64,
-) -> (Node, bool) {
-    let Node::Split(mut split) = node else {
-        return (node, false);
+) -> bool {
+    let Node::Split(split) = node else {
+        return false;
     };
     let Some(index) = split
         .children
         .iter()
         .position(|child| child.node.contains(target))
     else {
-        return (Node::Split(split), false);
+        return false;
     };
-
-    let child_node = split.children[index].node.clone();
-    let (resized_child, changed) =
-        resize_deepest_run_by(child_node, target, axis, delta, minimum_weight);
-    split.children[index].node = resized_child;
-    if changed {
-        return (Node::Split(split), true);
+    if resize_deepest_run_by(
+        &mut split.children[index].node,
+        target,
+        axis,
+        delta,
+        minimum_weight,
+    ) {
+        return true;
     }
-    if split.axis != axis || split.children.len() < 2 {
-        return (Node::Split(split), false);
-    }
-
-    let changed = resize_split_child(&mut split, index, delta, minimum_weight, PeerScope::All);
-    (Node::Split(split), changed)
-}
-
-pub(super) fn deepest_resize_split(node: &Node, target: WindowId, axis: Axis) -> Option<SplitId> {
-    let Node::Split(split) = node else {
-        return None;
-    };
-    let child = split
-        .children
-        .iter()
-        .find(|child| child.node.contains(target))?;
-    deepest_resize_split(&child.node, target, axis)
-        .or_else(|| (split.axis == axis && split.children.len() >= 2).then_some(split.id))
+    split.axis == axis
+        && split.children.len() >= 2
+        && resize_split_child(split, index, delta, minimum_weight, PeerScope::All)
 }
 
 pub(super) fn deepest_resize_edge_split(
@@ -184,40 +170,40 @@ pub(super) fn deepest_resize_edge_split(
 }
 
 pub(super) fn resize_deepest_edge_by(
-    node: Node,
+    node: &mut Node,
     target: WindowId,
     side: Side,
     delta: f64,
     minimum_weight: f64,
-) -> (Node, bool) {
-    let Node::Split(mut split) = node else {
-        return (node, false);
+) -> bool {
+    let Node::Split(split) = node else {
+        return false;
     };
     let Some(index) = split
         .children
         .iter()
         .position(|child| child.node.contains(target))
     else {
-        return (Node::Split(split), false);
+        return false;
     };
-
-    let child = split.children[index].node.clone();
-    let (child, changed) = resize_deepest_edge_by(child, target, side, delta, minimum_weight);
-    split.children[index].node = child;
-    if changed {
-        return (Node::Split(split), true);
+    if resize_deepest_edge_by(
+        &mut split.children[index].node,
+        target,
+        side,
+        delta,
+        minimum_weight,
+    ) {
+        return true;
     }
-
     if split.axis != side.axis() {
-        return (Node::Split(split), false);
+        return false;
     }
     let peers = if side.is_leading() {
         PeerScope::BeforeTarget
     } else {
         PeerScope::AfterTarget
     };
-    let changed = resize_split_child(&mut split, index, delta, minimum_weight, peers);
-    (Node::Split(split), changed)
+    resize_split_child(split, index, delta, minimum_weight, peers)
 }
 
 pub(super) fn visual_neighbor_in(
@@ -225,11 +211,11 @@ pub(super) fn visual_neighbor_in(
     source: WindowId,
     source_rect: FRect,
     side: Side,
-    rects: &HashMap<WindowId, FRect>,
-) -> (Option<WindowId>, bool) {
+    rects: &HashMap<NodeKey, FRect>,
+) -> Option<WindowId> {
     let mut path = Vec::new();
     if !path_to(node, source, &mut path) {
-        return (None, false);
+        return None;
     }
     let direction = side.axis();
     for (parent, branch_index) in path.into_iter().rev() {
@@ -251,7 +237,7 @@ pub(super) fn visual_neighbor_in(
         let neighbor = leaves
             .into_iter()
             .filter_map(|window| {
-                let rect = *rects.get(&window)?;
+                let rect = *rects.get(&NodeKey::Window(window))?;
                 let overlap = shared_border_overlap(source_rect, rect, side);
                 (overlap > EPSILON).then_some((window, overlap, rect))
             })
@@ -264,9 +250,9 @@ pub(super) fn visual_neighbor_in(
                 })
             })
             .map(|candidate| candidate.0);
-        return (neighbor, false);
+        return neighbor;
     }
-    (None, true)
+    None
 }
 
 pub(super) fn path_to<'a>(

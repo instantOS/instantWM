@@ -275,9 +275,9 @@ pub fn apply_edge_drop(
                 move_client_follow_view(ctx, HorizontalDirection::Right);
             }
         } else if at_left {
-            shift_tag(ctx, HorizontalDirection::Left.into(), 1);
+            shift_tag(ctx, HorizontalDirection::Left);
         } else {
-            shift_tag(ctx, HorizontalDirection::Right.into(), 1);
+            shift_tag(ctx, HorizontalDirection::Right);
         }
 
         if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {

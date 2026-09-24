@@ -6,9 +6,14 @@ pub(super) fn swap_windows(node: Node, first: WindowId, second: WindowId) -> Nod
         Node::Window(window) if window == second => Node::Window(first),
         Node::Window(window) => Node::Window(window),
         Node::Split(mut split) => {
-            for child in &mut split.children {
-                child.node = swap_windows(child.node.clone(), first, second);
-            }
+            split.children = split
+                .children
+                .into_iter()
+                .map(|child| WeightedNode {
+                    node: swap_windows(child.node, first, second),
+                    weight: child.weight,
+                })
+                .collect();
             Node::Split(split)
         }
     }
@@ -56,7 +61,7 @@ pub(super) fn seam_partition(
     children: &[WeightedNode],
     seam: f64,
     axis: Axis,
-    rects: &HashMap<WindowId, FRect>,
+    rects: &HashMap<NodeKey, FRect>,
     tolerance: f64,
 ) -> Option<Vec<WindowId>> {
     let mut before = Vec::new();
@@ -65,7 +70,7 @@ pub(super) fn seam_partition(
         let mut leaves = Vec::new();
         child.node.leaves(&mut leaves);
         for window in leaves {
-            let rect = rects.get(&window).copied()?;
+            let rect = rects.get(&NodeKey::Window(window)).copied()?;
             let start = rect.axis_start(axis);
             let end = start + rect.axis_size(axis);
             if end <= seam + tolerance {
@@ -298,15 +303,9 @@ pub(super) fn aligned_replacement(
 
 pub(super) fn unit_bounds(node: &Node) -> HashMap<NodeKey, FRect> {
     let mut rects = HashMap::new();
-    node.all_bounds(
-        FRect {
-            x: 0.0,
-            y: 0.0,
-            w: 1.0,
-            h: 1.0,
-        },
-        &mut rects,
-    );
+    node.layout(FRect::UNIT, &mut |node, rect| {
+        rects.insert(node.key(), rect);
+    });
     rects
 }
 

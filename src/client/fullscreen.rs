@@ -50,9 +50,9 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
     let Some(transition) = ctx.core_mut().model_mut().set_fullscreen(win, fullscreen) else {
         return;
     };
-    let monitor_id = transition.monitor_id();
+    let monitor_id = transition.monitor_id;
 
-    match transition.change() {
+    match transition.change {
         FullscreenChange::Unchanged => {}
         FullscreenChange::Entered {
             monitor_rect,
@@ -128,8 +128,8 @@ fn apply_client_maximize_intent_transition(
     win: WindowId,
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
-    let monitor_id = transition.monitor_id();
-    match transition.outcome() {
+    let monitor_id = transition.monitor_id;
+    match transition.outcome {
         ClientMaximizeIntentOutcome::FloatingPresentation(change) => {
             apply_maximized_change(ctx, win, monitor_id, change);
         }
@@ -155,8 +155,7 @@ fn apply_maximized_transition(
     win: WindowId,
     transition: crate::client::mode::MaximizedTransition,
 ) {
-    let monitor_id = transition.monitor_id();
-    apply_maximized_change(ctx, win, monitor_id, transition.change());
+    apply_maximized_change(ctx, win, transition.monitor_id, transition.change);
 }
 
 fn apply_maximized_change(
@@ -176,7 +175,7 @@ fn apply_maximized_change(
             }
             arrange(ctx, Some(monitor_id));
         }
-        MaximizedChange::Unchanged | MaximizedChange::UpdatedFullscreenRestore => {}
+        MaximizedChange::Unchanged => {}
     }
 }
 

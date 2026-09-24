@@ -27,7 +27,7 @@ pub(crate) fn apply_fullscreen_request(
     let transition = core.model.set_fullscreen(win, fullscreen)?;
 
     if transition.changed() {
-        work.layout.mark_monitor_urgent(transition.monitor_id());
+        work.layout.mark_monitor_urgent(transition.monitor_id);
         bar.mark_dirty();
     }
     Some(transition)
@@ -43,7 +43,7 @@ pub(crate) fn apply_maximized_request(
 ) -> Option<crate::client::mode::ClientMaximizeIntentTransition> {
     let transition = core.model.apply_client_maximize_intent(win, maximized)?;
     if transition.changed() {
-        work.layout.mark_monitor_urgent(transition.monitor_id());
+        work.layout.mark_monitor_urgent(transition.monitor_id);
         bar.mark_dirty();
     }
     Some(transition)

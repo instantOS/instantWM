@@ -15,15 +15,12 @@ pub use commands::{
     resize_tree_smart, set_layout, swap_bar_titles, swap_tree_neighbor,
     toggle_floating_presentation, toggle_tiling_maximized,
 };
-pub(crate) use pointer::{
-    PointerPlacementPreviewCache, PointerTreeResizeStart, apply_tree_target,
-    pointer_tree_gap_resize_start, pointer_tree_resize_start, preview_tree_target,
-    tree_placement_targets, update_pointer_tree_resize, uses_manual_tree_pointer_interaction,
-};
 #[cfg(test)]
-use pointer::{
-    available_tree_resize_direction, manual_tree_pointer_interaction_allowed,
-    pointer_tree_resize_allowed, selected_tiling_constraints,
+use pointer::available_tree_resize_direction;
+pub(crate) use pointer::{
+    PointerPlacementPreviewCache, PointerTreeResizeStart, pointer_tree_gap_resize_start,
+    pointer_tree_resize_start, selected_tiling, update_pointer_tree_resize,
+    uses_manual_tree_pointer_interaction,
 };
 pub use pointer::{place_tree_at_point, preview_tree_at_point};
 #[cfg(test)]
