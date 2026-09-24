@@ -5,7 +5,7 @@
 
 use crate::backend::BackendOutputInfo;
 use crate::contexts::WmCtx;
-use crate::core_state::{DerivedState, EffectiveConfig};
+use crate::core_state::{CoreState, DerivedState, EffectiveConfig};
 use crate::focus::refresh_focus_after_selection;
 use crate::types::*;
 use std::collections::HashMap;
@@ -488,28 +488,22 @@ fn apply_output_to_monitor(
     m: &mut Monitor,
     position: usize,
     output: &BackendOutputInfo,
-    bh: i32,
-    hp: i32,
-    sm: i32,
+    metrics: MonitorUiMetrics,
 ) {
     m.apply_output_layout(
         position,
         output.name.clone(),
         output.rect,
         output.scale,
-        bh,
-        hp,
-        sm,
+        metrics,
     );
 }
 
-fn output_geom_changed(m: &Monitor, output: &BackendOutputInfo, bh: i32, hp: i32, sm: i32) -> bool {
+fn output_geom_changed(m: &Monitor, output: &BackendOutputInfo, metrics: MonitorUiMetrics) -> bool {
     m.monitor_rect != output.rect
         || m.name != output.name
         || (m.ui_scale - output.scale).abs() > f64::EPSILON
-        || m.bar_height != bh
-        || m.horizontal_padding != hp
-        || m.startmenu_size != sm
+        || m.ui_metrics() != metrics
 }
 
 fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
@@ -608,7 +602,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let mut changed = sync_runtime_screen_size(ctx.core_mut().derived_mut(), layout_size);
 
     // Pre-compute per-output UI metrics while we hold an immutable config borrow.
-    let metrics: Vec<(i32, i32, i32)> = outputs
+    let metrics: Vec<MonitorUiMetrics> = outputs
         .iter()
         .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), o.scale))
         .collect();
@@ -666,7 +660,7 @@ struct MonitorReconciliation {
 fn reconcile_monitor_model(
     model: &mut crate::model::WmModel,
     outputs: &[BackendOutputInfo],
-    metrics: &[(i32, i32, i32)],
+    metrics: &[MonitorUiMetrics],
     tag_template: &[crate::types::Tag],
     show_bar: bool,
     show_bottom_bar: bool,
@@ -682,14 +676,14 @@ fn reconcile_monitor_model(
 
     let mut new_monitors = Vec::with_capacity(outputs.len());
     for (i, output) in outputs.iter().enumerate() {
-        let (bh, hp, sm) = metrics[i];
+        let metrics = metrics[i];
         match take_matching_monitor(&mut pool, i, output) {
             Some(mut m) => {
-                if output_geom_changed(&m, output, bh, hp, sm) {
+                if output_geom_changed(&m, output, metrics) {
                     changed = true;
                 }
                 // Keep the reused monitor's stable id and workspace state.
-                apply_output_to_monitor(&mut m, i, output, bh, hp, sm);
+                apply_output_to_monitor(&mut m, i, output, metrics);
                 new_monitors.push(m);
             }
             None => {
@@ -700,7 +694,7 @@ fn reconcile_monitor_model(
                 m.show_bottom_bar = show_bottom_bar;
                 m.monitor_id = id;
                 m.init_tags(tag_template);
-                apply_output_to_monitor(&mut m, i, output, bh, hp, sm);
+                apply_output_to_monitor(&mut m, i, output, metrics);
                 new_monitors.push(m);
             }
         }
@@ -735,12 +729,55 @@ fn scaled_monitor_ui_metrics(
     config: &EffectiveConfig,
     derived: &DerivedState,
     scale: f64,
-) -> (i32, i32, i32) {
-    (
-        crate::types::geometry::scaled_px(derived.bar_height, scale).max(1),
-        crate::types::geometry::scaled_px(derived.bar_horizontal_padding, scale).max(1),
-        crate::types::geometry::scaled_px(config.bar.startmenu_size, scale).max(1),
-    )
+) -> MonitorUiMetrics {
+    MonitorUiMetrics {
+        bar_height: crate::types::geometry::scaled_px(derived.bar_height, scale).max(1),
+        horizontal_padding: crate::types::geometry::scaled_px(
+            derived.bar_horizontal_padding,
+            scale,
+        )
+        .max(1),
+        startmenu_size: crate::types::geometry::scaled_px(config.bar.startmenu_size, scale).max(1),
+    }
+}
+
+/// Re-apply scaled UI metrics to every monitor after the unscaled base changed.
+///
+/// `DerivedState` owns the *unscaled* base metrics (font-derived height and
+/// padding) while each monitor owns the *scaled* copy for its output's UI
+/// scale. Output topology sync does this as part of reconciling monitors; this
+/// entry point covers the paths that change the base without touching
+/// topology — `config set` and a full config reload, both of which funnel
+/// through [`Wm::reinit_bar_resources`](crate::wm::Wm::reinit_bar_resources).
+///
+/// Layout deliberately does *not* substitute for this: `arrange` reads bar
+/// geometry, and the unscaled global is never a valid value for a scaled
+/// output. Writing it back from a layout pass would silently undo the scaling.
+///
+/// Returns whether any monitor's metrics changed.
+pub fn resync_monitor_ui_metrics(core: &mut CoreState) -> bool {
+    // Compute while the config is immutably borrowed, then apply separately.
+    let pending: Vec<(MonitorId, f64, MonitorUiMetrics)> = core
+        .model
+        .monitors_iter()
+        .map(|(id, monitor)| {
+            let metrics = scaled_monitor_ui_metrics(&core.config, &core.derived, monitor.ui_scale);
+            (id, monitor.ui_scale, metrics)
+        })
+        .collect();
+
+    let mut changed = false;
+    for (id, ui_scale, metrics) in pending {
+        let Some(monitor) = core.model.monitors.get_mut(id) else {
+            continue;
+        };
+        if monitor.ui_metrics() == metrics {
+            continue;
+        }
+        monitor.set_ui_metrics(ui_scale, metrics);
+        changed = true;
+    }
+    changed
 }
 
 // -----------------------------------------------------------------------------
@@ -752,8 +789,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     let mut mon = Monitor::new_with_values(ctx.core_mut().config_mut().bar.show);
     mon.init_tags(&template);
     let id = ctx.core_mut().model_mut().monitors.push(mon);
-    let (bar_height, horizontal_padding, startmenu_size) =
-        scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
+    let metrics = scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
     if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(id) {
         m.num = 0;
         let rect = Rect {
@@ -764,8 +800,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         };
         m.monitor_rect = rect;
         m.available_rect = rect;
-        m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-        m.set_bar_height(bar_height);
+        m.set_ui_metrics(1.0, metrics);
     }
     ctx.core_mut().select_monitor(id);
     true
@@ -776,21 +811,14 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         Some(id) => id,
         None => return false,
     };
-    let (bar_height, horizontal_padding, startmenu_size) =
-        scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
+    let metrics = scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
     let needs_update = ctx
         .core()
         .state()
         .model
         .monitors
         .get(first_id)
-        .map(|m| {
-            m.monitor_rect.w != sw
-                || m.monitor_rect.h != sh
-                || m.bar_height != bar_height
-                || m.horizontal_padding != horizontal_padding
-                || m.startmenu_size != startmenu_size
-        })
+        .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh || m.ui_metrics() != metrics)
         .unwrap_or(false);
     if !needs_update {
         return false;
@@ -800,8 +828,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.available_rect = m.monitor_rect;
-        m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-        m.set_bar_height(bar_height);
+        m.set_ui_metrics(1.0, metrics);
     }
     true
 }
@@ -922,8 +949,18 @@ mod transfer_focus_tests {
             vrr_mode: None,
             vrr_enabled: false,
         }];
-        let result =
-            reconcile_monitor_model(&mut model, &outputs, &[(20, 4, 30)], &[], true, false);
+        let result = reconcile_monitor_model(
+            &mut model,
+            &outputs,
+            &[MonitorUiMetrics {
+                bar_height: 20,
+                horizontal_padding: 4,
+                startmenu_size: 30,
+            }],
+            &[],
+            true,
+            false,
+        );
 
         assert!(result.changed);
         assert!(!result.added_monitors);
@@ -973,7 +1010,18 @@ mod transfer_focus_tests {
         let result = reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[(20, 4, 30), (20, 4, 30)],
+            &[
+                MonitorUiMetrics {
+                    bar_height: 20,
+                    horizontal_padding: 4,
+                    startmenu_size: 30,
+                },
+                MonitorUiMetrics {
+                    bar_height: 20,
+                    horizontal_padding: 4,
+                    startmenu_size: 30,
+                },
+            ],
             &[],
             true,
             false,
@@ -1009,8 +1057,18 @@ mod transfer_focus_tests {
             vrr_enabled: false,
         }];
 
-        let result =
-            reconcile_monitor_model(&mut model, &outputs, &[(20, 4, 30)], &[], true, false);
+        let result = reconcile_monitor_model(
+            &mut model,
+            &outputs,
+            &[MonitorUiMetrics {
+                bar_height: 20,
+                horizontal_padding: 4,
+                startmenu_size: 30,
+            }],
+            &[],
+            true,
+            false,
+        );
 
         // Only the geometry moved: the monitor keeps its identity and its bar
         // window, so the caller must not rebuild bar resources.

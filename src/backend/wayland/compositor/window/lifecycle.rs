@@ -34,7 +34,7 @@ impl WaylandState {
         &mut self,
         surface: ToplevelSurface,
         request: crate::systray::status_notifier::NativeMenuRequest,
-    ) -> Result<WindowId, ToplevelSurface> {
+    ) -> Result<WindowId, Box<ToplevelSurface>> {
         let Some((monitor_id, opened_tags, work_rect)) = self.globals().and_then(|globals| {
             let monitor_id = globals
                 .model
@@ -44,7 +44,7 @@ impl WaylandState {
             let monitor = globals.model.monitor(monitor_id)?;
             Some((monitor_id, monitor.selected_tags(), monitor.work_rect()))
         }) else {
-            return Err(surface);
+            return Err(Box::new(surface));
         };
 
         let window_id = self.register_toplevel(surface, true);

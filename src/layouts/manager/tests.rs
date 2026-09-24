@@ -7,8 +7,8 @@ use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
 use crate::types::{
-    Client, ClientMode, ClientPlacement, InteractionSource, Monitor, MouseButton, Point, Rect,
-    ResizeDirection, Size, TagMask, WindowId,
+    Client, ClientMode, ClientPlacement, InteractionSource, Monitor, MonitorUiMetrics, MouseButton,
+    Point, Rect, ResizeDirection, Size, TagMask, WindowId,
 };
 use std::collections::HashMap;
 
@@ -517,7 +517,7 @@ fn arrange_commits_planned_borders_before_computing_geometry() {
     client.old_border_width = 2;
     let mut clients = HashMap::from([(win, client)]);
 
-    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     assert_eq!(clients[&win].border_width, 0);
     assert_eq!(plan.borders, [(win, 0)]);
@@ -630,14 +630,14 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, 1);
 
-    let first = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let first = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     assert!(
         monitor
             .per_tag_state()
             .layout_tree
             .resize(WindowId(1), Side::Right)
     );
-    let second = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let second = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     let first_rect = first
         .client_moves
@@ -662,12 +662,12 @@ fn second_tiled_window_is_placed_in_the_left_half() {
     monitor.clients = vec![WindowId(1)];
     let mut clients = HashMap::from([(WindowId(1), visible_client(WindowId(1)))]);
     let config = LayoutConfig::default();
-    let _ = monitor.compute_arrange(&mut clients, &config, true, 0, false);
+    let _ = monitor.compute_arrange(&mut clients, &config, true, false);
 
     monitor.clients.push(WindowId(2));
     monitor.z_order.attach_top(WindowId(2));
     clients.insert(WindowId(2), visible_client(WindowId(2)));
-    let plan = monitor.compute_arrange(&mut clients, &config, true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &config, true, false);
     let rects = plan
         .client_moves
         .iter()
@@ -693,12 +693,12 @@ fn changing_new_window_policy_does_not_rewrite_an_existing_tree() {
         new_window_placement: crate::config::config_toml::NewWindowPlacement::Auto,
         ..LayoutConfig::default()
     };
-    let before = monitor.compute_arrange(&mut clients, &auto, true, 0, false);
+    let before = monitor.compute_arrange(&mut clients, &auto, true, false);
     let force = LayoutConfig {
         new_window_placement: crate::config::config_toml::NewWindowPlacement::Force,
         ..auto
     };
-    let after = monitor.compute_arrange(&mut clients, &force, true, 0, false);
+    let after = monitor.compute_arrange(&mut clients, &force, true, false);
 
     let rectangles = |plan: crate::layouts::ArrangePlan| {
         plan.client_moves
@@ -726,7 +726,7 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
         .layout_tree
         .apply_preset(Preset::MasterStack, &windows, 1);
 
-    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     let rects = plan
         .client_moves
         .iter()
@@ -768,7 +768,7 @@ fn arrange_softens_impossible_minimums_and_restores_them_when_space_returns() {
         .apply_preset(Preset::MasterStack, &windows, 1);
 
     let overcommitted =
-        monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+        monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     let overcommitted_rects = overcommitted
         .client_moves
         .iter()
@@ -788,7 +788,7 @@ fn arrange_softens_impossible_minimums_and_restores_them_when_space_returns() {
 
     monitor.available_rect = Rect::new(0, 0, 500, 100);
     monitor.monitor_rect = monitor.available_rect;
-    let recovered = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let recovered = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     assert!(recovered.client_moves.iter().all(|output| {
         output.rect.w >= 200
             && output.options.size_hints == crate::geometry::SizeHintPolicy::Respect
@@ -812,7 +812,7 @@ fn dense_manual_layout_uses_one_animation_duration_for_every_window() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, 1);
 
-    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, true);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, true);
 
     assert_eq!(plan.client_moves.len(), windows.len());
     assert!(plan.client_moves.iter().all(|output| {
@@ -853,7 +853,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
         },
     )]);
 
-    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let plan = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     assert_eq!(plan.client_moves.len(), 1);
     assert!(plan.fullscreen_moves.is_empty());
@@ -877,7 +877,7 @@ fn fullscreen_preserves_a_tiled_clients_tree_slot() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, 1);
 
-    let before = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let before = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     let before_rect = before
         .client_moves
         .iter()
@@ -887,8 +887,7 @@ fn fullscreen_preserves_a_tiled_clients_tree_slot() {
     let leaves_before = monitor.per_tag_state().layout_tree.leaves();
 
     clients.get_mut(&fullscreen_win).unwrap().enter_fullscreen();
-    let fullscreen =
-        monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let fullscreen = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     assert_eq!(monitor.per_tag_state().layout_tree.leaves(), leaves_before);
     assert!(
@@ -905,7 +904,7 @@ fn fullscreen_preserves_a_tiled_clients_tree_slot() {
     );
 
     clients.get_mut(&fullscreen_win).unwrap().restore_mode();
-    let restored = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let restored = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     let restored_rect = restored
         .client_moves
         .iter()
@@ -937,7 +936,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .bounds(Rect::new(0, 0, 400, 300));
     monitor.per_tag_state().presentation = PresentationMode::Maximized;
 
-    let maximized = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let maximized = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     assert_eq!(maximized.client_moves.len(), windows.len());
     assert!(
         maximized
@@ -954,7 +953,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     );
 
     monitor.per_tag_state().presentation = PresentationMode::Tiled;
-    let manual = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let manual = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     let first_rect = manual.client_moves.first().unwrap().rect;
     assert!(
         manual
@@ -984,12 +983,12 @@ fn maximized_presentation_reconciles_new_tiled_leaves() {
         .copied()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
-    let _ = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let _ = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     monitor.clients.push(WindowId(3));
     monitor.z_order.attach_top(WindowId(3));
     clients.insert(WindowId(3), visible_client(WindowId(3)));
-    let _ = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let _ = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
 
     let leaves = monitor.per_tag_state().layout_tree.leaves();
     assert_eq!(leaves.len(), 3);
@@ -1020,7 +1019,7 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .bounds(Rect::new(0, 0, 400, 300));
     monitor.per_tag_state().presentation = PresentationMode::Floating;
 
-    let floating = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let floating = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     assert!(floating.client_moves.is_empty());
     assert_eq!(
         monitor
@@ -1039,7 +1038,7 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     );
 
     monitor.per_tag_state().presentation = PresentationMode::Tiled;
-    let manual = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, 0, false);
+    let manual = monitor.compute_arrange(&mut clients, &LayoutConfig::default(), true, false);
     let first_rect = manual.client_moves.first().unwrap().rect;
     assert!(
         manual
@@ -1527,4 +1526,43 @@ fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
     crate::layouts::reset_active_layout(&mut wm.ctx());
     assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
     assert_eq!(slot_tree_bounds(&wm, monitor_id), stock);
+}
+
+#[test]
+fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
+    // Regression: `arrange` used to read the *unscaled* global
+    // `derived.bar_height` and write it back onto the monitor, undoing the
+    // per-output scaling applied by the monitor-sync path. On a 2x output that
+    // left a 1x-tall bar alongside 2x padding and start-menu width.
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    wm.core.behavior.animated = false;
+    wm.core.derived.bar_height = 30;
+    wm.core.derived.bar_horizontal_padding = 15;
+
+    let win = WindowId(1);
+    let monitor_id = add_tiled_monitor(&mut wm, win, Rect::new(0, 0, 1600, 1200));
+    wm.core
+        .model
+        .monitor_mut(monitor_id)
+        .unwrap()
+        .set_ui_metrics(
+            2.0,
+            MonitorUiMetrics {
+                bar_height: 60,
+                horizontal_padding: 30,
+                startmenu_size: 60,
+            },
+        );
+
+    super::arrange(&mut wm.ctx(), Some(monitor_id));
+
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    assert_eq!(
+        monitor.bar_height, 60,
+        "arrange must not clobber the scaled bar height with the unscaled global"
+    );
+    assert_eq!(monitor.horizontal_padding, 30);
+    assert_eq!(monitor.startmenu_size, 60);
 }

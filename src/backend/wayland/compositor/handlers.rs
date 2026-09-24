@@ -166,7 +166,7 @@ impl CompositorHandler for WaylandState {
                             service_surface_commit(self, commit_kind, None, None);
                             return;
                         }
-                        Err(surface) => toplevel = surface,
+                        Err(surface) => toplevel = *surface,
                     }
                 }
 

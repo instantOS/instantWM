@@ -751,7 +751,7 @@ mod tests {
                 .monitors
                 .get_mut(monitor_id)
                 .unwrap()
-                .compute_arrange(clients, &layout_cfg, false, 0, false)
+                .compute_arrange(clients, &layout_cfg, false, false)
         };
         assert!(plan.client_moves.iter().all(|output| output.win != win));
         assert_eq!(plan.fullscreen_moves.len(), 1);

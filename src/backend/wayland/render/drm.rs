@@ -93,11 +93,14 @@ pub fn render_drm_output(
     renderer: &mut GlesRenderer,
     entry: &mut OutputSurfaceEntry,
     cursor_manager: &CursorManager,
-    pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: Instant,
     shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> RenderOutcome {
+    // Read live rather than taking a parameter: the DRM loop snapshots the
+    // same `state.runtime.pointer_location` before rendering and nothing in
+    // between mutates it.
+    let pointer_location = state.runtime.pointer_location;
     let cursor_elements = build_drm_cursor_elements(
         state,
         renderer,

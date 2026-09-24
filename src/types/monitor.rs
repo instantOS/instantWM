@@ -19,6 +19,28 @@ mod z_order;
 pub use tag_state::PerTagState;
 pub use z_order::ClientZOrder;
 
+/// Bar UI metrics for one output, already scaled for that output's UI scale.
+///
+/// These three values always travel, compare, and apply together — they are
+/// computed together from the unscaled [`DerivedState`](crate::core_state::DerivedState)
+/// base, checked together for changes, and written together onto a
+/// [`Monitor`]. Carrying them as one named type means the compiler rejects
+/// transposing `horizontal_padding` and `startmenu_size` (both plain `i32`
+/// when passed positionally), and readers see what a value is at every
+/// boundary instead of decoding `let (bh, hp, sm) = ...`.
+///
+/// This is a *transport* type. A monitor still stores the three values as
+/// individual fields; read them back via [`Monitor::ui_metrics`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonitorUiMetrics {
+    /// Effective bar height for the output, scaled for its UI scale.
+    pub bar_height: i32,
+    /// Effective horizontal padding for the output's bar, scaled.
+    pub horizontal_padding: i32,
+    /// Effective start menu width for the output's bar, scaled.
+    pub startmenu_size: i32,
+}
+
 /// Internal state of a monitor (screen) in the window manager.
 ///
 /// This struct holds all runtime state for a monitor, including
@@ -767,15 +789,6 @@ impl Monitor {
         self.presentation_for_mask(self.selected_tags())
     }
 
-    /// Set the effective bar height.
-    ///
-    /// The work area (`work_rect`) and bar Y (`bar_y`) are derived on access
-    /// from `available_rect` and `bar_height`, so storing the height is all
-    /// that is needed to keep them in sync.
-    pub fn set_bar_height(&mut self, bar_height: i32) {
-        self.bar_height = bar_height.max(0);
-    }
-
     /// Bar Y position (vertical position of the status bar).
     ///
     /// Derived from `available_rect`, `bar_height` and `shows_bar()`
@@ -851,9 +864,7 @@ impl Monitor {
         name: String,
         rect: Rect,
         scale: f64,
-        bar_height: i32,
-        horizontal_padding: i32,
-        startmenu_size: i32,
+        metrics: MonitorUiMetrics,
     ) {
         self.num = index as i32;
         self.monitor_rect = rect;
@@ -862,31 +873,38 @@ impl Monitor {
         // and bar position are derived from this rectangle on access.
         self.available_rect = rect;
         self.name = name;
-        self.set_ui_metrics(scale, bar_height, horizontal_padding, startmenu_size);
-        self.set_bar_height(bar_height);
+        self.set_ui_metrics(scale, metrics);
     }
 
     /// Set effective UI metrics for this monitor.
-    pub fn set_ui_metrics(
-        &mut self,
-        ui_scale: f64,
-        bar_height: i32,
-        horizontal_padding: i32,
-        startmenu_size: i32,
-    ) {
+    pub fn set_ui_metrics(&mut self, ui_scale: f64, metrics: MonitorUiMetrics) {
         self.ui_scale = if ui_scale.is_finite() && ui_scale > 0.0 {
             ui_scale
         } else {
             1.0
         };
-        let bar_height = bar_height.max(0);
+        // This is the single place a UI metric's minimum is decided. Callers
+        // hand over already-scaled values; `scaled_px` clamps at the source
+        // and the remaining floors live here, so no layer re-clamps a value
+        // another layer already settled.
+        let bar_height = metrics.bar_height.max(0);
         self.bar_height = bar_height;
         // The bottom strip is just a gesture handle, so it stays thinner than
         // the status bar. Half the top bar height (with a small minimum so the
         // indicator still has room to breathe) keeps it subtle but reachable.
         self.bottom_bar_height = (bar_height / 2).max(6);
-        self.horizontal_padding = horizontal_padding.max(0);
-        self.startmenu_size = startmenu_size.max(0);
+        self.horizontal_padding = metrics.horizontal_padding.max(0);
+        self.startmenu_size = metrics.startmenu_size.max(0);
+    }
+
+    /// This monitor's bar UI metrics as a single transport value.
+    #[inline]
+    pub fn ui_metrics(&self) -> MonitorUiMetrics {
+        MonitorUiMetrics {
+            bar_height: self.bar_height,
+            horizontal_padding: self.horizontal_padding,
+            startmenu_size: self.startmenu_size,
+        }
     }
 
     /// Get the width of the monitor's work area.

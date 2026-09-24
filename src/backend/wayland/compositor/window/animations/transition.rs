@@ -1,5 +1,5 @@
 use smithay::utils::{Logical, Point, Size};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::animation::{WindowAnimation, ease_out_cubic};
 use crate::types::Rect;
@@ -207,34 +207,27 @@ fn interpolate_borders(from: i32, to: i32, eased: f64) -> i32 {
 
 impl WaylandWindowAnimation {
     pub(super) fn new(
-        from: Rect,
-        to: Rect,
+        frame: WindowAnimation,
         committed_size: Size<i32, Logical>,
         last_configured_size: Option<(i32, i32)>,
-        duration: Duration,
-        now: Instant,
         from_border: i32,
         to_border: i32,
     ) -> Self {
-        let anchors = SurfaceAnchors::between(from, to, from_border, to_border);
+        let anchors = SurfaceAnchors::between(frame.from, frame.to, from_border, to_border);
+        let resize = ResizeConfigure::toward(committed_size, last_configured_size, frame.to);
         Self {
-            frame: WindowAnimation {
-                from,
-                to,
-                started_at: now,
-                duration,
-            },
-            displayed_frame: from,
+            displayed_frame: frame.from,
             displayed_border: from_border,
             from_border,
             to_border,
             committed_size_at_start: committed_size,
             anchors,
-            resize: ResizeConfigure::toward(committed_size, last_configured_size, to),
+            resize,
             resize_timing: ResizeTiming::Normal,
             resize_configure_phase: RESIZE_CONFIGURE_PHASE,
             shrink_stage_presented: false,
             waiting_for_resize: false,
+            frame,
         }
     }
 

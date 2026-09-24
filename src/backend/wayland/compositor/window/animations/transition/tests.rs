@@ -3,17 +3,20 @@ use super::offscreen::{
     resize_growth_is_offscreen_at_start, resize_removal_is_offscreen_at_target,
 };
 use super::*;
+use std::time::Duration;
 
 #[test]
 fn resize_schedule_emits_exactly_one_configure() {
     let start = Instant::now();
     let mut animation = WaylandWindowAnimation::new(
-        Rect::new(0, 0, 100, 80),
-        Rect::new(0, 0, 140, 60),
+        WindowAnimation {
+            from: Rect::new(0, 0, 100, 80),
+            to: Rect::new(0, 0, 140, 60),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         Size::from((100, 80)),
         None,
-        Duration::from_millis(100),
-        start,
         2,
         4,
     );
@@ -47,12 +50,14 @@ fn offscreen_shrink_configures_before_movement_is_complete() {
     let committed = Size::from((1000, 1000));
     let output = Rect::new(0, 0, 1000, 1000);
     let mut animation = WaylandWindowAnimation::new(
-        from,
-        target,
+        WindowAnimation {
+            from,
+            to: target,
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         committed,
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -98,12 +103,14 @@ fn overdue_offscreen_shrink_stages_before_landing() {
     let committed = Size::from((1000, 1000));
     let output = Rect::new(0, 0, 1000, 1000);
     let mut animation = WaylandWindowAnimation::new(
-        from,
-        target,
+        WindowAnimation {
+            from,
+            to: target,
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         committed,
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -179,12 +186,14 @@ fn offscreen_growth_is_requested_before_movement() {
     let committed = Size::from((500, 500));
     let output = Rect::new(0, 0, 1000, 1000);
     let mut animation = WaylandWindowAnimation::new(
-        from,
-        target,
+        WindowAnimation {
+            from,
+            to: target,
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         committed,
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -270,12 +279,14 @@ fn immediate_growth_falls_back_if_it_becomes_visible_before_the_first_tick() {
     let target = Rect::new(0, 0, 500, 1000);
     let committed = Size::from((500, 500));
     let mut animation = WaylandWindowAnimation::new(
-        from,
-        target,
+        WindowAnimation {
+            from,
+            to: target,
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         committed,
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -299,12 +310,14 @@ fn delayed_shrink_falls_back_after_an_unsafe_late_commit() {
     let late_committed = Size::from((500, 400));
     let output = Rect::new(0, 0, 1000, 1000);
     let mut animation = WaylandWindowAnimation::new(
-        Rect::new(500, 0, 500, 1000),
-        target,
+        WindowAnimation {
+            from: Rect::new(500, 0, 500, 1000),
+            to: target,
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         initial_committed,
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -326,12 +339,14 @@ fn delayed_shrink_falls_back_after_an_unsafe_late_commit() {
 fn movement_only_transition_never_schedules_a_resize() {
     let start = Instant::now();
     let mut animation = WaylandWindowAnimation::new(
-        Rect::new(0, 0, 100, 80),
-        Rect::new(50, 20, 100, 80),
+        WindowAnimation {
+            from: Rect::new(0, 0, 100, 80),
+            to: Rect::new(50, 20, 100, 80),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         Size::from((100, 80)),
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -349,22 +364,26 @@ fn movement_only_transition_never_schedules_a_resize() {
 fn resize_schedule_compares_target_with_committed_not_visual_size() {
     let start = Instant::now();
     let needs_resize = WaylandWindowAnimation::new(
-        Rect::new(0, 0, 120, 80),
-        Rect::new(10, 0, 120, 80),
+        WindowAnimation {
+            from: Rect::new(0, 0, 120, 80),
+            to: Rect::new(10, 0, 120, 80),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         Size::from((140, 80)),
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
     let visual_size_differs_but_client_is_ready = WaylandWindowAnimation::new(
-        Rect::new(0, 0, 120, 80),
-        Rect::new(10, 0, 140, 80),
+        WindowAnimation {
+            from: Rect::new(0, 0, 120, 80),
+            to: Rect::new(10, 0, 140, 80),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         Size::from((140, 80)),
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -379,12 +398,14 @@ fn resize_schedule_compares_target_with_committed_not_visual_size() {
 #[test]
 fn resize_schedule_supersedes_a_stale_outstanding_configure() {
     let animation = WaylandWindowAnimation::new(
-        Rect::new(0, 0, 60, 80),
-        Rect::new(0, 0, 100, 80),
+        WindowAnimation {
+            from: Rect::new(0, 0, 60, 80),
+            to: Rect::new(0, 0, 100, 80),
+            started_at: Instant::now(),
+            duration: Duration::from_millis(100),
+        },
         Size::from((100, 80)),
         Some((60, 80)),
-        Duration::from_millis(100),
-        Instant::now(),
         0,
         0,
     );
@@ -399,12 +420,14 @@ fn resize_schedule_supersedes_a_stale_outstanding_configure() {
 fn borders_interpolate_from_the_displayed_to_the_target_width() {
     let start = Instant::now();
     let mut animation = WaylandWindowAnimation::new(
-        Rect::new(0, 30, 1200, 740),
-        Rect::new(150, 126, 896, 573),
+        WindowAnimation {
+            from: Rect::new(0, 30, 1200, 740),
+            to: Rect::new(150, 126, 896, 573),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         Size::from((1200, 740)),
         None,
-        Duration::from_millis(100),
-        start,
         0,
         2,
     );
@@ -440,12 +463,14 @@ fn centered_float_to_single_tile_anchors_near_edges_so_the_surface_moves() {
     let to = Rect::new(0, 30, 1000, 970);
     let committed = Size::from((600, 400));
     let mut animation = WaylandWindowAnimation::new(
-        from,
-        to,
+        WindowAnimation {
+            from,
+            to,
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         committed,
         None,
-        Duration::from_millis(100),
-        start,
         2,
         0,
     );
@@ -464,12 +489,14 @@ fn centered_float_to_single_tile_anchors_near_edges_so_the_surface_moves() {
 #[test]
 fn right_half_to_bottom_right_quarter_follows_the_moving_top_edge() {
     let animation = WaylandWindowAnimation::new(
-        Rect::new(500, 0, 500, 1000),
-        Rect::new(500, 500, 500, 500),
+        WindowAnimation {
+            from: Rect::new(500, 0, 500, 1000),
+            to: Rect::new(500, 500, 500, 500),
+            started_at: Instant::now(),
+            duration: Duration::from_millis(100),
+        },
         Size::from((500, 1000)),
         None,
-        Duration::from_millis(100),
-        Instant::now(),
         0,
         0,
     );
@@ -483,12 +510,14 @@ fn bottom_left_quarter_to_left_half_follows_the_moving_top_edge() {
     let start = Instant::now();
     let committed = Size::from((500, 500));
     let mut animation = WaylandWindowAnimation::new(
-        Rect::new(0, 500, 500, 500),
-        Rect::new(0, 0, 500, 1000),
+        WindowAnimation {
+            from: Rect::new(0, 500, 500, 500),
+            to: Rect::new(0, 0, 500, 1000),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         committed,
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );
@@ -555,12 +584,14 @@ fn one_sided_shrink_follows_the_moving_near_edge() {
 fn far_anchored_completion_waits_for_the_target_committed_size() {
     let start = Instant::now();
     let mut animation = WaylandWindowAnimation::new(
-        Rect::new(0, 0, 100, 80),
-        Rect::new(0, 0, 140, 80),
+        WindowAnimation {
+            from: Rect::new(0, 0, 100, 80),
+            to: Rect::new(0, 0, 140, 80),
+            started_at: start,
+            duration: Duration::from_millis(100),
+        },
         Size::from((100, 80)),
         None,
-        Duration::from_millis(100),
-        start,
         0,
         0,
     );

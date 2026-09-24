@@ -590,6 +590,10 @@ pub(crate) fn process_pointer_motion_command_cached(
     cache: Option<PointerMotionCache>,
     update_active_drag: bool,
 ) -> PointerMotionCache {
+    let handles = PointerHandles {
+        pointer: pointer_handle,
+        keyboard: keyboard_handle,
+    };
     match command {
         PointerMotionCommand::Relative {
             dx,
@@ -600,8 +604,7 @@ pub(crate) fn process_pointer_motion_command_cached(
         } => handle_pointer_motion(
             wm,
             state,
-            pointer_handle,
-            keyboard_handle,
+            handles,
             MotionEvent::Relative {
                 dx,
                 dy,
@@ -616,8 +619,7 @@ pub(crate) fn process_pointer_motion_command_cached(
         PointerMotionCommand::Absolute { x, y, time } => handle_pointer_motion(
             wm,
             state,
-            pointer_handle,
-            keyboard_handle,
+            handles,
             MotionEvent::Absolute { x, y, time },
             PointerMotionSource::Device,
             cache,
@@ -626,8 +628,7 @@ pub(crate) fn process_pointer_motion_command_cached(
         PointerMotionCommand::Warp { x, y, time } => handle_pointer_motion(
             wm,
             state,
-            pointer_handle,
-            keyboard_handle,
+            handles,
             MotionEvent::Absolute { x, y, time },
             PointerMotionSource::Synthetic,
             cache,
@@ -647,8 +648,7 @@ pub(crate) fn process_pointer_motion_command_cached(
             handle_pointer_motion(
                 wm,
                 state,
-                pointer_handle,
-                keyboard_handle,
+                handles,
                 MotionEvent::Absolute {
                     x: location.x,
                     y: location.y,
@@ -677,16 +677,26 @@ impl PointerMotionSource {
     }
 }
 
+/// Input-device handles threaded through one pointer-motion transaction.
+#[derive(Clone, Copy)]
+struct PointerHandles<'a> {
+    pointer: &'a PointerHandle<WaylandState>,
+    keyboard: &'a KeyboardHandle<WaylandState>,
+}
+
 fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    handles: PointerHandles<'_>,
     event: MotionEvent,
     source: PointerMotionSource,
     cache: Option<PointerMotionCache>,
     update_active_drag: bool,
 ) -> PointerMotionCache {
+    let PointerHandles {
+        pointer: pointer_handle,
+        ..
+    } = handles;
     state.runtime.cursor_hidden_by_touch = false;
 
     let fallback_w = wm.core.derived.display.width;
@@ -795,8 +805,7 @@ fn handle_pointer_motion(
     dispatch_pointer_motion(
         wm,
         state,
-        pointer_handle,
-        keyboard_handle,
+        handles,
         &final_hit,
         event.time(),
         source.hover_focus_trigger(),
@@ -825,13 +834,16 @@ fn retain_snapshot_during_active_drag(
 fn dispatch_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    handles: PointerHandles<'_>,
     hit_test: &PointerContents,
     time: InputTime,
     hover_focus_trigger: crate::types::HoverFocusTrigger,
     update_active_drag: bool,
 ) {
+    let PointerHandles {
+        pointer: pointer_handle,
+        keyboard: keyboard_handle,
+    } = handles;
     let pointer_location = state.runtime.pointer_location;
     let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
 

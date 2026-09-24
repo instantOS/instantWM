@@ -57,8 +57,12 @@ impl Wm {
     ///
     /// X11 bakes schemes/fonts into the DrawContext at startup, so they must be
     /// rebuilt for new values to show without a restart. Wayland recomputes the
-    /// derived bar metrics (height, padding) from font state. Callers decide
-    /// what happens next: immediate arrange, deferred work flags, or both.
+    /// derived bar metrics (height, padding) from font state. Both leave
+    /// `DerivedState` holding the *unscaled* base, which is then projected into
+    /// each monitor's *scaled* copy via
+    /// [`crate::monitor::resync_monitor_ui_metrics`] — layout never does that
+    /// projection. Callers decide what happens next: immediate arrange,
+    /// deferred work flags, or both.
     ///
     /// This is the single owner of that choreography — used by full config
     /// reloads ([`crate::reload`]) and incremental `config set` side effects
@@ -71,6 +75,7 @@ impl Wm {
         if matches!(self.backend, Backend::Wayland(_)) {
             crate::backend::wayland::bootstrap::apply_bar_metrics(&mut self.core);
         }
+        crate::monitor::resync_monitor_ui_metrics(&mut self.core);
     }
 
     pub fn ctx(&mut self) -> WmCtx<'_> {

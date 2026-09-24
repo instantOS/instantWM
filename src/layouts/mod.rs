@@ -106,11 +106,12 @@ pub struct LayoutOutput {
 
 /// Complete set of changes required to arrange one monitor.
 ///
-/// Produced by [`crate::types::Monitor::compute_arrange`] (mutates a snapshot to compute bar geometry)
-/// and applied atomically by [`ArrangePlan::apply`].
+/// Produced by [`crate::types::Monitor::compute_arrange`] (which mutates the
+/// monitor's layout tree) and applied atomically by [`ArrangePlan::apply`].
+/// Bar geometry is deliberately absent: layout only reads it, the monitor-sync
+/// path owns it.
 #[derive(Debug, Clone)]
 pub struct ArrangePlan {
-    pub bar_height: i32,
     pub borders: Vec<(WindowId, i32)>,
     pub client_moves: Vec<LayoutOutput>,
     pub fullscreen_moves: Vec<LayoutOutput>,

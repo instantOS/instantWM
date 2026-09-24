@@ -509,7 +509,10 @@ mod tests {
         {
             let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
             monitor.show_bar = true;
-            monitor.set_bar_height(30);
+            // Direct field write rather than `set_ui_metrics`: this fixture
+            // only cares about the top bar's height, and going through the
+            // metrics setter would also recompute the bottom gesture strip.
+            monitor.bar_height = 30;
         }
         wm.bar.replace_hit_cache(
             monitor_id,

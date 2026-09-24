@@ -100,10 +100,8 @@ pub fn manage(
     let is_maximized = is_maximized_on_client_monitor(ctx.core.model(), window);
     let bar_height = ctx.core.derived().bar_height;
     configure_client_border(
-        ctx.core.model_mut(),
+        ctx,
         bar_height,
-        &ctx.x11,
-        ctx.x11_runtime,
         window,
         border_px,
         monitor_rect,
@@ -252,16 +250,14 @@ fn is_maximized_on_client_monitor(model: &crate::model::WmModel, window: WindowI
 }
 
 fn configure_client_border(
-    model: &mut crate::model::WmModel,
+    ctx: &mut WmCtxX11<'_>,
     bar_height: i32,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
     window: WindowId,
     border_px: i32,
     monitor_rect: Rect,
     is_maximized: bool,
 ) {
-    let Some(client) = model.client_mut(window) else {
+    let Some(client) = ctx.core.model_mut().client_mut(window) else {
         return;
     };
 
@@ -279,12 +275,12 @@ fn configure_client_border(
     client.border_width = border_width;
 
     let x11_window: Window = window.into();
-    let pixel = x11_runtime.border_scheme.normal.bg.pixel();
-    let _ = x11.conn.change_window_attributes(
+    let pixel = ctx.x11_runtime.border_scheme.normal.bg.pixel();
+    let _ = ctx.x11.conn.change_window_attributes(
         x11_window,
         &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
     );
-    let _ = x11.conn.flush();
+    let _ = ctx.x11.conn.flush();
 }
 
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, window: WindowId) -> bool {

@@ -1,7 +1,7 @@
 use crate::actions::{KeyAction, execute_key_action};
 use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
-use crate::core_state::ActiveWmMode;
+use crate::core_state::{ActiveWmMode, BindingConfig};
 use crate::floating::change_snap;
 use crate::focus::focus_stack;
 
@@ -49,14 +49,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     }
 
     let (action, transient) = resolve_key_action(
-        ctx.core().config().bindings.keys.as_slice(),
-        ctx.core()
-            .state()
-            .config
-            .bindings
-            .desktop_keybinds
-            .as_slice(),
-        &ctx.core().config().bindings.modes,
+        &ctx.core().config().bindings,
         ctx.core().model().selected_win(),
         ctx.current_mode(),
         binding_keysym,
@@ -148,9 +141,7 @@ fn find_matching_action(
 }
 
 fn resolve_key_action(
-    keys: &[Key],
-    desktop_keybinds: &[Key],
-    modes: &HashMap<String, ModeConfig>,
+    bindings: &BindingConfig,
     selected_client: Option<WindowId>,
     mode: &ActiveWmMode,
     keysym: u32,
@@ -160,7 +151,8 @@ fn resolve_key_action(
     let find = |binds: &[Key]| find_matching_action(binds, keysym, cleaned, numlockmask);
 
     match mode {
-        ActiveWmMode::TreePlacement(_) => modes
+        ActiveWmMode::TreePlacement(_) => bindings
+            .modes
             .get(crate::core_state::TREE_PLACEMENT_MODE_NAME)
             .and_then(|mode| find(&mode.keybinds))
             .map(|action| KeyResolution {
@@ -168,20 +160,20 @@ fn resolve_key_action(
                 transient: false,
             }),
         ActiveWmMode::Named(name) => {
-            let mode_cfg = modes.get(name.as_str());
+            let mode_cfg = bindings.modes.get(name.as_str());
             let transient = mode_cfg.is_some_and(|m| m.transient);
             let action = mode_cfg
                 .and_then(|m| find(&m.keybinds))
-                .or_else(|| find(keys))
-                .or_else(|| find(desktop_keybinds));
+                .or_else(|| find(&bindings.keys))
+                .or_else(|| find(&bindings.desktop_keybinds));
             action.map(|action| KeyResolution { action, transient })
         }
         _ => {
             // Default & Overview: global bindings → desktop bindings (if enabled)
-            find(keys)
+            find(&bindings.keys)
                 .or_else(|| {
                     if desktop_bindings_enabled(selected_client, mode) {
-                        find(desktop_keybinds)
+                        find(&bindings.desktop_keybinds)
                     } else {
                         None
                     }
@@ -301,9 +293,11 @@ mod tests {
         );
 
         let resolved = resolve_key_action(
-            &[global_key],
-            &[],
-            &modes,
+            &BindingConfig {
+                keys: vec![global_key],
+                modes,
+                ..BindingConfig::default()
+            },
             None,
             &ActiveWmMode::Named("resize".to_string()),
             42,
@@ -344,8 +338,13 @@ mod tests {
             },
         );
         let mode = placement_mode();
+        let bindings = BindingConfig {
+            keys: global_keys.to_vec(),
+            modes,
+            ..BindingConfig::default()
+        };
 
-        let resolved = resolve_key_action(&global_keys, &[], &modes, None, &mode, 42, 0, 0)
+        let resolved = resolve_key_action(&bindings, None, &mode, 42, 0, 0)
             .expect("configured placement action");
         assert!(matches!(
             resolved.action,
@@ -358,7 +357,7 @@ mod tests {
             !resolved.transient,
             "placement is intrinsically non-transient"
         );
-        assert!(resolve_key_action(&global_keys, &[], &modes, None, &mode, 43, 0, 0).is_none());
+        assert!(resolve_key_action(&bindings, None, &mode, 43, 0, 0).is_none());
     }
 
     #[test]
@@ -371,9 +370,10 @@ mod tests {
         };
 
         let resolved = resolve_key_action(
-            &[],
-            &[desktop_key],
-            &HashMap::new(),
+            &BindingConfig {
+                desktop_keybinds: vec![desktop_key],
+                ..BindingConfig::default()
+            },
             None,
             &ActiveWmMode::Default,
             9,
@@ -388,14 +388,15 @@ mod tests {
         }
 
         let blocked = resolve_key_action(
-            &[],
-            &[Key {
-                mod_mask: 0,
-                keysym: 9,
-                action: KeyAction::named(NamedAction::ToggleBar),
-                origin: crate::types::KeybindOrigin::CompiledDefault,
-            }],
-            &HashMap::new(),
+            &BindingConfig {
+                desktop_keybinds: vec![Key {
+                    mod_mask: 0,
+                    keysym: 9,
+                    action: KeyAction::named(NamedAction::ToggleBar),
+                    origin: crate::types::KeybindOrigin::CompiledDefault,
+                }],
+                ..BindingConfig::default()
+            },
             Some(WindowId(1)),
             &ActiveWmMode::Default,
             9,
@@ -433,9 +434,11 @@ mod tests {
 
         // The global binding wins; the configured "overview" mode is ignored.
         let resolved = resolve_key_action(
-            &[global_key],
-            &[],
-            &modes,
+            &BindingConfig {
+                keys: vec![global_key],
+                modes,
+                ..BindingConfig::default()
+            },
             None,
             &ActiveWmMode::Overview,
             42,

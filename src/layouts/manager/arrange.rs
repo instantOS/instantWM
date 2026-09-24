@@ -81,7 +81,6 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let plan = {
         let globals = ctx.core_mut().state_mut();
-        let bar_height = globals.derived.bar_height;
         let animated = globals.behavior.animated;
         let layout_cfg = globals.config.layout;
         let resize_hints = globals.config.window.resize_hints;
@@ -89,7 +88,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
             return;
         };
-        monitor.compute_arrange(clients, &layout_cfg, resize_hints, bar_height, animated)
+        monitor.compute_arrange(clients, &layout_cfg, resize_hints, animated)
     };
 
     plan.apply(ctx, monitor_id);
@@ -100,10 +99,6 @@ impl ArrangePlan {
         // Backend effects deliberately retain their established order.
         for (win, border) in &self.borders {
             ctx.set_border(*win, *border);
-        }
-
-        if let Some(monitor) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
-            monitor.bar_height = self.bar_height;
         }
 
         if let Some(selected) = ctx
@@ -137,10 +132,13 @@ impl Monitor {
         clients: &mut HashMap<WindowId, Client>,
         layout_cfg: &crate::config::config_toml::LayoutConfig,
         resize_hints: bool,
-        bar_height: i32,
         animated: bool,
     ) -> ArrangePlan {
-        self.set_bar_height(bar_height);
+        // Layout is a pure reader of bar geometry. The monitor's scaled bar
+        // height is owned by the monitor-sync path (`sync_monitors_from_outputs`
+        // and `resync_monitor_ui_metrics`); writing it here would clobber the
+        // per-output scale with the unscaled global `DerivedState` value.
+        let bar_height = self.bar_height;
         let borders = compute_borders(self, clients);
 
         // Border and geometry updates form one transaction. Layout against
@@ -180,7 +178,6 @@ impl Monitor {
         };
 
         ArrangePlan {
-            bar_height: self.bar_height,
             borders,
             client_moves,
             fullscreen_moves,

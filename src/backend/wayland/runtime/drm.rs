@@ -1065,8 +1065,6 @@ fn render_outputs(
     let session_active = loop_state.session_active;
     let pending_crtcs = loop_state.pending_crtcs.clone();
 
-    let pointer_location = state.runtime.pointer_location;
-
     if session_active {
         let needs_any_render = output_surfaces
             .iter()
@@ -1104,7 +1102,6 @@ fn render_outputs(
                 renderer,
                 entry,
                 cursor_manager,
-                pointer_location,
                 start_time,
                 shared_scene.clone(),
                 suppress_upper_layers,

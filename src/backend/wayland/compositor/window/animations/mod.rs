@@ -1,6 +1,7 @@
 use smithay::utils::{Logical, Point, Size};
 use std::time::{Duration, Instant};
 
+use crate::animation::WindowAnimation;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::{Rect, WindowId};
@@ -40,12 +41,14 @@ mod tests {
         state.window_animations.insert(
             win,
             WaylandWindowAnimation::new(
-                from,
-                target,
+                WindowAnimation {
+                    from,
+                    to: target,
+                    started_at: Instant::now(),
+                    duration: Duration::from_millis(50),
+                },
                 Size::from((600, 400)),
                 None,
-                Duration::from_millis(50),
-                Instant::now(),
                 2,
                 2,
             ),
@@ -335,12 +338,14 @@ impl WaylandState {
 
         let now = Instant::now();
         let mut animation = WaylandWindowAnimation::new(
-            from,
-            target,
+            WindowAnimation {
+                from,
+                to: target,
+                started_at: now,
+                duration: animation_duration,
+            },
             actual_size,
             self.last_configured_size.get(&window_id).copied(),
-            animation_duration,
-            now,
             from_border,
             to_border,
         );
