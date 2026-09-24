@@ -231,12 +231,13 @@ mod tests {
             },
         );
 
+        let bindings = BindingConfig {
+            keys: vec![global_key],
+            modes,
+            ..BindingConfig::default()
+        };
         let resolved = resolve_key_action(
-            &BindingConfig {
-                keys: vec![global_key],
-                modes,
-                ..BindingConfig::default()
-            },
+            &bindings,
             None,
             &ActiveWmMode::Named("resize".to_string()),
             42,
@@ -302,31 +303,29 @@ mod tests {
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
 
-        let resolved = resolve_key_action(
-            &BindingConfig {
-                desktop_keybinds: vec![desktop_key],
-                ..BindingConfig::default()
-            },
-            None,
-            &ActiveWmMode::Default,
-            9,
-            0,
-            0,
-        )
-        .expect("expected desktop action");
+        let bindings = BindingConfig {
+            desktop_keybinds: vec![desktop_key],
+            ..BindingConfig::default()
+        };
+        let resolved = resolve_key_action(&bindings, None, &ActiveWmMode::Default, 9, 0, 0)
+            .expect("expected desktop action");
 
-        assert!(matches!(resolved.0, KeyAction::Named(NamedAction::ToggleBar)));
+        assert!(matches!(
+            resolved.0,
+            KeyAction::Named(NamedAction::ToggleBar)
+        ));
 
+        let blocked_bindings = BindingConfig {
+            desktop_keybinds: vec![Key {
+                mod_mask: 0,
+                keysym: 9,
+                action: KeyAction::named(NamedAction::ToggleBar),
+                origin: crate::types::KeybindOrigin::CompiledDefault,
+            }],
+            ..BindingConfig::default()
+        };
         let blocked = resolve_key_action(
-            &BindingConfig {
-                desktop_keybinds: vec![Key {
-                    mod_mask: 0,
-                    keysym: 9,
-                    action: KeyAction::named(NamedAction::ToggleBar),
-                    origin: crate::types::KeybindOrigin::CompiledDefault,
-                }],
-                ..BindingConfig::default()
-            },
+            &blocked_bindings,
             Some(WindowId(1)),
             &ActiveWmMode::Default,
             9,
@@ -363,20 +362,17 @@ mod tests {
         );
 
         // The global binding wins; the configured "overview" mode is ignored.
-        let resolved = resolve_key_action(
-            &BindingConfig {
-                keys: vec![global_key],
-                modes,
-                ..BindingConfig::default()
-            },
-            None,
-            &ActiveWmMode::Overview,
-            42,
-            1,
-            0,
-        )
-        .expect("expected global action in overview");
-        assert!(matches!(resolved.0, KeyAction::Named(NamedAction::FocusNext)));
+        let bindings = BindingConfig {
+            keys: vec![global_key],
+            modes,
+            ..BindingConfig::default()
+        };
+        let resolved = resolve_key_action(&bindings, None, &ActiveWmMode::Overview, 42, 1, 0)
+            .expect("expected global action in overview");
+        assert!(matches!(
+            resolved.0,
+            KeyAction::Named(NamedAction::FocusNext)
+        ));
         assert!(!resolved.1);
     }
 

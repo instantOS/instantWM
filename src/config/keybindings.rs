@@ -356,7 +356,7 @@ mod tests {
             (XK_K, XK_UP, NamedAction::FocusUp),
             (XK_L, XK_RIGHT, NamedAction::FocusRight),
         ] {
-            assert_eq!(default_named_action(MODKEY, vim), Some(action));
+            assert_eq!(default_named_action(MODKEY, vim), Some(action.clone()));
             assert_eq!(default_named_action(MODKEY, arrow), Some(action));
         }
     }
