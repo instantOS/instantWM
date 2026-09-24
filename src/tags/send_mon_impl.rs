@@ -127,7 +127,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         y: tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32,
         ..client.geo
     }) {
-        crate::client::sync_client_geometry(ctx.core_mut().model_mut(), win, rect);
+        ctx.core_mut().model_mut().sync_client_geometry(win, rect);
     }
 
     // Raise so the window is immediately visible on the new monitor. The layout

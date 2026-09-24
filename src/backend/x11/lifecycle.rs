@@ -121,7 +121,7 @@ pub fn manage(
             transient_for,
             position_is_explicit,
         ) {
-            crate::client::sync_client_geometry(ctx.core.model_mut(), window, rect);
+            ctx.core.model_mut().sync_client_geometry(window, rect);
         }
         ctx.x11.raise_window_visual_only(window);
         ctx.x11.flush();

@@ -44,10 +44,10 @@ pub use rules::{
 };
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{sane_floating_spawn_rect, sync_client_geometry};
+pub use geometry::sane_floating_spawn_rect;
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{apply_visibility, hide, hide_for_user, show_window};
+pub use visibility::{hide, hide_for_user, show_window};
 
 // -- Focus / input -----------------------------------------------------------
 // X11-specific focus functions live in `client::focus` and are called

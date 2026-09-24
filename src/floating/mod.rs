@@ -7,12 +7,10 @@
 //!   toggle/set/change floating state; internal client-maximize transitions
 //! - [`movement`] — keyboard move, resize, center window, scale client
 //! - [`batch`]   — distribute floating clients
-//! - [`helpers`] — has_tiling_layout
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
 //!   with optional edge-anchored positioning
 
 mod batch;
-mod helpers;
 mod movement;
 pub mod scratchpad;
 mod snap;

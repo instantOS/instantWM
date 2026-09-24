@@ -385,6 +385,38 @@ pub struct CoreState {
     pub pending_launches: VecDeque<PendingLaunch>,
 }
 
+impl CoreState {
+    /// Atomically install a fully resolved configuration.
+    ///
+    /// Parsing, default resolution and validation happen before this boundary.
+    /// Installation replaces policy and synchronizes model/interaction state
+    /// that intentionally mirrors part of that policy.
+    pub fn apply_config(&mut self, next: EffectiveConfig) {
+        let keyboard_layout = KeyboardLayoutState {
+            layouts: next.keyboard.layouts.clone(),
+            options: next.keyboard.options.clone(),
+            model: next.keyboard.model.clone(),
+            swap_escape: next.keyboard.swapescape,
+            current: 0,
+        };
+        let show_bottom_bar = next.bar.show_bottom;
+        let tag_template = next.tag_template.clone();
+        let tag_colors = next.colors.tag.clone();
+
+        self.config = next;
+        self.interaction.keyboard_layout = keyboard_layout;
+        self.model.tags.colors = tag_colors;
+        self.model.tags.num_tags = tag_template.len();
+
+        // The bottom bar state is global. Reloading it resets interactive
+        // toggles so existing outputs immediately match newly created outputs.
+        for (_id, monitor) in self.model.monitors_iter_mut() {
+            monitor.show_bottom_bar = show_bottom_bar;
+            monitor.init_tags(&tag_template);
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyboardTreePlacement {
     pub source: WindowId,
@@ -795,35 +827,5 @@ impl PendingWork {
     /// Queue reloading the Wayland cursor theme and size.
     pub fn queue_cursor_config_apply(&mut self) {
         self.cursor_config = true;
-    }
-}
-
-/// Atomically install a fully resolved configuration.
-///
-/// Parsing, default resolution and validation happen before this boundary.
-/// Installation only replaces policy and synchronizes model/interaction state
-/// that intentionally mirrors part of that policy.
-pub fn apply_config(state: &mut CoreState, next: EffectiveConfig) {
-    let keyboard_layout = KeyboardLayoutState {
-        layouts: next.keyboard.layouts.clone(),
-        options: next.keyboard.options.clone(),
-        model: next.keyboard.model.clone(),
-        swap_escape: next.keyboard.swapescape,
-        current: 0,
-    };
-    let show_bottom_bar = next.bar.show_bottom;
-    let tag_template = next.tag_template.clone();
-    let tag_colors = next.colors.tag.clone();
-
-    state.config = next;
-    state.interaction.keyboard_layout = keyboard_layout;
-    state.model.tags.colors = tag_colors;
-    state.model.tags.num_tags = tag_template.len();
-
-    // The bottom bar state is global. Reloading it resets interactive
-    // toggles so existing outputs immediately match newly created outputs.
-    for (_id, monitor) in state.model.monitors_iter_mut() {
-        monitor.show_bottom_bar = show_bottom_bar;
-        monitor.init_tags(&tag_template);
     }
 }

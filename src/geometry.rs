@@ -325,7 +325,9 @@ pub(crate) fn move_resize(
             }
 
             if options.mode == MoveResizeMode::AnimateTo {
-                crate::client::sync_client_geometry(ctx.core_mut().model_mut(), win, final_rect);
+                ctx.core_mut()
+                    .model_mut()
+                    .sync_client_geometry(win, final_rect);
             }
 
             enqueue_window_animation(ctx, win, from, final_rect, options.duration);

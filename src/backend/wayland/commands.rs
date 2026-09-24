@@ -329,7 +329,7 @@ mod tests {
         let mut bar = BarState::default();
 
         assert!(apply_fullscreen_request(&mut core, &mut work, &mut bar, win, true).is_some());
-        crate::client::sync_client_geometry(&mut core.model, win, fullscreen_rect);
+        core.model.sync_client_geometry(win, fullscreen_rect);
         assert!(apply_fullscreen_request(&mut core, &mut work, &mut bar, win, false).is_some());
 
         let client = core.model.client(win).unwrap();

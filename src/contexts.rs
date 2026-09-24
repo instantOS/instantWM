@@ -492,13 +492,13 @@ impl<'a> WmCtx<'a> {
                 let WmCtx::X11(x11) = self else {
                     unreachable!()
                 };
-                crate::client::sync_client_geometry(x11.core.model_mut(), win, rect);
+                x11.core.model_mut().sync_client_geometry(win, rect);
 
                 crate::backend::x11::focus::configure(x11.core.state, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
-                    crate::client::sync_client_geometry(self.core_mut().model_mut(), win, rect);
+                    self.core_mut().model_mut().sync_client_geometry(win, rect);
                 }
                 self.window_backend().resize_window(win, rect);
                 if apply_mode == GeometryApplyMode::VisualOnly {

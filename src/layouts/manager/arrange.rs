@@ -21,7 +21,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
         ctx.reset_mode();
     }
 
-    crate::client::apply_visibility(ctx);
+    ctx.apply_visibility_plan();
     if let Some(id) = monitor_id {
         arrange_monitor(ctx, id);
         super::z_order::sync_monitor_z_order(ctx, id);

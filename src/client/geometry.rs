@@ -14,26 +14,7 @@
 
 use crate::geometry::MoveResizeOptions;
 use crate::model::WmModel;
-use crate::types::{Client, Monitor, Point, Rect, Size, SnapPosition, WindowId};
-
-/// Record the resolved geometry of a managed client.
-///
-/// Backends may request a resize optimistically, but this helper is called only
-/// once the WM knows the geometry that actually applies to the window right
-/// now. Shared state lives here so backend callbacks do not each reinvent the
-/// current and saved-floating geometry update contract.
-pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
-    let work_area = model.client_view(win).map(|view| view.monitor.work_rect());
-    if let Some(client) = model.client_mut(win) {
-        client.update_geometry(rect);
-        if client.mode().is_normal_floating()
-            && client.snap_status == SnapPosition::None
-            && let Some(work_area) = work_area
-        {
-            client.save_floating_placement(rect, work_area);
-        }
-    }
-}
+use crate::types::{Client, Monitor, Point, Rect, Size, WindowId};
 
 /// Why a tiled client is acquiring floating geometry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -465,7 +446,6 @@ mod tests {
     use super::{
         FloatingPlacementIntent, FloatingPlacementKind, clamp_position_to_bounds,
         resolve_floating_placement, resolve_floating_transition, sane_floating_spawn_rect,
-        sync_client_geometry,
     };
     use crate::core_state::{CoreState, DisplayConfig};
     use crate::model::WmModel;
@@ -614,7 +594,7 @@ mod tests {
             ..Client::default()
         });
 
-        sync_client_geometry(&mut model, win, Rect::new(10, 40, 900, 700));
+        model.sync_client_geometry(win, Rect::new(10, 40, 900, 700));
         assert_eq!(model.client(win).unwrap().saved_floating_placement(), None);
 
         model
@@ -622,7 +602,7 @@ mod tests {
             .unwrap()
             .set_placement(crate::types::ClientPlacement::Floating);
         let floating = Rect::new(100, 100, 700, 500);
-        sync_client_geometry(&mut model, win, floating);
+        model.sync_client_geometry(win, floating);
         let saved = model
             .client(win)
             .unwrap()
@@ -633,7 +613,7 @@ mod tests {
 
         let free_placement = saved;
         model.client_mut(win).unwrap().snap_status = SnapPosition::Left;
-        sync_client_geometry(&mut model, win, Rect::new(0, 30, 500, 770));
+        model.sync_client_geometry(win, Rect::new(0, 30, 500, 770));
         assert_eq!(
             model.client(win).unwrap().saved_floating_placement(),
             Some(free_placement)
@@ -661,7 +641,7 @@ mod tests {
         client.set_placement(crate::types::ClientPlacement::Floating);
         model.insert_client(client);
 
-        sync_client_geometry(&mut model, win, restored);
+        model.sync_client_geometry(win, restored);
 
         let client = model.client(win).unwrap();
         assert_eq!(client.geo, restored);

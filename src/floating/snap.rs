@@ -131,7 +131,11 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let tiling = super::helpers::has_tiling_layout(ctx.core().model());
+    let tiling = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout();
 
     if is_floating || !tiling {
         ctx.raise_client(win);

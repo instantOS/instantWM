@@ -5,7 +5,7 @@
 //! and can be tested without constructing a backend.
 
 use crate::monitor::MonitorManager;
-use crate::types::{Client, Monitor, MonitorId, TagSet, WindowId};
+use crate::types::{Client, Monitor, MonitorId, Rect, SnapPosition, TagSet, WindowId};
 use std::collections::HashMap;
 
 /// A managed client together with the monitor it is assigned to.
@@ -53,6 +53,25 @@ impl WmModel {
     /// Return a managed client mutably by window ID.
     pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
         self.clients.get_mut(&win)
+    }
+
+    /// Synchronize a client's authoritative geometry and floating placement.
+    ///
+    /// Backends call this after the WM knows the rectangle that actually
+    /// applies. A normal floating client records that rectangle as its saved
+    /// placement unless it is snapped; other client modes only update current
+    /// geometry.
+    pub fn sync_client_geometry(&mut self, win: WindowId, rect: Rect) {
+        let work_area = self.client_view(win).map(|view| view.monitor.work_rect());
+        if let Some(client) = self.client_mut(win) {
+            client.update_geometry(rect);
+            if client.mode().is_normal_floating()
+                && client.snap_status == SnapPosition::None
+                && let Some(work_area) = work_area
+            {
+                client.save_floating_placement(rect, work_area);
+            }
+        }
     }
 
     /// Add a new client without allowing an existing graph node to be replaced.

@@ -40,18 +40,6 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
 // Recursive show/hide pass
 // ---------------------------------------------------------------------------
 
-/// Walk the client list, moving each client on- or off-screen.
-///
-/// Visible clients (those whose tag-set overlaps the monitor's selected tags)
-/// are positioned at their stored geometry.  Invisible clients are moved
-/// `2 * client_width` pixels to the left of the screen (i.e. off-screen left).
-///
-/// This mirrors the classic dwm `showhide` function and is called by the
-/// arrange path after every layout change.
-pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
-    ctx.apply_visibility_plan();
-}
-
 /// Make a managed client visible without changing keyboard focus.
 ///
 /// Focus is a separate policy decision. Callers that represent explicit user
