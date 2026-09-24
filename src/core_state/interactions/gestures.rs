@@ -59,14 +59,14 @@ pub struct BottomBarActions {
 /// of how far or long the drag goes.
 #[derive(Debug, Clone)]
 pub struct BottomBarDrag {
-    button: MouseButton,
-    source: InteractionSource,
-    monitor_id: MonitorId,
+    pub button: MouseButton,
+    pub source: InteractionSource,
+    pub monitor_id: MonitorId,
     anchor_x: i32,
     anchor_y: i32,
     threshold: i32,
-    press_time_msec: u32,
-    actions: BottomBarActions,
+    pub press_time_msec: u32,
+    pub actions: BottomBarActions,
     /// Swipe direction latched once the pointer travels at least `threshold`
     /// pixels from the press position.
     direction: Option<SwipeDirection>,
@@ -93,42 +93,6 @@ impl BottomBarDrag {
             actions,
             direction: None,
         }
-    }
-
-    pub fn button(&self) -> MouseButton {
-        self.button
-    }
-
-    pub fn source(&self) -> InteractionSource {
-        self.source
-    }
-
-    pub fn monitor_id(&self) -> MonitorId {
-        self.monitor_id
-    }
-
-    pub fn press_time_msec(&self) -> u32 {
-        self.press_time_msec
-    }
-
-    pub fn left(&self) -> &ButtonAction {
-        &self.actions.left
-    }
-
-    pub fn right(&self) -> &ButtonAction {
-        &self.actions.right
-    }
-
-    pub fn up(&self) -> &ButtonAction {
-        &self.actions.up
-    }
-
-    pub fn click(&self) -> &ButtonAction {
-        &self.actions.click
-    }
-
-    pub fn hold(&self) -> &ButtonAction {
-        &self.actions.hold
     }
 
     /// The swipe direction latched so far, if any.
@@ -168,9 +132,9 @@ impl BottomBarDrag {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SidebarVolumeDrag {
-    button: MouseButton,
-    source: InteractionSource,
-    monitor_id: MonitorId,
+    pub button: MouseButton,
+    pub source: InteractionSource,
+    pub monitor_id: MonitorId,
     anchor_y: i32,
     threshold: i32,
 }
@@ -183,9 +147,9 @@ pub struct SidebarVolumeDrag {
 /// a predominantly upward drag closes it, and other drags are cancelled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OverviewCardDrag {
-    window: WindowId,
-    button: MouseButton,
-    source: InteractionSource,
+    pub window: WindowId,
+    pub button: MouseButton,
+    pub source: InteractionSource,
     start: Point,
     last: Point,
     threshold: i32,
@@ -214,18 +178,6 @@ impl OverviewCardDrag {
             last: start,
             threshold: threshold.max(1),
         }
-    }
-
-    pub fn window(self) -> WindowId {
-        self.window
-    }
-
-    pub fn button(self) -> MouseButton {
-        self.button
-    }
-
-    pub fn source(self) -> InteractionSource {
-        self.source
     }
 
     /// Record motion and report a close-threshold transition, if one occurred.
@@ -270,18 +222,6 @@ impl SidebarVolumeDrag {
             anchor_y,
             threshold: threshold.max(1),
         }
-    }
-
-    pub fn button(self) -> MouseButton {
-        self.button
-    }
-
-    pub fn source(self) -> InteractionSource {
-        self.source
-    }
-
-    pub fn monitor_id(self) -> MonitorId {
-        self.monitor_id
     }
 
     /// Consume pointer distance and return signed volume steps.

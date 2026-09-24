@@ -15,15 +15,13 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
 use calloop::ping::Ping;
 
 use crate::core_state::TrayMenuBackend;
-#[allow(unused_imports)]
-use crate::systray::{MenuAction, MenuEntry, MenuToggle, MenuView};
+use crate::systray::{MenuAction, MenuEntry, MenuView};
 use crate::wm::Wm;
 
 const INSTANTMENU_BIN: &str = "instantmenu";
@@ -40,34 +38,10 @@ enum MenuOutcome {
     Dismissed { session_id: u64 },
 }
 
-// Availability of the binary is scanned from $PATH once and cached; a failed
-// spawn also demotes it so `auto` (and a forced-but-missing `instantmenu`)
-// falls back to bar-native rendering instead of retrying every tick.
-const AVAILABLE: u8 = 1;
-const UNAVAILABLE: u8 = 2;
-static AVAILABILITY: AtomicU8 = AtomicU8::new(0);
-
-fn instantmenu_available() -> bool {
-    match AVAILABILITY.load(Ordering::Relaxed) {
-        AVAILABLE => true,
-        UNAVAILABLE => false,
-        _ => {
-            let found = std::env::var_os("PATH")
-                .map(|path| {
-                    std::env::split_paths(&path).any(|dir| dir.join(INSTANTMENU_BIN).is_file())
-                })
-                .unwrap_or(false);
-            AVAILABILITY.store(
-                if found { AVAILABLE } else { UNAVAILABLE },
-                Ordering::Relaxed,
-            );
-            found
-        }
-    }
-}
-
-fn reset_availability() {
-    AVAILABILITY.store(0, Ordering::Relaxed);
+fn instantmenu_on_path() -> bool {
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(INSTANTMENU_BIN).is_file()))
+        .unwrap_or(false)
 }
 
 /// State of the external instantmenu presentation, owned by the bar.
@@ -84,6 +58,11 @@ pub(crate) struct InstantMenuHost {
     presented: Option<(u64, MenuView)>,
     /// Last observed config value; a change rescans binary availability.
     last_backend: TrayMenuBackend,
+    /// Whether the binary is on `$PATH`, scanned once per backend setting. A
+    /// failed spawn also demotes it so `auto` (and a forced-but-missing
+    /// `instantmenu`) falls back to bar-native rendering instead of retrying
+    /// every tick. `None` until scanned.
+    available: Option<bool>,
 }
 
 impl Default for InstantMenuHost {
@@ -102,6 +81,7 @@ impl InstantMenuHost {
             child_pgid: Arc::new(Mutex::new(None)),
             presented: None,
             last_backend: TrayMenuBackend::Auto,
+            available: None,
         }
     }
 
@@ -112,7 +92,17 @@ impl InstantMenuHost {
     /// Whether the external instantmenu presents the tray menu, i.e. the bar
     /// must not render the menu overlay itself.
     pub(crate) fn hosting(&self, backend: TrayMenuBackend) -> bool {
-        backend != TrayMenuBackend::StatusBar && instantmenu_available()
+        backend != TrayMenuBackend::StatusBar && self.available == Some(true)
+    }
+
+    fn refresh_availability(&mut self, backend: TrayMenuBackend) {
+        if backend != self.last_backend {
+            self.last_backend = backend;
+            self.available = None;
+        }
+        if backend != TrayMenuBackend::StatusBar && self.available.is_none() {
+            self.available = Some(instantmenu_on_path());
+        }
     }
 }
 
@@ -132,13 +122,10 @@ impl Drop for InstantMenuHost {
 /// `true` when bar-visible content changed.
 pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
     let backend = wm.core.config.systray.menu_backend;
-    {
-        let host = &mut wm.bar.systray_host.instantmenu;
-        if backend != host.last_backend {
-            host.last_backend = backend;
-            reset_availability();
-        }
-    }
+    wm.bar
+        .systray_host
+        .instantmenu
+        .refresh_availability(backend);
     let hosting = wm.bar.systray_host.instantmenu.hosting(backend);
 
     let mut changed = false;
@@ -318,7 +305,7 @@ fn spawn_menu(
         Ok(child) => child,
         Err(error) => {
             log::warn!("systray menu: failed to spawn instantmenu: {error}");
-            AVAILABILITY.store(UNAVAILABLE, Ordering::Relaxed);
+            host.available = Some(false);
             return false;
         }
     };
@@ -392,9 +379,7 @@ fn kill_child(pgid_slot: &Arc<Mutex<Option<i32>>>) {
     {
         // TERM lets instantmenu release its surfaces; a missing group (ESRCH)
         // means the process is already gone, which is the goal.
-        unsafe {
-            libc::kill(-pgid, libc::SIGTERM);
-        }
+        crate::util::signal_process_group(pgid, libc::SIGTERM);
     }
 }
 
@@ -519,6 +504,7 @@ fn icon_for_entry(entry: &MenuEntry) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::systray::MenuToggle;
 
     /// Names verified against instantMENU's generated icon catalog
     /// (`src/icons/names.bin`, normalized to lowercase alphanumerics).
@@ -696,11 +682,16 @@ mod tests {
 
     #[test]
     fn hosting_depends_on_backend_and_availability() {
-        reset_availability();
-        // The cached scan result is environment-dependent; only assert the
-        // backend dimension, which is not.
-        let host = InstantMenuHost::new();
+        let mut host = InstantMenuHost::new();
+        assert!(!host.hosting(TrayMenuBackend::Auto), "not scanned yet");
+
+        host.available = Some(true);
+        assert!(host.hosting(TrayMenuBackend::Auto));
+        assert!(host.hosting(TrayMenuBackend::InstantMenu));
         assert!(!host.hosting(TrayMenuBackend::StatusBar));
+
+        host.refresh_availability(TrayMenuBackend::StatusBar);
+        assert_eq!(host.available, None, "a backend change rescans");
     }
 
     #[test]

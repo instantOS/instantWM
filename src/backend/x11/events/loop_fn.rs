@@ -48,11 +48,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     crate::runtime::register_ipc_source(&loop_handle, ipc_server);
 
     // ── Internal status ping source ────────────────────────────────────
-    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
-    crate::bar::status::set_internal_status_ping(status_ping);
-    loop_handle
-        .insert_source(status_ping_source, |_, _, _| {})
-        .expect("failed to insert status ping source");
+    if let Some(status_wake) = wm.bar.status_sources.take_wake_source() {
+        loop_handle
+            .insert_source(status_wake, |_, _, _| {})
+            .expect("failed to insert status ping source");
+    }
 
     // ── Region-selection ping source ───────────────────────────────────
     let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");

@@ -257,24 +257,19 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// The selected window's close-button and resize-widget zones belong to its
 /// title cell, so they resolve to that window like the rest of the cell.
 fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Option<WindowId> {
-    use crate::bar::model::{build_fallback_hit_cache, title_hit_slot};
-
     let local_x = super::bar_local_x_on_monitor(ctx, monitor_id, root)?;
     let core = ctx.core();
     let monitor = core.model().monitor(monitor_id)?;
     let order = monitor.bar_client_order(&core.model().clients);
-    let fallback;
-    let hit = match core.bar.monitor_hit_cache(monitor_id) {
-        // Rendering is asynchronous on Wayland. Geometry remains useful
-        // across a reorder, but its captured window identities do not: using
-        // them can make the next motion sample undo the preceding swap.
-        Some(hit) if hit.title_ranges.len() == order.len() => hit,
-        _ => {
-            fallback = build_fallback_hit_cache(monitor, core);
-            &fallback
-        }
-    };
-    title_hit_slot(hit, local_x).and_then(|slot| order.get(slot).copied())
+    // Rendering is asynchronous on Wayland. Geometry remains useful across a
+    // reorder, but its captured window identities do not: using them can make
+    // the next motion sample undo the preceding swap. Until the bar renders
+    // the current title set, there is no title under the pointer.
+    let hit = core
+        .bar
+        .monitor_hit_cache(monitor_id)
+        .filter(|hit| hit.title_ranges.len() == order.len())?;
+    crate::bar::model::title_hit_slot(hit, local_x).and_then(|slot| order.get(slot).copied())
 }
 
 /// Promote an armed bar-title press to a live title-strip reorder.
@@ -592,6 +587,7 @@ mod tests {
                 .layout_tree
                 .apply_preset(Preset::MasterStack, &windows, 1);
         }
+        crate::bar::render_hit_caches_for_test(wm.ctx().core_mut());
         (wm, monitor_id, windows[0], windows[1])
     }
 
@@ -612,16 +608,6 @@ mod tests {
         (start + end + 1) / 2
     }
 
-    fn install_rendered_bar_hit_cache(wm: &mut Wm, monitor_id: MonitorId) {
-        let hit = {
-            let ctx = wm.ctx();
-            let core = ctx.core();
-            let monitor = core.model().monitor(monitor_id).unwrap();
-            crate::bar::model::build_fallback_hit_cache(monitor, core)
-        };
-        wm.bar.replace_hit_cache(monitor_id, hit);
-    }
-
     #[test]
     fn bar_title_drag_within_strip_reorders_and_leaving_converts_to_move() {
         let (mut wm, monitor_id, first, second) =
@@ -629,9 +615,6 @@ mod tests {
         let first_x = title_cell_center(&mut wm, monitor_id, first);
         let second_x = title_cell_center(&mut wm, monitor_id, second);
         assert!(second_x - first_x > DRAG_THRESHOLD * 2);
-        // Reproduce the runtime path, where input uses identities recorded by
-        // the most recently rendered bar rather than the fallback model view.
-        install_rendered_bar_hit_cache(&mut wm, monitor_id);
 
         let press = Point::new(first_x, 10);
         assert!(title_drag_begin(

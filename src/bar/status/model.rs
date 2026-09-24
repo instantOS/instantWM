@@ -1,16 +1,15 @@
 use crate::types::{Insets, Rect};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub(crate) const TEXT_PADDING: i32 = 6;
 pub(super) const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
 
-#[derive(Debug, Clone)]
-pub(crate) enum StatusItem {
-    Text(String),
-    I3Block(I3Block),
-}
+/// A parsed status line. Plain text is a single block without separator
+/// spacing, so renderers only deal with i3bar blocks.
+pub(crate) type StatusBlocks = Arc<[I3Block]>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct I3Block {
     pub full_text: String,
     pub short_text: Option<String>,
@@ -28,7 +27,7 @@ pub(crate) struct I3Block {
     pub markup: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum I3MinWidth {
     Text(String),
     Pixels(i32),
@@ -40,11 +39,6 @@ pub(crate) enum I3Align {
     Left,
     Center,
     Right,
-}
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct I3StatusLine {
-    pub blocks: Vec<I3Block>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -63,12 +57,6 @@ pub(crate) struct I3BarSignals {
 pub(crate) struct StatusClickTarget {
     pub bounds: Rect,
     pub block_index: usize,
-}
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ParsedStatus {
-    pub items: Vec<StatusItem>,
-    pub i3bar: Option<I3StatusLine>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

@@ -15,10 +15,11 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
-    crate::bar::status::reload_status_command(
-        previous_status_command.as_deref(),
-        wm.core.config.status_command.as_deref(),
-    );
+    if previous_status_command != wm.core.config.status_command {
+        wm.bar
+            .status_sources
+            .start(wm.core.config.status_command.as_deref());
+    }
 
     // Backend-owned bar resources must track the new config (X11 DrawContext
     // rebuild, Wayland bar-metric recompute). The choreography is owned by

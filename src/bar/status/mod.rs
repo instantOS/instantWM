@@ -6,39 +6,28 @@ mod parse;
 mod render;
 mod runtime;
 
-pub(crate) use command::{
-    is_i3status_rs_available, reload_status_command, spawn_default_status, spawn_status_command,
-};
+pub(crate) use command::{StatusSources, sync_visibility};
 pub(crate) use model::{
-    I3Align, I3BarHeader, I3BarSignals, I3Block, I3ClickEvent, I3MinWidth, I3StatusLine,
-    ParsedStatus, StatusClickTarget, StatusItem, TEXT_PADDING,
+    I3Align, I3BarHeader, I3BarSignals, I3Block, I3ClickEvent, I3MinWidth, StatusBlocks,
+    StatusClickTarget, TEXT_PADDING,
 };
-pub(crate) use parse::{parse_i3bar_header, parse_status, parse_status_fallback};
+pub(crate) use parse::{parse_i3bar_header, parse_status, plain_text_status};
 pub(crate) use render::{
     StatusBlockHover, StatusClickGeometry, StatusRenderOptions, StatusRenderOutput,
-    draw_status_items, emit_i3bar_status_click, hit_test_i3_click_target,
+    draw_status_blocks, hit_test_i3_click_target, i3_click_event,
 };
-pub(crate) use runtime::{
-    apply_status_update, drain_internal_status_updates, set_internal_status_ping,
-};
-
-pub(crate) fn sync_visibility(wm: &crate::wm::Wm) {
-    command::sync_visibility(wm);
-}
 
 #[cfg(test)]
 mod tests {
     use super::parse::parse_i3bar_json;
-    use super::{I3Align, StatusItem, parse_i3bar_header, parse_status};
+    use super::{I3Align, parse_i3bar_header, parse_status};
 
     #[test]
     fn parses_i3bar_frame_with_leading_comma() {
-        let parsed = parse_i3bar_json(br##",[{"full_text":"cpu","color":"#ffffff"}]"##).unwrap();
+        let parsed = parse_i3bar_json(r##",[{"full_text":"cpu","color":"#ffffff"}]"##).unwrap();
 
-        assert_eq!(parsed.items.len(), 1);
-        let Some(StatusItem::I3Block(block)) = parsed.items.first() else {
-            panic!("expected i3 block");
-        };
+        assert_eq!(parsed.len(), 1);
+        let block = &parsed[0];
         assert_eq!(block.full_text, "cpu");
         assert_eq!(block.color.as_deref(), Some("#ffffff"));
         assert_eq!(block.align, I3Align::Left);
@@ -46,26 +35,23 @@ mod tests {
 
     #[test]
     fn parses_i3bar_frame_with_trailing_comma() {
-        let parsed = parse_i3bar_json(br#"[{"full_text":"mem","separator":false}],"#).unwrap();
+        let parsed = parse_i3bar_json(r#"[{"full_text":"mem","separator":false}],"#).unwrap();
 
-        assert_eq!(parsed.items.len(), 1);
-        let Some(StatusItem::I3Block(block)) = parsed.items.first() else {
-            panic!("expected i3 block");
-        };
+        assert_eq!(parsed.len(), 1);
+        let block = &parsed[0];
         assert_eq!(block.full_text, "mem");
         assert!(!block.separator);
     }
 
     #[test]
     fn parse_status_keeps_plain_text_fallback_for_non_json() {
-        let parsed = parse_status(b"plain text");
+        let parsed = parse_status("plain text");
 
-        assert_eq!(parsed.items.len(), 1);
-        let Some(StatusItem::Text(text)) = parsed.items.first() else {
-            panic!("expected plain text item");
-        };
-        assert_eq!(text, "plain text");
-        assert!(parsed.i3bar.is_none());
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].full_text, "plain text");
+        assert!(!parsed[0].separator);
+        assert_eq!(parsed[0].separator_block_width, 0);
+        assert!(parse_status("").is_empty());
     }
 
     #[test]
@@ -141,12 +127,10 @@ mod tests {
     #[test]
     fn groups_normalized_border_widths() {
         let parsed = parse_i3bar_json(
-            br##"[{"full_text":"cpu","border":"#ffffff","border_top":2,"border_left":3}]"##,
+            r##"[{"full_text":"cpu","border":"#ffffff","border_top":2,"border_left":3}]"##,
         )
         .unwrap();
-        let Some(StatusItem::I3Block(block)) = parsed.items.first() else {
-            panic!("expected i3 block");
-        };
+        let block = &parsed[0];
 
         assert_eq!(block.border_widths.top, 2);
         assert_eq!(block.border_widths.right, 1);

@@ -138,7 +138,10 @@ pub(crate) fn native_menu_rect(work_rect: Rect, requested: Rect, anchor: Point) 
 }
 
 /// An icon exported through the StatusNotifier protocol.
-#[derive(Debug, Clone, Default)]
+///
+/// Equality compares `icon_rgba` by pointer first: the worker replaces the
+/// `Arc` whenever the pixels change, so unchanged icons compare in O(1).
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct StatusNotifierItem {
     pub service: String,
     pub path: String,
@@ -147,7 +150,7 @@ pub(crate) struct StatusNotifierItem {
 }
 
 /// Current items exported through the StatusNotifier protocol.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct StatusNotifierTray {
     pub items: Vec<StatusNotifierItem>,
 }

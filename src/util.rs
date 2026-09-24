@@ -169,6 +169,12 @@ pub(crate) fn reap_child_async(child: Child) {
     }
 }
 
+/// Send `signal` to every process in the group led by `pgid`.
+pub(crate) fn signal_process_group(pgid: i32, signal: libc::c_int) -> bool {
+    // SAFETY: kill(2) with a negative pid only addresses that process group.
+    unsafe { libc::kill(-pgid, signal) == 0 }
+}
+
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
     // X-protocol modifier wire masks. The keybind configuration format
     // encodes modifiers with these bits, independent of the running backend.

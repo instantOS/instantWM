@@ -63,11 +63,7 @@ pub fn build_bar_buffers(
 
         data.bar_renderer
             .set_render_ping(state.runtime.render_ping.clone());
-        crate::backend::wayland::bar::render_bar_buffers(
-            &mut core,
-            &mut data.bar_renderer,
-            smithay::utils::Scale::from(1.0),
-        )
+        crate::backend::wayland::bar::render_bar_buffers(&mut core, &mut data.bar_renderer)
     } else {
         Vec::new()
     };

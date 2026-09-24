@@ -1,5 +1,5 @@
 use crate::backend::x11::draw::DrawContext;
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
+use crate::bar::paint::{BarPainter, BarScheme};
 use crate::types::{Rect, Size};
 
 pub struct X11BarPainter<'a> {
@@ -39,13 +39,12 @@ impl BarPainter for X11BarPainter<'_> {
         text: &str,
         invert: bool,
         detail_height: i32,
-        overflow: TextOverflow,
     ) -> i32 {
         if bounds.w <= 0 || bounds.h <= 0 {
             return bounds.x;
         }
         let lpad = lpad.max(0).min(bounds.w);
-        let fitted = crate::bar::text::fit_to_width(text, bounds.w - lpad, overflow, |candidate| {
+        let fitted = crate::bar::text::fit_to_width(text, bounds.w - lpad, |candidate| {
             self.drw.fontset_getwidth(candidate) as i32
         });
         self.drw

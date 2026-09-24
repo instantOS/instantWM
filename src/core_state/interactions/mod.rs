@@ -67,14 +67,63 @@ pub enum CapturedInteraction {
     OverviewCard(OverviewCardDrag),
 }
 
+/// A capture variant addressed by its state type, so one set of generic
+/// accessors serves every kind of captured interaction.
+pub trait CaptureKind: Sized + Into<CapturedInteraction> {
+    fn get(capture: &CapturedInteraction) -> Option<&Self>;
+    fn get_mut(capture: &mut CapturedInteraction) -> Option<&mut Self>;
+    fn take(capture: CapturedInteraction) -> Option<Self>;
+}
+
+macro_rules! capture_kinds {
+    ($($variant:ident($state:ty)),* $(,)?) => {$(
+        impl From<$state> for CapturedInteraction {
+            fn from(state: $state) -> Self {
+                Self::$variant(state)
+            }
+        }
+
+        impl CaptureKind for $state {
+            fn get(capture: &CapturedInteraction) -> Option<&Self> {
+                match capture {
+                    CapturedInteraction::$variant(state) => Some(state),
+                    _ => None,
+                }
+            }
+
+            fn get_mut(capture: &mut CapturedInteraction) -> Option<&mut Self> {
+                match capture {
+                    CapturedInteraction::$variant(state) => Some(state),
+                    _ => None,
+                }
+            }
+
+            fn take(capture: CapturedInteraction) -> Option<Self> {
+                match capture {
+                    CapturedInteraction::$variant(state) => Some(state),
+                    _ => None,
+                }
+            }
+        }
+    )*};
+}
+
+capture_kinds!(
+    Window(WindowDragState),
+    Tag(TagDragState),
+    SidebarVolume(SidebarVolumeDrag),
+    BottomBar(BottomBarDrag),
+    OverviewCard(OverviewCardDrag),
+);
+
 impl CapturedInteraction {
     pub fn button(&self) -> MouseButton {
         match self {
             Self::Window(state) => state.button(),
             Self::Tag(state) => state.button,
-            Self::SidebarVolume(state) => state.button(),
-            Self::BottomBar(state) => state.button(),
-            Self::OverviewCard(state) => state.button(),
+            Self::SidebarVolume(state) => state.button,
+            Self::BottomBar(state) => state.button,
+            Self::OverviewCard(state) => state.button,
         }
     }
 
@@ -82,9 +131,9 @@ impl CapturedInteraction {
         match self {
             Self::Window(state) => state.source(),
             Self::Tag(state) => state.source,
-            Self::SidebarVolume(state) => state.source(),
-            Self::BottomBar(state) => state.source(),
-            Self::OverviewCard(state) => state.source(),
+            Self::SidebarVolume(state) => state.source,
+            Self::BottomBar(state) => state.source,
+            Self::OverviewCard(state) => state.source,
         }
     }
 
@@ -211,173 +260,26 @@ impl PointerInteractionState {
         self.capture.as_ref().map(CapturedInteraction::source)
     }
 
-    pub fn tag_drag(&self) -> Option<&TagDragState> {
-        match self.capture.as_ref() {
-            Some(CapturedInteraction::Tag(drag)) => Some(drag),
-            _ => None,
-        }
+    pub fn captured<T: CaptureKind>(&self) -> Option<&T> {
+        self.capture.as_ref().and_then(T::get)
     }
 
-    pub fn tag_drag_mut(&mut self) -> Option<&mut TagDragState> {
-        match self.capture.as_mut() {
-            Some(CapturedInteraction::Tag(drag)) => Some(drag),
-            _ => None,
-        }
+    pub fn captured_mut<T: CaptureKind>(&mut self) -> Option<&mut T> {
+        self.capture.as_mut().and_then(T::get_mut)
     }
 
-    pub fn begin_tag_drag(&mut self, drag: TagDragState) -> Result<(), InteractionAlreadyActive> {
-        self.begin_capture(CapturedInteraction::Tag(drag))
+    /// End a `T` capture, but only on release of the button that started it.
+    pub fn finish<T: CaptureKind>(&mut self, button: MouseButton) -> Option<T> {
+        self.capture
+            .take_if(|capture| capture.button() == button && T::get(capture).is_some())
+            .and_then(T::take)
     }
 
-    pub fn finish_tag_drag(&mut self, button: MouseButton) -> Option<TagDragState> {
-        if !matches!(
-            self.capture.as_ref(),
-            Some(CapturedInteraction::Tag(drag)) if drag.button == button
-        ) {
-            return None;
-        }
-        match self.capture.take() {
-            Some(CapturedInteraction::Tag(drag)) => Some(drag),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn begin_overview_card(
-        &mut self,
-        drag: OverviewCardDrag,
-    ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_capture(CapturedInteraction::OverviewCard(drag))
-    }
-
-    pub fn update_overview_card(&mut self, root: Point) -> Option<bool> {
-        match self.capture.as_mut() {
-            Some(CapturedInteraction::OverviewCard(drag)) => drag.update(root),
-            _ => None,
-        }
-    }
-
-    pub fn finish_overview_card(&mut self, button: MouseButton) -> Option<OverviewCardAction> {
-        if !matches!(
-            self.capture.as_ref(),
-            Some(CapturedInteraction::OverviewCard(drag)) if drag.button() == button
-        ) {
-            return None;
-        }
-        match self.capture.take() {
-            Some(CapturedInteraction::OverviewCard(drag)) => Some(drag.action()),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn cancel_overview_card(&mut self) -> bool {
-        if !matches!(self.capture, Some(CapturedInteraction::OverviewCard(_))) {
-            return false;
-        }
-        self.capture = None;
-        true
-    }
-
-    pub fn sidebar_volume_active(&self) -> bool {
-        matches!(self.capture, Some(CapturedInteraction::SidebarVolume(_)))
-    }
-
-    pub fn sidebar_volume_button(&self) -> Option<MouseButton> {
-        match self.capture {
-            Some(CapturedInteraction::SidebarVolume(drag)) => Some(drag.button()),
-            _ => None,
-        }
-    }
-
-    pub fn sidebar_volume_monitor(&self) -> Option<MonitorId> {
-        match self.capture {
-            Some(CapturedInteraction::SidebarVolume(drag)) => Some(drag.monitor_id()),
-            _ => None,
-        }
-    }
-
-    pub fn begin_sidebar_volume(
-        &mut self,
-        drag: SidebarVolumeDrag,
-    ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_capture(CapturedInteraction::SidebarVolume(drag))
-    }
-
-    pub fn update_sidebar_volume(&mut self, root_y: i32) -> Option<i32> {
-        match self.capture.as_mut() {
-            Some(CapturedInteraction::SidebarVolume(drag)) => Some(drag.update(root_y)),
-            _ => None,
-        }
-    }
-
-    pub fn finish_sidebar_volume(&mut self, button: MouseButton) -> bool {
-        if self.sidebar_volume_button() != Some(button) {
-            return false;
-        }
-        self.capture = None;
-        true
-    }
-
-    pub fn cancel_sidebar_volume(&mut self) -> bool {
-        if !self.sidebar_volume_active() {
-            return false;
-        }
-        self.capture = None;
-        true
-    }
-
-    pub fn bottom_bar_gesture_active(&self) -> bool {
-        matches!(self.capture, Some(CapturedInteraction::BottomBar(_)))
-    }
-
-    pub fn bottom_bar_button(&self) -> Option<MouseButton> {
-        match self.capture.as_ref() {
-            Some(CapturedInteraction::BottomBar(drag)) => Some(drag.button()),
-            _ => None,
-        }
-    }
-
-    pub fn bottom_bar_monitor(&self) -> Option<MonitorId> {
-        match self.capture.as_ref() {
-            Some(CapturedInteraction::BottomBar(drag)) => Some(drag.monitor_id()),
-            _ => None,
-        }
-    }
-
-    pub fn bottom_bar_drag(&self) -> Option<&BottomBarDrag> {
-        match self.capture.as_ref() {
-            Some(CapturedInteraction::BottomBar(drag)) => Some(drag),
-            _ => None,
-        }
-    }
-
-    pub fn begin_bottom_bar(
-        &mut self,
-        drag: BottomBarDrag,
-    ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_capture(CapturedInteraction::BottomBar(drag))
-    }
-
-    pub fn update_bottom_bar(&mut self, root: Point) -> Option<SwipeDirection> {
-        match self.capture.as_mut() {
-            Some(CapturedInteraction::BottomBar(drag)) => drag.update(root),
-            _ => None,
-        }
-    }
-
-    pub fn finish_bottom_bar(&mut self, button: MouseButton) -> bool {
-        if self.bottom_bar_button() != Some(button) {
-            return false;
-        }
-        self.capture = None;
-        true
-    }
-
-    pub fn cancel_bottom_bar(&mut self) -> bool {
-        if !self.bottom_bar_gesture_active() {
-            return false;
-        }
-        self.capture = None;
-        true
+    /// End a `T` capture regardless of its button.
+    pub fn cancel<T: CaptureKind>(&mut self) -> Option<T> {
+        self.capture
+            .take_if(|capture| T::get(capture).is_some())
+            .and_then(T::take)
     }
 
     pub fn begin_move(
@@ -454,37 +356,17 @@ impl PointerInteractionState {
     }
 
     fn begin_active(&mut self, drag: ActiveWindowDrag) -> Result<(), InteractionAlreadyActive> {
-        self.begin_capture(CapturedInteraction::Window(WindowDragState::Active(drag)))
+        self.begin(WindowDragState::Active(drag))
     }
 
     pub fn arm_title_drag(
         &mut self,
         params: ArmedDragStart,
     ) -> Result<(), InteractionAlreadyActive> {
-        self.begin_capture(CapturedInteraction::Window(WindowDragState::Armed(
-            ArmedWindowDrag::new(params),
-        )))
+        self.begin(WindowDragState::Armed(ArmedWindowDrag::new(params)))
     }
 
-    pub fn activate_armed_move(&mut self, start: Point, geo: Rect) -> Result<(), DragNotArmed> {
-        self.activate_armed(ActiveWindowOperation::Move, start, geo)
-    }
-
-    pub fn activate_armed_resize(
-        &mut self,
-        direction: ResizeDirection,
-        policy: ResizePolicy,
-        start: Point,
-        geo: Rect,
-    ) -> Result<(), DragNotArmed> {
-        self.activate_armed(
-            ActiveWindowOperation::DirectResize { direction, policy },
-            start,
-            geo,
-        )
-    }
-
-    fn activate_armed(
+    pub fn activate_armed(
         &mut self,
         operation: ActiveWindowOperation,
         start: Point,
@@ -582,23 +464,13 @@ impl PointerInteractionState {
         }
     }
 
-    pub fn cancel_window_interaction(&mut self) -> Option<WindowId> {
-        match self.capture.take() {
-            Some(CapturedInteraction::Window(state)) => Some(state.win()),
-            other => {
-                self.capture = other;
-                None
-            }
-        }
-    }
-
     pub fn cancel_capture(&mut self) -> Option<CapturedInteraction> {
         self.capture.take()
     }
 
-    fn begin_capture(
+    pub fn begin(
         &mut self,
-        capture: CapturedInteraction,
+        capture: impl Into<CapturedInteraction>,
     ) -> Result<(), InteractionAlreadyActive> {
         if self.capture.is_some() {
             return Err(InteractionAlreadyActive);
@@ -607,7 +479,7 @@ impl PointerInteractionState {
         // Dropping the offer here prevents stale hover intent from resurfacing
         // when the capture later ends.
         self.hover_offer = HoverOffer::None;
-        self.capture = Some(capture);
+        self.capture = Some(capture.into());
         Ok(())
     }
 

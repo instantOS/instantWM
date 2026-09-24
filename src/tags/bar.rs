@@ -1,7 +1,7 @@
 //! Tag bar rendering helpers.
 //!
 //! This module resolves which tags should be drawn, including tag-index
-//! remapping, skip logic, display names, and estimated fallback widths.
+//! remapping, skip logic, and display names.
 
 use crate::types::{Monitor, TagMask};
 
@@ -16,17 +16,13 @@ pub(crate) struct VisibleTag<'a> {
     pub tag_index: usize,
     /// Display label (regular or alt name).
     pub label: &'a str,
-    /// Total pixel width of this tag cell (text width + horizontal_padding).
-    pub width: i32,
 }
 
-pub(crate) fn visible_tags<'a>(
-    globals: &crate::core_state::CoreState,
-    monitor: &'a Monitor,
+pub(crate) fn visible_tags(
+    monitor: &Monitor,
     occupied: TagMask,
-) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = globals.derived.bar_horizontal_padding;
-    let show_alt = globals.model.tags.show_alternative_names;
+    show_alt: bool,
+) -> Vec<VisibleTag<'_>> {
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
@@ -40,15 +36,10 @@ pub(crate) fn visible_tags<'a>(
         }
 
         let tag = &monitor.tags[tag_index];
-        let label = tag.display_name(show_alt);
-        let width =
-            ((label.chars().count() as i32) * 8 + horizontal_padding).max(horizontal_padding);
-
         out.push(VisibleTag {
             slot,
             tag_index,
-            label,
-            width,
+            label: tag.display_name(show_alt),
         });
     }
 

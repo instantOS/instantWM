@@ -1,25 +1,19 @@
 use std::sync::{Arc, Condvar, Mutex};
 
-use smithay::utils::Scale;
-
-use crate::bar::scene;
+use crate::bar::MonitorHitCache;
+use crate::bar::scene::{self, MonitorBarSnapshot};
 use crate::contexts::CoreCtx;
+use crate::types::MonitorId;
 
 use super::buffer::RawBarBuffer;
 use super::{BarRasterizer, WaylandBarRenderer};
 
-#[derive(Clone)]
-struct AsyncBarRenderRequest {
-    generation: u64,
-    content_key: u64,
-    monitors: Vec<scene::MonitorBarSnapshot>,
-}
+pub(super) type Snapshots = Arc<Vec<MonitorBarSnapshot>>;
 
 struct AsyncBarRenderResult {
-    generation: u64,
-    content_key: u64,
+    snapshots: Snapshots,
     buffers: Vec<RawBarBuffer>,
-    monitor_updates: Vec<scene::MonitorRenderOutputWithId>,
+    hit_caches: Vec<(MonitorId, MonitorHitCache)>,
 }
 
 struct AsyncBarRenderShared {
@@ -30,13 +24,13 @@ struct AsyncBarRenderShared {
 
 #[derive(Default)]
 struct WorkerState {
-    request: Option<AsyncBarRenderRequest>,
+    request: Option<Snapshots>,
     result: Option<AsyncBarRenderResult>,
     stopped: bool,
 }
 
 impl AsyncBarRenderShared {
-    fn next_request(&self) -> Option<AsyncBarRenderRequest> {
+    fn next_request(&self) -> Option<Snapshots> {
         let mut state = self.state.lock().unwrap();
         loop {
             if state.stopped {
@@ -63,9 +57,8 @@ impl AsyncBarRenderShared {
 
 pub(super) struct AsyncBarRenderRuntime {
     shared: Arc<AsyncBarRenderShared>,
-    pending_content_key: Option<u64>,
-    pending_generation: u64,
-    next_generation: u64,
+    /// Snapshots most recently handed to the worker and not yet rendered.
+    pending: Option<Snapshots>,
 }
 
 impl AsyncBarRenderRuntime {
@@ -82,7 +75,7 @@ impl AsyncBarRenderRuntime {
             .spawn(move || {
                 let mut painter = BarRasterizer::default();
                 while let Some(request) = worker_shared.next_request() {
-                    let result = render_snapshot(&mut painter, request);
+                    let result = render_snapshots(&mut painter, request);
                     worker_shared.publish_result(result);
                     if let Ok(guard) = worker_shared.render_ping.lock()
                         && let Some(ping) = guard.as_ref()
@@ -95,9 +88,7 @@ impl AsyncBarRenderRuntime {
 
         Self {
             shared,
-            pending_content_key: None,
-            pending_generation: 0,
-            next_generation: 0,
+            pending: None,
         }
     }
 
@@ -110,15 +101,33 @@ impl AsyncBarRenderRuntime {
         }
     }
 
-    fn take_result(&mut self, content_key: u64) -> Option<AsyncBarRenderResult> {
-        let result = self.shared.take_result()?;
-        if !is_current_generation(result.generation, self.pending_generation) {
-            return None;
+    pub(super) fn request(&mut self, snapshots: Vec<MonitorBarSnapshot>) {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| **pending == snapshots)
+        {
+            return;
         }
-        self.pending_content_key = None;
-        // The scene may have reverted to its cached content while this render
-        // was in flight, without scheduling another generation.
-        (result.content_key == content_key).then_some(result)
+        let snapshots = Arc::new(snapshots);
+        self.shared.state.lock().unwrap().request = Some(Arc::clone(&snapshots));
+        self.pending = Some(snapshots);
+        self.shared.wake.notify_one();
+    }
+
+    /// Take a finished render if it still depicts `current`.
+    fn take_result(&mut self, current: &[MonitorBarSnapshot]) -> Option<AsyncBarRenderResult> {
+        let result = self.shared.take_result()?;
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| Arc::ptr_eq(pending, &result.snapshots))
+        {
+            self.pending = None;
+        }
+        // The scene may have changed, or reverted to the cached content,
+        // while this render was in flight.
+        (**result.snapshots == *current).then_some(result)
     }
 }
 
@@ -132,80 +141,41 @@ impl Drop for AsyncBarRenderRuntime {
     }
 }
 
-pub(super) fn request_render(
+pub(super) fn poll_result(
+    core: &mut CoreCtx,
     renderer: &mut WaylandBarRenderer,
-    key: u64,
-    monitors: Vec<scene::MonitorBarSnapshot>,
+    current: &[MonitorBarSnapshot],
 ) {
-    let runtime = &mut renderer.async_runtime;
-    if runtime.pending_content_key == Some(key) {
-        return;
-    }
-
-    runtime.next_generation = runtime.next_generation.wrapping_add(1).max(1);
-    let generation = runtime.next_generation;
-    let mut state = runtime.shared.state.lock().unwrap();
-    state.request = Some(AsyncBarRenderRequest {
-        generation,
-        content_key: key,
-        monitors,
-    });
-    runtime.pending_content_key = Some(key);
-    runtime.pending_generation = generation;
-    runtime.shared.wake.notify_one();
-}
-
-pub(super) fn poll_result(core: &mut CoreCtx, renderer: &mut WaylandBarRenderer, key: u64) {
-    let Some(result) = renderer.async_runtime.take_result(key) else {
+    let Some(result) = renderer.async_runtime.take_result(current) else {
         return;
     };
 
     renderer.cached_buffers = result.buffers.iter().map(|b| b.into()).collect();
-    renderer.cached_key = result.content_key;
-
-    for update in result.monitor_updates {
-        core.bar
-            .replace_hit_cache(update.monitor_id, update.output.hit_cache);
-        if let Some(mon) = core.model_mut().monitor_mut(update.monitor_id) {
-            mon.bar_clients_width = update.output.bar_clients_width;
-        }
+    renderer.cached_snapshots = result.snapshots;
+    for (monitor_id, hit) in result.hit_caches {
+        core.bar.replace_hit_cache(monitor_id, hit);
     }
 }
 
-fn is_current_generation(result: u64, pending: u64) -> bool {
-    result == pending
-}
-
-fn render_snapshot(
-    painter: &mut BarRasterizer,
-    request: AsyncBarRenderRequest,
-) -> AsyncBarRenderResult {
+fn render_snapshots(painter: &mut BarRasterizer, snapshots: Snapshots) -> AsyncBarRenderResult {
     let mut buffers = Vec::new();
-    let mut monitor_updates = Vec::new();
+    let mut hit_caches = Vec::with_capacity(snapshots.len());
 
-    for mut mon in request.monitors {
-        if mon.is_selected_monitor {
-            mon.presentation.status.ensure_items_parsed();
-        }
-
+    for mon in snapshots.iter() {
         painter.set_fonts(&mon.fonts);
-        painter.begin(Scale::from(1.0), mon.rect);
-        let output = scene::render_monitor_snapshot(&mon, painter);
+        painter.begin(mon.rect);
+        let hit = scene::render_monitor_snapshot(mon, painter);
 
         if let Some(raw) = painter.finish_raw() {
             buffers.push(raw);
         }
-        monitor_updates.push(scene::MonitorRenderOutputWithId {
-            monitor_id: mon.monitor_id,
-            output,
-        });
+        hit_caches.push((mon.monitor_id, hit));
     }
 
     AsyncBarRenderResult {
-        generation: request.generation,
-        content_key: request.content_key,
+        snapshots,
         buffers,
-        monitor_updates,
+        hit_caches,
     }
 }
 
@@ -221,50 +191,106 @@ mod tests {
                 wake: Condvar::new(),
                 render_ping: Mutex::new(None),
             }),
-            pending_content_key: Some(20),
-            pending_generation: 2,
-            next_generation: 2,
+            pending: None,
         }
     }
 
-    fn result(generation: u64, content_key: u64) -> AsyncBarRenderResult {
+    fn result(snapshots: &Snapshots) -> AsyncBarRenderResult {
         AsyncBarRenderResult {
-            generation,
-            content_key,
+            snapshots: Arc::clone(snapshots),
             buffers: Vec::new(),
-            monitor_updates: Vec::new(),
+            hit_caches: Vec::new(),
         }
+    }
+
+    fn snapshots(core: &CoreCtx) -> Vec<MonitorBarSnapshot> {
+        scene::build_monitor_snapshots(core, 0)
+    }
+
+    fn test_wm() -> crate::wm::Wm {
+        use crate::backend::{Backend, wayland::WaylandBackend};
+        let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut monitor = crate::types::Monitor::new_with_values(true);
+        monitor.set_available_rect(crate::types::Rect::new(0, 0, 800, 600));
+        monitor.bar_height = 24;
+        let id = wm.core.model.monitors.push(monitor);
+        wm.core.model.monitors.set_selected(id);
+        wm
+    }
+
+    fn core(wm: &mut crate::wm::Wm) -> CoreCtx<'_> {
+        CoreCtx::new(
+            &mut wm.core,
+            &mut wm.work,
+            &mut wm.running,
+            &mut wm.bar,
+            &mut wm.focus,
+        )
+    }
+
+    /// Returns two distinct scenes.
+    fn two_scenes() -> (Vec<MonitorBarSnapshot>, Vec<MonitorBarSnapshot>) {
+        let mut wm = test_wm();
+        let first = snapshots(&core(&mut wm));
+        wm.bar.set_status_text("changed");
+        let second = snapshots(&core(&mut wm));
+        assert!(first != second);
+        (first, second)
+    }
+
+    #[test]
+    fn identical_scenes_are_requested_only_once() {
+        let (first, _) = two_scenes();
+        let mut runtime = runtime_without_worker();
+
+        runtime.request(first.clone());
+        let pending = Arc::clone(runtime.pending.as_ref().unwrap());
+        runtime.request(first);
+
+        assert!(Arc::ptr_eq(runtime.pending.as_ref().unwrap(), &pending));
     }
 
     #[test]
     fn reverting_to_cached_content_rejects_an_inflight_render() {
+        let (cached, next) = two_scenes();
         let mut runtime = runtime_without_worker();
-        runtime.shared.publish_result(result(2, 20));
+        runtime.request(next);
+        let inflight = Arc::clone(runtime.pending.as_ref().unwrap());
+        runtime.shared.publish_result(result(&inflight));
 
-        assert!(runtime.take_result(10).is_none());
-        // A later request for 20 must be allowed to render again.
-        assert_eq!(runtime.pending_content_key, None);
+        assert!(runtime.take_result(&cached).is_none());
+        // A later request for the same content must be allowed to render again.
+        assert!(runtime.pending.is_none());
     }
 
     #[test]
     fn stale_result_does_not_clear_the_current_request() {
+        let (first, second) = two_scenes();
         let mut runtime = runtime_without_worker();
-        runtime.shared.publish_result(result(1, 10));
-        assert!(runtime.take_result(20).is_none());
-        assert_eq!(runtime.pending_content_key, Some(20));
+        runtime.request(first);
+        let stale = Arc::clone(runtime.pending.as_ref().unwrap());
+        runtime.request(second.clone());
+        let current = Arc::clone(runtime.pending.as_ref().unwrap());
 
-        runtime.shared.publish_result(result(2, 20));
-        assert_eq!(runtime.take_result(20).unwrap().content_key, 20);
-        assert_eq!(runtime.pending_content_key, None);
+        runtime.shared.publish_result(result(&stale));
+        assert!(runtime.take_result(&second).is_none());
+        assert!(runtime.pending.is_some());
+
+        runtime.shared.publish_result(result(&current));
+        assert!(runtime.take_result(&second).is_some());
+        assert!(runtime.pending.is_none());
     }
 
     #[test]
     fn completed_results_are_latest_only() {
-        let mut runtime = runtime_without_worker();
-        runtime.shared.publish_result(result(1, 10));
-        runtime.shared.publish_result(result(2, 20));
+        let (first, second) = two_scenes();
+        let runtime = runtime_without_worker();
+        runtime.shared.publish_result(result(&Arc::new(first)));
+        runtime
+            .shared
+            .publish_result(result(&Arc::new(second.clone())));
 
-        assert_eq!(runtime.take_result(20).unwrap().content_key, 20);
+        assert!(**runtime.shared.take_result().unwrap().snapshots == second);
         assert!(runtime.shared.take_result().is_none());
     }
 
@@ -289,21 +315,10 @@ mod tests {
     fn dropping_runtime_discards_pending_work() {
         let runtime = runtime_without_worker();
         let shared = Arc::clone(&runtime.shared);
-        shared.state.lock().unwrap().request = Some(AsyncBarRenderRequest {
-            generation: 2,
-            content_key: 20,
-            monitors: Vec::new(),
-        });
+        shared.state.lock().unwrap().request = Some(Arc::new(Vec::new()));
 
         drop(runtime);
         assert!(shared.next_request().is_none());
         assert!(shared.state.lock().unwrap().request.is_none());
-    }
-
-    #[test]
-    fn only_the_exact_pending_generation_can_replace_bar_buffers() {
-        assert!(!is_current_generation(4, 5));
-        assert!(is_current_generation(5, 5));
-        assert!(!is_current_generation(6, 5));
     }
 }

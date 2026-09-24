@@ -1,5 +1,5 @@
 use crate::bar::SystrayHitSlot;
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow, draw_hover_accent};
+use crate::bar::paint::{BarPainter, BarScheme, draw_hover_accent};
 #[allow(unused_imports)]
 use crate::systray::{MenuAction, MenuToggle, MenuView};
 use crate::types::Rect;
@@ -55,7 +55,6 @@ pub(crate) fn draw_menu(
             &entry.display_label(),
             false,
             0,
-            TextOverflow::Ellipsis,
         );
         if !entry.enabled {
             painter.set_scheme(base_scheme.clone());
@@ -164,7 +163,6 @@ mod tests {
             text: &str,
             _invert: bool,
             _detail_height: i32,
-            _overflow: TextOverflow,
         ) -> i32 {
             let scheme = self
                 .scheme

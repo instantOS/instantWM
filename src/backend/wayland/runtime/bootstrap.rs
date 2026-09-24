@@ -60,16 +60,16 @@ pub fn setup_listen_socket(
 /// Startup commands, IPC listener registration, and status-bar ping source.
 pub fn autostart_ipc_status_ping(
     loop_handle: &LoopHandle<'static, WaylandState>,
-    wm: &crate::wm::Wm,
+    wm: &mut crate::wm::Wm,
 ) -> Option<crate::ipc::IpcServer> {
     crate::runtime::run_startup_commands(wm);
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     crate::runtime::register_ipc_source(loop_handle, &ipc_server);
-    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
-    crate::bar::status::set_internal_status_ping(status_ping);
-    loop_handle
-        .insert_source(status_ping_source, |_, _, _| {})
-        .expect("failed to insert status ping source");
+    if let Some(status_wake) = wm.bar.status_sources.take_wake_source() {
+        loop_handle
+            .insert_source(status_wake, |_, _, _| {})
+            .expect("failed to insert status ping source");
+    }
     let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");
     crate::mouse::slop::set_region_selection_ping(slop_ping);
     loop_handle

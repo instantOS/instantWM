@@ -20,7 +20,7 @@ pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
 }
 
 pub fn update_status(wm: &mut Wm, text: String) -> Response {
-    crate::bar::status::apply_status_update(wm, text);
+    wm.bar.set_status_text(&text);
     Response::ok()
 }
 

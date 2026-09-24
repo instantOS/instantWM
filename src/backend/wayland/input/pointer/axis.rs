@@ -192,6 +192,7 @@ mod tests {
             &mut wm.bar,
             &mut wm.focus,
         );
+        crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
             if let Some((_, crate::types::BarPosition::Tag(tag))) =
                 crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))
@@ -276,6 +277,7 @@ mod tests {
             &mut wm.bar,
             &mut wm.focus,
         );
+        crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
             if let Some((_, crate::types::BarPosition::WinTitle(hit))) =
                 crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))

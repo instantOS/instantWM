@@ -348,12 +348,6 @@ impl Default for EffectiveConfig {
     }
 }
 
-/// Backend-neutral state owned by the window manager.
-///
-/// The authoritative client/monitor/tag graph lives in `model`; configuration
-/// and transient interaction state are deliberately kept alongside it rather
-/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
-/// a single borrow boundary without mixing backend resources into core state.
 /// Ephemeral pointer/keyboard/outline state that changes at input frequency.
 ///
 /// Grouping it separately from `model`/`config`/`derived` makes the
@@ -376,6 +370,12 @@ pub struct InteractionState {
         Option<crate::layouts::manager::PointerPlacementPreviewCache>,
 }
 
+/// Backend-neutral state owned by the window manager.
+///
+/// The authoritative client/monitor/tag graph lives in `model`; configuration
+/// and transient interaction state are deliberately kept alongside it rather
+/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
+/// a single borrow boundary without mixing backend resources into core state.
 #[derive(Default)]
 pub struct CoreState {
     pub model: WmModel,
