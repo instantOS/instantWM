@@ -14,6 +14,7 @@ impl crate::bar::BarState {
 
     /// Replace the status with externally supplied text (IPC).
     pub(crate) fn set_status_text(&mut self, text: &str) {
+        self.status_sources.stop_default_source();
         self.apply_status_update(StatusUpdate {
             blocks: super::parse_status(text),
             click_events: false,
@@ -28,7 +29,6 @@ impl crate::bar::BarState {
         runtime.status = update.blocks;
         runtime.status_click_events = update.click_events;
         self.mark_dirty();
-        self.status_sources.stop_default_source();
         true
     }
 }

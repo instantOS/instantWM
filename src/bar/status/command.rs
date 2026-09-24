@@ -685,6 +685,27 @@ mod tests {
     }
 
     #[test]
+    fn default_status_keeps_updating_until_an_external_override() {
+        let mut bar = crate::bar::BarState::default();
+        let (_, sink) = bar
+            .status_sources
+            .replace(StatusSourceKind::Default)
+            .unwrap();
+
+        sink.send(plain_text_status("first"), false);
+        assert!(bar.drain_status_updates());
+        assert_eq!(bar.runtime.status[0].full_text, "first");
+        assert!(bar.status_sources.active.is_some());
+
+        sink.send(plain_text_status("second"), false);
+        assert!(bar.drain_status_updates());
+        assert_eq!(bar.runtime.status[0].full_text, "second");
+
+        bar.set_status_text("second");
+        assert!(bar.status_sources.active.is_none());
+    }
+
+    #[test]
     fn status_visibility_follows_the_selected_monitor_only() {
         let mut model = crate::model::WmModel::default();
         let mut hidden = Monitor::new_with_values(false);

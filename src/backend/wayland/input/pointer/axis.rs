@@ -118,9 +118,7 @@ mod tests {
 
         let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
-        // Backends derive this from real output metrics at bootstrap; arrange
-        // copies it back onto the monitor, so a headless Wm must set it here.
-        wm.core.derived.bar_height = 30;
+        // A headless test monitor supplies its own bar height.
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1200, 800),

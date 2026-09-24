@@ -907,7 +907,7 @@ impl<'a> WmCtx<'a> {
     pub fn refresh_monitor_bottom_bar(&mut self, monitor_id: MonitorId) {
         match self {
             WmCtx::X11(ctx) => {
-                if let Some(monitor) = ctx.core.model().monitors.get(monitor_id).cloned() {
+                if let Some(monitor) = ctx.core.model().monitor(monitor_id).cloned() {
                     crate::backend::x11::bar::resize_bottom_bar_win(
                         ctx.core.state(),
                         &ctx.x11,

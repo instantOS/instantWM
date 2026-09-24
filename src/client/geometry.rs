@@ -278,7 +278,7 @@ pub fn sane_floating_spawn_rect(
         parent_rect,
     );
 
-    rect.differs_from(&client.geo).then_some(rect)
+    (rect != client.geo).then_some(rect)
 }
 
 /// Spawn policy: fully-contained but center if `fully_outside`.
@@ -350,7 +350,7 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = derived.bar_height;
+    let bar_height = config.bar_metrics().height;
     rect.enforce_minimum(bar_height, bar_height);
 
     SizeHintsOutcome {
@@ -360,10 +360,7 @@ pub fn apply_size_hints(
 
 /// Check if the given rect differs from the client's current stored geometry.
 pub(crate) fn size_hints_changed(model: &WmModel, win: WindowId, rect: &Rect) -> bool {
-    model
-        .client(win)
-        .map(|c| rect.differs_from(&c.geo))
-        .unwrap_or(false)
+    model.client(win).map(|c| *rect != c.geo).unwrap_or(false)
 }
 
 /// Clamp window position to keep it within usable screen area.

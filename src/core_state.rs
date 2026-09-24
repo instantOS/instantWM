@@ -93,8 +93,6 @@ impl WindowConfig {
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DerivedState {
     pub display: DisplayConfig,
-    pub bar_height: i32,
-    pub bar_horizontal_padding: i32,
     /// Sanitized `[monitors]` policy, rebuilt whenever monitor config applies.
     #[serde(skip)]
     pub monitor_policy: crate::output_mirror::MonitorPolicy,
@@ -341,6 +339,12 @@ pub struct EffectiveConfig {
     pub exec_once: Vec<String>,
     pub exec: Vec<String>,
     pub hooks: Vec<crate::config::hooks::Hook>,
+}
+
+impl EffectiveConfig {
+    pub fn bar_metrics(&self) -> BarMetrics {
+        self.fonts.bar_metrics(self.bar.height)
+    }
 }
 
 impl Default for EffectiveConfig {

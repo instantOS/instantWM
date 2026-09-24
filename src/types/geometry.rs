@@ -489,12 +489,6 @@ impl Rect {
         }
     }
 
-    /// Check if this rect differs from another.
-    #[inline]
-    pub fn differs_from(&self, other: &Rect) -> bool {
-        self.x != other.x || self.y != other.y || self.w != other.w || self.h != other.h
-    }
-
     /// Check if a point is in the resize-border zone around this rectangle.
     ///
     /// The zone is a `border_zone`-pixel band around the outside of the

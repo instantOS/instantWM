@@ -238,7 +238,7 @@ pub(super) fn sync_xembed_tray(
 
     if systray.is_none() {
         let root = x11_runtime.root;
-        let bar_height = core.derived().bar_height;
+        let bar_height = core.config().bar_metrics().height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
@@ -301,7 +301,7 @@ pub(super) fn sync_xembed_tray(
         .expect("tray manager creation must initialize owned XEmbed state");
     let (systray_win, icons) = (tray.win, tray.icons.clone());
 
-    let bar_height = core.derived().bar_height;
+    let bar_height = core.config().bar_metrics().height;
     let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, Size)> = icons

@@ -94,7 +94,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     );
 
     crate::backend::x11::systray::update_systray_icon_geom(
-        ctx.core.derived().bar_height,
+        ctx.core.config().bar_metrics().height,
         ctx.xembed_tray.as_mut(),
         icon_win,
         geo.size(),

@@ -177,7 +177,7 @@ pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
                     host,
                     presentation.session_id,
                     lines,
-                    wm.core.derived.bar_height,
+                    wm.core.config.bar_metrics().height,
                 ) {
                     host.presented = Some(fingerprint);
                     changed = true;

@@ -91,7 +91,7 @@ fn sync_monitor_bar_window(
     let Some(m) = core.model().monitor(monitor_id) else {
         return;
     };
-    let bar_height = core.derived().bar_height;
+    let bar_height = core.config().bar_metrics().height;
     let showsystray = core.config().systray.show;
     let is_tray_monitor = monitor_id == tray_monitor;
 
@@ -99,7 +99,7 @@ fn sync_monitor_bar_window(
     if showsystray && is_tray_monitor {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
             &core.config().systray,
-            core.derived().bar_height,
+            bar_height,
             systray,
         ));
     }
@@ -193,7 +193,7 @@ fn create_missing_bar_windows(
     systray: Option<&XEmbedTray>,
 ) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = globals.derived.bar_height;
+        let bar_height = globals.config.bar_metrics().height;
         let showsystray = globals.config.systray.show;
         let status_bg: u32 = globals.config.colors.status.bg.into();
         let xlibdisplay = x11_runtime.xlibdisplay.0;
@@ -207,7 +207,7 @@ fn create_missing_bar_windows(
                 selected_monitor_id,
                 crate::backend::x11::systray::get_systray_width(
                     &globals.config.systray,
-                    globals.derived.bar_height,
+                    bar_height,
                     systray,
                 ),
             );

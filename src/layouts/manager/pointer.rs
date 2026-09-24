@@ -118,7 +118,7 @@ pub(crate) fn pointer_tree_gap_resize_start(
         &model.clients,
         &ctx.core().config().layout,
         ctx.core().config().window.resize_hints,
-        ctx.core().derived().bar_height,
+        monitor.bar_height,
     )?;
     if geom.placement.inner_gap() <= 0 || !geom.placement.work_rect().contains_point(point) {
         return None;
@@ -340,7 +340,7 @@ pub(super) fn selected_tiling_constraints(
         &ctx.core().model().clients,
         &ctx.core().config().layout,
         ctx.core().config().window.resize_hints,
-        ctx.core().derived().bar_height,
+        monitor.bar_height,
     ))
 }
 

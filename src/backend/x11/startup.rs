@@ -267,7 +267,6 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         wm.core.config.fonts.icon_size,
     ));
 
-    let metrics = wm.core.config.fonts.bar_metrics(wm.core.config.bar.height);
     let bordercolors = wm.core.config.colors.border;
     let statusbarcolors = wm.core.config.colors.status;
     let close_color = wm.core.config.colors.close_button.gesture_color();
@@ -283,8 +282,6 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
     data.x11_runtime.draw = Some(drw);
-    wm.core.derived.bar_height = metrics.height;
-    wm.core.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
 fn xft_font_patterns(

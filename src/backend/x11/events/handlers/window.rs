@@ -89,7 +89,7 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             },
         );
         crate::backend::x11::systray::update_systray_icon_geom(
-            ctx.core.derived().bar_height,
+            ctx.core.config().bar_metrics().height,
             ctx.xembed_tray.as_mut(),
             event_win,
             requested_size,
@@ -304,7 +304,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
     if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         crate::backend::x11::systray::update_systray_icon_geom(
-            ctx.core.derived().bar_height,
+            ctx.core.config().bar_metrics().height,
             ctx.xembed_tray.as_mut(),
             event_win,
             crate::types::Size::new(e.width as i32, e.height as i32),
