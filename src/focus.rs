@@ -131,10 +131,10 @@ pub(crate) fn focus_generic(
     previous_focus: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
     refresh: BackendRefresh,
-) -> anyhow::Result<Option<MonitorId>> {
+) -> Option<MonitorId> {
     let force_backend_refresh = matches!(refresh, BackendRefresh::Force);
     if core.model().monitors.is_empty() {
-        return Ok(None);
+        return None;
     }
 
     let sel_mon_id = core.model().selected_monitor_id();
@@ -169,7 +169,7 @@ pub(crate) fn focus_generic(
         );
     }
 
-    Ok((focus_changed || force_backend_refresh).then_some(sel_mon_id))
+    (focus_changed || force_backend_refresh).then_some(sel_mon_id)
 }
 
 /// Best-effort focus - the single public entry point for `WmCtx` holders.
@@ -221,37 +221,25 @@ fn focus_impl(
                 x11: &x11_ctx.x11,
                 x11_runtime: x11_ctx.x11_runtime,
             };
-            match focus_generic(
+            focus_generic(
                 &mut x11_ctx.core,
                 win,
                 previous_focus,
                 &mut backend,
                 refresh,
-            ) {
-                Ok(o) => o,
-                Err(e) => {
-                    log::warn!("focus X11({:?}) failed: {}", win, e);
-                    return;
-                }
-            }
+            )
         }
         Wayland(wayland_ctx) => {
             let mut backend = WaylandFocusBackend {
                 wayland: wayland_ctx.wayland,
             };
-            match focus_generic(
+            focus_generic(
                 &mut wayland_ctx.core,
                 win,
                 previous_focus,
                 &mut backend,
                 refresh,
-            ) {
-                Ok(o) => o,
-                Err(e) => {
-                    log::warn!("focus Wayland({:?}) failed: {}", win, e);
-                    return;
-                }
-            }
+            )
         }
     };
     if let Some(monitor_id) = z_order_monitor {
@@ -444,7 +432,7 @@ pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: 
     select_monitor(ctx, new_mon_id)
 }
 
-fn get_directional_candidates(
+fn get_directional_candidate(
     clients: &[WindowId],
     globals_map: &HashMap<WindowId, Client>,
     selected_tags: TagMask,
@@ -452,71 +440,31 @@ fn get_directional_candidates(
     source_center: crate::types::Point,
     direction: Direction,
 ) -> Option<WindowId> {
-    let mut out_client: Option<WindowId> = None;
-    let mut min_score: i32 = 0;
-
-    for (c_win, c) in crate::types::OrderedClients::new(clients, globals_map) {
-        if !c.is_visible(selected_tags) {
-            continue;
-        }
-
-        let center = c.geo.center();
-
-        if is_client_in_direction(c_win, source_win, center, source_center, direction) {
-            let score = calculate_direction_score(center, source_center, direction);
-            if score < min_score || min_score == 0 {
-                out_client = Some(c_win);
-                min_score = score;
+    crate::types::OrderedClients::new(clients, globals_map)
+        .filter(|(win, client)| {
+            if *win == source_win || !client.is_visible(selected_tags) {
+                return false;
             }
-        }
-    }
-
-    out_client
-}
-
-fn is_client_in_direction(
-    c_win: WindowId,
-    source_win: WindowId,
-    center: crate::types::Point,
-    source_center: crate::types::Point,
-    direction: Direction,
-) -> bool {
-    if c_win == source_win {
-        return false;
-    }
-
-    match direction {
-        Direction::Up => center.y < source_center.y,
-        Direction::Down => center.y > source_center.y,
-        Direction::Left => center.x < source_center.x,
-        Direction::Right => center.x > source_center.x,
-    }
-}
-
-fn calculate_direction_score(
-    center: crate::types::Point,
-    source_center: crate::types::Point,
-    direction: Direction,
-) -> i32 {
-    let dx = center.abs_diff_x(&source_center);
-    let dy = center.abs_diff_y(&source_center);
-
-    match direction {
-        Direction::Up | Direction::Down => {
-            if dx > dy {
-                return i32::MAX;
+            let center = client.geo.center();
+            match direction {
+                Direction::Up => center.y < source_center.y,
+                Direction::Down => center.y > source_center.y,
+                Direction::Left => center.x < source_center.x,
+                Direction::Right => center.x > source_center.x,
             }
-            // Use weighted scoring to favor windows that are more vertically aligned.
-            dx + dy / 4
-        }
-        Direction::Left | Direction::Right => {
-            if dy > dx {
-                return i32::MAX;
+        })
+        .min_by_key(|(_, client)| {
+            let center = client.geo.center();
+            let dx = center.abs_diff_x(&source_center);
+            let dy = center.abs_diff_y(&source_center);
+            match direction {
+                Direction::Up | Direction::Down if dx > dy => i32::MAX,
+                Direction::Left | Direction::Right if dy > dx => i32::MAX,
+                Direction::Up | Direction::Down => dx + dy / 4,
+                Direction::Left | Direction::Right => dy + dx / 4,
             }
-            // Use weighted scoring to favor windows that are more horizontally aligned.
-            dy + dx / 4
-        }
-    }
+        })
+        .map(|(win, _)| win)
 }
 
 /// Shared logic for directional focus - finds the candidate window.
@@ -534,7 +482,7 @@ fn get_direction_focus_candidate(
 
     let selected = mon.visible_tags();
 
-    get_directional_candidates(
+    get_directional_candidate(
         &mon.clients,
         &model.clients,
         selected,
