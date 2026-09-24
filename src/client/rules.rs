@@ -145,7 +145,6 @@ fn apply_rules_impl(
     }
 
     let tag_mask = state.model.tags.mask();
-    let bar_height = state.derived.bar_height;
 
     // Pending tmp rules are tried before config rules, only on initial
     // application (not on property refreshes). On a match the rule is
@@ -169,7 +168,7 @@ fn apply_rules_impl(
             .position(|p| p.rule.matches(&props.class, &props.instance, &props.title));
         if let Some(idx) = matched_idx {
             let entry = state.behavior.pending_tmp_rules.remove(idx);
-            apply_rule(state, win, &entry.rule, &mut placement, bar_height);
+            apply_rule(state, win, &entry.rule, &mut placement);
             matched_pending_id = Some(entry.id);
         }
     }
@@ -181,7 +180,7 @@ fn apply_rules_impl(
             if !rule.matches(&props.class, &props.instance, &props.title) {
                 continue;
             }
-            apply_rule(state, win, rule, &mut placement, bar_height);
+            apply_rule(state, win, rule, &mut placement);
             break;
         }
     }
@@ -268,10 +267,9 @@ pub fn update_window_properties(
 fn apply_float_rule(
     client: &mut crate::types::client::Client,
     float_rule: &RuleFloat,
-    mon_geo: (Rect, Rect, bool),
-    bar_height: i32,
+    mon_geo: (Rect, Rect, bool, i32),
 ) {
-    let (monitor_rect, work_rect, show_bar) = mon_geo;
+    let (monitor_rect, work_rect, show_bar, bar_height) = mon_geo;
 
     match float_rule {
         RuleFloat::FloatCenter => {
@@ -312,7 +310,6 @@ fn apply_rule(
     win: WindowId,
     rule: &crate::types::Rule,
     placement: &mut InitialRulePlacement,
-    bar_height: i32,
 ) {
     // Special case: Onboard (on-screen keyboard) is always sticky.
     if rule.class.as_deref() == Some("Onboard")
@@ -335,6 +332,7 @@ fn apply_rule(
             mon.monitor_rect,
             mon.work_rect(),
             mon.show_bar_for_mask(mask),
+            mon.bar_height,
         )
     };
 
@@ -345,7 +343,7 @@ fn apply_rule(
             .is_floating
             .or_else(|| rule.geometry.is_some().then_some(RuleFloat::Float));
         if let Some(ref float_rule) = effective_float {
-            apply_float_rule(c, float_rule, mon_geo, bar_height);
+            apply_float_rule(c, float_rule, mon_geo);
             *placement = match float_rule {
                 RuleFloat::FloatCenter => InitialRulePlacement::Center,
                 RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
@@ -385,9 +383,9 @@ fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types:
 fn apply_geometry_rule(
     client: &mut crate::types::client::Client,
     geometry: RuleGeometry,
-    mon_geo: (Rect, Rect, bool),
+    mon_geo: (Rect, Rect, bool, i32),
 ) {
-    let (_, work_rect, _) = mon_geo;
+    let (_, work_rect, _, _) = mon_geo;
     client.set_placement(ClientPlacement::Floating);
     client.geo = Rect::new(
         work_rect.x + geometry.x,
@@ -1059,7 +1057,7 @@ mod tests {
         assert_eq!(outcome.placement, InitialRulePlacement::Preserve);
         assert_eq!(
             state.model.client(win).unwrap().geo,
-            Rect::new(1920, 0, 1920, 1048)
+            Rect::new(1920, 32, 1920, 1048)
         );
     }
 

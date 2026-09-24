@@ -5,7 +5,6 @@
 //! inner gaps, and border subtraction.
 
 use crate::config::config_toml::LayoutConfig;
-use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::layouts::PresentationMode;
 use crate::types::{Client, Monitor, Rect, Size};
 
@@ -69,8 +68,8 @@ impl LayoutPlacement {
         Rect {
             x: gapped.x,
             y: gapped.y,
-            w: (gapped.w - BORDER_MULTIPLIER * border_width).max(1),
-            h: (gapped.h - BORDER_MULTIPLIER * border_width).max(1),
+            w: (gapped.w - 2 * border_width).max(1),
+            h: (gapped.h - 2 * border_width).max(1),
         }
     }
 

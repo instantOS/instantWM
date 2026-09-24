@@ -162,7 +162,7 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
         }
         Some(CapturedInteraction::Tag(_)) => {
             ctx.transition_pointer_interaction(|drag| {
-                drag.tag_drag_mut()
+                drag.captured_mut::<crate::core_state::TagDragState>()
                     .expect("tag capture remained active")
                     .last_motion = Some((event.root, event.modifiers));
             });
@@ -485,7 +485,13 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(!wm.core.interaction.drag.bottom_bar_gesture_active());
+        assert!(
+            wm.core
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .is_none()
+        );
     }
 
     #[test]
@@ -561,12 +567,24 @@ mod tests {
         // completes the gesture.
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         end_bottom_bar_drag_at(&mut wm, begin_root, 0);
-        assert!(!wm.core.interaction.drag.bottom_bar_gesture_active());
+        assert!(
+            wm.core
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .is_none()
+        );
 
         // A long hold (no movement, duration >= 400ms) fires `hold`.
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         end_bottom_bar_drag_at(&mut wm, begin_root, 500);
-        assert!(!wm.core.interaction.drag.bottom_bar_gesture_active());
+        assert!(
+            wm.core
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .is_none()
+        );
 
         // A swipe still takes precedence over click/hold regardless of duration:
         // even after holding 600ms, the latched direction wins.
@@ -769,6 +787,12 @@ mod tests {
             .set_selected_tags(TagMask::single(3).unwrap());
 
         assert_eq!(reconcile_capture(&mut wm.ctx()), None);
-        assert!(wm.core.interaction.drag.bottom_bar_gesture_active());
+        assert!(
+            wm.core
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .is_some()
+        );
     }
 }

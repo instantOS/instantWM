@@ -80,7 +80,7 @@ pub fn run() -> ! {
 
     super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
-    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut wm);
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle
@@ -120,7 +120,7 @@ pub fn run() -> ! {
 
     let start_time = std::time::Instant::now();
 
-    crate::runtime::spawn_status_bar(&wm);
+    crate::runtime::spawn_status_bar(&mut wm);
 
     // ── Animation timer (on-demand) ─────────────────────────────────────
     let anim_guard = crate::runtime::AnimationTimerGuard::new();

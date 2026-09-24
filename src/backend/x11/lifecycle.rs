@@ -107,7 +107,7 @@ pub fn manage(
         .insert(window, original_border_width);
     ctx.x11_runtime.client_protocols.insert(window, protocols);
 
-    let bar_height = ctx.core.derived().bar_height;
+    let bar_height = ctx.core.config().bar_metrics().height;
     let model = ctx.core.model_mut();
     let view = model
         .client_view(window)

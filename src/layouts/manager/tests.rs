@@ -79,7 +79,7 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
         &wm.core.model.clients,
         &wm.core.config.layout,
         wm.core.config.window.resize_hints,
-        wm.core.derived.bar_height,
+        monitor.bar_height,
     )
     .unwrap();
     let first_geo = geom.placement.client_rect(geom.slots[&first], 0);
@@ -1530,16 +1530,13 @@ fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
 
 #[test]
 fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
-    // Regression: `arrange` used to read the *unscaled* global
-    // `derived.bar_height` and write it back onto the monitor, undoing the
+    // Regression: `arrange` used to read the unscaled bar height and write it back onto the monitor, undoing the
     // per-output scaling applied by the monitor-sync path. On a 2x output that
     // left a 1x-tall bar alongside 2x padding and start-menu width.
     let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
         crate::backend::wayland::WaylandBackend::new(),
     ));
     wm.core.behavior.animated = false;
-    wm.core.derived.bar_height = 30;
-    wm.core.derived.bar_horizontal_padding = 15;
 
     let win = WindowId(1);
     let monitor_id = add_tiled_monitor(&mut wm, win, Rect::new(0, 0, 1600, 1200));

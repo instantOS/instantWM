@@ -118,9 +118,7 @@ mod tests {
 
         let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
-        // Backends derive this from real output metrics at bootstrap; arrange
-        // copies it back onto the monitor, so a headless Wm must set it here.
-        wm.core.derived.bar_height = 30;
+        // A headless test monitor supplies its own bar height.
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1200, 800),
@@ -192,6 +190,7 @@ mod tests {
             &mut wm.bar,
             &mut wm.focus,
         );
+        crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
             if let Some((_, crate::types::BarPosition::Tag(tag))) =
                 crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))
@@ -276,6 +275,7 @@ mod tests {
             &mut wm.bar,
             &mut wm.focus,
         );
+        crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
             if let Some((_, crate::types::BarPosition::WinTitle(hit))) =
                 crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))
@@ -310,7 +310,7 @@ mod tests {
         wm.core
             .interaction
             .drag
-            .begin_tag_drag(crate::core_state::TagDragState {
+            .begin(crate::core_state::TagDragState {
                 initial_tag: TagMask::single(1).unwrap(),
                 start: scroll_root,
                 dragging: true,
@@ -344,7 +344,7 @@ mod tests {
             wm.core
                 .interaction
                 .drag
-                .finish_tag_drag(crate::types::MouseButton::Left)
+                .finish::<crate::core_state::TagDragState>(crate::types::MouseButton::Left)
                 .is_some()
         );
         handle_pointer_axis(

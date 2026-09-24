@@ -105,14 +105,12 @@ pub(super) fn tree_slot_outer_rect(
     placement: LayoutPlacement,
     slot: Rect,
 ) -> Option<Rect> {
-    let client = ctx.core().model().client(source)?;
+    let view = ctx.core().model().client_view(source)?;
+    let client = view.client;
     let border = client.border_width.max(0);
     let mut content = placement.client_rect(slot, border);
     let available = content.size();
-    content.enforce_minimum(
-        ctx.core().derived().bar_height,
-        ctx.core().derived().bar_height,
-    );
+    content.enforce_minimum(view.monitor.bar_height, view.monitor.bar_height);
     if ctx.core().config().window.resize_hints {
         let constrained =
             client

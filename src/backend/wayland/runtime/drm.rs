@@ -304,7 +304,7 @@ pub fn run() -> ! {
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
     setup_udev_hotplug_handler(&loop_handle, &seat_name, runtime_event_tx.clone());
 
-    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut wm);
 
     // One-shot wakeup for the initial frame. Later render failures use a
     // bounded timer instead of an immediate self-ping loop.
@@ -337,7 +337,7 @@ pub fn run() -> ! {
     let start_time = Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    crate::runtime::spawn_status_bar(&wm);
+    crate::runtime::spawn_status_bar(&mut wm);
 
     let (led_state_tx, led_state_rx) = mpsc::channel();
     state.runtime.led_state_tx = Some(led_state_tx);

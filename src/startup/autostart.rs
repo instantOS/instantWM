@@ -44,12 +44,9 @@ pub fn shutdown_autostart() {
     if pgid == 0 {
         return;
     }
-    // Negative pid targets the whole group. SIGTERM lets well-behaved
-    // children clean up; the session is ending either way.
-    // SAFETY: kill(2) with a negative pid only signals the autostart group.
-    unsafe {
-        libc::kill(-(pgid as i32), libc::SIGTERM);
-    }
+    // SIGTERM lets well-behaved children clean up; the session is ending
+    // either way.
+    crate::util::signal_process_group(pgid as i32, libc::SIGTERM);
 }
 
 /// Spawn a list of commands via `sh -c`, detached from the WM process.

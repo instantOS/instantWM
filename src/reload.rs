@@ -15,13 +15,14 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
-    crate::bar::status::reload_status_command(
-        previous_status_command.as_deref(),
-        wm.core.config.status_command.as_deref(),
-    );
+    if previous_status_command != wm.core.config.status_command {
+        wm.bar
+            .status_sources
+            .start(wm.core.config.status_command.as_deref());
+    }
 
     // Backend-owned bar resources must track the new config (X11 DrawContext
-    // rebuild, Wayland bar-metric recompute). The choreography is owned by
+    // rebuild and per-monitor bar metric resync). The choreography is owned by
     // `Wm::reinit_bar_resources` so runtime updates and full reloads cannot drift.
     wm.reinit_bar_resources();
 
@@ -62,21 +63,20 @@ mod tests {
     }
 
     #[test]
-    fn reload_sets_bar_height_on_wayland() {
+    fn reload_resynchronizes_monitor_bar_height_on_wayland() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+        let id = wm
+            .core
+            .model
+            .monitors
+            .push(crate::types::Monitor::new_with_values(true));
 
         reload_config(&mut wm).unwrap();
 
-        assert!(
-            wm.core.derived.bar_height > 0,
-            "bar_height should be computed from font metrics, got {}",
-            wm.core.derived.bar_height
-        );
-        assert!(
-            wm.core.derived.bar_horizontal_padding > 0,
-            "horizontal_padding should be set from font height, got {}",
-            wm.core.derived.bar_horizontal_padding
-        );
+        let metrics = wm.core.config.bar_metrics();
+        let monitor = wm.core.model.monitor(id).unwrap();
+        assert_eq!(monitor.bar_height, metrics.height);
+        assert_eq!(monitor.horizontal_padding, metrics.horizontal_padding);
     }
 
     #[test]

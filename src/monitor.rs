@@ -557,7 +557,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     // Pre-compute per-output UI metrics while we hold an immutable config borrow.
     let metrics: Vec<MonitorUiMetrics> = outputs
         .iter()
-        .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), o.scale))
+        .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), o.scale))
         .collect();
 
     let reconciliation = ctx.core_mut().mutate_selection(|model| {
@@ -678,27 +678,21 @@ fn reconcile_monitor_model(
     }
 }
 
-fn scaled_monitor_ui_metrics(
-    config: &EffectiveConfig,
-    derived: &DerivedState,
-    scale: f64,
-) -> MonitorUiMetrics {
+fn scaled_monitor_ui_metrics(config: &EffectiveConfig, scale: f64) -> MonitorUiMetrics {
+    let base = config.bar_metrics();
     MonitorUiMetrics {
-        bar_height: crate::types::geometry::scaled_px(derived.bar_height, scale).max(1),
-        horizontal_padding: crate::types::geometry::scaled_px(
-            derived.bar_horizontal_padding,
-            scale,
-        )
-        .max(1),
+        bar_height: crate::types::geometry::scaled_px(base.height, scale).max(1),
+        horizontal_padding: crate::types::geometry::scaled_px(base.horizontal_padding, scale)
+            .max(1),
         startmenu_size: crate::types::geometry::scaled_px(config.bar.startmenu_size, scale).max(1),
     }
 }
 
 /// Re-apply scaled UI metrics to every monitor after the unscaled base changed.
 ///
-/// `DerivedState` owns the *unscaled* base metrics (font-derived height and
-/// padding) while each monitor owns the *scaled* copy for its output's UI
-/// scale. Output topology sync does this as part of reconciling monitors; this
+/// Config provides the unscaled base metrics while each monitor owns the scaled
+/// copy for its output's UI scale. Output topology sync does this as part of
+/// reconciling monitors; this
 /// entry point covers the paths that change the base without touching
 /// topology — `config set` and a full config reload, both of which funnel
 /// through [`Wm::reinit_bar_resources`](crate::wm::Wm::reinit_bar_resources).
@@ -714,7 +708,7 @@ pub fn resync_monitor_ui_metrics(core: &mut CoreState) -> bool {
         .model
         .monitors_iter()
         .map(|(id, monitor)| {
-            let metrics = scaled_monitor_ui_metrics(&core.config, &core.derived, monitor.ui_scale);
+            let metrics = scaled_monitor_ui_metrics(&core.config, monitor.ui_scale);
             (id, monitor.ui_scale, metrics)
         })
         .collect();

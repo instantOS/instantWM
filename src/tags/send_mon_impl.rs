@@ -168,7 +168,7 @@ mod tests {
         client.tags = model.expect_selected_monitor().selected_tags();
         model.insert_client(client);
 
-        if let Some(mon) = model.monitors.get_mut(selected_id) {
+        if let Some(mon) = model.monitor_mut(selected_id) {
             mon.selected = Some(win);
             mon.clients.push(win);
         }

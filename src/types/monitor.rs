@@ -62,8 +62,6 @@ pub struct Monitor {
     pub horizontal_padding: i32,
     /// Effective start menu width for this monitor's bar.
     pub startmenu_size: i32,
-    /// Width reserved for client title display in the bar.
-    pub bar_clients_width: i32,
     /// Full monitor geometry (including bar).
     pub monitor_rect: Rect,
     /// Portion of the monitor not consumed by exclusive layer-shell surfaces
@@ -121,7 +119,6 @@ impl Default for Monitor {
             bottom_bar_height: 0,
             horizontal_padding: 0,
             startmenu_size: 0,
-            bar_clients_width: 0,
             monitor_rect: Rect::default(),
             available_rect: Rect::default(),
             sel_tags: false,

@@ -93,8 +93,6 @@ impl WindowConfig {
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DerivedState {
     pub display: DisplayConfig,
-    pub bar_height: i32,
-    pub bar_horizontal_padding: i32,
     /// Sanitized `[monitors]` policy, rebuilt whenever monitor config applies.
     #[serde(skip)]
     pub monitor_policy: crate::output_mirror::MonitorPolicy,
@@ -343,18 +341,18 @@ pub struct EffectiveConfig {
     pub hooks: Vec<crate::config::hooks::Hook>,
 }
 
+impl EffectiveConfig {
+    pub fn bar_metrics(&self) -> BarMetrics {
+        self.fonts.bar_metrics(self.bar.height)
+    }
+}
+
 impl Default for EffectiveConfig {
     fn default() -> Self {
         crate::config::default_config(crate::backend::BackendKind::Wayland)
     }
 }
 
-/// Backend-neutral state owned by the window manager.
-///
-/// The authoritative client/monitor/tag graph lives in `model`; configuration
-/// and transient interaction state are deliberately kept alongside it rather
-/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
-/// a single borrow boundary without mixing backend resources into core state.
 /// Ephemeral pointer/keyboard/outline state that changes at input frequency.
 ///
 /// Grouping it separately from `model`/`config`/`derived` makes the
@@ -377,6 +375,12 @@ pub struct InteractionState {
         Option<crate::layouts::manager::PointerPlacementPreviewCache>,
 }
 
+/// Backend-neutral state owned by the window manager.
+///
+/// The authoritative client/monitor/tag graph lives in `model`; configuration
+/// and transient interaction state are deliberately kept alongside it rather
+/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
+/// a single borrow boundary without mixing backend resources into core state.
 #[derive(Default)]
 pub struct CoreState {
     pub model: WmModel,
