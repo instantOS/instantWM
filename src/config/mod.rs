@@ -6,7 +6,6 @@
 //! | Module            | What lives there                                        |
 //! |-------------------|---------------------------------------------------------|
 //! | [`appearance`]    | Color palette and per-scheme color tables                |
-//! | [`commands`]      | External commands (`ExternalCommands`, `Cmd` enum)      |
 //! | [`keybindings`]   | Normal-mode key bindings (`get_keys`, `get_desktop_keybinds`)      |
 //! | [`buttons`]       | Mouse button bindings (`get_buttons`)                   |
 //! | [`rules`]         | Window placement rules (`get_rules`)                    |
@@ -17,13 +16,11 @@
 //! - **Add/change a keybinding** → [`keybindings`]
 //! - **Add/change a mouse button** → [`buttons`]
 //! - **Change colors** → [`appearance::palette`]
-//! - **Add an external command** → [`commands`] (add field + `Cmd` variant)
 //! - **Change a window rule** → [`rules`]
 //! - **Tune WM parameters** (border width, gaps, …) → [`EffectiveConfig`] defaults below
 
 pub mod appearance;
 pub mod buttons;
-pub mod commands;
 pub mod commands_common;
 pub mod config_toml;
 pub mod generated_keybinds;
@@ -34,13 +31,10 @@ pub mod keysyms;
 pub mod rules;
 
 // Re-export modifier key constants (used by backend/wayland/input/modifiers.rs via crate::config::*).
-pub use crate::types::{
-    EdgeDirection, SchemeClose, SchemeHover, SchemeTag, WindowFocus, WindowRole,
-};
+pub use crate::types::{EdgeDirection, SchemeHover, SchemeTag, WindowFocus, WindowRole};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 
 use crate::types::KeybindOrigin;
-use commands::default_commands;
 // ---------------------------------------------------------------------------
 // Module-level constants
 // ---------------------------------------------------------------------------
@@ -104,8 +98,6 @@ use crate::types::Key;
 use std::collections::HashMap;
 use std::env;
 
-use generated_keybinds::build_default_keybinds;
-
 /// Mode configuration with keybinds and optional description.
 #[derive(Debug, Clone, Default)]
 pub struct ModeConfig {
@@ -154,23 +146,16 @@ pub fn resolve_config(
 ) -> Result<EffectiveConfig, String> {
     let layout = theme.layout.validated()?;
     theme.fonts = theme.fonts.validated()?;
-    let defaults = build_default_keybinds(backend, &theme);
-
-    // Merge TOML keybinds over compiled defaults
-    let keys = if theme.keybinds.is_empty() {
-        defaults.keys
-    } else {
-        keybind_config::merge_keybinds(defaults.keys, &theme.keybinds, KeybindOrigin::User)
-    };
-    let desktop_keybinds = if theme.desktop_keybinds.is_empty() {
-        defaults.desktop_keybinds
-    } else {
-        keybind_config::merge_keybinds(
-            defaults.desktop_keybinds,
-            &theme.desktop_keybinds,
-            KeybindOrigin::User,
-        )
-    };
+    let keys = keybind_config::merge_keybinds(
+        keybindings::get_keys(backend),
+        &theme.keybinds,
+        KeybindOrigin::User,
+    );
+    let desktop_keybinds = keybind_config::merge_keybinds(
+        keybindings::get_desktop_keybinds(),
+        &theme.desktop_keybinds,
+        KeybindOrigin::User,
+    );
 
     let mut modes = HashMap::new();
 
@@ -300,7 +285,6 @@ pub fn resolve_config(
             rules: rules::merge_rules(rules::get_rules(), theme.rules),
         },
         fonts: theme.fonts,
-        external_commands: default_commands(),
         tag_template,
         keyboard,
         input: theme.input,
@@ -345,6 +329,35 @@ mod resolution_tests {
         assert_eq!(effective.tag_template.len(), MAX_TAGS);
         assert_eq!(effective.window, WindowConfig::default());
         assert_eq!(effective.systray, SystrayConfig::default());
+    }
+
+    #[test]
+    fn user_keybinds_override_generated_defaults() {
+        use crate::actions::{KeyAction, NamedAction};
+        use crate::config::keybind_config::{ActionSpec, KeybindSpec};
+        use crate::config::keysyms::XK_RETURN;
+
+        let mut user = config_toml::UserConfig::default();
+        user.keybinds.push(KeybindSpec {
+            modifiers: vec!["super".to_string()],
+            key: "return".to_string(),
+            action: ActionSpec::WithArgs(vec!["spawn".into(), "alacritty".into()]),
+        });
+
+        let effective = resolve_config(user, crate::backend::BackendKind::X11).unwrap();
+        let bound: Vec<_> = effective
+            .bindings
+            .keys
+            .iter()
+            .filter(|key| key.mod_mask == MODKEY && key.keysym == XK_RETURN)
+            .collect();
+
+        assert_eq!(bound.len(), 1);
+        assert_eq!(bound[0].origin, KeybindOrigin::User);
+        assert!(matches!(
+            &bound[0].action,
+            KeyAction::Named(NamedAction::Spawn(argv)) if argv == &["alacritty"]
+        ));
     }
 
     #[test]

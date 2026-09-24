@@ -899,10 +899,12 @@ fn reconcile_drm_outputs(
             let name = entry.output.name();
             log::info!("Output {name}: disconnected");
             if let Some(id) = entry.pending_power_on.take() {
-                state.runtime.output_power.complete_by_id(
+                state.runtime.output_power.complete(
                     id,
-                    OutputId(name.clone()),
-                    Err(OutputPowerError::Unavailable(name.clone())),
+                    (
+                        OutputId(name.clone()),
+                        Err(OutputPowerError::Unavailable(name.clone())),
+                    ),
                 );
             }
             entry.surface.take();
@@ -1156,11 +1158,10 @@ fn render_outputs(
                             .runtime
                             .output_power_modes
                             .insert(output.0.clone(), OutputPowerMode::On);
-                        state.runtime.output_power.complete_by_id(
-                            id,
-                            output,
-                            Ok(OutputPowerMode::On),
-                        );
+                        state
+                            .runtime
+                            .output_power
+                            .complete(id, (output, Ok(OutputPowerMode::On)));
                     }
                     loop_state
                         .presentation_scheduler
@@ -1204,12 +1205,14 @@ fn render_outputs(
                     {
                         entry.powered = false;
                         let output = OutputId(entry.output.name());
-                        state.runtime.output_power.complete_by_id(
+                        state.runtime.output_power.complete(
                             id,
-                            output,
-                            Err(OutputPowerError::Backend(
-                                "failed to queue a frame while powering on".to_string(),
-                            )),
+                            (
+                                output,
+                                Err(OutputPowerError::Backend(
+                                    "failed to queue a frame while powering on".to_string(),
+                                )),
+                            ),
                         );
                         if let Some(surface) = entry.surface.as_ref() {
                             let _ = surface.with_compositor(|compositor| compositor.clear());

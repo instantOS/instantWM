@@ -12,12 +12,17 @@ use crate::wm::Wm;
 
 /// Return the name of the active theme.
 pub fn get_theme(wm: &Wm) -> Response {
-    Response::Theme(wm.core.config.theme.to_string())
+    Response::Theme(wm.core.config.theme.name())
 }
 
 /// List every built-in theme name.
 pub fn list_themes() -> Response {
-    Response::ThemeList(ColorTheme::ALL.iter().map(ToString::to_string).collect())
+    Response::ThemeList(
+        <ColorTheme as clap::ValueEnum>::value_variants()
+            .iter()
+            .map(|theme| theme.name())
+            .collect(),
+    )
 }
 
 /// Switch to a built-in theme, recolouring the running WM.
@@ -75,7 +80,10 @@ mod tests {
     fn list_themes_returns_every_name() {
         match list_themes() {
             Response::ThemeList(names) => {
-                assert_eq!(names.len(), ColorTheme::ALL.len());
+                assert_eq!(
+                    names.len(),
+                    <ColorTheme as clap::ValueEnum>::value_variants().len()
+                );
                 assert!(names.contains(&"nord".to_string()));
                 assert!(names.contains(&"catppuccin-mocha".to_string()));
             }

@@ -20,27 +20,12 @@ pub mod defaults {
 
 /// Volume and brightness controls.
 pub mod media {
-    pub const P: &[&str] = &["ins", "assist", "volume"];
-    pub const B: &[&str] = &["ins", "assist", "bright"];
-
-    pub fn up_vol() -> &'static [&'static str] {
-        &["ins", "assist", "volume", "+"]
-    }
-    pub fn down_vol() -> &'static [&'static str] {
-        &["ins", "assist", "volume", "-"]
-    }
-    pub fn mute_vol() -> &'static [&'static str] {
-        &["ins", "assist", "volume", "mute"]
-    }
-    pub fn mic_mute() -> &'static [&'static str] {
-        &["ins", "assist", "run", "vm"]
-    }
-    pub fn up_bright() -> &'static [&'static str] {
-        &["ins", "assist", "bright", "+"]
-    }
-    pub fn down_bright() -> &'static [&'static str] {
-        &["ins", "assist", "bright", "-"]
-    }
+    pub const UP_VOL: &[&str] = &["ins", "assist", "volume", "+"];
+    pub const DOWN_VOL: &[&str] = &["ins", "assist", "volume", "-"];
+    pub const MUTE_VOL: &[&str] = &["ins", "assist", "volume", "mute"];
+    pub const MIC_MUTE: &[&str] = &["ins", "assist", "run", "vm"];
+    pub const UP_BRIGHT: &[&str] = &["ins", "assist", "bright", "+"];
+    pub const DOWN_BRIGHT: &[&str] = &["ins", "assist", "bright", "-"];
 }
 
 /// Screenshot utilities.

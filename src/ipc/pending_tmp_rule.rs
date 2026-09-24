@@ -166,7 +166,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                 .collect();
             Response::PendingTmpRuleList(entries)
         }
-        PendingTmpRuleCmd::Cancel(id) => {
+        PendingTmpRuleCmd::Cancel { id } => {
             let now = Instant::now();
             let mut cancelled = false;
             wm.ctx().with_behavior_mut(|behavior| {
@@ -434,7 +434,7 @@ mod tests {
     fn cancel_of_expired_entry_reports_not_found() {
         let mut wm = wm_with(9);
         inject_expired(&mut wm, 7);
-        let resp = handle_pending_tmp_rule(&mut wm, PendingTmpRuleCmd::Cancel(7));
+        let resp = handle_pending_tmp_rule(&mut wm, PendingTmpRuleCmd::Cancel { id: 7 });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 }

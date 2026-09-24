@@ -10,32 +10,18 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
     match cmd {
         MonitorCommand::List => list_monitors(wm),
         MonitorCommand::Switch { monitor } => switch_monitor(wm, monitor),
-        MonitorCommand::Next { count } => next_monitor(wm, count as i32),
-        MonitorCommand::Prev { count } => prev_monitor(wm, count as i32),
+        MonitorCommand::Next { count } => step_monitor(wm, MonitorDirection::Next, count),
+        MonitorCommand::Prev { count } => step_monitor(wm, MonitorDirection::Prev, count),
         MonitorCommand::Set {
             identifier,
-            resolution,
-            refresh_rate,
-            position,
-            scale,
-            transform,
-            enable,
-            vrr,
-            mirror,
-            mirror_fit,
+            mut config,
         } => {
-            let patch = MonitorConfig {
-                resolution,
-                refresh_rate,
-                position,
-                scale,
-                transform: transform.map(|t| t.to_string()),
-                enable,
-                vrr,
-                mirror,
-                mirror_fit,
-            };
-            set_monitor_config(wm, identifier, patch)
+            if config.mirror.as_deref().is_some_and(|mirror| {
+                mirror.trim().is_empty() || mirror.eq_ignore_ascii_case("none")
+            }) {
+                config.mirror = Some(String::new());
+            }
+            set_monitor_config(wm, identifier, config)
         }
         MonitorCommand::Modes { identifier } => list_modes(wm, identifier),
     }
@@ -43,17 +29,14 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
 
 fn list_monitors(wm: &Wm) -> Response {
     let selected_id = wm.core.model.selected_monitor_id();
-    let mirror_map = MirrorMap::build(&wm.core.config.monitors).0;
+    let mirror_map = &wm.core.derived.monitor_policy.mirrors;
     // The same discovery the monitor layout uses, so each monitor finds its
     // own output (with the heads presenting it) by name.
-    let output_info: HashMap<_, _> = crate::monitor::logical_outputs(
-        wm.backend.get_outputs(),
-        &wm.core.config.monitors,
-        &wm.core.model,
-    )
-    .into_iter()
-    .map(|output| (output.name.clone(), output))
-    .collect();
+    let output_info: HashMap<_, _> =
+        crate::monitor::logical_outputs(wm.backend.get_outputs(), mirror_map, &wm.core.model)
+            .into_iter()
+            .map(|output| (output.name.clone(), output))
+            .collect();
 
     let monitors: Vec<crate::ipc_types::MonitorInfo> = wm
         .core
@@ -111,16 +94,7 @@ fn switch_monitor(wm: &mut Wm, selector: MonitorSelector) -> Response {
     }
 }
 
-fn next_monitor(wm: &mut Wm, count: i32) -> Response {
-    let direction = MonitorDirection::new(count.max(1));
-    for _ in 0..count.max(1) {
-        focus_monitor(&mut wm.ctx(), direction);
-    }
-    Response::ok()
-}
-
-fn prev_monitor(wm: &mut Wm, count: i32) -> Response {
-    let direction = MonitorDirection::new(-count.max(1));
+fn step_monitor(wm: &mut Wm, direction: MonitorDirection, count: u32) -> Response {
     for _ in 0..count.max(1) {
         focus_monitor(&mut wm.ctx(), direction);
     }
@@ -238,10 +212,9 @@ fn set_monitor_config(wm: &mut Wm, identifier: String, patch: MonitorConfig) -> 
     Response::ok()
 }
 
-fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
-    // Determine which displays to query
-    let display_names: Vec<String> = match identifier.as_deref() {
-        Some("focused") | None => {
+fn list_modes(wm: &mut Wm, identifier: String) -> Response {
+    let display_names: Vec<String> = match identifier.as_str() {
+        "focused" => {
             let name = wm.core.model.expect_selected_monitor().name.clone();
             if name.is_empty() {
                 // List all displays
@@ -261,7 +234,7 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
                 vec![name]
             }
         }
-        Some(name) => vec![name.to_string()],
+        name => vec![name.to_string()],
     };
 
     let mut all_modes = Vec::new();
@@ -368,7 +341,7 @@ mod tests {
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
-    /// All-`None` `monitor set` command with just the fields the tests vary.
+    /// `monitor set` command with just the fields the tests vary.
     fn set_cmd(
         identifier: &str,
         resolution: Option<&str>,
@@ -377,19 +350,16 @@ mod tests {
     ) -> MonitorCommand {
         MonitorCommand::Set {
             identifier: identifier.to_owned(),
-            resolution: resolution.map(str::to_string),
-            refresh_rate: None,
-            position: None,
-            scale,
-            transform: None,
-            enable: None,
-            vrr: None,
-            mirror: mirror.map(str::to_string),
-            mirror_fit: None,
+            config: crate::config::config_toml::MonitorConfig {
+                resolution: resolution.map(str::to_string),
+                scale,
+                mirror: mirror.map(str::to_string),
+                ..Default::default()
+            },
         }
     }
 
-    /// All-`None` `monitor set` command varying only the mirror fields.
+    /// `monitor set` command varying only the mirror fields.
     fn set_mirror_cmd(
         identifier: &str,
         mirror: Option<&str>,
@@ -397,15 +367,11 @@ mod tests {
     ) -> MonitorCommand {
         MonitorCommand::Set {
             identifier: identifier.to_owned(),
-            resolution: None,
-            refresh_rate: None,
-            position: None,
-            scale: None,
-            transform: None,
-            enable: None,
-            vrr: None,
-            mirror: mirror.map(str::to_string),
-            mirror_fit,
+            config: crate::config::config_toml::MonitorConfig {
+                mirror: mirror.map(str::to_string),
+                mirror_fit,
+                ..Default::default()
+            },
         }
     }
 
@@ -505,7 +471,8 @@ mod tests {
 
         // Clearing skips the connectivity check: the source may simply be
         // unplugged right now.
-        let resp = super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("")));
+        let resp =
+            super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("none")));
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
         assert!(wm.work.monitor_config);
@@ -603,7 +570,7 @@ mod tests {
             refresh_rate: Some(144.0),
             position: Some("0,0".into()),
             scale: Some(2.0),
-            transform: Some("90".into()),
+            transform: Some(crate::config::config_toml::Transform::Rotate90),
             enable: Some(false),
             vrr: Some(VrrMode::On),
             mirror: None,
@@ -675,7 +642,10 @@ mod tests {
         assert_eq!(merged.scale, None);
         assert_eq!(merged.resolution.as_deref(), Some("2560x1440"));
         assert_eq!(merged.refresh_rate, Some(144.0));
-        assert_eq!(merged.transform.as_deref(), Some("90"));
+        assert_eq!(
+            merged.transform,
+            Some(crate::config::config_toml::Transform::Rotate90)
+        );
         assert_eq!(merged.enable, Some(false));
         assert_eq!(merged.vrr, Some(VrrMode::On));
         assert_eq!(merged.mirror_fit, Some(MirrorFit::Cover));

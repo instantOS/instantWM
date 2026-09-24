@@ -13,7 +13,7 @@ pub fn handle_test_command(wm: &mut Wm, command: TestCommand) -> Response {
 
     match command {
         TestCommand::PointerMove { x, y, normalized } => move_pointer(wm, x, y, normalized),
-        TestCommand::FocusWindow(raw) => focus_window(wm, WindowId(raw)),
+        TestCommand::FocusWindow { window_id } => focus_window(wm, WindowId(window_id)),
         TestCommand::TagWindow { window_id, tag } => tag_window(wm, WindowId(window_id), tag),
         TestCommand::SetWindowFloating {
             window_id,

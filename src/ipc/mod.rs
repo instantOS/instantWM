@@ -325,7 +325,9 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
     match cmd {
         IpcCommand::Monitor(MonitorCommand::Set { .. }) => Some(RestorePrevious),
         IpcCommand::Window(
-            WindowCommand::Resize { .. } | WindowCommand::Close(None) | WindowCommand::Focus(_),
+            WindowCommand::Resize { .. }
+            | WindowCommand::Close { window_id: None }
+            | WindowCommand::Focus { .. },
         )
         | IpcCommand::Scratchpad(
             ScratchpadCommand::Create { .. }
@@ -347,13 +349,10 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
             | MonitorCommand::Prev { .. },
         )
         | IpcCommand::Scratchpad(
-            ScratchpadCommand::List
-            | ScratchpadCommand::Toggle(_)
-            | ScratchpadCommand::Show(_)
-            | ScratchpadCommand::ShowAll
-            | ScratchpadCommand::Hide(_)
-            | ScratchpadCommand::HideAll
-            | ScratchpadCommand::Status(_)
+            ScratchpadCommand::Status { .. }
+            | ScratchpadCommand::Toggle { .. }
+            | ScratchpadCommand::Show { .. }
+            | ScratchpadCommand::Hide { .. }
             | ScratchpadCommand::Resize { .. }
             | ScratchpadCommand::Restore { name: Some(_), .. }
             | ScratchpadCommand::Restore {
@@ -363,7 +362,9 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
         | IpcCommand::Keyboard(_)
         | IpcCommand::Tag(_)
         | IpcCommand::Window(
-            WindowCommand::Info(_) | WindowCommand::Close(Some(_)) | WindowCommand::List(_),
+            WindowCommand::Info { .. }
+            | WindowCommand::Close { window_id: Some(_) }
+            | WindowCommand::List { .. },
         )
         | IpcCommand::Wallpaper(_)
         | IpcCommand::Input(_)
@@ -391,7 +392,7 @@ mod tests {
 
     #[test]
     fn request_decoder_accepts_binary_and_json() {
-        let request = IpcRequest::new(IpcCommand::GetTheme);
+        let request = IpcRequest::new(IpcCommand::GetTheme, false);
         for bytes in [
             bincode::encode_to_vec(&request, bincode::config::standard()).unwrap(),
             serde_json::to_vec(&request).unwrap(),
@@ -409,7 +410,7 @@ mod tests {
         assert!(decode_request(&bytes).is_err());
 
         let mut bytes = bincode::encode_to_vec(
-            IpcRequest::new(IpcCommand::GetTheme),
+            IpcRequest::new(IpcCommand::GetTheme, false),
             bincode::config::standard(),
         )
         .unwrap();
@@ -490,7 +491,7 @@ mod tests {
             clients: Vec::new(),
         };
         let mut stream = UnixStream::connect(&server.path).unwrap();
-        let request = IpcRequest::new(IpcCommand::GetTheme);
+        let request = IpcRequest::new(IpcCommand::GetTheme, false);
         let bytes = bincode::encode_to_vec(&request, bincode::config::standard()).unwrap();
         stream.write_all(&bytes).unwrap();
         stream.shutdown(Shutdown::Write).unwrap();

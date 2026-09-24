@@ -1,7 +1,6 @@
 use crate::client::PendingLaunch;
 use crate::config::ModeConfig;
 use crate::config::appearance::ColorConfig;
-use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
 use std::collections::{BTreeSet, HashMap, VecDeque};
@@ -96,6 +95,9 @@ pub struct DerivedState {
     pub display: DisplayConfig,
     pub bar_height: i32,
     pub bar_horizontal_padding: i32,
+    /// Sanitized `[monitors]` policy, rebuilt whenever monitor config applies.
+    #[serde(skip)]
+    pub monitor_policy: crate::output_mirror::MonitorPolicy,
 }
 
 /// Backend presenting the hosted StatusNotifier context menu.
@@ -327,7 +329,6 @@ pub struct EffectiveConfig {
     pub theme: crate::config::config_toml::ColorTheme,
     pub bindings: BindingConfig,
     pub fonts: FontConfig,
-    pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
     /// Resolved keyboard settings. The current layout index remains runtime

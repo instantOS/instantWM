@@ -2,8 +2,6 @@
 //!
 //! Types for mouse, keyboard, and gesture handling.
 
-use std::str::FromStr;
-
 use crate::types::{MonitorId, Point, Rect, Size, TagMask, WindowId};
 
 /// Physical input stream that owns a compositor interaction.
@@ -207,33 +205,6 @@ pub enum Gesture {
     TrayMenuEntry(usize),
 }
 
-impl Gesture {
-    /// Construct a `Tag` gesture from a 0-based tag index.
-    ///
-    /// Returns `None` only if the index is unreasonably large (> 63).
-    pub fn from_tag_index(tag_index: usize) -> Option<Self> {
-        if tag_index < 64 {
-            Some(Self::Tag(tag_index))
-        } else {
-            None
-        }
-    }
-
-    /// Returns `true` if this gesture represents a tag hover.
-    pub fn is_tag(self) -> bool {
-        matches!(self, Self::Tag(_))
-    }
-
-    /// Returns the tag index if this is a `Tag` gesture, otherwise `None`.
-    pub fn tag_index(self) -> Option<usize> {
-        if let Self::Tag(idx) = self {
-            Some(idx)
-        } else {
-            None
-        }
-    }
-}
-
 /// Snap position for window snapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SnapPosition {
@@ -423,7 +394,19 @@ impl ResizeDirection {
 }
 
 /// The screen edge where an edge-anchored scratchpad slides in/out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    bincode::Encode,
+    bincode::Decode,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum EdgeDirection {
     /// Slides down from the top edge (default).
@@ -450,17 +433,6 @@ impl EdgeDirection {
             Self::Right => "right",
             Self::Bottom => "bottom",
             Self::Left => "left",
-        }
-    }
-
-    /// Parse from a case-insensitive string.
-    pub fn from_str_loose(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "top" => Some(Self::Top),
-            "right" => Some(Self::Right),
-            "bottom" => Some(Self::Bottom),
-            "left" => Some(Self::Left),
-            _ => None,
         }
     }
 }
@@ -520,56 +492,41 @@ impl Direction {
             Self::Left => (-step, 0),
         }
     }
-
-    /// `Some` if this is a vertical axis.
-    pub fn as_vertical(self) -> Option<VerticalDirection> {
-        match self {
-            Self::Up => Some(VerticalDirection::Up),
-            Self::Down => Some(VerticalDirection::Down),
-            _ => None,
-        }
-    }
-
-    /// `Some` if this is a horizontal axis.
-    pub fn as_horizontal(self) -> Option<HorizontalDirection> {
-        match self {
-            Self::Left => Some(HorizontalDirection::Left),
-            Self::Right => Some(HorizontalDirection::Right),
-            _ => None,
-        }
-    }
 }
 
 /// Direction for stack-based focus movement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum StackDirection {
     /// Move to the next item in the stack.
     #[default]
+    #[value(alias = "down", alias = "forward")]
     Next,
     /// Move to the previous item in the stack.
+    #[value(name = "prev", alias = "previous", alias = "up", alias = "backward")]
     Previous,
 }
 
 impl StackDirection {
-    /// Parse a direction from a string name (aliases accepted).
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::from_str(name).ok()
-    }
-
     /// Returns true if this is the Next direction.
     pub fn is_forward(self) -> bool {
         matches!(self, Self::Next)
     }
 }
 
-impl FromStr for StackDirection {
-    type Err = ();
+impl From<VerticalDirection> for StackDirection {
+    fn from(direction: VerticalDirection) -> Self {
+        match direction {
+            VerticalDirection::Up => Self::Previous,
+            VerticalDirection::Down => Self::Next,
+        }
+    }
+}
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "next" | "down" | "forward" => Ok(Self::Next),
-            "prev" | "previous" | "up" | "backward" => Ok(Self::Previous),
-            _ => Err(()),
+impl From<HorizontalDirection> for StackDirection {
+    fn from(direction: HorizontalDirection) -> Self {
+        match direction {
+            HorizontalDirection::Left => Self::Previous,
+            HorizontalDirection::Right => Self::Next,
         }
     }
 }

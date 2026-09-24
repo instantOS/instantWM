@@ -171,23 +171,6 @@ pub enum WindowFocus {
     Focused,
 }
 
-/// State of the close button widget.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeClose {
-    Normal,
-    Locked,
-    Fullscreen,
-}
-
-/// State of the window border.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeBorder {
-    Normal,
-    TileFocus,
-    FloatFocus,
-    Snap,
-}
-
 // =============================================================================
 // Configuration RGBA Types (for config loading)
 // =============================================================================
@@ -276,16 +259,6 @@ pub struct CloseButtonColorSet {
     pub fullscreen: ColorSchemeRgba,
 }
 
-impl CloseButtonColorSet {
-    pub fn colors_for(&self, role: SchemeClose) -> &ColorSchemeRgba {
-        match role {
-            SchemeClose::Normal => &self.normal,
-            SchemeClose::Locked => &self.locked,
-            SchemeClose::Fullscreen => &self.fullscreen,
-        }
-    }
-}
-
 impl ColorSchemeRgba {
     /// Create a new color scheme from RGBA values.
     pub fn new(fg: Rgba, bg: Rgba, detail: Rgba) -> Self {
@@ -370,14 +343,6 @@ pub struct CloseButtonColorConfigs {
 }
 
 impl CloseButtonColorConfigs {
-    pub fn colors_for(&self, hover: SchemeHover, role: SchemeClose) -> &ColorSchemeRgba {
-        match hover {
-            SchemeHover::NoHover => &self.no_hover,
-            SchemeHover::Hover => &self.hover,
-        }
-        .colors_for(role)
-    }
-
     /// Compose close button styling across orthogonal locked and fullscreen dimensions.
     ///
     /// Returns the base scheme and an optional detail override scheme (e.g. for fullscreen accent when locked).
@@ -387,27 +352,24 @@ impl CloseButtonColorConfigs {
         is_locked: bool,
         is_fullscreen: bool,
     ) -> (&ColorSchemeRgba, Option<&ColorSchemeRgba>) {
+        let set = match hover {
+            SchemeHover::NoHover => &self.no_hover,
+            SchemeHover::Hover => &self.hover,
+        };
         let base = if is_locked {
-            self.colors_for(hover, SchemeClose::Locked)
+            &set.locked
         } else if is_fullscreen {
-            self.colors_for(hover, SchemeClose::Fullscreen)
+            &set.fullscreen
         } else {
-            self.colors_for(hover, SchemeClose::Normal)
+            &set.normal
         };
-
-        let detail_override = if is_locked && is_fullscreen {
-            Some(self.colors_for(hover, SchemeClose::Fullscreen))
-        } else {
-            None
-        };
-
+        let detail_override = (is_locked && is_fullscreen).then_some(&set.fullscreen);
         (base, detail_override)
     }
 
     /// Theme color shared by the close button and destructive window gestures.
     pub fn gesture_color(&self) -> Rgba {
-        self.colors_for(SchemeHover::Hover, SchemeClose::Normal)
-            .detail
+        self.hover.normal.detail
     }
 }
 
@@ -423,26 +385,6 @@ pub struct BorderColorConfig {
     pub float_focus: Rgba,
     /// Snap indicator color.
     pub snap: Rgba,
-}
-
-impl BorderColorConfig {
-    pub fn get(&self, scheme: SchemeBorder) -> Rgba {
-        match scheme {
-            SchemeBorder::Normal => self.normal,
-            SchemeBorder::TileFocus => self.tile_focus,
-            SchemeBorder::FloatFocus => self.float_focus,
-            SchemeBorder::Snap => self.snap,
-        }
-    }
-
-    pub fn set(&mut self, scheme: SchemeBorder, value: Rgba) {
-        match scheme {
-            SchemeBorder::Normal => self.normal = value,
-            SchemeBorder::TileFocus => self.tile_focus = value,
-            SchemeBorder::FloatFocus => self.float_focus = value,
-            SchemeBorder::Snap => self.snap = value,
-        }
-    }
 }
 
 /// Status bar color configuration with pre-parsed RGBA values.

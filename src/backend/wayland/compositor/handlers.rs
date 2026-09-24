@@ -717,7 +717,10 @@ impl OutputManagementHandler for WaylandState {
         transaction: crate::backend::output::OutputTransaction,
         configuration: smithay::reexports::wayland_protocols_wlr::output_management::v1::server::zwlr_output_configuration_v1::ZwlrOutputConfigurationV1,
     ) {
-        let id = self.runtime.output_transactions.submit(kind, transaction);
+        let id = self
+            .runtime
+            .output_transactions
+            .submit_client(kind, transaction);
         self.output_management_state
             .track_transaction(id, configuration);
         self.request_render();
@@ -757,16 +760,16 @@ impl crate::backend::wayland::compositor::protocols::output_power::OutputPowerHa
         &mut self,
         output: crate::backend::output::OutputId,
         mode: crate::backend::output::OutputPowerMode,
-    ) -> crate::backend::output::OutputPowerRequestId {
-        let id = self.runtime.output_power.submit(output, mode);
+    ) -> crate::backend::output::RequestId {
+        let id = self
+            .runtime
+            .output_power
+            .submit(crate::backend::output::OutputPowerRequest { output, mode });
         self.request_render();
         id
     }
 
-    fn cancel_output_power_requests(
-        &mut self,
-        requests: &[crate::backend::output::OutputPowerRequestId],
-    ) {
+    fn cancel_output_power_requests(&mut self, requests: &[crate::backend::output::RequestId]) {
         self.runtime.output_power.cancel(requests);
     }
 }

@@ -10,9 +10,9 @@ use std::sync::Mutex;
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
-    AdaptiveSyncPolicy, CompletedOutputTransaction, MonitorModeRequest, OutputHeadConfiguration,
-    OutputId, OutputMode as TransactionOutputMode, OutputPlacement, OutputPositionSource,
-    OutputSnapshot, OutputTransaction, OutputTransactionKind, OutputTransform,
+    AdaptiveSyncPolicy, MonitorModeRequest, OutputHeadConfiguration, OutputId,
+    OutputMode as TransactionOutputMode, OutputPlacement, OutputPositionSource, OutputSnapshot,
+    OutputTransaction, OutputTransactionError, OutputTransactionKind, OutputTransform, RequestId,
     plan_automatic_output_positions, position_after,
 };
 use crate::backend::wayland::output::{from_smithay_transform, to_smithay_transform};
@@ -269,34 +269,39 @@ impl WaylandState {
         }
     }
 
-    fn finish_output_transaction(&mut self, completed: CompletedOutputTransaction) -> bool {
-        let succeeded = completed.result.is_ok();
-        let changed = completed.kind == OutputTransactionKind::Apply && succeeded;
-        if let Err(error) = &completed.result {
-            log::warn!("output transaction {:?} failed: {error}", completed.id);
+    fn finish_output_transaction(
+        &mut self,
+        id: RequestId,
+        kind: OutputTransactionKind,
+        result: Result<OutputSnapshot, OutputTransactionError>,
+    ) -> bool {
+        let succeeded = result.is_ok();
+        let changed = kind == OutputTransactionKind::Apply && succeeded;
+        if let Err(error) = &result {
+            log::warn!("output transaction {id:?} failed: {error}");
         }
-        if let Ok(snapshot) = &completed.result
-            && completed.kind == OutputTransactionKind::Apply
+        if let Ok(snapshot) = &result
+            && kind == OutputTransactionKind::Apply
         {
             self.apply_output_snapshot(snapshot);
         }
         self.output_management_state
-            .finish_transaction(completed.id, succeeded);
+            .finish_transaction(id, succeeded);
         changed
     }
 
     pub fn project_completed_output_transactions(&mut self) -> bool {
         let completed = self.runtime.output_transactions.take_completed();
         let mut changed = false;
-        for transaction in completed {
-            changed |= self.finish_output_transaction(transaction);
+        for (id, (kind, result)) in completed {
+            changed |= self.finish_output_transaction(id, kind, result);
         }
         changed
     }
 
     pub fn project_completed_output_power_requests(&mut self) {
-        for completed in self.runtime.output_power.take_completed() {
-            let cancelled = self.output_power_state.complete(completed);
+        for (id, (output, result)) in self.runtime.output_power.take_completed() {
+            let cancelled = self.output_power_state.complete(id, &output, result);
             self.runtime.output_power.cancel(&cancelled);
         }
     }
@@ -600,12 +605,8 @@ impl WaylandState {
                 head.enabled = enable;
             }
 
-            if let Some(transform) = config
-                .transform
-                .as_ref()
-                .and_then(|t| OutputTransform::parse(t))
-            {
-                head.transform = transform;
+            if let Some(transform) = config.transform {
+                head.transform = transform.into();
             }
 
             if let Some(ref pos) = config.position

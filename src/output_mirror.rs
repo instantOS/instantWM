@@ -13,7 +13,8 @@
 //! depth-1 map plus a stable list of [`MirrorConfigError`] diagnostics, and
 //! [`sanitize_mirror_configs`] repairs a config map in place (clearing
 //! rejected declarations and shadowed fields, retargeting relative anchors
-//! that point at a mirror). [`fold_cloned_outputs`] merges outputs that
+//! that point at a mirror). [`MonitorPolicy`] is the sanitized result every
+//! backend and the monitor layer read. [`fold_cloned_outputs`] merges outputs that
 //! physically present the same region (such as `xrandr --same-as` clones)
 //! into one logical output before the monitor layer runs.
 
@@ -160,16 +161,11 @@ impl MirrorMap {
         // Pass 3: a mirror head owns no desktop region, so its position and
         // scale are meaningless; warn but keep the pair. Mode and transform
         // describe the physical head and stay the head's own.
-        for &key in &keys {
-            let Some(config) = configs.get(key) else {
-                continue;
-            };
-            if !map.contains_key(key) {
-                continue;
-            }
+        for output in map.keys() {
+            let config = &configs[output];
             if config.position.is_some() || config.scale.is_some() {
                 errors.push(MirrorConfigError::ShadowedPresentation {
-                    output: key.to_string(),
+                    output: output.clone(),
                 });
             }
         }
@@ -217,8 +213,7 @@ impl MirrorMap {
 
     /// Construct a map directly from `(mirror, source)` pairs, bypassing
     /// [`Self::build`]'s chain/cycle rejection and defaulting every target's
-    /// fit to [`MirrorFit::Contain`]. Test-only: grouping must stay defensive
-    /// against hand-built chains that config validation can never produce.
+    /// fit to [`MirrorFit::Contain`].
     #[cfg(test)]
     pub(crate) fn from_pairs(pairs: impl IntoIterator<Item = (String, String)>) -> Self {
         Self::from_targets(pairs.into_iter().map(|(mirror, source)| {
@@ -254,19 +249,18 @@ impl MirrorMap {
 /// 5. Retarget relative anchors (`right-of:DP-1`) that reference a mirror
 ///    onto that mirror's source, one hop only.
 ///
-/// Returns every error [`MirrorMap::build`] produced, in stable order.
+/// Returns the mirror map (unaffected by the repairs) and every error
+/// [`MirrorMap::build`] produced, in stable order.
 pub fn sanitize_mirror_configs(
     configs: &mut HashMap<String, MonitorConfig>,
-) -> Vec<MirrorConfigError> {
+) -> (MirrorMap, Vec<MirrorConfigError>) {
     let (map, errors) = MirrorMap::build(configs);
 
     for error in &errors {
         if !error.is_fatal() {
             continue;
         }
-        if let Some(key) = error.declaration_key()
-            && let Some(config) = configs.get_mut(key)
-        {
+        if let Some(config) = error.declaration_key().and_then(|key| configs.get_mut(key)) {
             config.mirror = None;
         }
     }
@@ -281,8 +275,7 @@ pub fn sanitize_mirror_configs(
     }
 
     // A fit without an effective mirror target is inert; drop it (debug
-    // level: an IPC `monitor set` may legitimately set it before the mirror,
-    // and sanitization runs at apply time on every config path).
+    // level: an IPC `monitor set` may legitimately set it before the mirror).
     for (name, config) in configs.iter_mut() {
         let has_target = config
             .mirror
@@ -311,23 +304,43 @@ pub fn sanitize_mirror_configs(
         config.position = Some(format!("{relation_str}:{source}"));
     }
 
-    errors
+    (map, errors)
 }
 
-/// Clone monitor config, sanitize it, and log every diagnostic
-/// (`error!` for fatal, `warn!` otherwise).
-pub fn sanitized_mirror_configs(
-    configs: &HashMap<String, MonitorConfig>,
-) -> HashMap<String, MonitorConfig> {
-    let mut configs = configs.clone();
-    for error in sanitize_mirror_configs(&mut configs) {
-        if error.is_fatal() {
-            log::error!("{error}");
-        } else {
-            log::warn!("{error}");
+/// The effective monitor policy: `[monitors]` config repaired by
+/// [`sanitize_mirror_configs`] together with its mirror map. Built once per
+/// monitor config apply and stored in [`crate::core_state::DerivedState`].
+#[derive(Debug, Clone, Default)]
+pub struct MonitorPolicy {
+    pub configs: HashMap<String, MonitorConfig>,
+    pub mirrors: MirrorMap,
+}
+
+impl MonitorPolicy {
+    /// Sanitize `configs`, logging every diagnostic (`error!` for fatal,
+    /// `warn!` otherwise).
+    pub fn new(configs: &HashMap<String, MonitorConfig>) -> Self {
+        let mut configs = configs.clone();
+        let (mirrors, errors) = sanitize_mirror_configs(&mut configs);
+        for error in errors {
+            if error.is_fatal() {
+                log::error!("{error}");
+            } else {
+                log::warn!("{error}");
+            }
         }
+        Self { configs, mirrors }
     }
-    configs
+
+    /// The entry governing output `name`: its named entry, else the wildcard.
+    pub fn effective(&self, name: &str) -> Option<&MonitorConfig> {
+        self.configs.get(name).or_else(|| self.configs.get("*"))
+    }
+
+    pub fn is_explicitly_disabled(&self, name: &str) -> bool {
+        self.effective(name)
+            .is_some_and(|config| config.enable == Some(false))
+    }
 }
 
 /// Merge outputs that physically present the same desktop region into one
@@ -673,7 +686,7 @@ mod tests {
         .into_iter()
         .collect();
 
-        let errors = sanitize_mirror_configs(&mut configs);
+        let (_, errors) = sanitize_mirror_configs(&mut configs);
 
         assert!(errors.iter().all(MirrorConfigError::is_fatal));
         assert_eq!(configs["DP-1"].mirror, None);
@@ -692,13 +705,13 @@ mod tests {
                 resolution: Some("2560x1440".into()),
                 refresh_rate: Some(144.0),
                 scale: Some(2.0),
-                transform: Some("90".into()),
+                transform: Some(crate::config::config_toml::Transform::Rotate90),
                 mirror_fit: Some(MirrorFit::Cover),
                 ..MonitorConfig::default()
             },
         ));
 
-        let errors = sanitize_mirror_configs(&mut configs);
+        let (_, errors) = sanitize_mirror_configs(&mut configs);
 
         assert_eq!(
             errors,
@@ -713,7 +726,10 @@ mod tests {
         // Mode and transform describe the physical head, which keeps them.
         assert_eq!(sanitized.resolution.as_deref(), Some("2560x1440"));
         assert_eq!(sanitized.refresh_rate, Some(144.0));
-        assert_eq!(sanitized.transform.as_deref(), Some("90"));
+        assert_eq!(
+            sanitized.transform,
+            Some(crate::config::config_toml::Transform::Rotate90)
+        );
         assert_eq!(sanitized.mirror_fit, Some(MirrorFit::Cover));
     }
 
@@ -740,7 +756,7 @@ mod tests {
         .into_iter()
         .collect();
 
-        let errors = sanitize_mirror_configs(&mut configs);
+        let (_, errors) = sanitize_mirror_configs(&mut configs);
 
         // The whitespace declaration is reported, the fitless entry is not.
         assert_eq!(
@@ -764,7 +780,7 @@ mod tests {
             },
         ));
 
-        let errors = sanitize_mirror_configs(&mut configs);
+        let (_, errors) = sanitize_mirror_configs(&mut configs);
 
         assert_eq!(errors, Vec::new());
         assert_eq!(configs["DP-1"].mirror_fit, Some(MirrorFit::Cover));
@@ -810,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn sanitized_mirror_configs_returns_a_repaired_clone_and_logs() {
+    fn monitor_policy_repairs_a_clone_and_keeps_valid_mirrors() {
         let configs: Configs = [
             ("DP-1".to_string(), mirror_config("DP-1")),
             ("HDMI-1".to_string(), mirror_config("eDP-1")),
@@ -818,11 +834,42 @@ mod tests {
         .into_iter()
         .collect();
 
-        let sanitized = sanitized_mirror_configs(&configs);
+        let policy = MonitorPolicy::new(&configs);
 
         assert_eq!(configs["DP-1"].mirror, Some("DP-1".to_string()));
-        assert_eq!(sanitized["DP-1"].mirror, None);
-        assert_eq!(sanitized["HDMI-1"].mirror, Some("eDP-1".to_string()));
+        assert_eq!(policy.configs["DP-1"].mirror, None);
+        assert_eq!(policy.configs["HDMI-1"].mirror, Some("eDP-1".to_string()));
+        assert_eq!(policy.mirrors.source_of("HDMI-1"), Some("eDP-1"));
+        assert!(!policy.mirrors.contains_mirror("DP-1"));
+    }
+
+    #[test]
+    fn named_monitor_policy_shadows_wildcard_disable() {
+        let configs: Configs = [
+            (
+                "*".to_string(),
+                MonitorConfig {
+                    enable: Some(true),
+                    ..MonitorConfig::default()
+                },
+            ),
+            (
+                "DP-1".to_string(),
+                MonitorConfig {
+                    enable: Some(false),
+                    ..MonitorConfig::default()
+                },
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let policy = MonitorPolicy::new(&configs);
+
+        assert!(policy.is_explicitly_disabled("DP-1"));
+        assert_eq!(
+            policy.effective("HDMI-1").and_then(|config| config.enable),
+            Some(true)
+        );
     }
 
     #[test]
@@ -832,7 +879,7 @@ mod tests {
             MonitorConfig {
                 mirror: Some("eDP-1".into()),
                 resolution: Some("1920x1080".into()),
-                transform: Some("90".into()),
+                transform: Some(crate::config::config_toml::Transform::Rotate90),
                 ..MonitorConfig::default()
             },
         ));

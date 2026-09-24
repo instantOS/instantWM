@@ -262,22 +262,19 @@ pub fn update_client_list(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
+    let windows: Vec<Window> = globals
+        .model
+        .monitors_iter_all()
+        .flat_map(|mon| mon.clients.iter().map(|&win| Window::from(win)))
+        .collect();
     let conn = x11.conn;
-    let _ = conn.delete_property(x11_runtime.root, x11_runtime.netatom.client_list);
-
-    for mon in globals.model.monitors_iter_all() {
-        for &cur_win in &mon.clients {
-            let x11_win: Window = cur_win.into();
-            let _ = conn.change_property32(
-                PropMode::APPEND,
-                x11_runtime.root,
-                x11_runtime.netatom.client_list,
-                AtomEnum::WINDOW,
-                &[x11_win],
-            );
-        }
-    }
-
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        x11_runtime.netatom.client_list,
+        AtomEnum::WINDOW,
+        &windows,
+    );
     let _ = conn.flush();
 }
 
@@ -373,11 +370,13 @@ fn read_window_properties(
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx_x11.x11.conn;
     let x11_win: Window = win.into();
-    let (state, wtype) = get_two_atom_props(
+    let [state, wtype] = get_atom_props(
         conn,
         x11_win,
-        ctx_x11.x11_runtime.netatom.wm_state,
-        ctx_x11.x11_runtime.netatom.wm_window_type,
+        [
+            ctx_x11.x11_runtime.netatom.wm_state,
+            ctx_x11.x11_runtime.netatom.wm_window_type,
+        ],
     );
 
     let atom_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
@@ -432,24 +431,15 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
-    let Ok(cookie) = conn.get_property(false, x11_win, motif_atom, motif_atom, 0, 5) else {
+    let Some(motif) = conn
+        .get_property(false, x11_win, motif_atom, motif_atom, 0, 5)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(parse_atom_property)
+    else {
         return;
     };
-    let Ok(reply) = cookie.reply() else { return };
-
-    let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
-    if data.len() < 20 {
-        return;
-    }
-
-    let motif: Vec<u32> = data
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect();
-
-    if motif.len() == MWM_HINTS_FLAGS_FIELD
+    if motif.len() <= MWM_HINTS_DECORATIONS_FIELD
         || (motif[MWM_HINTS_FLAGS_FIELD] & MWM_HINTS_DECORATIONS) == 0
     {
         return;
@@ -465,12 +455,8 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         return;
     };
 
-    let decorations = motif.get(MWM_HINTS_DECORATIONS_FIELD).copied().unwrap_or(0);
-
-    let new_bw = if (decorations & MWM_DECOR_ALL) != 0
-        || (decorations & MWM_DECOR_BORDER) != 0
-        || (decorations & MWM_DECOR_TITLE) != 0
-    {
+    let decorations = motif[MWM_HINTS_DECORATIONS_FIELD];
+    let new_bw = if decorations & (MWM_DECOR_ALL | MWM_DECOR_BORDER | MWM_DECOR_TITLE) != 0 {
         border_px
     } else {
         0
@@ -494,37 +480,22 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     );
 }
 
-pub fn get_atom_props(
+/// Read ATOM-list properties of `win`, all requested before any reply is
+/// awaited.
+pub fn get_atom_props<const N: usize>(
     conn: &x11rb::rust_connection::RustConnection,
     win: Window,
-    atom: u32,
-) -> Vec<u32> {
-    conn.get_property(false, win, atom, AtomEnum::ATOM, 0, u32::MAX)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .map(parse_atom_property)
-        .unwrap_or_default()
-}
-
-fn get_two_atom_props(
-    conn: &x11rb::rust_connection::RustConnection,
-    win: Window,
-    first: u32,
-    second: u32,
-) -> (Vec<u32>, Vec<u32>) {
-    let first = conn.get_property(false, win, first, AtomEnum::ATOM, 0, u32::MAX);
-    let second = conn.get_property(false, win, second, AtomEnum::ATOM, 0, u32::MAX);
-    let first = first
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .map(parse_atom_property)
-        .unwrap_or_default();
-    let second = second
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .map(parse_atom_property)
-        .unwrap_or_default();
-    (first, second)
+    properties: [u32; N],
+) -> [Vec<u32>; N] {
+    properties
+        .map(|property| conn.get_property(false, win, property, AtomEnum::ATOM, 0, u32::MAX))
+        .map(|cookie| {
+            cookie
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(parse_atom_property)
+                .unwrap_or_default()
+        })
 }
 
 pub(crate) fn parse_atom_property(reply: GetPropertyReply) -> Vec<u32> {

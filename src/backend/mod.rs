@@ -174,14 +174,6 @@ pub trait OutputOps {
 
     /// Physical heads known to the backend, including heads currently off.
     fn connected_output_names(&self) -> Vec<String>;
-
-    /// Legacy fallback discovery when primary discovery reports a single
-    /// placeholder screen. X11 consults Xinerama; backends without a
-    /// secondary discovery protocol return `None`.
-    fn query_fallback_outputs(&self) -> Option<Vec<BackendOutputInfo>> {
-        let _ = self;
-        None
-    }
 }
 
 /// Native projection of the monitor policy.
@@ -193,10 +185,7 @@ pub trait OutputPolicyOps {
     /// Apply the complete, sanitized monitor policy. Backends resolve wildcard
     /// and named precedence atomically rather than exposing order-dependent
     /// setters.
-    fn apply_monitor_configs(
-        &mut self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    );
+    fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy);
 }
 
 /// X11-specific backend data.
@@ -462,15 +451,6 @@ impl OutputOps for Backend {
         match self {
             Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
             Backend::Wayland(data) => data.backend.get_outputs(),
-        }
-    }
-
-    fn query_fallback_outputs(&self) -> Option<Vec<BackendOutputInfo>> {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).query_fallback_outputs()
-            }
-            Backend::Wayland(data) => data.backend.query_fallback_outputs(),
         }
     }
 }

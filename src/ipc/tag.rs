@@ -4,17 +4,8 @@ use crate::wm::Wm;
 
 pub fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> Response {
     match cmd {
-        TagCommand::Name(name) => name_tag_cmd(wm, name),
-        TagCommand::ResetNames => reset_tag_names(wm),
+        TagCommand::Name { name } => name_tag(&mut wm.ctx(), &name),
+        TagCommand::Reset => reset_name_tag(&mut wm.ctx()),
     }
-}
-
-fn name_tag_cmd(wm: &mut Wm, name: String) -> Response {
-    name_tag(&mut wm.ctx(), &name);
-    Response::ok()
-}
-
-fn reset_tag_names(wm: &mut Wm) -> Response {
-    reset_name_tag(&mut wm.ctx());
     Response::ok()
 }

@@ -126,15 +126,12 @@ impl MonitorManager {
         self.monitors.iter_mut()
     }
 
-    // -------------------------------------------------------------------------
-    // Insertion
-    // -------------------------------------------------------------------------
-
     /// Insert a monitor, assigning it a fresh stable [`MonitorId`].
     ///
     /// If this is the first monitor, it becomes the selected monitor.
+    #[cfg(test)]
     pub fn push(&mut self, mut m: Monitor) -> MonitorId {
-        let id = self.alloc_id();
+        let id = self.allocate_id();
         m.monitor_id = id;
         let was_empty = self.monitors.is_empty();
         self.monitors.push(m);
@@ -144,7 +141,8 @@ impl MonitorManager {
         id
     }
 
-    fn alloc_id(&mut self) -> MonitorId {
+    /// Allocate a fresh stable id without inserting a monitor.
+    pub(crate) fn allocate_id(&mut self) -> MonitorId {
         let id = MonitorId::from_raw(self.next_id);
         self.next_id += 1;
         id
@@ -166,11 +164,6 @@ impl MonitorManager {
         if !self.contains(self.selected) {
             self.selected = self.first().unwrap_or_default();
         }
-    }
-
-    /// Allocate a fresh stable id without inserting a monitor.
-    pub(crate) fn allocate_id(&mut self) -> MonitorId {
-        self.alloc_id()
     }
 
     pub fn find_monitor_for(
@@ -254,41 +247,6 @@ pub enum TransferFocus {
     FollowWindow,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TransferFocusEffect {
-    None,
-    FocusSourceReplacement {
-        moved_window: WindowId,
-    },
-    FocusTransferredWindow {
-        previous_focus: Option<WindowId>,
-        target_monitor: MonitorId,
-        moved_window: WindowId,
-    },
-}
-
-fn transfer_focus_effect(
-    policy: TransferFocus,
-    selected_monitor_before: MonitorId,
-    focused_before: Option<WindowId>,
-    outcome: crate::model::ClientTransferOutcome,
-    moved_window: WindowId,
-) -> TransferFocusEffect {
-    match policy {
-        TransferFocus::Preserve
-            if selected_monitor_before == outcome.source_monitor && outcome.was_selected =>
-        {
-            TransferFocusEffect::FocusSourceReplacement { moved_window }
-        }
-        TransferFocus::Preserve => TransferFocusEffect::None,
-        TransferFocus::FollowWindow => TransferFocusEffect::FocusTransferredWindow {
-            previous_focus: focused_before,
-            target_monitor: outcome.target_monitor,
-            moved_window,
-        },
-    }
-}
-
 /// Transfer a managed client and complete all related focus and layout work as
 /// one transaction.
 ///
@@ -311,27 +269,18 @@ pub fn transfer_client(
 
     ctx.sync_client_tag_props(win);
 
-    match transfer_focus_effect(
-        focus_policy,
-        selected_monitor_before,
-        focused_before,
-        outcome,
-        win,
-    ) {
-        TransferFocusEffect::None => {}
-        TransferFocusEffect::FocusSourceReplacement { .. } => {
-            refresh_focus_after_selection(ctx, focused_before, None);
+    match focus_policy {
+        TransferFocus::Preserve => {
+            if selected_monitor_before == outcome.source_monitor && outcome.was_selected {
+                refresh_focus_after_selection(ctx, focused_before, None);
+            }
         }
-        TransferFocusEffect::FocusTransferredWindow {
-            previous_focus,
-            target_monitor,
-            moved_window,
-        } => {
-            ctx.core_mut().select_monitor(target_monitor);
+        TransferFocus::FollowWindow => {
+            ctx.core_mut().select_monitor(outcome.target_monitor);
             ctx.core_mut()
-                .select_on_monitor(target_monitor, Some(moved_window));
+                .select_on_monitor(outcome.target_monitor, Some(win));
             ctx.update_ewmh_desktop_props();
-            refresh_focus_after_selection(ctx, previous_focus, Some(moved_window));
+            refresh_focus_after_selection(ctx, focused_before, Some(win));
         }
     }
 
@@ -415,13 +364,12 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
     ctx.warp_cursor_to_client(c_win);
 }
 
+/// Sanitize the `[monitors]` config into the effective policy, project it
+/// onto the backend and store it for every later reader.
 pub fn apply_monitor_config(ctx: &mut WmCtx) {
-    // Backends must never see raw mirror declarations: hand them a repaired
-    // copy (invalid mirrors cleared, shadowed presentation fields cleared,
-    // relative anchors retargeted through mirrors).
-    let monitors_cfg =
-        crate::output_mirror::sanitized_mirror_configs(&ctx.core().config().monitors);
-    ctx.apply_monitor_configs(&monitors_cfg);
+    let policy = crate::output_mirror::MonitorPolicy::new(&ctx.core().config().monitors);
+    ctx.apply_monitor_configs(&policy);
+    ctx.core_mut().derived_mut().monitor_policy = policy;
     refresh_monitor_layout(ctx);
 }
 
@@ -430,45 +378,24 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
 /// when outputs fold.
 pub(crate) fn logical_outputs(
     outputs: Vec<BackendOutputInfo>,
-    monitors_cfg: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    mirrors: &crate::output_mirror::MirrorMap,
     model: &crate::model::WmModel,
 ) -> Vec<BackendOutputInfo> {
-    let (mirror_map, _) = crate::output_mirror::MirrorMap::build(monitors_cfg);
     let preferred: std::collections::HashSet<String> = model
         .monitors_iter()
         .map(|(_, m)| m.name.clone())
         .filter(|name| !name.is_empty())
         .collect();
-    crate::output_mirror::fold_cloned_outputs(outputs, &mirror_map, &preferred)
+    crate::output_mirror::fold_cloned_outputs(outputs, mirrors, &preferred)
 }
 
 pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
-    // Try the backend's primary output discovery first (XRandR on X11,
-    // native protocol state on Wayland).
     let outputs = logical_outputs(
         ctx.output_backend().get_outputs(),
-        &ctx.core().config().monitors,
+        &ctx.core().derived().monitor_policy.mirrors,
         ctx.core().model(),
     );
-    if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
-        return sync_monitors_from_outputs(ctx, outputs);
-    }
-
-    // Legacy fallback discovery (Xinerama on X11; None elsewhere).
-    if let Some(outputs) = ctx.output_backend().query_fallback_outputs() {
-        let outputs = logical_outputs(outputs, &ctx.core().config().monitors, ctx.core().model());
-        return sync_monitors_from_outputs(ctx, outputs);
-    }
-
-    // Final fallback to single monitor
-    let sw = ctx.core_mut().state_mut().derived.display.width.max(1);
-    let sh = ctx.core_mut().state_mut().derived.display.height.max(1);
-
-    if ctx.core_mut().model_mut().monitors.is_empty() {
-        init_single_monitor(ctx, sw, sh)
-    } else {
-        update_single_monitor(ctx, sw, sh)
-    }
+    sync_monitors_from_outputs(ctx, outputs)
 }
 
 fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Rect {
@@ -806,138 +733,9 @@ pub fn resync_monitor_ui_metrics(core: &mut CoreState) -> bool {
     changed
 }
 
-// -----------------------------------------------------------------------------
-// Internal Helpers
-// -----------------------------------------------------------------------------
-
-fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
-    let template = ctx.core_mut().config_mut().tag_template.clone();
-    let mut mon = Monitor::new_with_values(ctx.core_mut().config_mut().bar.show);
-    mon.init_tags(&template);
-    let id = ctx.core_mut().model_mut().monitors.push(mon);
-    let metrics = scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
-    if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(id) {
-        m.num = 0;
-        let rect = Rect {
-            x: 0,
-            y: 0,
-            w: sw,
-            h,
-        };
-        m.monitor_rect = rect;
-        m.available_rect = rect;
-        m.set_ui_metrics(1.0, metrics);
-    }
-    ctx.core_mut().select_monitor(id);
-    true
-}
-
-fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
-    let first_id = match ctx.core().model().monitors.first() {
-        Some(id) => id,
-        None => return false,
-    };
-    let metrics = scaled_monitor_ui_metrics(ctx.core().config(), ctx.core().derived(), 1.0);
-    let needs_update = ctx
-        .core()
-        .state()
-        .model
-        .monitors
-        .get(first_id)
-        .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh || m.ui_metrics() != metrics)
-        .unwrap_or(false);
-    if !needs_update {
-        return false;
-    }
-
-    if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(first_id) {
-        m.monitor_rect.w = sw;
-        m.monitor_rect.h = sh;
-        m.available_rect = m.monitor_rect;
-        m.set_ui_metrics(1.0, metrics);
-    }
-    true
-}
-
 #[cfg(test)]
-mod transfer_focus_tests {
+mod tests {
     use super::*;
-
-    fn outcome(
-        source: MonitorId,
-        target: MonitorId,
-        was_selected: bool,
-    ) -> crate::model::ClientTransferOutcome {
-        crate::model::ClientTransferOutcome {
-            source_monitor: source,
-            target_monitor: target,
-            was_selected,
-            is_scratchpad: false,
-            needs_arrange: false,
-        }
-    }
-
-    #[test]
-    fn preserving_focus_does_not_unfocus_an_unselected_transfer() {
-        let source = MonitorId::from_raw(1);
-        let target = MonitorId::from_raw(2);
-        let focused = WindowId(10);
-        let moved = WindowId(11);
-
-        assert_eq!(
-            transfer_focus_effect(
-                TransferFocus::Preserve,
-                source,
-                Some(focused),
-                outcome(source, target, false),
-                moved,
-            ),
-            TransferFocusEffect::None
-        );
-    }
-
-    #[test]
-    fn preserving_focus_replaces_a_transferred_focused_window() {
-        let source = MonitorId::from_raw(1);
-        let target = MonitorId::from_raw(2);
-        let moved = WindowId(11);
-
-        assert_eq!(
-            transfer_focus_effect(
-                TransferFocus::Preserve,
-                source,
-                Some(moved),
-                outcome(source, target, true),
-                moved,
-            ),
-            TransferFocusEffect::FocusSourceReplacement {
-                moved_window: moved
-            }
-        );
-    }
-
-    #[test]
-    fn following_a_transfer_carries_the_previous_backend_focus() {
-        let source = MonitorId::from_raw(1);
-        let target = MonitorId::from_raw(2);
-        let focused = WindowId(10);
-        let moved = WindowId(11);
-
-        assert_eq!(
-            transfer_focus_effect(
-                TransferFocus::FollowWindow,
-                source,
-                Some(focused),
-                outcome(source, target, false),
-                moved,
-            ),
-            TransferFocusEffect::FocusTransferredWindow {
-                previous_focus: Some(focused),
-                target_monitor: target,
-                moved_window: moved,
-            }
-        );
-    }
 
     #[test]
     fn monitor_reconciliation_returns_cleanup_work_and_rehomes_clients() {

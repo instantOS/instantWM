@@ -70,7 +70,8 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
     let animation_interval = wm.backend.x11_data().and_then(|data| {
-        crate::backend::x11::randr::max_active_refresh_millihertz(&data.conn, data.x11_runtime.root)
+        crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, data.x11_runtime.root)?
+            .max_active_refresh_millihertz()
     });
     let animation_interval = animation_frame_interval(animation_interval);
 

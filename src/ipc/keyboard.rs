@@ -1,5 +1,6 @@
 use crate::ipc_types::{KeyboardCommand, KeyboardLayoutInfo, Response};
 use crate::keyboard_layout;
+use crate::types::StackDirection;
 use crate::wm::Wm;
 
 pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
@@ -9,7 +10,10 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             let status = ctx.core().interaction().keyboard_layout.status();
             Response::Message(status)
         }
-        KeyboardCommand::List => {
+        KeyboardCommand::List { all: true } => {
+            Response::Message(keyboard_layout::get_all_keyboard_layouts().join("\n"))
+        }
+        KeyboardCommand::List { all: false } => {
             let state = &ctx.core().interaction().keyboard_layout;
             let layouts: Vec<KeyboardLayoutInfo> = state
                 .layouts
@@ -23,28 +27,32 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
                 .collect();
             Response::KeyboardLayoutList(layouts)
         }
-        KeyboardCommand::ListAll => {
-            let layouts = keyboard_layout::get_all_keyboard_layouts();
-            let list = layouts.join("\n");
-            Response::Message(list)
+        KeyboardCommand::Next | KeyboardCommand::Prev => {
+            let direction = if matches!(cmd, KeyboardCommand::Next) {
+                StackDirection::Next
+            } else {
+                StackDirection::Previous
+            };
+            let _ = keyboard_layout::cycle_keyboard_layout(&mut ctx, direction);
+            Response::ok()
         }
-        KeyboardCommand::Set(layouts) => {
+        KeyboardCommand::Set { layouts } => {
             keyboard_layout::set_keyboard_layouts(&mut ctx, layouts);
             Response::ok()
         }
-        KeyboardCommand::Add(layout) => {
+        KeyboardCommand::Add { layout } => {
             match keyboard_layout::add_keyboard_layout(&mut ctx, layout) {
                 Ok(()) => Response::ok(),
                 Err(e) => Response::err(e),
             }
         }
-        KeyboardCommand::Remove(layout) => {
+        KeyboardCommand::Remove { layout } => {
             match keyboard_layout::remove_keyboard_layout(&mut ctx, &layout) {
                 Ok(()) => Response::ok(),
                 Err(e) => Response::err(e),
             }
         }
-        KeyboardCommand::SwapEscape(enabled) => {
+        KeyboardCommand::SwapEscape { enabled } => {
             keyboard_layout::set_swapescape(&mut ctx, enabled);
             Response::ok()
         }

@@ -1,7 +1,11 @@
 pub use crate::backend::WindowProtocol;
-pub use crate::config::config_toml::{MirrorFit, VrrMode};
-pub use crate::types::{KeyboardLayout, MonitorSelector, RuleGeometry, TagMask};
+pub use crate::config::config_toml::{
+    AccelProfile, ColorTheme, MirrorFit, MonitorConfig, ToggleSetting, Transform, VrrMode,
+};
+pub use crate::floating::scratchpad::DEFAULT_SCRATCHPAD_NAME;
+pub use crate::types::{EdgeDirection, KeyboardLayout, MonitorSelector, RuleGeometry, TagMask};
 use bincode::{Decode, Encode};
+use clap::{ArgAction, Subcommand};
 
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
 
@@ -13,148 +17,126 @@ pub struct IpcRequest {
 }
 
 impl IpcRequest {
-    pub fn new(command: IpcCommand) -> Self {
+    pub fn new(command: IpcCommand, ignore_version: bool) -> Self {
         Self {
             version: IPC_PROTOCOL_VERSION.to_string(),
-            ignore_version: false,
-            command,
-        }
-    }
-
-    pub fn new_ignore_version(command: IpcCommand, ignore: bool) -> Self {
-        Self {
-            version: IPC_PROTOCOL_VERSION.to_string(),
-            ignore_version: ignore,
+            ignore_version,
             command,
         }
     }
 
     pub fn validate_version(&self) -> Result<(), String> {
-        if self.ignore_version {
+        if self.ignore_version || self.version == IPC_PROTOCOL_VERSION {
             return Ok(());
         }
-        if self.version == IPC_PROTOCOL_VERSION {
-            Ok(())
-        } else {
-            Err(format!(
-                "version mismatch: client is {}, server is {}. Please ensure instantwmctl and instantWM are the same version.",
-                self.version, IPC_PROTOCOL_VERSION
-            ))
-        }
+        Err(format!(
+            "version mismatch: client is {}, server is {}. Please ensure instantwmctl and instantWM are the same version.",
+            self.version, IPC_PROTOCOL_VERSION
+        ))
     }
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Encode,
-    Decode,
-    serde::Serialize,
-    serde::Deserialize,
-    clap::ValueEnum,
-)]
-pub enum Transform {
-    Normal,
-    #[serde(rename = "90")]
-    #[value(name = "90")]
-    _90,
-    #[serde(rename = "180")]
-    #[value(name = "180")]
-    _180,
-    #[serde(rename = "270")]
-    #[value(name = "270")]
-    _270,
-    Flipped,
-    #[serde(rename = "flipped-90")]
-    #[value(name = "flipped-90")]
-    Flipped90,
-    #[serde(rename = "flipped-180")]
-    #[value(name = "flipped-180")]
-    Flipped180,
-    #[serde(rename = "flipped-270")]
-    #[value(name = "flipped-270")]
-    Flipped270,
-}
-
-impl std::fmt::Display for Transform {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Transform::Normal => f.write_str("normal"),
-            Transform::_90 => f.write_str("90"),
-            Transform::_180 => f.write_str("180"),
-            Transform::_270 => f.write_str("270"),
-            Transform::Flipped => f.write_str("flipped"),
-            Transform::Flipped90 => f.write_str("flipped-90"),
-            Transform::Flipped180 => f.write_str("flipped-180"),
-            Transform::Flipped270 => f.write_str("flipped-270"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum MonitorCommand {
+    /// List connected monitors and their current configuration.
     List,
+    /// Switch focus to a monitor by output name, layout position,
+    /// "focused" or "primary".
     Switch {
+        #[arg(value_name = "MONITOR")]
         monitor: MonitorSelector,
     },
+    /// Focus the next monitor.
     Next {
+        #[arg(default_value_t = 1)]
         count: u32,
     },
+    /// Focus the previous monitor.
     Prev {
+        #[arg(default_value_t = 1)]
         count: u32,
     },
+    /// Configure a monitor's mode, position, scale, transform, VRR, mirroring,
+    /// or power state. Omitted options keep their current value.
     Set {
+        #[arg(default_value = "focused")]
         identifier: String,
-        resolution: Option<String>,
-        refresh_rate: Option<f32>,
-        position: Option<String>,
-        scale: Option<f32>,
-        transform: Option<Transform>,
-        enable: Option<bool>,
-        vrr: Option<VrrMode>,
-        /// None = keep current mirror; Some("") = stop mirroring; Some(name) = mirror that output.
-        mirror: Option<String>,
-        /// None = keep current fit; Some(fit) = how content fits when the
-        /// mirror's aspect ratio differs from its source's.
-        mirror_fit: Option<MirrorFit>,
+        #[command(flatten)]
+        config: MonitorConfig,
     },
+    /// List the available modes for a monitor.
     Modes {
-        identifier: Option<String>,
+        #[arg(default_value = "focused")]
+        identifier: String,
     },
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum ConfigCommand {
+    /// Get a runtime config value by key (e.g. layout.inner_gap).
     Get { key: String },
+    /// Set a runtime config value by key (e.g. layout.inner_gap 12).
     Set { key: String, value: String },
-    List,
+    /// List runtime config keys and their current values, optionally only
+    /// those under a section or key prefix (e.g. `fonts`, `fonts.icon_size`).
+    List { prefix: Option<String> },
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum ScratchpadCommand {
-    List,
-    Toggle(Option<String>),
-    Show(Option<String>),
-    ShowAll,
-    Hide(Option<String>),
-    HideAll,
-    Status(Option<String>),
+    /// Show the status of all scratchpads, or only of NAME.
+    #[command(visible_alias = "list")]
+    Status { name: Option<String> },
+    /// Show a scratchpad.
+    Show {
+        #[arg(default_value = DEFAULT_SCRATCHPAD_NAME)]
+        name: String,
+        /// Show every scratchpad.
+        #[arg(short, long, conflicts_with = "name")]
+        all: bool,
+    },
+    /// Hide a scratchpad.
+    Hide {
+        #[arg(default_value = DEFAULT_SCRATCHPAD_NAME)]
+        name: String,
+        /// Hide every scratchpad.
+        #[arg(short, long, conflicts_with = "name")]
+        all: bool,
+    },
+    /// Toggle a scratchpad's visibility.
+    Toggle {
+        #[arg(default_value = DEFAULT_SCRATCHPAD_NAME)]
+        name: String,
+    },
+    /// Resize a scratchpad as a percentage of its monitor.
     Resize {
+        #[arg(default_value = DEFAULT_SCRATCHPAD_NAME)]
         name: String,
-        width_percent: u32,
-        height_percent: u32,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+        width: u32,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+        height: u32,
     },
+    /// Create or mark a window as a scratchpad.
+    #[command(alias = "make")]
     Create {
+        #[arg(default_value = DEFAULT_SCRATCHPAD_NAME)]
         name: String,
+        #[arg(long, short = 'w')]
         window_id: Option<u32>,
+        #[arg(long, default_value = "hidden")]
         status: ScratchpadInitialStatus,
-        direction: Option<String>,
+        #[arg(long)]
+        direction: Option<EdgeDirection>,
     },
+    /// Restore a scratchpad to an ordinary window.
+    #[command(alias = "unmake")]
     Restore {
+        /// Scratchpad name; omit to restore the focused scratchpad.
+        #[arg(conflicts_with = "window_id")]
         name: Option<String>,
+        /// Stable window ID, useful when the scratchpad is hidden.
+        #[arg(long, short = 'w')]
         window_id: Option<u32>,
     },
 }
@@ -176,56 +158,92 @@ pub enum ScratchpadInitialStatus {
     Shown,
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum KeyboardCommand {
+    /// List configured keyboard layouts.
+    List {
+        /// List every layout known to XKB instead.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Show the active keyboard layout.
     Status,
-    List,
-    ListAll,
-    Set(Vec<KeyboardLayout>),
-    Add(KeyboardLayout),
-    Remove(String),
-    SwapEscape(bool),
+    /// Select the next keyboard layout.
+    Next,
+    /// Select the previous keyboard layout.
+    Prev,
+    /// Set the keyboard layouts, e.g. `us de(nodeadkeys)`.
+    Set {
+        #[arg(required = true, num_args = 1..)]
+        layouts: Vec<KeyboardLayout>,
+    },
+    /// Add a keyboard layout.
+    Add { layout: KeyboardLayout },
+    /// Remove a keyboard layout.
+    Remove { layout: String },
+    /// Enable or disable swapping Escape and Caps Lock.
+    SwapEscape {
+        #[arg(action = ArgAction::Set)]
+        enabled: bool,
+    },
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum TagCommand {
-    Name(String),
-    ResetNames,
+    /// Set the selected tag's name.
+    Name { name: String },
+    /// Reset all tag names.
+    Reset,
 }
 
 /// Runtime commands for [`PendingTmpRule`]s (the `pending-tmp-rule` IPC).
-#[derive(Debug, Clone, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Encode, Decode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum PendingTmpRuleCmd {
-    /// Add a new one-shot rule and return its assigned id.
+    /// Add a new pending tmp rule and print its id.
+    ///
+    /// With no `--class`/`--instance`/`--title` flag, the rule matches the
+    /// *next* window regardless of identity — useful for forcing the very
+    /// next spawn (e.g. an app launched via `spawn`) into a particular
+    /// placement. With any matcher set, only a window whose
+    /// class/instance/title contains the supplied string consumes it.
     Add {
         /// Window class to match.
+        #[arg(long)]
         class: Option<String>,
         /// Window instance to match.
+        #[arg(long)]
         instance: Option<String>,
         /// Window title substring to match.
+        #[arg(long)]
         title: Option<String>,
-        /// Floating behavior for the matched window.
-        /// `None` leaves the existing placement; `Some(true)` forces floating,
-        /// `Some(false)` forces tiled.
+        /// Force the matched window floating (true) or tiled (false).
+        #[arg(long = "floating", value_name = "BOOL")]
         is_floating: Option<bool>,
-        /// 1-indexed tag number to assign; `None` leaves tags alone.
-        /// Stored on the server as a [`crate::types::TagMask`].
+        /// 1-indexed tag number to assign to the matched window.
+        #[arg(long)]
         tag: Option<u32>,
-        /// Monitor to place the matched window on. `None`/`Any` leaves the
-        /// placement alone.
+        /// Monitor to place the matched window on: output name, layout
+        /// position, "focused" or "primary".
+        #[arg(long, value_name = "MONITOR")]
         on_monitor: Option<MonitorSelector>,
         /// Exact floating placement relative to the target monitor's work
         /// area. Implies floating placement.
+        #[arg(long, value_name = "X,Y,W,H")]
         geometry: Option<RuleGeometry>,
         /// Manage the matched window without a WM border.
+        #[arg(long)]
         borderless: bool,
-        /// Time-to-live in milliseconds. `0` is invalid at the CLI layer.
+        /// Time-to-live in milliseconds. Must be > 0.
+        #[arg(long, default_value_t = 30_000)]
         timeout_ms: u64,
     },
     /// List all currently-pending one-shot rules.
     List,
     /// Cancel a pending rule by id.
-    Cancel(u64),
+    Cancel {
+        /// Rule id (from `list` or the value returned by `add`).
+        id: u64,
+    },
 }
 
 /// Response payload for `PendingTmpRuleCmd::List`.
@@ -247,72 +265,105 @@ pub struct PendingTmpRuleInfo {
     pub ms_remaining: u64,
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum WindowCommand {
-    Info(Option<u32>),
-    Focus(Option<u32>),
+    /// List managed windows.
+    List { window_id: Option<u32> },
+    /// Show information about a managed window.
+    Info { window_id: Option<u32> },
+    /// Activate a managed window: switch to its monitor and tags, then focus
+    /// and raise it. Hidden (minimized) windows are restored first.
+    Focus { window_id: Option<u32> },
+    /// Resize and optionally move a managed window.
     Resize {
         window_id: Option<u32>,
+        /// Monitor whose top-left corner the coordinates are relative to:
+        /// output name, layout position, "focused" or "primary".
+        #[arg(long, value_name = "MONITOR")]
         monitor: Option<MonitorSelector>,
+        #[arg(long)]
         x: i32,
+        #[arg(long)]
         y: i32,
+        #[arg(long)]
         width: i32,
+        #[arg(long)]
         height: i32,
     },
-    Close(Option<u32>),
-    List(Option<u32>),
+    /// Close a managed window.
+    Close { window_id: Option<u32> },
 }
 
 /// Unstable commands intended for profiling and automated compositor tests.
 ///
 /// The server rejects these unless `INSTANTWM_TEST=1` was present when
 /// instantWM started. Compatibility is deliberately not guaranteed.
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum TestCommand {
+    /// Inject one absolute pointer-motion transaction.
     PointerMove {
+        #[arg(allow_negative_numbers = true)]
         x: f64,
+        #[arg(allow_negative_numbers = true)]
         y: f64,
-        /// Interpret x/y in the range 0..=1 relative to the focused monitor.
+        /// Treat coordinates as 0..1 fractions of the focused monitor.
+        #[arg(long)]
         normalized: bool,
     },
-    FocusWindow(u32),
-    TagWindow {
-        window_id: u32,
-        tag: u32,
-    },
+    /// Focus a window by its stable IPC id.
+    FocusWindow { window_id: u32 },
+    /// Assign a window to exactly one tag.
+    TagWindow { window_id: u32, tag: u32 },
+    /// Set tiling/floating state without relying on the current focus.
     SetWindowFloating {
         window_id: u32,
+        #[arg(action = ArgAction::Set)]
         floating: bool,
     },
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum InputCommand {
-    List(Option<String>),
+    /// List input configuration, optionally for one device identifier.
+    List { identifier: Option<String> },
+    /// List connected input devices.
     Devices,
+    /// Set pointer acceleration speed (-1.0 to 1.0).
     PointerAccel {
-        identifier: Option<String>,
+        #[arg(allow_negative_numbers = true)]
         value: f64,
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
+    /// Set the pointer acceleration profile.
     AccelProfile {
+        profile: AccelProfile,
+        #[arg(short, long)]
         identifier: Option<String>,
-        profile: String,
     },
+    /// Enable or disable tap-to-click.
     Tap {
+        state: ToggleSetting,
+        #[arg(short, long)]
         identifier: Option<String>,
-        enabled: bool,
     },
+    /// Enable or disable natural scrolling.
     NaturalScroll {
+        state: ToggleSetting,
+        #[arg(short, long)]
         identifier: Option<String>,
-        enabled: bool,
     },
+    /// Set the scroll factor.
     ScrollFactor {
-        identifier: Option<String>,
         value: f64,
-    },
-    LeftHanded {
+        #[arg(short, long)]
         identifier: Option<String>,
-        enabled: bool,
+    },
+    /// Enable or disable left-handed pointer mode.
+    LeftHanded {
+        state: ToggleSetting,
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
 }
 
@@ -343,7 +394,7 @@ pub enum IpcCommand {
     Config(ConfigCommand),
     Test(TestCommand),
     GetTheme,
-    SetTheme(crate::config::config_toml::ColorTheme),
+    SetTheme(ColorTheme),
     ListThemes,
     /// List every active keybinding (global, desktop, and per-mode).
     ///
@@ -574,13 +625,6 @@ pub struct TagInfo {
     pub mask: u32,
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct ActionInfo {
-    pub name: String,
-    pub description: Option<String>,
-    pub arg_example: Option<String>,
-}
-
 /// One keybinding as reported by `instantwmctl keybinds`.
 ///
 /// Bindings are rendered as human-friendly strings (`Super + Shift + S`)
@@ -636,7 +680,6 @@ pub enum Response {
     Status(WmStatusInfo),
     KeyboardLayoutList(Vec<KeyboardLayoutInfo>),
     TagList(Vec<TagInfo>),
-    ActionList(Vec<ActionInfo>),
     KeybindList(Vec<KeybindInfo>),
     ConfigValue(String),
     ConfigList(Vec<(String, String)>),

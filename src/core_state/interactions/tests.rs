@@ -24,7 +24,7 @@ fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
             up: Box::new(ButtonAction::named(
                 crate::actions::NamedAction::ToggleOverview,
             )),
-            click: Box::new(ButtonAction::named(crate::actions::NamedAction::Spawn)),
+            click: Box::new(ButtonAction::spawn(&["true"])),
             hold: Box::new(ButtonAction::named(
                 crate::actions::NamedAction::ToggleOverview,
             )),

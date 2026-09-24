@@ -88,8 +88,10 @@ pub fn run() {
     }
 
     if cli.list_actions {
-        use crate::config::keybind_config::print_actions;
-        print_actions(false);
+        print!(
+            "{}",
+            crate::actions::format_action_list(&crate::actions::action_infos())
+        );
         std::process::exit(0);
     }
 
