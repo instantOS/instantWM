@@ -31,11 +31,15 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             scratchpad_toggle(&mut wm.ctx(), Some(&name));
             Response::ok()
         }
-        ScratchpadCommand::Show { all: true, .. } => message_or_ok(scratchpad_show_all(&mut wm.ctx())),
+        ScratchpadCommand::Show { all: true, .. } => {
+            message_or_ok(scratchpad_show_all(&mut wm.ctx()))
+        }
         ScratchpadCommand::Show { name, .. } => {
             message_or_err(scratchpad_show_name(&mut wm.ctx(), &name))
         }
-        ScratchpadCommand::Hide { all: true, .. } => message_or_ok(scratchpad_hide_all(&mut wm.ctx())),
+        ScratchpadCommand::Hide { all: true, .. } => {
+            message_or_ok(scratchpad_hide_all(&mut wm.ctx()))
+        }
         ScratchpadCommand::Hide { name, .. } => {
             scratchpad_hide_name(&mut wm.ctx(), &name);
             Response::ok()

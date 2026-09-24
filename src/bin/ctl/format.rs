@@ -1,7 +1,7 @@
 use instantwm::ipc_types::{
     DisplayModes, KeybindInfo, KeyboardLayoutInfo, LayoutInfo, LayoutStatusInfo, ModeInfo,
-    MonitorInfo, PendingTmpRuleInfo, Response, ScratchpadInfo, TagInfo, WindowInfo,
-    WindowProtocol, WmStatusInfo,
+    MonitorInfo, PendingTmpRuleInfo, Response, ScratchpadInfo, TagInfo, WindowInfo, WindowProtocol,
+    WmStatusInfo,
 };
 use instantwm::types::KeybindOrigin;
 use serde_json::Value;
@@ -61,9 +61,11 @@ fn json_payload(response: &Response) -> Value {
             .collect::<serde_json::Map<_, _>>()
             .into(),
         other => match serde_json::to_value(other) {
-            Ok(Value::Object(tagged)) if tagged.len() == 1 => {
-                tagged.into_iter().next().map(|(_, payload)| payload).unwrap_or_default()
-            }
+            Ok(Value::Object(tagged)) if tagged.len() == 1 => tagged
+                .into_iter()
+                .next()
+                .map(|(_, payload)| payload)
+                .unwrap_or_default(),
             Ok(value) => value,
             Err(_) => Value::Null,
         },

@@ -16,11 +16,9 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             identifier,
             mut config,
         } => {
-            if config
-                .mirror
-                .as_deref()
-                .is_some_and(|mirror| mirror.trim().is_empty() || mirror.eq_ignore_ascii_case("none"))
-            {
+            if config.mirror.as_deref().is_some_and(|mirror| {
+                mirror.trim().is_empty() || mirror.eq_ignore_ascii_case("none")
+            }) {
                 config.mirror = Some(String::new());
             }
             set_monitor_config(wm, identifier, config)
@@ -476,7 +474,8 @@ mod tests {
 
         // Clearing skips the connectivity check: the source may simply be
         // unplugged right now.
-        let resp = super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("none")));
+        let resp =
+            super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("none")));
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
         assert!(wm.work.monitor_config);

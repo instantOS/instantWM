@@ -254,7 +254,7 @@ impl CommandKind {
     /// The IPC request for this command, or the command itself when the
     /// client handles it alone (`action --list`, `config default`, test paths
     /// and waits).
-    pub fn into_ipc(self) -> Result<IpcCommand, Self> {
+    pub fn into_ipc(self) -> Result<IpcCommand, Box<Self>> {
         Ok(match self {
             Self::Action { list: true, .. }
             | Self::Config {
@@ -262,7 +262,7 @@ impl CommandKind {
             }
             | Self::Test {
                 action: TestAction::PointerPath { .. } | TestAction::WaitWindows { .. },
-            } => return Err(self),
+            } => return Err(Box::new(self)),
             Self::Action { name, args, .. } => IpcCommand::RunAction {
                 name: name.expect("clap requires a name without --list"),
                 args,

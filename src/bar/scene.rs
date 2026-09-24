@@ -988,9 +988,9 @@ mod tests {
     use crate::model::WmModel;
     use crate::types::color::Rgba;
     use crate::types::{
-        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeHover,
-        SchemeTag, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus,
-        WindowId, WindowRole,
+        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeHover, SchemeTag,
+        StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus, WindowId,
+        WindowRole,
     };
 
     fn marker(value: f32) -> ColorSchemeRgba {

@@ -395,8 +395,7 @@ fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
         .expect_selected_monitor()
         .is_maximized_layout();
     if maximized
-        || (!focus_tree_neighbor(ctx, direction.into())
-            && !direction_focus(ctx, direction.into()))
+        || (!focus_tree_neighbor(ctx, direction.into()) && !direction_focus(ctx, direction.into()))
     {
         focus_stack(ctx, direction.into());
     }
@@ -729,7 +728,10 @@ mod tests {
             NamedAction::IncMasterCount(Some(-1)),
             NamedAction::SetBorder(None),
         ] {
-            assert_eq!(NamedAction::parse(action.name(), &action.args()), Ok(action));
+            assert_eq!(
+                NamedAction::parse(action.name(), &action.args()),
+                Ok(action)
+            );
         }
     }
 
@@ -739,7 +741,9 @@ mod tests {
         wm.core.config.layout.inner_gap = 4;
         wm.core.config.layout.outer_gap = 8;
 
-        NamedAction::IncGaps(Some(3)).execute(&mut wm.ctx()).unwrap();
+        NamedAction::IncGaps(Some(3))
+            .execute(&mut wm.ctx())
+            .unwrap();
         assert_eq!(wm.core.config.layout.inner_gap, 7);
         assert_eq!(wm.core.config.layout.outer_gap, 11);
 

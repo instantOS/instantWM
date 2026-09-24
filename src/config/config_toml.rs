@@ -417,16 +417,7 @@ pub struct MonitorConfig {
 
 /// Output transform, named as in config and on the command line.
 #[derive(
-    Debug,
-    Deserialize,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Encode,
-    Decode,
-    clap::ValueEnum,
+    Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize, Encode, Decode, clap::ValueEnum,
 )]
 pub enum Transform {
     #[serde(rename = "normal")]

@@ -190,7 +190,9 @@ fn list(wm: &Wm, prefix: Option<&str>) -> Response {
             }
         }
         Some(prefix) => {
-            let section_name = prefix.split_once('.').map_or(prefix, |(section, _)| section);
+            let section_name = prefix
+                .split_once('.')
+                .map_or(prefix, |(section, _)| section);
             match RuntimeConfigSection::parse(section_name) {
                 Ok(section) => collect_section(&wm.core, section, &mut entries),
                 Err(error) => return Response::err(error),

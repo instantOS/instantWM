@@ -150,15 +150,12 @@ pub fn merge_keybinds(
                 continue;
             }
         };
-        let slot = match action {
-            None => None,
-            Some(action) => Some(Key {
-                mod_mask,
-                keysym,
-                action,
-                origin,
-            }),
-        };
+        let slot = action.map(|action| Key {
+            mod_mask,
+            keysym,
+            action,
+            origin,
+        });
         match (index.get(&(mod_mask, keysym)), slot) {
             (Some(&idx), slot) => keys[idx] = slot,
             (None, Some(key)) => {
@@ -174,12 +171,17 @@ pub fn merge_keybinds(
 
 /// Render a modifier mask as `Super + Ctrl + Shift` (empty when no modifiers).
 pub fn format_modifiers(mask: u32) -> String {
-    [(MODKEY, "Super"), (CONTROL, "Ctrl"), (SHIFT, "Shift"), (MOD1, "Alt")]
-        .into_iter()
-        .filter(|(bit, _)| mask & bit != 0)
-        .map(|(_, name)| name)
-        .collect::<Vec<_>>()
-        .join(" + ")
+    [
+        (MODKEY, "Super"),
+        (CONTROL, "Ctrl"),
+        (SHIFT, "Shift"),
+        (MOD1, "Alt"),
+    ]
+    .into_iter()
+    .filter(|(bit, _)| mask & bit != 0)
+    .map(|(_, name)| name)
+    .collect::<Vec<_>>()
+    .join(" + ")
 }
 
 /// Render a keysym as the user would type it: printable symbols as the
@@ -269,8 +271,12 @@ mod tests {
     #[test]
     fn invalid_entries_are_skipped_without_touching_defaults() {
         let specs = [
-            parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = \"does_not_exist\""),
-            parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = [\"set_layout\"]"),
+            parse_keybind(
+                "[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = \"does_not_exist\"",
+            ),
+            parse_keybind(
+                "[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = [\"set_layout\"]",
+            ),
             parse_keybind("[keybind]\nkey = \"nokey\"\naction = \"zoom\""),
             parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"hyper\"]\naction = \"zoom\""),
         ];

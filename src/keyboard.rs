@@ -100,7 +100,11 @@ fn binding_scopes<'a>(
     };
     match mode {
         ActiveWmMode::TreePlacement(_) => (
-            [mode_keys(crate::core_state::TREE_PLACEMENT_MODE_NAME), &[], &[]],
+            [
+                mode_keys(crate::core_state::TREE_PLACEMENT_MODE_NAME),
+                &[],
+                &[],
+            ],
             false,
         ),
         ActiveWmMode::Named(name) => (
@@ -246,7 +250,10 @@ mod tests {
         )
         .expect("expected action");
 
-        assert!(matches!(resolved.0, KeyAction::Named(NamedAction::FocusNext)));
+        assert!(matches!(
+            resolved.0,
+            KeyAction::Named(NamedAction::FocusNext)
+        ));
         assert!(resolved.1);
     }
 
@@ -287,10 +294,7 @@ mod tests {
             resolved.0,
             KeyAction::Named(NamedAction::PlacementLeft)
         ));
-        assert!(
-            !resolved.1,
-            "placement is intrinsically non-transient"
-        );
+        assert!(!resolved.1, "placement is intrinsically non-transient");
         assert!(resolve_key_action(&bindings, None, &mode, 43, 0, 0).is_none());
     }
 

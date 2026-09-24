@@ -26,7 +26,7 @@ fn main() {
         }
         Ok(command) => command,
         Err(local) => {
-            if let Err(message) = run_local(local, json, ignore_version) {
+            if let Err(message) = run_local(*local, json, ignore_version) {
                 exit_with_error(&message);
             }
             return;
@@ -251,13 +251,21 @@ mod tests {
     #[test]
     fn convenience_commands_compile_to_canonical_actions() {
         for (argv, name, args) in [
-            (&["toggle", "alt-tag", "on"][..], "toggle_alt_tag", &["on"][..]),
+            (
+                &["toggle", "alt-tag", "on"][..],
+                "toggle_alt_tag",
+                &["on"][..],
+            ),
             (&["toggle", "animated"], "toggle_animated", &[]),
             (&["layout", "set", "grid"], "set_layout", &["grid"]),
             (&["mode", "set", "resize"], "set_mode", &["resize"]),
             (&["tag", "view", "4"], "view_tag", &["4"]),
             (&["follow-mon", "prev"], "follow_mon", &["prev"]),
-            (&["spawn", "printf", "hello world"], "spawn", &["printf", "hello world"]),
+            (
+                &["spawn", "printf", "hello world"],
+                "spawn",
+                &["printf", "hello world"],
+            ),
         ] {
             match ipc(argv) {
                 IpcCommand::RunAction {
@@ -303,7 +311,9 @@ mod tests {
             IpcCommand::Scratchpad(ScratchpadCommand::Show { name, all: false })
                 if name == instantwm::ipc_types::DEFAULT_SCRATCHPAD_NAME
         ));
-        assert!(Cli::try_parse_from(["instantwmctl", "scratchpad", "hide", "term", "--all"]).is_err());
+        assert!(
+            Cli::try_parse_from(["instantwmctl", "scratchpad", "hide", "term", "--all"]).is_err()
+        );
     }
 
     #[test]
