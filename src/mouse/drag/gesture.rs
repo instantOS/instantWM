@@ -186,15 +186,14 @@ pub fn bottom_bar_gesture_finish(
     else {
         return false;
     };
+    let direction = drag.latched_direction();
     let actions = drag.actions;
-    let action = match drag.latched_direction() {
+    let action = match direction {
         Some(crate::core_state::SwipeDirection::Left) => actions.left,
         Some(crate::core_state::SwipeDirection::Right) => actions.right,
         Some(crate::core_state::SwipeDirection::Up) => actions.up,
         // No swipe: distinguish click (short press) from hold (long press).
-        None if time_msec.wrapping_sub(drag.press_time_msec) >= BOTTOM_BAR_HOLD_MS => {
-            actions.hold
-        }
+        None if time_msec.wrapping_sub(drag.press_time_msec) >= BOTTOM_BAR_HOLD_MS => actions.hold,
         None => actions.click,
     };
     let arg = crate::types::ButtonArg {

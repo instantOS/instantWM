@@ -198,7 +198,13 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     };
 
     if ctx
-        .transition_pointer_interaction(|drag| drag.activate_armed_move(start, current_geo))
+        .transition_pointer_interaction(|drag| {
+            drag.activate_armed(
+                crate::core_state::ActiveWindowOperation::Move,
+                start,
+                current_geo,
+            )
+        })
         .is_err()
     {
         return false;

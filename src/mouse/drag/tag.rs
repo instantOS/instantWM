@@ -114,7 +114,7 @@ pub fn drag_tag_begin(
     };
     let monitor_id = ctx.core().model().selected_monitor_id();
     ctx.transition_pointer_interaction(|drag| {
-        drag.begin_tag_drag(crate::core_state::TagDragState {
+        drag.begin(crate::core_state::TagDragState {
             initial_tag,
             start,
             dragging: false,
@@ -133,7 +133,12 @@ pub fn drag_tag_begin(
 /// bar so users can leave and re-enter before releasing.
 pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let (monitor_id, start, was_dragging, previous_modifiers) = {
-        let Some(drag) = ctx.core().interaction().drag.tag_drag() else {
+        let Some(drag) = ctx
+            .core()
+            .interaction()
+            .drag
+            .captured::<crate::core_state::TagDragState>()
+        else {
             return false;
         };
         (
@@ -145,7 +150,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     };
     ctx.transition_pointer_interaction(|state| {
         state
-            .tag_drag_mut()
+            .captured_mut::<crate::core_state::TagDragState>()
             .expect("tag capture remained active")
             .last_motion = Some((root, previous_modifiers));
     });
@@ -161,7 +166,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         }
         ctx.transition_pointer_interaction(|state| {
             state
-                .tag_drag_mut()
+                .captured_mut::<crate::core_state::TagDragState>()
                 .expect("tag capture remained active")
                 .dragging = true;
         });
@@ -179,13 +184,15 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             .core()
             .interaction()
             .drag
-            .tag_drag()
+            .captured::<crate::core_state::TagDragState>()
             .expect("tag capture remained active");
         drag.cursor_on_bar != cursor_on_bar || drag.last_tag != tag_idx
     };
     if changed || !was_dragging {
         ctx.transition_pointer_interaction(|state| {
-            let drag = state.tag_drag_mut().expect("tag capture remained active");
+            let drag = state
+                .captured_mut::<crate::core_state::TagDragState>()
+                .expect("tag capture remained active");
             drag.cursor_on_bar = cursor_on_bar;
             drag.last_tag = tag_idx;
         });
@@ -205,13 +212,15 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
         .core()
         .interaction()
         .drag
-        .tag_drag()
+        .captured::<crate::core_state::TagDragState>()
         .map(|drag| drag.button)
     else {
         return;
     };
     let drag = ctx
-        .transition_pointer_interaction(|state| state.finish_tag_drag(button))
+        .transition_pointer_interaction(|state| {
+            state.finish::<crate::core_state::TagDragState>(button)
+        })
         .expect("matching tag capture remained active");
     let root = drag.last_motion.map_or(drag.start, |(root, _)| root);
     let final_position = super::bar_position_on_monitor(ctx, drag.monitor_id, root);

@@ -366,7 +366,7 @@ impl PointerInteractionState {
         self.begin(WindowDragState::Armed(ArmedWindowDrag::new(params)))
     }
 
-    pub fn activate_armed(
+    pub(crate) fn activate_armed(
         &mut self,
         operation: ActiveWindowOperation,
         start: Point,

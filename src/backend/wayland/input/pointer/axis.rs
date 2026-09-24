@@ -312,7 +312,7 @@ mod tests {
         wm.core
             .interaction
             .drag
-            .begin_tag_drag(crate::core_state::TagDragState {
+            .begin(crate::core_state::TagDragState {
                 initial_tag: TagMask::single(1).unwrap(),
                 start: scroll_root,
                 dragging: true,
@@ -346,7 +346,7 @@ mod tests {
             wm.core
                 .interaction
                 .drag
-                .finish_tag_drag(crate::types::MouseButton::Left)
+                .finish::<crate::core_state::TagDragState>(crate::types::MouseButton::Left)
                 .is_some()
         );
         handle_pointer_axis(
