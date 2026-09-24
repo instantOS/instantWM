@@ -63,7 +63,7 @@ impl Default for WindowConfig {
             border_width_px: crate::config::mod_consts::BORDER_PX,
             snap_threshold: 32,
             resize_hints: true,
-            decor_hints: true,
+            decor_hints: false,
             raise_floating_on_click: false,
         }
     }
