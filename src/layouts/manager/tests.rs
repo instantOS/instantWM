@@ -565,6 +565,21 @@ fn floating_focus_does_not_raise_within_the_floating_layer() {
 }
 
 #[test]
+fn monitor_without_a_bar_window_is_not_projected_as_window_zero() {
+    let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2)], WindowId(2));
+    monitor.bar_win = WindowId::default();
+    monitor.bottom_bar_win = WindowId::default();
+    let clients = [WindowId(1), WindowId(2)]
+        .into_iter()
+        .map(|win| (win, visible_client(win)))
+        .collect::<HashMap<_, _>>();
+
+    let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+    assert_eq!(projected, vec![WindowId(1), WindowId(2)]);
+}
+
+#[test]
 fn transient_dialogs_stay_above_ordinary_windows_and_nested_children() {
     let monitor = monitor_with_order(
         &[WindowId(1), WindowId(3), WindowId(4), WindowId(2)],
