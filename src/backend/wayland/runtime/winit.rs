@@ -256,7 +256,7 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
         modes: modes.clone(),
         adaptive_sync: false,
     }];
-    while let Some(pending) = state.runtime.output_transactions.take_next_pending() {
+    while let Some((id, pending)) = state.runtime.output_transactions.take_next_pending() {
         let kind = pending.kind;
         let result = pending.transaction.validate(&capabilities).map(|()| {
             let head = &pending.transaction.heads[0];
@@ -269,7 +269,10 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
                 }],
             }
         });
-        state.runtime.output_transactions.complete(pending, result);
+        state
+            .runtime
+            .output_transactions
+            .complete(id, (kind, result));
         if kind == OutputTransactionKind::Apply {
             break;
         }

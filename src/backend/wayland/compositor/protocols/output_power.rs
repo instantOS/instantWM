@@ -16,28 +16,23 @@ use smithay::reexports::wayland_server::{
     backend::{ClientId, GlobalId},
 };
 
-use crate::backend::output::{
-    CompletedOutputPowerRequest, OutputId, OutputPowerMode, OutputPowerRequestId,
-};
+use crate::backend::output::{OutputId, OutputPowerError, OutputPowerMode, RequestId};
 
 const VERSION: u32 = 1;
 
 pub trait OutputPowerHandler {
     fn output_power_state(&mut self) -> &mut OutputPowerState;
     fn output_power_mode(&self, output: &Output) -> Option<OutputPowerMode>;
-    fn submit_output_power_request(
-        &mut self,
-        output: OutputId,
-        mode: OutputPowerMode,
-    ) -> OutputPowerRequestId;
-    fn cancel_output_power_requests(&mut self, requests: &[OutputPowerRequestId]);
+    fn submit_output_power_request(&mut self, output: OutputId, mode: OutputPowerMode)
+    -> RequestId;
+    fn cancel_output_power_requests(&mut self, requests: &[RequestId]);
 }
 
 pub struct OutputPowerState {
     #[allow(dead_code)]
     global: GlobalId,
     controls: HashMap<ZwlrOutputPowerV1, OutputPowerControl>,
-    pending: HashMap<OutputPowerRequestId, ZwlrOutputPowerV1>,
+    pending: HashMap<RequestId, ZwlrOutputPowerV1>,
 }
 
 struct OutputPowerControl {
@@ -68,17 +63,19 @@ impl OutputPowerState {
 
     pub fn complete(
         &mut self,
-        completed: CompletedOutputPowerRequest,
-    ) -> Vec<OutputPowerRequestId> {
-        let Some(resource) = self.pending.remove(&completed.id) else {
+        id: RequestId,
+        output: &OutputId,
+        result: Result<OutputPowerMode, OutputPowerError>,
+    ) -> Vec<RequestId> {
+        let Some(resource) = self.pending.remove(&id) else {
             return Vec::new();
         };
-        match completed.result {
+        match result {
             Ok(mode) => {
                 let Some(control) = self.controls.get_mut(&resource) else {
                     return Vec::new();
                 };
-                if control.output_name != completed.output.0 {
+                if control.output_name != output.0 {
                     return Vec::new();
                 }
                 if control.mode != mode {
@@ -88,10 +85,7 @@ impl OutputPowerState {
                 Vec::new()
             }
             Err(error) => {
-                log::warn!(
-                    "output power request for {} failed: {error}",
-                    completed.output.0
-                );
+                log::warn!("output power request for {} failed: {error}", output.0);
                 resource.failed();
                 self.remove_control(&resource)
             }
@@ -100,7 +94,7 @@ impl OutputPowerState {
 
     /// Invalidate the exclusive controller when an output leaves compositor
     /// space through output-management.
-    pub fn fail_output(&mut self, output_name: &str) -> Vec<OutputPowerRequestId> {
+    pub fn fail_output(&mut self, output_name: &str) -> Vec<RequestId> {
         let resources: Vec<_> = self
             .controls
             .iter()
@@ -116,7 +110,7 @@ impl OutputPowerState {
         cancelled
     }
 
-    fn remove_control(&mut self, resource: &ZwlrOutputPowerV1) -> Vec<OutputPowerRequestId> {
+    fn remove_control(&mut self, resource: &ZwlrOutputPowerV1) -> Vec<RequestId> {
         self.controls.remove(resource);
         let cancelled = self
             .pending

@@ -18,7 +18,7 @@ pub fn set_fullscreen_atoms(
     let x11_win: Window = win.into();
     let wm_state = x11_runtime.netatom.wm_state;
     let fullscreen_atom = x11_runtime.netatom.wm_fullscreen;
-    let mut state = get_atom_props(x11.conn, x11_win, wm_state);
+    let [mut state] = get_atom_props(x11.conn, x11_win, [wm_state]);
     if fullscreen {
         if !state.contains(&fullscreen_atom) {
             state.push(fullscreen_atom);
@@ -42,7 +42,7 @@ pub fn set_maximized_atoms(
         x11_runtime.netatom.wm_maximized_vert,
         x11_runtime.netatom.wm_maximized_horz,
     ];
-    let mut state = get_atom_props(x11.conn, x11_win, wm_state);
+    let [mut state] = get_atom_props(x11.conn, x11_win, [wm_state]);
     if maximized {
         for atom in atoms {
             if !state.contains(&atom) {

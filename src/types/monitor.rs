@@ -917,16 +917,6 @@ impl Monitor {
         self.work_rect().h
     }
 
-    /// Get the monitor's work area.
-    pub fn work_area(&self) -> Rect {
-        self.work_rect()
-    }
-
-    /// Get the monitor's full geometry.
-    pub fn monitor_area(&self) -> Rect {
-        self.monitor_rect
-    }
-
     /// Return true if the tag at `tag_index` should be hidden.
     ///
     /// A tag is hidden when hiding is enabled and it is neither occupied nor selected.

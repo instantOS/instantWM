@@ -43,17 +43,14 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
 
 fn list_monitors(wm: &Wm) -> Response {
     let selected_id = wm.core.model.selected_monitor_id();
-    let mirror_map = MirrorMap::build(&wm.core.config.monitors).0;
+    let mirror_map = &wm.core.derived.monitor_policy.mirrors;
     // The same discovery the monitor layout uses, so each monitor finds its
     // own output (with the heads presenting it) by name.
-    let output_info: HashMap<_, _> = crate::monitor::logical_outputs(
-        wm.backend.get_outputs(),
-        &wm.core.config.monitors,
-        &wm.core.model,
-    )
-    .into_iter()
-    .map(|output| (output.name.clone(), output))
-    .collect();
+    let output_info: HashMap<_, _> =
+        crate::monitor::logical_outputs(wm.backend.get_outputs(), mirror_map, &wm.core.model)
+            .into_iter()
+            .map(|output| (output.name.clone(), output))
+            .collect();
 
     let monitors: Vec<crate::ipc_types::MonitorInfo> = wm
         .core
