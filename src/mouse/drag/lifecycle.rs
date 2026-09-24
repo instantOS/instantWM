@@ -4,8 +4,8 @@
 //! module never invokes a backend protocol edge directly.
 
 use crate::core_state::{
-    ActiveWindowDrag, DirectResizeStart, DragCancelReason, DragNotArmed, InteractionAlreadyActive,
-    PointerInteractionState,
+    ActiveWindowDrag, ActiveWindowOperation, DirectResizeStart, DragCancelReason, DragNotArmed,
+    InteractionAlreadyActive, PointerInteractionState, ResizePolicy, WindowDragState,
 };
 use crate::types::{MouseButton, Point, Rect, ResizeDirection, WindowId};
 
@@ -22,14 +22,14 @@ pub fn activate_armed_resize(
     start: Point,
     geometry: Rect,
 ) -> Result<(), DragNotArmed> {
-    interactions
-        .activate_armed_resize(
+    interactions.activate_armed(
+        ActiveWindowOperation::DirectResize {
             direction,
-            crate::core_state::ResizePolicy::Free,
-            start,
-            geometry,
-        )
-        .map(|_| ())
+            policy: ResizePolicy::Free,
+        },
+        start,
+        geometry,
+    )
 }
 
 pub fn finish(
@@ -43,7 +43,8 @@ pub fn cancel(
     interactions: &mut PointerInteractionState,
     reason: DragCancelReason,
 ) -> Option<WindowId> {
-    let window = interactions.cancel_window_interaction()?;
+    let state = interactions.cancel::<WindowDragState>()?;
+    let window = state.win();
     log::debug!("cancelled window interaction for {window:?}: {reason:?}");
     Some(window)
 }
@@ -134,7 +135,7 @@ mod tests {
     fn resize_rejects_non_window_interaction_without_state_change() {
         let mut interactions = PointerInteractionState::default();
         interactions
-            .begin_overview_card(crate::core_state::OverviewCardDrag::new(
+            .begin(crate::core_state::OverviewCardDrag::new(
                 WindowId(1),
                 MouseButton::Left,
                 InteractionSource::Pointer,
@@ -169,9 +170,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            interactions.activate_armed_resize(
-                ResizeDirection::Right,
-                crate::core_state::ResizePolicy::Free,
+            interactions.activate_armed(
+                ActiveWindowOperation::DirectResize {
+                    direction: ResizeDirection::Right,
+                    policy: crate::core_state::ResizePolicy::Free,
+                },
                 Point::new(810, 300),
                 geometry(),
             ),

@@ -161,11 +161,7 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
     // Early-out: cursor is below the bar area.
     let (monitor_id, monitor_y, bar_height) = {
         let mon = ctx.core.model().expect_selected_monitor();
-        (
-            mon.monitor_id,
-            mon.monitor_rect.y,
-            ctx.core.derived().bar_height,
-        )
+        (mon.monitor_id, mon.monitor_rect.y, mon.bar_height)
     };
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 

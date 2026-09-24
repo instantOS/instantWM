@@ -62,8 +62,6 @@ pub struct Monitor {
     pub horizontal_padding: i32,
     /// Effective start menu width for this monitor's bar.
     pub startmenu_size: i32,
-    /// Width reserved for client title display in the bar.
-    pub bar_clients_width: i32,
     /// Full monitor geometry (including bar).
     pub monitor_rect: Rect,
     /// Portion of the monitor not consumed by exclusive layer-shell surfaces
@@ -121,7 +119,6 @@ impl Default for Monitor {
             bottom_bar_height: 0,
             horizontal_padding: 0,
             startmenu_size: 0,
-            bar_clients_width: 0,
             monitor_rect: Rect::default(),
             available_rect: Rect::default(),
             sel_tags: false,
@@ -915,16 +912,6 @@ impl Monitor {
     /// Get the height of the monitor's work area.
     pub fn height(&self) -> i32 {
         self.work_rect().h
-    }
-
-    /// Get the monitor's work area.
-    pub fn work_area(&self) -> Rect {
-        self.work_rect()
-    }
-
-    /// Get the monitor's full geometry.
-    pub fn monitor_area(&self) -> Rect {
-        self.monitor_rect
     }
 
     /// Return true if the tag at `tag_index` should be hidden.

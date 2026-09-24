@@ -1,4 +1,4 @@
-use crate::config::config_toml::{AccelProfile, InputConfig};
+use crate::config::config_toml::InputConfig;
 use crate::ipc_types::{InputCommand, Response};
 use crate::wm::Wm;
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ fn input_config_mut(
 pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
     let inputs = &mut wm.core.config.input;
     match cmd {
-        InputCommand::List(identifier) => {
+        InputCommand::List { identifier } => {
             let mut entries: Vec<(String, &crate::config::config_toml::InputConfig)> =
                 match &identifier {
                     Some(id) => inputs
@@ -64,37 +64,19 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             identifier,
             profile,
         } => {
-            let p = match profile.to_lowercase().as_str() {
-                "flat" => AccelProfile::Flat,
-                "adaptive" => AccelProfile::Adaptive,
-                _ => {
-                    return Response::err(format!(
-                        "unknown accel profile '{profile}' (expected 'flat' or 'adaptive')"
-                    ));
-                }
-            };
-            input_config_mut(inputs, identifier).accel_profile = Some(p);
+            input_config_mut(inputs, identifier).accel_profile = Some(profile);
         }
-        InputCommand::Tap {
-            identifier,
-            enabled,
-        } => {
-            input_config_mut(inputs, identifier).tap = Some(enabled.into());
+        InputCommand::Tap { identifier, state } => {
+            input_config_mut(inputs, identifier).tap = Some(state);
         }
-        InputCommand::NaturalScroll {
-            identifier,
-            enabled,
-        } => {
-            input_config_mut(inputs, identifier).natural_scroll = Some(enabled.into());
+        InputCommand::NaturalScroll { identifier, state } => {
+            input_config_mut(inputs, identifier).natural_scroll = Some(state);
         }
         InputCommand::ScrollFactor { identifier, value } => {
             input_config_mut(inputs, identifier).scroll_factor = Some(value);
         }
-        InputCommand::LeftHanded {
-            identifier,
-            enabled,
-        } => {
-            input_config_mut(inputs, identifier).left_handed = Some(enabled.into());
+        InputCommand::LeftHanded { identifier, state } => {
+            input_config_mut(inputs, identifier).left_handed = Some(state);
         }
     }
     wm.work.queue_input_config_apply();

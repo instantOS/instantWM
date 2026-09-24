@@ -1,8 +1,6 @@
 use super::TEXT_PADDING;
-use super::{
-    I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
-};
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow, draw_hover_accent};
+use super::{I3Align, I3Block, I3ClickEvent, I3MinWidth, StatusClickTarget};
+use crate::bar::paint::{BarPainter, BarScheme, draw_hover_accent};
 use crate::types::{Point, Rect, Rgba};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,70 +40,40 @@ struct BlockMetrics {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum MeasuredItem {
-    Text {
-        width: i32,
-    },
-    I3Block {
-        full: Option<BlockMetrics>,
-        short: Option<BlockMetrics>,
-        has_short: bool,
-        separator_width: i32,
-    },
+struct MeasuredBlock {
+    full: Option<BlockMetrics>,
+    short: Option<BlockMetrics>,
+    has_short: bool,
 }
 
-impl MeasuredItem {
+impl MeasuredBlock {
     fn metrics(self, use_short: bool) -> Option<BlockMetrics> {
-        match self {
-            Self::Text { .. } => None,
-            Self::I3Block {
-                full,
-                short,
-                has_short,
-                ..
-            } => {
-                if use_short && has_short {
-                    short
-                } else {
-                    full
-                }
-            }
+        if use_short && self.has_short {
+            self.short
+        } else {
+            self.full
         }
     }
 
     fn width(self, use_short: bool) -> i32 {
-        match self {
-            Self::Text { width } => width,
-            Self::I3Block { .. } => self.metrics(use_short).map_or(0, |metrics| metrics.width),
-        }
-    }
-
-    fn is_visible(self, use_short: bool) -> bool {
-        self.width(use_short) > 0
+        self.metrics(use_short).map_or(0, |metrics| metrics.width)
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-enum LaidOutItem {
-    Text {
-        item_index: usize,
-        bounds: Rect,
-    },
-    I3Block {
-        item_index: usize,
-        block_index: usize,
-        bounds: Rect,
-        text_bounds: Rect,
-        text_lpad: i32,
-        separator_bounds: Option<Rect>,
-        use_short: bool,
-    },
+struct LaidOutBlock {
+    block_index: usize,
+    bounds: Rect,
+    text_bounds: Rect,
+    text_lpad: i32,
+    separator_bounds: Option<Rect>,
+    use_short: bool,
 }
 
 #[derive(Debug, Default)]
 struct StatusLayout {
     clip_bounds: Rect,
-    items: Vec<LaidOutItem>,
+    blocks: Vec<LaidOutBlock>,
 }
 
 pub(crate) fn hit_test_i3_click_target(
@@ -116,22 +84,6 @@ pub(crate) fn hit_test_i3_click_target(
         .iter()
         .find(|target| target.bounds.contains_point(bar_position))
         .map(|target| target.block_index)
-}
-
-pub(crate) fn resolve_i3_click<'a>(
-    parsed: &'a ParsedStatus,
-    click_targets: &[StatusClickTarget],
-    bar_position: Point,
-) -> Option<(&'a I3Block, StatusClickTarget)> {
-    let line = parsed.i3bar.as_ref()?;
-    let block_index = hit_test_i3_click_target(click_targets, bar_position)?;
-    let block = line.blocks.get(block_index)?;
-    let target = click_targets
-        .iter()
-        .copied()
-        .find(|target| target.block_index == block_index)?;
-
-    Some((block, target))
 }
 
 pub(crate) fn modifiers_from_mask(mask: u32) -> Vec<String> {
@@ -190,26 +142,26 @@ pub(crate) fn make_i3_click_event(
     }
 }
 
-pub(crate) fn emit_i3bar_status_click(
-    parsed: &ParsedStatus,
+/// Resolve a status-area click to the i3bar click event it reports.
+pub(crate) fn i3_click_event(
+    blocks: &[I3Block],
     click_targets: &[StatusClickTarget],
     geometry: StatusClickGeometry,
     button: u8,
     clean_state: u32,
-) -> bool {
-    let Some((block, target)) = resolve_i3_click(parsed, click_targets, geometry.bar_position)
-    else {
-        return false;
-    };
-
-    super::runtime::enqueue_i3bar_click_event(make_i3_click_event(
+) -> Option<I3ClickEvent> {
+    let target = click_targets
+        .iter()
+        .copied()
+        .find(|target| target.bounds.contains_point(geometry.bar_position))?;
+    let block = blocks.get(target.block_index)?;
+    Some(make_i3_click_event(
         block,
         target,
         button,
         geometry,
         clean_state,
-    ));
-    true
+    ))
 }
 
 fn block_text(block: &I3Block, use_short: bool) -> &str {
@@ -223,7 +175,7 @@ fn block_text(block: &I3Block, use_short: bool) -> &str {
     }
 }
 
-fn measure_i3_block_variant(
+fn measure_block_variant(
     block: &I3Block,
     text: &str,
     min_width: i32,
@@ -250,97 +202,72 @@ fn measure_i3_block_variant(
     })
 }
 
-fn measure_items(items: &[StatusItem], painter: &mut dyn BarPainter) -> Vec<MeasuredItem> {
-    items
+fn measure_blocks(blocks: &[I3Block], painter: &mut dyn BarPainter) -> Vec<MeasuredBlock> {
+    blocks
         .iter()
-        .map(|item| match item {
-            StatusItem::Text(text) => MeasuredItem::Text {
-                width: if text.is_empty() {
-                    0
-                } else {
-                    painter.text_width(text).max(0)
-                },
-            },
-            StatusItem::I3Block(block) => {
-                let min_width = match &block.min_width {
-                    Some(I3MinWidth::Text(text)) => painter.text_width(text).max(0),
-                    Some(I3MinWidth::Pixels(pixels)) => (*pixels).max(0),
-                    None => 0,
-                };
-                MeasuredItem::I3Block {
-                    full: measure_i3_block_variant(
-                        block,
-                        block.full_text.as_str(),
-                        min_width,
-                        painter,
-                    ),
-                    short: block
-                        .short_text
-                        .as_deref()
-                        .and_then(|text| measure_i3_block_variant(block, text, min_width, painter)),
-                    has_short: block.short_text.is_some(),
-                    separator_width: block.separator_block_width.max(0),
-                }
+        .map(|block| {
+            let min_width = match &block.min_width {
+                Some(I3MinWidth::Text(text)) => painter.text_width(text).max(0),
+                Some(I3MinWidth::Pixels(pixels)) => (*pixels).max(0),
+                None => 0,
+            };
+            MeasuredBlock {
+                full: measure_block_variant(block, block.full_text.as_str(), min_width, painter),
+                short: block
+                    .short_text
+                    .as_deref()
+                    .and_then(|text| measure_block_variant(block, text, min_width, painter)),
+                has_short: block.short_text.is_some(),
             }
         })
         .collect()
 }
 
-fn measured_width(items: &[MeasuredItem], choices: &[bool]) -> i32 {
+fn measured_width(blocks: &[I3Block], measured: &[MeasuredBlock], choices: &[bool]) -> i32 {
     let mut width = 0i32;
-    let mut has_later_visible_item = false;
+    let mut has_later_visible_block = false;
 
-    for (item_index, item) in items.iter().copied().enumerate().rev() {
-        let item_width = item.width(choices[item_index]);
-        if item_width <= 0 {
+    for (index, block) in blocks.iter().enumerate().rev() {
+        let block_width = measured[index].width(choices[index]);
+        if block_width <= 0 {
             continue;
         }
-        if has_later_visible_item
-            && let MeasuredItem::I3Block {
-                separator_width, ..
-            } = item
-        {
-            width = width.saturating_add(separator_width);
+        if has_later_visible_block {
+            width = width.saturating_add(block.separator_block_width.max(0));
         }
-        width = width.saturating_add(item_width);
-        has_later_visible_item = true;
+        width = width.saturating_add(block_width);
+        has_later_visible_block = true;
     }
 
     width
 }
 
 fn choose_short_texts(
-    items: &[StatusItem],
-    measured: &[MeasuredItem],
+    blocks: &[I3Block],
+    measured: &[MeasuredBlock],
     max_content_width: i32,
 ) -> Vec<bool> {
-    let mut choices = vec![false; items.len()];
-    let mut width = measured_width(measured, &choices);
+    let mut choices = vec![false; blocks.len()];
+    let mut width = measured_width(blocks, measured, &choices);
 
-    for item_index in 0..items.len() {
+    for (index, block) in blocks.iter().enumerate() {
         if width <= max_content_width {
             break;
         }
-        let StatusItem::I3Block(block) = &items[item_index] else {
-            continue;
-        };
         if block.short_text.is_none() {
             continue;
         }
 
         let previous_choices = choices.clone();
-        choices[item_index] = true;
+        choices[index] = true;
         if let Some(name) = block.name.as_deref() {
-            for (other_index, other) in items.iter().enumerate() {
-                let StatusItem::I3Block(other) = other else {
-                    continue;
-                };
+            for (other_index, other) in blocks.iter().enumerate() {
                 if other.name.as_deref() == Some(name) && other.short_text.is_some() {
                     choices[other_index] = true;
                 }
             }
         }
-        let shortened_width = measured_width(measured, &choices);
+        let shortened_width = measured_width(blocks, measured, &choices);
         if shortened_width < width {
             width = shortened_width;
         } else {
@@ -353,7 +280,7 @@ fn choose_short_texts(
 
 fn measure_layout(
     available_bounds: Rect,
-    items: &[StatusItem],
+    blocks: &[I3Block],
     edge_padding: i32,
     painter: &mut dyn BarPainter,
 ) -> StatusLayout {
@@ -364,16 +291,16 @@ fn measure_layout(
         available_bounds.h.max(0),
     );
     let edge_padding = edge_padding.max(0);
-    let measured = measure_items(items, painter);
+    let measured = measure_blocks(blocks, painter);
     let choices = choose_short_texts(
-        items,
+        blocks,
         &measured,
         available_bounds
             .w
             .saturating_sub(edge_padding.saturating_mul(2))
             .max(0),
     );
-    let total_width = measured_width(&measured, &choices);
+    let total_width = measured_width(blocks, &measured, &choices);
     if total_width <= 0 || available_bounds.w <= 0 || available_bounds.h <= 0 {
         return StatusLayout::default();
     }
@@ -389,92 +316,74 @@ fn measure_layout(
     let clip_bounds = background_bounds
         .intersection(&available_bounds)
         .unwrap_or_default();
-    let mut laid_out = Vec::with_capacity(items.len());
+    let mut laid_out = Vec::with_capacity(blocks.len());
     let mut x = background_bounds.x.saturating_add(edge_padding);
-    let mut block_index = 0usize;
-    let last_visible_item = measured
-        .iter()
-        .copied()
-        .enumerate()
-        .rfind(|(index, item)| item.is_visible(choices[*index]))
-        .map(|(index, _)| index);
+    let last_visible_block =
+        (0..blocks.len()).rfind(|&index| measured[index].width(choices[index]) > 0);
 
-    for (item_index, (item, measured_item)) in items.iter().zip(&measured).enumerate() {
-        match (item, *measured_item) {
-            (StatusItem::Text(_), MeasuredItem::Text { width }) => {
-                if width > 0 {
-                    laid_out.push(LaidOutItem::Text {
-                        item_index,
-                        bounds: Rect::new(x, available_bounds.y, width, available_bounds.h),
-                    });
-                    x = x.saturating_add(width);
-                }
-            }
-            (StatusItem::I3Block(block), MeasuredItem::I3Block { .. }) => {
-                let use_short = choices[item_index];
-                let Some(metrics) = measured_item.metrics(use_short) else {
-                    block_index += 1;
-                    continue;
-                };
-                let bounds = Rect::new(x, available_bounds.y, metrics.width, available_bounds.h);
-                let text_area_x = x
-                    .saturating_add(block.border_widths.left)
-                    .saturating_add(metrics.padding);
-                let text_area_width = metrics
-                    .width
-                    .saturating_sub(block.border_widths.horizontal())
-                    .saturating_sub(metrics.padding.saturating_mul(2))
-                    .max(0);
-                let text_lpad = match block.align {
-                    I3Align::Left => 0,
-                    I3Align::Center => ((text_area_width - metrics.text_width) / 2).max(0),
-                    I3Align::Right => (text_area_width - metrics.text_width).max(0),
-                };
-                x = x.saturating_add(metrics.width);
+    for (block_index, (block, measured_block)) in blocks.iter().zip(&measured).enumerate() {
+        let use_short = choices[block_index];
+        let Some(metrics) = measured_block.metrics(use_short) else {
+            continue;
+        };
+        let bounds = Rect::new(x, available_bounds.y, metrics.width, available_bounds.h);
+        let text_area_x = x
+            .saturating_add(block.border_widths.left)
+            .saturating_add(metrics.padding);
+        let text_area_width = metrics
+            .width
+            .saturating_sub(block.border_widths.horizontal())
+            .saturating_sub(metrics.padding.saturating_mul(2))
+            .max(0);
+        let text_lpad = match block.align {
+            I3Align::Left => 0,
+            I3Align::Center => ((text_area_width - metrics.text_width) / 2).max(0),
+            I3Align::Right => (text_area_width - metrics.text_width).max(0),
+        };
+        x = x.saturating_add(metrics.width);
 
-                let separator_bounds =
-                    if Some(item_index) != last_visible_item && block.separator_block_width > 0 {
-                        let bounds = Rect::new(
-                            x,
-                            available_bounds.y,
-                            block.separator_block_width,
-                            available_bounds.h,
-                        );
-                        x = x.saturating_add(block.separator_block_width);
-                        Some(bounds)
-                    } else {
-                        None
-                    };
+        let separator_bounds =
+            if Some(block_index) != last_visible_block && block.separator_block_width > 0 {
+                let bounds = Rect::new(
+                    x,
+                    available_bounds.y,
+                    block.separator_block_width,
+                    available_bounds.h,
+                );
+                x = x.saturating_add(block.separator_block_width);
+                Some(bounds)
+            } else {
+                None
+            };
 
-                laid_out.push(LaidOutItem::I3Block {
-                    item_index,
-                    block_index,
-                    bounds,
-                    text_bounds: Rect::new(
-                        text_area_x,
-                        available_bounds.y,
-                        text_area_width,
-                        available_bounds.h,
-                    ),
-                    text_lpad,
-                    separator_bounds,
-                    use_short,
-                });
-                block_index += 1;
-            }
-            _ => unreachable!("status item and its measurements must have matching variants"),
-        }
+        laid_out.push(LaidOutBlock {
+            block_index,
+            bounds,
+            text_bounds: Rect::new(
+                text_area_x,
+                available_bounds.y,
+                text_area_width,
+                available_bounds.h,
+            ),
+            text_lpad,
+            separator_bounds,
+            use_short,
+        });
     }
 
     StatusLayout {
         clip_bounds,
-        items: laid_out,
+        blocks: laid_out,
     }
 }
 
-pub(crate) fn draw_status_items(
+/// Paint the status line right-aligned inside `available_bounds`.
+///
+/// When the line is wider than the available space, blocks at its left edge
+/// are clipped, like i3bar truncating the statusline.
+pub(crate) fn draw_status_blocks(
     available_bounds: Rect,
-    items: &[StatusItem],
+    blocks: &[I3Block],
     options: StatusRenderOptions,
     painter: &mut dyn BarPainter,
 ) -> StatusRenderOutput {
@@ -484,7 +393,7 @@ pub(crate) fn draw_status_items(
         hover,
         edge_padding,
     } = options;
-    let layout = measure_layout(available_bounds, items, edge_padding, painter);
+    let layout = measure_layout(available_bounds, blocks, edge_padding, painter);
     if layout.clip_bounds.w <= 0 || layout.clip_bounds.h <= 0 {
         return StatusRenderOutput::default();
     }
@@ -493,60 +402,35 @@ pub(crate) fn draw_status_items(
     painter.rect(layout.clip_bounds, true);
 
     let mut click_targets = Vec::new();
-    for item in layout.items {
-        match item {
-            LaidOutItem::Text { item_index, bounds } => {
-                let Some(bounds) = bounds.intersection(&layout.clip_bounds) else {
-                    continue;
-                };
-                let StatusItem::Text(text) = &items[item_index] else {
-                    continue;
-                };
-                painter.set_scheme(base_scheme.clone());
-                painter.text(bounds, 0, text, false, 0, TextOverflow::Clip);
-            }
-            LaidOutItem::I3Block {
-                item_index,
-                block_index,
-                bounds,
-                text_bounds,
-                text_lpad,
-                separator_bounds,
-                use_short,
-            } => {
-                let Some(bounds) = fully_visible(bounds, layout.clip_bounds) else {
-                    continue;
-                };
-                let StatusItem::I3Block(block) = &items[item_index] else {
-                    continue;
-                };
-                draw_i3_block(
-                    painter,
-                    bounds,
-                    text_bounds,
-                    text_lpad,
-                    block_text(block, use_short),
-                    block,
-                    &base_scheme,
-                );
-                if let Some(hover) = hover.filter(|hover| hover.block_index == block_index) {
-                    draw_hover_accent(painter, bounds, hover.color);
-                }
-                click_targets.push(StatusClickTarget {
-                    bounds,
-                    block_index,
-                });
+    for laid_out in layout.blocks {
+        let Some(visible) = laid_out.bounds.intersection(&layout.clip_bounds) else {
+            continue;
+        };
+        let block = &blocks[laid_out.block_index];
+        draw_i3_block(
+            painter,
+            laid_out,
+            visible,
+            block_text(block, laid_out.use_short),
+            block,
+            &base_scheme,
+        );
+        if let Some(hover) = hover.filter(|hover| hover.block_index == laid_out.block_index) {
+            draw_hover_accent(painter, visible, hover.color);
+        }
+        click_targets.push(StatusClickTarget {
+            bounds: visible,
+            block_index: laid_out.block_index,
+        });
 
-                if let Some(separator_bounds) = separator_bounds {
-                    draw_separator(
-                        painter,
-                        separator_bounds,
-                        block.separator,
-                        separator_color,
-                        &base_scheme,
-                    );
-                }
-            }
+        if let Some(separator_bounds) = laid_out.separator_bounds {
+            draw_separator(
+                painter,
+                separator_bounds,
+                block.separator,
+                separator_color,
+                &base_scheme,
+            );
         }
     }
 
@@ -556,20 +440,15 @@ pub(crate) fn draw_status_items(
     }
 }
 
-fn fully_visible(bounds: Rect, clip_bounds: Rect) -> Option<Rect> {
-    let visible = bounds.intersection(&clip_bounds)?;
-    (visible == bounds).then_some(bounds)
-}
-
 fn draw_i3_block(
     painter: &mut dyn BarPainter,
-    bounds: Rect,
-    text_bounds: Rect,
-    text_lpad: i32,
+    laid_out: LaidOutBlock,
+    visible: Rect,
     text: &str,
     block: &I3Block,
     base_scheme: &BarScheme,
 ) {
+    let bounds = laid_out.bounds;
     let mut foreground = block
         .color
         .as_deref()
@@ -593,7 +472,7 @@ fn draw_i3_block(
         detail,
     };
     painter.set_scheme(block_scheme.clone());
-    painter.rect(bounds, true);
+    painter.rect(visible, true);
 
     let border_color = block
         .border
@@ -607,43 +486,25 @@ fn draw_i3_block(
     });
 
     let border = block.border_widths;
-    if border.top > 0 {
-        painter.rect(
-            Rect::new(bounds.x, bounds.y, bounds.w, border.top.min(bounds.h)),
-            false,
-        );
-    }
-    if border.bottom > 0 {
-        let height = border.bottom.min(bounds.h);
-        painter.rect(
-            Rect::new(bounds.x, bounds.y + bounds.h - height, bounds.w, height),
-            false,
-        );
-    }
-    if border.left > 0 {
-        painter.rect(
-            Rect::new(bounds.x, bounds.y, border.left.min(bounds.w), bounds.h),
-            false,
-        );
-    }
-    if border.right > 0 {
-        let width = border.right.min(bounds.w);
-        painter.rect(
-            Rect::new(bounds.x + bounds.w - width, bounds.y, width, bounds.h),
-            false,
-        );
+    let top = border.top.min(bounds.h);
+    let bottom = border.bottom.min(bounds.h);
+    let left = border.left.min(bounds.w);
+    let right = border.right.min(bounds.w);
+    for edge in [
+        Rect::new(bounds.x, bounds.y, bounds.w, top),
+        Rect::new(bounds.x, bounds.bottom() - bottom, bounds.w, bottom),
+        Rect::new(bounds.x, bounds.y, left, bounds.h),
+        Rect::new(bounds.right() - right, bounds.y, right, bounds.h),
+    ] {
+        if let Some(edge) = edge.intersection(&visible) {
+            painter.rect(edge, false);
+        }
     }
 
-    if text_bounds.w > 0 {
+    if let Some(text_bounds) = laid_out.text_bounds.intersection(&visible) {
+        let lpad = (laid_out.text_bounds.x + laid_out.text_lpad - text_bounds.x).max(0);
         painter.set_scheme(block_scheme);
-        painter.text(
-            text_bounds,
-            text_lpad,
-            text,
-            false,
-            0,
-            TextOverflow::Ellipsis,
-        );
+        painter.text(text_bounds, lpad, text, false, 0);
     }
 }
 
@@ -670,7 +531,6 @@ fn draw_separator(
     });
     painter.rect(Rect::new(line_x, line_y, 1, line_height), false);
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -712,7 +572,6 @@ mod tests {
             text: &str,
             _invert: bool,
             _detail_height: i32,
-            _overflow: TextOverflow,
         ) -> i32 {
             self.texts.push(text.to_string());
             self.text_bounds.push(bounds);
@@ -770,10 +629,10 @@ mod tests {
     fn uses_full_text_when_it_fits_and_short_text_when_needed() {
         let mut item = block("processor");
         item.short_text = Some("cpu".to_string());
-        let items = vec![StatusItem::I3Block(item)];
+        let items = vec![item];
 
         let mut wide = RecordingPainter::default();
-        draw_status_items(
+        draw_status_blocks(
             Rect::new(0, 0, 200, 20),
             &items,
             render_options(),
@@ -782,7 +641,7 @@ mod tests {
         assert_eq!(wide.texts, ["processor"]);
 
         let mut narrow = RecordingPainter::default();
-        draw_status_items(
+        draw_status_blocks(
             Rect::new(0, 0, 50, 20),
             &items,
             render_options(),
@@ -793,10 +652,10 @@ mod tests {
 
     #[test]
     fn plain_status_reserves_edge_padding_on_both_sides() {
-        let items = vec![StatusItem::Text("cpu".to_string())];
+        let items = super::super::parse::plain_text_status("cpu");
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 100, 20),
             &items,
             StatusRenderOptions {
@@ -811,13 +670,37 @@ mod tests {
     }
 
     #[test]
+    fn overflowing_status_is_clipped_at_its_left_edge() {
+        let items = super::super::parse::plain_text_status("a long status line");
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_blocks(
+            Rect::new(40, 0, 60, 20),
+            &items,
+            render_options(),
+            &mut painter,
+        );
+
+        assert_eq!(output.bounds, Rect::new(40, 0, 60, 20));
+        assert_eq!(painter.texts, ["a long status line"]);
+        assert_eq!(painter.text_bounds, [Rect::new(40, 0, 59, 20)]);
+        assert!(
+            painter
+                .rectangles
+                .iter()
+                .all(|(bounds, _)| bounds.x >= 40 && bounds.right() <= 100),
+            "nothing may be painted outside the status area"
+        );
+    }
+
+    #[test]
     fn separator_gap_is_not_part_of_click_target() {
         let mut first = block("a");
         first.separator = false;
-        let items = vec![StatusItem::I3Block(first), StatusItem::I3Block(block("b"))];
+        let items = vec![first, block("b")];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 100, 20),
             &items,
             render_options(),
@@ -857,14 +740,11 @@ mod tests {
 
     #[test]
     fn hovered_block_gets_an_accent_without_recoloring_its_contents() {
-        let items = vec![
-            StatusItem::I3Block(block("cpu")),
-            StatusItem::I3Block(block("memory")),
-        ];
+        let items = vec![block("cpu"), block("memory")];
         let hover_color = Rgba::rgb(0.2, 0.8, 1.0);
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 200, 20),
             &items,
             StatusRenderOptions {
@@ -923,9 +803,9 @@ mod tests {
 
     #[test]
     fn empty_blocks_have_no_layout_or_click_target() {
-        let items = vec![StatusItem::I3Block(block(""))];
+        let items = vec![block("")];
         let mut painter = RecordingPainter::default();
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 100, 20),
             &items,
             render_options(),
@@ -941,10 +821,10 @@ mod tests {
     fn min_width_is_the_complete_block_width() {
         let mut item = block("x");
         item.min_width = Some(I3MinWidth::Pixels(50));
-        let items = vec![StatusItem::I3Block(item)];
+        let items = vec![item];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 100, 20),
             &items,
             render_options(),
@@ -957,10 +837,10 @@ mod tests {
 
     #[test]
     fn final_block_has_no_trailing_separator_gap() {
-        let items = vec![StatusItem::I3Block(block("x"))];
+        let items = vec![block("x")];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 100, 20),
             &items,
             render_options(),
@@ -973,13 +853,10 @@ mod tests {
 
     #[test]
     fn empty_blocks_keep_protocol_block_indices() {
-        let items = vec![
-            StatusItem::I3Block(block("")),
-            StatusItem::I3Block(block("visible")),
-        ];
+        let items = vec![block(""), block("visible")];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 120, 20),
             &items,
             render_options(),
@@ -996,14 +873,14 @@ mod tests {
                 let mut item = block(&format!("processor-{index}"));
                 item.short_text = Some(format!("p{index}"));
                 item.min_width = Some(I3MinWidth::Text("processor-100".to_string()));
-                StatusItem::I3Block(item)
+                item
             })
             .collect::<Vec<_>>();
         let mut painter = RecordingPainter::default();
 
         // Force every short-text candidate to be considered. Width selection
         // after measurement must remain arithmetic-only.
-        draw_status_items(
+        draw_status_blocks(
             Rect::new(0, 0, 20, 20),
             &items,
             render_options(),
@@ -1018,10 +895,10 @@ mod tests {
     fn empty_short_text_can_hide_a_block_when_space_is_constrained() {
         let mut item = block("processor");
         item.short_text = Some(String::new());
-        let items = vec![StatusItem::I3Block(item)];
+        let items = vec![item];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(
+        let output = draw_status_blocks(
             Rect::new(0, 0, 20, 20),
             &items,
             render_options(),

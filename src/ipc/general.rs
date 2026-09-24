@@ -9,10 +9,10 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
 }
 
 pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
-    let Some(action) = crate::actions::parse_named_action(&name) else {
-        return Response::err(format!("unknown action '{name}'"));
+    let action = match crate::actions::NamedAction::parse(&name, &args) {
+        Ok(action) => crate::actions::KeyAction::Named(action),
+        Err(error) => return Response::err(error),
     };
-    let action = crate::actions::KeyAction::Named { action, args };
     match crate::actions::try_execute_key_action(&mut wm.ctx(), &action) {
         Ok(()) => Response::ok(),
         Err(error) => Response::err(error),
@@ -20,7 +20,7 @@ pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
 }
 
 pub fn update_status(wm: &mut Wm, text: String) -> Response {
-    crate::bar::status::apply_status_update(wm, text);
+    wm.bar.set_status_text(&text);
     Response::ok()
 }
 
@@ -63,7 +63,7 @@ mod tests {
                 "toggle_alt_tag".to_string(),
                 vec!["invalid".to_string()],
             ),
-            Response::Err(message) if message.contains("expected toggle, on, or off")
+            Response::Err(message) if message.contains("expected toggle|off|on")
         ));
     }
 

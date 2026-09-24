@@ -80,7 +80,7 @@ pub fn run() -> ! {
 
     super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
-    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut wm);
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle
@@ -120,7 +120,7 @@ pub fn run() -> ! {
 
     let start_time = std::time::Instant::now();
 
-    crate::runtime::spawn_status_bar(&wm);
+    crate::runtime::spawn_status_bar(&mut wm);
 
     // ── Animation timer (on-demand) ─────────────────────────────────────
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
@@ -256,7 +256,7 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
         modes: modes.clone(),
         adaptive_sync: false,
     }];
-    while let Some(pending) = state.runtime.output_transactions.take_next_pending() {
+    while let Some((id, pending)) = state.runtime.output_transactions.take_next_pending() {
         let kind = pending.kind;
         let result = pending.transaction.validate(&capabilities).map(|()| {
             let head = &pending.transaction.heads[0];
@@ -269,7 +269,10 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
                 }],
             }
         });
-        state.runtime.output_transactions.complete(pending, result);
+        state
+            .runtime
+            .output_transactions
+            .complete(id, (kind, result));
         if kind == OutputTransactionKind::Apply {
             break;
         }

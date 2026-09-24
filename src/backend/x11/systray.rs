@@ -1,4 +1,3 @@
-#![allow(clippy::too_many_arguments)]
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::set_client_state;
@@ -131,14 +130,13 @@ pub fn get_systray_width(
     .width
 }
 
-/// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(systray: Option<&mut XEmbedTray>, icon_win: WindowId) {
     if let Some(systray) = systray {
         systray.remove_icon(icon_win);
     }
 }
 
-/// Update systray icon geometry using dependency injection.
+/// Fit a tray icon's requested size to the bar height.
 pub fn update_systray_icon_geom(
     bar_height: i32,
     systray: Option<&mut XEmbedTray>,
@@ -158,7 +156,7 @@ pub fn update_systray_icon_geom(
     }
 }
 
-/// Update systray icon state using dependency injection.
+/// Follow an icon's `_XEMBED_INFO` mapped flag.
 pub fn update_systray_icon_state(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
@@ -224,7 +222,7 @@ pub(super) fn sync_xembed_tray(
     }
 
     let (tray_right, bar_y, bar_win) = {
-        let m = systray_to_mon(core.model(), &core.config().systray, None);
+        let m = systray_to_mon(core.model(), &core.config().systray);
         let mon = match core.model().monitor(m) {
             Some(mon) => mon,
             None => return,
@@ -240,16 +238,18 @@ pub(super) fn sync_xembed_tray(
 
     if systray.is_none() {
         let root = x11_runtime.root;
-        let bar_height = core.derived().bar_height;
+        let bar_height = core.config().bar_metrics().height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
         let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
 
-        let systray_win = Some(x11.conn).and_then(|conn| {
-            let systray_win = conn.generate_id().ok()?;
-
-            let result = conn.create_window(
+        let conn = x11.conn;
+        let Ok(systray_win) = conn.generate_id() else {
+            return;
+        };
+        if conn
+            .create_window(
                 x11rb::COPY_FROM_PARENT as u8,
                 systray_win,
                 root,
@@ -261,61 +261,34 @@ pub(super) fn sync_xembed_tray(
                 WindowClass::INPUT_OUTPUT,
                 x11rb::COPY_FROM_PARENT,
                 &CreateWindowAux::new()
-                    .event_mask(EventMask::BUTTON_PRESS | EventMask::EXPOSURE)
+                    .event_mask(EventMask::SUBSTRUCTURE_NOTIFY)
                     .override_redirect(1)
                     .background_pixel(bg_pixel),
-            );
-
-            if result.is_err() {
-                return None;
-            }
-
-            let _ = result.and_then(|cookie| {
-                cookie
-                    .check()
-                    .map_err(|_| x11rb::errors::ConnectionError::UnknownError)
-            });
-
-            let _ = conn.change_property32(
-                PropMode::REPLACE,
-                systray_win,
-                net_system_tray,
-                AtomEnum::CARDINAL,
-                &[net_system_tray_horz],
-            );
-
-            let _ = conn.change_window_attributes(
-                systray_win,
-                &ChangeWindowAttributesAux::new().event_mask(EventMask::SUBSTRUCTURE_NOTIFY),
-            );
-
-            let _ = conn.map_window(systray_win);
-
-            let _ = conn.change_window_attributes(
-                systray_win,
-                &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
-            );
-
-            let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
-
-            // Send MANAGER event to root window to announce systray
-            // Use non-blocking approach
-            let event = ClientMessageEvent {
-                response_type: CLIENT_MESSAGE_EVENT,
-                format: 32,
-                sequence: 0,
-                window: root,
-                type_: manager_atom,
-                data: ClientMessageData::from([CURRENT_TIME, net_system_tray, systray_win, 0, 0]),
-            };
-            let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
-
-            Some(systray_win)
-        });
-
-        let Some(systray_win) = systray_win else {
+            )
+            .is_err()
+        {
             return;
+        }
+        let _ = conn.change_property32(
+            PropMode::REPLACE,
+            systray_win,
+            net_system_tray,
+            AtomEnum::CARDINAL,
+            &[net_system_tray_horz],
+        );
+        let _ = conn.map_window(systray_win);
+        let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
+
+        // Announce the new selection owner to tray clients.
+        let event = ClientMessageEvent {
+            response_type: CLIENT_MESSAGE_EVENT,
+            format: 32,
+            sequence: 0,
+            window: root,
+            type_: manager_atom,
+            data: ClientMessageData::from([CURRENT_TIME, net_system_tray, systray_win, 0, 0]),
         };
+        let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
 
         *systray = Some(XEmbedTray {
             win: WindowId::from(systray_win),
@@ -328,7 +301,7 @@ pub(super) fn sync_xembed_tray(
         .expect("tray manager creation must initialize owned XEmbed state");
     let (systray_win, icons) = (tray.win, tray.icons.clone());
 
-    let bar_height = core.derived().bar_height;
+    let bar_height = core.config().bar_metrics().height;
     let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, Size)> = icons
@@ -382,14 +355,9 @@ pub(super) fn sync_xembed_tray(
             .x(tray_x)
             .y(bar_y)
             .width(manager_width)
-            .height(bar_height as u32),
-    );
-
-    let _ = conn.configure_window(
-        x11_systray_win,
-        &ConfigureWindowAux::new()
-            .stack_mode(StackMode::ABOVE)
-            .sibling(x11_bar_win),
+            .height(bar_height as u32)
+            .sibling(x11_bar_win)
+            .stack_mode(StackMode::ABOVE),
     );
 
     let _ = conn.map_window(x11_systray_win);
@@ -399,42 +367,24 @@ pub fn is_systray_icon(systray: Option<&XEmbedTray>, win: WindowId) -> bool {
     systray.is_some_and(|tray| tray.icon(win).is_some())
 }
 
-/// Get monitor for systray using dependency injection.
+/// The monitor hosting the tray: the selected one, or the 1-based pinned
+/// position (the first monitor when fewer are connected).
 pub fn systray_to_mon(
     model: &crate::model::WmModel,
     config: &crate::core_state::SystrayConfig,
-    m: Option<MonitorId>,
 ) -> MonitorId {
-    if config.pinning == 0 {
-        return match m {
-            Some(id) => {
-                if id == model.selected_monitor_id() {
-                    id
-                } else {
-                    model.selected_monitor_id()
-                }
-            }
-            None => model.selected_monitor_id(),
-        };
-    }
-
-    let n = model.monitors.len();
-    let target = config.pinning.min(n);
-
-    if config.pinning > n {
-        model
-            .monitors
-            .first()
-            .unwrap_or(model.selected_monitor_id())
-    } else {
-        model
-            .monitors
-            .id_at_position(target.saturating_sub(1))
-            .unwrap_or(model.selected_monitor_id())
-    }
+    config
+        .pinning
+        .checked_sub(1)
+        .and_then(|position| {
+            model
+                .monitors
+                .id_at_position(position)
+                .or_else(|| model.monitors.first())
+        })
+        .unwrap_or_else(|| model.selected_monitor_id())
 }
 
-/// Get atom property using dependency injection.
 fn read_xembed_info(x11: &X11BackendRef, win: WindowId, atom: u32) -> Option<XEmbedInfo> {
     let conn = x11.conn;
     let x11_win: Window = win.into();

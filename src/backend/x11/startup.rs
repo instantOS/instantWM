@@ -116,6 +116,16 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
     }
+
+    // RandR events diff against the last seen topology; without this seed the
+    // first event would treat every connected-but-disabled output as newly
+    // plugged and enable it.
+    if let Some(data) = wm.backend.x11_data_mut()
+        && let Some(snapshot) = crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, root)
+    {
+        data.x11_runtime.connected_outputs = snapshot.connected_names();
+        data.x11_runtime.active_outputs = snapshot.active_names();
+    }
 }
 
 fn setup_signal_handlers() {
@@ -257,7 +267,6 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         wm.core.config.fonts.icon_size,
     ));
 
-    let metrics = wm.core.config.fonts.bar_metrics(wm.core.config.bar.height);
     let bordercolors = wm.core.config.colors.border;
     let statusbarcolors = wm.core.config.colors.status;
     let close_color = wm.core.config.colors.close_button.gesture_color();
@@ -273,8 +282,6 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
     data.x11_runtime.draw = Some(drw);
-    wm.core.derived.bar_height = metrics.height;
-    wm.core.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
 fn xft_font_patterns(

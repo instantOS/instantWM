@@ -48,11 +48,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     crate::runtime::register_ipc_source(&loop_handle, ipc_server);
 
     // ── Internal status ping source ────────────────────────────────────
-    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
-    crate::bar::status::set_internal_status_ping(status_ping);
-    loop_handle
-        .insert_source(status_ping_source, |_, _, _| {})
-        .expect("failed to insert status ping source");
+    if let Some(status_wake) = wm.bar.status_sources.take_wake_source() {
+        loop_handle
+            .insert_source(status_wake, |_, _, _| {})
+            .expect("failed to insert status ping source");
+    }
 
     // ── Region-selection ping source ───────────────────────────────────
     let (slop_ping, slop_ping_source) = calloop::ping::make_ping().expect("slop ping");
@@ -70,7 +70,8 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
     let animation_interval = wm.backend.x11_data().and_then(|data| {
-        crate::backend::x11::randr::max_active_refresh_millihertz(&data.conn, data.x11_runtime.root)
+        crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, data.x11_runtime.root)?
+            .max_active_refresh_millihertz()
     });
     let animation_interval = animation_frame_interval(animation_interval);
 

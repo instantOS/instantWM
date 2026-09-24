@@ -1,12 +1,10 @@
 use super::model::{DEFAULT_SEPARATOR_BLOCK_WIDTH, RawI3Block};
-use super::{
-    I3Align, I3BarHeader, I3BarSignals, I3Block, I3MinWidth, I3StatusLine, ParsedStatus, StatusItem,
-};
+use super::{I3Align, I3BarHeader, I3BarSignals, I3Block, I3MinWidth, StatusBlocks};
 use crate::types::Insets;
 use serde_json::Value;
 
-pub(crate) fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
-    let mut json_str = std::str::from_utf8(bytes).ok()?.trim();
+pub(crate) fn parse_i3bar_json(text: &str) -> Option<StatusBlocks> {
+    let mut json_str = text.trim();
     if let Some(rest) = json_str.strip_prefix(',') {
         json_str = rest.trim_start();
     }
@@ -15,10 +13,7 @@ pub(crate) fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
     }
 
     let raw_blocks: Vec<RawI3Block> = serde_json::from_str(json_str).ok()?;
-    let mut blocks = Vec::with_capacity(raw_blocks.len());
-    let mut items = Vec::with_capacity(raw_blocks.len());
-
-    for raw in raw_blocks {
+    let blocks = raw_blocks.into_iter().map(|raw| {
         let align = match raw.align.as_deref() {
             Some("center") => I3Align::Center,
             Some("right") => I3Align::Right,
@@ -36,7 +31,7 @@ pub(crate) fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
         let border = raw.border.filter(|c| c.starts_with('#'));
         let has_border = border.is_some();
 
-        let block = I3Block {
+        I3Block {
             full_text: raw.full_text,
             short_text: raw.short_text,
             color: raw.color.filter(|c| c.starts_with('#')),
@@ -67,35 +62,26 @@ pub(crate) fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
             name: raw.name,
             instance: raw.instance,
             markup: raw.markup,
-        };
-
-        items.push(StatusItem::I3Block(block.clone()));
-        blocks.push(block);
-    }
-
-    Some(ParsedStatus {
-        items,
-        i3bar: Some(I3StatusLine { blocks }),
-    })
+        }
+    });
+    Some(blocks.collect())
 }
 
-pub(crate) fn parse_status(bytes: &[u8]) -> ParsedStatus {
-    if let Some(parsed) = parse_i3bar_json(bytes) {
-        return parsed;
-    }
-
-    parse_status_fallback(std::str::from_utf8(bytes).unwrap_or(""))
+/// Parse an i3bar JSON frame, falling back to plain text.
+pub(crate) fn parse_status(text: &str) -> StatusBlocks {
+    parse_i3bar_json(text).unwrap_or_else(|| plain_text_status(text))
 }
 
-pub(crate) fn parse_status_fallback(text: &str) -> ParsedStatus {
+pub(crate) fn plain_text_status(text: &str) -> StatusBlocks {
     if text.is_empty() {
-        return ParsedStatus::default();
+        return StatusBlocks::default();
     }
-
-    ParsedStatus {
-        items: vec![StatusItem::Text(text.to_string())],
-        i3bar: None,
-    }
+    StatusBlocks::from([I3Block {
+        full_text: text.to_string(),
+        separator: false,
+        separator_block_width: 0,
+        ..I3Block::default()
+    }])
 }
 
 pub(crate) fn parse_i3bar_header(line: &str) -> Option<I3BarHeader> {

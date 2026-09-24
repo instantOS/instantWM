@@ -1,17 +1,6 @@
 use crate::types::{ColorSchemeRgba, Rect, Rgba, Size};
 
-/// How text that is wider than its cell is represented.
-///
-/// This is presentation policy, not a rasterizer detail: every backend must
-/// produce the same fitted string before handing it to Xft, cosmic-text, or a
-/// future text engine.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TextOverflow {
-    Clip,
-    Ellipsis,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BarScheme {
     pub foreground: Rgba,
     pub background: Rgba,
@@ -86,7 +75,8 @@ pub trait BarPainter {
     /// Paint one complete bar cell and return `bounds.right()`.
     ///
     /// The background and optional detail strip are painted even when `text`
-    /// is empty. `overflow` is applied after subtracting `lpad`. Implementors
+    /// is empty. Text wider than the cell after subtracting `lpad` is
+    /// ellipsized with [`crate::bar::text::fit_to_width`]. Implementors
     /// must not return a glyph advance: callers chain cells using the returned
     /// right edge.
     fn text(
@@ -96,7 +86,6 @@ pub trait BarPainter {
         text: &str,
         invert: bool,
         detail_height: i32,
-        overflow: TextOverflow,
     ) -> i32;
     /// Blit non-premultiplied RGBA8 pixels (row-major, 4 bytes per pixel)
     /// scaled to exactly fill `destination`. Used for compositor-rendered

@@ -16,7 +16,7 @@ pub enum ExitMode {
 }
 
 #[derive(Clone, Copy)]
-enum ActionTransition {
+pub(crate) enum ActionTransition {
     Preserve,
     Confirm,
     Cancel,
@@ -40,58 +40,9 @@ fn prepare_action(ctx: &mut WmCtx<'_>, transition: ActionTransition) {
     }
 }
 
-/// Let overview consume its own navigation, cancel before explicit workspace
-/// navigation, and confirm before every other action. The confirm default is
-/// intentional: a newly added mutating action cannot operate on a projection.
-pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: NamedAction) {
-    use ActionTransition::{Cancel, Confirm, Preserve};
-
-    let transition = match action {
-        NamedAction::None
-        | NamedAction::FocusNext
-        | NamedAction::FocusPrev
-        | NamedAction::FocusUp
-        | NamedAction::FocusDown
-        | NamedAction::FocusLeft
-        | NamedAction::FocusRight
-        | NamedAction::DownKey
-        | NamedAction::UpKey
-        | NamedAction::ToggleOverview
-        | NamedAction::CancelOverview
-        | NamedAction::EdgeScratchpadToggle
-        | NamedAction::EdgeScratchpadShow
-        | NamedAction::EdgeScratchpadHide
-        | NamedAction::EdgeScratchpadDirectionUp
-        | NamedAction::EdgeScratchpadDirectionDown
-        | NamedAction::EdgeScratchpadDirectionLeft
-        | NamedAction::EdgeScratchpadDirectionRight
-        | NamedAction::ToggleBar
-        | NamedAction::ToggleBottomBar
-        | NamedAction::ToggleAltTag
-        | NamedAction::ToggleAnimated
-        | NamedAction::ToggleHideTags
-        | NamedAction::ToggleFocusFollowsFloatMouse
-        | NamedAction::SetFocusFollowsMouse
-        | NamedAction::NextKeyboardLayout
-        | NamedAction::PrevKeyboardLayout
-        | NamedAction::KeyboardLayout
-        | NamedAction::Spawn
-        | NamedAction::WarpFocus
-        | NamedAction::FocusStack => Preserve,
-
-        NamedAction::FocusLast
-        | NamedAction::LastView
-        | NamedAction::ScrollLeft
-        | NamedAction::ScrollRight
-        | NamedAction::ShiftViewLeft
-        | NamedAction::ShiftViewRight
-        | NamedAction::ViewAll
-        | NamedAction::ViewTag
-        | NamedAction::FocusMon => Cancel,
-
-        _ => Confirm,
-    };
-    prepare_action(ctx, transition);
+/// Apply the per-action overview policy declared in the named-action table.
+pub(crate) fn prepare_named_action(ctx: &mut WmCtx<'_>, action: &NamedAction) {
+    prepare_action(ctx, action.overview_transition());
 }
 
 pub(crate) fn prepare_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
@@ -246,7 +197,7 @@ pub fn begin_card_gesture(
     }
     let threshold = (monitor.monitor_rect.h / 30).max(1);
     ctx.transition_pointer_interaction(|drag| {
-        drag.begin_overview_card(crate::core_state::OverviewCardDrag::new(
+        drag.begin(crate::core_state::OverviewCardDrag::new(
             window, button, source, root, threshold,
         ))
         .is_ok()
@@ -255,10 +206,13 @@ pub fn begin_card_gesture(
 
 pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     let window = match ctx.core().interaction().drag.capture() {
-        Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window(),
+        Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window,
         _ => return false,
     };
-    let transition = ctx.transition_pointer_interaction(|drag| drag.update_overview_card(root));
+    let transition = ctx.transition_pointer_interaction(|drag| {
+        drag.captured_mut::<crate::core_state::OverviewCardDrag>()
+            .and_then(|drag| drag.update(root))
+    });
     if let Some(close_armed) = transition {
         let outline = close_armed
             .then_some(window)
@@ -270,10 +224,12 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
 }
 
 pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::MouseButton) -> bool {
-    let Some(action) = ctx.transition_pointer_interaction(|drag| drag.finish_overview_card(button))
-    else {
+    let Some(gesture) = ctx.transition_pointer_interaction(|drag| {
+        drag.finish::<crate::core_state::OverviewCardDrag>(button)
+    }) else {
         return false;
     };
+    let action = gesture.action();
     ctx.update_close_preview(None, None);
     match action {
         crate::core_state::OverviewCardAction::Select(window) => {
@@ -338,7 +294,10 @@ fn enter(ctx: &mut WmCtx<'_>) {
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     // An external mode transition (keyboard, IPC, lock, etc.) invalidates any
     // card press that has not reached release yet.
-    if ctx.transition_pointer_interaction(|drag| drag.cancel_overview_card()) {
+    if ctx.transition_pointer_interaction(|drag| {
+        drag.cancel::<crate::core_state::OverviewCardDrag>()
+            .is_some()
+    }) {
         ctx.update_close_preview(None, None);
     }
     let state = {

@@ -1,6 +1,5 @@
 pub(crate) mod model;
 pub mod paint;
-pub(crate) mod renderer;
 pub(crate) mod scene;
 pub mod status;
 pub(crate) mod text;
@@ -13,7 +12,7 @@ use std::collections::HashMap;
 /// Bar-owned runtime data shared by both render backends.
 #[derive(Debug, Clone, Default)]
 pub struct BarRuntime {
-    pub status_text: String,
+    pub(crate) status: status::StatusBlocks,
     /// Whether the active i3bar protocol stream advertised click events.
     pub status_click_events: bool,
     /// Width reserved at the right edge of the selected monitor's bar for
@@ -27,10 +26,8 @@ pub struct BarState {
     last_drawn_seq: u64,
     /// Per-monitor hit-test geometry built during bar rendering.
     hit_cache: HashMap<MonitorId, MonitorHitCache>,
-    status_cache_text: String,
-    status_cache: status::ParsedStatus,
-    status_cache_parsed: bool,
     pub runtime: BarRuntime,
+    pub(crate) status_sources: status::StatusSources,
     pub hover: BarHoverState,
     /// StatusNotifier tray integration: worker handle plus the item and
     /// hosted-menu models the scene renders and the click paths dispatch to.
@@ -101,12 +98,10 @@ pub struct SystrayHitSlot {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BarOverlayHit {
-    TrayMenu {
-        start: i32,
-        end: i32,
-        slots: Vec<SystrayHitSlot>,
-    },
+pub struct TrayMenuHit {
+    pub start: i32,
+    pub end: i32,
+    pub slots: Vec<SystrayHitSlot>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -119,9 +114,9 @@ pub struct MonitorHitCache {
     pub status_hit_x: i32,
     /// StatusNotifier item hit slots for compositor-rendered bars.
     pub systray_slots: Vec<SystrayHitSlot>,
-    /// Topmost transient hit layer. Coordinates covered by this layer never
-    /// fall through to normal bar controls.
-    pub overlay: Option<BarOverlayHit>,
+    /// Hosted tray menu, the topmost hit layer. Coordinates covered by it
+    /// never fall through to normal bar controls.
+    pub tray_menu: Option<TrayMenuHit>,
     pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
 }
 
@@ -153,32 +148,6 @@ impl BarState {
 
     pub fn replace_hit_cache(&mut self, monitor_id: crate::types::MonitorId, hit: MonitorHitCache) {
         self.hit_cache.insert(monitor_id, hit);
-    }
-
-    pub fn prepare_status_for_render(&mut self, text: &str) {
-        self.status_cache_text.clear();
-        self.status_cache_text.push_str(text);
-        self.status_cache = status::parse_status_fallback(text);
-        self.status_cache_parsed = false;
-    }
-
-    fn ensure_status_cached(&mut self, text: &str) {
-        if self.status_cache_text.as_str() != text || !self.status_cache_parsed {
-            self.status_cache_text.clear();
-            self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status(text.as_bytes());
-            self.status_cache_parsed = true;
-        }
-    }
-
-    pub(crate) fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
-        self.ensure_status_cached(text);
-        self.status_cache.items.as_slice()
-    }
-
-    pub(crate) fn parsed_status_for_text(&mut self, text: &str) -> &status::ParsedStatus {
-        self.ensure_status_cached(text);
-        &self.status_cache
     }
 
     fn status_hover_gesture(&self, monitor_id: MonitorId, bar_position: Point) -> Gesture {
@@ -290,20 +259,13 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     };
     let bar_position = Point::new(root.x - bar_rect.x, root.y - bar_rect.y);
     let output_position = Point::new(root.x - output_origin.x, root.y - output_origin.y);
-    let status_text = ctx.core().bar.runtime.status_text.clone();
-    let parsed = ctx
-        .core_mut()
-        .bar
-        .parsed_status_for_text(&status_text)
-        .clone();
-    let click_targets = ctx
-        .core()
-        .bar
+    let bar = &ctx.core().bar;
+    let click_targets = bar
         .monitor_hit_cache(monitor_id)
         .map(|h| h.status_click_targets.as_slice())
         .unwrap_or(&[]);
-    status::emit_i3bar_status_click(
-        &parsed,
+    if let Some(event) = status::i3_click_event(
+        &bar.runtime.status,
         click_targets,
         status::StatusClickGeometry {
             root_position: root,
@@ -312,26 +274,51 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         },
         button_code,
         clean_state,
-    );
+    ) {
+        bar.status_sources.send_click(event);
+    }
+}
+
+/// Record hit geometry as if every bar had been rendered, using a fixed-width
+/// font.
+#[cfg(test)]
+pub(crate) fn render_hit_caches_for_test(core: &mut CoreCtx) {
+    struct FixedWidthPainter;
+
+    impl paint::BarPainter for FixedWidthPainter {
+        fn text_width(&mut self, text: &str) -> i32 {
+            text.chars().count() as i32 * 8
+        }
+
+        fn set_scheme(&mut self, _scheme: paint::BarScheme) {}
+
+        fn rect(&mut self, _bounds: Rect, _invert: bool) {}
+
+        fn text(
+            &mut self,
+            bounds: Rect,
+            _lpad: i32,
+            _text: &str,
+            _invert: bool,
+            _detail_height: i32,
+        ) -> i32 {
+            bounds.right()
+        }
+
+        fn blit_rgba(&mut self, _destination: Rect, _source_size: Size, _src_rgba: &[u8]) {}
+    }
+
+    for snapshot in scene::build_monitor_snapshots(core, 0) {
+        let hit = scene::render_monitor_snapshot(&snapshot, &mut FixedWidthPainter);
+        core.bar.replace_hit_cache(snapshot.monitor_id, hit);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{BarHoverState, BarState, MonitorHitCache};
-    use crate::bar::status::{StatusClickTarget, StatusItem};
+    use crate::bar::status::StatusClickTarget;
     use crate::types::{Gesture, MonitorId, Point, Rect};
-
-    #[test]
-    fn prepared_status_is_parsed_on_first_cache_read() {
-        let text = r#"[{"full_text":"cpu","name":"cpu"}]"#;
-        let mut bar = BarState::default();
-
-        bar.prepare_status_for_render(text);
-
-        let parsed = bar.parsed_status_for_text(text);
-        assert!(parsed.i3bar.is_some());
-        assert!(matches!(parsed.items.first(), Some(StatusItem::I3Block(_))));
-    }
 
     #[test]
     fn hover_is_only_visible_on_its_own_monitor() {

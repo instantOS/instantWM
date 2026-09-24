@@ -1,7 +1,6 @@
 use crate::client::PendingLaunch;
 use crate::config::ModeConfig;
 use crate::config::appearance::ColorConfig;
-use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
 use std::collections::{BTreeSet, HashMap, VecDeque};
@@ -94,8 +93,9 @@ impl WindowConfig {
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DerivedState {
     pub display: DisplayConfig,
-    pub bar_height: i32,
-    pub bar_horizontal_padding: i32,
+    /// Sanitized `[monitors]` policy, rebuilt whenever monitor config applies.
+    #[serde(skip)]
+    pub monitor_policy: crate::output_mirror::MonitorPolicy,
 }
 
 /// Backend presenting the hosted StatusNotifier context menu.
@@ -327,7 +327,6 @@ pub struct EffectiveConfig {
     pub theme: crate::config::config_toml::ColorTheme,
     pub bindings: BindingConfig,
     pub fonts: FontConfig,
-    pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
     /// Resolved keyboard settings. The current layout index remains runtime
@@ -342,18 +341,18 @@ pub struct EffectiveConfig {
     pub hooks: Vec<crate::config::hooks::Hook>,
 }
 
+impl EffectiveConfig {
+    pub fn bar_metrics(&self) -> BarMetrics {
+        self.fonts.bar_metrics(self.bar.height)
+    }
+}
+
 impl Default for EffectiveConfig {
     fn default() -> Self {
         crate::config::default_config(crate::backend::BackendKind::Wayland)
     }
 }
 
-/// Backend-neutral state owned by the window manager.
-///
-/// The authoritative client/monitor/tag graph lives in `model`; configuration
-/// and transient interaction state are deliberately kept alongside it rather
-/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
-/// a single borrow boundary without mixing backend resources into core state.
 /// Ephemeral pointer/keyboard/outline state that changes at input frequency.
 ///
 /// Grouping it separately from `model`/`config`/`derived` makes the
@@ -376,6 +375,12 @@ pub struct InteractionState {
         Option<crate::layouts::manager::PointerPlacementPreviewCache>,
 }
 
+/// Backend-neutral state owned by the window manager.
+///
+/// The authoritative client/monitor/tag graph lives in `model`; configuration
+/// and transient interaction state are deliberately kept alongside it rather
+/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
+/// a single borrow boundary without mixing backend resources into core state.
 #[derive(Default)]
 pub struct CoreState {
     pub model: WmModel,

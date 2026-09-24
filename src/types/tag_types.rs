@@ -4,7 +4,6 @@
 //! approach with semantic, type-safe alternatives that improve DX and prevent bugs.
 
 use std::ops::{BitAnd, BitOr, BitXor, Not};
-use std::str::FromStr;
 
 use crate::types::{MAX_TAGS, core::SCRATCHPAD_MASK};
 
@@ -309,86 +308,18 @@ impl From<TagMask> for TagSelection {
     }
 }
 
-/// A newtype for monitor directions to prevent mixing with other i32 values.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    bincode::Decode,
-    bincode::Encode,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-pub struct MonitorDirection(pub i32);
+/// Direction to an adjacent monitor in spatial order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum MonitorDirection {
+    #[default]
+    Next,
+    #[value(alias = "previous")]
+    Prev,
+}
 
 impl MonitorDirection {
-    /// Move to the next monitor (right/down).
-    pub const NEXT: Self = Self(1);
-    /// Move to the previous monitor (left/up).
-    pub const PREV: Self = Self(-1);
-
-    /// Create a direction from an arbitrary value.
-    pub fn new(value: i32) -> Self {
-        Self(value.signum())
-    }
-
-    /// Get the raw direction value.
-    pub fn value(&self) -> i32 {
-        self.0
-    }
-
-    /// Check if this is a "next" direction.
-    pub fn is_next(&self) -> bool {
-        self.0 > 0
-    }
-
-    /// Check if this is a "previous" direction.
-    pub fn is_prev(&self) -> bool {
-        self.0 < 0
-    }
-}
-
-impl Default for MonitorDirection {
-    fn default() -> Self {
-        Self::NEXT
-    }
-}
-
-impl FromStr for MonitorDirection {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "next" | "right" | "down" | "1" => Ok(Self::NEXT),
-            "prev" | "previous" | "left" | "up" | "-1" => Ok(Self::PREV),
-            _ => Err(()),
-        }
-    }
-}
-
-impl clap::ValueEnum for MonitorDirection {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[Self::NEXT, Self::PREV]
-    }
-
-    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
-        match self.0 {
-            1 => Some(clap::builder::PossibleValue::new("next")),
-            -1 => Some(clap::builder::PossibleValue::new("prev")),
-            _ => None,
-        }
-    }
-
-    fn from_str(s: &str, _ignore_case: bool) -> Result<Self, String> {
-        FromStr::from_str(s).map_err(|_| format!("Invalid direction: {}", s))
-    }
-}
-
-impl From<i32> for MonitorDirection {
-    fn from(value: i32) -> Self {
-        Self::new(value)
+    pub fn is_next(self) -> bool {
+        self == Self::Next
     }
 }
 

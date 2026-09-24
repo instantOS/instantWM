@@ -54,7 +54,7 @@ pub fn event_loop_tick_with_options(
     if crate::systray::instantmenu::drive_instantmenu_menu(wm) {
         wm.bar.mark_dirty();
     }
-    let status_handled = crate::bar::status::drain_internal_status_updates(wm);
+    let status_handled = wm.bar.drain_status_updates();
     // A finished region selection may resize a window, so it drains before
     // pending work to let the same tick apply the resulting layout.
     let region_selection_applied = crate::mouse::slop::drain_region_selection(wm);
@@ -172,15 +172,11 @@ pub fn init_keyboard_layout(wm: &mut Wm) {
 /// Spawn the configured status bar command, the auto-detected
 /// `i3status-rs`, or the built-in default (in that order of
 /// precedence).
-pub fn spawn_status_bar(wm: &Wm) {
+pub fn spawn_status_bar(wm: &mut Wm) {
     crate::bar::status::sync_visibility(wm);
-    if let Some(ref cmd) = wm.core.config.status_command {
-        crate::bar::status::spawn_status_command(cmd);
-    } else if crate::bar::status::is_i3status_rs_available() {
-        crate::bar::status::spawn_status_command("i3status-rs");
-    } else {
-        crate::bar::status::spawn_default_status();
-    }
+    wm.bar
+        .status_sources
+        .start(wm.core.config.status_command.as_deref());
 }
 
 /// Run autostart, user-defined `exec_once` and `exec` commands.

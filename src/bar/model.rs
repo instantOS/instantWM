@@ -1,4 +1,4 @@
-use crate::bar::{BarOverlayHit, MonitorHitCache, TagHitRange, TitleHitRange};
+use crate::bar::{MonitorHitCache, TrayMenuHit};
 use crate::contexts::CoreCtx;
 use crate::model::WmModel;
 use crate::types::*;
@@ -55,8 +55,6 @@ pub(crate) fn distribute_cells(total: i32, n: i32) -> Vec<i32> {
 }
 
 /// Walk a `MonitorHitCache` to resolve a local-x coordinate into a `BarPosition`.
-/// This is the single source of truth for hit-testing; both the cached and the
-/// fallback paths go through here.
 pub(crate) fn hit_test(
     hit: &MonitorHitCache,
     monitor: &Monitor,
@@ -65,7 +63,7 @@ pub(crate) fn hit_test(
     local_x: i32,
 ) -> BarPosition {
     if is_selected_monitor
-        && let Some(BarOverlayHit::TrayMenu { start, end, slots }) = &hit.overlay
+        && let Some(TrayMenuHit { start, end, slots }) = &hit.tray_menu
         && local_x >= *start
         && local_x < *end
     {
@@ -134,19 +132,13 @@ pub(crate) fn hit_test(
 
 /// Resolve the logical bar region for `local_x` on `monitor`.
 ///
-/// Prefers the pre-built hit cache populated during rendering; falls back to
-/// computing a temporary one from the same utility functions.
+/// Uses the hit geometry recorded by the last render; a bar that was never
+/// rendered has no interactive regions yet.
 pub(crate) fn bar_position_at_x(monitor: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
-    let is_selmon = core.model().expect_selected_monitor().num == monitor.num;
-    let owned;
-    let hit: &MonitorHitCache = match core.bar.monitor_hit_cache(monitor.id()) {
-        Some(h) => h,
-        None => {
-            owned = build_fallback_hit_cache(monitor, core);
-            &owned
-        }
+    let Some(hit) = core.bar.monitor_hit_cache(monitor.id()) else {
+        return BarPosition::Root;
     };
-
+    let is_selmon = core.model().expect_selected_monitor().num == monitor.num;
     hit_test(hit, monitor, core.config().systray.show, is_selmon, local_x)
 }
 
@@ -156,109 +148,6 @@ pub(crate) fn title_hit_slot(hit: &MonitorHitCache, local_x: i32) -> Option<usiz
     hit.title_ranges
         .iter()
         .position(|range| local_x >= range.start && local_x < range.end)
-}
-
-/// Build a `MonitorHitCache` from scratch using the same utility functions that
-/// the renderer uses, for when the render-time cache is not yet available.
-pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
-    let is_selmon = core.model().expect_selected_monitor().num == mon.num;
-    let layout_symbol = if core.model().is_overview_active_on(mon) {
-        "OVR"
-    } else {
-        mon.layout_symbol_for_mask(mon.selected_tags())
-    };
-    let bar_layout_symbol_width =
-        layout_symbol.len() as i32 * 8 + core.derived().bar_horizontal_padding;
-    let bar_height = mon.bar_height;
-
-    // ── Tag ranges ────────────────────────────────────────────────────────
-    let occupied = mon.occupied_tags(&core.model().clients);
-    let visible = crate::tags::bar::visible_tags(core.state(), mon, occupied);
-    let mut tag_ranges: Vec<TagHitRange> = Vec::new();
-    let mut acc = mon.startmenu_size;
-    for tag in &visible {
-        tag_ranges.push(TagHitRange {
-            start: acc,
-            end: acc + tag.width,
-            tag_index: tag.tag_index,
-        });
-        acc += tag.width;
-    }
-    let tag_end = acc;
-
-    // ── Layout symbol ─────────────────────────────────────────────────────
-    let layout_start = tag_end;
-    let layout_end = tag_end + bar_layout_symbol_width;
-
-    // ── Shutdown button ───────────────────────────────────────────────────
-    let shutdown_end = if mon.selected.is_none() {
-        layout_end + bar_height
-    } else {
-        layout_end
-    };
-
-    // ── Status text ───────────────────────────────────────────────────────
-    // Mirrors the render path's reservation: compositor-rendered StatusNotifier
-    // icons plus the external XEmbed strip.
-    let tray_shown = core.config().systray.show && is_selmon;
-    let external_tray_width = if tray_shown {
-        core.bar.runtime.external_tray_width.max(0)
-    } else {
-        0
-    };
-    let systray_w = if tray_shown && !core.bar.systray_host.tray.items.is_empty() {
-        crate::systray::layout(
-            &core.bar.systray_host.tray,
-            None,
-            mon.work_rect().w,
-            mon.bar_height,
-            core.config().systray.spacing,
-            external_tray_width,
-        )
-        .total_width
-            + external_tray_width
-    } else {
-        external_tray_width
-    };
-    let status_hit_x = mon.work_rect().w - systray_w;
-
-    // ── Window title ranges ───────────────────────────────────────────────
-    let title_clients = mon.bar_client_order(&core.model().clients);
-    let n = title_clients.len() as i32;
-
-    let mut title_ranges: Vec<TitleHitRange> = Vec::new();
-    if n > 0 {
-        let title_area_start = shutdown_end;
-        let total_width = if mon.bar_clients_width > 0 {
-            mon.bar_clients_width + 1
-        } else {
-            (mon.work_rect().w - title_area_start).max(0)
-        };
-        let mut cell_start = title_area_start;
-        for (win, this_width) in title_clients
-            .into_iter()
-            .zip(distribute_cells(total_width, n))
-        {
-            title_ranges.push(TitleHitRange {
-                start: cell_start,
-                end: cell_start + this_width,
-                win,
-            });
-            cell_start += this_width;
-        }
-    }
-
-    MonitorHitCache {
-        tag_ranges,
-        title_ranges,
-        layout_start,
-        layout_end,
-        shutdown_end,
-        status_hit_x,
-        systray_slots: Vec::new(),
-        overlay: None,
-        status_click_targets: Vec::new(),
-    }
 }
 
 #[cfg(test)]
@@ -276,7 +165,7 @@ mod tests {
                 start: 40,
                 end: 80,
             }],
-            overlay: Some(BarOverlayHit::TrayMenu {
+            tray_menu: Some(TrayMenuHit {
                 start: 40,
                 end: 80,
                 slots: vec![SystrayHitSlot {

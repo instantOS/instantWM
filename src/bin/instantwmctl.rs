@@ -1,8 +1,10 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::{Cli, IpcClient, format_response, get_default_socket};
-use instantwm::ipc_types::{IpcCommand, Response};
+use ctl::commands::{ConfigAction, TestAction};
+use ctl::format::print_json;
+use ctl::{Cli, CommandKind, format_response};
+use instantwm::ipc_types::{IpcCommand, Response, TestCommand, WindowCommand};
 use std::time::{Duration, Instant};
 
 fn main() {
@@ -16,157 +18,68 @@ fn main() {
     }
 
     let cli = Cli::parse();
+    let (json, ignore_version) = (cli.json, cli.ignore_version_mismatches);
 
-    // `config list <prefix>` narrows the full list client-side after the IPC
-    // round-trip, so capture the prefix here and apply it to the response.
-    let config_list_prefix = match &cli.command {
-        ctl::CommandKind::Config {
-            action: ctl::commands::ConfigAction::List { prefix },
-        } => prefix.clone(),
-        _ => None,
+    let command = match cli.command.into_ipc() {
+        Ok(IpcCommand::UpdateStatus(text)) if text == "-" => {
+            return status_from_stdin(ignore_version);
+        }
+        Ok(command) => command,
+        Err(local) => {
+            if let Err(message) = run_local(*local, json, ignore_version) {
+                exit_with_error(&message);
+            }
+            return;
+        }
     };
 
-    // Validate the prefix up front so a bad section errors before we bother the
-    // running WM.
-    if let Some(prefix) = &config_list_prefix
-        && let Err(msg) = validate_list_prefix(prefix)
-    {
-        eprintln!("instantwmctl: {msg}");
-        std::process::exit(1);
+    match ctl::ipc::send(command, ignore_version) {
+        Ok(response) => format_response(&response, json),
+        Err(error) => exit_with_error(&error.to_string()),
     }
+}
 
-    if handle_local_test_command(&cli) {
-        return;
-    }
-
-    let command = match &cli.command {
-        ctl::CommandKind::Config {
-            action: ctl::commands::ConfigAction::Default,
+/// Commands answered by the client itself, possibly through several IPC round
+/// trips (which must not block the compositor's event loop).
+fn run_local(command: CommandKind, json: bool, ignore_version: bool) -> Result<(), String> {
+    match command {
+        CommandKind::Action { .. } => {
+            let actions = instantwm::actions::action_infos();
+            if json {
+                print_json(&actions);
+            } else {
+                print!("{}", instantwm::actions::format_action_list(&actions));
+            }
+            Ok(())
+        }
+        CommandKind::Config {
+            action: ConfigAction::Default,
         } => {
             println!(
                 "{}",
                 instantwm::config::config_toml::generate_commented_config()
             );
-            return;
+            Ok(())
         }
-        ctl::CommandKind::Config { .. } => cli.command.clone().into(),
-        ctl::CommandKind::Action { name, args, list } => {
-            if *list {
-                let actions = instantwm::config::keybind_config::get_actions_for_ipc();
-                let response = instantwm::ipc_types::Response::ActionList(actions);
-                format_response(&response, cli.json);
-                return;
-            }
-            let name = match name {
-                Some(name) => name.clone(),
-                None => {
-                    eprintln!(
-                        "instantwmctl: action name required (use --list to see available actions)"
-                    );
-                    std::process::exit(1);
-                }
-            };
-            IpcCommand::RunAction {
-                name,
-                args: args.clone(),
-            }
-        }
-        _ => cli.command.clone().into(),
-    };
-
-    if let IpcCommand::UpdateStatus(text) = &command
-        && text == "-"
-    {
-        handle_status_from_stdin(cli.ignore_version_mismatches);
-        return;
-    }
-
-    let socket = get_default_socket();
-    let mut client = match IpcClient::connect(&socket) {
-        Ok(c) => c,
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                eprintln!(
-                    "instantwmctl: instantWM is not running (socket not found: {})",
-                    socket
-                );
-                eprintln!("Make sure instantWM is started before using instantwmctl.");
-            } else {
-                eprintln!("instantwmctl: connect failed ({}): {}", socket, err);
-            }
-            std::process::exit(1);
-        }
-    };
-
-    let response = match client.send(command, cli.ignore_version_mismatches) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("instantwmctl: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let response = match config_list_prefix {
-        Some(prefix) => filter_config_list(response, &prefix),
-        None => response,
-    };
-
-    format_response(&response, cli.json);
-}
-
-/// Execute test operations that require multiple IPC round trips without
-/// blocking the compositor's event loop.
-fn handle_local_test_command(cli: &Cli) -> bool {
-    use ctl::commands::{TestAction, TestPointerAction, TestWaitAction};
-
-    let ctl::CommandKind::Test { action } = &cli.command else {
-        return false;
-    };
-
-    match action {
-        TestAction::Pointer {
+        CommandKind::Test {
             action:
-                TestPointerAction::Path {
+                TestAction::PointerPath {
                     points,
                     duration_ms,
                     hz,
                     normalized,
                 },
-        } => {
-            if let Err(message) = run_pointer_path(
-                points,
-                *duration_ms,
-                *hz,
-                *normalized,
-                cli.ignore_version_mismatches,
-                cli.json,
-            ) {
-                exit_with_error(&message);
-            }
-            true
-        }
-        TestAction::Wait {
+        } => run_pointer_path(&points, duration_ms, hz, normalized, ignore_version, json),
+        CommandKind::Test {
             action:
-                TestWaitAction::Windows {
+                TestAction::WaitWindows {
                     count,
                     timeout_ms,
                     poll_ms,
                     exact,
                 },
-        } => {
-            if let Err(message) = wait_for_windows(
-                *count,
-                *timeout_ms,
-                *poll_ms,
-                *exact,
-                cli.ignore_version_mismatches,
-                cli.json,
-            ) {
-                exit_with_error(&message);
-            }
-            true
-        }
-        _ => false,
+        } => wait_for_windows(count, timeout_ms, poll_ms, exact, ignore_version, json),
+        other => unreachable!("{other:?} is sent to the compositor"),
     }
 }
 
@@ -216,7 +129,7 @@ fn run_pointer_path(
         let x = x0 + (x1 - x0) * fraction;
         let y = y0 + (y1 - y0) * fraction;
         send_once(
-            IpcCommand::Test(instantwm::ipc_types::TestCommand::PointerMove { x, y, normalized }),
+            IpcCommand::Test(TestCommand::PointerMove { x, y, normalized }),
             ignore_version,
         )?;
 
@@ -264,7 +177,7 @@ fn wait_for_windows(
     let timeout = Duration::from_millis(timeout_ms);
     loop {
         let response = send_once(
-            IpcCommand::Window(instantwm::ipc_types::WindowCommand::List(None)),
+            IpcCommand::Window(WindowCommand::List { window_id: None }),
             ignore_version,
         )?;
         let Response::WindowList(windows) = response else {
@@ -299,13 +212,7 @@ fn wait_for_windows(
 }
 
 fn send_once(command: IpcCommand, ignore_version: bool) -> Result<Response, String> {
-    let socket = get_default_socket();
-    let mut client = IpcClient::connect(&socket)
-        .map_err(|error| format!("connect failed ({socket}): {error}"))?;
-    match client
-        .send(command, ignore_version)
-        .map_err(|error| error.to_string())?
-    {
+    match ctl::ipc::send(command, ignore_version).map_err(|error| error.to_string())? {
         Response::Err(message) => Err(message),
         response => Ok(response),
     }
@@ -316,819 +223,109 @@ fn exit_with_error(message: &str) -> ! {
     std::process::exit(1);
 }
 
-/// Reject prefixes whose top-level section isn't listable, with a helpful
-/// message. Returns `Ok(())` for any prefix under a known section (including
-/// unknown sub-fields — those simply produce an empty list downstream).
-///
-/// The set of valid sections comes from the WM (`instantwm::ipc::config`) so
-/// this stays a single source of truth rather than a parallel list.
-fn validate_list_prefix(prefix: &str) -> Result<(), String> {
-    use instantwm::ipc::config::{RuntimeConfigSection, SectionStatus, section_status};
-    let section = prefix.split('.').next().unwrap_or(prefix);
-    match section_status(section) {
-        SectionStatus::Exposed => Ok(()),
-        SectionStatus::Hidden => Err(format!(
-            "'{section}' is derived from outputs and not exposed at runtime"
-        )),
-        SectionStatus::Unknown => Err(format!(
-            "unknown section '{section}' (known: {})",
-            RuntimeConfigSection::EXPOSED
-                .into_iter()
-                .map(RuntimeConfigSection::name)
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
-    }
-}
+/// Forward each stdin line as a status update (i3bar JSON headers skipped).
+fn status_from_stdin(ignore_version: bool) {
+    use std::io::BufRead;
 
-/// Narrow a `ConfigList` to keys under `prefix`.
-///
-/// A key matches when it equals `prefix` (a leaf key, e.g. `fonts.icon_size`) or
-/// sits beneath it (a section or `section.id`, e.g. `fonts` or
-/// `input.type:touchpad`). The trailing-dot check prevents `fonts` from
-/// matching a sibling like `fontsx`.
-fn filter_config_list(response: Response, prefix: &str) -> Response {
-    let dot = format!("{prefix}.");
-    match response {
-        Response::ConfigList(entries) => {
-            let filtered: Vec<_> = entries
-                .into_iter()
-                .filter(|(k, _)| k == prefix || k.starts_with(&dot))
-                .collect();
-            Response::ConfigList(filtered)
-        }
-        other => other,
-    }
-}
-
-fn handle_status_from_stdin(ignore_version_mismatches: bool) {
-    use std::io::{BufRead, Write};
-
-    let stdin = std::io::stdin();
-    let mut reader = stdin.lock();
-    let mut line = String::new();
-
-    while reader.read_line(&mut line).unwrap_or(0) > 0 {
-        let trim_line = line.trim();
-        if trim_line == "[" || trim_line.starts_with("{\"version\"") || trim_line.is_empty() {
-            line.clear();
+    for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+        let line = line.trim();
+        if line.is_empty() || line == "[" || line.starts_with("{\"version\"") {
             continue;
         }
-
-        let socket = get_default_socket();
-
-        if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&socket) {
-            let cmd = IpcCommand::UpdateStatus(trim_line.to_string());
-            let request = if ignore_version_mismatches {
-                instantwm::ipc_types::IpcRequest::new_ignore_version(cmd, true)
-            } else {
-                instantwm::ipc_types::IpcRequest::new(cmd)
-            };
-            if let Ok(data) = bincode::encode_to_vec(&request, bincode::config::standard()) {
-                let _ = stream.write_all(&data);
-            }
-        }
-        line.clear();
+        let _ = ctl::ipc::send(IpcCommand::UpdateStatus(line.to_string()), ignore_version);
     }
-    std::process::exit(0);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ctl::commands::ScratchpadAction;
-    use clap::Parser;
-    use instantwm::ipc_types::{ScratchpadInitialStatus, WindowCommand};
-    use instantwm::types::MonitorSelector;
+    use instantwm::ipc_types::{MonitorCommand, ScratchpadCommand, Transform};
 
-    #[test]
-    fn parses_reload_command() {
-        let cli = Cli::parse_from(["instantwmctl", "reload"]);
-        assert!(matches!(cli.command, ctl::CommandKind::Reload));
+    fn ipc(argv: &[&str]) -> IpcCommand {
+        let cli = Cli::parse_from(std::iter::once("instantwmctl").chain(argv.iter().copied()));
+        cli.command
+            .into_ipc()
+            .unwrap_or_else(|local| panic!("{local:?} is handled locally"))
     }
 
     #[test]
-    fn friendly_mutation_commands_compile_to_run_action() {
-        let cases = [
+    fn convenience_commands_compile_to_canonical_actions() {
+        for (argv, name, args) in [
             (
-                vec!["instantwmctl", "toggle", "alt-tag", "on"],
+                &["toggle", "alt-tag", "on"][..],
                 "toggle_alt_tag",
-                vec!["on"],
+                &["on"][..],
             ),
+            (&["toggle", "animated"], "toggle_animated", &[]),
+            (&["layout", "set", "grid"], "set_layout", &["grid"]),
+            (&["mode", "set", "resize"], "set_mode", &["resize"]),
+            (&["tag", "view", "4"], "view_tag", &["4"]),
+            (&["follow-mon", "prev"], "follow_mon", &["prev"]),
             (
-                vec!["instantwmctl", "layout", "set", "grid"],
-                "set_layout",
-                vec!["grid"],
+                &["spawn", "printf", "hello world"],
+                "spawn",
+                &["printf", "hello world"],
             ),
-            (
-                vec!["instantwmctl", "mode", "set", "resize"],
-                "set_mode",
-                vec!["resize"],
-            ),
-            (
-                vec!["instantwmctl", "tag", "view", "4"],
-                "view_tag",
-                vec!["4"],
-            ),
-        ];
-
-        for (argv, expected_name, expected_args) in cases {
-            let cli = Cli::parse_from(argv);
-            let command: IpcCommand = cli.command.into();
-            match command {
-                IpcCommand::RunAction { name, args } => {
-                    assert_eq!(name, expected_name);
-                    assert_eq!(args, expected_args);
+        ] {
+            match ipc(argv) {
+                IpcCommand::RunAction {
+                    name: actual_name,
+                    args: actual_args,
+                } => {
+                    assert_eq!(actual_name, name);
+                    assert_eq!(actual_args, args);
+                    let parsed = instantwm::actions::NamedAction::parse(&actual_name, &actual_args);
+                    assert!(parsed.is_ok(), "{argv:?}: {parsed:?}");
                 }
-                other => panic!("expected RunAction, got {other:?}"),
+                other => panic!("{argv:?}: expected RunAction, got {other:?}"),
             }
         }
     }
 
     #[test]
-    fn spawn_preserves_argv_in_the_canonical_action() {
-        let cli = Cli::parse_from(["instantwmctl", "spawn", "printf", "hello world"]);
-        let command: IpcCommand = cli.command.into();
-        assert!(matches!(
-            command,
-            IpcCommand::RunAction { name, args }
-                if name == "spawn" && args == ["printf", "hello world"]
-        ));
-    }
-
-    #[test]
-    fn mode_listing_remains_a_structured_query() {
-        let cli = Cli::parse_from(["instantwmctl", "mode", "list"]);
-        let command: IpcCommand = cli.command.into();
-        assert!(matches!(command, IpcCommand::ListModes));
-    }
-
-    #[test]
-    fn keybinds_listing_is_a_structured_query() {
-        let cli = Cli::parse_from(["instantwmctl", "keybinds"]);
-        assert!(matches!(cli.command.into(), IpcCommand::ListKeybinds));
-    }
-
-    #[test]
-    fn layout_queries_are_structured_and_cycling_maps_to_actions() {
-        let cli = Cli::parse_from(["instantwmctl", "layout", "list"]);
-        assert!(matches!(cli.command.into(), IpcCommand::LayoutList));
-
-        let cli = Cli::parse_from(["instantwmctl", "layout", "status"]);
-        assert!(matches!(cli.command.into(), IpcCommand::LayoutStatus));
-
-        let cli = Cli::parse_from(["instantwmctl", "layout", "prev"]);
-        assert!(matches!(
-            cli.command.into(),
-            IpcCommand::RunAction { name, .. } if name == "cycle_layout_prev"
-        ));
-    }
-
-    #[test]
-    fn parses_pending_tmp_rule_add_defaults_timeout_30s() {
-        let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "add", "--float"]);
-        match cli.command {
-            ctl::CommandKind::PendingTmpRule {
-                action:
-                    ctl::commands::PendingTmpRuleAction::Add {
-                        float,
-                        tile,
-                        timeout_ms,
-                        class,
-                        ..
-                    },
-            } => {
-                assert!(float);
-                assert!(!tile);
-                assert_eq!(timeout_ms, 30_000);
-                assert!(class.is_none());
-            }
-            other => panic!("expected PendingTmpRule Add, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parses_pending_tmp_rule_add_with_class_and_explicit_timeout() {
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "pending-tmp-rule",
-            "add",
-            "--class",
-            "mpv",
-            "--float",
-            "--tag",
-            "5",
-            "--timeout-ms",
-            "10000",
-        ]);
-        match cli.command {
-            ctl::CommandKind::PendingTmpRule {
-                action:
-                    ctl::commands::PendingTmpRuleAction::Add {
-                        class,
-                        float,
-                        tag,
-                        timeout_ms,
-                        tile,
-                        ..
-                    },
-            } => {
-                assert_eq!(class.as_deref(), Some("mpv"));
-                assert!(float);
-                assert!(!tile);
-                assert_eq!(tag, Some(5));
-                assert_eq!(timeout_ms, 10_000);
-            }
-            other => panic!("expected PendingTmpRule Add, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn pending_tmp_rule_add_rejects_simultaneous_float_and_tile() {
-        let cli = Cli::try_parse_from([
-            "instantwmctl",
-            "pending-tmp-rule",
-            "add",
-            "--float",
-            "--tile",
-        ]);
-        assert!(cli.is_err(), "clap should reject --float with --tile");
-    }
-
-    #[test]
-    fn pending_tmp_rule_add_rejects_zero_timeout() {
-        // Rust guarantees timeout_ms: u64, but the CLI defaults to 30_000 — the
-        // server (not clap) is responsible for rejecting --timeout-ms 0. We
-        // only assert that the flag is wired.
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "pending-tmp-rule",
-            "add",
-            "--timeout-ms",
-            "0",
-        ]);
-        match cli.command {
-            ctl::CommandKind::PendingTmpRule {
-                action: ctl::commands::PendingTmpRuleAction::Add { timeout_ms, .. },
-            } => assert_eq!(timeout_ms, 0),
-            other => panic!("expected PendingTmpRule Add, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parses_pending_tmp_rule_list_and_cancel() {
-        let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "list"]);
-        assert!(matches!(
-            cli.command,
-            ctl::CommandKind::PendingTmpRule {
-                action: ctl::commands::PendingTmpRuleAction::List,
-            }
-        ));
-
-        let cli = Cli::parse_from(["instantwmctl", "pending-tmp-rule", "cancel", "42"]);
-        match cli.command {
-            ctl::CommandKind::PendingTmpRule {
-                action: ctl::commands::PendingTmpRuleAction::Cancel { id },
-            } => assert_eq!(id, 42),
-            other => panic!("expected PendingTmpRule Cancel, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn pending_tmp_rule_add_translates_into_ipc_command() {
-        use instantwm::ipc_types::PendingTmpRuleCmd;
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "pending-tmp-rule",
-            "add",
-            "--class",
-            "mpv",
-            "--float",
-        ]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(cmd, IpcCommand::PendingTmpRule(_)));
-        if let IpcCommand::PendingTmpRule(PendingTmpRuleCmd::Add {
-            class,
-            is_floating,
-            timeout_ms,
-            ..
-        }) = cmd
-        {
-            assert_eq!(class.as_deref(), Some("mpv"));
-            assert_eq!(is_floating, Some(true));
-            assert_eq!(timeout_ms, 30_000);
-        }
-    }
-
-    #[test]
-    fn parses_pending_tmp_rule_add_geometry_borderless_and_monitor_name() {
-        use instantwm::ipc_types::PendingTmpRuleCmd;
-        use instantwm::types::{MonitorSelector, RuleGeometry};
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "pending-tmp-rule",
-            "add",
-            "--class",
-            "ins_freeze",
-            "--float",
-            "--borderless",
-            "--geometry",
-            "100,50,800,600",
-            "--on-monitor",
-            "DP-1",
-        ]);
-        let cmd: IpcCommand = cli.command.into();
-        if let IpcCommand::PendingTmpRule(PendingTmpRuleCmd::Add {
-            on_monitor,
-            geometry,
-            borderless,
-            ..
-        }) = cmd
-        {
-            assert_eq!(on_monitor, Some(MonitorSelector::Name("DP-1".to_owned())));
-            assert_eq!(
-                geometry,
-                Some(RuleGeometry {
-                    x: 100,
-                    y: 50,
-                    width: 800,
-                    height: 600,
-                })
-            );
-            assert!(borderless);
-        } else {
-            panic!("expected PendingTmpRule command");
-        }
-    }
-
-    #[test]
-    fn parses_monitor_switch_by_name() {
-        use instantwm::ipc_types::MonitorCommand;
-        use instantwm::types::MonitorSelector;
-        let cli = Cli::parse_from(["instantwmctl", "monitor", "switch", "DP-1"]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Switch { monitor }) if monitor == MonitorSelector::Name("DP-1".to_owned())
-        ));
-    }
-
-    #[test]
-    fn parses_monitor_set_mirror_flag() {
-        use instantwm::ipc_types::MonitorCommand;
-
-        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--mirror", "DP-1"]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Set { identifier, mirror: Some(target), .. })
-                if identifier == "DP-2" && target == "DP-1"
-        ));
-
-        // "none" maps to the empty clear sentinel.
-        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--mirror", "none"]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Set { mirror: Some(target), .. }) if target.is_empty()
-        ));
-
-        // Omitted --mirror stays None (= keep current mirror).
-        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--scale", "2.0"]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Set { mirror: None, scale, .. })
-                if scale == Some(2.0)
-        ));
-    }
-
-    #[test]
-    fn parses_monitor_set_mirror_fit_flag() {
-        use instantwm::ipc_types::{MirrorFit, MonitorCommand};
-
-        // Explicit fit parses into the enum.
-        let cli = Cli::parse_from([
-            "instantwmctl",
+    fn monitor_set_flattens_the_typed_monitor_config() {
+        let IpcCommand::Monitor(MonitorCommand::Set { identifier, config }) = ipc(&[
             "monitor",
             "set",
             "DP-2",
-            "--mirror-fit",
-            "cover",
-        ]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Set {
-                identifier,
-                mirror_fit: Some(MirrorFit::Cover),
-                ..
-            }) if identifier == "DP-2"
-        ));
-
-        // Omitted --mirror-fit stays None (= keep current fit).
-        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--scale", "2.0"]);
-        let cmd: IpcCommand = cli.command.into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Set { mirror_fit: None, scale, .. })
-                if scale == Some(2.0)
-        ));
-
-        // Fit combines with --mirror in a single command.
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "monitor",
-            "set",
-            "DP-2",
+            "--transform",
+            "90",
+            "--enable",
+            "false",
             "--mirror",
-            "DP-1",
-            "--mirror-fit",
-            "cover",
-        ]);
-        let cmd: IpcCommand = cli.command.into();
+            "none",
+        ]) else {
+            panic!("expected monitor set");
+        };
+        assert_eq!(identifier, "DP-2");
+        assert_eq!(config.transform, Some(Transform::Rotate90));
+        assert_eq!(config.enable, Some(false));
+        assert_eq!(config.mirror.as_deref(), Some("none"));
+        assert_eq!(config.scale, None);
+    }
+
+    #[test]
+    fn scratchpad_commands_default_to_the_shared_scratchpad_name() {
         assert!(matches!(
-            cmd,
-            IpcCommand::Monitor(MonitorCommand::Set {
-                mirror: Some(target),
-                mirror_fit: Some(MirrorFit::Cover),
-                ..
-            }) if target == "DP-1"
+            ipc(&["scratchpad", "show"]),
+            IpcCommand::Scratchpad(ScratchpadCommand::Show { name, all: false })
+                if name == instantwm::ipc_types::DEFAULT_SCRATCHPAD_NAME
         ));
+        assert!(
+            Cli::try_parse_from(["instantwmctl", "scratchpad", "hide", "term", "--all"]).is_err()
+        );
     }
 
     #[test]
-    fn parses_scratchpad_create_status_flag() {
-        let cli = Cli::parse_from([
-            "instantwmctl",
-            "scratchpad",
-            "create",
-            "term",
-            "--status",
-            "shown",
-        ]);
-
-        assert!(matches!(
-            cli.command,
-            ctl::CommandKind::Scratchpad {
-                action: ScratchpadAction::Create {
-                    name,
-                    window_id: None,
-                    status: ScratchpadInitialStatus::Shown,
-                    ..
-                }
-            } if name == "term"
-        ));
-    }
-
-    #[test]
-    fn scratchpad_create_defaults_to_hidden() {
-        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "create", "term"]);
-
-        assert!(matches!(
-            cli.command,
-            ctl::CommandKind::Scratchpad {
-                action: ScratchpadAction::Create {
-                    name,
-                    window_id: None,
-                    status: ScratchpadInitialStatus::Hidden,
-                    ..
-                }
-            } if name == "term"
-        ));
-    }
-
-    #[test]
-    fn scratchpad_create_defaults_name_when_omitted() {
-        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "create"]);
-
-        assert!(matches!(
-            cli.command,
-            ctl::CommandKind::Scratchpad {
-                action: ScratchpadAction::Create {
-                    name,
-                    window_id: None,
-                    status: ScratchpadInitialStatus::Hidden,
-                    ..
-                }
-            } if name == "instantwm_scratchpad"
-        ));
-    }
-
-    #[test]
-    fn parses_scratchpad_hide_all_flag() {
-        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "hide", "--all"]);
-
-        assert!(matches!(
-            cli.command,
-            ctl::CommandKind::Scratchpad {
-                action: ScratchpadAction::Hide {
-                    name: None,
-                    all: true
-                }
-            }
-        ));
-    }
-
-    #[test]
-    fn scratchpad_show_defaults_name_when_omitted() {
-        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "scratchpad", "show"])
-            .command
-            .into();
-
-        assert!(matches!(
-            cmd,
-            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Show(Some(name)))
-                if name == "instantwm_scratchpad"
-        ));
-    }
-
-    #[test]
-    fn scratchpad_hide_defaults_name_when_omitted() {
-        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "scratchpad", "hide"])
-            .command
-            .into();
-
-        assert!(matches!(
-            cmd,
-            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Hide(Some(name)))
-                if name == "instantwm_scratchpad"
-        ));
-    }
-
-    #[test]
-    fn parses_scratchpad_percentage_resize() {
-        let command: IpcCommand = Cli::parse_from([
-            "instantwmctl",
-            "scratchpad",
-            "resize",
-            "menu",
-            "--width",
-            "50",
-            "--height",
-            "60",
-        ])
-        .command
-        .into();
-
-        assert!(matches!(
-            command,
-            IpcCommand::Scratchpad(
-                instantwm::ipc_types::ScratchpadCommand::Resize {
-                    name,
-                    width_percent: 50,
-                    height_percent: 60,
-                }
-            ) if name == "menu"
-        ));
-    }
-
-    #[test]
-    fn parses_scratchpad_restore_by_name() {
-        let command: IpcCommand =
-            Cli::parse_from(["instantwmctl", "scratchpad", "restore", "menu"])
-                .command
-                .into();
-
-        assert!(matches!(
-            command,
-            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Restore {
-                name: Some(name),
-                window_id: None,
-            }) if name == "menu"
-        ));
-    }
-
-    #[test]
-    fn parses_scratchpad_restore_by_window_id() {
-        let command: IpcCommand =
-            Cli::parse_from(["instantwmctl", "scratchpad", "restore", "--window-id", "42"])
-                .command
-                .into();
-
-        assert!(matches!(
-            command,
-            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Restore {
-                name: None,
-                window_id: Some(42),
-            })
-        ));
-    }
-
-    #[test]
-    fn parses_window_info_command() {
-        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "window", "info", "42"])
-            .command
-            .into();
-
-        assert!(matches!(
-            cmd,
-            IpcCommand::Window(WindowCommand::Info(Some(42)))
-        ));
-    }
-
-    #[test]
-    fn parses_window_resize_command() {
-        let cmd: IpcCommand = Cli::parse_from([
-            "instantwmctl",
-            "window",
-            "resize",
-            "42",
-            "--monitor",
-            "1",
-            "--x",
-            "10",
-            "--y",
-            "20",
-            "--width",
-            "800",
-            "--height",
-            "600",
-        ])
-        .command
-        .into();
-
-        assert!(matches!(
-            cmd,
-            IpcCommand::Window(WindowCommand::Resize {
-                window_id: Some(42),
-                monitor: Some(monitor),
-                x: 10,
-                y: 20,
-                width: 800,
-                height: 600,
-            }) if monitor == MonitorSelector::Index(1)
-        ));
-    }
-
-    #[test]
-    fn parses_window_resize_without_monitor() {
-        let cmd: IpcCommand = Cli::parse_from([
-            "instantwmctl",
-            "window",
-            "resize",
-            "--x",
-            "10",
-            "--y",
-            "20",
-            "--width",
-            "800",
-            "--height",
-            "600",
-        ])
-        .command
-        .into();
-
-        assert!(matches!(
-            cmd,
-            IpcCommand::Window(WindowCommand::Resize {
-                window_id: None,
-                monitor: None,
-                x: 10,
-                y: 20,
-                width: 800,
-                height: 600,
-            })
-        ));
-    }
-
-    #[test]
-    fn parses_normalized_test_pointer_move() {
-        let cmd: IpcCommand = Cli::parse_from([
-            "instantwmctl",
-            "test",
-            "pointer",
-            "move",
-            "0.5",
-            "0.01",
-            "--normalized",
-        ])
-        .command
-        .into();
-
-        assert!(matches!(
-            cmd,
-            IpcCommand::Test(instantwm::ipc_types::TestCommand::PointerMove {
-                x: 0.5,
-                y: 0.01,
-                normalized: true,
-            })
-        ));
-    }
-
-    #[test]
-    fn parses_test_window_tag() {
-        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "test", "window", "tag", "42", "3"])
-            .command
-            .into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Test(instantwm::ipc_types::TestCommand::TagWindow {
-                window_id: 42,
-                tag: 3,
-            })
-        ));
-    }
-
-    #[test]
-    fn config_list_accepts_prefix_arg() {
-        let cli = Cli::parse_from(["instantwmctl", "config", "list", "fonts"]);
-        match cli.command {
-            ctl::CommandKind::Config {
-                action: crate::ctl::commands::ConfigAction::List { prefix },
-            } => assert_eq!(prefix.as_deref(), Some("fonts")),
-            other => panic!("expected Config List, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn config_list_prefix_is_optional() {
-        let cli = Cli::parse_from(["instantwmctl", "config", "list"]);
-        match cli.command {
-            ctl::CommandKind::Config {
-                action: crate::ctl::commands::ConfigAction::List { prefix },
-            } => assert!(prefix.is_none()),
-            other => panic!("expected Config List, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn config_list_maps_to_unfiltered_ipc_list() {
-        // The prefix is client-side only; the WM always receives a bare List.
-        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "config", "list", "fonts"])
-            .command
-            .into();
-        assert!(matches!(
-            cmd,
-            IpcCommand::Config(instantwm::ipc_types::ConfigCommand::List)
-        ));
-    }
-
-    #[test]
-    fn validate_list_prefix_accepts_known_sections() {
-        assert!(validate_list_prefix("fonts").is_ok());
-        assert!(validate_list_prefix("fonts.icon_size").is_ok());
-        assert!(validate_list_prefix("input").is_ok());
-        // Map-section ids contain dots/colons; the section is still `input`.
-        assert!(validate_list_prefix("input.type:touchpad").is_ok());
-    }
-
-    #[test]
-    fn validate_list_prefix_rejects_unknown_section() {
-        assert!(validate_list_prefix("frobnicate").is_err());
-        assert!(validate_list_prefix("frobnicate.field").is_err());
-    }
-
-    #[test]
-    fn validate_list_prefix_explains_display_is_hidden() {
-        let err = validate_list_prefix("display.width").unwrap_err();
-        assert!(err.contains("derived"), "got: {err}");
-    }
-
-    #[test]
-    fn filter_config_list_narrows_to_section() {
-        let entries = vec![
-            ("fonts.icon_family".to_string(), "x".to_string()),
-            ("fonts.text_family".to_string(), "y".to_string()),
-            ("layout.inner_gap".to_string(), "0".to_string()),
-        ];
-        match filter_config_list(Response::ConfigList(entries), "fonts") {
-            Response::ConfigList(rows) => {
-                assert_eq!(rows.len(), 2);
-                assert!(rows.iter().all(|(k, _)| k.starts_with("fonts.")));
-            }
-            other => panic!("expected ConfigList, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn filter_config_list_matches_single_leaf() {
-        let entries = vec![
-            ("fonts.icon_family".to_string(), "x".to_string()),
-            ("fonts.text_family".to_string(), "y".to_string()),
-        ];
-        match filter_config_list(Response::ConfigList(entries), "fonts.text_family") {
-            Response::ConfigList(rows) => {
-                assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0].0, "fonts.text_family");
-            }
-            other => panic!("expected ConfigList, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn filter_config_list_does_not_match_sibling_prefix() {
-        // `fonts` must not match a `fontsx.*` sibling (trailing-dot check).
-        let entries = vec![
-            ("fonts.text_family".to_string(), "y".to_string()),
-            ("fontsx.thing".to_string(), "z".to_string()),
-        ];
-        match filter_config_list(Response::ConfigList(entries), "fonts") {
-            Response::ConfigList(rows) => {
-                assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0].0, "fonts.text_family");
-            }
-            other => panic!("expected ConfigList, got {other:?}"),
+    fn client_side_commands_are_not_sent() {
+        for argv in [
+            &["action", "--list"][..],
+            &["config", "default"],
+            &["test", "pointer-path", "0,0", "1,1"],
+            &["test", "wait-windows", "2"],
+        ] {
+            let cli = Cli::parse_from(std::iter::once("instantwmctl").chain(argv.iter().copied()));
+            assert!(cli.command.into_ipc().is_err(), "{argv:?}");
         }
     }
 }

@@ -13,6 +13,7 @@ const EDGE_MARGIN_Y: i32 = 40;
 const DEFAULT_WIDTH_PERCENT: u32 = 50;
 const DEFAULT_HEIGHT_PERCENT: u32 = 60;
 
+pub const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 pub const DEFAULT_EDGE_SCRATCHPAD_NAME: &str = "instantwm_edge_scratchpad";
 pub(crate) const SCRATCHPAD_IDENTITY_PREFIX: &str = "scratchpad_";
 

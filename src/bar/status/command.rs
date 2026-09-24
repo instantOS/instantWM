@@ -1,12 +1,14 @@
+use super::parse::{parse_i3bar_json, parse_status, plain_text_status};
 use super::{
-    I3BarHeader, I3BarSignals, I3ClickEvent, parse::parse_i3bar_json, parse_i3bar_header,
+    I3BarHeader, I3BarSignals, I3ClickEvent, StatusBlocks, parse_i3bar_header,
     runtime::write_i3bar_click_event,
 };
+use calloop::ping::{Ping, PingSource};
 use std::io::Write;
 use std::mem;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
@@ -26,11 +28,34 @@ enum StatusSourceKind {
 struct RunningStatusSource {
     kind: StatusSourceKind,
     process: Arc<StatusProcess>,
+    updates: Receiver<StatusUpdate>,
 }
 
-impl RunningStatusSource {
-    fn stop(&self) {
-        self.process.stop();
+#[derive(Debug)]
+pub(super) struct StatusUpdate {
+    pub blocks: StatusBlocks,
+    pub click_events: bool,
+}
+
+/// Worker-side end of a status source's update stream.
+struct StatusSink {
+    updates: Sender<StatusUpdate>,
+    wake: Option<Ping>,
+}
+
+impl StatusSink {
+    fn send(&self, blocks: StatusBlocks, click_events: bool) {
+        if self
+            .updates
+            .send(StatusUpdate {
+                blocks,
+                click_events,
+            })
+            .is_ok()
+            && let Some(wake) = self.wake.as_ref()
+        {
+            wake.ping();
+        }
     }
 }
 
@@ -53,15 +78,13 @@ struct StatusProcessState {
 
 #[derive(Debug)]
 struct StatusProcess {
-    id: u64,
     stopped: AtomicBool,
     state: Mutex<StatusProcessState>,
 }
 
 impl StatusProcess {
-    fn new(id: u64, visible: bool) -> Self {
+    fn new(visible: bool) -> Self {
         Self {
-            id,
             stopped: AtomicBool::new(false),
             state: Mutex::new(StatusProcessState {
                 visible,
@@ -210,88 +233,154 @@ fn signal_target(pid: i32, signals: I3BarSignals) -> i32 {
     }
 }
 
-static STATUS_SOURCE: OnceLock<Mutex<Option<RunningStatusSource>>> = OnceLock::new();
-static STATUS_VISIBLE: AtomicBool = AtomicBool::new(true);
-static NEXT_STATUS_SOURCE_ID: AtomicU64 = AtomicU64::new(1);
-
-fn status_source() -> &'static Mutex<Option<RunningStatusSource>> {
-    STATUS_SOURCE.get_or_init(|| Mutex::new(None))
+/// The active status producer, owned by the bar.
+///
+/// Every source gets its own update channel, so frames from a replaced
+/// source can never reach the bar.
+#[derive(Debug)]
+pub(crate) struct StatusSources {
+    active: Option<RunningStatusSource>,
+    visible: bool,
+    wake: Option<Ping>,
+    wake_source: Option<PingSource>,
 }
 
-fn set_status_source(next: StatusSourceKind) -> Option<Arc<StatusProcess>> {
-    let mut active = status_source().lock().ok()?;
-
-    if active.as_ref().is_some_and(|source| source.kind == next) {
-        return None;
+impl Default for StatusSources {
+    fn default() -> Self {
+        let (wake, wake_source) = match calloop::ping::make_ping() {
+            Ok((wake, source)) => (Some(wake), Some(source)),
+            Err(error) => {
+                log::warn!("status updates cannot wake the event loop: {error}");
+                (None, None)
+            }
+        };
+        Self {
+            active: None,
+            visible: true,
+            wake,
+            wake_source,
+        }
     }
-
-    if let Some(source) = active.take() {
-        source.stop();
-    }
-
-    let process = Arc::new(StatusProcess::new(
-        NEXT_STATUS_SOURCE_ID.fetch_add(1, Ordering::Relaxed),
-        STATUS_VISIBLE.load(Ordering::Acquire),
-    ));
-
-    *active = Some(RunningStatusSource {
-        kind: next,
-        process: Arc::clone(&process),
-    });
-
-    Some(process)
 }
 
-pub(super) fn sync_visibility(wm: &crate::wm::Wm) {
-    let model = &wm.core.model;
-    let visible = status_visible(model);
-    if STATUS_VISIBLE.swap(visible, Ordering::AcqRel) == visible {
-        return;
+impl Drop for StatusSources {
+    fn drop(&mut self) {
+        if let Some(source) = self.active.take() {
+            source.process.stop();
+        }
+    }
+}
+
+impl StatusSources {
+    /// Event-loop source woken by status frames. Frames sent before it is
+    /// registered still wake the loop once it is.
+    pub(crate) fn take_wake_source(&mut self) -> Option<PingSource> {
+        self.wake_source.take()
     }
 
-    let active = status_source()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if let Some(source) = active.as_ref() {
-        source.process.set_visible(visible);
+    /// Run the configured status command, the auto-detected `i3status-rs`,
+    /// or the built-in clock, in that order of precedence.
+    pub(crate) fn start(&mut self, command: Option<&str>) {
+        match command {
+            Some(command) => self.spawn_command(command),
+            None if is_i3status_rs_available() => self.spawn_command("i3status-rs"),
+            None => self.spawn_default(),
+        }
     }
+
+    fn replace(&mut self, kind: StatusSourceKind) -> Option<(Arc<StatusProcess>, StatusSink)> {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|source| source.kind == kind)
+        {
+            return None;
+        }
+        if let Some(source) = self.active.take() {
+            source.process.stop();
+        }
+
+        let process = Arc::new(StatusProcess::new(self.visible));
+        let (sender, updates) = mpsc::channel();
+        self.active = Some(RunningStatusSource {
+            kind,
+            process: Arc::clone(&process),
+            updates,
+        });
+        Some((
+            process,
+            StatusSink {
+                updates: sender,
+                wake: self.wake.clone(),
+            },
+        ))
+    }
+
+    pub(super) fn set_visible(&mut self, visible: bool) {
+        if self.visible == visible {
+            return;
+        }
+        self.visible = visible;
+        if let Some(source) = self.active.as_ref() {
+            source.process.set_visible(visible);
+        }
+    }
+
+    pub(crate) fn send_click(&self, event: I3ClickEvent) {
+        if let Some(source) = self.active.as_ref() {
+            source.process.enqueue_click(event);
+        }
+    }
+
+    pub(super) fn take_latest_update(&self) -> Option<StatusUpdate> {
+        self.active.as_ref()?.updates.try_iter().last()
+    }
+
+    pub(super) fn stop_default_source(&mut self) {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|source| source.kind == StatusSourceKind::Default)
+            && let Some(source) = self.active.take()
+        {
+            source.process.stop();
+        }
+    }
+
+    /// Periodically publish the version and current time.
+    fn spawn_default(&mut self) {
+        let Some((process, sink)) = self.replace(StatusSourceKind::Default) else {
+            return;
+        };
+
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(500));
+
+            while !process.is_stopped() {
+                sink.send(plain_text_status(&default_status_text()), false);
+                thread::sleep(Duration::from_secs(30));
+            }
+        });
+    }
+
+    fn spawn_command(&mut self, cmd: &str) {
+        let Some((process, sink)) = self.replace(StatusSourceKind::Command(cmd.to_string())) else {
+            return;
+        };
+        let cmd_str = cmd.to_string();
+        thread::spawn(move || run_status_command(&cmd_str, &process, &sink));
+    }
+}
+
+pub(crate) fn sync_visibility(wm: &mut crate::wm::Wm) {
+    let visible = status_visible(&wm.core.model);
+    wm.bar.status_sources.set_visible(visible);
 }
 
 fn status_visible(model: &crate::model::WmModel) -> bool {
     model
         .selected_monitor()
         .is_some_and(|monitor| monitor.bar_visible(&model.clients))
-}
-
-pub(super) fn enqueue_i3bar_click_event(event: I3ClickEvent) {
-    let active = status_source()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if let Some(source) = active.as_ref() {
-        source.process.enqueue_click(event);
-    }
-}
-
-pub(super) fn active_source_id() -> Option<u64> {
-    status_source()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .as_ref()
-        .map(|source| source.process.id)
-}
-
-/// Stop the default status source if it is currently running.
-pub(crate) fn stop_default_source() {
-    let Ok(mut active) = status_source().lock() else {
-        return;
-    };
-    if active
-        .as_ref()
-        .is_some_and(|s| s.kind == StatusSourceKind::Default)
-        && let Some(source) = active.take()
-    {
-        source.stop();
-    }
 }
 
 fn default_status_text() -> String {
@@ -312,136 +401,105 @@ fn default_status_text() -> String {
     format!("instantwm-{VERSION} {time_str}")
 }
 
-/// Spawn a background thread that periodically sends the default status
-/// (version + current time) via IPC. Used when no `status_command` is configured.
-pub(crate) fn spawn_default_status() {
-    let Some(process) = set_status_source(StatusSourceKind::Default) else {
-        return;
+fn run_status_command(cmd_str: &str, process: &StatusProcess, sink: &StatusSink) {
+    use std::io::{BufRead, BufReader};
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    let mut child = match Command::new("sh")
+        .arg("-c")
+        .arg(cmd_str)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .process_group(0)
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "instantwm: failed to spawn status_command '{}': {}",
+                cmd_str, e
+            );
+            return;
+        }
     };
 
-    thread::spawn(move || {
-        thread::sleep(Duration::from_millis(500));
+    if !process.set_pid(child.id()) {
+        kill_status_process_group(&mut child);
+        let _ = child.wait();
+        return;
+    }
 
-        loop {
+    let stdout = child.stdout.take();
+    let mut child_stdin = child.stdin.take();
+
+    #[derive(Clone, Copy)]
+    enum CommandProtocol {
+        Undecided,
+        PlainText,
+        I3Bar { click_events: bool },
+    }
+
+    let mut protocol = CommandProtocol::Undecided;
+
+    if let Some(stdout) = stdout {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
             if process.is_stopped() {
                 break;
             }
-            super::runtime::send_status_update(process.id, &default_status_text(), false);
-            thread::sleep(Duration::from_secs(30));
-        }
-    });
-}
 
-pub(crate) fn spawn_status_command(cmd: &str) {
-    let Some(process) = set_status_source(StatusSourceKind::Command(cmd.to_string())) else {
-        return;
-    };
+            let Ok(line) = line else {
+                continue;
+            };
 
-    let cmd_str = cmd.to_string();
-    thread::spawn(move || {
-        use std::io::{BufRead, BufReader};
-        use std::os::unix::process::CommandExt;
-        use std::process::{Command, Stdio};
-
-        let mut child = match Command::new("sh")
-            .arg("-c")
-            .arg(&cmd_str)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .process_group(0)
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "instantwm: failed to spawn status_command '{}': {}",
-                    cmd_str, e
-                );
-                return;
+            let text = line.trim();
+            if text.is_empty() {
+                continue;
             }
-        };
 
-        if !process.set_pid(child.id()) {
-            kill_status_process_group(&mut child);
-            let _ = child.wait();
-            return;
-        }
+            if matches!(protocol, CommandProtocol::Undecided) {
+                if let Some(header) = parse_i3bar_header(text) {
+                    protocol = CommandProtocol::I3Bar {
+                        click_events: header.click_events,
+                    };
+                    let click_channel = header.click_events.then(mpsc::channel::<I3ClickEvent>);
+                    let click_sender = click_channel.as_ref().map(|(sender, _)| sender.clone());
+                    if process.configure_i3bar(&header, click_sender)
+                        && let (Some(mut stdin), Some((_, receiver))) =
+                            (child_stdin.take(), click_channel)
+                    {
+                        thread::spawn(move || write_click_events(&mut stdin, receiver));
+                    }
+                    continue;
+                }
 
-        let stdout = child.stdout.take();
-        let mut child_stdin = child.stdin.take();
-
-        #[derive(Clone, Copy)]
-        enum CommandProtocol {
-            Undecided,
-            PlainText,
-            I3Bar { click_events: bool },
-        }
-
-        let mut protocol = CommandProtocol::Undecided;
-
-        if let Some(stdout) = stdout {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if process.is_stopped() {
+                protocol = CommandProtocol::PlainText;
+                if !process.configure_plain_text() {
                     break;
                 }
+            }
 
-                let Ok(line) = line else {
-                    continue;
-                };
-
-                let text = line.trim();
-                if text.is_empty() {
-                    continue;
+            match protocol {
+                CommandProtocol::I3Bar { .. } if text == "[" => {}
+                CommandProtocol::I3Bar { click_events } => match parse_i3bar_json(text) {
+                    Some(blocks) => sink.send(blocks, click_events),
+                    None => log::debug!("dropping malformed i3bar status frame: {text}"),
+                },
+                CommandProtocol::PlainText => {
+                    sink.send(parse_status(text), false);
                 }
-
-                if matches!(protocol, CommandProtocol::Undecided) {
-                    if let Some(header) = parse_i3bar_header(text) {
-                        protocol = CommandProtocol::I3Bar {
-                            click_events: header.click_events,
-                        };
-                        let click_channel = header.click_events.then(mpsc::channel::<I3ClickEvent>);
-                        let click_sender = click_channel.as_ref().map(|(sender, _)| sender.clone());
-                        if process.configure_i3bar(&header, click_sender)
-                            && let (Some(mut stdin), Some((_, receiver))) =
-                                (child_stdin.take(), click_channel)
-                        {
-                            thread::spawn(move || write_click_events(&mut stdin, receiver));
-                        }
-                        continue;
-                    }
-
-                    protocol = CommandProtocol::PlainText;
-                    if !process.configure_plain_text() {
-                        break;
-                    }
-                }
-
-                match protocol {
-                    CommandProtocol::I3Bar { .. } if text == "[" => {}
-                    CommandProtocol::I3Bar { click_events }
-                        if parse_i3bar_json(text.as_bytes()).is_some() =>
-                    {
-                        super::runtime::send_status_update(process.id, text, click_events);
-                    }
-                    CommandProtocol::I3Bar { .. } => {
-                        log::debug!("dropping malformed i3bar status frame: {text}");
-                    }
-                    CommandProtocol::PlainText => {
-                        super::runtime::send_status_update(process.id, text, false);
-                    }
-                    CommandProtocol::Undecided => unreachable!("protocol was classified above"),
-                }
+                CommandProtocol::Undecided => unreachable!("protocol was classified above"),
             }
         }
+    }
 
-        // Once stdout closes, this source can no longer provide status. Terminate it
-        // before clearing the shared PID so that the PID cannot be recycled while it
-        // is still signalable through `StatusProcess`.
-        kill_status_process_group(&mut child);
-        process.clear_pid(child.id());
-        let _ = child.wait();
-    });
+    // Once stdout closes, this source can no longer provide status. Terminate it
+    // before clearing the shared PID so that the PID cannot be recycled while it
+    // is still signalable through `StatusProcess`.
+    kill_status_process_group(&mut child);
+    process.clear_pid(child.id());
+    let _ = child.wait();
 }
 
 fn kill_status_process_group(child: &mut std::process::Child) {
@@ -453,7 +511,7 @@ fn kill_status_process_group(child: &mut std::process::Child) {
 }
 
 fn kill_status_process_group_id(pid: i32) {
-    if unsafe { libc::kill(-pid, libc::SIGKILL) } != 0 {
+    if !crate::util::signal_process_group(pid, libc::SIGKILL) {
         // A failed group lookup must not turn shutdown/reload into a leaked
         // shell. The unreaped child still owns this PID, so fallback is safe.
         unsafe { libc::kill(pid, libc::SIGKILL) };
@@ -472,25 +530,10 @@ fn write_click_events(writer: &mut impl Write, receiver: mpsc::Receiver<I3ClickE
     }
 }
 
-/// Return `true` when `i3status-rs` is found in `$PATH`.
-pub(crate) fn is_i3status_rs_available() -> bool {
+fn is_i3status_rs_available() -> bool {
     std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).any(|dir| dir.join("i3status-rs").is_file()))
         .unwrap_or(false)
-}
-
-pub(crate) fn reload_status_command(previous: Option<&str>, next: Option<&str>) {
-    if previous == next {
-        return;
-    }
-
-    if let Some(cmd) = next {
-        spawn_status_command(cmd);
-    } else if is_i3status_rs_available() {
-        spawn_status_command("i3status-rs");
-    } else {
-        spawn_default_status();
-    }
 }
 
 #[cfg(test)]
@@ -565,7 +608,7 @@ mod tests {
 
     #[test]
     fn plain_text_enables_defaults_only_after_the_first_line_classifies_it() {
-        let process = StatusProcess::new(1, false);
+        let process = StatusProcess::new(false);
         assert_eq!(process.state().suspension, SuspensionPolicy::Undecided);
 
         assert!(process.configure_plain_text());
@@ -577,7 +620,7 @@ mod tests {
 
     #[test]
     fn i3bar_opt_out_remains_active_when_the_bar_starts_hidden() {
-        let process = StatusProcess::new(1, false);
+        let process = StatusProcess::new(false);
         let header = I3BarHeader {
             click_events: false,
             suspension: None,
@@ -619,6 +662,47 @@ mod tests {
         assert!(output.contains("\n,\n{"));
         assert!(output.contains("\"button\":1"));
         assert!(output.contains("\"button\":3"));
+    }
+
+    #[test]
+    fn frames_from_a_replaced_source_never_reach_the_bar() {
+        let mut sources = StatusSources::default();
+        let (_, old) = sources
+            .replace(StatusSourceKind::Command("old".to_string()))
+            .unwrap();
+        let (_, current) = sources
+            .replace(StatusSourceKind::Command("new".to_string()))
+            .unwrap();
+
+        old.send(plain_text_status("old"), false);
+        assert!(sources.take_latest_update().is_none());
+
+        current.send(plain_text_status("first"), false);
+        current.send(plain_text_status("second"), true);
+        let latest = sources.take_latest_update().unwrap();
+        assert_eq!(latest.blocks[0].full_text, "second");
+        assert!(latest.click_events);
+    }
+
+    #[test]
+    fn default_status_keeps_updating_until_an_external_override() {
+        let mut bar = crate::bar::BarState::default();
+        let (_, sink) = bar
+            .status_sources
+            .replace(StatusSourceKind::Default)
+            .unwrap();
+
+        sink.send(plain_text_status("first"), false);
+        assert!(bar.drain_status_updates());
+        assert_eq!(bar.runtime.status[0].full_text, "first");
+        assert!(bar.status_sources.active.is_some());
+
+        sink.send(plain_text_status("second"), false);
+        assert!(bar.drain_status_updates());
+        assert_eq!(bar.runtime.status[0].full_text, "second");
+
+        bar.set_status_text("second");
+        assert!(bar.status_sources.active.is_none());
     }
 
     #[test]

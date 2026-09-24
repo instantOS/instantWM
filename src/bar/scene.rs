@@ -1,4 +1,4 @@
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
+use crate::bar::paint::{BarPainter, BarScheme};
 use crate::contexts::CoreCtx;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Client, CloseButtonColorConfigs,
@@ -139,7 +139,7 @@ fn close_button_scheme(
     scheme
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct TagCellSnapshot {
     pub slot: usize,
     pub tag_index: usize,
@@ -147,7 +147,7 @@ pub(crate) struct TagCellSnapshot {
     pub scheme: BarScheme,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct TitleCellSnapshot {
     pub win: WindowId,
     pub name: String,
@@ -155,79 +155,26 @@ pub(crate) struct TitleCellSnapshot {
     pub close_scheme: Option<BarScheme>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct SystraySnapshot {
     pub items: crate::systray::StatusNotifierTray,
     pub base_scheme: BarScheme,
     pub layout: crate::systray::TrayLayout,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct StatusContent {
-    pub text: String,
-    pub items: Vec<crate::bar::status::StatusItem>,
+    pub blocks: crate::bar::status::StatusBlocks,
     pub click_events: bool,
-}
-
-#[derive(Clone)]
-pub(crate) enum StatusPresentation {
-    Hidden,
-    Runtime(StatusContent),
-    WmMode {
-        name: String,
-        content: StatusContent,
-    },
-    Overview(StatusContent),
-}
-
-impl StatusPresentation {
-    pub fn content(&self) -> Option<&StatusContent> {
-        match self {
-            Self::Hidden => None,
-            Self::Runtime(content) | Self::WmMode { content, .. } | Self::Overview(content) => {
-                Some(content)
-            }
-        }
-    }
-
-    pub fn ensure_items_parsed(&mut self) {
-        let content = match self {
-            Self::Hidden => return,
-            Self::Runtime(content) | Self::WmMode { content, .. } | Self::Overview(content) => {
-                content
-            }
-        };
-        if content.items.is_empty() {
-            content.items = crate::bar::status::parse_status(content.text.as_bytes()).items;
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) enum BarOverlay {
-    TrayMenu(crate::systray::TrayMenuPresentation),
 }
 
 /// Immutable, derived presentation consumed by both bar renderers.
 ///
 /// Runtime mode and tray-menu session state remain authoritative elsewhere;
-/// snapshots never become a second source of truth.
-#[derive(Clone)]
-pub(crate) struct BarPresentation {
-    pub status: StatusPresentation,
-    pub overlay: Option<BarOverlay>,
-}
-
-impl BarPresentation {
-    pub fn tray_menu(&self) -> Option<&crate::systray::TrayMenuPresentation> {
-        match self.overlay.as_ref() {
-            Some(BarOverlay::TrayMenu(menu)) => Some(menu),
-            None => None,
-        }
-    }
-}
-
-#[derive(Clone)]
+/// snapshots never become a second source of truth. Equality decides whether
+/// a rendered bar is still current, so every field that affects pixels or hit
+/// geometry must live here.
+#[derive(Clone, PartialEq)]
 pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
@@ -246,29 +193,15 @@ pub(crate) struct MonitorBarSnapshot {
     pub tags: Vec<TagCellSnapshot>,
     pub show_shutdown: bool,
     pub titles: Vec<TitleCellSnapshot>,
-    pub presentation: BarPresentation,
+    /// Status line, shown on the selected monitor only.
+    pub status: Option<StatusContent>,
+    /// Hosted tray menu, unless instantMENU presents it.
+    pub tray_menu: Option<crate::systray::TrayMenuPresentation>,
     pub systray: Option<SystraySnapshot>,
     /// Right-edge width occupied by content rendered outside this scene.
     /// XEmbed children use this reservation; compositor-rendered tray items
     /// remain represented by `systray` above.
     pub external_right_width: i32,
-}
-
-pub(crate) struct MonitorRenderOutput {
-    pub hit_cache: crate::bar::MonitorHitCache,
-    pub bar_clients_width: i32,
-}
-
-pub(crate) struct MonitorRenderOutputWithId {
-    pub monitor_id: MonitorId,
-    pub output: MonitorRenderOutput,
-}
-
-/// Which interactive WM mode the bar should advertise in the status area.
-enum ModeStatus {
-    Default,
-    Overview,
-    Named { name: String, display: String },
 }
 
 /// Configured display name for a named mode, if the config carries one.
@@ -281,59 +214,30 @@ fn mode_display(core: &CoreCtx, name: &str) -> Option<String> {
         .cloned()
 }
 
-fn resolve_mode_status(core: &CoreCtx) -> ModeStatus {
-    match &core.behavior().current_mode {
-        crate::core_state::ActiveWmMode::Overview => ModeStatus::Overview,
-        crate::core_state::ActiveWmMode::Named(name) => ModeStatus::Named {
-            name: name.clone(),
-            display: mode_display(core, name).unwrap_or_else(|| name.clone()),
-        },
-        crate::core_state::ActiveWmMode::TreePlacement(_) => {
-            let name = crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string();
-            ModeStatus::Named {
-                display: mode_display(core, &name).unwrap_or_else(|| "place window".to_string()),
-                name,
-            }
-        }
-        crate::core_state::ActiveWmMode::Default => ModeStatus::Default,
-    }
-}
+/// The selected monitor's status: the runtime status line, or the active
+/// interactive WM mode.
+fn resolve_status(core: &CoreCtx) -> Option<StatusContent> {
+    use crate::core_state::ActiveWmMode;
 
-fn resolve_status_presentation(
-    core: &mut CoreCtx,
-    include_status_items: bool,
-) -> StatusPresentation {
-    match resolve_mode_status(core) {
-        ModeStatus::Overview => StatusPresentation::Overview(status_content(
-            core,
-            "mode: overview".to_string(),
-            include_status_items,
-            false,
-        )),
-        ModeStatus::Named { name, display } => StatusPresentation::WmMode {
-            name,
-            content: status_content(
-                core,
-                format!("mode: {display}"),
-                include_status_items,
-                false,
-            ),
-        },
-        ModeStatus::Default => {
-            let text = core.bar.runtime.status_text.clone();
-            if text.is_empty() {
-                StatusPresentation::Hidden
-            } else {
-                let click_events = core.bar.runtime.status_click_events;
-                StatusPresentation::Runtime(status_content(
-                    core,
-                    text,
-                    include_status_items,
-                    click_events,
-                ))
-            }
+    let mode = match &core.behavior().current_mode {
+        ActiveWmMode::Default => {
+            let runtime = &core.bar.runtime;
+            return (!runtime.status.is_empty()).then(|| StatusContent {
+                blocks: runtime.status.clone(),
+                click_events: runtime.status_click_events,
+            });
         }
-    }
+        ActiveWmMode::Overview => "overview".to_string(),
+        ActiveWmMode::Named(name) => mode_display(core, name).unwrap_or_else(|| name.clone()),
+        ActiveWmMode::TreePlacement(_) => {
+            mode_display(core, crate::core_state::TREE_PLACEMENT_MODE_NAME)
+                .unwrap_or_else(|| "place window".to_string())
+        }
+    };
+    Some(StatusContent {
+        blocks: crate::bar::status::plain_text_status(&format!("mode: {mode}")),
+        click_events: false,
+    })
 }
 
 fn collect_tag_cells(
@@ -345,7 +249,8 @@ fn collect_tag_cells(
     drag_active: bool,
 ) -> Vec<TagCellSnapshot> {
     let mut tags = Vec::new();
-    for tag in crate::tags::bar::visible_tags(core.state(), mon, occupied_tags) {
+    let show_alt = core.model().tags.show_alternative_names;
+    for tag in crate::tags::bar::visible_tags(mon, occupied_tags, show_alt) {
         let is_hover = gesture == Gesture::Tag(tag.slot);
         let mut scheme = tag_scheme(
             core.model(),
@@ -402,36 +307,6 @@ fn collect_title_cells(
     titles
 }
 
-fn build_bar_presentation(
-    core: &CoreCtx,
-    is_selected_monitor: bool,
-    selected_status: &StatusPresentation,
-) -> BarPresentation {
-    // While the external instantMENU presents the tray menu, the bar
-    // neither reserves width for it nor renders the overlay.
-    let instantmenu_hosts_menu = core
-        .bar
-        .systray_host
-        .instantmenu
-        .hosting(core.config().systray.menu_backend);
-    BarPresentation {
-        status: if is_selected_monitor {
-            selected_status.clone()
-        } else {
-            StatusPresentation::Hidden
-        },
-        overlay: if is_selected_monitor && !instantmenu_hosts_menu {
-            core.bar
-                .systray_host
-                .menu
-                .presentation()
-                .map(BarOverlay::TrayMenu)
-        } else {
-            None
-        },
-    }
-}
-
 fn build_systray_snapshot(
     core: &CoreCtx,
     mon: &Monitor,
@@ -459,8 +334,7 @@ fn build_systray_snapshot(
 }
 
 pub(crate) fn build_monitor_snapshots(
-    core: &mut CoreCtx,
-    include_status_items: bool,
+    core: &CoreCtx,
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().expect_selected_monitor().num;
@@ -468,14 +342,22 @@ pub(crate) fn build_monitor_snapshots(
     let systray_spacing = core.config().systray.spacing;
     let base_fonts = core.config().fonts.clone();
     let bar_hover = core.bar.hover;
-    let selected_status = resolve_status_presentation(core, include_status_items);
-    let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
+    let mut selected_status = resolve_status(core);
+    // While the external instantMENU presents the tray menu, the bar
+    // neither reserves width for it nor renders the overlay.
+    let mut selected_tray_menu = if core
+        .bar
+        .systray_host
+        .instantmenu
+        .hosting(core.config().systray.menu_backend)
+    {
+        None
+    } else {
+        core.bar.systray_host.menu.presentation()
+    };
 
     let mut snapshots = Vec::new();
-    for monitor_id in monitor_ids {
-        let Some(mon) = core.model().monitor(monitor_id) else {
-            continue;
-        };
+    for (monitor_id, mon) in core.model().monitors_iter() {
         if !mon.bar_visible(&core.model().clients) {
             continue;
         }
@@ -497,7 +379,11 @@ pub(crate) fn build_monitor_snapshots(
         let selected_tags = mon.visible_tags();
         let titles = collect_title_cells(core, mon, is_selected_monitor, gesture);
 
-        let presentation = build_bar_presentation(core, is_selected_monitor, &selected_status);
+        let tray_menu = if is_selected_monitor {
+            selected_tray_menu.take()
+        } else {
+            None
+        };
 
         // The tray snapshot and the right-edge width reserved for external
         // tray content must agree: hit testing and XEmbed placement rely on
@@ -508,7 +394,6 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             0
         };
-        let tray_menu = presentation.tray_menu().cloned();
         let status_scheme = status_scheme(&core.config().colors.status);
         let systray = tray_visible.then(|| {
             build_systray_snapshot(
@@ -546,31 +431,18 @@ pub(crate) fn build_monitor_snapshots(
             tags,
             show_shutdown: mon.selected.is_none(),
             titles,
-            presentation,
+            status: if is_selected_monitor {
+                selected_status.take()
+            } else {
+                None
+            },
+            tray_menu,
             systray,
             external_right_width: external_tray_width,
         });
     }
 
     snapshots
-}
-
-fn status_content(
-    core: &mut CoreCtx,
-    text: String,
-    include_items: bool,
-    click_events: bool,
-) -> StatusContent {
-    let items = if include_items {
-        core.bar.status_items_for_text(&text).to_vec()
-    } else {
-        Vec::new()
-    };
-    StatusContent {
-        text,
-        items,
-        click_events,
-    }
 }
 
 fn draw_startmenu_icon(
@@ -630,7 +502,6 @@ fn draw_shutdown_button(
         symbol,
         true,
         0,
-        TextOverflow::Ellipsis,
     );
 
     x + bar_height
@@ -691,7 +562,6 @@ fn draw_tags_section(
             &tag.label,
             false,
             detail_height,
-            TextOverflow::Ellipsis,
         );
         hit.tag_ranges.push(crate::bar::TagHitRange {
             start: x - width,
@@ -720,7 +590,6 @@ fn draw_layout_symbol_section(
         &snapshot.layout_symbol,
         false,
         0,
-        TextOverflow::Ellipsis,
     );
     hit.layout_start = layout_start;
     hit.layout_end = x;
@@ -750,12 +619,7 @@ fn draw_status_section(
     hit: &mut crate::bar::MonitorHitCache,
 ) -> Rect {
     let status_output = if snapshot.is_selected_monitor {
-        let Some(content) = snapshot
-            .presentation
-            .status
-            .content()
-            .filter(|content| !content.items.is_empty())
-        else {
+        let Some(content) = snapshot.status.as_ref() else {
             return crate::bar::status::StatusRenderOutput::default().bounds;
         };
         let hover = if content.click_events {
@@ -770,9 +634,9 @@ fn draw_status_section(
             None
         };
         let status_right = snapshot.rect.w - systray_width;
-        crate::bar::status::draw_status_items(
+        crate::bar::status::draw_status_blocks(
             Rect::new(x, 0, (status_right - x).max(0), bar_height),
-            content.items.as_slice(),
+            &content.blocks,
             crate::bar::status::StatusRenderOptions {
                 base_scheme: snapshot.status_scheme.clone(),
                 separator_color: snapshot.status_separator_color,
@@ -833,7 +697,6 @@ fn draw_titles_section(
             &title.name,
             false,
             scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale),
-            TextOverflow::Ellipsis,
         );
         if let Some(close_scheme) = &title.close_scheme
             && this_width >= close_button_threshold
@@ -869,7 +732,7 @@ fn record_systray_hits(snapshot: &MonitorBarSnapshot, hit: &mut crate::bar::Moni
             })
             .collect();
         if layout.menu.width > 0 {
-            hit.overlay = Some(crate::bar::BarOverlayHit::TrayMenu {
+            hit.tray_menu = Some(crate::bar::TrayMenuHit {
                 start: layout.menu.start_x,
                 end: layout.menu.start_x + layout.menu.width,
                 slots: layout.menu.cells.clone(),
@@ -881,7 +744,7 @@ fn record_systray_hits(snapshot: &MonitorBarSnapshot, hit: &mut crate::bar::Moni
 pub(crate) fn render_monitor_snapshot(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
-) -> MonitorRenderOutput {
+) -> crate::bar::MonitorHitCache {
     let bar_height = snapshot.rect.h;
     let systray_width = if snapshot.is_selected_monitor {
         snapshot
@@ -924,10 +787,7 @@ pub(crate) fn render_monitor_snapshot(
     record_systray_hits(snapshot, &mut hit);
     draw_systray_section(painter, snapshot);
 
-    MonitorRenderOutput {
-        hit_cache: hit,
-        bar_clients_width: title_width,
-    }
+    hit
 }
 
 /// Paint compositor-rendered tray icons and any hosted tray menu.
@@ -962,7 +822,7 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
         painter.blit_rgba(cell.icon, item.icon_size, &item.icon_rgba);
     }
 
-    if let Some(menu) = snapshot.presentation.tray_menu() {
+    if let Some(menu) = &snapshot.tray_menu {
         let hover = match snapshot.gesture {
             Gesture::TrayMenuEntry(entry_index) => Some(crate::systray::render::TrayMenuHover {
                 entry_index,
@@ -988,9 +848,9 @@ mod tests {
     use crate::model::WmModel;
     use crate::types::color::Rgba;
     use crate::types::{
-        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,
-        SchemeTag, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus,
-        WindowId, WindowRole,
+        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeHover, SchemeTag,
+        StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus, WindowId,
+        WindowRole,
     };
 
     fn marker(value: f32) -> ColorSchemeRgba {
@@ -1094,12 +954,7 @@ mod tests {
 
         let scheme = close_button_scheme(&colors, true, true, true);
 
-        assert_eq!(
-            scheme.background,
-            colors
-                .colors_for(SchemeHover::Hover, SchemeClose::Locked)
-                .bg
-        );
+        assert_eq!(scheme.background, colors.hover.locked.bg);
     }
 
     #[test]

@@ -30,7 +30,8 @@ fn paint_bar_snapshot(
     };
     drw.resize(work_rect_w as u32, bar_height as u32);
     let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
-    crate::bar::renderer::draw_bar_snapshot(core, monitor_id, snapshot, &mut painter);
+    let hit = crate::bar::scene::render_monitor_snapshot(snapshot, &mut painter);
+    core.bar.replace_hit_cache(monitor_id, hit);
     painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
 }
 
@@ -42,11 +43,8 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
     if bar_win == WindowId::default() {
         return;
     }
-    let snapshots = crate::bar::scene::build_monitor_snapshots(
-        core,
-        true,
-        core.bar.runtime.external_tray_width,
-    );
+    let snapshots =
+        crate::bar::scene::build_monitor_snapshots(core, core.bar.runtime.external_tray_width);
     let Some(snapshot) = snapshots
         .iter()
         .find(|snapshot| snapshot.monitor_id == mon_idx)
@@ -58,11 +56,8 @@ pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx:
 
 pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
-    let snapshots = crate::bar::scene::build_monitor_snapshots(
-        core,
-        true,
-        core.bar.runtime.external_tray_width,
-    );
+    let snapshots =
+        crate::bar::scene::build_monitor_snapshots(core, core.bar.runtime.external_tray_width);
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots
             .iter()
@@ -92,11 +87,11 @@ fn sync_monitor_bar_window(
     monitor_id: MonitorId,
 ) {
     let tray_monitor =
-        crate::backend::x11::systray::systray_to_mon(core.model(), &core.config().systray, None);
+        crate::backend::x11::systray::systray_to_mon(core.model(), &core.config().systray);
     let Some(m) = core.model().monitor(monitor_id) else {
         return;
     };
-    let bar_height = core.derived().bar_height;
+    let bar_height = core.config().bar_metrics().height;
     let showsystray = core.config().systray.show;
     let is_tray_monitor = monitor_id == tray_monitor;
 
@@ -104,7 +99,7 @@ fn sync_monitor_bar_window(
     if showsystray && is_tray_monitor {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
             &core.config().systray,
-            core.derived().bar_height,
+            bar_height,
             systray,
         ));
     }
@@ -198,7 +193,7 @@ fn create_missing_bar_windows(
     systray: Option<&XEmbedTray>,
 ) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = globals.derived.bar_height;
+        let bar_height = globals.config.bar_metrics().height;
         let showsystray = globals.config.systray.show;
         let status_bg: u32 = globals.config.colors.status.bg.into();
         let xlibdisplay = x11_runtime.xlibdisplay.0;
@@ -212,7 +207,7 @@ fn create_missing_bar_windows(
                 selected_monitor_id,
                 crate::backend::x11::systray::get_systray_width(
                     &globals.config.systray,
-                    globals.derived.bar_height,
+                    bar_height,
                     systray,
                 ),
             );

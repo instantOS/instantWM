@@ -336,14 +336,11 @@ impl<'a> WmCtx<'a> {
     }
 
     /// Project the sanitized monitor policy onto the active backend.
-    pub fn apply_monitor_configs(
-        &mut self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    ) {
+    pub fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy) {
         use crate::backend::OutputPolicyOps;
         match self {
-            WmCtx::X11(ctx) => ctx.apply_monitor_configs(configs),
-            WmCtx::Wayland(ctx) => ctx.apply_monitor_configs(configs),
+            WmCtx::X11(ctx) => ctx.apply_monitor_configs(policy),
+            WmCtx::Wayland(ctx) => ctx.apply_monitor_configs(policy),
         }
     }
 
@@ -910,7 +907,7 @@ impl<'a> WmCtx<'a> {
     pub fn refresh_monitor_bottom_bar(&mut self, monitor_id: MonitorId) {
         match self {
             WmCtx::X11(ctx) => {
-                if let Some(monitor) = ctx.core.model().monitors.get(monitor_id).cloned() {
+                if let Some(monitor) = ctx.core.model().monitor(monitor_id).cloned() {
                     crate::backend::x11::bar::resize_bottom_bar_win(
                         ctx.core.state(),
                         &ctx.x11,

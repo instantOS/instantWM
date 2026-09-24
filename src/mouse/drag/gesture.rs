@@ -5,6 +5,7 @@
 
 use crate::actions::execute_button_action;
 use crate::contexts::WmCtx;
+use crate::core_state::{BottomBarDrag, SidebarVolumeDrag};
 use crate::types::*;
 
 /// Sidebar vertical-swipe gesture recogniser.
@@ -36,7 +37,7 @@ fn begin_sidebar_gesture(
         .unwrap_or_else(|| (target.rect.h / 30).max(1));
     if ctx
         .transition_pointer_interaction(|drag| {
-            drag.begin_sidebar_volume(crate::core_state::SidebarVolumeDrag::new(
+            drag.begin(crate::core_state::SidebarVolumeDrag::new(
                 btn,
                 source,
                 target.monitor_id,
@@ -52,31 +53,34 @@ fn begin_sidebar_gesture(
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
-    let Some(monitor_id) = ctx.core().interaction().drag.sidebar_volume_monitor() else {
+    let Some(monitor_id) = ctx
+        .core()
+        .interaction()
+        .drag
+        .captured::<SidebarVolumeDrag>()
+        .map(|drag| drag.monitor_id)
+    else {
         return;
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
-        ctx.transition_pointer_interaction(|drag| drag.cancel_sidebar_volume());
+        ctx.transition_pointer_interaction(|drag| drag.cancel::<SidebarVolumeDrag>());
         return;
     }
 
     let steps = ctx
-        .transition_pointer_interaction(|drag| drag.update_sidebar_volume(root_y))
+        .transition_pointer_interaction(|drag| {
+            drag.captured_mut::<SidebarVolumeDrag>()
+                .map(|drag| drag.update(root_y))
+        })
         .unwrap_or(0);
     if steps == 0 {
         return;
     }
 
     let command = if steps > 0 {
-        ctx.core()
-            .config()
-            .external_commands
-            .get(crate::config::commands::Cmd::UpVol)
+        crate::config::commands_common::media::UP_VOL
     } else {
-        ctx.core()
-            .config()
-            .external_commands
-            .get(crate::config::commands::Cmd::DownVol)
+        crate::config::commands_common::media::DOWN_VOL
     };
     for _ in 0..steps.unsigned_abs() {
         let _ = crate::util::spawn(ctx, command);
@@ -88,10 +92,12 @@ pub fn sidebar_gesture_finish(
     btn: MouseButton,
     hover_target: Option<SidebarTarget>,
 ) -> bool {
-    if ctx.core().interaction().drag.sidebar_volume_button() != Some(btn) {
+    if ctx
+        .transition_pointer_interaction(|drag| drag.finish::<SidebarVolumeDrag>(btn))
+        .is_none()
+    {
         return false;
     }
-    ctx.transition_pointer_interaction(|drag| drag.finish_sidebar_volume(btn));
     let _ = crate::mouse::set_sidebar_offer(ctx, hover_target);
     true
 }
@@ -123,7 +129,7 @@ pub fn bottom_bar_gesture_begin(
         .unwrap_or(1);
     if ctx
         .transition_pointer_interaction(|drag| {
-            drag.begin_bottom_bar(crate::core_state::BottomBarDrag::new(
+            drag.begin(BottomBarDrag::new(
                 btn,
                 source,
                 monitor_id,
@@ -145,17 +151,23 @@ pub fn bottom_bar_gesture_begin(
 const BOTTOM_BAR_HOLD_MS: u32 = 400;
 
 pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
-    let Some(monitor_id) = ctx.core().interaction().drag.bottom_bar_monitor() else {
+    let Some(monitor_id) = ctx
+        .core()
+        .interaction()
+        .drag
+        .captured::<BottomBarDrag>()
+        .map(|drag| drag.monitor_id)
+    else {
         return;
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
-        ctx.transition_pointer_interaction(|drag| drag.cancel_bottom_bar());
+        ctx.transition_pointer_interaction(|drag| drag.cancel::<BottomBarDrag>());
         return;
     }
-    if let Some(direction) = ctx.transition_pointer_interaction(|drag| drag.update_bottom_bar(root))
-    {
-        let _ = direction;
-    }
+    ctx.transition_pointer_interaction(|drag| {
+        drag.captured_mut::<BottomBarDrag>()
+            .and_then(|drag| drag.update(root))
+    });
 }
 
 pub fn bottom_bar_gesture_finish(
@@ -164,40 +176,28 @@ pub fn bottom_bar_gesture_finish(
     root: Point,
     time_msec: u32,
 ) -> bool {
-    if ctx.core().interaction().drag.bottom_bar_button() != Some(btn) {
+    let Some(drag) = ctx.transition_pointer_interaction(|drag| drag.finish::<BottomBarDrag>(btn))
+    else {
         return false;
-    }
-    let (source, action) = {
-        let Some(drag) = ctx.core().interaction().drag.bottom_bar_drag() else {
-            return false;
-        };
-        let action = match drag.latched_direction() {
-            Some(crate::core_state::SwipeDirection::Left) => Some(drag.left().clone()),
-            Some(crate::core_state::SwipeDirection::Right) => Some(drag.right().clone()),
-            Some(crate::core_state::SwipeDirection::Up) => Some(drag.up().clone()),
-            None => {
-                // No swipe: distinguish click (short press) from hold (long press).
-                let held = time_msec.wrapping_sub(drag.press_time_msec());
-                if held >= BOTTOM_BAR_HOLD_MS {
-                    Some(drag.hold().clone())
-                } else {
-                    Some(drag.click().clone())
-                }
-            }
-        };
-        (drag.source(), action)
     };
-    ctx.transition_pointer_interaction(|drag| drag.finish_bottom_bar(btn));
-    if let Some(action) = action {
-        let arg = crate::types::ButtonArg {
-            target: crate::types::ButtonTarget::BottomBar,
-            window: None,
-            btn,
-            source,
-            root,
-            time_msec,
-        };
-        execute_button_action(ctx, &action, arg);
-    }
+    let direction = drag.latched_direction();
+    let actions = drag.actions;
+    let action = match direction {
+        Some(crate::core_state::SwipeDirection::Left) => actions.left,
+        Some(crate::core_state::SwipeDirection::Right) => actions.right,
+        Some(crate::core_state::SwipeDirection::Up) => actions.up,
+        // No swipe: distinguish click (short press) from hold (long press).
+        None if time_msec.wrapping_sub(drag.press_time_msec) >= BOTTOM_BAR_HOLD_MS => actions.hold,
+        None => actions.click,
+    };
+    let arg = crate::types::ButtonArg {
+        target: crate::types::ButtonTarget::BottomBar,
+        window: None,
+        btn,
+        source: drag.source,
+        root,
+        time_msec,
+    };
+    execute_button_action(ctx, &action, arg);
     true
 }

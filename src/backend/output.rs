@@ -86,6 +86,15 @@ pub struct MonitorModeRequest {
 }
 
 impl MonitorModeRequest {
+    /// Any refresh rate at exactly `width`x`height`.
+    pub fn size(width: i32, height: i32) -> Self {
+        Self {
+            width,
+            height,
+            refresh_hz: None,
+        }
+    }
+
     pub fn parse(resolution: &str, refresh_hz: Option<f32>) -> Option<Self> {
         let (width, height) = resolution.split_once('x')?;
         let width = width.parse().ok()?;
@@ -121,36 +130,6 @@ pub enum OutputTransform {
     Flipped90,
     Flipped180,
     Flipped270,
-}
-
-impl OutputTransform {
-    /// Parse a transform string as used in config and IPC (case-insensitive).
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "normal" => Some(Self::Normal),
-            "90" => Some(Self::Rotate90),
-            "180" => Some(Self::Rotate180),
-            "270" => Some(Self::Rotate270),
-            "flipped" => Some(Self::Flipped),
-            "flipped-90" | "flipped90" => Some(Self::Flipped90),
-            "flipped-180" | "flipped180" => Some(Self::Flipped180),
-            "flipped-270" | "flipped270" => Some(Self::Flipped270),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Normal => "normal",
-            Self::Rotate90 => "90",
-            Self::Rotate180 => "180",
-            Self::Rotate270 => "270",
-            Self::Flipped => "flipped",
-            Self::Flipped90 => "flipped-90",
-            Self::Flipped180 => "flipped-180",
-            Self::Flipped270 => "flipped-270",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -214,21 +193,10 @@ pub enum OutputPowerMode {
     On,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OutputPowerRequestId(u64);
-
 #[derive(Debug, Clone)]
-pub struct PendingOutputPowerRequest {
-    pub id: OutputPowerRequestId,
+pub struct OutputPowerRequest {
     pub output: OutputId,
     pub mode: OutputPowerMode,
-}
-
-#[derive(Debug, Clone)]
-pub struct CompletedOutputPowerRequest {
-    pub id: OutputPowerRequestId,
-    pub output: OutputId,
-    pub result: Result<OutputPowerMode, OutputPowerError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -237,66 +205,6 @@ pub enum OutputPowerError {
     Unavailable(String),
     #[error("backend rejected the output power change: {0}")]
     Backend(String),
-}
-
-/// Backend-neutral queue joining protocol requests to backend-native DPMS.
-#[derive(Debug, Default)]
-pub struct OutputPowerService {
-    next_id: u64,
-    pending: VecDeque<PendingOutputPowerRequest>,
-    completed: VecDeque<CompletedOutputPowerRequest>,
-}
-
-impl OutputPowerService {
-    pub fn submit(&mut self, output: OutputId, mode: OutputPowerMode) -> OutputPowerRequestId {
-        self.next_id = self.next_id.wrapping_add(1);
-        let id = OutputPowerRequestId(self.next_id);
-        self.pending
-            .push_back(PendingOutputPowerRequest { id, output, mode });
-        id
-    }
-
-    pub fn has_pending(&self) -> bool {
-        !self.pending.is_empty()
-    }
-
-    pub fn take_next_pending(&mut self) -> Option<PendingOutputPowerRequest> {
-        self.pending.pop_front()
-    }
-
-    pub fn requeue(&mut self, request: PendingOutputPowerRequest) {
-        self.pending.push_front(request);
-    }
-
-    pub fn cancel(&mut self, ids: &[OutputPowerRequestId]) {
-        self.pending.retain(|request| !ids.contains(&request.id));
-    }
-
-    pub fn complete(
-        &mut self,
-        request: PendingOutputPowerRequest,
-        result: Result<OutputPowerMode, OutputPowerError>,
-    ) {
-        self.completed.push_back(CompletedOutputPowerRequest {
-            id: request.id,
-            output: request.output,
-            result,
-        });
-    }
-
-    pub fn complete_by_id(
-        &mut self,
-        id: OutputPowerRequestId,
-        output: OutputId,
-        result: Result<OutputPowerMode, OutputPowerError>,
-    ) {
-        self.completed
-            .push_back(CompletedOutputPowerRequest { id, output, result });
-    }
-
-    pub fn take_completed(&mut self) -> Vec<CompletedOutputPowerRequest> {
-        self.completed.drain(..).collect()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -421,114 +329,120 @@ impl OutputTransaction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OutputTransactionId(u64);
+pub struct RequestId(u64);
 
-#[derive(Debug, Clone)]
-pub struct PendingOutputTransaction {
-    pub id: OutputTransactionId,
-    pub kind: OutputTransactionKind,
-    pub transaction: OutputTransaction,
-    coalescible: bool,
+/// FIFO of backend work submitted by protocol handlers and the completions
+/// the backend reports back, both keyed by a [`RequestId`].
+#[derive(Debug)]
+pub struct RequestQueue<P, C> {
+    next_id: u64,
+    pending: VecDeque<(RequestId, P)>,
+    completed: Vec<(RequestId, C)>,
 }
 
-impl PendingOutputTransaction {
-    pub fn is_policy(&self) -> bool {
-        self.coalescible
+impl<P, C> Default for RequestQueue<P, C> {
+    fn default() -> Self {
+        Self {
+            next_id: 0,
+            pending: VecDeque::new(),
+            completed: Vec::new(),
+        }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct CompletedOutputTransaction {
-    pub id: OutputTransactionId,
-    pub kind: OutputTransactionKind,
-    pub result: Result<OutputSnapshot, OutputTransactionError>,
-}
+impl<P, C> RequestQueue<P, C> {
+    pub fn submit(&mut self, request: P) -> RequestId {
+        self.next_id = self.next_id.wrapping_add(1);
+        let id = RequestId(self.next_id);
+        self.pending.push_back((id, request));
+        id
+    }
 
-#[derive(Debug, Default)]
-pub struct OutputTransactionService {
-    next_id: u64,
-    pending: VecDeque<PendingOutputTransaction>,
-    completed: VecDeque<CompletedOutputTransaction>,
-}
-
-impl OutputTransactionService {
-    #[inline]
     pub fn has_pending(&self) -> bool {
         !self.pending.is_empty()
     }
 
-    pub fn submit(
+    pub fn take_next_pending(&mut self) -> Option<(RequestId, P)> {
+        self.pending.pop_front()
+    }
+
+    /// Put a request the backend cannot serve yet back at the head of the
+    /// queue, ahead of later submissions.
+    pub fn requeue(&mut self, id: RequestId, request: P) {
+        self.pending.push_front((id, request));
+    }
+
+    pub fn cancel(&mut self, ids: &[RequestId]) {
+        self.pending.retain(|(id, _)| !ids.contains(id));
+    }
+
+    pub fn complete(&mut self, id: RequestId, completion: C) {
+        self.completed.push((id, completion));
+    }
+
+    pub fn take_completed(&mut self) -> Vec<(RequestId, C)> {
+        std::mem::take(&mut self.completed)
+    }
+}
+
+/// Backend-neutral queue joining protocol requests to backend-native DPMS.
+pub type OutputPowerQueue =
+    RequestQueue<OutputPowerRequest, (OutputId, Result<OutputPowerMode, OutputPowerError>)>;
+
+#[derive(Debug, Clone)]
+pub struct OutputTransactionRequest {
+    pub kind: OutputTransactionKind,
+    pub transaction: OutputTransaction,
+    /// Compositor policy rather than an output-management client request.
+    pub policy: bool,
+}
+
+pub type OutputTransactionQueue = RequestQueue<
+    OutputTransactionRequest,
+    (
+        OutputTransactionKind,
+        Result<OutputSnapshot, OutputTransactionError>,
+    ),
+>;
+
+impl OutputTransactionQueue {
+    /// Queue an output-management client transaction. These are never
+    /// coalesced and retain one completion per request.
+    pub fn submit_client(
         &mut self,
         kind: OutputTransactionKind,
         transaction: OutputTransaction,
-    ) -> OutputTransactionId {
-        self.next_id = self.next_id.wrapping_add(1);
-        let id = OutputTransactionId(self.next_id);
-        self.pending.push_back(PendingOutputTransaction {
-            id,
+    ) -> RequestId {
+        self.submit(OutputTransactionRequest {
             kind,
             transaction,
-            coalescible: false,
-        });
-        id
+            policy: false,
+        })
     }
 
     /// Queue compositor policy/configuration state. Consecutive policy writes
     /// are collapsed because only their final desired state is observable.
-    /// Client transactions submitted through [`Self::submit`] are never
-    /// coalesced and retain one completion per request.
-    pub fn submit_coalescing_apply(
-        &mut self,
-        transaction: OutputTransaction,
-    ) -> OutputTransactionId {
-        if let Some(pending) = self.pending.back_mut()
+    pub fn submit_coalescing_apply(&mut self, transaction: OutputTransaction) -> RequestId {
+        if let Some((id, pending)) = self.pending.back_mut()
             && pending.kind == OutputTransactionKind::Apply
-            && pending.coalescible
+            && pending.policy
         {
             pending.transaction = transaction;
-            return pending.id;
+            return *id;
         }
-        self.next_id = self.next_id.wrapping_add(1);
-        let id = OutputTransactionId(self.next_id);
-        self.pending.push_back(PendingOutputTransaction {
-            id,
+        self.submit(OutputTransactionRequest {
             kind: OutputTransactionKind::Apply,
             transaction,
-            coalescible: true,
-        });
-        id
-    }
-
-    pub fn take_next_pending(&mut self) -> Option<PendingOutputTransaction> {
-        self.pending.pop_front()
+            policy: true,
+        })
     }
 
     pub fn latest_pending_apply(&self) -> Option<&OutputTransaction> {
         self.pending
             .iter()
             .rev()
-            .find(|pending| pending.kind == OutputTransactionKind::Apply)
-            .map(|pending| &pending.transaction)
-    }
-
-    pub fn requeue(&mut self, transaction: PendingOutputTransaction) {
-        self.pending.push_front(transaction);
-    }
-
-    pub fn complete(
-        &mut self,
-        transaction: PendingOutputTransaction,
-        result: Result<OutputSnapshot, OutputTransactionError>,
-    ) {
-        self.completed.push_back(CompletedOutputTransaction {
-            id: transaction.id,
-            kind: transaction.kind,
-            result,
-        });
-    }
-
-    pub fn take_completed(&mut self) -> Vec<CompletedOutputTransaction> {
-        self.completed.drain(..).collect()
+            .find(|(_, pending)| pending.kind == OutputTransactionKind::Apply)
+            .map(|(_, pending)| &pending.transaction)
     }
 }
 
@@ -581,28 +495,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn output_transform_strings_round_trip() {
-        for transform in [
-            OutputTransform::Normal,
-            OutputTransform::Rotate90,
-            OutputTransform::Rotate180,
-            OutputTransform::Rotate270,
-            OutputTransform::Flipped,
-            OutputTransform::Flipped90,
-            OutputTransform::Flipped180,
-            OutputTransform::Flipped270,
-        ] {
-            assert_eq!(OutputTransform::parse(transform.as_str()), Some(transform));
-        }
-
-        assert_eq!(
-            OutputTransform::parse("FLIPPED90"),
-            Some(OutputTransform::Flipped90)
-        );
-        assert_eq!(OutputTransform::parse("sideways"), None);
-    }
-
     fn transaction() -> OutputTransaction {
         OutputTransaction { heads: Vec::new() }
     }
@@ -636,61 +528,11 @@ mod tests {
     }
 
     #[test]
-    fn service_preserves_submission_order_and_identity() {
-        let mut service = OutputTransactionService::default();
-        assert!(!service.has_pending());
-        let first = service.submit(OutputTransactionKind::Test, transaction());
-        let second = service.submit(OutputTransactionKind::Apply, transaction());
-        assert!(service.has_pending());
-        assert_eq!(service.take_next_pending().unwrap().id, first);
-        assert!(service.has_pending());
-        assert_eq!(service.take_next_pending().unwrap().id, second);
-        assert!(!service.has_pending());
-        assert!(service.take_next_pending().is_none());
-    }
-
-    #[test]
-    fn requeued_transactions_remain_pending_without_completing() {
-        let mut service = OutputTransactionService::default();
-        service.submit(OutputTransactionKind::Apply, transaction());
-        let pending = service.take_next_pending().unwrap();
-        service.requeue(pending);
-
-        assert!(service.take_next_pending().is_some());
-        assert!(service.take_next_pending().is_none());
-        assert!(service.take_completed().is_empty());
-    }
-
-    #[test]
-    fn deferred_transaction_keeps_priority_over_later_work() {
-        let mut service = OutputTransactionService::default();
-        let first = service.submit(OutputTransactionKind::Apply, transaction());
-        let second = service.submit(OutputTransactionKind::Apply, transaction());
-        let pending = service.take_next_pending().unwrap();
-        service.requeue(pending);
-
-        assert_eq!(service.take_next_pending().unwrap().id, first);
-        assert_eq!(service.take_next_pending().unwrap().id, second);
-    }
-
-    #[test]
-    fn completion_retains_kind_and_result() {
-        let mut service = OutputTransactionService::default();
-        service.submit(OutputTransactionKind::Test, transaction());
-        let pending = service.take_next_pending().unwrap();
-        service.complete(pending, Ok(OutputSnapshot { heads: Vec::new() }));
-        let completed = service.take_completed().pop().unwrap();
-
-        assert_eq!(completed.kind, OutputTransactionKind::Test);
-        assert!(completed.result.is_ok());
-    }
-
-    #[test]
     fn policy_updates_coalesce_but_client_requests_do_not() {
-        let mut service = OutputTransactionService::default();
+        let mut service = OutputTransactionQueue::default();
         let policy_id = service.submit_coalescing_apply(transaction());
         assert_eq!(service.submit_coalescing_apply(transaction()), policy_id);
-        service.submit(OutputTransactionKind::Apply, transaction());
+        service.submit_client(OutputTransactionKind::Apply, transaction());
 
         assert!(service.take_next_pending().is_some());
         assert!(service.take_next_pending().is_some());
@@ -736,39 +578,6 @@ mod tests {
             .validate(&[capability("one")]),
             Err(OutputTransactionError::NoEnabledOutputs)
         );
-    }
-
-    #[test]
-    fn output_power_requests_preserve_order_and_backend_results() {
-        let mut service = OutputPowerService::default();
-        let off = service.submit("DP-1".into(), OutputPowerMode::Off);
-        let on = service.submit("DP-1".into(), OutputPowerMode::On);
-
-        let first = service.take_next_pending().unwrap();
-        assert_eq!(first.id, off);
-        assert_eq!(first.mode, OutputPowerMode::Off);
-        service.complete(first, Ok(OutputPowerMode::Off));
-
-        let second = service.take_next_pending().unwrap();
-        assert_eq!(second.id, on);
-        service.requeue(second);
-        let second = service.take_next_pending().unwrap();
-        service.complete(
-            second,
-            Err(OutputPowerError::Backend("modeset failed".into())),
-        );
-
-        let completed = service.take_completed();
-        assert_eq!(completed.len(), 2);
-        assert_eq!(completed[0].result, Ok(OutputPowerMode::Off));
-        assert!(matches!(
-            completed[1].result,
-            Err(OutputPowerError::Backend(_))
-        ));
-
-        let cancelled = service.submit("DP-2".into(), OutputPowerMode::Off);
-        service.cancel(&[cancelled]);
-        assert!(!service.has_pending());
     }
 
     #[test]

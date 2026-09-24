@@ -6,15 +6,14 @@
 
 mod async_render;
 mod buffer;
-mod hash;
 mod pixels;
 mod text;
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
-use smithay::utils::{Scale, Transform};
+use smithay::utils::Transform;
 
-use crate::bar::paint::{BarPainter, BarScheme, TextOverflow};
+use crate::bar::paint::{BarPainter, BarScheme};
 use crate::bar::scene;
 use crate::contexts::CoreCtx;
 use crate::types::{Point, Rect, Size};
@@ -29,7 +28,8 @@ use self::text::TextRasterizer;
 /// constructing a second `FontSystem` that never paints anything.
 pub struct WaylandBarRenderer {
     cached_buffers: Vec<BarBuffer>,
-    cached_key: u64,
+    /// Scene the cached buffers depict.
+    cached_snapshots: async_render::Snapshots,
     async_runtime: async_render::AsyncBarRenderRuntime,
 }
 
@@ -37,7 +37,7 @@ impl Default for WaylandBarRenderer {
     fn default() -> Self {
         Self {
             cached_buffers: Vec::new(),
-            cached_key: 0,
+            cached_snapshots: Default::default(),
             async_runtime: async_render::AsyncBarRenderRuntime::spawn(),
         }
     }
@@ -66,7 +66,7 @@ impl BarRasterizer {
         self.text.set_fonts(fonts);
     }
 
-    fn begin(&mut self, _scale: Scale<f64>, surface_rect: Rect) {
+    fn begin(&mut self, surface_rect: Rect) {
         self.scheme = None;
         self.surface_rect = surface_rect;
         let byte_len = if surface_rect.size().is_positive() {
@@ -124,7 +124,6 @@ impl BarPainter for BarRasterizer {
         text: &str,
         invert: bool,
         detail_height: i32,
-        overflow: TextOverflow,
     ) -> i32 {
         let Some(scheme) = self.scheme.clone() else {
             return bounds.x;
@@ -146,10 +145,9 @@ impl BarPainter for BarRasterizer {
         }
         if !text.is_empty() {
             let available_width = (bounds.w - lpad).max(0);
-            let fitted =
-                crate::bar::text::fit_to_width(text, available_width, overflow, |candidate| {
-                    self.text.width(candidate, bounds.h)
-                });
+            let fitted = crate::bar::text::fit_to_width(text, available_width, |candidate| {
+                self.text.width(candidate, bounds.h)
+            });
             let text = fitted.as_ref();
             let powerline = crate::bar::text::is_powerline_only(text);
             let bleed = if powerline { 2 } else { 0 };
@@ -182,24 +180,14 @@ impl BarPainter for BarRasterizer {
 pub fn render_bar_buffers(
     core: &mut CoreCtx,
     renderer: &mut WaylandBarRenderer,
-    scale: Scale<f64>,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
-    let snapshots = scene::build_monitor_snapshots(core, false, 0);
-    let _ = scale;
+    let snapshots = scene::build_monitor_snapshots(core, 0);
+    async_render::poll_result(core, renderer, &snapshots);
 
-    let key = hash::render_key(
-        core.config().bar.show,
-        core.config().systray.show,
-        &snapshots,
-    );
-    async_render::poll_result(core, renderer, key);
-
-    if renderer.cached_key != key {
-        async_render::request_render(renderer, key, snapshots);
-    }
-
-    if renderer.cached_key == key {
+    if *renderer.cached_snapshots == snapshots {
         core.bar.mark_drawn();
+    } else {
+        renderer.async_runtime.request(snapshots);
     }
 
     renderer
@@ -216,78 +204,43 @@ pub fn render_bar_buffers(
 /// white rectangle in the center. Input classification (`button_region_at`)
 /// routes presses to the configured `BottomBar` bindings.
 pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
-    let mut buffers = Vec::new();
     let bg = core.config().colors.status.bg;
-    let monitors: Vec<crate::types::Monitor> = core
-        .model()
-        .monitors_iter()
-        .filter(|(_, mon)| mon.bottom_bar_visible(&core.model().clients))
-        .map(|(_, mon)| mon.clone())
-        .collect();
-    for mon in monitors {
-        let w = mon.work_rect().w;
-        let h = mon.bottom_bar_height;
-        if w <= 0 || h <= 0 {
-            continue;
-        }
-        let [r, g, b, a] = bg.to_rgba8();
-        let mut pixels = vec![0u8; (w as usize) * (h as usize) * 4];
-        // Fill background, premultiplying alpha for GL compositing.
-        for chunk in pixels.as_chunks_mut::<4>().0 {
-            let (pr, pg, pb, pa) = if a == 255 {
-                (b, g, r, 255)
-            } else {
-                (
-                    (b as u16 * a as u16 / 255) as u8,
-                    (g as u16 * a as u16 / 255) as u8,
-                    (r as u16 * a as u16 / 255) as u8,
-                    a,
-                )
-            };
-            chunk.copy_from_slice(&[pr, pg, pb, pa]);
-        }
-
-        // Draw the centered indicator: blend the bar background heavily
-        // toward white (~85%) so the handle reads as a bright, white pill
-        // regardless of the bar's theme color.
-        let indicator = mon.bottom_bar_indicator_rect();
-        if indicator.w > 0 && indicator.h > 0 {
-            let blend = |bg: u8| -> u8 { ((bg as u16 * 15 + 255 * 85) / 100) as u8 };
-            let ir = blend(r);
-            let ig = blend(g);
-            let ib = blend(b);
-            for y in 0..indicator.h.min(h) {
-                for x in 0..indicator.w.min(w) {
-                    let idx =
-                        ((indicator.y + y) as usize * w as usize + (indicator.x + x) as usize) * 4;
-                    if idx + 3 < pixels.len() {
-                        let (pr, pg, pb, pa) = if a == 255 {
-                            (ib, ig, ir, 255)
-                        } else {
-                            (
-                                (ib as u16 * a as u16 / 255) as u8,
-                                (ig as u16 * a as u16 / 255) as u8,
-                                (ir as u16 * a as u16 / 255) as u8,
-                                a,
-                            )
-                        };
-                        pixels[idx..idx + 4].copy_from_slice(&[pr, pg, pb, pa]);
-                    }
-                }
+    let indicator_color = bottom_bar_indicator_color(bg);
+    core.model()
+        .monitors_iter_all()
+        .filter(|mon| mon.bottom_bar_visible(&core.model().clients))
+        .filter_map(|mon| {
+            let size = Size::new(mon.work_rect().w, mon.bottom_bar_height);
+            if !size.is_positive() {
+                return None;
             }
-        }
+            let mut pixels = vec![0u8; (size.w as usize) * (size.h as usize) * 4];
+            pixels::fill_rect(&mut pixels, size, Rect::new(0, 0, size.w, size.h), bg);
+            pixels::fill_rect(
+                &mut pixels,
+                size,
+                mon.bottom_bar_indicator_rect(),
+                indicator_color,
+            );
+            let buffer = MemoryRenderBuffer::from_slice(
+                &pixels,
+                Fourcc::Argb8888,
+                (size.w, size.h),
+                1,
+                Transform::Normal,
+                None,
+            );
+            Some((buffer, Point::new(mon.work_rect().x, mon.bottom_bar_y())))
+        })
+        .collect()
+}
 
-        let buffer = MemoryRenderBuffer::from_slice(
-            &pixels,
-            Fourcc::Argb8888,
-            (w, h),
-            1,
-            Transform::Normal,
-            None,
-        );
-        buffers.push((buffer, Point::new(mon.work_rect().x, mon.bottom_bar_y())));
-    }
-    buffers
+/// Blend the bar background heavily toward white (~85%) so the handle reads
+/// as a bright, white pill regardless of the bar's theme color.
+fn bottom_bar_indicator_color(bg: crate::types::Rgba) -> crate::types::Rgba {
+    let [r, g, b, _] = bg.to_rgba8();
+    let blend = |channel: u8| ((channel as u16 * 15 + 255 * 85) / 100) as f32 / 255.0;
+    crate::types::Rgba::new(blend(r), blend(g), blend(b), bg.a())
 }
 
 #[cfg(test)]
@@ -297,22 +250,14 @@ mod tests {
     #[test]
     fn empty_text_still_paints_and_advances_the_complete_cell() {
         let mut painter = BarRasterizer::default();
-        painter.begin(Scale::from(1.0), Rect::new(0, 0, 8, 4));
+        painter.begin(Rect::new(0, 0, 8, 4));
         painter.set_scheme(BarScheme {
             foreground: crate::types::Rgba::new(1.0, 0.0, 0.0, 1.0),
             background: crate::types::Rgba::new(0.0, 0.0, 1.0, 1.0),
             detail: crate::types::Rgba::ZERO,
         });
 
-        let right = BarPainter::text(
-            &mut painter,
-            Rect::new(2, 0, 4, 4),
-            0,
-            "",
-            false,
-            0,
-            TextOverflow::Ellipsis,
-        );
+        let right = BarPainter::text(&mut painter, Rect::new(2, 0, 4, 4), 0, "", false, 0);
 
         assert_eq!(right, 6);
         let pixel = (2 * 4) as usize;
@@ -367,7 +312,10 @@ mod tests {
     /// dividing, producing ~1 instead of ~219 on dark backgrounds).
     #[test]
     fn bottom_bar_blend_toward_white_is_not_truncated() {
-        let blend = |bg: u8| -> u8 { ((bg as u16 * 15 + 255 * 85) / 100) as u8 };
+        let blend = |value: u8| {
+            let gray = f32::from(value) / 255.0;
+            bottom_bar_indicator_color(crate::types::Rgba::rgb(gray, gray, gray)).to_rgba8()[0]
+        };
         assert_eq!(blend(18), 219, "dark bg (18) must blend toward near-white");
         assert_eq!(blend(255), 255, "white bg stays white");
         assert_eq!(blend(0), 216, "black bg blends to ~85% white");

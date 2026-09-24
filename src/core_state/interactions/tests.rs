@@ -24,7 +24,7 @@ fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
             up: Box::new(ButtonAction::named(
                 crate::actions::NamedAction::ToggleOverview,
             )),
-            click: Box::new(ButtonAction::named(crate::actions::NamedAction::Spawn)),
+            click: Box::new(ButtonAction::spawn(&["true"])),
             hold: Box::new(ButtonAction::named(
                 crate::actions::NamedAction::ToggleOverview,
             )),
@@ -88,25 +88,16 @@ fn bottom_bar_swipe_direction_is_locked_after_first_crossing() {
 fn bottom_bar_drag_exposes_bound_directional_actions() {
     let drag = bottom_bar_drag(100, 1000);
     assert!(matches!(
-        drag.left(),
-        ButtonAction::Named {
-            action: crate::actions::NamedAction::ScrollLeft,
-            ..
-        }
+        drag.actions.left.as_ref(),
+        ButtonAction::Named(crate::actions::NamedAction::ScrollLeft)
     ));
     assert!(matches!(
-        drag.right(),
-        ButtonAction::Named {
-            action: crate::actions::NamedAction::ScrollRight,
-            ..
-        }
+        drag.actions.right.as_ref(),
+        ButtonAction::Named(crate::actions::NamedAction::ScrollRight)
     ));
     assert!(matches!(
-        drag.up(),
-        ButtonAction::Named {
-            action: crate::actions::NamedAction::ToggleOverview,
-            ..
-        }
+        drag.actions.up.as_ref(),
+        ButtonAction::Named(crate::actions::NamedAction::ToggleOverview)
     ));
 }
 
@@ -114,7 +105,7 @@ fn bottom_bar_drag_exposes_bound_directional_actions() {
 fn bottom_bar_lifecycle_rejects_overlap_and_wrong_button_release() {
     let mut interactions = PointerInteractionState::default();
     interactions
-        .begin_overview_card(OverviewCardDrag::new(
+        .begin(OverviewCardDrag::new(
             WindowId(1),
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -122,33 +113,33 @@ fn bottom_bar_lifecycle_rejects_overlap_and_wrong_button_release() {
             10,
         ))
         .unwrap();
-    assert!(
-        interactions
-            .begin_bottom_bar(bottom_bar_drag(500, 1000))
-            .is_err()
-    );
-    assert!(!interactions.bottom_bar_gesture_active());
+    assert!(interactions.begin(bottom_bar_drag(500, 1000)).is_err());
+    assert!(interactions.captured::<BottomBarDrag>().is_none());
 
     interactions.cancel_capture();
-    interactions
-        .begin_bottom_bar(bottom_bar_drag(500, 1000))
-        .unwrap();
+    interactions.begin(bottom_bar_drag(500, 1000)).unwrap();
     assert!(interactions.captured_source() == Some(InteractionSource::Pointer));
-    assert!(!interactions.finish_bottom_bar(MouseButton::Right));
-    assert!(interactions.bottom_bar_gesture_active());
-    assert!(interactions.finish_bottom_bar(MouseButton::Left));
-    assert!(!interactions.bottom_bar_gesture_active());
+    assert!(
+        interactions
+            .finish::<BottomBarDrag>(MouseButton::Right)
+            .is_none()
+    );
+    assert!(interactions.captured::<BottomBarDrag>().is_some());
+    assert!(
+        interactions
+            .finish::<BottomBarDrag>(MouseButton::Left)
+            .is_some()
+    );
+    assert!(interactions.captured::<BottomBarDrag>().is_none());
 }
 
 #[test]
 fn bottom_bar_cancel_clears_the_gesture() {
     let mut interactions = PointerInteractionState::default();
-    interactions
-        .begin_bottom_bar(bottom_bar_drag(500, 1000))
-        .unwrap();
-    assert!(interactions.cancel_bottom_bar());
-    assert!(!interactions.bottom_bar_gesture_active());
-    assert!(!interactions.cancel_bottom_bar());
+    interactions.begin(bottom_bar_drag(500, 1000)).unwrap();
+    assert!(interactions.cancel::<BottomBarDrag>().is_some());
+    assert!(interactions.captured::<BottomBarDrag>().is_none());
+    assert!(interactions.cancel::<BottomBarDrag>().is_none());
 }
 
 fn armed_title_drag(win: WindowId, origin: super::ArmedDragOrigin) -> PointerInteractionState {
@@ -234,7 +225,7 @@ fn title_reorder_requires_an_armed_capture() {
 fn tag_drag_owns_bar_hover_for_its_complete_capture() {
     let mut interactions = PointerInteractionState::default();
     interactions
-        .begin_tag_drag(super::TagDragState {
+        .begin(super::TagDragState {
             initial_tag: TagMask::single(1).unwrap(),
             start: Point::new(10, 10),
             dragging: false,
@@ -248,7 +239,11 @@ fn tag_drag_owns_bar_hover_for_its_complete_capture() {
         .unwrap();
 
     assert!(interactions.owns_bar_hover());
-    assert!(interactions.finish_tag_drag(MouseButton::Left).is_some());
+    assert!(
+        interactions
+            .finish::<super::TagDragState>(MouseButton::Left)
+            .is_some()
+    );
     assert!(!interactions.owns_bar_hover());
 }
 
@@ -294,7 +289,7 @@ fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
     );
     let mut interactions = PointerInteractionState::default();
     interactions
-        .begin_overview_card(OverviewCardDrag::new(
+        .begin(OverviewCardDrag::new(
             WindowId(1),
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -302,15 +297,23 @@ fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
             10,
         ))
         .unwrap();
-    assert!(interactions.begin_sidebar_volume(drag).is_err());
-    assert!(!interactions.sidebar_volume_active());
+    assert!(interactions.begin(drag).is_err());
+    assert!(interactions.captured::<SidebarVolumeDrag>().is_none());
 
     interactions.cancel_capture();
-    interactions.begin_sidebar_volume(drag).unwrap();
-    assert!(!interactions.finish_sidebar_volume(MouseButton::Right));
-    assert!(interactions.sidebar_volume_active());
-    assert!(interactions.finish_sidebar_volume(MouseButton::Left));
-    assert!(!interactions.sidebar_volume_active());
+    interactions.begin(drag).unwrap();
+    assert!(
+        interactions
+            .finish::<SidebarVolumeDrag>(MouseButton::Right)
+            .is_none()
+    );
+    assert!(interactions.captured::<SidebarVolumeDrag>().is_some());
+    assert!(
+        interactions
+            .finish::<SidebarVolumeDrag>(MouseButton::Left)
+            .is_some()
+    );
+    assert!(interactions.captured::<SidebarVolumeDrag>().is_none());
 }
 
 #[test]
@@ -350,7 +353,7 @@ fn overview_card_gesture_captures_its_complete_input_sequence() {
     let win = WindowId(9);
     let mut interactions = PointerInteractionState::default();
     interactions
-        .begin_overview_card(OverviewCardDrag::new(
+        .begin(OverviewCardDrag::new(
             win,
             MouseButton::Left,
             InteractionSource::Touch(4),
@@ -366,7 +369,9 @@ fn overview_card_gesture_captures_its_complete_input_sequence() {
     );
     assert!(interactions.has_capture());
     assert_eq!(
-        interactions.finish_overview_card(MouseButton::Left),
+        interactions
+            .finish::<OverviewCardDrag>(MouseButton::Left)
+            .map(OverviewCardDrag::action),
         Some(OverviewCardAction::Select(win))
     );
     assert!(!interactions.has_capture());
@@ -431,7 +436,7 @@ fn beginning_capture_atomically_invalidates_hover_offer() {
         dir: ResizeDirection::Left,
     });
     interactions
-        .begin_sidebar_volume(SidebarVolumeDrag::new(
+        .begin(SidebarVolumeDrag::new(
             MouseButton::Left,
             InteractionSource::Pointer,
             MonitorId::from_raw(1),
@@ -455,13 +460,13 @@ fn beginning_capture_atomically_invalidates_hover_offer() {
 #[test]
 fn captured_interaction_cursor_tracks_internal_transitions() {
     let mut interactions = PointerInteractionState::default();
-    interactions
-        .begin_bottom_bar(bottom_bar_drag(500, 1000))
-        .unwrap();
+    interactions.begin(bottom_bar_drag(500, 1000)).unwrap();
     assert_eq!(interactions.projection().cursor, AltCursor::Move);
 
     assert_eq!(
-        interactions.update_bottom_bar(Point::new(500, 960)),
+        interactions
+            .captured_mut::<BottomBarDrag>()
+            .and_then(|drag| drag.update(Point::new(500, 960))),
         Some(SwipeDirection::Up)
     );
     assert_eq!(interactions.projection().cursor, AltCursor::VerticalAdjust);
@@ -487,7 +492,7 @@ fn captured_interaction_cursor_tracks_internal_transitions() {
 fn overview_close_threshold_drives_destructive_cursor() {
     let mut interactions = PointerInteractionState::default();
     interactions
-        .begin_overview_card(OverviewCardDrag::new(
+        .begin(OverviewCardDrag::new(
             WindowId(9),
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -498,7 +503,9 @@ fn overview_close_threshold_drives_destructive_cursor() {
     assert_eq!(interactions.projection().cursor, AltCursor::Move);
 
     assert_eq!(
-        interactions.update_overview_card(Point::new(100, 70)),
+        interactions
+            .captured_mut::<OverviewCardDrag>()
+            .and_then(|drag| drag.update(Point::new(100, 70))),
         Some(true)
     );
     assert_eq!(interactions.projection().cursor, AltCursor::Close);

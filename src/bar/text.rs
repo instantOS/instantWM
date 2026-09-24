@@ -28,8 +28,6 @@
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::bar::paint::TextOverflow;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FontRole {
     Text,
@@ -92,17 +90,8 @@ pub(crate) fn runs(text: &str) -> Vec<TextRun<'_>> {
 }
 
 pub(crate) fn is_powerline_only(text: &str) -> bool {
-    let mut saw_glyph = false;
-    for ch in text.chars() {
-        if ch.is_whitespace() {
-            continue;
-        }
-        if !matches!(ch as u32, 0xE0A0..=0xE0D7) {
-            return false;
-        }
-        saw_glyph = true;
-    }
-    saw_glyph
+    let mut glyphs = text.chars().filter(|ch| !ch.is_whitespace()).peekable();
+    glyphs.peek().is_some() && glyphs.all(is_powerline_glyph)
 }
 
 /// A Nerd Fonts powerline arrow. These glyphs are drawn to tile seamlessly:
@@ -174,25 +163,18 @@ pub(crate) fn icon_gap_letter_spacing(carrier_size: f32, text_size: f32, icon_si
 
 /// Fit text to a cell using backend-provided advance measurement.
 ///
-/// Clipped text is returned unchanged because both rasterizers already enforce
-/// cell bounds. Ellipsis truncation occurs at extended grapheme boundaries and
-/// uses a binary search over those boundaries, avoiding a shaped measurement
-/// for every prefix. The returned text is shared policy; the backend only
-/// rasterizes it. A borrowed value is returned when no fitting is needed.
+/// Ellipsis truncation occurs at extended grapheme boundaries and uses a
+/// binary search over those boundaries, avoiding a shaped measurement for
+/// every prefix. The returned text is shared policy: every backend must hand
+/// the same fitted string to Xft, cosmic-text, or a future text engine. A
+/// borrowed value is returned when no fitting is needed.
 pub(crate) fn fit_to_width<'a>(
     text: &'a str,
     max_width: i32,
-    overflow: TextOverflow,
     mut measure: impl FnMut(&str) -> i32,
 ) -> Cow<'a, str> {
     let max_width = max_width.max(0);
-    // Both rasterizers already clip to the cell bounds. Measuring and
-    // rebuilding a clipped string only duplicates their work and, for
-    // cosmic-text, would shape a series of throwaway prefixes.
-    if text.is_empty() || overflow == TextOverflow::Clip {
-        return Cow::Borrowed(text);
-    }
-    if measure(text) <= max_width {
+    if text.is_empty() || measure(text) <= max_width {
         return Cow::Borrowed(text);
     }
 
@@ -347,41 +329,20 @@ mod tests {
 
     #[test]
     fn fitting_keeps_text_borrowed_when_it_already_fits() {
-        let fitted = fit_to_width("hello", 5, TextOverflow::Ellipsis, monospace_width);
+        let fitted = fit_to_width("hello", 5, monospace_width);
         assert!(matches!(fitted, Cow::Borrowed("hello")));
     }
 
     #[test]
     fn fitting_applies_one_shared_ellipsis_policy() {
-        assert_eq!(
-            fit_to_width("abcdef", 5, TextOverflow::Ellipsis, monospace_width),
-            "ab..."
-        );
-        assert_eq!(
-            fit_to_width("abcdef", 5, TextOverflow::Clip, monospace_width),
-            "abcdef"
-        );
-        assert_eq!(
-            fit_to_width("abcdef", 2, TextOverflow::Ellipsis, monospace_width),
-            ""
-        );
-    }
-
-    #[test]
-    fn clipping_is_deferred_to_the_rasterizer_without_measuring() {
-        let mut measurements = 0;
-        let fitted = fit_to_width("e\u{301}x", 1, TextOverflow::Clip, |_| {
-            measurements += 1;
-            99
-        });
-        assert!(matches!(fitted, Cow::Borrowed("e\u{301}x")));
-        assert_eq!(measurements, 0);
+        assert_eq!(fit_to_width("abcdef", 5, monospace_width), "ab...");
+        assert_eq!(fit_to_width("abcdef", 2, monospace_width), "");
     }
 
     #[test]
     fn ellipsis_never_splits_a_grapheme_cluster() {
         assert_eq!(
-            fit_to_width("e\u{301}xyzz", 4, TextOverflow::Ellipsis, monospace_width),
+            fit_to_width("e\u{301}xyzz", 4, monospace_width),
             "e\u{301}..."
         );
     }
@@ -390,7 +351,7 @@ mod tests {
     fn ellipsis_uses_logarithmically_many_measurements() {
         let text = "x".repeat(1024);
         let mut measurements = 0;
-        let fitted = fit_to_width(&text, 100, TextOverflow::Ellipsis, |candidate| {
+        let fitted = fit_to_width(&text, 100, |candidate| {
             measurements += 1;
             candidate.len() as i32
         });
