@@ -8,7 +8,7 @@ use smithay::reexports::wayland_protocols_wlr::output_management::v1::server::{
 };
 use smithay::reexports::wayland_server::{DisplayHandle, backend::GlobalId};
 
-use crate::backend::output::OutputTransactionId;
+use crate::backend::output::RequestId;
 
 use super::OutputManagementDispatch;
 use super::head::{send_head_to_client, update_head_state};
@@ -30,7 +30,7 @@ pub struct OutputManagementState {
     global: GlobalId,
     /// Cached display handle (for creating resources outside of bind).
     dh: DisplayHandle,
-    pub(super) pending_transactions: HashMap<OutputTransactionId, ZwlrOutputConfigurationV1>,
+    pub(super) pending_transactions: HashMap<RequestId, ZwlrOutputConfigurationV1>,
 }
 
 #[derive(Debug)]
@@ -212,15 +212,11 @@ impl OutputManagementState {
         }
     }
 
-    pub fn track_transaction(
-        &mut self,
-        id: OutputTransactionId,
-        configuration: ZwlrOutputConfigurationV1,
-    ) {
+    pub fn track_transaction(&mut self, id: RequestId, configuration: ZwlrOutputConfigurationV1) {
         self.pending_transactions.insert(id, configuration);
     }
 
-    pub fn finish_transaction(&mut self, id: OutputTransactionId, succeeded: bool) {
+    pub fn finish_transaction(&mut self, id: RequestId, succeeded: bool) {
         let Some(configuration) = self.pending_transactions.remove(&id) else {
             return;
         };

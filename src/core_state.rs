@@ -96,6 +96,9 @@ pub struct DerivedState {
     pub display: DisplayConfig,
     pub bar_height: i32,
     pub bar_horizontal_padding: i32,
+    /// Sanitized `[monitors]` policy, rebuilt whenever monitor config applies.
+    #[serde(skip)]
+    pub monitor_policy: crate::output_mirror::MonitorPolicy,
 }
 
 /// Backend presenting the hosted StatusNotifier context menu.

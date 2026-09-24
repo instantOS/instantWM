@@ -1,11 +1,11 @@
 //! X11-specific monitor helpers: Xinerama, bar destruction, stacking.
 
-use crate::backend::x11::X11BackendRef;
 use crate::backend::{BackendOutputInfo, BackendVrrSupport};
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
 use x11rb::protocol::xinerama;
 use x11rb::protocol::xproto::*;
+use x11rb::rust_connection::RustConnection;
 
 /// Destroy an X11 bar window for a monitor.
 pub fn destroy_monitor_bar(ctx: &mut WmCtx, bar_win: WindowId) {
@@ -18,32 +18,33 @@ pub fn destroy_monitor_bar(ctx: &mut WmCtx, bar_win: WindowId) {
     }
 }
 
-/// Query Xinerama screen information and return outputs (no monitor sync).
-pub fn xinerama_outputs(x11: &X11BackendRef<'_>) -> Option<Vec<BackendOutputInfo>> {
-    let conn = x11.conn;
-    let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
-    if is_active.state == 0 {
-        return None;
-    }
+/// Unique Xinerama screens as outputs; empty when Xinerama is inactive.
+pub fn xinerama_outputs(conn: &RustConnection) -> Vec<BackendOutputInfo> {
+    let active = xinerama::is_active(conn)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .is_some_and(|reply| reply.state != 0);
+    let Some(screens) = active
+        .then(|| xinerama::query_screens(conn).ok()?.reply().ok())
+        .flatten()
+    else {
+        return Vec::new();
+    };
 
-    let screens = xinerama::query_screens(conn).ok()?.reply().ok()?;
-    let mut unique = Vec::new();
+    let mut unique: Vec<Rect> = Vec::new();
     for s in &screens.screen_info {
-        let info = Rect {
-            x: s.x_org as i32,
-            y: s.y_org as i32,
-            w: s.width as i32,
-            h: s.height as i32,
-        };
-        if !unique
-            .iter()
-            .any(|u: &Rect| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
-        {
-            unique.push(info);
+        let rect = Rect::new(
+            i32::from(s.x_org),
+            i32::from(s.y_org),
+            i32::from(s.width),
+            i32::from(s.height),
+        );
+        if !unique.contains(&rect) {
+            unique.push(rect);
         }
     }
 
-    let outputs: Vec<BackendOutputInfo> = unique
+    unique
         .into_iter()
         .enumerate()
         .map(|(i, rect)| BackendOutputInfo {
@@ -55,7 +56,5 @@ pub fn xinerama_outputs(x11: &X11BackendRef<'_>) -> Option<Vec<BackendOutputInfo
             vrr_enabled: false,
             mirrors: Vec::new(),
         })
-        .collect();
-
-    Some(outputs)
+        .collect()
 }

@@ -10,7 +10,7 @@ use smithay::reexports::drm::control::{self, connector, crtc};
 use smithay::wayland::dmabuf::DmabufFeedback;
 
 use crate::backend::BackendVrrSupport;
-use crate::backend::output::OutputPowerRequestId;
+use crate::backend::output::RequestId;
 use crate::config::config_toml::VrrMode;
 pub const DEFAULT_SCREEN_WIDTH: i32 = 1280;
 pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
@@ -47,5 +47,5 @@ pub struct OutputSurfaceEntry {
     /// Physical DPMS state, independent of logical output enablement.
     pub powered: bool,
     /// A power-on request is acknowledged after its first frame is queued.
-    pub pending_power_on: Option<OutputPowerRequestId>,
+    pub pending_power_on: Option<RequestId>,
 }

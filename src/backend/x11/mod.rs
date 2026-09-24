@@ -472,48 +472,50 @@ impl PointerOps for X11BackendRef<'_> {
 impl OutputOps for X11BackendRef<'_> {
     fn connected_output_names(&self) -> Vec<String> {
         let root = self.conn.setup().roots[self.screen_num].root;
-        let mut names: Vec<_> = randr::connected_output_names(self.conn, root)
-            .into_iter()
-            .collect();
+        let mut names: Vec<_> = randr::RandrSnapshot::fetch(self.conn, root)
+            .map(|snapshot| snapshot.connected_names().into_iter().collect())
+            .unwrap_or_default();
         names.sort();
         names
     }
 
-    fn query_fallback_outputs(&self) -> Option<Vec<crate::backend::BackendOutputInfo>> {
-        crate::backend::x11::monitor_helpers::xinerama_outputs(self)
-    }
-
+    /// RandR outputs, else Xinerama screens, else the whole root window.
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
         let root = self.conn.setup().roots[self.screen_num].root;
-        let outputs = randr::get_outputs(self.conn, root);
-        if outputs.is_empty() {
-            // Fall back to screen info if no outputs found
-            let screen = &self.conn.setup().roots[self.screen_num];
-            vec![crate::backend::BackendOutputInfo {
-                name: "X11".to_owned(),
-                rect: crate::types::Rect {
-                    x: 0,
-                    y: 0,
-                    w: screen.width_in_pixels as i32,
-                    h: screen.height_in_pixels as i32,
-                },
-                scale: 1.0,
-                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
-                vrr_mode: None,
-                vrr_enabled: false,
-                mirrors: Vec::new(),
-            }]
-        } else {
-            outputs
+        let outputs = randr::RandrSnapshot::fetch(self.conn, root)
+            .map(|snapshot| snapshot.active_outputs())
+            .unwrap_or_default();
+        if !outputs.is_empty() {
+            return outputs;
         }
+        let outputs = monitor_helpers::xinerama_outputs(self.conn);
+        if !outputs.is_empty() {
+            return outputs;
+        }
+        let screen = &self.conn.setup().roots[self.screen_num];
+        let (width, height) = self
+            .conn
+            .get_geometry(root)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map_or(
+                (screen.width_in_pixels, screen.height_in_pixels),
+                |geometry| (geometry.width, geometry.height),
+            );
+        vec![crate::backend::BackendOutputInfo {
+            name: String::new(),
+            rect: Rect::new(0, 0, i32::from(width).max(1), i32::from(height).max(1)),
+            scale: 1.0,
+            vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+            mirrors: Vec::new(),
+        }]
     }
 }
 
 impl crate::backend::OutputPolicyOps for crate::contexts::WmCtxX11<'_> {
-    fn apply_monitor_configs(
-        &mut self,
-        configs: &HashMap<String, crate::config::config_toml::MonitorConfig>,
-    ) {
-        randr::apply_output_policy(self.x11.conn, self.x11_runtime, configs);
+    fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy) {
+        randr::apply_output_policy(self.x11.conn, self.x11_runtime, policy);
     }
 }

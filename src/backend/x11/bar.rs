@@ -92,7 +92,7 @@ fn sync_monitor_bar_window(
     monitor_id: MonitorId,
 ) {
     let tray_monitor =
-        crate::backend::x11::systray::systray_to_mon(core.model(), &core.config().systray, None);
+        crate::backend::x11::systray::systray_to_mon(core.model(), &core.config().systray);
     let Some(m) = core.model().monitor(monitor_id) else {
         return;
     };

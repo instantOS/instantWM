@@ -442,10 +442,7 @@ impl crate::backend::WindowCloseOps for crate::contexts::WmCtxWayland<'_> {
 
 impl WaylandBackend {
     /// Project the sanitized monitor policy onto the output state.
-    pub fn apply_monitor_configs(
-        &self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    ) {
+    pub fn apply_monitor_configs(&self, policy: &crate::output_mirror::MonitorPolicy) {
         let _ = self.with_state(|state: &mut WaylandState| {
             let output_names: Vec<_> = state
                 .output_management_state
@@ -453,12 +450,10 @@ impl WaylandBackend {
                 .iter()
                 .map(|output| output.name())
                 .collect();
-            // Configs arrive already sanitized by `monitor::apply_monitor_config`,
-            // which logged any mirror diagnostics; only the valid pairs are kept.
-            state.runtime.mirror_of = crate::output_mirror::MirrorMap::build(configs).0;
+            state.runtime.mirror_of = policy.mirrors.clone();
             state.runtime.configured_output_positions.clear();
             for name in &output_names {
-                let Some(config) = configs.get(name).or_else(|| configs.get("*")) else {
+                let Some(config) = policy.effective(name) else {
                     continue;
                 };
                 if config.position.is_some() {
@@ -469,17 +464,14 @@ impl WaylandBackend {
                 }
                 state.set_output_config(name, config);
             }
-            state.queue_output_policy_projection(configs);
+            state.queue_output_policy_projection(&policy.configs);
         });
     }
 }
 
 impl crate::backend::OutputPolicyOps for crate::contexts::WmCtxWayland<'_> {
-    fn apply_monitor_configs(
-        &mut self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    ) {
-        self.wayland.apply_monitor_configs(configs);
+    fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy) {
+        self.wayland.apply_monitor_configs(policy);
     }
 }
 
@@ -594,7 +586,7 @@ mod tests {
         .into_iter()
         .collect();
 
-        backend.apply_monitor_configs(&configs);
+        backend.apply_monitor_configs(&crate::output_mirror::MonitorPolicy::new(&configs));
 
         backend
             .with_state(|state| {

@@ -125,14 +125,13 @@ pub(super) fn process_output_configurations(
     >::default();
     let capabilities = output_capabilities(output_surfaces);
 
-    while let Some(mut pending) = state.runtime.output_transactions.take_next_pending() {
-        let policy_transaction = pending.is_policy();
+    while let Some((id, mut pending)) = state.runtime.output_transactions.take_next_pending() {
         pending.transaction.apply_mirrors(&state.runtime.mirror_of);
         if let Err(error) = pending.transaction.validate(&capabilities) {
             state
                 .runtime
                 .output_transactions
-                .complete(pending, Err(error));
+                .complete(id, (pending.kind, Err(error)));
             continue;
         }
         if pending.kind == OutputTransactionKind::Test {
@@ -140,7 +139,7 @@ pub(super) fn process_output_configurations(
             state
                 .runtime
                 .output_transactions
-                .complete(pending, Ok(snapshot));
+                .complete(id, (pending.kind, Ok(snapshot)));
             continue;
         }
 
@@ -165,7 +164,7 @@ pub(super) fn process_output_configurations(
                 .pending_crtcs
                 .contains(&output_surfaces[*index].crtc)
         }) {
-            state.runtime.output_transactions.requeue(pending);
+            state.runtime.output_transactions.requeue(id, pending);
             break;
         }
 
@@ -257,10 +256,13 @@ pub(super) fn process_output_configurations(
                 }
             }
             state.runtime.output_transactions.complete(
-                pending,
-                Err(OutputTransactionError::Backend(
-                    "DRM could not commit the requested output state".to_string(),
-                )),
+                id,
+                (
+                    pending.kind,
+                    Err(OutputTransactionError::Backend(
+                        "DRM could not commit the requested output state".to_string(),
+                    )),
+                ),
             );
             continue;
         }
@@ -268,7 +270,7 @@ pub(super) fn process_output_configurations(
         for (index, config, _) in &requested {
             let entry = &mut output_surfaces[*index];
             let name = entry.output.name();
-            let position_source = if policy_transaction {
+            let position_source = if pending.policy {
                 state.output_position_source(&name)
             } else {
                 OutputPositionSource::ClientManaged
@@ -278,11 +280,13 @@ pub(super) fn process_output_configurations(
                 .output_position_sources
                 .insert(name, position_source);
             if !config.enabled {
-                if let Some(id) = entry.pending_power_on.take() {
-                    state.runtime.output_power.complete_by_id(
-                        id,
-                        OutputId(entry.output.name()),
-                        Err(OutputPowerError::Unavailable(entry.output.name())),
+                if let Some(power_id) = entry.pending_power_on.take() {
+                    state.runtime.output_power.complete(
+                        power_id,
+                        (
+                            OutputId(entry.output.name()),
+                            Err(OutputPowerError::Unavailable(entry.output.name())),
+                        ),
                     );
                 }
                 entry.surface.take();
@@ -313,7 +317,7 @@ pub(super) fn process_output_configurations(
         state
             .runtime
             .output_transactions
-            .complete(pending, Ok(snapshot));
+            .complete(id, (pending.kind, Ok(snapshot)));
         loop_state.mark_all_dirty();
         // Project the authoritative state before attempting another apply.
         break;
@@ -329,28 +333,28 @@ pub(super) fn process_output_power_requests(
         return;
     }
 
-    while let Some(request) = state.runtime.output_power.take_next_pending() {
+    while let Some((id, request)) = state.runtime.output_power.take_next_pending() {
         let Some(entry) = output_surfaces
             .iter_mut()
             .find(|entry| entry.output.name() == request.output.0)
         else {
             let name = request.output.0.clone();
-            state
-                .runtime
-                .output_power
-                .complete(request, Err(OutputPowerError::Unavailable(name)));
+            state.runtime.output_power.complete(
+                id,
+                (request.output, Err(OutputPowerError::Unavailable(name))),
+            );
             continue;
         };
         if !entry.enabled || entry.surface.is_none() {
             let name = entry.output.name();
-            state
-                .runtime
-                .output_power
-                .complete(request, Err(OutputPowerError::Unavailable(name)));
+            state.runtime.output_power.complete(
+                id,
+                (request.output, Err(OutputPowerError::Unavailable(name))),
+            );
             continue;
         }
         if entry.pending_power_on.is_some() || loop_state.pending_crtcs.contains(&entry.crtc) {
-            state.runtime.output_power.requeue(request);
+            state.runtime.output_power.requeue(id, request);
             break;
         }
 
@@ -360,7 +364,10 @@ pub(super) fn process_output_power_requests(
             OutputPowerMode::Off
         };
         if current == request.mode {
-            state.runtime.output_power.complete(request, Ok(current));
+            state
+                .runtime
+                .output_power
+                .complete(id, (request.output, Ok(current)));
             continue;
         }
 
@@ -383,12 +390,15 @@ pub(super) fn process_output_power_requests(
                         state
                             .runtime
                             .output_power
-                            .complete(request, Ok(OutputPowerMode::Off));
+                            .complete(id, (request.output, Ok(OutputPowerMode::Off)));
                     }
                     Err(error) => {
                         state.runtime.output_power.complete(
-                            request,
-                            Err(OutputPowerError::Backend(format!("{error:?}"))),
+                            id,
+                            (
+                                request.output,
+                                Err(OutputPowerError::Backend(format!("{error:?}"))),
+                            ),
                         );
                         break;
                     }
@@ -396,7 +406,7 @@ pub(super) fn process_output_power_requests(
             }
             OutputPowerMode::On => {
                 entry.powered = true;
-                entry.pending_power_on = Some(request.id);
+                entry.pending_power_on = Some(id);
                 loop_state.mark_dirty(entry.crtc);
                 // Completion is delayed until render_outputs queues the first
                 // frame, which is the commit that re-enables a cleared CRTC.

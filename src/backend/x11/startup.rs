@@ -116,6 +116,16 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
     }
+
+    // RandR events diff against the last seen topology; without this seed the
+    // first event would treat every connected-but-disabled output as newly
+    // plugged and enable it.
+    if let Some(data) = wm.backend.x11_data_mut()
+        && let Some(snapshot) = crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, root)
+    {
+        data.x11_runtime.connected_outputs = snapshot.connected_names();
+        data.x11_runtime.active_outputs = snapshot.active_names();
+    }
 }
 
 fn setup_signal_handlers() {

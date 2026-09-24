@@ -303,8 +303,8 @@ pub struct WaylandRuntimeState {
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
     pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
-    pub output_transactions: crate::backend::output::OutputTransactionService,
-    pub output_power: crate::backend::output::OutputPowerService,
+    pub output_transactions: crate::backend::output::OutputTransactionQueue,
+    pub output_power: crate::backend::output::OutputPowerQueue,
     /// Authoritative physical power mode for outputs whose active backend
     /// supports DPMS. Absence means the output cannot be power-managed.
     pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
@@ -356,8 +356,8 @@ impl Default for WaylandRuntimeState {
             winit_window_size: smithay::utils::Size::from((0, 0)),
             pending_winit_resize: None,
             winit_close_requested: false,
-            output_transactions: crate::backend::output::OutputTransactionService::default(),
-            output_power: crate::backend::output::OutputPowerService::default(),
+            output_transactions: crate::backend::output::OutputTransactionQueue::default(),
+            output_power: crate::backend::output::OutputPowerQueue::default(),
             output_power_modes: HashMap::new(),
             configured_output_positions: HashSet::new(),
             output_position_sources: HashMap::new(),
