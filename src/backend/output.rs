@@ -69,6 +69,40 @@ pub struct OutputMode {
     pub refresh_millihertz: i32,
 }
 
+/// A mode requested by monitor configuration, independent of the output API.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MonitorModeRequest {
+    width: i32,
+    height: i32,
+    refresh_hz: Option<f32>,
+}
+
+impl MonitorModeRequest {
+    pub fn parse(resolution: &str, refresh_hz: Option<f32>) -> Option<Self> {
+        let (width, height) = resolution.split_once('x')?;
+        let width = width.parse().ok()?;
+        let height = height.parse().ok()?;
+        (width > 0 && height > 0).then_some(Self {
+            width,
+            height,
+            refresh_hz,
+        })
+    }
+
+    /// Unknown refresh is acceptable only when no rate was requested.
+    pub fn matches(self, width: i32, height: i32, refresh_millihertz: Option<u32>) -> bool {
+        if self.width != width || self.height != height {
+            return false;
+        }
+        match self.refresh_hz {
+            None => true,
+            Some(requested) => refresh_millihertz.is_some_and(|actual| {
+                (f64::from(actual) / 1000.0 - f64::from(requested)).abs() < 0.1
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutputTransform {
     Normal,
@@ -458,6 +492,23 @@ impl OutputTransactionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn monitor_mode_requests_parse_and_match_consistently() {
+        let request = MonitorModeRequest::parse("1920x1080", Some(59.94)).unwrap();
+        assert!(request.matches(1920, 1080, Some(60_000)));
+        assert!(!request.matches(1920, 1080, Some(120_000)));
+        assert!(!request.matches(1920, 1080, None));
+        assert!(!request.matches(2560, 1080, Some(60_000)));
+        assert!(
+            MonitorModeRequest::parse("1920x1080", None)
+                .unwrap()
+                .matches(1920, 1080, None)
+        );
+        assert!(MonitorModeRequest::parse("0x1080", None).is_none());
+        assert!(MonitorModeRequest::parse("1920x-1", None).is_none());
+        assert!(MonitorModeRequest::parse("1920x1080x60", None).is_none());
+    }
 
     #[test]
     fn automatic_layout_compacts_only_automatic_outputs() {

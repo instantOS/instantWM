@@ -3,7 +3,7 @@
 use crate::backend::BackendOutputInfo;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
-    OutputPlacement, OutputPositionSource, plan_automatic_output_positions,
+    MonitorModeRequest, OutputPlacement, OutputPositionSource, plan_automatic_output_positions,
 };
 use crate::config::config_toml::MonitorConfig;
 use crate::types::{MonitorPosition, Rect};
@@ -762,10 +762,11 @@ fn select_output_mode(
     config: &MonitorConfig,
     modes: &[randr::ModeInfo],
 ) -> Option<randr::ModeInfo> {
-    let requested = config.resolution.as_deref().and_then(|resolution| {
-        parse_resolution(resolution)
-            .and_then(|(w, h)| find_mode_by_resolution(modes, w, h, config.refresh_rate))
-    });
+    let requested = config
+        .resolution
+        .as_deref()
+        .and_then(|resolution| MonitorModeRequest::parse(resolution, config.refresh_rate))
+        .and_then(|request| find_mode_by_resolution(output_info, modes, request));
     let current = current_mode.and_then(|id| modes.iter().find(|mode| mode.id == id).copied());
 
     requested
@@ -788,47 +789,25 @@ fn find_preferred_mode(
         .and_then(|mode_id| modes.iter().find(|m| &m.id == mode_id).copied())
 }
 
-/// Find a mode by resolution, honouring an optional refresh-rate request.
-///
-/// `refresh_rate` is in Hz, matching `MonitorConfig::refresh_rate`. When set,
-/// only modes within 0.1 Hz of the request match (same tolerance as the
-/// Wayland backend); when unset, the first mode with the resolution wins, as
-/// before. Returns `None` when nothing matches so callers can preserve the
-/// current mode instead of silently applying the wrong refresh rate.
+/// Find an advertised mode matching the shared monitor configuration policy.
+/// The caller preserves the current mode when no requested mode matches.
 fn find_mode_by_resolution(
+    output_info: &randr::GetOutputInfoReply,
     modes: &[randr::ModeInfo],
-    width: u16,
-    height: u16,
-    refresh_rate: Option<f32>,
+    request: MonitorModeRequest,
 ) -> Option<randr::ModeInfo> {
-    modes
+    output_info
+        .modes
         .iter()
-        .filter(|m| m.width == width && m.height == height)
-        .find(|m| refresh_rate_matches(m, refresh_rate))
+        .filter_map(|id| modes.iter().find(|mode| mode.id == *id))
+        .find(|mode| {
+            request.matches(
+                i32::from(mode.width),
+                i32::from(mode.height),
+                mode_refresh_millihertz(mode),
+            )
+        })
         .copied()
-}
-
-/// Whether a RandR mode satisfies an optional refresh-rate request in Hz.
-fn refresh_rate_matches(mode: &randr::ModeInfo, refresh_rate: Option<f32>) -> bool {
-    let Some(requested) = refresh_rate else {
-        return true;
-    };
-    let Some(actual) = mode_refresh_millihertz(mode) else {
-        return false;
-    };
-    (f64::from(actual) / 1000.0 - f64::from(requested)).abs() < 0.1
-}
-
-/// Parse a resolution string like "1920x1080".
-fn parse_resolution(res: &str) -> Option<(u16, u16)> {
-    let parts: Vec<&str> = res.split('x').collect();
-    if parts.len() == 2 {
-        let w = parts[0].parse().ok()?;
-        let h = parts[1].parse().ok()?;
-        Some((w, h))
-    } else {
-        None
-    }
 }
 
 fn collect_output_rects(
@@ -869,8 +848,9 @@ mod refresh_tests {
     use super::{
         automatic_output_position, crtc_configuration_matches, effective_monitor_config,
         find_mode_by_resolution, mode_refresh_millihertz, new_auto_enable_candidates,
-        planned_automatic_positions, refresh_rate_matches, select_output_mode,
+        planned_automatic_positions, select_output_mode,
     };
+    use crate::backend::output::MonitorModeRequest;
     use crate::backend::{BackendOutputInfo, BackendVrrSupport};
     use crate::config::config_toml::MonitorConfig;
     use crate::types::{Point, Rect};
@@ -938,12 +918,26 @@ mod refresh_tests {
             test_mode(1, 1920, 1080, 148_500_000, 2200, 1125),
             test_mode(2, 1920, 1080, 356_400_000, 2200, 1125),
         ];
+        let output_info = x11rb::protocol::randr::GetOutputInfoReply {
+            modes: vec![1, 2],
+            ..Default::default()
+        };
         assert_eq!(
-            find_mode_by_resolution(&modes, 1920, 1080, Some(144.0)).map(|mode| mode.id),
+            find_mode_by_resolution(
+                &output_info,
+                &modes,
+                MonitorModeRequest::parse("1920x1080", Some(144.0)).unwrap()
+            )
+            .map(|mode| mode.id),
             Some(2)
         );
         assert_eq!(
-            find_mode_by_resolution(&modes, 1920, 1080, Some(60.0)).map(|mode| mode.id),
+            find_mode_by_resolution(
+                &output_info,
+                &modes,
+                MonitorModeRequest::parse("1920x1080", Some(60.0)).unwrap()
+            )
+            .map(|mode| mode.id),
             Some(1)
         );
     }
@@ -954,14 +948,42 @@ mod refresh_tests {
             test_mode(1, 1920, 1080, 148_500_000, 2200, 1125),
             test_mode(2, 1920, 1080, 356_400_000, 2200, 1125),
         ];
+        let output_info = x11rb::protocol::randr::GetOutputInfoReply {
+            modes: vec![1, 2],
+            ..Default::default()
+        };
         assert_eq!(
-            find_mode_by_resolution(&modes, 1920, 1080, None).map(|mode| mode.id),
+            find_mode_by_resolution(
+                &output_info,
+                &modes,
+                MonitorModeRequest::parse("1920x1080", None).unwrap()
+            )
+            .map(|mode| mode.id),
             Some(1)
         );
         assert_eq!(
-            find_mode_by_resolution(&modes, 1920, 1080, Some(165.0)).map(|mode| mode.id),
+            find_mode_by_resolution(
+                &output_info,
+                &modes,
+                MonitorModeRequest::parse("1920x1080", Some(165.0)).unwrap()
+            )
+            .map(|mode| mode.id),
             None
         );
+    }
+
+    #[test]
+    fn requested_mode_must_be_advertised_by_the_output() {
+        let modes = vec![
+            test_mode(1, 1920, 1080, 148_500_000, 2200, 1125),
+            test_mode(2, 2560, 1440, 585_953_280, 2720, 1496),
+        ];
+        let output_info = x11rb::protocol::randr::GetOutputInfoReply {
+            modes: vec![2],
+            ..Default::default()
+        };
+        let request = MonitorModeRequest::parse("1920x1080", None).unwrap();
+        assert!(find_mode_by_resolution(&output_info, &modes, request).is_none());
     }
 
     #[test]
@@ -993,12 +1015,21 @@ mod refresh_tests {
     #[test]
     fn refresh_rate_tolerance_matches_wayland_backend() {
         let sixty = test_mode(1, 1920, 1080, 148_500_000, 2200, 1125);
-        assert!(refresh_rate_matches(&sixty, Some(60.0)));
-        assert!(refresh_rate_matches(&sixty, Some(59.94)));
-        assert!(!refresh_rate_matches(&sixty, Some(165.0)));
-        assert!(refresh_rate_matches(&sixty, None));
+        let matches = |refresh| {
+            MonitorModeRequest::parse("1920x1080", refresh)
+                .unwrap()
+                .matches(1920, 1080, mode_refresh_millihertz(&sixty))
+        };
+        assert!(matches(Some(60.0)));
+        assert!(matches(Some(59.94)));
+        assert!(!matches(Some(165.0)));
+        assert!(matches(None));
         let broken = test_mode(2, 1920, 1080, 0, 2200, 1125);
-        assert!(!refresh_rate_matches(&broken, Some(60.0)));
+        assert!(
+            !MonitorModeRequest::parse("1920x1080", Some(60.0))
+                .unwrap()
+                .matches(1920, 1080, mode_refresh_millihertz(&broken))
+        );
     }
 
     #[test]

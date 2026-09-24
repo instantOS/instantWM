@@ -1,5 +1,19 @@
 use super::*;
 
+pub(super) struct DbusMenuSession {
+    pub(super) id: u64,
+    pub(super) service: String,
+    pub(super) menu_path: String,
+    pub(super) parents: Vec<i32>,
+    pub(super) last_view: MenuView,
+}
+
+impl DbusMenuSession {
+    fn parent_id(&self) -> i32 {
+        self.parents.last().copied().unwrap_or(0)
+    }
+}
+
 pub(super) fn open_dbus_menu(
     conn: &Connection,
     session_id: u64,

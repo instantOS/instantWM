@@ -10,9 +10,9 @@ use std::sync::Mutex;
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
-    AdaptiveSyncPolicy, CompletedOutputTransaction, OutputHeadConfiguration, OutputId,
-    OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction, OutputTransactionKind,
-    OutputTransform,
+    AdaptiveSyncPolicy, CompletedOutputTransaction, MonitorModeRequest, OutputHeadConfiguration,
+    OutputId, OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction,
+    OutputTransactionKind, OutputTransform,
 };
 use crate::backend::wayland::output::{from_smithay_transform, to_smithay_transform};
 use crate::config::config_toml::VrrMode;
@@ -366,17 +366,14 @@ impl WaylandState {
                 continue;
             };
 
-            if let Some(ref res) = config.resolution
-                && let Some((w_str, h_str)) = res.split_once('x')
-                && let (Ok(w), Ok(h)) = (w_str.parse::<i32>(), h_str.parse::<i32>())
-                && let Some(mode) = output.modes().into_iter().find(|m| {
-                    m.size.w == w
-                        && m.size.h == h
-                        && config
-                            .refresh_rate
-                            .map(|r| (m.refresh as f32 / 1000.0 - r).abs() < 0.1)
-                            .unwrap_or(true)
-                })
+            if let Some(request) = config
+                .resolution
+                .as_deref()
+                .and_then(|resolution| MonitorModeRequest::parse(resolution, config.refresh_rate))
+                && let Some(mode) = output
+                    .modes()
+                    .into_iter()
+                    .find(|m| request.matches(m.size.w, m.size.h, u32::try_from(m.refresh).ok()))
             {
                 head.mode = Some(TransactionOutputMode {
                     width: mode.size.w,
