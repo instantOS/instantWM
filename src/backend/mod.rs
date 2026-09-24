@@ -24,6 +24,7 @@ pub enum BackendVrrSupport {
     Supported,
 }
 
+/// One region of the logical desktop as presented by the backend.
 #[derive(Debug, Clone)]
 pub struct BackendOutputInfo {
     pub name: String,
@@ -32,6 +33,9 @@ pub struct BackendOutputInfo {
     pub vrr_support: BackendVrrSupport,
     pub vrr_mode: Option<VrrMode>,
     pub vrr_enabled: bool,
+    /// Other physical heads presenting this region. Backends report heads
+    /// they drive as mirrors here instead of as separate outputs.
+    pub mirrors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,17 +165,15 @@ pub trait LayoutInteractionOps {
     );
 }
 
-/// Output discovery and configuration.
+/// Output discovery.
 pub trait OutputOps {
-    /// Apply the complete monitor policy. Backends resolve wildcard and named
-    /// precedence atomically rather than exposing order-dependent setters.
-    fn apply_monitor_configs(
-        &self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    );
-
-    /// Get current outputs from the backend.
+    /// Regions of the logical desktop, one per presenting output. Mirror heads
+    /// the backend drives are listed in their source's
+    /// [`BackendOutputInfo::mirrors`], not as outputs of their own.
     fn get_outputs(&self) -> Vec<BackendOutputInfo>;
+
+    /// Physical heads known to the backend, including heads currently off.
+    fn connected_output_names(&self) -> Vec<String>;
 
     /// Legacy fallback discovery when primary discovery reports a single
     /// placeholder screen. X11 consults Xinerama; backends without a
@@ -180,6 +182,21 @@ pub trait OutputOps {
         let _ = self;
         None
     }
+}
+
+/// Native projection of the monitor policy.
+///
+/// Implemented on backend contexts rather than [`OutputOps`] because applying
+/// policy updates backend-owned runtime state (automatic placement ownership,
+/// the heads currently driven as mirrors).
+pub trait OutputPolicyOps {
+    /// Apply the complete, sanitized monitor policy. Backends resolve wildcard
+    /// and named precedence atomically rather than exposing order-dependent
+    /// setters.
+    fn apply_monitor_configs(
+        &mut self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    );
 }
 
 /// X11-specific backend data.
@@ -432,15 +449,12 @@ impl PointerOps for Backend {
 }
 
 impl OutputOps for Backend {
-    fn apply_monitor_configs(
-        &self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    ) {
+    fn connected_output_names(&self) -> Vec<String> {
         match self {
             Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).apply_monitor_configs(configs)
+                X11BackendRef::new(&data.conn, data.screen_num).connected_output_names()
             }
-            Backend::Wayland(data) => data.backend.apply_monitor_configs(configs),
+            Backend::Wayland(data) => data.backend.connected_output_names(),
         }
     }
 

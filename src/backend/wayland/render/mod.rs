@@ -9,6 +9,7 @@ pub mod borders;
 pub mod cursor;
 pub mod drm;
 pub mod frame;
+pub mod mirror;
 pub mod scene;
 pub mod winit;
 

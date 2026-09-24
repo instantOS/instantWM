@@ -26,6 +26,7 @@ mod logging;
 mod model;
 mod monitor;
 mod mouse;
+mod output_mirror;
 mod overview;
 pub mod reload;
 mod runtime;

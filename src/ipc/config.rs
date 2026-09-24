@@ -174,8 +174,29 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
             return resp;
         }
         RuntimeConfigSection::Monitors => {
-            let resp = map_set(&mut state.config.monitors, section.name(), rest, value);
+            // Validate against a clone first: a fatal mirror error keyed to
+            // this entry must reject the command without touching config.
+            let mut prospective = state.config.monitors.clone();
+            let resp = map_set(&mut prospective, section.name(), rest, value);
             if matches!(resp, Response::Ok) {
+                if let Some((id, field)) = rest.split_once('.') {
+                    if field == "mirror"
+                        && let Some(config) = prospective.get_mut(id)
+                        && config.mirror.as_deref() == Some("")
+                    {
+                        // `config set monitors.X.mirror ""` clears the mirror
+                        // instead of tripping EmptyTarget at apply time.
+                        config.mirror = None;
+                    }
+                    let (_, errors) = crate::output_mirror::MirrorMap::build(&prospective);
+                    if let Some(error) = errors
+                        .into_iter()
+                        .find(|error| error.is_fatal() && error.declaration_key() == Some(id))
+                    {
+                        return Response::err(format!("{error}"));
+                    }
+                }
+                state.config.monitors = prospective;
                 wm.work.queue_monitor_config_apply();
             }
             return resp;
@@ -805,6 +826,160 @@ mod tests {
         ));
         assert!(!wm.core.config.monitors.contains_key("DP-1"));
         assert!(!wm.work.monitor_config);
+    }
+
+    #[test]
+    fn monitor_mirror_self_reference_is_rejected_without_committing() {
+        let mut wm = test_wm();
+
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", "DP-1"),
+            Response::Err(message) if message.contains("cannot mirror itself")
+        ));
+        assert!(!wm.core.config.monitors.contains_key("DP-1"));
+        assert!(!wm.work.monitor_config);
+    }
+
+    #[test]
+    fn monitor_mirror_set_validates_against_the_stored_entry() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            Response::Ok
+        ));
+        let before = serde_json::to_value(&wm.core.config.monitors).unwrap();
+
+        // Self-reference on a populated entry: rejected, map unchanged.
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", "DP-1"),
+            Response::Err(message) if message.contains("cannot mirror itself")
+        ));
+        let after = serde_json::to_value(&wm.core.config.monitors).unwrap();
+        assert_eq!(before, after);
+
+        // A fatal mirror error on ANOTHER entry must not block edits to this
+        // one: seed a broken entry directly, bypassing this command's filter.
+        wm.core.config.monitors.insert(
+            "HDMI-2".to_owned(),
+            crate::config::config_toml::MonitorConfig {
+                mirror: Some("HDMI-2".to_owned()),
+                ..crate::config::config_toml::MonitorConfig::default()
+            },
+        );
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.scale", "2.0"),
+            Response::Ok
+        ));
+        assert_eq!(wm.core.config.monitors["DP-1"].scale, Some(2.0));
+        assert_eq!(
+            wm.core.config.monitors["DP-1"].mirror.as_deref(),
+            Some("HDMI-1")
+        );
+    }
+
+    #[test]
+    fn monitor_mirror_empty_value_clears_the_declaration() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            Response::Ok
+        ));
+
+        // Bare empty string clears instead of tripping EmptyTarget.
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", ""),
+            Response::Ok
+        ));
+        assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
+
+        // JSON string form of the empty value clears as well.
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            Response::Ok
+        ));
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", r#""""#),
+            Response::Ok
+        ));
+        assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
+        assert!(wm.work.monitor_config);
+    }
+
+    #[test]
+    fn monitor_mirror_fit_set_roundtrips_and_rejects_bad_values() {
+        use crate::config::config_toml::MirrorFit;
+
+        let mut wm = test_wm();
+
+        // Bare enum value via the serde string fallback.
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror_fit", "cover"),
+            Response::Ok
+        ));
+        assert_eq!(
+            wm.core.config.monitors["DP-1"].mirror_fit,
+            Some(MirrorFit::Cover)
+        );
+        // A fit-only change cannot produce a fatal mirror error, so it
+        // commits and queues an apply like any other monitors field.
+        assert!(wm.work.monitor_config);
+
+        // Invalid enum values are rejected with the config untouched.
+        let before = serde_json::to_value(&wm.core.config.monitors).unwrap();
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror_fit", "sideways"),
+            Response::Err(_)
+        ));
+        assert_eq!(
+            serde_json::to_value(&wm.core.config.monitors).unwrap(),
+            before
+        );
+
+        // "" is not an enum value: unlike `mirror`, fit has no string clear
+        // sentinel (clearing happens via the JSON null below or by clearing
+        // the mirror itself).
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror_fit", ""),
+            Response::Err(_)
+        ));
+        assert_eq!(
+            serde_json::to_value(&wm.core.config.monitors).unwrap(),
+            before
+        );
+
+        // JSON null clears the fit through the ordinary Option path.
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror_fit", "null"),
+            Response::Ok
+        ));
+        assert_eq!(wm.core.config.monitors["DP-1"].mirror_fit, None);
+        assert!(wm.work.monitor_config);
+    }
+
+    #[test]
+    fn monitor_mirror_fit_set_survives_with_the_mirror_declaration() {
+        use crate::config::config_toml::MirrorFit;
+
+        let mut wm = test_wm();
+
+        // Fit set first, mirror second: the mirror validation must not reject
+        // or clear the already-stored fit.
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror_fit", "contain"),
+            Response::Ok
+        ));
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            Response::Ok
+        ));
+        assert_eq!(
+            wm.core.config.monitors["DP-1"].mirror.as_deref(),
+            Some("HDMI-1")
+        );
+        assert_eq!(
+            wm.core.config.monitors["DP-1"].mirror_fit,
+            Some(MirrorFit::Contain)
+        );
     }
 
     #[test]

@@ -107,9 +107,14 @@ impl DrmLoopState {
     }
 
     fn mark_pointer_output_dirty(&mut self, pointer: crate::types::Point, layout: &DrmLayoutState) {
-        if let Some(crtc) = output_at_pointer(&layout.output_hit_regions, pointer) {
+        let mut matched = false;
+        // Outputs may overlap in the layout: every matching head must be
+        // dirtied or one of them shows a stale frame.
+        for crtc in outputs_at_pointer(&layout.output_hit_regions, pointer) {
             self.mark_dirty(crtc);
-        } else {
+            matched = true;
+        }
+        if !matched {
             // This can be observed briefly while a new output layout is being
             // projected. Redrawing all outputs is the safe recovery path.
             self.mark_all_dirty();
@@ -146,13 +151,18 @@ impl DrmLoopState {
     }
 }
 
-fn output_at_pointer(
+/// Every output whose hit region contains the pointer, in layout order.
+///
+/// Output-management clients may position outputs so that they overlap, so
+/// more than one CRTC can match a single pointer position; callers must dirty
+/// all of them.
+fn outputs_at_pointer(
     regions: &[OutputHitRegion],
     pointer: crate::types::Point,
-) -> Option<crtc::Handle> {
+) -> impl Iterator<Item = crtc::Handle> + '_ {
     regions
         .iter()
-        .find(|region| region.rect.contains_point(pointer))
+        .filter(move |region| region.rect.contains_point(pointer))
         .map(|region| region.crtc)
 }
 
@@ -450,9 +460,11 @@ fn refresh_drm_layout_state(
             );
         }
     }
+    // Realized mirrors own no region of the layout; they redraw with their
+    // source (see `propagate_mirror_render_flags`).
     let active: Vec<_> = output_surfaces
         .iter()
-        .filter(|entry| entry.enabled)
+        .filter(|entry| entry.enabled && state.space.output_geometry(&entry.output).is_some())
         .collect();
     let layout = output_layout_bounds(
         active.iter().map(|entry| entry.rect),
@@ -900,9 +912,11 @@ fn reconcile_drm_outputs(
             state.fail_pending_captures_for_output(&entry.output);
             state.runtime.output_power_modes.remove(&name);
             state.runtime.output_metadata.remove(&name);
+            state.runtime.output_position_sources.remove(&name);
             let cancelled = state.output_power_state.fail_output(&name);
             state.runtime.output_power.cancel(&cancelled);
         }
+        state.drop_unavailable_mirrors();
     }
 
     {
@@ -948,11 +962,11 @@ fn compact_drm_automatic_layout(
 ) {
     let mut placements: Vec<_> = output_surfaces
         .iter()
-        .filter(|entry| entry.enabled)
+        .filter(|entry| entry.enabled && state.space.output_geometry(&entry.output).is_some())
         .map(|entry| OutputPlacement {
             id: entry.output.name(),
             rect: entry.rect,
-            source: entry.position_source,
+            source: state.output_position_source(&entry.output.name()),
         })
         .collect();
     for (name, position) in plan_automatic_output_positions(&mut placements) {
@@ -1048,6 +1062,32 @@ fn process_cursor_warp(
     }
 }
 
+/// A realized mirror shows its source's scene, so it must redraw whenever
+/// its source does. Every damage path targets the source, which is the output
+/// in the space.
+fn propagate_mirror_render_flags(
+    state: &WaylandState,
+    output_surfaces: &[OutputSurfaceEntry],
+    render_flags: &mut HashMap<crtc::Handle, bool>,
+) {
+    if state.runtime.realized_mirrors.is_empty() {
+        return;
+    }
+    for entry in output_surfaces {
+        let Some(source) = state.runtime.realized_mirrors.get(&entry.output.name()) else {
+            continue;
+        };
+        let source_dirty = output_surfaces
+            .iter()
+            .find(|candidate| candidate.output.name() == *source)
+            .and_then(|candidate| render_flags.get(&candidate.crtc).copied())
+            .unwrap_or(false);
+        if source_dirty {
+            render_flags.insert(entry.crtc, true);
+        }
+    }
+}
+
 /// Render all outputs that need it.
 #[allow(clippy::too_many_arguments)]
 fn render_outputs(
@@ -1061,7 +1101,8 @@ fn render_outputs(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: Instant,
 ) {
-    let render_flags = loop_state.take_render_flags();
+    let mut render_flags = loop_state.take_render_flags();
+    propagate_mirror_render_flags(state, output_surfaces, &mut render_flags);
     let session_active = loop_state.session_active;
     let pending_crtcs = loop_state.pending_crtcs.clone();
 
@@ -1095,7 +1136,7 @@ fn render_outputs(
             let suppress_upper_layers =
                 crate::backend::wayland::render::scene::output_has_real_fullscreen(
                     wm,
-                    &entry.output,
+                    &state.presented_output(&entry.output),
                 );
             let rendered = render_drm_output(
                 state,
@@ -1199,7 +1240,7 @@ mod cursor_config_tests {
 mod output_layout_tests {
     use smithay::reexports::drm::control::{crtc, from_u32};
 
-    use super::{OutputHitRegion, output_at_pointer, output_layout_bounds, output_layout_size};
+    use super::{OutputHitRegion, output_layout_bounds, output_layout_size, outputs_at_pointer};
     use crate::types::{Point, Rect, Size};
 
     fn crtc(raw: u32) -> crtc::Handle {
@@ -1227,18 +1268,57 @@ mod output_layout_tests {
         ];
 
         assert_eq!(
-            output_at_pointer(&regions, Point::new(1200, 500)),
-            Some(top_left)
+            outputs_at_pointer(&regions, Point::new(1200, 500)).collect::<Vec<_>>(),
+            vec![top_left]
         );
         assert_eq!(
-            output_at_pointer(&regions, Point::new(2200, 500)),
-            Some(top_right)
+            outputs_at_pointer(&regions, Point::new(2200, 500)).collect::<Vec<_>>(),
+            vec![top_right]
         );
         assert_eq!(
-            output_at_pointer(&regions, Point::new(1200, 1500)),
-            Some(bottom)
+            outputs_at_pointer(&regions, Point::new(1200, 1500)).collect::<Vec<_>>(),
+            vec![bottom]
         );
-        assert_eq!(output_at_pointer(&regions, Point::new(4000, 1500)), None);
+        assert_eq!(
+            outputs_at_pointer(&regions, Point::new(4000, 1500)).count(),
+            0
+        );
+    }
+
+    #[test]
+    fn overlapping_heads_both_match_the_pointer() {
+        let first = crtc(1);
+        let second = crtc(2);
+        let neighbor = crtc(3);
+        let shared_rect = Rect::new(0, 0, 1920, 1080);
+        let regions = [
+            OutputHitRegion {
+                crtc: first,
+                rect: shared_rect,
+            },
+            OutputHitRegion {
+                crtc: second,
+                rect: shared_rect,
+            },
+            OutputHitRegion {
+                crtc: neighbor,
+                rect: Rect::new(1920, 0, 1920, 1080),
+            },
+        ];
+
+        // Both overlapping CRTCs are returned so both are dirtied.
+        assert_eq!(
+            outputs_at_pointer(&regions, Point::new(100, 100)).collect::<Vec<_>>(),
+            vec![first, second]
+        );
+        assert_eq!(
+            outputs_at_pointer(&regions, Point::new(2000, 100)).collect::<Vec<_>>(),
+            vec![neighbor]
+        );
+        assert_eq!(
+            outputs_at_pointer(&regions, Point::new(4000, 1500)).count(),
+            0
+        );
     }
 
     #[test]

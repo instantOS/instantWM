@@ -41,6 +41,7 @@ use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::frame::{
     send_frame_callbacks, update_primary_scanout_output, window_overlaps_output,
 };
+use crate::backend::wayland::render::mirror::{MirroredElement, mirror_projection};
 use crate::backend::wayland::render::scene::{
     SharedSceneElements, build_common_scene_elements_from_shared,
     count_upper_layer_render_elements, get_render_element_counts,
@@ -88,6 +89,21 @@ render_elements! {
     Space=smithay::desktop::space::SpaceRenderElements<GlesRenderer, smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>,
 }
 
+render_elements! {
+    /// A DRM output frame: its own scene, or a mirror's projection of its
+    /// source's scene.
+    pub DrmOutputElement<=GlesRenderer>;
+    Scene=DrmExtras,
+    Mirrored=MirroredElement<DrmExtras>,
+}
+
+/// Render one DRM output.
+///
+/// A realized mirror renders its source's scene projected onto its own
+/// framebuffer. Client bookkeeping (frame callbacks, presentation and dmabuf
+/// feedback, primary scanout) follows the source, which is the output the
+/// surfaces are actually on; `suppress_upper_layers` is decided for the
+/// source as well.
 pub fn render_drm_output(
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
@@ -97,6 +113,24 @@ pub fn render_drm_output(
     shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> RenderOutcome {
+    let mirror = mirror_projection(state, &entry.output);
+    let (scene_output, scene_rect) = match &mirror {
+        Some((source, _)) => {
+            let Some(geometry) = state.space.output_geometry(source) else {
+                return RenderOutcome::Failed;
+            };
+            (
+                source.clone(),
+                crate::types::Rect::new(
+                    geometry.loc.x,
+                    geometry.loc.y,
+                    geometry.size.w,
+                    geometry.size.h,
+                ),
+            )
+        }
+        None => (entry.output.clone(), entry.rect),
+    };
     // Read live rather than taking a parameter: the DRM loop snapshots the
     // same `state.runtime.pointer_location` before rendering and nothing in
     // between mutates it.
@@ -104,7 +138,8 @@ pub fn render_drm_output(
     let cursor_elements = build_drm_cursor_elements(
         state,
         renderer,
-        entry,
+        &scene_output,
+        scene_rect,
         cursor_manager,
         pointer_location,
         start_time,
@@ -113,14 +148,35 @@ pub fn render_drm_output(
         .iter()
         .map(|element| element.id().clone())
         .collect();
-    let render_elements = build_drm_render_elements(
+    let scene_elements = build_drm_render_elements(
         state,
         renderer,
-        entry,
+        &scene_output,
         cursor_elements,
         shared_scene,
         suppress_upper_layers,
     );
+    let is_mirror = state
+        .runtime
+        .realized_mirrors
+        .contains_key(&entry.output.name());
+    let render_elements: Vec<DrmOutputElement> = match &mirror {
+        // A mirror without a usable projection (no current mode) stays blank
+        // rather than showing a scene of its own.
+        None if is_mirror => Vec::new(),
+        None => scene_elements
+            .into_iter()
+            .map(DrmOutputElement::Scene)
+            .collect(),
+        Some((source, projection)) => {
+            let scale = smithay::utils::Scale::from(source.current_scale().fractional_scale());
+            scene_elements
+                .into_iter()
+                .filter_map(|element| projection.project(element, scale))
+                .map(DrmOutputElement::Mirrored)
+                .collect()
+        }
+    };
     let capture_requests = take_drm_capture_requests(state, &entry.output);
 
     let frame_flags = drm_frame_flags(entry);
@@ -160,11 +216,15 @@ pub fn render_drm_output(
         let _ = primary_swapchain.sync.wait();
     }
 
-    update_primary_scanout_output(state, &entry.output, &frame_result.states);
-    send_output_dmabuf_feedback(state, entry, &frame_result.states);
-
+    let presentation_feedback = if is_mirror {
+        OutputPresentationFeedback::new(&entry.output)
+    } else {
+        update_primary_scanout_output(state, &entry.output, &frame_result.states);
+        send_output_dmabuf_feedback(state, entry, &frame_result.states);
+        collect_presentation_feedback(state, entry, &frame_result.states)
+    };
     let frame_metadata = DrmFrameMetadata {
-        presentation_feedback: collect_presentation_feedback(state, entry, &frame_result.states),
+        presentation_feedback,
     };
 
     match entry
@@ -183,8 +243,10 @@ pub fn render_drm_output(
         }
     }
 
-    crate::backend::wayland::render::frame::release_fifo_barriers(state, &entry.output);
-    send_frame_callbacks(state, &entry.output, start_time.elapsed());
+    if !is_mirror {
+        crate::backend::wayland::render::frame::release_fifo_barriers(state, &entry.output);
+        send_frame_callbacks(state, &entry.output, start_time.elapsed());
+    }
     RenderOutcome::Submitted
 }
 
@@ -231,14 +293,15 @@ fn send_output_dmabuf_feedback(
 fn build_drm_cursor_elements(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
-    entry: &OutputSurfaceEntry,
+    output: &Output,
+    output_rect: crate::types::Rect,
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: Instant,
 ) -> Vec<DrmExtras> {
     let local_pointer = Point::from((
-        pointer_location.x - entry.rect.x as f64,
-        pointer_location.y - entry.rect.y as f64,
+        pointer_location.x - output_rect.x as f64,
+        pointer_location.y - output_rect.y as f64,
     ));
     let resolved_cursor = resolve_cursor(
         &state.cursor_image_status,
@@ -246,7 +309,7 @@ fn build_drm_cursor_elements(
         state.runtime.dnd_icon.as_ref(),
         state.runtime.cursor_hidden_by_touch,
     );
-    let cursor_scale = entry.output.current_scale().integer_scale();
+    let cursor_scale = output.current_scale().integer_scale();
     let millis = start_time.elapsed().as_millis() as u32;
 
     build_cursor_elements(
@@ -262,18 +325,18 @@ fn build_drm_cursor_elements(
 fn build_drm_render_elements(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
-    entry: &OutputSurfaceEntry,
+    output: &Output,
     cursor_elements: Vec<DrmExtras>,
     shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
     if state.is_locked() {
-        build_locked_drm_render_elements(state, renderer, entry, cursor_elements)
+        build_locked_drm_render_elements(state, renderer, output, cursor_elements)
     } else {
         build_unlocked_drm_render_elements(
             state,
             renderer,
-            entry,
+            output,
             cursor_elements,
             shared_scene,
             suppress_upper_layers,
@@ -284,13 +347,13 @@ fn build_drm_render_elements(
 fn build_locked_drm_render_elements(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
-    entry: &OutputSurfaceEntry,
+    output: &Output,
     cursor_elements: Vec<DrmExtras>,
 ) -> Vec<DrmExtras> {
     let mut render_elements = Vec::with_capacity(cursor_elements.len() + 4);
     render_elements.extend(cursor_elements);
 
-    let output_name = entry.output.name();
+    let output_name = output.name();
     if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
         let lock_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
             smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
@@ -310,7 +373,7 @@ fn build_locked_drm_render_elements(
 fn build_unlocked_drm_render_elements(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
-    entry: &OutputSurfaceEntry,
+    output: &Output,
     cursor_elements: Vec<DrmExtras>,
     shared_scene: Option<Rc<SharedSceneElements>>,
     suppress_upper_layers: bool,
@@ -318,18 +381,14 @@ fn build_unlocked_drm_render_elements(
     let scene = build_common_scene_elements_from_shared(
         state,
         renderer,
-        &entry.output,
+        output,
         &shared_scene.expect("shared scene elements"),
     );
-    let mut space_render_elements = smithay::desktop::space::space_render_elements(
-        renderer,
-        [&state.space],
-        &entry.output,
-        1.0,
-    )
-    .expect("space render elements");
+    let mut space_render_elements =
+        smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
+            .expect("space render elements");
     remove_duplicate_overlay_elements(&scene, &mut space_render_elements);
-    let num_upper = count_upper_layer_render_elements(renderer, &entry.output);
+    let num_upper = count_upper_layer_render_elements(renderer, output);
     let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
 
     let mut render_elements = Vec::with_capacity(counts.total() + cursor_elements.len());

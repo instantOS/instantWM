@@ -18,7 +18,10 @@ fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
         ctx.core.derived_mut().display.width = i32::from(width);
         ctx.core.derived_mut().display.height = i32::from(height);
     }
-    let monitor_config = ctx.core.config().monitors.clone();
+    // This path bypasses monitor::apply_monitor_config, which sanitizes on
+    // the normal path; the backend must never see raw mirror declarations.
+    let monitor_config =
+        crate::output_mirror::sanitized_mirror_configs(&ctx.core.config().monitors);
     let connected =
         crate::backend::x11::randr::connected_output_names(ctx.x11.conn, ctx.x11_runtime.root);
     let active_before =
@@ -54,37 +57,26 @@ fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
     ctx.x11_runtime.connected_outputs = connected;
 
     let pending = ctx.x11_runtime.pending_output_enable.clone();
-    let (activated, automatic) = crate::backend::x11::randr::configure_new_outputs(
+    let automatic = crate::backend::x11::randr::configure_new_outputs(
         ctx.x11.conn,
         ctx.x11_runtime.root,
         &monitor_config,
         &pending,
     );
-    ctx.x11_runtime
-        .pending_output_enable
-        .retain(|name| !activated.contains(name));
     ctx.x11_runtime.automatic_outputs.extend(automatic);
 
-    crate::backend::x11::randr::apply_monitor_configs(
-        ctx.x11.conn,
-        ctx.x11_runtime.root,
-        &monitor_config,
-    );
-    crate::backend::x11::randr::compact_automatic_output_layout(
-        ctx.x11.conn,
-        ctx.x11_runtime.root,
-        &monitor_config,
-        &ctx.x11_runtime.automatic_outputs,
-    );
-    crate::backend::x11::randr::fit_framebuffer_to_active_outputs(
-        ctx.x11.conn,
-        ctx.x11_runtime.root,
-    );
+    crate::backend::x11::randr::apply_output_policy(ctx.x11.conn, ctx.x11_runtime, &monitor_config);
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
     let active_after =
         crate::backend::x11::randr::active_output_names(ctx.x11.conn, ctx.x11_runtime.root);
     ctx.x11_runtime
+        .pending_output_enable
+        .retain(|name| !active_after.contains(name));
+    ctx.x11_runtime
         .automatic_outputs
+        .retain(|name| active_after.contains(name));
+    ctx.x11_runtime
+        .mirror_heads
         .retain(|name| active_after.contains(name));
     ctx.x11_runtime.active_outputs = active_after;
     crate::backend::x11::update_ewmh_desktop_props(ctx.core.state, &ctx.x11, ctx.x11_runtime);

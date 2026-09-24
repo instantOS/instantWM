@@ -284,8 +284,24 @@ fn format_monitor_list(monitors: &[MonitorInfo], json: bool) {
                 .map(|mode| format!("{mode:?}").to_lowercase())
                 .unwrap_or_else(|| "-".to_string());
             let vrr_enabled = if m.vrr_enabled { "on" } else { "off" };
+            let mirrors = if m.mirrors.is_empty() {
+                String::new()
+            } else {
+                format!(" mirror[{}]", m.mirrors.join(","))
+            };
+            let pending: Vec<_> = m
+                .requested_mirrors
+                .iter()
+                .filter(|name| !m.mirrors.contains(name))
+                .cloned()
+                .collect();
+            let pending = if pending.is_empty() {
+                String::new()
+            } else {
+                format!(" requested-mirror[{}]", pending.join(","))
+            };
             println!(
-                "{}{} {}: {}x{}+{}+{} vrr[support={:?} mode={} enabled={}]",
+                "{}{} {}: {}x{}+{}+{} vrr[support={:?} mode={} enabled={}]{}{}",
                 marker,
                 m.position,
                 m.name,
@@ -295,7 +311,9 @@ fn format_monitor_list(monitors: &[MonitorInfo], json: bool) {
                 m.y,
                 m.vrr_support,
                 vrr_mode,
-                vrr_enabled
+                vrr_enabled,
+                mirrors,
+                pending
             );
         }
     }

@@ -53,6 +53,7 @@ pub fn xinerama_outputs(x11: &X11BackendRef<'_>) -> Option<Vec<BackendOutputInfo
             vrr_support: BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,
+            mirrors: Vec::new(),
         })
         .collect();
 

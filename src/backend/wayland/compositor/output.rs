@@ -11,8 +11,9 @@ use std::sync::Mutex;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
     AdaptiveSyncPolicy, CompletedOutputTransaction, MonitorModeRequest, OutputHeadConfiguration,
-    OutputId, OutputMode as TransactionOutputMode, OutputSnapshot, OutputTransaction,
-    OutputTransactionKind, OutputTransform,
+    OutputId, OutputMode as TransactionOutputMode, OutputPlacement, OutputPositionSource,
+    OutputSnapshot, OutputTransaction, OutputTransactionKind, OutputTransform,
+    plan_automatic_output_positions, position_after,
 };
 use crate::backend::wayland::output::{from_smithay_transform, to_smithay_transform};
 use crate::config::config_toml::VrrMode;
@@ -56,6 +57,45 @@ fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
         (f64::from(width) / scale).round() as i32,
         (f64::from(height) / scale).round() as i32,
     )
+}
+
+fn head_rect(head: &OutputHeadConfiguration) -> Rect {
+    let size = logical_output_size(head);
+    Rect::new(head.position.x, head.position.y, size.w, size.h)
+}
+
+/// Pairs an applied snapshot realizes: both heads enabled, and the mirror
+/// already pinned to its source's scale. A snapshot from a transaction
+/// submitted before `mirrors` changed may not carry the pin yet; its heads
+/// stay ordinary outputs until the pinning transaction applies, since the
+/// mirror is rendered from elements built at the source's scale.
+fn realized_mirrors(
+    mirrors: &crate::output_mirror::MirrorMap,
+    snapshot: &OutputSnapshot,
+) -> std::collections::HashMap<String, String> {
+    let scale = |name: &str| {
+        snapshot
+            .heads
+            .iter()
+            .find(|head| head.configuration.enabled && head.configuration.id.0 == name)
+            .map(|head| head.configuration.scale)
+    };
+    mirrors
+        .active_pairs(|name| scale(name).is_some())
+        .filter(|(mirror, target)| scale(mirror) == scale(&target.source))
+        .map(|(mirror, target)| (mirror.to_string(), target.source.clone()))
+        .collect()
+}
+
+/// Close every layer surface placed on `output`. Returns whether any existed.
+fn close_layer_surfaces(output: &Output) -> bool {
+    let mut map = smithay::desktop::layer_map_for_output(output);
+    let layers: Vec<_> = map.layers().cloned().collect();
+    for layer in &layers {
+        layer.layer_surface().send_close();
+        map.unmap_layer(layer);
+    }
+    !layers.is_empty()
 }
 
 impl WaylandState {
@@ -113,6 +153,13 @@ impl WaylandState {
                 },
                 head.adaptive_sync_enabled,
             );
+            let location = (config.position.x, config.position.y).into();
+            output.change_current_state(
+                config.mode.map(smithay_mode),
+                Some(to_smithay_transform(config.transform)),
+                Some(Scale::Fractional(config.scale)),
+                Some(location),
+            );
             if !config.enabled {
                 self.runtime.output_power_modes.remove(&output.name());
                 let cancelled = self.output_power_state.fail_output(&output.name());
@@ -122,22 +169,104 @@ impl WaylandState {
                 self.set_output_global_enabled(&output, false);
                 self.fail_pending_captures_for_output(&output);
             } else {
-                let location = (config.position.x, config.position.y).into();
-                output.change_current_state(
-                    config.mode.map(smithay_mode),
-                    Some(to_smithay_transform(config.transform)),
-                    Some(Scale::Fractional(config.scale)),
-                    Some(location),
-                );
-                self.space.map_output(&output, location);
-                self.set_output_global_enabled(&output, true);
                 output_state.set(true, head.adaptive_sync_enabled);
             }
             changed_outputs.push(output);
         }
         self.output_management_state
             .update_heads::<Self>(changed_outputs.iter());
+        self.set_mirror_roles(realized_mirrors(&self.runtime.mirror_of, snapshot));
         self.request_render();
+    }
+
+    /// Give every enabled output its role: realized mirrors leave the space
+    /// and stop advertising a `wl_output`, every other enabled output owns
+    /// its region of the space.
+    ///
+    /// A mirror presents its source's region, so it must not own input,
+    /// hit-testing, layer-shell placement or damage of its own. Keeping it out
+    /// of the space makes every space consumer correct without special cases;
+    /// the renderer projects the source's scene onto it.
+    pub(crate) fn set_mirror_roles(&mut self, realized: std::collections::HashMap<String, String>) {
+        let mut layers_closed = false;
+        for output in self.output_management_state.outputs().to_vec() {
+            let enabled = output
+                .user_data()
+                .get::<OutputManagementOutputState>()
+                .is_none_or(OutputManagementOutputState::enabled);
+            if !enabled {
+                continue;
+            }
+            let name = output.name();
+            if realized.contains_key(&name) {
+                if !self.runtime.realized_mirrors.contains_key(&name) {
+                    // Everything clients attached to its `wl_output` goes.
+                    layers_closed |= close_layer_surfaces(&output);
+                    self.fail_pending_captures_for_output(&output);
+                    let cancelled = self.output_power_state.fail_output(&name);
+                    self.runtime.output_power.cancel(&cancelled);
+                }
+                self.space.unmap_output(&output);
+                self.set_output_global_enabled(&output, false);
+            } else {
+                self.space.map_output(&output, output.current_location());
+                self.set_output_global_enabled(&output, true);
+            }
+        }
+        self.runtime.realized_mirrors = realized;
+        if layers_closed {
+            self.push_command(
+                crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones,
+            );
+        }
+        self.request_render();
+    }
+
+    /// Break realized pairs whose mirror or source head disappeared, turning
+    /// the remaining head into an ordinary output immediately.
+    pub(crate) fn drop_unavailable_mirrors(&mut self) {
+        let present: std::collections::HashSet<String> = self
+            .output_management_state
+            .outputs()
+            .iter()
+            .map(Output::name)
+            .collect();
+        let realized: std::collections::HashMap<_, _> = self
+            .runtime
+            .realized_mirrors
+            .iter()
+            .filter(|(mirror, source)| present.contains(*mirror) && present.contains(*source))
+            .map(|(mirror, source)| (mirror.clone(), source.clone()))
+            .collect();
+        if realized.len() != self.runtime.realized_mirrors.len() {
+            self.set_mirror_roles(realized);
+        }
+    }
+
+    /// The output whose region `output` presents: its source for a realized
+    /// mirror, itself otherwise.
+    pub(crate) fn presented_output(&self, output: &Output) -> Output {
+        self.runtime
+            .realized_mirrors
+            .get(&output.name())
+            .and_then(|source| {
+                self.space
+                    .outputs()
+                    .find(|candidate| candidate.name() == *source)
+            })
+            .unwrap_or(output)
+            .clone()
+    }
+
+    /// Current ownership of an output's position for automatic placement.
+    pub(crate) fn output_position_source(&self, name: &str) -> OutputPositionSource {
+        if self.runtime.configured_output_positions.contains(name) {
+            return OutputPositionSource::Configured;
+        }
+        match self.runtime.output_position_sources.get(name) {
+            Some(OutputPositionSource::ClientManaged) => OutputPositionSource::ClientManaged,
+            _ => OutputPositionSource::Automatic,
+        }
     }
 
     fn finish_output_transaction(&mut self, completed: CompletedOutputTransaction) -> bool {
@@ -215,11 +344,75 @@ impl WaylandState {
         self.request_render();
     }
 
-    /// Queue the current desired state as a policy transaction even when no
-    /// output property changed. The DRM runtime uses this boundary to update
+    /// Queue the desired output state as a policy transaction, even when no
+    /// output property changed: the DRM runtime uses this boundary to update
     /// position ownership after configuration entries are removed.
-    pub(crate) fn queue_output_policy_projection(&mut self) {
-        let transaction = self.current_output_transaction();
+    ///
+    /// Heads that stopped being mirrors since the last projection re-enter
+    /// the desktop. A pinned mirror carried its source's position and scale,
+    /// so unless configured otherwise it returns to scale 1.0 and starts right
+    /// of the layout. Automatic heads are then compacted, which also closes
+    /// the hole a head leaves when it becomes a mirror.
+    pub(crate) fn queue_output_policy_projection(
+        &mut self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
+        let mut transaction = self.current_output_transaction();
+        let enabled: std::collections::HashSet<String> = transaction
+            .heads
+            .iter()
+            .filter(|head| head.enabled)
+            .map(|head| head.id.0.clone())
+            .collect();
+        let mirrors: std::collections::HashSet<String> = self
+            .runtime
+            .mirror_of
+            .active_pairs(|name| enabled.contains(name))
+            .map(|(mirror, _)| mirror.to_string())
+            .collect();
+        let mut released: Vec<_> = self
+            .runtime
+            .projected_mirrors
+            .difference(&mirrors)
+            .cloned()
+            .collect();
+        released.sort();
+        for name in released {
+            let occupied: Vec<Rect> = transaction
+                .heads
+                .iter()
+                .filter(|head| head.enabled && head.id.0 != name && !mirrors.contains(&head.id.0))
+                .map(head_rect)
+                .collect();
+            let Some(head) = transaction.heads.iter_mut().find(|head| head.id.0 == name) else {
+                continue;
+            };
+            let config = configs.get(&name).or_else(|| configs.get("*"));
+            if config.is_none_or(|config| config.scale.is_none()) {
+                head.scale = 1.0;
+            }
+            if self.output_position_source(&name) == OutputPositionSource::Automatic {
+                head.position = position_after(occupied);
+            }
+        }
+
+        let mut placements: Vec<_> = transaction
+            .heads
+            .iter()
+            .filter(|head| head.enabled && !mirrors.contains(&head.id.0))
+            .map(|head| OutputPlacement {
+                id: head.id.0.clone(),
+                rect: head_rect(head),
+                source: self.output_position_source(&head.id.0),
+            })
+            .collect();
+        for (name, position) in plan_automatic_output_positions(&mut placements) {
+            if let Some(head) = transaction.heads.iter_mut().find(|head| head.id.0 == name) {
+                head.position = position;
+            }
+        }
+
+        self.runtime.projected_mirrors = mirrors;
         self.queue_output_transaction(transaction);
     }
 
@@ -284,15 +477,24 @@ impl WaylandState {
         output
     }
 
-    /// List all connected displays.
+    /// List all connected displays, including mirror heads.
     pub fn list_displays(&self) -> Vec<String> {
-        self.space.outputs().map(|o| o.name()).collect()
+        self.output_management_state
+            .outputs()
+            .iter()
+            .map(Output::name)
+            .collect()
     }
 
     /// List available display modes for a display.
     pub fn list_display_modes(&self, display: &str) -> Vec<String> {
         let mut result = Vec::new();
-        if let Some(output) = self.space.outputs().find(|o| o.name() == display) {
+        if let Some(output) = self
+            .output_management_state
+            .outputs()
+            .iter()
+            .find(|o| o.name() == display)
+        {
             for mode in output.modes() {
                 result.push(format!(
                     "{}x{}@{}",
@@ -532,6 +734,164 @@ mod tests {
             logical_output_size(&configuration(OutputTransform::Normal, 1.5)),
             Size::new(1280, 720)
         );
+    }
+
+    fn mirror_map(pairs: &[(&str, &str)]) -> crate::output_mirror::MirrorMap {
+        crate::output_mirror::MirrorMap::from_pairs(
+            pairs
+                .iter()
+                .map(|(mirror, source)| (mirror.to_string(), source.to_string())),
+        )
+    }
+
+    fn snapshot(heads: &[(&str, bool, f64)]) -> OutputSnapshot {
+        OutputSnapshot {
+            heads: heads
+                .iter()
+                .map(
+                    |(name, enabled, scale)| crate::backend::output::OutputHeadSnapshot {
+                        configuration: OutputHeadConfiguration {
+                            id: (*name).into(),
+                            enabled: *enabled,
+                            ..configuration(OutputTransform::Normal, *scale)
+                        },
+                        modes: Vec::new(),
+                        adaptive_sync_policy: AdaptiveSyncPolicy::Disabled,
+                        adaptive_sync_enabled: false,
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    /// Three 1920x1080 outputs side by side, all automatically placed.
+    fn three_outputs() -> WaylandState {
+        let (_event_loop, mut state) = super::super::new_event_loop_and_state();
+        for (index, name) in ["eDP-1", "DP-1", "HDMI-1"].into_iter().enumerate() {
+            let output = state.create_output(name, Size::new(1920, 1080), None);
+            let location = (index as i32 * 1920, 0).into();
+            output.change_current_state(None, None, None, Some(location));
+            state.space.map_output(&output, location);
+        }
+        state
+    }
+
+    fn pending_head(state: &WaylandState, name: &str) -> OutputHeadConfiguration {
+        state
+            .runtime
+            .output_transactions
+            .latest_pending_apply()
+            .expect("a projection was queued")
+            .heads
+            .iter()
+            .find(|head| head.id.0 == name)
+            .expect("head in transaction")
+            .clone()
+    }
+
+    #[test]
+    fn snapshots_realize_only_enabled_and_pinned_pairs() {
+        let mirrors = mirror_map(&[("DP-1", "eDP-1")]);
+
+        let pinned = snapshot(&[("eDP-1", true, 1.5), ("DP-1", true, 1.5)]);
+        assert_eq!(
+            realized_mirrors(&mirrors, &pinned),
+            [("DP-1".to_string(), "eDP-1".to_string())].into()
+        );
+
+        // Submitted before the declaration: not pinned yet, so not realized.
+        let unpinned = snapshot(&[("eDP-1", true, 1.5), ("DP-1", true, 1.0)]);
+        assert!(realized_mirrors(&mirrors, &unpinned).is_empty());
+
+        // A disabled source leaves the mirror an ordinary output.
+        let source_off = snapshot(&[("eDP-1", false, 1.0), ("DP-1", true, 1.0)]);
+        assert!(realized_mirrors(&mirrors, &source_off).is_empty());
+    }
+
+    #[test]
+    fn mirror_roles_move_heads_out_of_and_back_into_the_space() {
+        let mut state = three_outputs();
+        let in_space = |state: &WaylandState| -> Vec<String> {
+            let mut names: Vec<_> = state.space.outputs().map(Output::name).collect();
+            names.sort();
+            names
+        };
+
+        state.set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
+        assert_eq!(in_space(&state), vec!["HDMI-1", "eDP-1"]);
+        let mirror = state
+            .output_management_state
+            .outputs()
+            .iter()
+            .find(|output| output.name() == "DP-1")
+            .unwrap()
+            .clone();
+        assert_eq!(state.presented_output(&mirror).name(), "eDP-1");
+
+        state.set_mirror_roles(Default::default());
+        assert_eq!(in_space(&state), vec!["DP-1", "HDMI-1", "eDP-1"]);
+        assert_eq!(state.presented_output(&mirror).name(), "DP-1");
+    }
+
+    #[test]
+    fn projection_closes_the_hole_a_new_mirror_leaves() {
+        let mut state = three_outputs();
+        state.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
+
+        state.queue_output_policy_projection(&Default::default());
+
+        assert!(state.runtime.projected_mirrors.contains("DP-1"));
+        assert_eq!(pending_head(&state, "eDP-1").position, Point::new(0, 0));
+        assert_eq!(pending_head(&state, "HDMI-1").position, Point::new(1920, 0));
+    }
+
+    #[test]
+    fn a_released_mirror_reenters_right_of_the_layout_at_its_own_scale() {
+        let mut state = three_outputs();
+        // DP-1 was pinned onto eDP-1 (position and scale) and its
+        // declaration has now been removed.
+        state.runtime.projected_mirrors.insert("DP-1".to_string());
+        let mirror = state
+            .output_management_state
+            .outputs()
+            .iter()
+            .find(|output| output.name() == "DP-1")
+            .unwrap()
+            .clone();
+        mirror.change_current_state(
+            None,
+            None,
+            Some(Scale::Fractional(2.0)),
+            Some((0, 0).into()),
+        );
+
+        state.queue_output_policy_projection(&Default::default());
+
+        let released = pending_head(&state, "DP-1");
+        assert_eq!(released.scale, 1.0);
+        // Compaction then packs it after the other automatic outputs.
+        assert_eq!(pending_head(&state, "eDP-1").position, Point::new(0, 0));
+        assert_eq!(released.position, Point::new(3840, 0));
+        assert!(state.runtime.projected_mirrors.is_empty());
+    }
+
+    #[test]
+    fn a_released_mirror_keeps_its_configured_scale() {
+        let mut state = three_outputs();
+        state.runtime.projected_mirrors.insert("DP-1".to_string());
+        let configs: std::collections::HashMap<_, _> = [(
+            "DP-1".to_string(),
+            crate::config::config_toml::MonitorConfig {
+                scale: Some(1.25),
+                ..Default::default()
+            },
+        )]
+        .into();
+        state.set_output_config("DP-1", &configs["DP-1"]);
+
+        state.queue_output_policy_projection(&configs);
+
+        assert_eq!(pending_head(&state, "DP-1").scale, 1.25);
     }
 
     #[test]

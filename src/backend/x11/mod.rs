@@ -76,6 +76,10 @@ pub struct X11RuntimeConfig {
     pub pending_output_enable: HashSet<String>,
     /// Outputs whose position was chosen by instantWM's automatic policy.
     pub automatic_outputs: HashSet<String>,
+    /// Outputs the monitor policy glued onto a mirror source. Only these are
+    /// released when their mirror declaration or source goes away; clones
+    /// made by other tools are left alone.
+    pub mirror_heads: HashSet<String>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -108,6 +112,7 @@ impl Default for X11RuntimeConfig {
             active_outputs: HashSet::new(),
             pending_output_enable: HashSet::new(),
             automatic_outputs: HashSet::new(),
+            mirror_heads: HashSet::new(),
         }
     }
 }
@@ -465,16 +470,17 @@ impl PointerOps for X11BackendRef<'_> {
 }
 
 impl OutputOps for X11BackendRef<'_> {
-    fn query_fallback_outputs(&self) -> Option<Vec<crate::backend::BackendOutputInfo>> {
-        crate::backend::x11::monitor_helpers::xinerama_outputs(self)
+    fn connected_output_names(&self) -> Vec<String> {
+        let root = self.conn.setup().roots[self.screen_num].root;
+        let mut names: Vec<_> = randr::connected_output_names(self.conn, root)
+            .into_iter()
+            .collect();
+        names.sort();
+        names
     }
 
-    fn apply_monitor_configs(
-        &self,
-        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-    ) {
-        let root = self.conn.setup().roots[self.screen_num].root;
-        randr::apply_monitor_configs(self.conn, root, configs);
+    fn query_fallback_outputs(&self) -> Option<Vec<crate::backend::BackendOutputInfo>> {
+        crate::backend::x11::monitor_helpers::xinerama_outputs(self)
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
@@ -495,9 +501,19 @@ impl OutputOps for X11BackendRef<'_> {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,
+                mirrors: Vec::new(),
             }]
         } else {
             outputs
         }
+    }
+}
+
+impl crate::backend::OutputPolicyOps for crate::contexts::WmCtxX11<'_> {
+    fn apply_monitor_configs(
+        &mut self,
+        configs: &HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
+        randr::apply_output_policy(self.x11.conn, self.x11_runtime, configs);
     }
 }

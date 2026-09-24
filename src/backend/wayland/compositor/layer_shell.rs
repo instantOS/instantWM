@@ -152,6 +152,9 @@ impl WlrLayerShellHandler for WaylandState {
         let target_output = output
             .as_ref()
             .and_then(Output::from_resource)
+            // A client may still hold the `wl_output` of a head that has
+            // since become a mirror; its region belongs to the source.
+            .map(|output| self.presented_output(&output))
             // An output-less layer surface follows the selected monitor:
             // launchers that defer the choice expect the focused output, not
             // whichever output happens to enumerate first (on a laptop that

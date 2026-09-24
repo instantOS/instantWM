@@ -405,6 +405,19 @@ pub struct MonitorConfig {
     pub enable: Option<bool>,
     /// Variable refresh rate policy for this output.
     pub vrr: Option<VrrMode>,
+    /// Name of the source output this output mirrors ("clone"). The mirror head
+    /// shows the source's region of the desktop, and both heads form a single
+    /// logical monitor, so the mirror's own `position` and `scale` are ignored.
+    /// On Wayland its `resolution`, `refresh_rate` and `transform` still select
+    /// how the head scans out, and the source's content is fitted to it; X11
+    /// cannot scale and derives the mirror's mode from the source. A mirror
+    /// whose source is disconnected or disabled is an ordinary output until
+    /// the source returns. Empty/`none` clears the mirror.
+    pub mirror: Option<String>,
+    /// How the mirror fits its source's content when the two framebuffers'
+    /// aspect ratios differ. Only meaningful together with `mirror`; ignored
+    /// (and cleared at apply time) on a non-mirror output. Wayland only.
+    pub mirror_fit: Option<MirrorFit>,
 }
 
 #[derive(
@@ -426,6 +439,33 @@ pub enum VrrMode {
     Off,
     Auto,
     On,
+}
+
+/// How a mirrored output fits its source's content when the aspect ratios
+/// differ: letterbox bars ([`MirrorFit::Contain`]) or crop to fill
+/// ([`MirrorFit::Cover`]).
+#[derive(
+    Debug,
+    Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Default,
+    Encode,
+    Decode,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum MirrorFit {
+    /// Scale the source down until it fits entirely inside the mirror's
+    /// framebuffer, centering it; the leftover axes show background bars.
+    #[default]
+    Contain,
+    /// Scale the source up until it covers the mirror's framebuffer
+    /// completely, centering it; the overflowing edges are cropped.
+    Cover,
 }
 
 /// Toggle setting for boolean-like input options (tap, natural_scroll).

@@ -335,6 +335,18 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Project the sanitized monitor policy onto the active backend.
+    pub fn apply_monitor_configs(
+        &mut self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
+        use crate::backend::OutputPolicyOps;
+        match self {
+            WmCtx::X11(ctx) => ctx.apply_monitor_configs(configs),
+            WmCtx::Wayland(ctx) => ctx.apply_monitor_configs(configs),
+        }
+    }
+
     pub fn output_backend(&self) -> &dyn crate::backend::OutputOps {
         match self {
             WmCtx::X11(ctx) => &ctx.x11,

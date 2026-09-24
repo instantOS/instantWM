@@ -10,7 +10,7 @@ use smithay::reexports::drm::control::{self, connector, crtc};
 use smithay::wayland::dmabuf::DmabufFeedback;
 
 use crate::backend::BackendVrrSupport;
-use crate::backend::output::{OutputPositionSource, OutputPowerRequestId};
+use crate::backend::output::OutputPowerRequestId;
 use crate::config::config_toml::VrrMode;
 pub const DEFAULT_SCREEN_WIDTH: i32 = 1280;
 pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
@@ -37,8 +37,9 @@ pub struct OutputSurfaceEntry {
     pub modes: Vec<(OutputMode, control::Mode)>,
     pub output: Output,
     pub dmabuf_feedback: Option<OutputDmabufFeedback>,
+    /// Logical rectangle in the space. Stale while the output is a realized
+    /// mirror, which is not part of the space.
     pub rect: crate::types::Rect,
-    pub position_source: OutputPositionSource,
     pub vrr_support: BackendVrrSupport,
     pub configured_vrr_mode: VrrMode,
     pub vrr_enabled: bool,

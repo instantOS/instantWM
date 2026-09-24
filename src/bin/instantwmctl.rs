@@ -674,6 +674,90 @@ mod tests {
     }
 
     #[test]
+    fn parses_monitor_set_mirror_flag() {
+        use instantwm::ipc_types::MonitorCommand;
+
+        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--mirror", "DP-1"]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Set { identifier, mirror: Some(target), .. })
+                if identifier == "DP-2" && target == "DP-1"
+        ));
+
+        // "none" maps to the empty clear sentinel.
+        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--mirror", "none"]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Set { mirror: Some(target), .. }) if target.is_empty()
+        ));
+
+        // Omitted --mirror stays None (= keep current mirror).
+        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--scale", "2.0"]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Set { mirror: None, scale, .. })
+                if scale == Some(2.0)
+        ));
+    }
+
+    #[test]
+    fn parses_monitor_set_mirror_fit_flag() {
+        use instantwm::ipc_types::{MirrorFit, MonitorCommand};
+
+        // Explicit fit parses into the enum.
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "monitor",
+            "set",
+            "DP-2",
+            "--mirror-fit",
+            "cover",
+        ]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Set {
+                identifier,
+                mirror_fit: Some(MirrorFit::Cover),
+                ..
+            }) if identifier == "DP-2"
+        ));
+
+        // Omitted --mirror-fit stays None (= keep current fit).
+        let cli = Cli::parse_from(["instantwmctl", "monitor", "set", "DP-2", "--scale", "2.0"]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Set { mirror_fit: None, scale, .. })
+                if scale == Some(2.0)
+        ));
+
+        // Fit combines with --mirror in a single command.
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "monitor",
+            "set",
+            "DP-2",
+            "--mirror",
+            "DP-1",
+            "--mirror-fit",
+            "cover",
+        ]);
+        let cmd: IpcCommand = cli.command.into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Monitor(MonitorCommand::Set {
+                mirror: Some(target),
+                mirror_fit: Some(MirrorFit::Cover),
+                ..
+            }) if target == "DP-1"
+        ));
+    }
+
+    #[test]
     fn parses_scratchpad_create_status_flag() {
         let cli = Cli::parse_from([
             "instantwmctl",

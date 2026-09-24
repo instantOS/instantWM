@@ -55,7 +55,7 @@ pub(super) fn submit_drm_capture_requests<B, F>(
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
-    frame_result: &RenderFrameResult<'_, B, F, DrmExtras>,
+    frame_result: &RenderFrameResult<'_, B, F, DrmOutputElement>,
     cursor_element_ids: &[Id],
     requests: DrmCaptureRequests,
 ) -> bool
@@ -63,7 +63,7 @@ where
     B: AllocatorBuffer + AsDmabuf,
     <B as AsDmabuf>::Error: fmt::Debug,
     F: Framebuffer,
-    DrmExtras: RenderElement<GlesRenderer>,
+    DrmOutputElement: RenderElement<GlesRenderer>,
     GlesRenderer: Blit,
 {
     let target = DrmCaptureTarget::for_output(entry);
@@ -154,7 +154,7 @@ fn split_dmabuf_captures(
 
 fn submit_dmabuf_image_captures<B, F>(
     renderer: &mut GlesRenderer,
-    frame_result: &RenderFrameResult<'_, B, F, DrmExtras>,
+    frame_result: &RenderFrameResult<'_, B, F, DrmOutputElement>,
     target_info: &DrmCaptureTarget,
     captures: Vec<PendingImageCapture>,
     filter_ids: &[Id],
@@ -162,7 +162,7 @@ fn submit_dmabuf_image_captures<B, F>(
     B: AllocatorBuffer + AsDmabuf,
     <B as AsDmabuf>::Error: fmt::Debug,
     F: Framebuffer,
-    DrmExtras: RenderElement<GlesRenderer>,
+    DrmOutputElement: RenderElement<GlesRenderer>,
     GlesRenderer: Blit,
 {
     for capture in captures {
@@ -219,7 +219,7 @@ fn submit_offscreen_capture<B, F>(
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
-    frame_result: &RenderFrameResult<'_, B, F, DrmExtras>,
+    frame_result: &RenderFrameResult<'_, B, F, DrmOutputElement>,
     target_info: &DrmCaptureTarget,
     has_screencopy: bool,
     image_captures: Vec<PendingImageCapture>,
@@ -230,7 +230,7 @@ where
     B: AllocatorBuffer + AsDmabuf,
     <B as AsDmabuf>::Error: fmt::Debug,
     F: Framebuffer,
-    DrmExtras: RenderElement<GlesRenderer>,
+    DrmOutputElement: RenderElement<GlesRenderer>,
     GlesRenderer: Blit,
 {
     if !has_screencopy && image_captures.is_empty() {

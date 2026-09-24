@@ -440,33 +440,60 @@ impl crate::backend::WindowCloseOps for crate::contexts::WmCtxWayland<'_> {
     }
 }
 
-impl OutputOps for WaylandBackend {
-    fn apply_monitor_configs(
+impl WaylandBackend {
+    /// Project the sanitized monitor policy onto the output state.
+    pub fn apply_monitor_configs(
         &self,
         configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
     ) {
-        let configs = configs.clone();
-        let _ = self.with_state(move |state: &mut WaylandState| {
+        let _ = self.with_state(|state: &mut WaylandState| {
             let output_names: Vec<_> = state
                 .output_management_state
                 .outputs()
                 .iter()
                 .map(|output| output.name())
                 .collect();
+            // Configs arrive already sanitized by `monitor::apply_monitor_config`,
+            // which logged any mirror diagnostics; only the valid pairs are kept.
+            state.runtime.mirror_of = crate::output_mirror::MirrorMap::build(configs).0;
             state.runtime.configured_output_positions.clear();
-            for name in output_names {
-                if let Some(config) = configs.get(&name).or_else(|| configs.get("*")) {
-                    if config.position.is_some() {
-                        state
-                            .runtime
-                            .configured_output_positions
-                            .insert(name.clone());
-                    }
-                    state.set_output_config(&name, config);
+            for name in &output_names {
+                let Some(config) = configs.get(name).or_else(|| configs.get("*")) else {
+                    continue;
+                };
+                if config.position.is_some() {
+                    state
+                        .runtime
+                        .configured_output_positions
+                        .insert(name.clone());
                 }
+                state.set_output_config(name, config);
             }
-            state.queue_output_policy_projection();
+            state.queue_output_policy_projection(configs);
         });
+    }
+}
+
+impl crate::backend::OutputPolicyOps for crate::contexts::WmCtxWayland<'_> {
+    fn apply_monitor_configs(
+        &mut self,
+        configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    ) {
+        self.wayland.apply_monitor_configs(configs);
+    }
+}
+
+impl OutputOps for WaylandBackend {
+    fn connected_output_names(&self) -> Vec<String> {
+        self.with_state(|state| {
+            state
+                .output_management_state
+                .outputs()
+                .iter()
+                .map(|output| output.name())
+                .collect()
+        })
+        .unwrap_or_default()
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
@@ -474,26 +501,34 @@ impl OutputOps for WaylandBackend {
             state
                 .space
                 .outputs()
-                .map(|o| crate::backend::BackendOutputInfo {
-                    name: o.name(),
-                    rect: {
-                        let geom = state.space.output_geometry(o).unwrap_or_default();
-                        crate::types::Rect {
+                .map(|o| {
+                    let name = o.name();
+                    let geom = state.space.output_geometry(o).unwrap_or_default();
+                    let metadata = state.output_vrr_metadata(&name);
+                    let mut mirrors: Vec<String> = state
+                        .runtime
+                        .realized_mirrors
+                        .iter()
+                        .filter(|(_, source)| **source == name)
+                        .map(|(mirror, _)| mirror.clone())
+                        .collect();
+                    mirrors.sort();
+                    crate::backend::BackendOutputInfo {
+                        rect: crate::types::Rect {
                             x: geom.loc.x,
                             y: geom.loc.y,
                             w: geom.size.w,
                             h: geom.size.h,
-                        }
-                    },
-                    scale: o.current_scale().fractional_scale(),
-                    vrr_support: state
-                        .output_vrr_metadata(&o.name())
-                        .map(|m| m.vrr_support)
-                        .unwrap_or(crate::backend::BackendVrrSupport::Unsupported),
-                    vrr_mode: state.output_vrr_metadata(&o.name()).map(|m| m.vrr_mode),
-                    vrr_enabled: state
-                        .output_vrr_metadata(&o.name())
-                        .is_some_and(|m| m.vrr_enabled),
+                        },
+                        scale: o.current_scale().fractional_scale(),
+                        vrr_support: metadata
+                            .map(|m| m.vrr_support)
+                            .unwrap_or(crate::backend::BackendVrrSupport::Unsupported),
+                        vrr_mode: metadata.map(|m| m.vrr_mode),
+                        vrr_enabled: metadata.is_some_and(|m| m.vrr_enabled),
+                        mirrors,
+                        name,
+                    }
                 })
                 .collect()
         })
@@ -525,9 +560,76 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
 #[cfg(test)]
 mod tests {
     use super::{WaylandBackend, wayland_cursor_icon};
-    use crate::backend::{WindowOps, WindowProtocol};
+    use crate::backend::{OutputOps, WindowOps, WindowProtocol};
     use crate::types::{AltCursor, ResizeDirection, WindowId};
     use smithay::input::pointer::CursorIcon;
+
+    #[test]
+    fn apply_monitor_configs_records_mirrors_without_anchoring_them() {
+        use crate::config::config_toml::MonitorConfig;
+
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        state.create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
+        state.create_output("DP-1", crate::types::Size::new(1920, 1080), None);
+        let backend = WaylandBackend::new();
+        backend.attach_state(&mut state);
+
+        let configs = [
+            (
+                "eDP-1".to_string(),
+                MonitorConfig {
+                    position: Some("0,0".to_string()),
+                    ..MonitorConfig::default()
+                },
+            ),
+            (
+                "DP-1".to_string(),
+                MonitorConfig {
+                    mirror: Some("eDP-1".to_string()),
+                    ..MonitorConfig::default()
+                },
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        backend.apply_monitor_configs(&configs);
+
+        backend
+            .with_state(|state| {
+                assert_eq!(state.runtime.mirror_of.source_of("DP-1"), Some("eDP-1"));
+                // A mirror owns no desktop region, so it is not a placement
+                // anchor; automatic placement simply skips it.
+                assert!(state.runtime.configured_output_positions.contains("eDP-1"));
+                assert!(!state.runtime.configured_output_positions.contains("DP-1"));
+                assert!(state.runtime.projected_mirrors.contains("DP-1"));
+                // Roles change only once the pinning transaction applies.
+                assert!(state.runtime.realized_mirrors.is_empty());
+            })
+            .expect("state attached");
+    }
+
+    #[test]
+    fn discovery_reports_realized_mirrors_under_their_source() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        state.create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
+        state.create_output("DP-1", crate::types::Size::new(1920, 1080), None);
+        state.set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
+        let backend = WaylandBackend::new();
+        backend.attach_state(&mut state);
+
+        let outputs = backend.get_outputs();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].name, "eDP-1");
+        assert_eq!(outputs[0].mirrors, vec!["DP-1".to_string()]);
+        assert_eq!(
+            backend.connected_output_names().len(),
+            2,
+            "a mirror head is still a connected output"
+        );
+    }
 
     #[test]
     fn window_protocol_trait_dispatch_delegates_to_inherent_query() {

@@ -1,8 +1,8 @@
 use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
-    ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, MonitorCommand,
-    PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand, TestCommand,
-    Transform, VrrMode, WindowCommand,
+    ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, MirrorFit,
+    MonitorCommand, PendingTmpRuleCmd, ScratchpadCommand, ScratchpadInitialStatus, TagCommand,
+    TestCommand, Transform, VrrMode, WindowCommand,
 };
 use instantwm::types::{
     FocusFollowsMouseMode, MonitorDirection, MonitorSelector, RuleGeometry, ToggleAction,
@@ -47,6 +47,14 @@ pub enum MonitorAction {
         transform: Option<Transform>,
         #[arg(long)]
         vrr: Option<VrrMode>,
+        /// Mirror another output: source output name, or "none" to stop mirroring.
+        #[arg(long, value_name = "OUTPUT|none")]
+        mirror: Option<String>,
+        /// How the mirror fits its source when the aspect ratios differ:
+        /// letterbox bars (contain) or a centered crop (cover). Only used
+        /// together with --mirror.
+        #[arg(long, value_name = "FIT")]
+        mirror_fit: Option<MirrorFit>,
         #[arg(long, conflicts_with = "disable")]
         enable: bool,
         #[arg(long, conflicts_with = "enable")]
@@ -570,6 +578,8 @@ impl From<MonitorAction> for MonitorCommand {
                 scale,
                 transform,
                 vrr,
+                mirror,
+                mirror_fit,
                 enable,
                 disable,
             } => Self::Set {
@@ -587,6 +597,14 @@ impl From<MonitorAction> for MonitorCommand {
                     None
                 },
                 vrr,
+                mirror: mirror.map(|value| {
+                    if value.trim().is_empty() || value.eq_ignore_ascii_case("none") {
+                        String::new()
+                    } else {
+                        value
+                    }
+                }),
+                mirror_fit,
             },
             MonitorAction::Modes { identifier } => Self::Modes {
                 identifier: Some(identifier),

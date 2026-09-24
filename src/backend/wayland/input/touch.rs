@@ -380,16 +380,32 @@ fn event_location(
             Some(map_normalized_to_layout(normalized, bounds))
         }
         TouchMappingTarget::Output(name) => {
-            let output = state
-                .space
+            if let Some(output) = state.space.outputs().find(|output| output.name() == *name) {
+                let geometry = state.space.output_geometry(output)?;
+                return Some(map_normalized_to_output(
+                    normalized,
+                    geometry,
+                    output.current_transform(),
+                ));
+            }
+            // A touchscreen on a mirror head touches the source content it
+            // shows; touches on a contain mirror's bars hit nothing.
+            let mirror = state
+                .output_management_state
                 .outputs()
+                .iter()
                 .find(|output| output.name() == *name)?;
-            let geometry = state.space.output_geometry(output)?;
-            Some(map_normalized_to_output(
+            let size = crate::backend::wayland::render::mirror::transformed_mode_size(mirror)?;
+            let framebuffer = map_normalized_to_output(
                 normalized,
-                geometry,
-                output.current_transform(),
-            ))
+                Rectangle::from_size((size.w, size.h).into()),
+                mirror.current_transform(),
+            );
+            crate::backend::wayland::render::mirror::mirror_point_to_logical(
+                state,
+                mirror,
+                (framebuffer.x, framebuffer.y).into(),
+            )
         }
     }
 }

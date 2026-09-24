@@ -47,6 +47,14 @@ pub fn plan_automatic_output_positions(outputs: &mut [OutputPlacement]) -> Vec<(
     moves
 }
 
+/// Top-left position immediately right of every rectangle in `rects`.
+///
+/// This is where an output entering the layout without a configured position
+/// starts before [`plan_automatic_output_positions`] closes any hole.
+pub fn position_after(rects: impl IntoIterator<Item = Rect>) -> Point {
+    Point::new(rects.into_iter().map(Rect::right).max().unwrap_or(0), 0)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OutputId(pub String);
 
@@ -374,6 +382,41 @@ impl OutputTransaction {
             return Err(OutputTransactionError::NoEnabledOutputs);
         }
         Ok(())
+    }
+
+    /// Pin every realizable mirror head to its source's logical position and
+    /// scale.
+    ///
+    /// A mirror presents its source's region, so it owns no position of its
+    /// own; reporting the source's position keeps output-management clients
+    /// showing the pair as overlapping. The scale must match because the
+    /// mirror is rendered from elements built at the source's scale. Mode and
+    /// transform stay the mirror head's own: the renderer fits the source's
+    /// content to whatever the head scans out. Pairs with a disabled or
+    /// missing head are left alone, since such a mirror is an ordinary output.
+    ///
+    /// Runs before `validate` on every transaction, so neither policy nor
+    /// output-management clients can separate a realized pair.
+    pub fn apply_mirrors(&mut self, mirrors: &crate::output_mirror::MirrorMap) {
+        let enabled: HashMap<String, (Point, f64)> = self
+            .heads
+            .iter()
+            .filter(|head| head.enabled)
+            .map(|head| (head.id.0.clone(), (head.position, head.scale)))
+            .collect();
+        let pinned: Vec<(String, Point, f64)> = mirrors
+            .active_pairs(|name| enabled.contains_key(name))
+            .map(|(mirror, target)| {
+                let (position, scale) = enabled[&target.source];
+                (mirror.to_string(), position, scale)
+            })
+            .collect();
+        for (mirror, position, scale) in pinned {
+            if let Some(head) = self.heads.iter_mut().find(|head| head.id.0 == mirror) {
+                head.position = position;
+                head.scale = scale;
+            }
+        }
     }
 }
 
@@ -774,5 +817,94 @@ mod tests {
             .validate(&[capability("one")]),
             Ok(())
         );
+    }
+
+    fn mirror_map(pairs: &[(&str, &str)]) -> crate::output_mirror::MirrorMap {
+        crate::output_mirror::MirrorMap::from_pairs(
+            pairs
+                .iter()
+                .map(|(mirror, source)| (mirror.to_string(), source.to_string())),
+        )
+    }
+
+    #[test]
+    fn position_after_starts_right_of_every_rectangle() {
+        let rects = [Rect::new(-1280, 0, 1280, 1024), Rect::new(0, 0, 1920, 1080)];
+        assert_eq!(position_after(rects), Point::new(1920, 0));
+        assert_eq!(position_after([]), Point::new(0, 0));
+    }
+
+    #[test]
+    fn apply_mirrors_pins_position_and_scale_but_keeps_mode_and_transform() {
+        let mut mirror = head("DP-1");
+        mirror.position = Point::new(500, 500);
+        mirror.scale = 2.0;
+        mirror.transform = OutputTransform::Rotate90;
+        let mut source = head("eDP-1");
+        source.position = Point::new(1920, 0);
+        source.scale = 1.5;
+        source.transform = OutputTransform::Rotate180;
+        source.mode = Some(OutputMode {
+            width: 2560,
+            height: 1440,
+            refresh_millihertz: 144_000,
+        });
+        let mut transaction = OutputTransaction {
+            heads: vec![mirror.clone(), source],
+        };
+
+        transaction.apply_mirrors(&mirror_map(&[("DP-1", "eDP-1")]));
+
+        let pinned = &transaction.heads[0];
+        assert_eq!(pinned.position, Point::new(1920, 0));
+        assert_eq!(pinned.scale, 1.5);
+        assert_eq!(pinned.transform, mirror.transform);
+        assert_eq!(pinned.mode, mirror.mode);
+    }
+
+    #[test]
+    fn apply_mirrors_leaves_pairs_with_an_inactive_head_alone() {
+        let map = mirror_map(&[("DP-1", "eDP-1")]);
+        let mut mirror = head("DP-1");
+        mirror.position = Point::new(7, 7);
+        mirror.scale = 2.0;
+
+        // A disabled source leaves the mirror an ordinary, enabled output.
+        let mut source = head("eDP-1");
+        source.enabled = false;
+        let mut transaction = OutputTransaction {
+            heads: vec![mirror.clone(), source],
+        };
+        transaction.apply_mirrors(&map);
+        assert_eq!(transaction.heads[0], mirror);
+
+        // A missing source head likewise.
+        let mut transaction = OutputTransaction {
+            heads: vec![mirror.clone()],
+        };
+        transaction.apply_mirrors(&map);
+        assert_eq!(transaction.heads[0], mirror);
+
+        // A missing mirror head leaves the source untouched.
+        let source = head("eDP-1");
+        let mut transaction = OutputTransaction {
+            heads: vec![source.clone()],
+        };
+        transaction.apply_mirrors(&map);
+        assert_eq!(transaction.heads[0], source);
+    }
+
+    #[test]
+    fn a_pinned_transaction_passes_validation() {
+        let mut mirror = head("DP-1");
+        mirror.position = Point::new(9999, 9999);
+        mirror.scale = 3.0;
+        let mut transaction = OutputTransaction {
+            heads: vec![mirror, head("eDP-1")],
+        };
+        let capabilities = vec![capability("DP-1"), capability("eDP-1")];
+
+        transaction.apply_mirrors(&mirror_map(&[("DP-1", "eDP-1")]));
+        assert_eq!(transaction.validate(&capabilities), Ok(()));
     }
 }

@@ -310,6 +310,21 @@ pub struct WaylandRuntimeState {
     pub output_power_modes: HashMap<String, crate::backend::output::OutputPowerMode>,
     /// Outputs whose logical position is anchored by persistent monitor config.
     pub configured_output_positions: HashSet<String>,
+    /// Position ownership recorded when output transactions apply. Absent
+    /// outputs are automatically placed.
+    pub output_position_sources: HashMap<String, crate::backend::output::OutputPositionSource>,
+    /// Desired mirror declarations, rebuilt from monitor config whenever
+    /// output configs are applied.
+    pub mirror_of: crate::output_mirror::MirrorMap,
+    /// Mirror head -> source pairs currently presenting. Established only by
+    /// applied output snapshots, since `mirror_of` may describe a policy whose
+    /// transaction is still pending. Realized mirrors are absent from the
+    /// space and advertise no `wl_output`; the renderer projects their
+    /// source's scene onto them.
+    pub realized_mirrors: HashMap<String, String>,
+    /// Mirrors the last policy projection pinned. The next projection treats
+    /// heads that left this set as re-entering the desktop.
+    pub projected_mirrors: HashSet<String>,
     pub intercepted_key_releases: HashSet<Keycode>,
     pub(crate) shortcut_recovery:
         crate::backend::wayland::input::keyboard::recovery::ShortcutRecoveryState,
@@ -345,6 +360,10 @@ impl Default for WaylandRuntimeState {
             output_power: crate::backend::output::OutputPowerService::default(),
             output_power_modes: HashMap::new(),
             configured_output_positions: HashSet::new(),
+            output_position_sources: HashMap::new(),
+            mirror_of: Default::default(),
+            realized_mirrors: HashMap::new(),
+            projected_mirrors: HashSet::new(),
             intercepted_key_releases: HashSet::new(),
             shortcut_recovery: Default::default(),
             session: None,

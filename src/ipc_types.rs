@@ -1,5 +1,5 @@
 pub use crate::backend::WindowProtocol;
-pub use crate::config::config_toml::VrrMode;
+pub use crate::config::config_toml::{MirrorFit, VrrMode};
 pub use crate::types::{KeyboardLayout, MonitorSelector, RuleGeometry, TagMask};
 use bincode::{Decode, Encode};
 
@@ -115,6 +115,11 @@ pub enum MonitorCommand {
         transform: Option<Transform>,
         enable: Option<bool>,
         vrr: Option<VrrMode>,
+        /// None = keep current mirror; Some("") = stop mirroring; Some(name) = mirror that output.
+        mirror: Option<String>,
+        /// None = keep current fit; Some(fit) = how content fits when the
+        /// mirror's aspect ratio differs from its source's.
+        mirror_fit: Option<MirrorFit>,
     },
     Modes {
         identifier: Option<String>,
@@ -491,6 +496,12 @@ pub struct MonitorInfo {
     pub vrr_support: crate::backend::BackendVrrSupport,
     pub vrr_mode: Option<VrrMode>,
     pub vrr_enabled: bool,
+    /// Other physical outputs presenting this logical monitor: realized
+    /// mirrors and clones set up by other tools.
+    pub mirrors: Vec<String>,
+    /// Mirror declarations targeting this logical monitor, including heads
+    /// that are disconnected or whose output configuration has not applied.
+    pub requested_mirrors: Vec<String>,
 }
 
 pub use crate::floating::scratchpad::ScratchpadInfo;

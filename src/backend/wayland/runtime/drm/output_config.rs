@@ -121,12 +121,13 @@ pub(super) fn process_output_configurations(
 
     let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
         GlesRenderer,
-        crate::backend::wayland::render::drm::DrmExtras,
+        crate::backend::wayland::render::drm::DrmOutputElement,
     >::default();
     let capabilities = output_capabilities(output_surfaces);
 
-    while let Some(pending) = state.runtime.output_transactions.take_next_pending() {
+    while let Some(mut pending) = state.runtime.output_transactions.take_next_pending() {
         let policy_transaction = pending.is_policy();
+        pending.transaction.apply_mirrors(&state.runtime.mirror_of);
         if let Err(error) = pending.transaction.validate(&capabilities) {
             state
                 .runtime
@@ -266,19 +267,16 @@ pub(super) fn process_output_configurations(
 
         for (index, config, _) in &requested {
             let entry = &mut output_surfaces[*index];
-            if policy_transaction {
-                if state
-                    .runtime
-                    .configured_output_positions
-                    .contains(&entry.output.name())
-                {
-                    entry.position_source = OutputPositionSource::Configured;
-                } else if entry.position_source == OutputPositionSource::Configured {
-                    entry.position_source = OutputPositionSource::Automatic;
-                }
+            let name = entry.output.name();
+            let position_source = if policy_transaction {
+                state.output_position_source(&name)
             } else {
-                entry.position_source = OutputPositionSource::ClientManaged;
-            }
+                OutputPositionSource::ClientManaged
+            };
+            state
+                .runtime
+                .output_position_sources
+                .insert(name, position_source);
             if !config.enabled {
                 if let Some(id) = entry.pending_power_on.take() {
                     state.runtime.output_power.complete_by_id(
@@ -366,7 +364,9 @@ pub(super) fn process_output_power_requests(
             continue;
         }
 
-        match request.mode {
+        let source = entry.output.name();
+        let mode = request.mode;
+        match mode {
             OutputPowerMode::Off => {
                 let result = entry
                     .surface
@@ -379,7 +379,7 @@ pub(super) fn process_output_power_requests(
                         state
                             .runtime
                             .output_power_modes
-                            .insert(entry.output.name(), OutputPowerMode::Off);
+                            .insert(source.clone(), OutputPowerMode::Off);
                         state
                             .runtime
                             .output_power
@@ -402,5 +402,44 @@ pub(super) fn process_output_power_requests(
                 // frame, which is the commit that re-enables a cleared CRTC.
             }
         }
+        power_mirrors_with_source(state, output_surfaces, loop_state, &source, mode);
+    }
+}
+
+/// Heads presenting a monitor share its power state. Power clients address
+/// the source, the only head advertising a `wl_output`, so its realized
+/// mirrors follow it.
+fn power_mirrors_with_source(
+    state: &mut WaylandState,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    loop_state: &mut DrmLoopState,
+    source: &str,
+    mode: OutputPowerMode,
+) {
+    let powered = mode == OutputPowerMode::On;
+    for entry in output_surfaces.iter_mut() {
+        let name = entry.output.name();
+        let follows = state
+            .runtime
+            .realized_mirrors
+            .get(&name)
+            .is_some_and(|mirror_source| mirror_source == source);
+        if !follows || !entry.enabled || entry.powered == powered {
+            continue;
+        }
+        let Some(surface) = entry.surface.as_ref() else {
+            continue;
+        };
+        if !powered {
+            if let Err(error) = surface.with_compositor(|compositor| compositor.clear()) {
+                log::warn!("failed to power off mirror {name} with {source}: {error:?}");
+                continue;
+            }
+        } else {
+            // Rendering the next frame re-enables the cleared CRTC.
+            loop_state.mark_dirty(entry.crtc);
+        }
+        entry.powered = powered;
+        state.runtime.output_power_modes.insert(name, mode);
     }
 }

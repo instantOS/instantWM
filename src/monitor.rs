@@ -416,21 +416,47 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 }
 
 pub fn apply_monitor_config(ctx: &mut WmCtx) {
-    let monitors_cfg = ctx.core().config().monitors.clone();
-    ctx.output_backend().apply_monitor_configs(&monitors_cfg);
+    // Backends must never see raw mirror declarations: hand them a repaired
+    // copy (invalid mirrors cleared, shadowed presentation fields cleared,
+    // relative anchors retargeted through mirrors).
+    let monitors_cfg =
+        crate::output_mirror::sanitized_mirror_configs(&ctx.core().config().monitors);
+    ctx.apply_monitor_configs(&monitors_cfg);
     refresh_monitor_layout(ctx);
+}
+
+/// One output per logical monitor: the backend's outputs with physically
+/// cloned ones folded together. Existing monitor names keep their identity
+/// when outputs fold.
+pub(crate) fn logical_outputs(
+    outputs: Vec<BackendOutputInfo>,
+    monitors_cfg: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    model: &crate::model::WmModel,
+) -> Vec<BackendOutputInfo> {
+    let (mirror_map, _) = crate::output_mirror::MirrorMap::build(monitors_cfg);
+    let preferred: std::collections::HashSet<String> = model
+        .monitors_iter()
+        .map(|(_, m)| m.name.clone())
+        .filter(|name| !name.is_empty())
+        .collect();
+    crate::output_mirror::fold_cloned_outputs(outputs, &mirror_map, &preferred)
 }
 
 pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     // Try the backend's primary output discovery first (XRandR on X11,
     // native protocol state on Wayland).
-    let outputs = ctx.output_backend().get_outputs();
+    let outputs = logical_outputs(
+        ctx.output_backend().get_outputs(),
+        &ctx.core().config().monitors,
+        ctx.core().model(),
+    );
     if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
         return sync_monitors_from_outputs(ctx, outputs);
     }
 
     // Legacy fallback discovery (Xinerama on X11; None elsewhere).
     if let Some(outputs) = ctx.output_backend().query_fallback_outputs() {
+        let outputs = logical_outputs(outputs, &ctx.core().config().monitors, ctx.core().model());
         return sync_monitors_from_outputs(ctx, outputs);
     }
 
@@ -948,6 +974,7 @@ mod transfer_focus_tests {
             vrr_support: crate::backend::BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,
+            mirrors: Vec::new(),
         }];
         let result = reconcile_monitor_model(
             &mut model,
@@ -997,6 +1024,7 @@ mod transfer_focus_tests {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,
+                mirrors: Vec::new(),
             },
             BackendOutputInfo {
                 name: "HDMI-A-1".to_string(),
@@ -1005,6 +1033,7 @@ mod transfer_focus_tests {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,
+                mirrors: Vec::new(),
             },
         ];
         let result = reconcile_monitor_model(
@@ -1055,6 +1084,7 @@ mod transfer_focus_tests {
             vrr_support: crate::backend::BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,
+            mirrors: Vec::new(),
         }];
 
         let result = reconcile_monitor_model(
@@ -1093,6 +1123,7 @@ mod transfer_focus_tests {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,
+                mirrors: Vec::new(),
             },
             BackendOutputInfo {
                 name: "bottom".to_string(),
@@ -1101,6 +1132,7 @@ mod transfer_focus_tests {
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,
+                mirrors: Vec::new(),
             },
         ];
 

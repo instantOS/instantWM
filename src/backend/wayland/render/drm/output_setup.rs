@@ -21,7 +21,7 @@ pub fn add_new_output_surfaces(
 ) {
     let mut output_x_offset = output_surfaces
         .iter()
-        .filter(|entry| entry.enabled)
+        .filter(|entry| state.space.output_geometry(&entry.output).is_some())
         .map(|entry| entry.rect.x.saturating_add(entry.rect.w))
         .max()
         .unwrap_or(0);
@@ -36,7 +36,7 @@ pub fn add_new_output_surfaces(
         .iter()
         .map(|entry| entry.connector)
         .collect();
-    let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmExtras>::default();
+    let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmOutputElement>::default();
 
     let mut pending = Vec::new();
     for &conn_handle in res.connectors() {
@@ -242,7 +242,7 @@ fn initialize_drm_output_surface(
     output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
     state: &mut WaylandState,
-    init_render_elements: &DrmOutputRenderElements<GlesRenderer, DrmExtras>,
+    init_render_elements: &DrmOutputRenderElements<GlesRenderer, DrmOutputElement>,
     spec: DrmOutputSpec,
     x_offset: i32,
 ) -> Option<OutputSurfaceEntry> {
@@ -301,7 +301,6 @@ fn initialize_drm_output_surface(
             crate::types::Point::new(x_offset, 0),
             spec.pixel_size,
         ),
-        position_source: crate::backend::output::OutputPositionSource::Automatic,
         vrr_support,
         configured_vrr_mode,
         vrr_enabled: false,

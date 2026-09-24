@@ -3,9 +3,11 @@
 use crate::backend::BackendOutputInfo;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
-    MonitorModeRequest, OutputPlacement, OutputPositionSource, plan_automatic_output_positions,
+    MonitorModeRequest, OutputMode, OutputPlacement, OutputPositionSource,
+    plan_automatic_output_positions, position_after,
 };
-use crate::config::config_toml::MonitorConfig;
+use crate::config::config_toml::{MirrorFit, MonitorConfig};
+use crate::output_mirror::MirrorMap;
 use crate::types::{MonitorPosition, Rect};
 use std::collections::{HashMap, HashSet};
 use x11rb::connection::Connection;
@@ -232,6 +234,7 @@ fn process_outputs(
             vrr_support: BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,
+            mirrors: Vec::new(),
         });
     }
 
@@ -275,30 +278,316 @@ fn set_monitor_config(conn: &RustConnection, root: Window, name: &str, config: &
     let _ = set_monitor_config_inner(conn, root, name, config, false);
 }
 
-/// Apply exactly one effective policy per connected output. A named entry
-/// shadows the wildcard instead of relying on two order-dependent modesets.
-pub fn apply_monitor_configs(
+/// Apply the complete monitor policy and settle the layout.
+///
+/// Pass 1 configures every output that is not about to mirror a presenting
+/// source, pass 2 glues declared mirrors onto the state pass 1 produced and
+/// releases heads that stopped mirroring, then automatic outputs are
+/// compacted (re-gluing mirrors whose source moved) and the framebuffer is
+/// fitted to the result.
+pub fn apply_output_policy(
+    conn: &RustConnection,
+    runtime: &mut crate::backend::x11::X11RuntimeConfig,
+    configs: &HashMap<String, MonitorConfig>,
+) {
+    let root = runtime.root;
+    apply_monitor_configs(conn, root, configs);
+    apply_mirror_configs(
+        conn,
+        root,
+        configs,
+        &mut runtime.mirror_heads,
+        &mut runtime.automatic_outputs,
+    );
+    if compact_automatic_output_layout(
+        conn,
+        root,
+        configs,
+        &runtime.automatic_outputs,
+        &runtime.mirror_heads,
+    ) {
+        apply_mirror_configs(
+            conn,
+            root,
+            configs,
+            &mut runtime.mirror_heads,
+            &mut runtime.automatic_outputs,
+        );
+    }
+    fit_framebuffer_to_active_outputs(conn, root);
+}
+
+/// Declared mirrors whose source will present after pass 1 (connected and
+/// not disabled by policy). Pass 2 owns their policy; every other head,
+/// including a mirror of an absent or disabled source, is configured by
+/// pass 1 as an ordinary output.
+fn gluable_mirrors(
+    configs: &HashMap<String, MonitorConfig>,
+    connected: &HashSet<String>,
+) -> HashSet<String> {
+    MirrorMap::build(configs)
+        .0
+        .active_pairs(|name| {
+            connected.contains(name) && !output_is_explicitly_disabled(configs, name)
+        })
+        .map(|(mirror, _)| mirror.to_string())
+        .collect()
+}
+
+/// Pass 1: apply exactly one effective policy per connected output. A named
+/// entry shadows the wildcard instead of relying on two order-dependent
+/// modesets.
+fn apply_monitor_configs(
     conn: &RustConnection,
     root: Window,
     configs: &HashMap<String, MonitorConfig>,
 ) {
-    let Some(resources) = conn
-        .randr_get_screen_resources_current(root)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-    else {
-        return;
-    };
-    let output_infos = fetch_output_infos(conn, &resources.outputs, resources.config_timestamp);
-    for (_, output) in output_infos
-        .iter()
-        .filter(|(_, output)| output.connection == randr::Connection::CONNECTED)
-    {
-        let name = String::from_utf8_lossy(&output.name);
-        if let Some(config) = effective_monitor_config(configs, &name) {
-            set_monitor_config(conn, root, &name, config);
+    let connected = connected_output_names(conn, root);
+    let gluable = gluable_mirrors(configs, &connected);
+    let mut names: Vec<_> = connected.difference(&gluable).collect();
+    names.sort();
+    for name in names {
+        if let Some(config) = effective_monitor_config(configs, name) {
+            set_monitor_config(conn, root, name, config);
         }
     }
+}
+
+/// Pass 2: point declared mirrors at their presenting source and release the
+/// heads that stopped mirroring.
+///
+/// `mirror_heads` records the heads this policy glued, so only those are ever
+/// released; outputs cloned by other tools (`xrandr --same-as`) are left
+/// alone and merely fold into one monitor. A mirror whose source is not
+/// presenting behaves as an ordinary output until the source returns.
+fn apply_mirror_configs(
+    conn: &RustConnection,
+    root: Window,
+    configs: &HashMap<String, MonitorConfig>,
+    mirror_heads: &mut HashSet<String>,
+    automatic_outputs: &mut HashSet<String>,
+) {
+    let (mirrors, _) = MirrorMap::build(configs);
+    if mirrors.is_empty() && mirror_heads.is_empty() {
+        return;
+    }
+    let connected = connected_output_names(conn, root);
+    mirror_heads.retain(|name| connected.contains(name));
+    // Sources are never mirrors, so this pass does not move them.
+    let active = get_outputs(conn, root);
+    let source_rect = |name: &str| {
+        active
+            .iter()
+            .find(|output| output.name == name)
+            .map(|output| output.rect)
+    };
+
+    for (mirror, target) in mirrors.iter() {
+        if !connected.contains(mirror) {
+            continue;
+        }
+        let Some(rect) = source_rect(&target.source) else {
+            continue;
+        };
+        let modes = get_output_modes(conn, root, mirror);
+        let policy = mirror_policy_for(configs, mirror, &target.source, rect, &modes);
+        set_monitor_config(conn, root, mirror, &policy);
+        automatic_outputs.remove(mirror);
+        if policy.enable == Some(false) {
+            mirror_heads.remove(mirror);
+        } else {
+            mirror_heads.insert(mirror.clone());
+        }
+    }
+
+    let mut released: Vec<String> = mirror_heads
+        .iter()
+        .filter(|name| {
+            mirrors
+                .source_of(name)
+                .is_none_or(|source| source_rect(source).is_none())
+        })
+        .cloned()
+        .collect();
+    released.sort();
+    for name in released {
+        mirror_heads.remove(&name);
+        release_mirror_head(conn, root, configs, &name, mirror_heads, automatic_outputs);
+    }
+}
+
+/// Turn a head that stopped mirroring back into an ordinary output: its own
+/// policy, its preferred mode unless configured, and, without a configured
+/// position, an automatic place right of the layout.
+fn release_mirror_head(
+    conn: &RustConnection,
+    root: Window,
+    configs: &HashMap<String, MonitorConfig>,
+    name: &str,
+    mirror_heads: &HashSet<String>,
+    automatic_outputs: &mut HashSet<String>,
+) {
+    let mut config = effective_monitor_config(configs, name)
+        .cloned()
+        .unwrap_or_default();
+    if config.enable == Some(false) {
+        automatic_outputs.remove(name);
+        set_monitor_config(conn, root, name, &config);
+        return;
+    }
+    if config.resolution.is_none() {
+        config.resolution = preferred_resolution(conn, root, name);
+        config.refresh_rate = None;
+    }
+    if config.position.is_none() {
+        let position = position_after(
+            get_outputs(conn, root)
+                .into_iter()
+                .filter(|output| output.name != name && !mirror_heads.contains(&output.name))
+                .map(|output| output.rect),
+        );
+        config.position = Some(format!("{},{}", position.x, position.y));
+        automatic_outputs.insert(name.to_string());
+    }
+    log::info!("output {name} stopped mirroring and becomes an independent output");
+    set_monitor_config(conn, root, name, &config);
+}
+
+/// The EDID-preferred resolution of a connected output, as a policy string.
+fn preferred_resolution(conn: &RustConnection, root: Window, name: &str) -> Option<String> {
+    let resources = conn
+        .randr_get_screen_resources_current(root)
+        .ok()?
+        .reply()
+        .ok()?;
+    let (_, output) = fetch_output_infos(conn, &resources.outputs, resources.config_timestamp)
+        .into_iter()
+        .find(|(_, output)| String::from_utf8_lossy(&output.name) == name)?;
+    let mode = find_preferred_mode(&output, &resources.modes)?;
+    Some(format!("{}x{}", mode.width, mode.height))
+}
+
+/// Pure policy for one declared mirror whose source presents `source_rect`:
+/// the configuration the mirror must run to show the source.
+///
+/// X11 cannot scale mirrored content: Xorg shares one framebuffer across
+/// CRTCs and instantWM never touches RandR output transforms, so a mirror
+/// CRTC always scans out a 1:1 pixel region of the framebuffer at its
+/// position. The policy is therefore a best-effort ladder over the mirror's
+/// advertised modes, compared against the source's pixel size:
+///
+/// - An explicit `enable = false` on the mirror's effective policy wins over
+///   mirroring.
+/// - An exact source-sized mode clones the source rectangle (the panel's own
+///   scaler fills a non-native mode, so this is a true scaled mirror).
+/// - Otherwise the same-aspect mode with the nearest pixel area that is no
+///   larger than the source (tie: higher refresh) shows a centered 1:1 crop
+///   of the framebuffer region the source occupies.
+/// - Otherwise only larger same-aspect or different-aspect modes exist,
+///   which would display source pixels plus neighboring framebuffer
+///   garbage; the mirror head is disabled instead. The source is presenting,
+///   so this cannot leave a headless desktop.
+///
+/// The mirror's own `resolution`, `refresh_rate` and `mirror_fit` select a
+/// scanout mode and fit on Wayland; X11 has to derive the mode from the
+/// source and ignores them.
+fn mirror_policy_for(
+    configs: &HashMap<String, MonitorConfig>,
+    mirror: &str,
+    source: &str,
+    source_rect: Rect,
+    mirror_modes: &[OutputMode],
+) -> MonitorConfig {
+    let config = effective_monitor_config(configs, mirror);
+    if config.is_some_and(|config| config.enable == Some(false)) {
+        return MonitorConfig {
+            enable: Some(false),
+            ..MonitorConfig::default()
+        };
+    }
+    if config.is_some_and(|config| {
+        config.resolution.is_some() || config.mirror_fit == Some(MirrorFit::Cover)
+    }) {
+        log::debug!(
+            "mirror output {mirror} configures a mode or fit, which X11 ignores: RandR mirrors follow the source 1:1"
+        );
+    }
+
+    // Rung 1: an exact mode clones the source rectangle. The panel's scaler
+    // fills a non-native mode, so this mirrors the source scaled.
+    let rect = source_rect;
+    let (source_width, source_height) = (rect.w, rect.h);
+    if mirror_modes
+        .iter()
+        .any(|mode| mode.width == source_width && mode.height == source_height)
+    {
+        return MonitorConfig {
+            enable: Some(true),
+            resolution: Some(format!("{source_width}x{source_height}")),
+            position: Some(format!("{},{}", rect.x, rect.y)),
+            ..MonitorConfig::default()
+        };
+    }
+
+    // Rung 2: X11 cannot scale, so the closest lossless approximation is a
+    // centered 1:1 crop of the framebuffer region the source occupies.
+    if let Some(crop_mode) = find_same_aspect_crop_mode(mirror_modes, source_width, source_height) {
+        let (crop_width, crop_height) = (crop_mode.width, crop_mode.height);
+        log::warn!(
+            "mirror output {mirror} has no {source_width}x{source_height} mode for source {source}; running {crop_width}x{crop_height} as an unscaled center crop (X11 mirrors cannot scale)"
+        );
+        return MonitorConfig {
+            enable: Some(true),
+            resolution: Some(format!("{crop_width}x{crop_height}")),
+            position: Some(format!(
+                "{},{}",
+                rect.x + (source_width - crop_width) / 2,
+                rect.y + (source_height - crop_height) / 2
+            )),
+            ..MonitorConfig::default()
+        };
+    }
+
+    // Rung 3: any remaining mode would show source pixels plus neighboring
+    // framebuffer garbage, so switch the mirror head off instead.
+    log::error!(
+        "mirror output {mirror} has no mode compatible with source {source} ({source_width}x{source_height}); disabling it because X11 cannot scale a larger or different-aspect mode"
+    );
+    MonitorConfig {
+        enable: Some(false),
+        ..MonitorConfig::default()
+    }
+}
+
+/// The [`OutputMode`] a mirror runs for a centered 1:1 crop: the same-aspect
+/// mode with the pixel area nearest to the source's, among modes no larger
+/// than the source, with the higher refresh breaking area ties.
+///
+/// The aspect test is an integer cross-multiplication on raw pixel sizes —
+/// X11 has no transform or fractional-scale concept (scale is hardcoded to
+/// 1.0), so unlike the Wayland ladder there is nothing transform-adjusted to
+/// compare. Equal aspect plus an area no larger than the source's forces
+/// both mode dimensions to be no larger than the source's, which keeps the
+/// crop's centering offset non-negative.
+fn find_same_aspect_crop_mode(
+    mirror_modes: &[OutputMode],
+    source_width: i32,
+    source_height: i32,
+) -> Option<&OutputMode> {
+    let source_area = i64::from(source_width) * i64::from(source_height);
+    mirror_modes
+        .iter()
+        .filter(|mode| {
+            i64::from(mode.width) * i64::from(source_height)
+                == i64::from(mode.height) * i64::from(source_width)
+        })
+        .filter(|mode| i64::from(mode.width) * i64::from(mode.height) <= source_area)
+        .min_by_key(|mode| {
+            (
+                (i64::from(mode.width) * i64::from(mode.height)).abs_diff(source_area),
+                std::cmp::Reverse(mode.refresh_millihertz),
+            )
+        })
 }
 
 /// Return physical connector identity independently of active CRTC state.
@@ -325,26 +614,34 @@ pub fn active_output_names(conn: &RustConnection, root: Window) -> HashSet<Strin
 }
 
 /// Attempt automatic activation only for connectors that the runtime has
-/// identified as physically new. Returns successfully active outputs whose
+/// identified as physically new. Returns the newly active outputs whose
 /// placement is owned by the automatic policy.
+///
+/// Declared mirrors of a connected source are left to
+/// [`apply_output_policy`], which glues them onto their source instead of
+/// giving them a placement.
 pub fn configure_new_outputs(
     conn: &RustConnection,
     root: Window,
     configs: &HashMap<String, MonitorConfig>,
     candidates: &HashSet<String>,
-) -> (HashSet<String>, HashSet<String>) {
+) -> HashSet<String> {
     let Some(resources) = conn
         .randr_get_screen_resources_current(root)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
     else {
-        return (HashSet::new(), HashSet::new());
+        return HashSet::new();
     };
+    let connected = connected_output_names(conn, root);
+    let gluable = gluable_mirrors(configs, &connected);
     let output_infos = fetch_output_infos(conn, &resources.outputs, resources.config_timestamp);
     for (_, output) in output_infos.iter().filter(|(_, output)| {
+        let name = String::from_utf8_lossy(&output.name);
         output.connection == randr::Connection::CONNECTED
             && output.crtc == 0
-            && candidates.contains(String::from_utf8_lossy(&output.name).as_ref())
+            && candidates.contains(name.as_ref())
+            && !gluable.contains(name.as_ref())
     }) {
         let name = String::from_utf8_lossy(&output.name);
         let config = effective_monitor_config(configs, &name)
@@ -356,23 +653,15 @@ pub fn configure_new_outputs(
         set_monitor_config(conn, root, &name, &config);
     }
 
-    let active: HashSet<_> = get_outputs(conn, root)
-        .into_iter()
-        .map(|output| output.name)
-        .collect();
-    let activated: HashSet<_> = candidates
+    let active = active_output_names(conn, root);
+    candidates
         .iter()
-        .filter(|name| active.contains(*name))
-        .cloned()
-        .collect();
-    let automatic = activated
-        .iter()
+        .filter(|name| active.contains(*name) && !gluable.contains(*name))
         .filter(|name| {
             effective_monitor_config(configs, name).is_none_or(|config| config.position.is_none())
         })
         .cloned()
-        .collect();
-    (activated, automatic)
+        .collect()
 }
 
 pub fn output_is_explicitly_disabled(configs: &HashMap<String, MonitorConfig>, name: &str) -> bool {
@@ -401,31 +690,37 @@ fn effective_monitor_config<'a>(
 
 /// Close holes left by removed automatically positioned outputs. Outputs with
 /// an explicit named or wildcard position anchor the layout and are never
-/// moved by this policy.
-pub fn compact_automatic_output_layout(
+/// moved by this policy. Returns whether any output moved.
+fn compact_automatic_output_layout(
     conn: &RustConnection,
     root: Window,
     configs: &HashMap<String, MonitorConfig>,
     automatic_outputs: &HashSet<String>,
-) {
-    let mut outputs = get_outputs(conn, root);
-    outputs.sort_by(|a, b| (a.rect.x, &a.name).cmp(&(b.rect.x, &b.name)));
-    for (name, position) in planned_automatic_positions(&outputs, configs, automatic_outputs) {
+    mirror_heads: &HashSet<String>,
+) -> bool {
+    let outputs = get_outputs(conn, root);
+    let moves = planned_automatic_positions(&outputs, configs, automatic_outputs, mirror_heads);
+    for (name, position) in &moves {
         let config = MonitorConfig {
             position: Some(format!("{},{}", position.x, position.y)),
             ..MonitorConfig::default()
         };
-        set_monitor_config(conn, root, &name, &config);
+        set_monitor_config(conn, root, name, &config);
     }
+    !moves.is_empty()
 }
 
 fn planned_automatic_positions(
     outputs: &[BackendOutputInfo],
     configs: &HashMap<String, MonitorConfig>,
     automatic_outputs: &HashSet<String>,
+    mirror_heads: &HashSet<String>,
 ) -> Vec<(String, crate::types::Point)> {
     let mut placements: Vec<_> = outputs
         .iter()
+        // A mirror head presents its source's region; planning it as a
+        // placement would mark that region occupied and shift the source.
+        .filter(|output| !mirror_heads.contains(&output.name))
         .map(|output| {
             let automatic = automatic_outputs.contains(&output.name)
                 && effective_monitor_config(configs, &output.name)
@@ -523,6 +818,7 @@ fn set_monitor_config_inner(
             *output_id,
             output_info,
             crtc_infos.get(&crtc),
+            &crtc_infos,
             crtc,
             config,
             config_timestamp,
@@ -547,6 +843,7 @@ fn apply_output_config(
     output_id: randr::Output,
     output_info: &randr::GetOutputInfoReply,
     current_crtc: Option<&randr::GetCrtcInfoReply>,
+    crtc_infos: &HashMap<randr::Crtc, randr::GetCrtcInfoReply>,
     crtc: randr::Crtc,
     config: &MonitorConfig,
     config_timestamp: u32,
@@ -557,15 +854,31 @@ fn apply_output_config(
         && !enable
     {
         if output_info.crtc != 0 {
+            let remaining: Vec<_> = current_crtc
+                .map(|info| {
+                    info.outputs
+                        .iter()
+                        .copied()
+                        .filter(|output| *output != output_id)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let (x, y, mode, rotation) = if let Some(info) = current_crtc
+                && !remaining.is_empty()
+            {
+                (info.x, info.y, info.mode, info.rotation)
+            } else {
+                (0, 0, 0, randr::Rotation::ROTATE0)
+            };
             let _ = conn.randr_set_crtc_config(
                 output_info.crtc,
                 x11rb::CURRENT_TIME,
                 config_timestamp,
-                0,
-                0,
-                0,
-                randr::Rotation::ROTATE0,
-                &[],
+                x,
+                y,
+                mode,
+                rotation,
+                &remaining,
             );
         }
         return None;
@@ -597,7 +910,7 @@ fn apply_output_config(
     {
         crate::types::Point::new(rect.x, rect.y)
     } else {
-        automatic_output_position(known_outputs)
+        position_after(known_outputs.iter().map(|(_, rect)| *rect))
     };
 
     if crtc == 0 {
@@ -615,8 +928,38 @@ fn apply_output_config(
         i32::from(mode_info.width),
         i32::from(mode_info.height),
     );
-    if current_crtc
-        .is_some_and(|current| crtc_configuration_matches(current, x, y, mode_info.id, output_id))
+    let mut crtc = crtc;
+    if let Some(current) = current_crtc
+        && current.outputs.len() > 1
+    {
+        if current.x == x
+            && current.y == y
+            && current.mode == mode_info.id
+            && current.rotation == randr::Rotation::ROTATE0
+            && current.outputs.contains(&output_id)
+        {
+            return Some(desired_rect);
+        }
+        // RandR replaces a CRTC's entire outputs array. Move this output to
+        // a free compatible CRTC before changing its mode or location, so the
+        // other heads on its current CRTC keep scanning out.
+        let Some(spare) = output_info.crtcs.iter().copied().find(|candidate| {
+            crtc_infos
+                .get(candidate)
+                .is_some_and(|info| info.outputs.is_empty())
+        }) else {
+            log::warn!(
+                "cannot reconfigure output {}: it shares CRTC {crtc} and no free compatible CRTC exists",
+                String::from_utf8_lossy(&output_info.name)
+            );
+            return None;
+        };
+        crtc = spare;
+    }
+    if crtc == output_info.crtc
+        && current_crtc.is_some_and(|current| {
+            crtc_configuration_matches(current, x, y, mode_info.id, output_id)
+        })
     {
         return Some(desired_rect);
     }
@@ -652,20 +995,6 @@ fn crtc_configuration_matches(
         && current.mode == mode
         && current.rotation == randr::Rotation::ROTATE0
         && current.outputs.as_slice() == [output]
-}
-
-/// Unconfigured heads extend the logical desktop without overlapping an
-/// existing output. Keep this policy backend-independent in meaning even
-/// though RandR performs the native commit here.
-fn automatic_output_position(known_outputs: &[(String, Rect)]) -> crate::types::Point {
-    crate::types::Point::new(
-        known_outputs
-            .iter()
-            .map(|(_, rect)| rect.x.saturating_add(rect.w))
-            .max()
-            .unwrap_or(0),
-        0,
-    )
 }
 
 fn ensure_framebuffer_contains(
@@ -846,13 +1175,13 @@ fn collect_output_rects(
 #[cfg(test)]
 mod refresh_tests {
     use super::{
-        automatic_output_position, crtc_configuration_matches, effective_monitor_config,
-        find_mode_by_resolution, mode_refresh_millihertz, new_auto_enable_candidates,
-        planned_automatic_positions, select_output_mode,
+        crtc_configuration_matches, effective_monitor_config, find_mode_by_resolution,
+        find_same_aspect_crop_mode, mirror_policy_for, mode_refresh_millihertz,
+        new_auto_enable_candidates, planned_automatic_positions, select_output_mode,
     };
-    use crate::backend::output::MonitorModeRequest;
+    use crate::backend::output::{MonitorModeRequest, OutputMode};
     use crate::backend::{BackendOutputInfo, BackendVrrSupport};
-    use crate::config::config_toml::MonitorConfig;
+    use crate::config::config_toml::{MirrorFit, MonitorConfig};
     use crate::types::{Point, Rect};
     use std::collections::{HashMap, HashSet};
 
@@ -1033,16 +1362,6 @@ mod refresh_tests {
     }
 
     #[test]
-    fn automatic_hotplug_layout_extends_right_of_all_active_outputs() {
-        let outputs = vec![
-            ("DP-1".to_string(), Rect::new(-1280, 0, 1280, 1024)),
-            ("eDP-1".to_string(), Rect::new(0, 0, 1920, 1080)),
-        ];
-        assert_eq!(automatic_output_position(&outputs), Point::new(1920, 0));
-        assert_eq!(automatic_output_position(&[]), Point::new(0, 0));
-    }
-
-    #[test]
     fn named_monitor_policy_shadows_wildcard_disable() {
         let mut configs = HashMap::new();
         configs.insert(
@@ -1102,6 +1421,7 @@ mod refresh_tests {
             vrr_support: BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,
+            mirrors: Vec::new(),
         };
         let outputs = vec![
             output("DP-1", Rect::new(1920, 0, 1920, 1080)),
@@ -1111,7 +1431,7 @@ mod refresh_tests {
             .into_iter()
             .collect();
         assert_eq!(
-            planned_automatic_positions(&outputs, &HashMap::new(), &automatic),
+            planned_automatic_positions(&outputs, &HashMap::new(), &automatic, &HashSet::new()),
             vec![
                 ("DP-1".to_string(), Point::new(0, 0)),
                 ("HDMI-1".to_string(), Point::new(1920, 0)),
@@ -1127,7 +1447,7 @@ mod refresh_tests {
             },
         );
         assert_eq!(
-            planned_automatic_positions(&outputs, &configs, &automatic),
+            planned_automatic_positions(&outputs, &configs, &automatic, &HashSet::new()),
             vec![("HDMI-1".to_string(), Point::new(3840, 0))]
         );
     }
@@ -1147,6 +1467,211 @@ mod refresh_tests {
                 &HashMap::new(),
             ),
             connected
+        );
+    }
+
+    fn output(name: &str, rect: Rect) -> BackendOutputInfo {
+        BackendOutputInfo {
+            name: name.to_string(),
+            rect,
+            scale: 1.0,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+            mirrors: Vec::new(),
+        }
+    }
+
+    /// `DP-1` declares `mirror = "eDP-1"` unless overridden by the caller.
+    fn mirror_configs(
+        extra: impl IntoIterator<Item = (&'static str, MonitorConfig)>,
+    ) -> HashMap<String, MonitorConfig> {
+        let mut configs: HashMap<String, MonitorConfig> = extra
+            .into_iter()
+            .map(|(name, config)| (name.to_string(), config))
+            .collect();
+        configs.entry("DP-1".to_string()).or_insert(MonitorConfig {
+            mirror: Some("eDP-1".to_string()),
+            ..MonitorConfig::default()
+        });
+        configs
+    }
+
+    fn mode(width: i32, height: i32, refresh_millihertz: i32) -> OutputMode {
+        OutputMode {
+            width,
+            height,
+            refresh_millihertz,
+        }
+    }
+
+    #[test]
+    fn mirror_policy_explicit_disable_wins() {
+        let configs = mirror_configs([(
+            "DP-1",
+            MonitorConfig {
+                mirror: Some("eDP-1".to_string()),
+                enable: Some(false),
+                ..MonitorConfig::default()
+            },
+        )]);
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            Rect::new(0, 0, 1920, 1080),
+            &[mode(1920, 1080, 60_000)],
+        );
+        assert_eq!(policy.enable, Some(false));
+    }
+
+    #[test]
+    fn mirror_policy_follows_the_source_rectangle() {
+        let configs = mirror_configs([]);
+        let modes = [mode(1920, 1080, 60_000), mode(2560, 1440, 144_000)];
+
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            Rect::new(1920, 40, 2560, 1440),
+            &modes,
+        );
+        assert_eq!(policy.enable, Some(true));
+        assert_eq!(policy.resolution.as_deref(), Some("2560x1440"));
+        assert_eq!(policy.position.as_deref(), Some("1920,40"));
+    }
+
+    #[test]
+    fn mirror_policy_crops_centered_when_only_smaller_same_aspect_modes_exist() {
+        let configs = mirror_configs([]);
+        let modes = [mode(1280, 720, 144_000), mode(1920, 1080, 60_000)];
+
+        // X11 cannot scale, so the nearest smaller 16:9 mode shows a
+        // centered 1:1 crop of the framebuffer region the source occupies:
+        // (1920, 40) + ((2560 - 1920) / 2, (1440 - 1080) / 2).
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            Rect::new(1920, 40, 2560, 1440),
+            &modes,
+        );
+        assert_eq!(policy.enable, Some(true));
+        assert_eq!(policy.resolution.as_deref(), Some("1920x1080"));
+        assert_eq!(policy.position.as_deref(), Some("2240,220"));
+    }
+
+    #[test]
+    fn mirror_policy_disables_mirror_without_a_compatible_mode() {
+        let configs = mirror_configs([]);
+
+        // Only larger same-aspect modes: a 1:1 CRTC would also show
+        // neighboring framebuffer content, so the head is switched off.
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            Rect::new(0, 0, 1600, 900),
+            &[mode(1920, 1080, 60_000)],
+        );
+        assert_eq!(policy.enable, Some(false));
+
+        // No same-aspect mode at all: same outcome.
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            Rect::new(0, 0, 2560, 1440),
+            &[mode(1920, 1200, 60_000)],
+        );
+        assert_eq!(policy.enable, Some(false));
+    }
+
+    #[test]
+    fn mirror_policy_ignores_mode_and_fit_on_x11() {
+        // A mirror's own mode and fit apply on Wayland only; on X11 they
+        // must neither change the ladder's outcome nor error.
+        let configs = mirror_configs([(
+            "DP-1",
+            MonitorConfig {
+                mirror: Some("eDP-1".to_string()),
+                mirror_fit: Some(MirrorFit::Cover),
+                resolution: Some("1280x720".to_string()),
+                ..MonitorConfig::default()
+            },
+        )]);
+        let source = Rect::new(0, 0, 2560, 1440);
+
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            source,
+            &[mode(1280, 720, 60_000), mode(2560, 1440, 60_000)],
+        );
+        assert_eq!(policy.resolution.as_deref(), Some("2560x1440"));
+        assert_eq!(policy.position.as_deref(), Some("0,0"));
+
+        let policy = mirror_policy_for(
+            &configs,
+            "DP-1",
+            "eDP-1",
+            source,
+            &[mode(1280, 720, 60_000)],
+        );
+        assert_eq!(policy.resolution.as_deref(), Some("1280x720"));
+        assert_eq!(policy.position.as_deref(), Some("640,360"));
+    }
+
+    #[test]
+    fn crop_mode_picker_prefers_nearest_area_then_higher_refresh() {
+        // The nearest area wins even against a smaller higher-refresh mode.
+        let modes = vec![mode(1280, 720, 144_000), mode(1920, 1080, 60_000)];
+        let picked = find_same_aspect_crop_mode(&modes, 2560, 1440).unwrap();
+        assert_eq!((picked.width, picked.height), (1920, 1080));
+
+        // Area ties (duplicate resolution at two refresh rates) resolve to
+        // the higher refresh.
+        let modes = vec![mode(1280, 720, 60_000), mode(1280, 720, 144_000)];
+        let picked = find_same_aspect_crop_mode(&modes, 2560, 1440).unwrap();
+        assert_eq!(picked.refresh_millihertz, 144_000);
+    }
+
+    #[test]
+    fn planned_positions_exclude_mirror_heads_so_the_source_keeps_its_rect() {
+        // The mirror shares its source's rectangle and sorts before it, so
+        // planning it would mark the rectangle occupied and shift the source
+        // right, displacing whatever sits under the cursor.
+        let outputs = vec![
+            output("DP-1", Rect::new(0, 0, 1920, 1080)),
+            output("eDP-1", Rect::new(0, 0, 1920, 1080)),
+            output("HDMI-1", Rect::new(3840, 0, 1920, 1080)),
+        ];
+        let automatic: HashSet<_> = ["DP-1", "eDP-1", "HDMI-1"]
+            .iter()
+            .map(|name| name.to_string())
+            .collect();
+        let mirror_heads: HashSet<_> = ["DP-1".to_string()].into_iter().collect();
+
+        assert_eq!(
+            planned_automatic_positions(&outputs, &HashMap::new(), &automatic, &mirror_heads),
+            vec![("HDMI-1".to_string(), Point::new(1920, 0))]
+        );
+    }
+
+    #[test]
+    fn a_released_mirror_takes_part_in_placement_again() {
+        // Once released, a former mirror is an ordinary automatic output.
+        let outputs = vec![
+            output("eDP-1", Rect::new(0, 0, 1920, 1080)),
+            output("DP-1", Rect::new(3840, 0, 1920, 1080)),
+        ];
+        let automatic: HashSet<_> = ["DP-1".to_string()].into_iter().collect();
+
+        assert_eq!(
+            planned_automatic_positions(&outputs, &HashMap::new(), &automatic, &HashSet::new()),
+            vec![("DP-1".to_string(), Point::new(1920, 0))]
         );
     }
 }
