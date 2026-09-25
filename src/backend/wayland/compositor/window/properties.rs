@@ -8,8 +8,6 @@ use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
 
 impl WaylandState {
-    pub(crate) const MIN_WL_DIM: i32 = 64;
-
     /// Get the title of a window.
     ///
     /// For XWayland (X11) surfaces the title comes from the X11 property;

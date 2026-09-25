@@ -18,19 +18,13 @@ pub mod touch;
 pub use keyboard::handle_keyboard;
 pub use modifiers::modifiers_to_x11_mask;
 
+use crate::backend::wayland::output::clamp_output_size;
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
 use smithay::utils::Transform;
-
-/// Clamp output dimensions so Smithay never sees a zero-sized surface.
-//BOZO: should this be a method on Size?
-pub fn sanitize_size(size: Size) -> Size {
-    const WAYLAND_MIN_DIM: i32 = 64;
-    Size::new(size.w.max(WAYLAND_MIN_DIM), size.h.max(WAYLAND_MIN_DIM))
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport
@@ -83,13 +77,18 @@ pub fn apply_pending_warp(
 // Resize helper (winit-only — output size comes from the backend window)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Apply a new output mode for the nested host window.
+///
+/// Callers screen degenerate sizes before getting here (a minimized host
+/// window reports 0x0 and keeps its previous mode), so the floor is only a
+/// last-resort invariant: Smithay must never see a zero-sized mode.
 pub fn handle_resize(
     wm: &mut Wm,
     state: &mut crate::backend::wayland::compositor::WaylandState,
     output: &Output,
     size: Size,
 ) {
-    let safe_size = sanitize_size(size);
+    let safe_size = clamp_output_size(size);
     let mode = OutputMode {
         size: (safe_size.w, safe_size.h).into(),
         refresh: 60_000,

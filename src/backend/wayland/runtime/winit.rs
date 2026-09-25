@@ -19,23 +19,39 @@ use crate::backend::wayland::commands::{
     PointerAxis, PointerAxisCommand, PointerButtonCommand, PointerMotionCommand, WmCommand,
 };
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::input::sanitize_size;
 use crate::backend::wayland::input::touch::{
     NormalizedTouchPosition, TouchMappingTarget, TouchPointEvent, handle_touch_cancel,
     handle_touch_down, handle_touch_frame, handle_touch_motion, handle_touch_up,
 };
 use crate::backend::wayland::input::{apply_pending_warp, handle_keyboard};
+use crate::backend::wayland::output::clamp_output_size;
 use crate::backend::wayland::render::scene::SceneCache;
 use crate::backend::wayland::render::winit::render_frame;
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
 
+/// True only for window sizes that can be mapped into compositor space: a
+/// minimized or not-yet-mapped host window reports 0x0, which has no mapping.
+///
+/// Pointer positions come out of winit as `0..1` fractions that callers scale
+/// by this size, so a zero would collapse them to the origin.
+fn usable_window_size(raw: smithay::utils::Size<i32, smithay::utils::Physical>) -> Option<Size> {
+    (raw.w > 0 && raw.h > 0).then(|| Size::new(raw.w, raw.h))
+}
+
+/// Normalize a raw touch position (in window pixels) within the host window.
+///
+/// Returns `None` for a degenerate window rather than substituting a floor: a
+/// synthetic divisor would publish raw pixels as if they were already
+/// normalized fractions, landing the touch in a corner the user never pointed
+/// at. The next event carrying a real size re-establishes the mapping.
 fn normalized_winit_touch_position(
     x: f64,
     y: f64,
-    size: smithay::utils::Size<i32, smithay::utils::Physical>,
+    raw: smithay::utils::Size<i32, smithay::utils::Physical>,
 ) -> Option<NormalizedTouchPosition> {
-    NormalizedTouchPosition::new(x / size.w.max(1) as f64, y / size.h.max(1) as f64)
+    let size = usable_window_size(raw)?;
+    NormalizedTouchPosition::new(x / f64::from(size.w), y / f64::from(size.h))
 }
 
 /// Run the winit (nested) Wayland compositor.
@@ -55,7 +71,9 @@ pub fn run() -> ! {
     super::bootstrap::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
 
     let output_size = backend.window_size();
-    let initial_size = sanitize_size(Size::new(output_size.w, output_size.h));
+    // An output needs an initial mode, so floor a degenerate startup size.
+    // The first usable `Resized` event replaces it.
+    let initial_size = clamp_output_size(Size::new(output_size.w, output_size.h));
     wm.core.derived.display.width = initial_size.w;
     wm.core.derived.display.height = initial_size.h;
     refresh_monitor_layout(&mut wm.ctx());
@@ -105,8 +123,14 @@ pub fn run() -> ! {
     loop_handle
         .insert_source(winit_loop, move |event, _, state| match event {
             WinitEvent::Resized { size, .. } => {
+                // Remember the raw size even when degenerate: input mapping
+                // must drop events for a window that has one (the window is
+                // minimized or not yet mapped).
                 state.runtime.winit_window_size = size;
-                state.runtime.pending_winit_resize = Some(Size::new(size.w, size.h));
+                // A degenerate size is never a mode. Clear any earlier resize
+                // queued in this batch and keep the last published mode until
+                // the window has a usable size again.
+                state.runtime.pending_winit_resize = usable_window_size(size);
             }
             WinitEvent::Input(event) => {
                 dispatch_winit_input(state, &kb, event);
@@ -300,7 +324,9 @@ fn dispatch_winit_input(
             }
         }
         InputEvent::PointerMotionAbsolute { event: motion } => {
-            let size = state.runtime.winit_window_size;
+            let Some(size) = usable_window_size(state.runtime.winit_window_size) else {
+                return;
+            };
             let x = motion.x_transformed(size.w);
             let y = motion.y_transformed(size.h);
             state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
@@ -345,32 +371,38 @@ fn dispatch_winit_input(
             }));
         }
         InputEvent::TouchDown { event } => {
+            let Some(position) = normalized_winit_touch_position(
+                event.x(),
+                event.y(),
+                state.runtime.winit_window_size,
+            ) else {
+                return;
+            };
             if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
-                let size = state.runtime.winit_window_size;
-                let position = normalized_winit_touch_position(event.x(), event.y(), size);
-                if let Some(position) = position {
-                    handle_touch_down(
-                        wm,
-                        state,
-                        TouchPointEvent {
-                            slot: event.slot(),
-                            position,
-                            time: event.time(),
-                        },
-                        &TouchMappingTarget::Output("winit".into()),
-                    );
-                    // Winit has no separate touch-frame event.
-                    handle_touch_frame(state);
-                }
+                handle_touch_down(
+                    wm,
+                    state,
+                    TouchPointEvent {
+                        slot: event.slot(),
+                        position,
+                        time: event.time(),
+                    },
+                    &TouchMappingTarget::Output("winit".into()),
+                );
+                // Winit has no separate touch-frame event.
+                handle_touch_frame(state);
             }
         }
         InputEvent::TouchMotion { event } => {
-            let size = state.runtime.winit_window_size;
-            let position = normalized_winit_touch_position(event.x(), event.y(), size);
-            if let Some(position) = position
-                && let Some(wm_ptr) = unsafe { state.wm_mut_ptr() }
-            {
+            let Some(position) = normalized_winit_touch_position(
+                event.x(),
+                event.y(),
+                state.runtime.winit_window_size,
+            ) else {
+                return;
+            };
+            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 handle_touch_motion(
                     wm,
@@ -404,15 +436,40 @@ fn dispatch_winit_input(
 
 #[cfg(test)]
 mod touch_tests {
-    use super::normalized_winit_touch_position;
+    use super::{normalized_winit_touch_position, usable_window_size};
     use crate::backend::wayland::input::touch::NormalizedTouchPosition;
+    use crate::types::Size;
+    use smithay::utils::{Physical, Size as SmithaySize};
 
     #[test]
     fn touch_coordinates_use_each_window_dimension() {
-        let size = smithay::utils::Size::from((1200, 800));
+        let raw = SmithaySize::<i32, Physical>::from((1200, 800));
         assert_eq!(
-            normalized_winit_touch_position(300.0, 600.0, size),
+            normalized_winit_touch_position(300.0, 600.0, raw),
             NormalizedTouchPosition::new(0.25, 0.75)
         );
+    }
+
+    /// A minimized/unmapped host window reports 0x0, where no mapping exists;
+    /// inventing a corner is worse than dropping the event.
+    #[test]
+    fn degenerate_window_size_is_rejected_rather_than_clamped() {
+        let zero = SmithaySize::<i32, Physical>::from((0, 0));
+        assert_eq!(normalized_winit_touch_position(300.0, 600.0, zero), None);
+        assert_eq!(
+            normalized_winit_touch_position(300.0, 600.0, SmithaySize::from((0, 800))),
+            None
+        );
+        assert_eq!(
+            normalized_winit_touch_position(300.0, 600.0, SmithaySize::from((1200, 0))),
+            None
+        );
+        assert_eq!(usable_window_size(zero), None);
+    }
+
+    #[test]
+    fn non_degenerate_window_size_passes_through_unchanged() {
+        let raw = SmithaySize::<i32, Physical>::from((1200, 800));
+        assert_eq!(usable_window_size(raw), Some(Size::new(1200, 800)));
     }
 }

@@ -16,7 +16,8 @@ use crate::backend::output::{
     plan_automatic_output_positions, position_after,
 };
 use crate::backend::wayland::output::{
-    from_smithay_transform, to_smithay_mode, to_smithay_transform,
+    MIN_OUTPUT_DIM, clamp_output_size, from_smithay_transform, to_smithay_mode,
+    to_smithay_transform,
 };
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
@@ -29,8 +30,8 @@ struct OutputGlobal(Mutex<Option<GlobalId>>);
 //BOZO: should this be a method?
 fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
     let mode = configuration.mode.unwrap_or(TransactionOutputMode {
-        width: WaylandState::MIN_WL_DIM,
-        height: WaylandState::MIN_WL_DIM,
+        width: MIN_OUTPUT_DIM,
+        height: MIN_OUTPUT_DIM,
         refresh_millihertz: 60_000,
     });
     let (width, height) = if matches!(
@@ -421,7 +422,7 @@ impl WaylandState {
         size: Size,
         refresh_millihertz: Option<u32>,
     ) -> Output {
-        let safe_size = Size::new(size.w.max(Self::MIN_WL_DIM), size.h.max(Self::MIN_WL_DIM));
+        let safe_size = clamp_output_size(size);
         let mode = OutputMode {
             size: (safe_size.w, safe_size.h).into(),
             refresh: refresh_millihertz
