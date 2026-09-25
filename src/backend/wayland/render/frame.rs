@@ -302,6 +302,12 @@ fn update_preferred_fractional_scale(
     let Some(output) = surface_primary_scanout_output(surface, states) else {
         return;
     };
+    smithay::wayland::compositor::send_surface_state(
+        surface,
+        states,
+        output.current_scale().integer_scale(),
+        output.current_transform(),
+    );
     with_fractional_scale(states, |fractional_scale| {
         fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());
     });

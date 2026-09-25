@@ -489,7 +489,7 @@ impl WaylandState {
 
         // -- Protocol globals --
         let alpha_modifier_state = AlphaModifierState::new::<Self>(&dh);
-        let compositor_state = CompositorState::new::<Self>(&dh);
+        let compositor_state = CompositorState::new_v6::<Self>(&dh);
         let content_type_state = ContentTypeState::new::<Self>(&dh);
         let commit_timing_manager_state = CommitTimingManagerState::new::<Self>(&dh);
         let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
