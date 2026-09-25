@@ -91,22 +91,15 @@ pub struct UserConfig {
 /// may override it in its `[monitors.<name>]` entry (or `[monitors."*"]` for
 /// all of them). See [`crate::bar::policy::TagBarPolicy`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct BarConfig {
     pub show: bool,
     /// Show the bottom gesture strip (plain background, no contents).
     pub show_bottom: bool,
-    /// Show tags that hold no windows and are not selected. Hidden-tag
-    /// suppression is per output: `[monitors.<name>].show_empty_tags`
-    /// overrides this. The `toggle_hide_tags` action flips the selected
-    /// output for the session; a reload or policy re-apply restores the
-    /// configured value.
-    pub show_empty_tags: bool,
-    /// Number of tag cells in the bar, 1..=[`MAX_TAGS`](crate::types::MAX_TAGS).
-    /// Outputs with fewer tags render all of them. When the tag set is
-    /// larger, the last cell shows the current tag instead of a fixed
-    /// index (dwm-style overflow). `[monitors.<name>].tag_slots` overrides
-    /// this per output.
+    /// Number of leading tags considered for the bar, 1..=20. Occupied and
+    /// selected tags beyond this baseline are also shown. When the baseline
+    /// is full, the first empty tag to its right is shown too.
+    /// `[monitors.<name>].tag_slots` overrides this per output.
     pub tag_slots: u32,
     /// Bar height in logical pixels. `0` derives it from font metrics.
     pub height: i32,
@@ -119,7 +112,6 @@ impl Default for BarConfig {
         Self {
             show: true,
             show_bottom: false,
-            show_empty_tags: true,
             tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
             height: 0,
             startmenu_size: 30,
@@ -148,10 +140,10 @@ impl BarConfig {
 
 /// Shared bounds for a tag-cell count: at least one cell, at most one per tag.
 pub(crate) fn validate_tag_slots(slots: u32, field: &str) -> Result<(), String> {
-    if slots < 1 || slots as usize > crate::types::MAX_TAGS {
+    if slots < 1 || slots as usize > crate::types::SCRATCHPAD_TAG {
         return Err(format!(
             "{field} must be between 1 and {}, got {slots}",
-            crate::types::MAX_TAGS
+            crate::types::SCRATCHPAD_TAG
         ));
     }
     Ok(())
@@ -426,7 +418,7 @@ impl Default for CursorConfig {
 /// Doubles as the `instantwmctl monitor set` patch: `None` fields keep the
 /// current value.
 #[derive(Debug, Deserialize, Clone, Serialize, Default, Encode, Decode, clap::Args)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MonitorConfig {
     /// Resolution in "WIDTHxHEIGHT" format (e.g., "1920x1080").
     #[arg(long, short = 'r')]
@@ -464,13 +456,9 @@ pub struct MonitorConfig {
     /// (and cleared at apply time) on a non-mirror output. Wayland only.
     #[arg(long)]
     pub mirror_fit: Option<MirrorFit>,
-    /// Show tags that hold no windows and are not selected on this output,
-    /// overriding `bar.show_empty_tags`. Omitted means "inherit".
-    #[arg(long)]
-    pub show_empty_tags: Option<bool>,
-    /// Number of tag cells in this output's bar, overriding
+    /// Leading tag baseline on this output, overriding
     /// `bar.tag_slots`. Omitted means "inherit".
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=crate::types::MAX_TAGS as i64))]
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=crate::types::SCRATCHPAD_TAG as i64))]
     pub tag_slots: Option<u32>,
 }
 
@@ -679,28 +667,31 @@ pub struct KeyboardConfig {
 
 /// Tag labels, icons, and bar display mode.
 ///
-/// The number of tags is the length of `names` (maximum
-/// [`MAX_TAGS`](crate::types::MAX_TAGS)). `icons` is positional: index *i*
-/// is the icon for tag *i*; a shorter list leaves the remaining tags without
-/// one, and an empty string always means "no icon".
+/// `count` is the number of ordinary tags (maximum 20; the scratchpad bit is
+/// reserved). `names` and `icons` are optional positional labels. Missing
+/// names use their numbered tag and missing icons are empty.
 ///
 /// ```toml
 /// [tags]
+/// count = 20
 /// names = ["1", "2", "web", "mail"]
 /// # Nerd-font glyphs, shown instead of the names while show_icons is on.
 /// icons = ["", "", "", ""]
 /// show_icons = false
 /// ```
 ///
-/// `names` and `icons` define the tag set, so they take effect on startup
-/// and `reload` only; `instantwmctl config set` rejects them. Rename tags
+/// `count` defines the tag set; `names` and `icons` label it. All three take
+/// effect on startup and `reload` only; `instantwmctl config set` rejects them. Rename tags
 /// for the session with `instantwmctl tag name <label>`, and drop the
 /// session renames with `instantwmctl tag reset`.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TagsConfig {
-    /// Label per tag, index 0 = tag 1. Defaults to `"1"` … `"20"` followed
-    /// by the scratchpad tag `"s"`.
+    /// Number of ordinary tags. The scratchpad uses a separate reserved bit.
+    /// Reload rejects a reduction while a window or active view uses a
+    /// removed tag.
+    pub count: usize,
+    /// Optional label per tag, index 0 = tag 1. Missing labels are numbered.
     pub names: Vec<String>,
     /// Optional icon per tag (see the type docs for the positional rule).
     /// Defaults to no icons at all.
@@ -714,10 +705,10 @@ pub struct TagsConfig {
 
 impl Default for TagsConfig {
     fn default() -> Self {
-        let names = default_tag_names();
         Self {
-            icons: vec![String::new(); names.len()],
-            names,
+            count: crate::types::SCRATCHPAD_TAG,
+            icons: Vec::new(),
+            names: Vec::new(),
             show_icons: false,
         }
     }
@@ -726,14 +717,18 @@ impl Default for TagsConfig {
 impl TagsConfig {
     /// Reject tag sets the WM cannot present.
     pub fn validated(self) -> Result<Self, String> {
-        if self.names.is_empty() {
-            return Err("tags.names must list at least one tag".to_string());
-        }
-        if self.names.len() > crate::types::MAX_TAGS {
+        if !(1..=crate::types::SCRATCHPAD_TAG).contains(&self.count) {
             return Err(format!(
-                "tags.names has {} entries; at most {} tags are supported",
+                "tags.count must be between 1 and {}, got {}",
+                crate::types::SCRATCHPAD_TAG,
+                self.count
+            ));
+        }
+        if self.names.len() > self.count {
+            return Err(format!(
+                "tags.names has {} entries but tags.count is {}",
                 self.names.len(),
-                crate::types::MAX_TAGS
+                self.count
             ));
         }
         for (index, name) in self.names.iter().enumerate() {
@@ -748,11 +743,11 @@ impl TagsConfig {
                 ));
             }
         }
-        if self.icons.len() > self.names.len() {
+        if self.icons.len() > self.count {
             return Err(format!(
-                "tags.icons has {} entries but only {} tags are defined",
+                "tags.icons has {} entries but tags.count is {}",
                 self.icons.len(),
-                self.names.len()
+                self.count
             ));
         }
         Ok(self)
@@ -761,24 +756,17 @@ impl TagsConfig {
     /// The tag template the model is initialised from: `names` paired with
     /// `icons`, padding the icon list with empty entries.
     pub fn tag_template(&self) -> Vec<crate::types::Tag> {
-        self.names
-            .iter()
-            .enumerate()
-            .map(|(index, name)| crate::types::Tag {
-                name: name.clone(),
+        (0..self.count)
+            .map(|index| crate::types::Tag {
+                name: self
+                    .names
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| (index + 1).to_string()),
                 icon: self.icons.get(index).cloned().unwrap_or_default(),
             })
             .collect()
     }
-}
-
-/// The stock tag labels: `"1"` … `"20"` followed by the scratchpad tag.
-pub fn default_tag_names() -> Vec<String> {
-    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-        "17", "18", "19", "20", "s"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
 }
 
 pub fn load_config_file() -> Result<UserConfig, String> {
@@ -1101,7 +1089,11 @@ mod theme_tests {
     fn floating_click_raise_is_an_explicit_opt_in() {
         assert!(!parse("").raise_floating_on_click);
         assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
-        assert!(parse("[window]\nraise_floating_on_click = true").window.raise_floating_on_click);
+        assert!(
+            parse("[window]\nraise_floating_on_click = true")
+                .window
+                .raise_floating_on_click
+        );
     }
 
     #[test]
@@ -1143,7 +1135,6 @@ mod theme_tests {
             show_icons = true
 
             [bar]
-            show_empty_tags = false
             tag_slots = 5
             "#,
         );
@@ -1153,7 +1144,6 @@ mod theme_tests {
         );
         assert!(!config.window.focus_follows_float_mouse);
         assert!(config.tags.show_icons);
-        assert!(!config.bar.show_empty_tags);
         assert_eq!(config.bar.tag_slots, 5);
 
         // Defaults for a config that omits the sections.
@@ -1164,11 +1154,7 @@ mod theme_tests {
         );
         assert!(default.window.focus_follows_float_mouse);
         assert!(!default.tags.show_icons);
-        assert!(default.bar.show_empty_tags);
-        assert_eq!(
-            default.bar.tag_slots,
-            crate::types::tag::DEFAULT_TAG_SLOTS
-        );
+        assert_eq!(default.bar.tag_slots, crate::types::tag::DEFAULT_TAG_SLOTS);
     }
 
     #[test]
@@ -1176,13 +1162,10 @@ mod theme_tests {
         for (source, field) in [
             ("[bar]\ntag_slots = 0", "bar.tag_slots"),
             (
-                &format!("[bar]\ntag_slots = {}", crate::types::MAX_TAGS + 1),
+                &format!("[bar]\ntag_slots = {}", crate::types::SCRATCHPAD_TAG + 1),
                 "bar.tag_slots",
             ),
-            (
-                "[monitors.DP-1]\ntag_slots = 0",
-                "monitors.DP-1.tag_slots",
-            ),
+            ("[monitors.DP-1]\ntag_slots = 0", "monitors.DP-1.tag_slots"),
         ] {
             let user: UserConfig = toml::from_str(source).unwrap();
             let monitor_error = user
@@ -1199,10 +1182,16 @@ mod theme_tests {
     #[test]
     fn tags_default_to_numbered_names_without_icons() {
         let tags = parse("").tags;
-        assert_eq!(tags.names, default_tag_names());
-        assert_eq!(tags.names.len(), crate::types::MAX_TAGS);
-        assert_eq!(tags.names.last().unwrap(), "s", "scratchpad tag");
-        assert!(tags.icons.iter().all(String::is_empty));
+        assert_eq!(tags.count, crate::types::SCRATCHPAD_TAG);
+        assert!(tags.names.is_empty());
+        assert!(tags.icons.is_empty());
+        assert_eq!(
+            tags.tag_template()
+                .iter()
+                .map(|tag| tag.name.clone())
+                .collect::<Vec<_>>(),
+            (1..=20).map(|index| index.to_string()).collect::<Vec<_>>()
+        );
         assert!(!tags.show_icons);
     }
 
@@ -1211,6 +1200,7 @@ mod theme_tests {
         let tags = parse(
             r#"
             [tags]
+            count = 3
             names = ["web", "mail", "code"]
             icons = ["W", "", "C"]
             show_icons = true
@@ -1235,6 +1225,7 @@ mod theme_tests {
         let tags = parse(
             r#"
             [tags]
+            count = 3
             names = ["a", "b", "c"]
             icons = ["A"]
             "#,
@@ -1252,23 +1243,41 @@ mod theme_tests {
     }
 
     #[test]
+    fn count_is_independent_of_labels_and_omitted_icons() {
+        let tags = parse("[tags]\ncount = 4\nnames = [\"web\", \"mail\"]")
+            .tags
+            .validated()
+            .unwrap();
+        let template = tags.tag_template();
+        assert_eq!(
+            template
+                .iter()
+                .map(|tag| tag.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["web", "mail", "3", "4"]
+        );
+        assert!(template.iter().all(|tag| tag.icon.is_empty()));
+    }
+
+    #[test]
+    fn obsolete_empty_tag_switch_is_rejected() {
+        assert!(toml::from_str::<UserConfig>("[bar]\nshow_empty_tags = false").is_err());
+        assert!(toml::from_str::<UserConfig>("[monitors.DP-1]\nshow_empty_tags = false").is_err());
+    }
+
+    #[test]
     fn tag_validation_rejects_impossible_tag_sets_by_field_name() {
-        let too_many: Vec<String> = (0..=crate::types::MAX_TAGS)
-            .map(|i| format!("\"t{i}\""))
-            .collect();
         for (source, field) in [
-            ("[tags]\nnames = []", "tags.names"),
-            (
-                &format!("[tags]\nnames = [{}]", too_many.join(",")),
-                "tags.names",
-            ),
+            ("[tags]\ncount = 0", "tags.count"),
+            ("[tags]\ncount = 21", "tags.count"),
+            ("[tags]\ncount = 1\nnames = [\"a\", \"b\"]", "tags.names"),
             ("[tags]\nnames = [\"\"]", "tags.names[0]"),
             (
                 "[tags]\nnames = [\"aaaaaaaaaaaaaaaaaaaaa\"]",
                 "tags.names[0]",
             ),
             (
-                "[tags]\nnames = [\"a\"]\nicons = [\"\", \"\"]",
+                "[tags]\ncount = 1\nnames = [\"a\"]\nicons = [\"\", \"\"]",
                 "tags.icons",
             ),
         ] {

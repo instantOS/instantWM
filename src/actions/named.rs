@@ -28,7 +28,7 @@ use crate::tags::{
     cancel_overview, follow_view, last_view, move_client_follow_view, send_to_monitor, shift_tag,
     shift_view, toggle_overview, win_view,
 };
-use crate::toggles::{toggle_bar, toggle_hide_tags, toggle_mode, toggle_sticky, unhide_all};
+use crate::toggles::{toggle_bar, toggle_mode, toggle_sticky, unhide_all};
 use crate::types::{
     EdgeDirection, FocusFollowsMouseMode, HorizontalDirection, MonitorDirection, StackDirection,
     TagMask, TagSelection, ToggleAction, VerticalDirection,
@@ -264,8 +264,11 @@ pub(crate) fn apply_config_effect(
     use crate::config::runtime::{ConfigEffect, sync_bar_config_to_monitors};
     match effect {
         ConfigEffect::None => {}
-        ConfigEffect::Bar => {
-            sync_bar_config_to_monitors(ctx.core_mut().state_mut());
+        ConfigEffect::Bar | ConfigEffect::BarVisibility => {
+            sync_bar_config_to_monitors(
+                ctx.core_mut().state_mut(),
+                effect == ConfigEffect::BarVisibility,
+            );
             ctx.reinit_bar_resources();
             ctx.request_bar_update();
             crate::layouts::manager::arrange(ctx, None);
@@ -624,7 +627,6 @@ define_named_actions!(
     ToggleSticky => { name: "toggle_sticky", doc: "toggle sticky (visible on all tags)", run: |ctx| { with_selected_win(ctx, toggle_sticky); } },
     ConfigSet(ConfigAssignment) => { name: "config_set", overview: Preserve, doc: "set a runtime config value (e.g. config_set layout.inner_gap 12)", run: |ctx, assignment| { let effect = crate::config::runtime::set_runtime_field(ctx.core_mut().state_mut(), &assignment.key, assignment.value.clone())?; apply_config_effect(ctx, effect); } },
     ConfigToggle(String) => { name: "config_toggle", overview: Preserve, doc: "flip a boolean runtime config value (e.g. config_toggle window.decor_hints)", run: |ctx, key| { let (effect, _) = crate::config::runtime::toggle_runtime_field(ctx.core_mut().state_mut(), key)?; apply_config_effect(ctx, effect); } },
-    ToggleHideTags(Option<ToggleAction>) => { name: "toggle_hide_tags", overview: Preserve, doc: "toggle or set hiding empty tags on this output (session-only; restores bar.show_empty_tags and its per-output override)", run: |ctx, action| { toggle_hide_tags(ctx, action.unwrap_or_default()); } },
     ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; toggle_mode(ctx, mode); } },
     UnhideAll => { name: "unhide_all", doc: "show all hidden windows", run: |ctx| { unhide_all(ctx); } },
     Hide => { name: "hide", doc: "minimize focused window or hide the visible scratchpad", run: |ctx| { with_selected_win(ctx, crate::client::hide_for_user); } },

@@ -145,6 +145,10 @@ impl OverviewState {
     pub(crate) fn projected_tags(&self) -> TagMask {
         self.projected_tags
     }
+
+    pub(crate) fn retain_tags(&mut self, allowed: TagMask) {
+        self.projected_tags = self.projected_tags & allowed;
+    }
 }
 
 pub(crate) fn handle_mode_transition(

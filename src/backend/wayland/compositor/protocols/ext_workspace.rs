@@ -2,7 +2,7 @@
 //!
 //! Maps ext-workspace-v1 to instantWM tag sets:
 //! - Workspace groups map directly to physical outputs/monitors.
-//! - Workspaces map to individual tags (1 to 21).
+//! - Workspaces map to configured ordinary tags (1 to 20).
 //! - Active/Urgent state is synchronized from monitor selected_tags bitmasks and client urgency flags.
 //! - Client requests to activate a workspace are queued into `WmCommand` tag switch actions.
 
@@ -53,6 +53,7 @@ pub struct ExtWorkspaceManagerState {
     last_tags: HashMap<String, crate::types::TagMask>,
     last_urgent_tags: HashMap<String, crate::types::TagMask>,
     last_occupied_tags: HashMap<String, crate::types::TagMask>,
+    last_tag_names: HashMap<String, Vec<String>>,
     last_output_names: Vec<String>,
 }
 
@@ -84,6 +85,7 @@ impl ExtWorkspaceManagerState {
             last_tags: HashMap::new(),
             last_urgent_tags: HashMap::new(),
             last_occupied_tags: HashMap::new(),
+            last_tag_names: HashMap::new(),
             last_output_names: Vec::new(),
         }
     }
@@ -180,6 +182,11 @@ impl WorkspaceSnapshot {
             .iter()
             .map(|monitor| (monitor.output_name.clone(), monitor.occupied_tags))
             .collect();
+        protocol.last_tag_names = self
+            .monitors
+            .iter()
+            .map(|monitor| (monitor.output_name.clone(), monitor.tag_names.clone()))
+            .collect();
     }
 }
 
@@ -191,6 +198,7 @@ pub fn refresh(state: &mut WaylandState) {
     let protocol = &mut state.ext_workspace_state;
     snapshot.update_cache(protocol);
     let mut changed = remove_stale_outputs(protocol, &snapshot.output_names());
+    changed |= remove_stale_tags(protocol, &snapshot);
     for monitor in &snapshot.monitors {
         changed |= reconcile_workspaces(protocol, monitor);
         changed |= reconcile_workspace_group(protocol, monitor);
@@ -241,6 +249,16 @@ fn refresh_needed(state: &WaylandState) -> bool {
             || protocol.last_urgent_tags.get(&output_name) != Some(&urgent_tags)
             || protocol.last_occupied_tags.get(&output_name)
                 != Some(&monitor.occupied_tags(&globals.model.clients))
+            || protocol
+                .last_tag_names
+                .get(&output_name)
+                .is_none_or(|names| {
+                    names.len() != monitor.tags.len()
+                        || names
+                            .iter()
+                            .zip(&monitor.tags)
+                            .any(|(cached, tag)| cached != &tag.name)
+                })
         {
             return true;
         }
@@ -315,6 +333,52 @@ fn remove_stale_outputs(
         false
     });
     changed
+}
+
+/// Retire workspace handles whose tag was removed by a config reload.
+fn remove_stale_tags(
+    protocol: &mut ExtWorkspaceManagerState,
+    snapshot: &WorkspaceSnapshot,
+) -> bool {
+    let counts: HashMap<_, _> = snapshot
+        .monitors
+        .iter()
+        .map(|monitor| (monitor.output_name.as_str(), monitor.tag_names.len()))
+        .collect();
+    let stale: Vec<_> = protocol
+        .workspaces
+        .keys()
+        .filter(|(output, index)| {
+            counts
+                .get(output.as_str())
+                .is_some_and(|count| index >= count)
+        })
+        .cloned()
+        .collect();
+    for key in &stale {
+        let Some(workspace) = protocol.workspaces.remove(key) else {
+            continue;
+        };
+        if let Some(group_data) = protocol.workspace_groups.get(&key.0) {
+            for group in &group_data.instances {
+                let Some(manager) = group.data::<ExtWorkspaceManagerV1>() else {
+                    continue;
+                };
+                for instance in &workspace.instances {
+                    if instance
+                        .data::<ExtWorkspaceUserData>()
+                        .is_some_and(|data| &data.manager == manager)
+                    {
+                        group.workspace_leave(instance);
+                    }
+                }
+            }
+        }
+        for instance in &workspace.instances {
+            instance.removed();
+        }
+    }
+    !stale.is_empty()
 }
 
 fn workspace_state(

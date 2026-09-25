@@ -42,16 +42,8 @@ use crate::types::KeybindOrigin;
 
 /// Shared constants referenced by multiple sub-modules.
 pub mod mod_consts {
-    use crate::types::MAX_TAGS;
-
     /// Default border width in pixels.
     pub const BORDER_PX: i32 = 3;
-
-    /// Maximum tag name length.
-    pub const MAX_TAGLEN: usize = 16;
-
-    /// Bitmask covering all valid tags.
-    pub const TAG_MASK: u32 = (1 << MAX_TAGS) - 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +286,7 @@ mod resolution_tests {
         let effective = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
 
         assert_eq!(effective.keyboard.layouts[0].name, "de");
-        assert_eq!(effective.tag_template.len(), crate::types::MAX_TAGS);
+        assert_eq!(effective.tag_template.len(), crate::types::SCRATCHPAD_TAG);
         // Stock configuration: numbered names, no icons.
         assert_eq!(effective.tag_template[0].name, "1");
         assert!(effective.tag_template.iter().all(|tag| tag.icon.is_empty()));
@@ -346,11 +338,12 @@ mod resolution_tests {
         let user: config_toml::UserConfig = toml::from_str(
             r#"
             [tags]
+            count = 3
             names = ["web", "mail", "code"]
             icons = ["W", "", "C"]
             show_icons = true
             [bar]
-            show_empty_tags = false
+            tag_slots = 2
             show_bottom = true
             "#,
         )
@@ -363,13 +356,12 @@ mod resolution_tests {
             monitor_rect: Rect::new(0, 0, 800, 600),
             ..Monitor::default()
         });
-        wm.core.apply_config(config);
+        wm.core.apply_config(config).unwrap();
 
         // Icon display is read live from config; the tag set seeds the
         // model, and bar states are seeded into each monitor.
         assert!(wm.core.config.tags.show_icons);
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
-        assert!(monitor.hide_tags);
         assert!(monitor.show_bottom_bar);
         assert_eq!(wm.core.model.tags.num_tags, 3);
         assert_eq!(
@@ -385,7 +377,7 @@ mod resolution_tests {
     #[test]
     fn invalid_tag_sets_are_rejected_during_resolution() {
         let user: config_toml::UserConfig =
-            toml::from_str("[tags]\nnames = [\"a\"]\nicons = [\"\", \"\"]").unwrap();
+            toml::from_str("[tags]\ncount = 1\nnames = [\"a\"]\nicons = [\"\", \"\"]").unwrap();
 
         let error = match resolve_config(user, crate::backend::BackendKind::Wayland) {
             Ok(_) => panic!("an oversized tags.icons list must be rejected"),

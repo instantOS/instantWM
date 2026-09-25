@@ -18,5 +18,7 @@ pub fn init_globals(state: &mut CoreState) {
     let cfg = load_startup_config(crate::backend::BackendKind::Wayland);
     state.derived.display.width = 1280;
     state.derived.display.height = 800;
-    state.apply_config(cfg);
+    state
+        .apply_config(cfg)
+        .expect("startup tag state must be valid");
 }

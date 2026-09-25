@@ -32,6 +32,8 @@ pub enum ConfigEffect {
     /// Full bar config change: sync per-monitor bar state, rebuild bar
     /// resources, redraw, re-arrange.
     Bar,
+    /// An explicit bar visibility write also clears per-view overrides.
+    BarVisibility,
     /// Redraw the bar and re-arrange windows.
     Rearrange,
     /// Rebuild bar resources (colours/fonts), redraw, re-arrange.
@@ -105,8 +107,10 @@ impl RuntimeConfigSection {
     }
 
     /// The follow-up work an edit to this section requires.
-    const fn effect(self) -> ConfigEffect {
+    fn effect(self, field: &str) -> ConfigEffect {
         match self {
+            Self::Bar if field == "show" => ConfigEffect::BarVisibility,
+            Self::Bar if field == "tag_slots" => ConfigEffect::BarUpdate,
             Self::Bar => ConfigEffect::Bar,
             Self::Window | Self::Layout => ConfigEffect::Rearrange,
             Self::Colors | Self::Fonts => ConfigEffect::Recolor,
@@ -114,6 +118,7 @@ impl RuntimeConfigSection {
             Self::Systray | Self::Tags => ConfigEffect::BarUpdate,
             Self::Cursor => ConfigEffect::Cursor,
             Self::Input => ConfigEffect::Input,
+            Self::Monitors if field.ends_with(".tag_slots") => ConfigEffect::BarUpdate,
             Self::Monitors => ConfigEffect::Monitors,
             Self::Animations => ConfigEffect::None,
         }
@@ -139,8 +144,9 @@ pub fn get_runtime_field(core: &CoreState, key: &str) -> Result<String, String> 
     let section = RuntimeConfigSection::parse(section_name)?;
     let state = &core.config;
     match section {
-        RuntimeConfigSection::Window => field_get(&state.window, rest)
-            .ok_or_else(|| unknown_field(section.name(), rest)),
+        RuntimeConfigSection::Window => {
+            field_get(&state.window, rest).ok_or_else(|| unknown_field(section.name(), rest))
+        }
         RuntimeConfigSection::Bar => {
             field_get(&state.bar, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }
@@ -153,8 +159,9 @@ pub fn get_runtime_field(core: &CoreState, key: &str) -> Result<String, String> 
         RuntimeConfigSection::Layout => {
             field_get(&state.layout, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }
-        RuntimeConfigSection::Animations => field_get(&state.animations, rest)
-            .ok_or_else(|| unknown_field(section.name(), rest)),
+        RuntimeConfigSection::Animations => {
+            field_get(&state.animations, rest).ok_or_else(|| unknown_field(section.name(), rest))
+        }
         RuntimeConfigSection::Colors => {
             field_get(&state.colors, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }
@@ -188,9 +195,8 @@ pub fn set_runtime_field(
             .map(|candidate| state.bar = candidate),
         RuntimeConfigSection::Systray => parse_then_set(&mut state.systray, rest, value),
         RuntimeConfigSection::Tags => {
-            // The tag set is a load-time decision: changing it live would
-            // have to re-seed every monitor (dropping session renames) and
-            // resize the tag space, so only the display switch is live.
+            // Tag count and labels are load-time decisions: changing them
+            // live would re-seed every monitor and resize the tag space.
             if rest != "show_icons" {
                 return Err(format!(
                     "tags.{rest} defines the tag set and applies on reload; only tags.show_icons is runtime-settable"
@@ -215,7 +221,7 @@ pub fn set_runtime_field(
             set_monitor_field(&mut state.monitors, section.name(), rest, value)
         }
     }?;
-    Ok(section.effect())
+    Ok(section.effect(rest))
 }
 
 /// Flip a boolean option by key, returning the follow-up work and the new
@@ -272,20 +278,17 @@ pub fn list_runtime_fields(
     Ok(entries)
 }
 
-/// Apply `bar` config values to every monitor and drop per-view bar
-/// overrides.
-///
-/// `config set bar.show` is an explicit statement of the configured
-/// visibility, so it replaces the session's `toggle_bar` overrides; the
-/// per-output policy is re-resolved so a `[monitors.<name>]` override is
-/// honoured alongside the global default.
-pub fn sync_bar_config_to_monitors(core: &mut CoreState) {
+/// Apply `bar` config values to every monitor. An explicit `bar.show` write
+/// also drops per-view bar overrides; unrelated bar edits preserve them.
+pub fn sync_bar_config_to_monitors(core: &mut CoreState, clear_overrides: bool) {
     let show_bottom_bar = core.config.bar.show_bottom;
     for monitor in core.model.monitors_iter_all_mut() {
         monitor.show_bottom_bar = show_bottom_bar;
         let policy = crate::bar::policy::TagBarPolicy::resolve(&core.config, &monitor.name);
         policy.apply_to(monitor);
-        clear_bar_overrides(monitor);
+        if clear_overrides {
+            clear_bar_overrides(monitor);
+        }
     }
 }
 
@@ -294,19 +297,6 @@ pub fn sync_bar_config_to_monitors(core: &mut CoreState) {
 pub fn clear_bar_overrides(monitor: &mut Monitor) {
     for state in monitor.per_tag.values_mut() {
         state.show_bar = None;
-    }
-}
-
-/// Re-seed only the per-output tag-visibility state from configuration.
-///
-/// Used when the policy inputs change without a full bar reconfiguration
-/// (`config set monitors.<name>.…`); bar visibility and per-tag bar state
-/// are deliberately left alone so a session `toggle_hide_tags` or
-/// `toggle_bar` on an unrelated control is not clobbered.
-pub fn apply_tag_bar_policy_to_monitors(core: &mut CoreState) {
-    for monitor in core.model.monitors_iter_all_mut() {
-        let policy = crate::bar::policy::TagBarPolicy::resolve(&core.config, &monitor.name);
-        policy.apply_to(monitor);
     }
 }
 

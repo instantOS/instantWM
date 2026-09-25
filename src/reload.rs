@@ -5,7 +5,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     let cfg = config::load_config(wm.backend.kind())?;
     let previous_status_command = wm.core.config.status_command.clone();
 
-    wm.core.apply_config(cfg);
+    wm.core.apply_config(cfg)?;
     wm.core
         .behavior
         .normalize_current_mode(&wm.core.config.bindings.modes);

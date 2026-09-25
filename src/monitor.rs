@@ -371,10 +371,7 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
     let policy = crate::output_mirror::MonitorPolicy::new(&ctx.core().config().monitors);
     ctx.apply_monitor_configs(&policy);
     ctx.core_mut().derived_mut().monitor_policy = policy;
-    // Per-output tag display can change through this command
-    // (`config set monitors.<name>.show_empty_tags`), so re-seed it; the
-    // render-time settings (tag cells) need no seeding.
-    crate::config::runtime::apply_tag_bar_policy_to_monitors(ctx.core_mut().state_mut());
+    // Per-output tag slots are resolved at bar render time.
     ctx.request_bar_update();
     refresh_monitor_layout(ctx);
 }
@@ -792,7 +789,6 @@ mod tests {
             false,
             &[TagBarPolicy {
                 show_bar: true,
-                show_empty_tags: true,
                 tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
             }],
         );
@@ -864,13 +860,10 @@ mod tests {
             &[
                 TagBarPolicy {
                     show_bar: true,
-                    show_empty_tags: true,
                     tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
                 },
                 TagBarPolicy {
                     show_bar: true,
-                    // The new output hides empty tags through its own policy.
-                    show_empty_tags: false,
                     tag_slots: 5,
                 },
             ],
@@ -886,10 +879,7 @@ mod tests {
             .find_map(|(id, monitor)| (monitor.name == "HDMI-A-1").then_some(id))
             .expect("new HDMI monitor");
         assert_ne!(hdmi_id, retained);
-        // A new output is seeded from its own policy (show_empty_tags=false
-        // means empty tags are hidden), not from the retained output's.
-        assert!(model.monitor(hdmi_id).unwrap().hide_tags);
-        assert!(!model.monitor(retained).unwrap().hide_tags);
+        assert!(model.monitor(hdmi_id).unwrap().bar_default_show);
     }
 
     #[test]
@@ -923,7 +913,6 @@ mod tests {
             false,
             &[TagBarPolicy {
                 show_bar: true,
-                show_empty_tags: true,
                 tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
             }],
         );

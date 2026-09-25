@@ -110,7 +110,9 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
     wm.core.derived.display.width = screen.width_in_pixels as i32;
     wm.core.derived.display.height = screen.height_in_pixels as i32;
 
-    wm.core.apply_config(cfg);
+    wm.core
+        .apply_config(cfg)
+        .expect("startup tag state must be valid");
 
     if !wm.core.config.monitors.is_empty() {
         let mut ctx = wm.ctx();

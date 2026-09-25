@@ -49,6 +49,7 @@ mod tests {
     fn wm(show_icons: bool) -> Wm {
         let mut user: crate::config::config_toml::UserConfig = toml::from_str("").unwrap();
         user.tags = TagsConfig {
+            count: 3,
             names: vec!["web".into(), "mail".into(), "code".into()],
             icons: vec!["W".into()],
             show_icons,
@@ -59,7 +60,7 @@ mod tests {
             monitor_rect: Rect::new(0, 0, 800, 600),
             ..Monitor::default()
         });
-        wm.core.apply_config(config);
+        wm.core.apply_config(config).unwrap();
         wm.core
             .model
             .expect_selected_monitor_mut()

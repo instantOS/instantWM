@@ -27,15 +27,13 @@ pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
                 Err(error) => Response::err(error),
             }
         }
-        ConfigCommand::Toggle { key } => {
-            match runtime::toggle_runtime_field(&mut wm.core, &key) {
-                Ok((effect, value)) => {
-                    apply_effect(wm, effect);
-                    Response::ConfigValue(value)
-                }
-                Err(error) => Response::err(error),
+        ConfigCommand::Toggle { key } => match runtime::toggle_runtime_field(&mut wm.core, &key) {
+            Ok((effect, value)) => {
+                apply_effect(wm, effect);
+                Response::ConfigValue(value)
             }
-        }
+            Err(error) => Response::err(error),
+        },
         ConfigCommand::List { prefix } => {
             match runtime::list_runtime_fields(&wm.core, prefix.as_deref()) {
                 Ok(entries) => Response::ConfigList(entries),
@@ -191,12 +189,12 @@ mod tests {
             Response::Ok
         ));
         for key in [
-            "layout.inner_gap",              // integer
-            "window.focus_follows_mouse",     // three-state enum
-            "window.border_width_px",         // integer
-            "window.nonexistent",             // unknown field
-            "nonexistent.field",              // unknown section
-            "nodot",                          // malformed key
+            "layout.inner_gap",           // integer
+            "window.focus_follows_mouse", // three-state enum
+            "window.border_width_px",     // integer
+            "window.nonexistent",         // unknown field
+            "nonexistent.field",          // unknown section
+            "nodot",                      // malformed key
         ] {
             assert!(
                 matches!(do_toggle(&mut wm, key), Response::Err(_)),
@@ -228,12 +226,12 @@ mod tests {
         let original = wm.core.config.tags.clone();
 
         // Readable…
-        match do_get(&mut wm, "tags.names") {
-            Response::ConfigValue(v) => assert!(v.contains("\"1\""), "{v}"),
+        match do_get(&mut wm, "tags.count") {
+            Response::ConfigValue(v) => assert_eq!(v, "20"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         // …but not runtime-settable: the tag count lives in the model.
-        for key in ["tags.names", "tags.icons"] {
+        for key in ["tags.count", "tags.names", "tags.icons"] {
             assert!(
                 matches!(
                     do_set(&mut wm, key, "[\"x\"]"),
@@ -254,27 +252,20 @@ mod tests {
             name: "DP-1".to_string(),
             ..Monitor::default()
         });
-        // Global default: empty tags shown.
-        crate::bar::policy::TagBarPolicy::resolve(&wm.core.config, "DP-1")
-            .apply_to(wm.core.model.expect_selected_monitor_mut());
-        assert!(!wm.core.model.expect_selected_monitor().hide_tags);
+        assert_eq!(
+            crate::bar::policy::TagBarPolicy::resolve(&wm.core.config, "DP-1").tag_slots,
+            crate::types::tag::DEFAULT_TAG_SLOTS
+        );
 
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.show_empty_tags", "false"),
+            do_set(&mut wm, "monitors.DP-1.tag_slots", "5"),
             Response::Ok
         ));
-        // The override is queued like every other monitor change…
-        assert!(wm.work.monitor_config);
-        // …and takes effect when the apply runs, without a reload.
-        crate::monitor::apply_monitor_config(&mut wm.ctx());
-        assert!(wm.core.model.expect_selected_monitor().hide_tags);
-
-        // A session toggle still overrides the configured value…
-        crate::toggles::toggle_hide_tags(&mut wm.ctx(), crate::types::ToggleAction::Toggle);
-        assert!(!wm.core.model.expect_selected_monitor().hide_tags);
-        // …until the next policy apply restores it.
-        crate::monitor::apply_monitor_config(&mut wm.ctx());
-        assert!(wm.core.model.expect_selected_monitor().hide_tags);
+        assert!(!wm.work.monitor_config);
+        assert_eq!(
+            crate::bar::policy::TagBarPolicy::resolve(&wm.core.config, "DP-1").tag_slots,
+            5
+        );
     }
 
     #[test]
@@ -796,6 +787,30 @@ mod tests {
         wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
+        assert_eq!(
+            wm.core
+                .model
+                .expect_selected_monitor()
+                .per_tag()
+                .unwrap()
+                .show_bar,
+            Some(true),
+            "bar geometry changes preserve per-view visibility"
+        );
+        assert!(matches!(
+            do_set(&mut wm, "bar.tag_slots", "5"),
+            Response::Ok
+        ));
+        assert_eq!(
+            wm.core
+                .model
+                .expect_selected_monitor()
+                .per_tag()
+                .unwrap()
+                .show_bar,
+            Some(true),
+            "tag baseline changes preserve per-view visibility"
+        );
         assert!(matches!(do_set(&mut wm, "bar.show", "false"), Response::Ok));
         let monitor = wm
             .core

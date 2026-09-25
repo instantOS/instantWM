@@ -87,8 +87,6 @@ pub struct Monitor {
     pub bottom_bar_win: WindowId,
     /// X11 child window for the bottom-bar indicator rectangle (Wayland: default id).
     pub bottom_bar_indicator_win: WindowId,
-    /// Whether to hide empty inactive tags from the bar.
-    pub hide_tags: bool,
     /// Previously selected single tag index.
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
@@ -132,7 +130,6 @@ impl Default for Monitor {
             bar_win: WindowId::default(),
             bottom_bar_win: WindowId::default(),
             bottom_bar_indicator_win: WindowId::default(),
-            hide_tags: false,
             prev_tag: None,
             tags: Vec::new(),
             clients: Vec::new(),
@@ -291,6 +288,26 @@ impl Monitor {
     /// Initialize tags from a template.
     pub fn init_tags(&mut self, template: &[Tag]) {
         self.tags = template.to_vec();
+    }
+
+    /// Discard stored views that reference tags removed by a config reload.
+    /// The active view is checked before this method is called.
+    pub(crate) fn retain_tag_count(&mut self, count: usize) {
+        let allowed = TagMask::all(count);
+        let active = self.selected_tags();
+        for view in &mut self.tag_set {
+            *view = *view & allowed;
+            if view.is_empty() {
+                *view = active;
+            }
+        }
+        self.prev_tag = self.prev_tag.filter(|tag| *tag <= count);
+        self.per_tag.retain(|mask, _| (*mask & !allowed).is_empty());
+        self.focus_history
+            .retain(|mask, _| (*mask & !allowed).is_empty());
+        if let Some(overview) = &mut self.overview_state {
+            overview.retain_tags(allowed);
+        }
     }
 
     /// Get the currently selected tags for this monitor.
@@ -916,34 +933,6 @@ impl Monitor {
     /// Get the height of the monitor's work area.
     pub fn height(&self) -> i32 {
         self.work_rect().h
-    }
-
-    /// Return true if the tag at `tag_index` should be hidden.
-    ///
-    /// A tag is hidden when hiding is enabled and it is neither occupied nor selected.
-    pub fn should_hide_tag(&self, tag_index: usize, occupied: TagMask) -> bool {
-        if !self.hide_tags {
-            return false;
-        }
-        let tag_num = tag_index + 1;
-        !occupied.contains(tag_num) && !self.visible_tags().contains(tag_num)
-    }
-
-    /// Map a bar slot (`0..slots`) to the actual tag index.
-    ///
-    /// The last slot is remapped to `current_tag - 1` when the monitor has
-    /// more tags than the bar has cells (the "overflow" slot), so a wide
-    /// tag set stays navigable from a narrow bar.
-    pub fn tag_index_for_slot(&self, slot: usize, slots: usize) -> usize {
-        let slots = slots.max(1);
-        if slot == slots - 1
-            && let Some(current_tag) = self.current_tag_number()
-            && current_tag > slots
-        {
-            current_tag - 1
-        } else {
-            slot
-        }
     }
 
     /// Compute a bitmask of tags that have at least one client on this monitor.

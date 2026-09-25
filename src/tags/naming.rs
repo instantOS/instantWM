@@ -74,13 +74,8 @@ pub fn reset_name_tag(ctx: &mut WmCtx) {
 /// Fallback label for tag index `i` (0-based) when no configured label
 /// exists for it.
 ///
-/// Tags 0–7 → `"1"`…`"8"`, tag 8 → `"9"`.
 fn default_tag_name(i: usize) -> String {
-    if i == 8 {
-        "9".to_string()
-    } else {
-        ((b'1' + i as u8) as char).to_string()
-    }
+    (i + 1).to_string()
 }
 
 #[cfg(test)]
@@ -95,6 +90,7 @@ mod tests {
     fn wm_with(names: &[&str], icons: &[&str]) -> Wm {
         let mut user: crate::config::config_toml::UserConfig = toml::from_str("").unwrap();
         user.tags = TagsConfig {
+            count: names.len(),
             names: names.iter().map(|n| n.to_string()).collect(),
             icons: icons.iter().map(|n| n.to_string()).collect(),
             show_icons: false,
@@ -102,10 +98,11 @@ mod tests {
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.monitors.push(Monitor::default());
-        wm.core.apply_config(config);
-        wm.core.model.expect_selected_monitor_mut().set_selected_tags(
-            crate::types::TagMask::single(1).unwrap(),
-        );
+        wm.core.apply_config(config).unwrap();
+        wm.core
+            .model
+            .expect_selected_monitor_mut()
+            .set_selected_tags(crate::types::TagMask::single(1).unwrap());
         wm
     }
 

@@ -47,10 +47,8 @@ fn tag_scheme(
             SchemeTag::Focus
         } else if monitor.visible_tags().contains(tag_num) {
             SchemeTag::NoFocus
-        } else if !monitor.hide_tags {
-            SchemeTag::Filled
         } else {
-            SchemeTag::Inactive
+            SchemeTag::Filled
         }
     } else if monitor.visible_tags().contains(tag_num) {
         SchemeTag::Empty
@@ -141,7 +139,6 @@ fn close_button_scheme(
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct TagCellSnapshot {
-    pub slot: usize,
     pub tag_index: usize,
     pub label: String,
     pub scheme: BarScheme,
@@ -257,7 +254,7 @@ fn collect_tag_cells(
         config.tags.show_icons,
         policy.tag_slots as usize,
     ) {
-        let is_hover = gesture == Gesture::Tag(tag.slot);
+        let is_hover = gesture == Gesture::Tag(tag.tag_index);
         let mut scheme = tag_scheme(
             core.model(),
             mon,
@@ -270,7 +267,6 @@ fn collect_tag_cells(
             scheme = tag_hover_fill_scheme(&core.model().tags.colors);
         }
         tags.push(TagCellSnapshot {
-            slot: tag.slot,
             tag_index: tag.tag_index,
             label: tag.label.to_string(),
             scheme,
@@ -556,7 +552,7 @@ fn draw_tags_section(
         let text_w = painter.text_width(&tag.label);
         let width = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
         painter.set_scheme(tag.scheme.clone());
-        let detail_height = if snapshot.gesture == Gesture::Tag(tag.slot) {
+        let detail_height = if snapshot.gesture == Gesture::Tag(tag.tag_index) {
             scaled_px(TAG_DETAIL_BAR_HEIGHT_HOVER, snapshot.ui_scale)
         } else {
             scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale)

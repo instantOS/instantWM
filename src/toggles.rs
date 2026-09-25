@@ -2,12 +2,6 @@ use crate::contexts::WmCtx;
 use crate::core_state::ActiveWmMode;
 use crate::types::*;
 
-fn toggled_bool(current: bool, action: ToggleAction) -> bool {
-    let mut next = current;
-    action.apply(&mut next);
-    next
-}
-
 fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
     if current.as_str() == name {
         ActiveWmMode::Default
@@ -35,24 +29,6 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     } else {
         return;
     }
-
-    ctx.request_bar_update();
-}
-
-pub fn toggle_hide_tags(ctx: &mut WmCtx, action: ToggleAction) {
-    let (_selmon_id, new_hide_tags) = {
-        let selmon_id = ctx.core().model().selected_monitor_id();
-
-        let hide_tags = ctx.core().model().expect_selected_monitor().hide_tags;
-        let new_hide_tags = toggled_bool(hide_tags, action);
-
-        (selmon_id, new_hide_tags)
-    };
-
-    ctx.core_mut()
-        .model_mut()
-        .expect_selected_monitor_mut()
-        .hide_tags = new_hide_tags;
 
     ctx.request_bar_update();
 }
@@ -138,26 +114,22 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{set_bottom_bar_shown, toggle_mode_name, toggled_bool, unhide_all};
+    use super::{set_bottom_bar_shown, toggle_mode_name, unhide_all};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::core_state::ActiveWmMode;
-    use crate::types::{Client, Monitor, TagMask, ToggleAction, WindowId};
+    use crate::types::{Client, Monitor, TagMask, WindowId};
     use crate::wm::Wm;
-
-    #[test]
-    fn toggled_bool_applies_toggle_action() {
-        assert!(!toggled_bool(true, ToggleAction::Toggle));
-        assert!(toggled_bool(false, ToggleAction::Toggle));
-        assert!(toggled_bool(false, ToggleAction::SetTrue));
-        assert!(!toggled_bool(true, ToggleAction::SetFalse));
-    }
 
     /// A WM with one output whose configured bar visibility is `show`.
     fn wm_with_bar(show: bool) -> Wm {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let monitor_id = wm.core.model.monitors.push(Monitor::new_with_values());
         wm.core.model.monitors.set_selected(monitor_id);
-        wm.core.model.monitor_mut(monitor_id).unwrap().bar_default_show = show;
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .bar_default_show = show;
         wm
     }
 
@@ -212,7 +184,7 @@ mod tests {
 
         // A reload is "restore every configured value", overrides included.
         let config = wm.core.config.clone();
-        wm.core.apply_config(config);
+        wm.core.apply_config(config).unwrap();
         assert!(bar_visible(&wm));
         assert!(
             wm.core

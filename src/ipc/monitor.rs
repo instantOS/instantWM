@@ -578,7 +578,6 @@ mod tests {
             vrr: Some(VrrMode::On),
             mirror: None,
             mirror_fit: None,
-            show_empty_tags: None,
             tag_slots: None,
         };
 

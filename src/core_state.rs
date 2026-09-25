@@ -411,7 +411,33 @@ impl CoreState {
     /// Parsing, default resolution and validation happen before this boundary.
     /// Installation replaces policy and synchronizes model/interaction state
     /// that intentionally mirrors part of that policy.
-    pub fn apply_config(&mut self, next: EffectiveConfig) {
+    pub fn apply_config(&mut self, next: EffectiveConfig) -> Result<(), String> {
+        let new_count = next.tags.count;
+        let allowed = TagMask::all(new_count);
+        for (win, client) in &self.model.clients {
+            let ordinary_tags = client
+                .scratchpad()
+                .map_or(client.tags, |scratchpad| scratchpad.original_tags());
+            if !(ordinary_tags & !allowed).is_empty() {
+                let detail = if client.is_scratchpad() {
+                    "saved scratchpad tags"
+                } else {
+                    "tags"
+                };
+                return Err(format!(
+                    "cannot reduce tags.count to {new_count}: window {} has removed {detail}",
+                    win.0
+                ));
+            }
+        }
+        for monitor in self.model.monitors_iter_all() {
+            if !(monitor.selected_tags() & !allowed).is_empty() {
+                return Err(format!(
+                    "cannot reduce tags.count to {new_count}: output '{}' has a removed tag selected",
+                    monitor.name
+                ));
+            }
+        }
         let keyboard_layout = KeyboardLayoutState {
             layouts: next.keyboard.layouts.clone(),
             options: next.keyboard.options.clone(),
@@ -437,8 +463,10 @@ impl CoreState {
             let policy = crate::bar::policy::TagBarPolicy::resolve(&self.config, &monitor.name);
             policy.apply_to(monitor);
             crate::config::runtime::clear_bar_overrides(monitor);
+            monitor.retain_tag_count(new_count);
             monitor.init_tags(&tag_template);
         }
+        Ok(())
     }
 }
 
@@ -826,6 +854,131 @@ impl PendingWork {
     /// Snapshot the windows with a deferred hide awaiting their animation.
     pub fn pending_scratchpad_hide_windows(&self) -> Vec<WindowId> {
         self.pending_scratchpad_hides.iter().copied().collect()
+    }
+}
+
+#[cfg(test)]
+mod tag_count_reload_tests {
+    use super::*;
+    use crate::backend::{Backend, BackendKind, wayland::WaylandBackend};
+    use crate::config::{config_toml::UserConfig, resolve_config};
+    use crate::wm::Wm;
+
+    fn config_with_count(count: usize) -> EffectiveConfig {
+        let mut user = UserConfig::default();
+        user.tags.count = count;
+        resolve_config(user, BackendKind::Wayland).unwrap()
+    }
+
+    #[test]
+    fn reducing_tag_count_rejects_a_window_on_a_removed_tag_without_mutation() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.apply_config(config_with_count(5)).unwrap();
+        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        let win = WindowId(42);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id: id,
+            tags: TagMask::single(5).unwrap(),
+            ..Client::default()
+        });
+
+        let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
+        assert!(error.contains("window 42"), "{error}");
+        assert_eq!(wm.core.model.tags.num_tags, 5);
+        assert_eq!(
+            wm.core.model.client(win).unwrap().tags,
+            TagMask::single(5).unwrap()
+        );
+    }
+
+    #[test]
+    fn reducing_tag_count_rejects_a_scratchpad_with_a_removed_restore_tag() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.apply_config(config_with_count(5)).unwrap();
+        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        let win = WindowId(43);
+        let mut client = Client {
+            win,
+            monitor_id: id,
+            tags: TagMask::single(5).unwrap(),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("test", None, 800, 600)
+            .unwrap();
+        wm.core.model.insert_client(client);
+
+        let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
+        assert!(error.contains("window 43"), "{error}");
+        assert_eq!(wm.core.model.tags.num_tags, 5);
+        let scratchpad = wm.core.model.client(win).unwrap();
+        assert_eq!(scratchpad.tags, TagMask::SCRATCHPAD);
+        assert_eq!(
+            scratchpad.scratchpad().unwrap().original_tags(),
+            TagMask::single(5).unwrap()
+        );
+    }
+
+    #[test]
+    fn reducing_tag_count_keeps_a_scratchpad_with_valid_restore_tags() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.apply_config(config_with_count(5)).unwrap();
+        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        let win = WindowId(44);
+        let mut client = Client {
+            win,
+            monitor_id: id,
+            tags: TagMask::single(2).unwrap(),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad("test", None, 800, 600)
+            .unwrap();
+        wm.core.model.insert_client(client);
+
+        wm.core.apply_config(config_with_count(4)).unwrap();
+        let scratchpad = wm.core.model.client(win).unwrap();
+        assert_eq!(scratchpad.tags, TagMask::SCRATCHPAD);
+        assert_eq!(
+            scratchpad.scratchpad().unwrap().original_tags(),
+            TagMask::single(2).unwrap()
+        );
+    }
+
+    #[test]
+    fn reducing_tag_count_rejects_an_active_removed_view() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.apply_config(config_with_count(5)).unwrap();
+        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        wm.core
+            .model
+            .monitor_mut(id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(5).unwrap());
+
+        let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
+        assert!(error.contains("selected"), "{error}");
+        assert_eq!(wm.core.model.tags.num_tags, 5);
+    }
+
+    #[test]
+    fn reducing_tag_count_prunes_inactive_view_history() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.apply_config(config_with_count(5)).unwrap();
+        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        let monitor = wm.core.model.monitor_mut(id).unwrap();
+        monitor.tag_set[1] = TagMask::single(5).unwrap();
+        monitor.prev_tag = Some(5);
+        monitor
+            .per_tag
+            .insert(TagMask::single(5).unwrap(), Default::default());
+
+        wm.core.apply_config(config_with_count(4)).unwrap();
+        let monitor = wm.core.model.monitor(id).unwrap();
+        assert_eq!(monitor.tag_set[1], TagMask::single(1).unwrap());
+        assert_eq!(monitor.prev_tag, None);
+        assert!(!monitor.per_tag.contains_key(&TagMask::single(5).unwrap()));
     }
 }
 
