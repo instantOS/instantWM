@@ -6,6 +6,7 @@ use crate::focus::focus_stack;
 
 use crate::types::*;
 
+//BOZO: should we use more types instead of primitives here?
 fn normalize_binding_keysym(keysym: u32) -> u32 {
     if (b'A' as u32..=b'Z' as u32).contains(&keysym) {
         keysym + u32::from(b'a' - b'A')

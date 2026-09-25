@@ -1,5 +1,5 @@
 use super::{
-    BackendRefresh, FocusBackendOps, FocusProjection, focus_generic as focus_generic_impl,
+    BackendRefresh, FocusBackendOps, FocusProjection, apply_focus_transition as focus_generic_impl,
     get_visible_stack, stack_focus_target,
 };
 use crate::bar::BarState;

@@ -12,10 +12,12 @@ use super::arrange::arrange;
 /// Maximized's own order commands (`reorder_maximized_stack`,
 /// maximized `swap_bar_titles`) are exempt on purpose: they are its native
 /// way of editing the underlying tree.
+//BOZO: should this be inlined?
 fn tree_commands_allowed(monitor: &Monitor) -> bool {
     monitor.current_layout() == PresentationMode::Tiled
 }
 
+//BOZO: is this confusing to understand? Should it be a method on something instead?
 fn tree_preset_changes_allowed(ctx: &WmCtx<'_>) -> bool {
     !ctx.core()
         .interaction()
@@ -42,6 +44,7 @@ pub enum MaximizedStackReorder {
     ReconcileRequired,
 }
 
+//BOZO: are layout and tree-preset used interchangeably? Should the terminology be unified? Or are they different concepts?
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
     let Some(preset) = layout.tree_preset() else {
         let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
@@ -138,6 +141,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
     finish_layout_change(ctx);
 }
 
+//BOZO: does this reinvent the directional candidate code? Are directional candidates even still needed?
 pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     let neighbor = {
         let monitor = ctx.core().model().expect_selected_monitor();

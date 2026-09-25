@@ -163,6 +163,7 @@ pub(crate) enum GeometryApplyMode {
     VisualOnly,
 }
 
+//BOZO: why does this exist?
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ClientGeometry {
     current_rect: Rect,
@@ -188,6 +189,7 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
     })
 }
 
+//BOZO: should this be inlined?
 fn animation_duration(
     config: crate::config::config_toml::AnimationConfig,
     duration: Duration,
@@ -195,6 +197,7 @@ fn animation_duration(
     config.scale_duration(duration)
 }
 
+//BOZO: should this be inlined?
 fn enqueue_window_animation(
     ctx: &mut WmCtx<'_>,
     win: WindowId,

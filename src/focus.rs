@@ -78,6 +78,7 @@ pub(crate) struct FocusProjection {
     pub current: Option<WindowId>,
 }
 
+//BOZO: this field has just a single field, why deos it exist?
 struct WaylandFocusBackend<'a> {
     wayland: &'a crate::backend::wayland::WaylandBackend,
 }
@@ -124,8 +125,9 @@ pub(crate) enum BackendRefresh {
     Force,
 }
 
+//BOZO: why is there both focus_generic and focus in this file?
 /// Generic focus implementation shared between X11 and Wayland.
-pub(crate) fn focus_generic(
+pub(crate) fn apply_focus_transition(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     previous_focus: Option<WindowId>,
@@ -221,7 +223,7 @@ fn focus_impl(
                 x11: &x11_ctx.x11,
                 x11_runtime: x11_ctx.x11_runtime,
             };
-            focus_generic(
+            apply_focus_transition(
                 &mut x11_ctx.core,
                 win,
                 previous_focus,
@@ -233,7 +235,7 @@ fn focus_impl(
             let mut backend = WaylandFocusBackend {
                 wayland: wayland_ctx.wayland,
             };
-            focus_generic(
+            apply_focus_transition(
                 &mut wayland_ctx.core,
                 win,
                 previous_focus,
@@ -360,9 +362,11 @@ fn should_hover_focus(
 /// Returns `true` if the selection actually changed (i.e. the monitor was not
 /// already selected), `false` otherwise.
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
+    //BOZO: is this really the place where non-existent monitor IDs should be handled? Couldnt we clean them up in a central place and guarantee a monitor ID is valid?
     if ctx.core().model().monitor(monitor_id).is_none() {
         return false;
     }
+    //BOZO: is this the place for this defense? Should defending against monitors not being existent not be more centralized?
     if monitor_id == ctx.core().model().selected_monitor_id() {
         return false;
     }
@@ -381,6 +385,7 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
     true
 }
 
+//BOZO: how is this different than just selecting said client?
 pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
     let Some(monitor_id) = ctx
         .core()
@@ -539,6 +544,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
+//BOZO: is this function named and/or documented well?
 fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
     let selected = mon.visible_tags();
 
