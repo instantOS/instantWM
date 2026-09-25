@@ -9,7 +9,7 @@ use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::{BorderScheme, ColorScheme, DrawContext};
+use crate::backend::x11::draw::{AllocScheme, BorderScheme, DrawContext};
 use crate::config::load_startup_config;
 use crate::wm::Wm;
 
@@ -353,23 +353,23 @@ fn init_schemes(
         .expect("Failed to create close gesture border color");
 
     let borderscheme = BorderScheme {
-        normal: ColorScheme::from_single(normal),
-        tile_focus: ColorScheme::from_single(tile),
-        float_focus: ColorScheme::from_single(float),
-        snap: ColorScheme::from_single(snap),
-        close: ColorScheme::from_single(close),
+        normal: AllocScheme::from_single(normal),
+        tile_focus: AllocScheme::from_single(tile),
+        float_focus: AllocScheme::from_single(float),
+        snap: AllocScheme::from_single(snap),
+        close: AllocScheme::from_single(close),
     };
 
     let status = drw
         .scm_create(&[
-            &statusbarcolors.fg.to_string(),
-            &statusbarcolors.bg.to_string(),
+            &statusbarcolors.foreground.to_string(),
+            &statusbarcolors.background.to_string(),
             &statusbarcolors.detail.to_string(),
         ])
         .expect("Failed to create status bar colors");
 
     x11_runtime.border_scheme = borderscheme;
-    x11_runtime.status_scheme = ColorScheme::new(status.fg, status.bg, status.detail);
+    x11_runtime.status_scheme = AllocScheme::new(status.foreground, status.background, status.detail);
 }
 
 #[cfg(test)]

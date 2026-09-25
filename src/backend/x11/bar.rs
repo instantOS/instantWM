@@ -173,7 +173,7 @@ pub fn resize_bottom_bar_win(
     if bottom_win == 0 {
         return;
     }
-    let status_bg: u32 = globals.config.colors.status.bg.into();
+    let status_bg: u32 = globals.config.colors.status.background.into();
     let _ = x11.conn.change_window_attributes(
         bottom_win,
         &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().background_pixel(status_bg),
@@ -211,7 +211,7 @@ fn create_missing_bar_windows(
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bar_height = globals.config.bar_metrics().height;
         let showsystray = globals.config.systray.show;
-        let status_bg: u32 = globals.config.colors.status.bg.into();
+        let status_bg: u32 = globals.config.colors.status.background.into();
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
         let selected_monitor_id = globals.model.selected_monitor_id();

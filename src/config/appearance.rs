@@ -5,7 +5,7 @@
 
 use crate::config::config_toml::ColorTheme;
 use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba, Rgba,
+    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorScheme, Rgba,
     StatusColorConfig, TagColorConfigs, TagColorSet, WindowColorConfigs, WindowColorSet,
 };
 use serde::{Deserialize, Serialize};
@@ -203,7 +203,7 @@ impl From<ColorTheme> for ColorConfig {
     /// Resolve every colour table for a built-in theme.
     fn from(theme: ColorTheme) -> Self {
         let p = palette(theme);
-        let scheme = ColorSchemeRgba::new;
+        let scheme = ColorScheme::new;
         Self {
             tag: TagColorConfigs {
                 no_hover: TagColorSet {
@@ -308,8 +308,8 @@ impl From<ColorTheme> for ColorConfig {
                 snap: p.special.fill,
             },
             status: StatusColorConfig {
-                fg: p.foreground,
-                bg: p.background,
+                foreground: p.foreground,
+                background: p.background,
                 detail: p.background,
                 separator: p.surface,
                 hover: p.primary.hover_fill,
@@ -329,7 +329,7 @@ mod tests {
             for set in [&close.no_hover, &close.hover] {
                 for scheme in [&set.normal, &set.locked, &set.fullscreen] {
                     assert_ne!(
-                        scheme.bg, scheme.detail,
+                        scheme.background, scheme.detail,
                         "{:?} close-button detail must contrast with its fill",
                         theme
                     );
@@ -343,7 +343,7 @@ mod tests {
         for theme in <ColorTheme as clap::ValueEnum>::value_variants() {
             let status = ColorConfig::from(*theme).status;
             assert_ne!(
-                status.hover, status.bg,
+                status.hover, status.background,
                 "{:?} status hover must contrast with the bar background",
                 theme
             );
@@ -355,12 +355,12 @@ mod tests {
         for theme in <ColorTheme as clap::ValueEnum>::value_variants() {
             let status = ColorConfig::from(*theme).status;
             assert_ne!(
-                status.separator, status.bg,
+                status.separator, status.background,
                 "{:?} status separator must contrast with the bar background",
                 theme
             );
             assert_ne!(
-                status.separator, status.fg,
+                status.separator, status.foreground,
                 "{:?} status separator must be muted relative to foreground text",
                 theme
             );

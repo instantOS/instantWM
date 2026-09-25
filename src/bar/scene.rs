@@ -1,9 +1,9 @@
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::paint::{BarPainter, SchemeColor};
 use crate::contexts::CoreCtx;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Client, CloseButtonColorConfigs,
-    Gesture, Monitor, MonitorId, Rect, SchemeHover, SchemeTag, StatusColorConfig, TagColorConfigs,
-    TagMask, WindowColorConfigs, WindowFocus, WindowId, WindowRole,
+    ColorScheme, Gesture, Monitor, MonitorId, Rect, SchemeHover, SchemeTag, StatusColorConfig,
+    TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus, WindowId, WindowRole,
 };
 
 const STARTMENU_ICON_SIZE: i32 = 14;
@@ -13,14 +13,12 @@ const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 
 use crate::types::geometry::scaled_px;
 
-fn status_scheme(colors: &StatusColorConfig) -> BarScheme {
-    BarScheme::from(&colors.as_scheme())
+fn status_scheme(colors: &StatusColorConfig) -> ColorScheme {
+    colors.as_scheme()
 }
 
-fn tag_hover_fill_scheme(colors: &TagColorConfigs) -> BarScheme {
-    colors
-        .colors_for(SchemeHover::Hover, SchemeTag::Filled)
-        .into()
+fn tag_hover_fill_scheme(colors: &TagColorConfigs) -> ColorScheme {
+    *colors.colors_for(SchemeHover::Hover, SchemeTag::Filled)
 }
 
 fn tag_scheme(
@@ -30,7 +28,7 @@ fn tag_scheme(
     occupied_tags: TagMask,
     urgent_tags: TagMask,
     is_hover: bool,
-) -> BarScheme {
+) -> ColorScheme {
     let tag_num = tag_index as usize + 1;
     let tag_role = if urgent_tags.contains(tag_num) {
         SchemeTag::Urgent
@@ -58,18 +56,14 @@ fn tag_scheme(
         SchemeTag::Inactive
     };
 
-    model
-        .tags
-        .colors
-        .colors_for(
-            if is_hover {
-                SchemeHover::Hover
-            } else {
-                SchemeHover::NoHover
-            },
-            tag_role,
-        )
-        .into()
+    *model.tags.colors.colors_for(
+        if is_hover {
+            SchemeHover::Hover
+        } else {
+            SchemeHover::NoHover
+        },
+        tag_role,
+    )
 }
 
 fn window_scheme(
@@ -77,7 +71,7 @@ fn window_scheme(
     colors: &WindowColorConfigs,
     client: &Client,
     is_hover: bool,
-) -> BarScheme {
+) -> ColorScheme {
     let hover = if is_hover {
         SchemeHover::Hover
     } else {
@@ -107,7 +101,7 @@ fn window_scheme(
     if client.is_urgent {
         let urgent = colors.urgent_colors(hover);
         let role_colors = colors.role_colors(hover, role, focus);
-        let mut scheme = BarScheme::from(urgent);
+        let mut scheme = *urgent;
         // If the urgent window has a non-default role or is currently focused,
         // preserve that distinction in the detail stripe while keeping the alert background/text
         if role != WindowRole::Normal || focus == WindowFocus::Focused {
@@ -115,7 +109,7 @@ fn window_scheme(
         }
         scheme
     } else {
-        colors.role_colors(hover, role, focus).into()
+        *colors.role_colors(hover, role, focus)
     }
 }
 
@@ -124,7 +118,7 @@ fn close_button_scheme(
     is_hover: bool,
     is_locked: bool,
     is_fullscreen: bool,
-) -> BarScheme {
+) -> ColorScheme {
     let hover = if is_hover {
         SchemeHover::Hover
     } else {
@@ -132,7 +126,7 @@ fn close_button_scheme(
     };
 
     let (base, detail_override) = colors.composed_colors(hover, is_locked, is_fullscreen);
-    let mut scheme = BarScheme::from(base);
+    let mut scheme = *base;
     if let Some(detail_color) = detail_override {
         scheme.detail = detail_color.detail;
     }
@@ -144,21 +138,21 @@ pub(crate) struct TagCellSnapshot {
     pub slot: usize,
     pub tag_index: usize,
     pub label: String,
-    pub scheme: BarScheme,
+    pub scheme: ColorScheme,
 }
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct TitleCellSnapshot {
     pub win: WindowId,
     pub name: String,
-    pub scheme: BarScheme,
-    pub close_scheme: Option<BarScheme>,
+    pub scheme: ColorScheme,
+    pub close_scheme: Option<ColorScheme>,
 }
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct SystraySnapshot {
     pub items: crate::systray::StatusNotifierTray,
-    pub base_scheme: BarScheme,
+    pub base_scheme: ColorScheme,
     pub layout: crate::systray::TrayLayout,
 }
 
@@ -183,7 +177,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub ui_scale: f64,
     pub fonts: crate::core_state::FontConfig,
     pub is_selected_monitor: bool,
-    pub status_scheme: BarScheme,
+    pub status_scheme: ColorScheme,
     pub status_separator_color: crate::types::color::Rgba,
     pub status_hover_color: crate::types::color::Rgba,
     pub startmenu_size: i32,
@@ -317,7 +311,7 @@ fn build_systray_snapshot(
     core: &CoreCtx,
     mon: &Monitor,
     tray_menu: Option<&crate::systray::TrayMenuPresentation>,
-    base_scheme: BarScheme,
+    base_scheme: ColorScheme,
     systray_spacing: i32,
     external_tray_width: i32,
 ) -> SystraySnapshot {
@@ -406,7 +400,7 @@ pub(crate) fn build_monitor_snapshots(
                 core,
                 mon,
                 tray_menu.as_ref(),
-                status_scheme.clone(),
+                status_scheme,
                 systray_spacing,
                 external_tray_width,
             )
@@ -453,7 +447,7 @@ pub(crate) fn build_monitor_snapshots(
 
 fn draw_startmenu_icon(
     painter: &mut dyn BarPainter,
-    scheme: &BarScheme,
+    scheme: &ColorScheme,
     startmenu_size: i32,
     gesture: Gesture,
     bar_height: i32,
@@ -466,15 +460,18 @@ fn draw_startmenu_icon(
     let inner_x = scaled_px(9, ui_scale);
     let inner_y_offset = scaled_px(4, ui_scale);
     let trailing_x = scaled_px(19, ui_scale);
-    let startmenu_invert = gesture == Gesture::StartMenu;
-    painter.set_scheme(scheme.clone());
-    painter.rect(
-        Rect::new(0, 0, startmenu_size, bar_height),
-        !startmenu_invert,
-    );
+    // Hovering swaps the two tones: the plate and inner square trade places
+    // with the two outer squares.
+    let (plate, square) = if gesture == Gesture::StartMenu {
+        (SchemeColor::Foreground, SchemeColor::Background)
+    } else {
+        (SchemeColor::Background, SchemeColor::Foreground)
+    };
+    painter.set_scheme(*scheme);
+    painter.rect(Rect::new(0, 0, startmenu_size, bar_height), plate);
     painter.rect(
         Rect::new(outer_x, icon_offset, icon_size, icon_size),
-        startmenu_invert,
+        square,
     );
     painter.rect(
         Rect::new(
@@ -483,21 +480,21 @@ fn draw_startmenu_icon(
             inner_size,
             inner_size,
         ),
-        !startmenu_invert,
+        plate,
     );
     painter.rect(
         Rect::new(trailing_x, icon_offset + icon_size, inner_size, inner_size),
-        startmenu_invert,
+        square,
     );
 }
 
 fn draw_shutdown_button(
     painter: &mut dyn BarPainter,
-    scheme: &BarScheme,
+    scheme: &ColorScheme,
     x: i32,
     bar_height: i32,
 ) -> i32 {
-    painter.set_scheme(scheme.clone());
+    painter.set_scheme(*scheme);
 
     let symbol = "\u{f011}";
     let text_w = painter.text_width(symbol);
@@ -506,7 +503,7 @@ fn draw_shutdown_button(
         Rect::new(x, 0, bar_height, bar_height),
         lpad,
         symbol,
-        true,
+        SchemeColor::Background,
         0,
     );
 
@@ -515,13 +512,13 @@ fn draw_shutdown_button(
 
 fn draw_close_button(
     painter: &mut dyn BarPainter,
-    scheme: &BarScheme,
+    scheme: &ColorScheme,
     is_hover: bool,
     x: i32,
     bar_height: i32,
     ui_scale: f64,
 ) {
-    let mut scheme = scheme.clone();
+    let mut scheme = *scheme;
     scheme.foreground = scheme.detail;
     painter.set_scheme(scheme);
     let button_width = scaled_px(CLOSE_BUTTON_WIDTH, ui_scale);
@@ -532,7 +529,7 @@ fn draw_close_button(
     let button_y = (bar_height - button_width) / 2 - detail_offset;
     painter.rect(
         Rect::new(button_x, button_y, button_width, button_height),
-        true,
+        SchemeColor::Background,
     );
     painter.rect(
         Rect::new(
@@ -541,7 +538,7 @@ fn draw_close_button(
             button_width,
             button_detail + detail_offset,
         ),
-        false,
+        SchemeColor::Foreground,
     );
 }
 
@@ -555,7 +552,7 @@ fn draw_tags_section(
     for tag in &snapshot.tags {
         let text_w = painter.text_width(&tag.label);
         let width = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
-        painter.set_scheme(tag.scheme.clone());
+        painter.set_scheme(tag.scheme);
         let detail_height = if snapshot.gesture == Gesture::Tag(tag.slot) {
             scaled_px(TAG_DETAIL_BAR_HEIGHT_HOVER, snapshot.ui_scale)
         } else {
@@ -566,7 +563,7 @@ fn draw_tags_section(
             Rect::new(x, 0, width, bar_height),
             lpad,
             &tag.label,
-            false,
+            SchemeColor::Foreground,
             detail_height,
         );
         hit.tag_ranges.push(crate::bar::TagHitRange {
@@ -588,13 +585,13 @@ fn draw_layout_symbol_section(
     let text_w = painter.text_width(&snapshot.layout_symbol);
     let layout_w = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
     let lpad = ((layout_w - text_w) / 2).max(0);
-    painter.set_scheme(snapshot.status_scheme.clone());
+    painter.set_scheme(snapshot.status_scheme);
     let layout_start = x;
     let x = painter.text(
         Rect::new(x, 0, layout_w, bar_height),
         lpad,
         &snapshot.layout_symbol,
-        false,
+        SchemeColor::Foreground,
         0,
     );
     hit.layout_start = layout_start;
@@ -644,7 +641,7 @@ fn draw_status_section(
             Rect::new(x, 0, (status_right - x).max(0), bar_height),
             &content.blocks,
             crate::bar::status::StatusRenderOptions {
-                base_scheme: snapshot.status_scheme.clone(),
+                base_scheme: snapshot.status_scheme,
                 separator_color: snapshot.status_separator_color,
                 hover,
                 edge_padding: snapshot.horizontal_padding / 2,
@@ -667,8 +664,11 @@ fn draw_titles_section(
     hit: &mut crate::bar::MonitorHitCache,
 ) {
     if snapshot.titles.is_empty() {
-        painter.set_scheme(snapshot.status_scheme.clone());
-        painter.rect(Rect::new(x, 0, title_width, bar_height), true);
+        painter.set_scheme(snapshot.status_scheme);
+        painter.rect(
+            Rect::new(x, 0, title_width, bar_height),
+            SchemeColor::Background,
+        );
         return;
     }
 
@@ -683,7 +683,7 @@ fn draw_titles_section(
         ))
     {
         let text_w = painter.text_width(&title.name);
-        painter.set_scheme(title.scheme.clone());
+        painter.set_scheme(title.scheme);
         let roomy_text_margin = scaled_px(64, snapshot.ui_scale);
         let close_button_threshold = scaled_px(32, snapshot.ui_scale);
         let close_button_text_offset = scaled_px(20, snapshot.ui_scale);
@@ -701,7 +701,7 @@ fn draw_titles_section(
             Rect::new(title_x, 0, this_width, bar_height),
             lpad,
             &title.name,
-            false,
+            SchemeColor::Foreground,
             scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale),
         );
         if let Some(close_scheme) = &title.close_scheme
@@ -807,17 +807,17 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
     let layout = &systray.layout;
     let bar_height = snapshot.rect.h;
 
-    painter.set_scheme(systray.base_scheme.clone());
+    painter.set_scheme(systray.base_scheme);
     if layout.total_width > 0 {
         painter.rect(
             Rect::new(layout.start_x, 0, layout.total_width, bar_height),
-            true,
+            SchemeColor::Background,
         );
     }
     if layout.menu.width > 0 {
         painter.rect(
             Rect::new(layout.menu.start_x, 0, layout.menu.width, bar_height),
-            true,
+            SchemeColor::Background,
         );
     }
 
@@ -854,14 +854,14 @@ mod tests {
     use crate::model::WmModel;
     use crate::types::color::Rgba;
     use crate::types::{
-        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeHover, SchemeTag,
+        Client, CloseButtonColorConfigs, ColorScheme, Monitor, SchemeHover, SchemeTag,
         StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus, WindowId,
         WindowRole,
     };
 
-    fn marker(value: f32) -> ColorSchemeRgba {
+    fn marker(value: f32) -> ColorScheme {
         let color = Rgba::new(value, value, value, 1.0);
-        ColorSchemeRgba::new(color, color, color)
+        ColorScheme::new(color, color, color)
     }
 
     #[test]
@@ -874,8 +874,8 @@ mod tests {
     #[test]
     fn status_scheme_uses_status_colors() {
         let colors = StatusColorConfig {
-            fg: Rgba::new(0.1, 0.1, 0.1, 1.0),
-            bg: Rgba::new(0.2, 0.2, 0.2, 1.0),
+            foreground: Rgba::new(0.1, 0.1, 0.1, 1.0),
+            background: Rgba::new(0.2, 0.2, 0.2, 1.0),
             detail: Rgba::new(0.3, 0.3, 0.3, 1.0),
             separator: Rgba::new(0.4, 0.4, 0.4, 1.0),
             hover: Rgba::ZERO,
@@ -883,8 +883,8 @@ mod tests {
 
         let scheme = status_scheme(&colors);
 
-        assert_eq!(scheme.foreground, colors.fg);
-        assert_eq!(scheme.background, colors.bg);
+        assert_eq!(scheme.foreground, colors.foreground);
+        assert_eq!(scheme.background, colors.background);
         assert_eq!(scheme.detail, colors.detail);
     }
 
@@ -895,7 +895,7 @@ mod tests {
 
         let scheme = tag_hover_fill_scheme(&colors);
 
-        assert_eq!(scheme.background, colors.hover.filled.bg);
+        assert_eq!(scheme.background, colors.hover.filled.background);
     }
 
     #[test]
@@ -919,7 +919,7 @@ mod tests {
                 .tags
                 .colors
                 .colors_for(SchemeHover::NoHover, SchemeTag::Urgent)
-                .bg
+                .background
         );
     }
 
@@ -949,7 +949,7 @@ mod tests {
                     WindowRole::Sticky,
                     WindowFocus::Focused
                 )
-                .bg
+                .background
         );
     }
 
@@ -960,7 +960,7 @@ mod tests {
 
         let scheme = close_button_scheme(&colors, true, true, true);
 
-        assert_eq!(scheme.background, colors.hover.locked.bg);
+        assert_eq!(scheme.background, colors.hover.locked.background);
     }
 
     #[test]
@@ -982,10 +982,7 @@ mod tests {
 
         let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
 
-        assert_eq!(
-            scheme.background,
-            colors.urgent_colors(SchemeHover::NoHover).bg
-        );
+        assert_eq!(scheme.background, colors.urgent_colors(SchemeHover::NoHover).background);
     }
 
     #[test]
@@ -1007,10 +1004,7 @@ mod tests {
 
         let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
 
-        assert_eq!(
-            scheme.background,
-            colors.urgent_colors(SchemeHover::NoHover).bg
-        );
+        assert_eq!(scheme.background, colors.urgent_colors(SchemeHover::NoHover).background);
     }
 
     #[test]
@@ -1024,7 +1018,7 @@ mod tests {
         let scheme = close_button_scheme(&colors, true, true, true);
 
         // Main button body reflects locked state, while detail stripe reflects fullscreen
-        assert_eq!(scheme.background, colors.hover.locked.bg);
+        assert_eq!(scheme.background, colors.hover.locked.background);
         assert_eq!(scheme.detail, colors.hover.fullscreen.detail);
     }
 }

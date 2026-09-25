@@ -54,41 +54,48 @@ impl Color {
 
 /// A color scheme of allocated X11/Xft colors.
 ///
-/// X11-runtime counterpart of [`crate::types::ColorSchemeRgba`]: colors are
-/// allocated against a display once and reused by pixel value.
+/// The X11-runtime form of [`crate::types::ColorScheme`]: each color is
+/// allocated against a display once and then reused by pixel value. Not
+/// derivable from the neutral type without a display connection, which is why
+/// the two are distinct rather than merged.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ColorScheme {
+pub struct AllocScheme {
     /// Foreground color.
-    pub fg: Color,
+    pub foreground: Color,
     /// Background color.
-    pub bg: Color,
+    pub background: Color,
     /// Detail/accent color.
     pub detail: Color,
 }
 
-impl ColorScheme {
-    pub fn new(fg: Color, bg: Color, detail: Color) -> Self {
-        Self { fg, bg, detail }
+impl AllocScheme {
+    pub fn new(foreground: Color, background: Color, detail: Color) -> Self {
+        Self {
+            foreground,
+            background,
+            detail,
+        }
     }
 
-    /// Create a color scheme from a single color (replicated to fg, bg, detail).
+    /// Create a color scheme from a single color (replicated to foreground,
+    /// background, and detail).
     ///
     /// Useful for things like borders that only need one color.
     pub fn from_single(color: Color) -> Self {
         Self {
-            fg: color.clone(),
-            bg: color.clone(),
+            foreground: color.clone(),
+            background: color.clone(),
             detail: color,
         }
     }
 }
 
-impl Default for ColorScheme {
+impl Default for AllocScheme {
     fn default() -> Self {
         let zero = Color::default();
         Self {
-            fg: zero.clone(),
-            bg: zero.clone(),
+            foreground: zero.clone(),
+            background: zero.clone(),
             detail: zero,
         }
     }
@@ -98,15 +105,15 @@ impl Default for ColorScheme {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BorderScheme {
     /// Normal/unfocused border colors.
-    pub normal: ColorScheme,
+    pub normal: AllocScheme,
     /// Focused tiled window border colors.
-    pub tile_focus: ColorScheme,
+    pub tile_focus: AllocScheme,
     /// Focused floating window border colors.
-    pub float_focus: ColorScheme,
+    pub float_focus: AllocScheme,
     /// Snap indicator border colors.
-    pub snap: ColorScheme,
+    pub snap: AllocScheme,
     /// Destructive overview gesture threshold feedback.
-    pub close: ColorScheme,
+    pub close: AllocScheme,
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────

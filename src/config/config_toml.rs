@@ -1070,7 +1070,7 @@ mod theme_tests {
     fn built_in_theme_is_used_as_color_base() {
         let config = parse(r#"theme = "nord""#);
         assert_eq!(config.theme, ColorTheme::Nord);
-        assert_eq!(config.colors.status.bg, "#2e3440".parse().unwrap());
+        assert_eq!(config.colors.status.background, "#2e3440".parse().unwrap());
         assert_eq!(config.colors.border.tile_focus, "#81a1c1".parse().unwrap());
     }
 
@@ -1083,8 +1083,8 @@ mod theme_tests {
             bg = "#123456"
             "##,
         );
-        assert_eq!(config.colors.status.bg, "#123456".parse().unwrap());
-        assert_eq!(config.colors.status.fg, "#4c4f69".parse().unwrap());
+        assert_eq!(config.colors.status.background, "#123456".parse().unwrap());
+        assert_eq!(config.colors.status.foreground, "#4c4f69".parse().unwrap());
         assert_eq!(config.colors.status.separator, "#ccd0da".parse().unwrap());
         assert_eq!(config.colors.border.tile_focus, "#1e66f5".parse().unwrap());
     }

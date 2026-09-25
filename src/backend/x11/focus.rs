@@ -119,12 +119,12 @@ pub fn refresh_border_color(
         let has_tiling = globals.model.expect_selected_monitor().is_tiling_layout();
         let isfloating = c.mode().is_free_positioned() || !has_tiling;
         if isfloating {
-            scheme.float_focus.bg.pixel()
+            scheme.float_focus.background.pixel()
         } else {
-            scheme.tile_focus.bg.pixel()
+            scheme.tile_focus.background.pixel()
         }
     } else {
-        scheme.normal.bg.pixel()
+        scheme.normal.background.pixel()
     };
 
     let x11_win: Window = win.into();

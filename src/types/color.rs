@@ -231,16 +231,16 @@ pub enum WindowFocus {
 /// Colors are parsed once at config load time via serde, not at runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ColorSchemeRgba {
+pub struct ColorScheme {
     /// Foreground color.
-    pub fg: Rgba,
+    pub foreground: Rgba,
     /// Background color.
-    pub bg: Rgba,
+    pub background: Rgba,
     /// Detail color.
     pub detail: Rgba,
 }
 
-impl Default for ColorSchemeRgba {
+impl Default for ColorScheme {
     fn default() -> Self {
         Self::empty()
     }
@@ -250,16 +250,16 @@ impl Default for ColorSchemeRgba {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct TagColorSet {
-    pub inactive: ColorSchemeRgba,
-    pub filled: ColorSchemeRgba,
-    pub focus: ColorSchemeRgba,
-    pub nofocus: ColorSchemeRgba,
-    pub empty: ColorSchemeRgba,
-    pub urgent: ColorSchemeRgba,
+    pub inactive: ColorScheme,
+    pub filled: ColorScheme,
+    pub focus: ColorScheme,
+    pub nofocus: ColorScheme,
+    pub empty: ColorScheme,
+    pub urgent: ColorScheme,
 }
 
 impl TagColorSet {
-    pub fn colors_for(&self, role: SchemeTag) -> &ColorSchemeRgba {
+    pub fn colors_for(&self, role: SchemeTag) -> &ColorScheme {
         match role {
             SchemeTag::Inactive => &self.inactive,
             SchemeTag::Filled => &self.filled,
@@ -275,19 +275,19 @@ impl TagColorSet {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct WindowColorSet {
-    pub focus: ColorSchemeRgba,
-    pub normal: ColorSchemeRgba,
-    pub minimized: ColorSchemeRgba,
-    pub sticky: ColorSchemeRgba,
-    pub sticky_focus: ColorSchemeRgba,
-    pub edge_scratchpad: ColorSchemeRgba,
-    pub edge_scratchpad_focus: ColorSchemeRgba,
-    pub urgent: ColorSchemeRgba,
+    pub focus: ColorScheme,
+    pub normal: ColorScheme,
+    pub minimized: ColorScheme,
+    pub sticky: ColorScheme,
+    pub sticky_focus: ColorScheme,
+    pub edge_scratchpad: ColorScheme,
+    pub edge_scratchpad_focus: ColorScheme,
+    pub urgent: ColorScheme,
 }
 
 impl WindowColorSet {
     /// Resolve color scheme by orthogonal role and focus state.
-    pub fn role_colors(&self, role: WindowRole, focus: WindowFocus) -> &ColorSchemeRgba {
+    pub fn role_colors(&self, role: WindowRole, focus: WindowFocus) -> &ColorScheme {
         match (role, focus) {
             (WindowRole::Normal, WindowFocus::Normal) => &self.normal,
             (WindowRole::Normal, WindowFocus::Focused) => &self.focus,
@@ -305,15 +305,19 @@ impl WindowColorSet {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct CloseButtonColorSet {
-    pub normal: ColorSchemeRgba,
-    pub locked: ColorSchemeRgba,
-    pub fullscreen: ColorSchemeRgba,
+    pub normal: ColorScheme,
+    pub locked: ColorScheme,
+    pub fullscreen: ColorScheme,
 }
 
-impl ColorSchemeRgba {
+impl ColorScheme {
     /// Create a new color scheme from RGBA values.
-    pub fn new(fg: Rgba, bg: Rgba, detail: Rgba) -> Self {
-        Self { fg, bg, detail }
+    pub fn new(foreground: Rgba, background: Rgba, detail: Rgba) -> Self {
+        Self {
+            foreground,
+            background,
+            detail,
+        }
     }
 
     /// Construct an empty (all black) scheme.
@@ -322,7 +326,7 @@ impl ColorSchemeRgba {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.fg == Rgba::ZERO && self.bg == Rgba::ZERO && self.detail == Rgba::ZERO
+        self.foreground == Rgba::ZERO && self.background == Rgba::ZERO && self.detail == Rgba::ZERO
     }
 }
 
@@ -338,7 +342,7 @@ pub struct TagColorConfigs {
 }
 
 impl TagColorConfigs {
-    pub fn colors_for(&self, hover: SchemeHover, role: SchemeTag) -> &ColorSchemeRgba {
+    pub fn colors_for(&self, hover: SchemeHover, role: SchemeTag) -> &ColorScheme {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
@@ -365,7 +369,7 @@ impl WindowColorConfigs {
         hover: SchemeHover,
         role: WindowRole,
         focus: WindowFocus,
-    ) -> &ColorSchemeRgba {
+    ) -> &ColorScheme {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
@@ -374,7 +378,7 @@ impl WindowColorConfigs {
     }
 
     /// Resolve alert color scheme for urgent windows.
-    pub fn urgent_colors(&self, hover: SchemeHover) -> &ColorSchemeRgba {
+    pub fn urgent_colors(&self, hover: SchemeHover) -> &ColorScheme {
         match hover {
             SchemeHover::NoHover => &self.no_hover.urgent,
             SchemeHover::Hover => &self.hover.urgent,
@@ -402,7 +406,7 @@ impl CloseButtonColorConfigs {
         hover: SchemeHover,
         is_locked: bool,
         is_fullscreen: bool,
-    ) -> (&ColorSchemeRgba, Option<&ColorSchemeRgba>) {
+    ) -> (&ColorScheme, Option<&ColorScheme>) {
         let set = match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
@@ -443,9 +447,9 @@ pub struct BorderColorConfig {
 #[serde(default)]
 pub struct StatusColorConfig {
     /// Status bar foreground.
-    pub fg: Rgba,
+    pub foreground: Rgba,
     /// Status bar background.
-    pub bg: Rgba,
+    pub background: Rgba,
     /// Status bar detail/accent.
     pub detail: Rgba,
     /// Separator between i3bar status blocks.
@@ -455,8 +459,8 @@ pub struct StatusColorConfig {
 }
 
 impl StatusColorConfig {
-    pub fn as_scheme(&self) -> ColorSchemeRgba {
-        ColorSchemeRgba::new(self.fg, self.bg, self.detail)
+    pub fn as_scheme(&self) -> ColorScheme {
+        ColorScheme::new(self.foreground, self.background, self.detail)
     }
 }
 

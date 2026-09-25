@@ -13,10 +13,10 @@ use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::Transform;
 
 use crate::bar::canvas::Canvas;
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::paint::{BarPainter, SchemeColor, fill_color, text_colors};
 use crate::bar::scene;
 use crate::contexts::CoreCtx;
-use crate::types::{Point, Rect, Size};
+use crate::types::{ColorScheme, Point, Rect, Size};
 
 use self::buffer::{BarBuffer, RawBarBuffer};
 use self::text::TextRasterizer;
@@ -56,7 +56,7 @@ impl WaylandBarRenderer {
 #[derive(Default)]
 struct BarRasterizer {
     text: TextRasterizer,
-    scheme: Option<BarScheme>,
+    scheme: Option<ColorScheme>,
     canvas: Canvas,
     surface_rect: Rect,
 }
@@ -92,19 +92,19 @@ impl BarPainter for BarRasterizer {
         self.text.width(text, self.surface_rect.h)
     }
 
-    fn set_scheme(&mut self, scheme: BarScheme) {
+    fn set_scheme(&mut self, scheme: ColorScheme) {
         self.scheme = Some(scheme);
     }
 
-    fn rect(&mut self, bounds: Rect, invert: bool) {
+    fn rect(&mut self, bounds: Rect, color: SchemeColor) {
         if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        let Some(scheme) = self.scheme.clone() else {
+        let Some(scheme) = self.scheme else {
             return;
         };
         self.canvas
-            .fill_rect(bounds, scheme.rect_color(invert).into());
+            .fill_rect(bounds, fill_color(&scheme, color).into());
     }
 
     fn text(
@@ -112,14 +112,14 @@ impl BarPainter for BarRasterizer {
         bounds: Rect,
         lpad: i32,
         text: &str,
-        invert: bool,
+        color: SchemeColor,
         detail_height: i32,
     ) -> i32 {
-        let Some(scheme) = self.scheme.clone() else {
+        let Some(scheme) = self.scheme else {
             return bounds.x;
         };
-        let (bg, fg) = scheme.text_colors(invert);
-        self.canvas.fill_rect(bounds, bg.into());
+        let (background, foreground) = text_colors(&scheme, color);
+        self.canvas.fill_rect(bounds, background.into());
         if detail_height > 0 {
             self.canvas.fill_rect(
                 Rect::new(
@@ -146,7 +146,7 @@ impl BarPainter for BarRasterizer {
                     &mut self.canvas,
                     Rect::new(text_x, bounds.y, text_w, bounds.h),
                     text,
-                    fg,
+                    foreground,
                 );
             }
         }
@@ -185,8 +185,8 @@ pub fn render_bar_buffers(
 /// white rectangle in the center. Input classification (`button_region_at`)
 /// routes presses to the configured `BottomBar` bindings.
 pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
-    let bg = core.config().colors.status.bg;
-    let indicator_color = bottom_bar_indicator_color(bg);
+    let background = core.config().colors.status.background;
+    let indicator_color = bottom_bar_indicator_color(background);
     core.model()
         .monitors_iter_all()
         .filter(|mon| mon.bottom_bar_visible(&core.model().clients))
@@ -196,7 +196,7 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
                 return None;
             }
             let mut canvas = Canvas::new(size);
-            canvas.fill_rect(canvas.bounds(), bg.into());
+            canvas.fill_rect(canvas.bounds(), background.into());
             canvas.fill_rect(mon.bottom_bar_indicator_rect(), indicator_color.into());
             let buffer = MemoryRenderBuffer::from_slice(
                 canvas.as_slice(),
@@ -213,10 +213,10 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
 
 /// Blend the bar background heavily toward white (~85%) so the handle reads
 /// as a bright, white pill regardless of the bar's theme color.
-fn bottom_bar_indicator_color(bg: crate::types::Rgba) -> crate::types::Rgba {
-    let [r, g, b, _] = bg.to_rgba8();
+fn bottom_bar_indicator_color(background: crate::types::Rgba) -> crate::types::Rgba {
+    let [r, g, b, _] = background.to_rgba8();
     let blend = |channel: u8| ((channel as u16 * 15 + 255 * 85) / 100) as f32 / 255.0;
-    crate::types::Rgba::new(blend(r), blend(g), blend(b), bg.a())
+    crate::types::Rgba::new(blend(r), blend(g), blend(b), background.a())
 }
 
 #[cfg(test)]
@@ -227,13 +227,20 @@ mod tests {
     fn empty_text_still_paints_and_advances_the_complete_cell() {
         let mut painter = BarRasterizer::default();
         painter.begin(Rect::new(0, 0, 8, 4));
-        painter.set_scheme(BarScheme {
+        painter.set_scheme(ColorScheme {
             foreground: crate::types::Rgba::new(1.0, 0.0, 0.0, 1.0),
             background: crate::types::Rgba::new(0.0, 0.0, 1.0, 1.0),
             detail: crate::types::Rgba::ZERO,
         });
 
-        let right = BarPainter::text(&mut painter, Rect::new(2, 0, 4, 4), 0, "", false, 0);
+        let right = BarPainter::text(
+            &mut painter,
+            Rect::new(2, 0, 4, 4),
+            0,
+            "",
+            SchemeColor::Foreground,
+            0,
+        );
 
         assert_eq!(right, 6);
         let pixel = (2 * 4) as usize;

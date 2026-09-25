@@ -55,15 +55,15 @@ mod tests {
         // Tag colours live in `model.tags.colors`…
         let nord = crate::config::appearance::ColorConfig::from(ColorTheme::Nord);
         assert_eq!(
-            wm.core.model.tags.colors.no_hover.focus.bg,
-            nord.tag.no_hover.focus.bg
+            wm.core.model.tags.colors.no_hover.focus.background,
+            nord.tag.no_hover.focus.background
         );
         // …the rest in `config.colors`.
         assert_eq!(
             wm.core.config.colors.border.tile_focus,
             nord.border.tile_focus
         );
-        assert_eq!(wm.core.config.colors.status.fg, nord.status.fg);
+        assert_eq!(wm.core.config.colors.status.foreground, nord.status.foreground);
     }
 
     #[test]

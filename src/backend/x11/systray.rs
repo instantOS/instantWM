@@ -241,7 +241,7 @@ pub(super) fn sync_xembed_tray(
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
-        let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
+        let bg_pixel = x11_runtime.status_scheme.background.color.pixel as u32;
 
         let conn = x11.conn;
         let Ok(systray_win) = conn.generate_id() else {
@@ -301,7 +301,7 @@ pub(super) fn sync_xembed_tray(
     let (systray_win, icons) = (tray.win, tray.icons.clone());
 
     let bar_height = core.config().bar_metrics().height;
-    let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
+    let bg_pixel = x11_runtime.status_scheme.background.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, Size)> = icons
         .iter()

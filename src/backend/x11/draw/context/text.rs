@@ -118,10 +118,10 @@ impl DrawContext {
             let Some(ref scheme) = self.scheme else {
                 return 0;
             };
-            fg_pixel = scheme.fg.pixel();
-            bg_pixel = scheme.bg.pixel();
+            fg_pixel = scheme.foreground.pixel();
+            bg_pixel = scheme.background.pixel();
             detail_pixel = scheme.detail.pixel();
-            (Some(scheme.fg.color.clone()), Some(scheme.bg.color.clone()))
+            (Some(scheme.foreground.color.clone()), Some(scheme.background.color.clone()))
         } else {
             (None, None)
         };
@@ -463,8 +463,8 @@ mod tests {
                 text,
                 invert,
                 true,
-                Some(&scheme.fg.color),
-                Some(&scheme.bg.color),
+                Some(&scheme.foreground.color),
+                Some(&scheme.background.color),
             );
             assert_eq!(x, 7 + expected as i32);
             assert_eq!(remaining, 1000 - expected);
@@ -544,8 +544,8 @@ mod tests {
                 &format!("A{icon}B"),
                 false,
                 true,
-                Some(&scheme.fg.color),
-                Some(&scheme.bg.color),
+                Some(&scheme.foreground.color),
+                Some(&scheme.background.color),
             );
             let expected = if width < a {
                 0

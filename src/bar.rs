@@ -319,16 +319,16 @@ pub(crate) fn render_hit_caches_for_test(core: &mut CoreCtx) {
             text.chars().count() as i32 * 8
         }
 
-        fn set_scheme(&mut self, _scheme: paint::BarScheme) {}
+        fn set_scheme(&mut self, _scheme: crate::types::ColorScheme) {}
 
-        fn rect(&mut self, _bounds: Rect, _invert: bool) {}
+        fn rect(&mut self, _bounds: Rect, _color: paint::SchemeColor) {}
 
         fn text(
             &mut self,
             bounds: Rect,
             _lpad: i32,
             _text: &str,
-            _invert: bool,
+            _color: paint::SchemeColor,
             _detail_height: i32,
         ) -> i32 {
             bounds.right()

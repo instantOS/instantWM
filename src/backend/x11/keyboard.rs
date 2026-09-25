@@ -173,10 +173,10 @@ fn render_layout_preview(
         let windows: [Window; 4] = ids.try_into().expect("exactly four preview windows");
         let color = match x11_runtime.layout_preview_style {
             crate::types::InteractionOutlineStyle::Layout => {
-                x11_runtime.border_scheme.snap.bg.pixel()
+                x11_runtime.border_scheme.snap.background.pixel()
             }
             crate::types::InteractionOutlineStyle::Close => {
-                x11_runtime.border_scheme.close.bg.pixel()
+                x11_runtime.border_scheme.close.background.pixel()
             }
         };
         let aux = CreateWindowAux::new()
@@ -214,10 +214,10 @@ fn render_layout_preview(
     if let Some(rect) = rect {
         let color = match x11_runtime.layout_preview_style {
             crate::types::InteractionOutlineStyle::Layout => {
-                x11_runtime.border_scheme.snap.bg.pixel()
+                x11_runtime.border_scheme.snap.background.pixel()
             }
             crate::types::InteractionOutlineStyle::Close => {
-                x11_runtime.border_scheme.close.bg.pixel()
+                x11_runtime.border_scheme.close.background.pixel()
             }
         };
         for (window, side) in

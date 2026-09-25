@@ -27,7 +27,7 @@ use x11rb::protocol::xproto::{Drawable, Point, Window};
 use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
 
-use super::color::{Color, ColorScheme, Cursor};
+use super::color::{AllocScheme, Color, Cursor};
 use super::ffi::{
     FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE, FcCharSetAddChar, FcCharSetCreate,
     FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute, FcInit, FcNameParse, FcPattern,
@@ -54,61 +54,8 @@ const NOMATCHES_LEN: usize = 64;
 const TEXT_WIDTH_CACHE_LIMIT: usize = 2048;
 const BAR_SCHEME_CACHE_LIMIT: usize = 256;
 
-#[cfg(test)]
-mod cache_tests {
-    use super::*;
-    use crate::bar::paint::BarScheme;
-    use crate::types::Rgba;
-
-    #[test]
-    #[ignore = "requires a dedicated Xvfb display"]
-    fn changing_status_colors_keeps_allocations_bounded() {
-        let mut ctx = DrawContext::new(None).expect("test requires Xvfb");
-        // Theme colors have a separate lifetime and must survive eviction.
-        let theme = ctx.clr_create("#ffffff").unwrap();
-        for index in 0..BAR_SCHEME_CACHE_LIMIT * 3 {
-            let scheme = BarScheme {
-                foreground: Rgba::rgb(index as f32 / 1024.0, 0.5, 0.0),
-                background: Rgba::rgb(0.0, 0.0, 0.0),
-                detail: Rgba::rgb(1.0, 1.0, 1.0),
-            };
-            ctx.set_bar_scheme(&scheme);
-            let count = ctx.bar_scheme_cache.len();
-            let selected = ctx.get_scheme().unwrap().clone();
-            ctx.set_bar_scheme(&scheme);
-            assert_eq!(ctx.get_scheme(), Some(&selected));
-            assert_eq!(ctx.bar_scheme_cache.len(), count);
-            assert!(count <= BAR_SCHEME_CACHE_LIMIT);
-            assert_eq!(ctx.bar_scheme_order.len(), count);
-            assert_eq!(ctx.allocated_colors.len(), 1);
-            assert_eq!(
-                ctx.bar_scheme_cache
-                    .values()
-                    .map(|entry| entry.allocations.len())
-                    .sum::<usize>(),
-                count * 3,
-            );
-            ctx.rect(WmRect::new(0, 0, 1, 1), true, false);
-        }
-        let clone = ctx.clone();
-        assert!(
-            clone
-                .bar_scheme_cache
-                .values()
-                .all(|entry| entry.allocations.is_empty())
-        );
-        drop(clone);
-        ctx.set_scheme(ColorScheme::from_single(theme));
-        ctx.rect(WmRect::new(0, 0, 1, 1), true, false);
-        unsafe extern "C" {
-            fn XSync(display: *mut libc::c_void, discard: c_int) -> c_int;
-        }
-        unsafe { XSync(ctx.display, 0) };
-    }
-}
-
 struct CachedBarScheme {
-    scheme: ColorScheme,
+    scheme: AllocScheme,
     // Keep the original allocation values (before alpha adjustment) for Xft.
     allocations: Vec<XftColor>,
 }
@@ -123,21 +70,20 @@ impl Clone for CachedBarScheme {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct BarSchemeKey {
-    foreground: [u32; 4],
-    background: [u32; 4],
-    detail: [u32; 4],
-}
+/// Cache key for an allocated bar scheme: `[fg, bg, detail]`, quantized to
+/// bytes.
+///
+/// Keying on the quantized components rather than the raw `f32` bits means
+/// `-0.0` and `0.0` — and every pair that renders to the same pixel — share a
+/// single entry instead of each allocating their own Xft color.
+type BarSchemeKey = [[u8; 4]; 3];
 
-impl From<&crate::bar::paint::BarScheme> for BarSchemeKey {
-    fn from(scheme: &crate::bar::paint::BarScheme) -> Self {
-        Self {
-            foreground: scheme.foreground.into_array().map(f32::to_bits),
-            background: scheme.background.into_array().map(f32::to_bits),
-            detail: scheme.detail.into_array().map(f32::to_bits),
-        }
-    }
+fn bar_scheme_key(scheme: &crate::types::ColorScheme) -> BarSchemeKey {
+    [
+        scheme.foreground.to_rgba8(),
+        scheme.background.to_rgba8(),
+        scheme.detail.to_rgba8(),
+    ]
 }
 
 // ── DrawContext ──────────────────────────────────────────────────────────────────────
@@ -166,7 +112,7 @@ pub struct DrawContext {
     pub(super) xft_draw: *mut XftDraw,
 
     /// Active color scheme.
-    scheme: Option<ColorScheme>,
+    scheme: Option<AllocScheme>,
 
     /// Bar colors allocated on this X display. Keeping this cache with the
     /// owning context avoids allocating the same Xft colors on every redraw.
@@ -657,22 +603,22 @@ impl DrawContext {
 
 impl DrawContext {
     /// Replace the active color scheme.
-    pub fn set_scheme(&mut self, scheme: ColorScheme) {
+    pub fn set_scheme(&mut self, scheme: AllocScheme) {
         self.scheme = Some(scheme);
     }
 
     /// Select a backend-neutral bar scheme from a bounded cache. Status
     /// producers can change colors indefinitely, so evicted schemes release
     /// their Xft allocations instead of retaining them until display shutdown.
-    pub(crate) fn set_bar_scheme(&mut self, scheme: &crate::bar::paint::BarScheme) {
-        let key = BarSchemeKey::from(scheme);
+    pub(crate) fn set_bar_scheme(&mut self, scheme: &crate::types::ColorScheme) {
+        let key = bar_scheme_key(scheme);
         let allocated = if let Some(existing) = self.bar_scheme_cache.get(&key) {
             existing.scheme.clone()
         } else {
             let allocation_start = self.allocated_colors.len();
-            let allocated = ColorScheme {
-                fg: self.clr_create_rgba(scheme.foreground),
-                bg: self.clr_create_rgba(scheme.background),
+            let allocated = AllocScheme {
+                foreground: self.clr_create_rgba(scheme.foreground),
+                background: self.clr_create_rgba(scheme.background),
                 detail: self.clr_create_rgba(scheme.detail),
             };
             let allocations = self.allocated_colors.split_off(allocation_start);
@@ -698,7 +644,7 @@ impl DrawContext {
     }
 
     /// Read-only access to the active color scheme, if one is set.
-    pub fn get_scheme(&self) -> Option<&ColorScheme> {
+    pub fn get_scheme(&self) -> Option<&AllocScheme> {
         self.scheme.as_ref()
     }
 
@@ -778,7 +724,7 @@ impl DrawContext {
     /// Allocate a color scheme from a slice of color name strings.
     ///
     /// Requires exactly 3 colors: foreground, background, detail.
-    pub fn scm_create(&mut self, clrnames: &[&str]) -> Result<ColorScheme, String> {
+    pub fn scm_create(&mut self, clrnames: &[&str]) -> Result<AllocScheme, String> {
         if clrnames.len() != 3 {
             return Err(format!(
                 "scm_create requires exactly 3 colors (fg, bg, detail), got {}",
@@ -788,7 +734,7 @@ impl DrawContext {
         let fg = self.clr_create(clrnames[0])?;
         let bg = self.clr_create(clrnames[1])?;
         let detail = self.clr_create(clrnames[2])?;
-        Ok(ColorScheme { fg, bg, detail })
+        Ok(AllocScheme { fg, bg, detail })
     }
 }
 
@@ -1015,9 +961,9 @@ impl DrawContext {
         };
 
         let pixel = if invert {
-            scheme.bg.pixel()
+            scheme.background.pixel()
         } else {
-            scheme.fg.pixel()
+            scheme.foreground.pixel()
         };
         let WmRect { x, y, w, h } = bounds;
         let width = w as u32;
@@ -1054,9 +1000,9 @@ impl DrawContext {
         };
 
         let pixel = if invert {
-            scheme.bg.pixel()
+            scheme.background.pixel()
         } else {
-            scheme.fg.pixel()
+            scheme.foreground.pixel()
         };
         let WmRect { x, y, w, h } = bounds;
         let width = w as u32;
@@ -1128,7 +1074,7 @@ impl DrawContext {
         };
 
         unsafe {
-            XSetForeground(self.display, self.gc, scheme.bg.pixel() as c_ulong);
+            XSetForeground(self.display, self.gc, scheme.background.pixel() as c_ulong);
             let mut pts = [
                 Point { x: origin_x, y },
                 Point {
@@ -1150,5 +1096,58 @@ impl DrawContext {
                 0, // CoordModeOrigin
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use crate::types::ColorScheme;
+    use crate::types::Rgba;
+
+    #[test]
+    #[ignore = "requires a dedicated Xvfb display"]
+    fn changing_status_colors_keeps_allocations_bounded() {
+        let mut ctx = DrawContext::new(None).expect("test requires Xvfb");
+        // Theme colors have a separate lifetime and must survive eviction.
+        let theme = ctx.clr_create("#ffffff").unwrap();
+        for index in 0..BAR_SCHEME_CACHE_LIMIT * 3 {
+            let scheme = ColorScheme {
+                foreground: Rgba::rgb(index as f32 / 1024.0, 0.5, 0.0),
+                background: Rgba::rgb(0.0, 0.0, 0.0),
+                detail: Rgba::rgb(1.0, 1.0, 1.0),
+            };
+            ctx.set_bar_scheme(&scheme);
+            let count = ctx.bar_scheme_cache.len();
+            let selected = ctx.get_scheme().unwrap().clone();
+            ctx.set_bar_scheme(&scheme);
+            assert_eq!(ctx.get_scheme(), Some(&selected));
+            assert_eq!(ctx.bar_scheme_cache.len(), count);
+            assert!(count <= BAR_SCHEME_CACHE_LIMIT);
+            assert_eq!(ctx.bar_scheme_order.len(), count);
+            assert_eq!(ctx.allocated_colors.len(), 1);
+            assert_eq!(
+                ctx.bar_scheme_cache
+                    .values()
+                    .map(|entry| entry.allocations.len())
+                    .sum::<usize>(),
+                count * 3,
+            );
+            ctx.rect(WmRect::new(0, 0, 1, 1), true, false);
+        }
+        let clone = ctx.clone();
+        assert!(
+            clone
+                .bar_scheme_cache
+                .values()
+                .all(|entry| entry.allocations.is_empty())
+        );
+        drop(clone);
+        ctx.set_scheme(AllocScheme::from_single(theme));
+        ctx.rect(WmRect::new(0, 0, 1, 1), true, false);
+        unsafe extern "C" {
+            fn XSync(display: *mut libc::c_void, discard: c_int) -> c_int;
+        }
+        unsafe { XSync(ctx.display, 0) };
     }
 }

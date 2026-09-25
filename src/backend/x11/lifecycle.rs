@@ -137,7 +137,7 @@ pub fn manage(
     let _ = ctx.x11.conn.change_window_attributes(
         x11_window,
         &ChangeWindowAttributesAux::new()
-            .border_pixel(Some(ctx.x11_runtime.border_scheme.normal.bg.pixel())),
+            .border_pixel(Some(ctx.x11_runtime.border_scheme.normal.background.pixel())),
     );
 
     crate::backend::x11::focus::configure(ctx.core.state(), &ctx.x11, window);
