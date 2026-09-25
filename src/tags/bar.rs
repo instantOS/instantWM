@@ -14,14 +14,14 @@ pub(crate) struct VisibleTag<'a> {
     pub slot: usize,
     /// Actual tag index into `monitor.tags` / bitmask space.
     pub tag_index: usize,
-    /// Display label (regular or alt name).
+    /// Display label (name, or icon while icon mode is active).
     pub label: &'a str,
 }
 
 pub(crate) fn visible_tags(
     monitor: &Monitor,
     occupied: TagMask,
-    show_alt: bool,
+    show_icons: bool,
 ) -> Vec<VisibleTag<'_>> {
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
@@ -39,9 +39,45 @@ pub(crate) fn visible_tags(
         out.push(VisibleTag {
             slot,
             tag_index,
-            label: tag.display_name(show_alt),
+            label: tag.display_label(show_icons),
         });
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Tag;
+
+    fn monitor_with(tags: &[(&str, &str)]) -> Monitor {
+        Monitor {
+            tags: tags
+                .iter()
+                .map(|(name, icon)| Tag {
+                    name: (*name).to_string(),
+                    icon: (*icon).to_string(),
+                })
+                .collect(),
+            ..Monitor::default()
+        }
+    }
+
+    #[test]
+    fn labels_follow_icon_mode_and_fall_back_per_tag() {
+        let monitor = monitor_with(&[("web", "W"), ("mail", "")]);
+
+        let names: Vec<_> = visible_tags(&monitor, TagMask::all(2), false)
+            .into_iter()
+            .map(|tag| tag.label.to_string())
+            .collect();
+        assert_eq!(names, vec!["web", "mail"]);
+
+        let icons: Vec<_> = visible_tags(&monitor, TagMask::all(2), true)
+            .into_iter()
+            .map(|tag| tag.label.to_string())
+            .collect();
+        assert_eq!(icons, vec!["W", "mail"]);
+    }
 }

@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn toggle_flips_boolean_options_and_returns_the_new_value() {
         let mut wm = test_wm();
-        // Defaults: decor_hints on, show_alt_names off.
+        // Defaults: decor_hints on, show_icons off.
         match do_toggle(&mut wm, "window.decor_hints") {
             Response::ConfigValue(v) => assert_eq!(v, "false"),
             other => panic!("expected ConfigValue, got {other:?}"),
@@ -158,12 +158,12 @@ mod tests {
         }
         assert!(wm.core.config.window.decor_hints);
 
-        match do_toggle(&mut wm, "tags.show_alt_names") {
+        match do_toggle(&mut wm, "tags.show_icons") {
             Response::ConfigValue(v) => assert_eq!(v, "true"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         // The bar reads this live from config, so the flip is effective.
-        assert!(wm.core.config.tags.show_alt_names);
+        assert!(wm.core.config.tags.show_icons);
     }
 
     #[test]
@@ -210,16 +210,39 @@ mod tests {
     fn tags_set_takes_effect_live() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "tags.show_alt_names", "true"),
+            do_set(&mut wm, "tags.show_icons", "true"),
             Response::Ok
         ));
         // The bar reads this straight from config, so an IPC set is live
         // immediately — there is no model copy left to fall out of sync.
-        assert!(wm.core.config.tags.show_alt_names);
-        match do_get(&mut wm, "tags.show_alt_names") {
+        assert!(wm.core.config.tags.show_icons);
+        match do_get(&mut wm, "tags.show_icons") {
             Response::ConfigValue(v) => assert_eq!(v, "true"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_tag_set_itself_is_readable_but_only_applies_on_reload() {
+        let mut wm = test_wm();
+        let original = wm.core.config.tags.clone();
+
+        // Readable…
+        match do_get(&mut wm, "tags.names") {
+            Response::ConfigValue(v) => assert!(v.contains("\"1\""), "{v}"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+        // …but not runtime-settable: the tag count lives in the model.
+        for key in ["tags.names", "tags.icons"] {
+            assert!(
+                matches!(
+                    do_set(&mut wm, key, "[\"x\"]"),
+                    Response::Err(message) if message.contains("applies on reload")
+                ),
+                "setting {key} should be rejected"
+            );
+        }
+        assert_eq!(wm.core.config.tags, original);
     }
 
     #[test]

@@ -129,7 +129,7 @@ pub fn get_keys(backend: BackendKind) -> Vec<Key> {
         key!(MODKEY, XK_B => KeyAction::named(NamedAction::ToggleBar)),
         key!(MODKEY | SHIFT, XK_B => KeyAction::named(NamedAction::ToggleBottomBar(None))),
         key!(MODKEY | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleSticky)),
-        key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ConfigToggle("tags.show_alt_names".into()))),
+        key!(MODKEY | MOD1, XK_S => KeyAction::named(NamedAction::ConfigToggle("tags.show_icons".into()))),
         key!(MODKEY | SHIFT | MOD1, XK_S => KeyAction::named(NamedAction::ConfigToggle("animations.enabled".into()))),
         key!(MODKEY | SHIFT | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleHideTags(None))),
         key!(MODKEY | MOD1, XK_SPACE => KeyAction::named(NamedAction::NextKeyboardLayout)),

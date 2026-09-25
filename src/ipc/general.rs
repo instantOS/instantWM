@@ -84,11 +84,11 @@ mod tests {
                 run_action(
                     &mut wm,
                     "config_set".to_string(),
-                    vec!["tags.show_alt_names".to_string(), "true".to_string()],
+                    vec!["tags.show_icons".to_string(), "true".to_string()],
                 ),
                 Response::Ok
             ));
         }
-        assert!(wm.core.config.tags.show_alt_names);
+        assert!(wm.core.config.tags.show_icons);
     }
 }

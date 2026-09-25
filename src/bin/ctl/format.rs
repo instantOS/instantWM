@@ -410,8 +410,27 @@ fn format_keyboard_layout_list(layouts: &[KeyboardLayoutInfo]) {
 
 fn format_tag_list(tags: &[TagInfo]) {
     for t in tags {
+        let mut line = format!("{}: {}", t.index, t.label);
         let name = t.name.as_deref().unwrap_or("(unnamed)");
-        println!("{}: {}", t.index, name);
+        if t.label != name {
+            line.push_str(&format!(" (name: {name})"));
+        }
+        if let Some(icon) = &t.icon
+            && t.label != *icon
+        {
+            line.push_str(&format!(" (icon: {icon})"));
+        }
+        let mut flags = Vec::new();
+        if t.selected {
+            flags.push("selected");
+        }
+        if t.occupied {
+            flags.push("occupied");
+        }
+        if !flags.is_empty() {
+            line.push_str(&format!(" [{}]", flags.join(", ")));
+        }
+        println!("{line}");
     }
 }
 

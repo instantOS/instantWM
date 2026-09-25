@@ -107,7 +107,7 @@ pub enum CommandKind {
         #[command(subcommand)]
         action: WindowCommand,
     },
-    /// View and name tags.
+    /// View, list, and name tags.
     Tag {
         #[command(subcommand)]
         action: TagAction,

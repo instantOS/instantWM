@@ -55,42 +55,6 @@ pub mod mod_consts {
 }
 
 // ---------------------------------------------------------------------------
-// Tag configuration
-// ---------------------------------------------------------------------------
-
-use crate::types::MAX_TAGS;
-
-/// Default tag names (used when no config override is set).
-///
-/// There are [`MAX_TAGS`] entries — the last one (`"s"`) is the scratchpad tag.
-pub fn get_tags_default() -> [&'static str; MAX_TAGS] {
-    [
-        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-        "17", "18", "19", "20", "s",
-    ]
-}
-
-/// Build the tag name list as owned `String`s.
-pub fn get_tags() -> Vec<String> {
-    get_tags_default().iter().map(|&s| s.to_string()).collect()
-}
-
-/// Alternative (icon) tag names shown when alt-tag mode is active.
-pub fn get_tags_alt() -> Vec<String> {
-    vec![
-        "".to_string(),
-        "{}".to_string(),
-        "$".to_string(),
-        "".to_string(),
-        "".to_string(),
-        "".to_string(),
-        "".to_string(),
-        "".to_string(),
-        "".to_string(),
-    ]
-}
-
-// ---------------------------------------------------------------------------
 // Effective configuration resolution
 // ---------------------------------------------------------------------------
 
@@ -265,21 +229,14 @@ pub fn resolve_config(
         .model
         .or_else(|| env::var("XKB_DEFAULT_MODEL").ok());
 
-    let tag_alt_names = get_tags_alt();
-    let tag_template = get_tags()
-        .into_iter()
-        .enumerate()
-        .map(|(index, name)| crate::types::Tag {
-            name,
-            alt_name: tag_alt_names.get(index).cloned().unwrap_or_default(),
-        })
-        .collect();
+    let tags = theme.tags.validated()?;
+    let tag_template = tags.tag_template();
 
     Ok(EffectiveConfig {
         window,
         bar,
         systray: theme.systray,
-        tags: theme.tags,
+        tags,
         layout,
         animations: theme.animations,
         colors: theme.colors,
@@ -334,7 +291,11 @@ mod resolution_tests {
         let effective = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
 
         assert_eq!(effective.keyboard.layouts[0].name, "de");
-        assert_eq!(effective.tag_template.len(), MAX_TAGS);
+        assert_eq!(effective.tag_template.len(), crate::types::MAX_TAGS);
+        // Stock configuration: numbered names, no icons.
+        assert_eq!(effective.tag_template[0].name, "1");
+        assert!(effective.tag_template.iter().all(|tag| tag.icon.is_empty()));
+        assert!(!effective.tags.show_icons);
         assert_eq!(effective.window, WindowConfig::default());
         assert_eq!(effective.systray, SystrayConfig::default());
     }
@@ -380,7 +341,15 @@ mod resolution_tests {
         use crate::types::{Monitor, Rect};
 
         let user: config_toml::UserConfig = toml::from_str(
-            "[tags]\nshow_alt_names = true\n[bar]\nshow_tags = false\nshow_bottom = true",
+            r#"
+            [tags]
+            names = ["web", "mail", "code"]
+            icons = ["W", "", "C"]
+            show_icons = true
+            [bar]
+            show_tags = false
+            show_bottom = true
+            "#,
         )
         .unwrap();
         let config = crate::config::resolve_config(user, crate::backend::BackendKind::Wayland)
@@ -393,12 +362,33 @@ mod resolution_tests {
         });
         wm.core.apply_config(config);
 
-        // Alt-tag display is read live from config; bar states are seeded
-        // into each monitor.
-        assert!(wm.core.config.tags.show_alt_names);
+        // Icon display is read live from config; the tag set seeds the
+        // model, and bar states are seeded into each monitor.
+        assert!(wm.core.config.tags.show_icons);
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
         assert!(monitor.hide_tags);
         assert!(monitor.show_bottom_bar);
+        assert_eq!(wm.core.model.tags.num_tags, 3);
+        assert_eq!(
+            monitor
+                .tags
+                .iter()
+                .map(|tag| (tag.name.as_str(), tag.icon.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("web", "W"), ("mail", ""), ("code", "C")]
+        );
+    }
+
+    #[test]
+    fn invalid_tag_sets_are_rejected_during_resolution() {
+        let user: config_toml::UserConfig =
+            toml::from_str("[tags]\nnames = [\"a\"]\nicons = [\"\", \"\"]").unwrap();
+
+        let error = match resolve_config(user, crate::backend::BackendKind::Wayland) {
+            Ok(_) => panic!("an oversized tags.icons list must be rejected"),
+            Err(error) => error,
+        };
+        assert!(error.contains("tags.icons"), "{error}");
     }
 
     #[test]

@@ -186,7 +186,17 @@ pub fn set_runtime_field(
             .and_then(crate::config::config_toml::BarConfig::validated)
             .map(|candidate| state.bar = candidate),
         RuntimeConfigSection::Systray => parse_then_set(&mut state.systray, rest, value),
-        RuntimeConfigSection::Tags => parse_then_set(&mut state.tags, rest, value),
+        RuntimeConfigSection::Tags => {
+            // The tag set is a load-time decision: changing it live would
+            // have to re-seed every monitor (dropping session renames) and
+            // resize the tag space, so only the display switch is live.
+            if rest != "show_icons" {
+                return Err(format!(
+                    "tags.{rest} defines the tag set and applies on reload; only tags.show_icons is runtime-settable"
+                ));
+            }
+            parse_then_set(&mut state.tags, rest, value)
+        }
         RuntimeConfigSection::Layout => set_field_from_raw(&state.layout, rest, value)
             .and_then(crate::config::config_toml::LayoutConfig::validated)
             .map(|candidate| state.layout = candidate),

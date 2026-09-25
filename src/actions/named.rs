@@ -789,9 +789,9 @@ mod tests {
             Ok(NamedAction::ConfigToggle("animations.enabled".into()))
         );
         assert_eq!(
-            parse("config_set", &["tags.show_alt_names", "true"]),
+            parse("config_set", &["tags.show_icons", "true"]),
             Ok(NamedAction::ConfigSet(ConfigAssignment {
-                key: "tags.show_alt_names".into(),
+                key: "tags.show_icons".into(),
                 value: "true".into(),
             }))
         );
@@ -866,19 +866,19 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let set_on = || {
             NamedAction::ConfigSet(ConfigAssignment {
-                key: "tags.show_alt_names".into(),
+                key: "tags.show_icons".into(),
                 value: "true".into(),
             })
         };
         set_on().execute(&mut wm.ctx()).unwrap();
         set_on().execute(&mut wm.ctx()).unwrap();
-        assert!(wm.core.config.tags.show_alt_names);
+        assert!(wm.core.config.tags.show_icons);
 
-        let toggle = || NamedAction::ConfigToggle("tags.show_alt_names".into());
+        let toggle = || NamedAction::ConfigToggle("tags.show_icons".into());
         toggle().execute(&mut wm.ctx()).unwrap();
-        assert!(!wm.core.config.tags.show_alt_names);
+        assert!(!wm.core.config.tags.show_icons);
         toggle().execute(&mut wm.ctx()).unwrap();
-        assert!(wm.core.config.tags.show_alt_names);
+        assert!(wm.core.config.tags.show_icons);
     }
 
     #[test]

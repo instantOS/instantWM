@@ -193,9 +193,12 @@ pub enum KeyboardCommand {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum TagCommand {
-    /// Set the selected tag's name.
+    /// List the tags of the selected monitor with their name, icon, the
+    /// label currently shown, and occupancy/selection state.
+    List,
+    /// Set the selected tag's name for the session (cleared on reload).
     Name { name: String },
-    /// Reset all tag names.
+    /// Reset all tag names to their configured values.
     Reset,
 }
 
@@ -623,9 +626,19 @@ pub struct KeyboardLayoutInfo {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct TagInfo {
+    /// 0-based tag index.
     pub index: u32,
+    /// Configured (or session-renamed) name; `None` when unset.
     pub name: Option<String>,
-    pub mask: u32,
+    /// Configured icon; `None` when the tag has none.
+    pub icon: Option<String>,
+    /// The label the bar shows right now: the icon while icon mode is on
+    /// and an icon is set, otherwise the name.
+    pub label: String,
+    /// Whether at least one window occupies this tag (scratchpad excluded).
+    pub occupied: bool,
+    /// Whether this tag is in the selected monitor's current tagset.
+    pub selected: bool,
 }
 
 /// One keybinding as reported by `instantwmctl keybinds`.

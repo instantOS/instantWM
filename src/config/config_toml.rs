@@ -630,20 +630,108 @@ pub struct KeyboardConfig {
     pub swapescape: bool,
 }
 
-/// Tag display configuration.
+/// Tag labels, icons, and bar display mode.
+///
+/// The number of tags is the length of `names` (maximum
+/// [`MAX_TAGS`](crate::types::MAX_TAGS)). `icons` is positional: index *i*
+/// is the icon for tag *i*; a shorter list leaves the remaining tags without
+/// one, and an empty string always means "no icon".
 ///
 /// ```toml
 /// [tags]
-/// show_alt_names = false
+/// names = ["1", "2", "web", "mail"]
+/// # Nerd-font glyphs, shown instead of the names while show_icons is on.
+/// icons = ["", "", "", ""]
+/// show_icons = false
 /// ```
-#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// `names` and `icons` define the tag set, so they take effect on startup
+/// and `reload` only; `instantwmctl config set` rejects them. Rename tags
+/// for the session with `instantwmctl tag name <label>`, and drop the
+/// session renames with `instantwmctl tag reset`.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Serialize)]
 #[serde(default)]
 pub struct TagsConfig {
-    /// Show alternative tag names (icon glyphs) in the bar instead of the
-    /// plain tag names. `instantwmctl config toggle tags.show_alt_names` (or
-    /// the `config_toggle` action) flips this for the session; `reload`
-    /// restores the configured value.
-    pub show_alt_names: bool,
+    /// Label per tag, index 0 = tag 1. Defaults to `"1"` … `"20"` followed
+    /// by the scratchpad tag `"s"`.
+    pub names: Vec<String>,
+    /// Optional icon per tag (see the type docs for the positional rule).
+    /// Defaults to no icons at all.
+    pub icons: Vec<String>,
+    /// Show icons instead of names in the tag bar.
+    /// `instantwmctl config toggle tags.show_icons` (or the `config_toggle`
+    /// action) flips this for the session; `reload` restores the configured
+    /// value.
+    pub show_icons: bool,
+}
+
+impl Default for TagsConfig {
+    fn default() -> Self {
+        let names = default_tag_names();
+        Self {
+            icons: vec![String::new(); names.len()],
+            names,
+            show_icons: false,
+        }
+    }
+}
+
+impl TagsConfig {
+    /// Reject tag sets the WM cannot present.
+    pub fn validated(self) -> Result<Self, String> {
+        if self.names.is_empty() {
+            return Err("tags.names must list at least one tag".to_string());
+        }
+        if self.names.len() > crate::types::MAX_TAGS {
+            return Err(format!(
+                "tags.names has {} entries; at most {} tags are supported",
+                self.names.len(),
+                crate::types::MAX_TAGS
+            ));
+        }
+        for (index, name) in self.names.iter().enumerate() {
+            if name.is_empty() {
+                return Err(format!("tags.names[{index}] must not be empty"));
+            }
+            if name.len() > crate::types::tag::MAX_TAG_NAME_BYTES {
+                return Err(format!(
+                    "tags.names[{index}] is {} bytes; at most {} are allowed",
+                    name.len(),
+                    crate::types::tag::MAX_TAG_NAME_BYTES
+                ));
+            }
+        }
+        if self.icons.len() > self.names.len() {
+            return Err(format!(
+                "tags.icons has {} entries but only {} tags are defined",
+                self.icons.len(),
+                self.names.len()
+            ));
+        }
+        Ok(self)
+    }
+
+    /// The tag template the model is initialised from: `names` paired with
+    /// `icons`, padding the icon list with empty entries.
+    pub fn tag_template(&self) -> Vec<crate::types::Tag> {
+        self.names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| crate::types::Tag {
+                name: name.clone(),
+                icon: self.icons.get(index).cloned().unwrap_or_default(),
+            })
+            .collect()
+    }
+}
+
+/// The stock tag labels: `"1"` … `"20"` followed by the scratchpad tag.
+pub fn default_tag_names() -> Vec<String> {
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
+        "17", "18", "19", "20", "s"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 pub fn load_config_file() -> Result<UserConfig, String> {
@@ -699,7 +787,10 @@ fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> 
 /// - Users can see what options are available
 /// - Defaults are not baked in, so they track upstream changes
 pub fn generate_commented_config() -> String {
-    let config = UserConfig::default();
+    let mut config = UserConfig::default();
+    // The stock tag set has no icons; show the field as an empty list
+    // instead of one empty string per tag.
+    config.tags.icons.clear();
     let full = toml::to_string_pretty(&config).expect("failed to serialize default config");
 
     let mut out = String::new();
@@ -1002,7 +1093,7 @@ mod theme_tests {
             focus_follows_float_mouse = false
 
             [tags]
-            show_alt_names = true
+            show_icons = true
 
             [bar]
             show_tags = false
@@ -1013,7 +1104,7 @@ mod theme_tests {
             crate::types::FocusFollowsMouseMode::Force
         );
         assert!(!config.window.focus_follows_float_mouse);
-        assert!(config.tags.show_alt_names);
+        assert!(config.tags.show_icons);
         assert!(!config.bar.show_tags);
 
         // Defaults for a config that omits the sections.
@@ -1023,8 +1114,90 @@ mod theme_tests {
             crate::types::FocusFollowsMouseMode::Normal
         );
         assert!(default.window.focus_follows_float_mouse);
-        assert!(!default.tags.show_alt_names);
+        assert!(!default.tags.show_icons);
         assert!(default.bar.show_tags);
+    }
+
+    #[test]
+    fn tags_default_to_numbered_names_without_icons() {
+        let tags = parse("").tags;
+        assert_eq!(tags.names, default_tag_names());
+        assert_eq!(tags.names.len(), crate::types::MAX_TAGS);
+        assert_eq!(tags.names.last().unwrap(), "s", "scratchpad tag");
+        assert!(tags.icons.iter().all(String::is_empty));
+        assert!(!tags.show_icons);
+    }
+
+    #[test]
+    fn tag_names_and_icons_parse_positionally() {
+        let tags = parse(
+            r#"
+            [tags]
+            names = ["web", "mail", "code"]
+            icons = ["W", "", "C"]
+            show_icons = true
+            "#,
+        )
+        .tags;
+
+        let template = tags.tag_template();
+        assert_eq!(template.len(), 3);
+        assert_eq!(
+            template
+                .iter()
+                .map(|tag| (tag.name.as_str(), tag.icon.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("web", "W"), ("mail", ""), ("code", "C")]
+        );
+        assert!(tags.show_icons);
+    }
+
+    #[test]
+    fn a_short_icon_list_leaves_the_remaining_tags_without_one() {
+        let tags = parse(
+            r#"
+            [tags]
+            names = ["a", "b", "c"]
+            icons = ["A"]
+            "#,
+        )
+        .tags
+        .validated()
+        .unwrap();
+
+        let icons: Vec<_> = tags
+            .tag_template()
+            .iter()
+            .map(|tag| tag.icon.clone())
+            .collect();
+        assert_eq!(icons, vec!["A", "", ""]);
+    }
+
+    #[test]
+    fn tag_validation_rejects_impossible_tag_sets_by_field_name() {
+        let too_many: Vec<String> = (0..=crate::types::MAX_TAGS)
+            .map(|i| format!("\"t{i}\""))
+            .collect();
+        for (source, field) in [
+            ("[tags]\nnames = []", "tags.names"),
+            (
+                &format!("[tags]\nnames = [{}]", too_many.join(",")),
+                "tags.names",
+            ),
+            ("[tags]\nnames = [\"\"]", "tags.names[0]"),
+            (
+                "[tags]\nnames = [\"aaaaaaaaaaaaaaaaaaaaa\"]",
+                "tags.names[0]",
+            ),
+            (
+                "[tags]\nnames = [\"a\"]\nicons = [\"\", \"\"]",
+                "tags.icons",
+            ),
+        ] {
+            let user: UserConfig = toml::from_str(source).unwrap();
+            let error = user.tags.validated().unwrap_err();
+            assert!(error.contains(field), "{error}");
+        }
     }
 
     #[test]
