@@ -149,7 +149,9 @@ fn compile_structured_action(table: &toml::Table) -> Result<KeyAction, String> {
 fn compile_keybind(spec: &KeybindSpec) -> Result<((ModMask, Keysym), Option<KeyAction>), String> {
     let combo = (
         parse_modifiers(&spec.modifiers)?,
-        Keysym::from_name(&spec.key).map_err(|error| error.to_string())?,
+        Keysym::from_name(&spec.key)
+            .map_err(|error| error.to_string())?
+            .for_binding(),
     );
     if spec.action.is_unbind() {
         return Ok((combo, None));
@@ -238,6 +240,37 @@ mod tests {
         );
         let merged = merge_keybinds(vec![default_key(XK_P)], &[spec], KeybindOrigin::User);
         assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn uppercase_ascii_keysym_names_use_the_same_binding_as_lowercase() {
+        // XKB resolves "A" to lowercase with case-insensitive lookup, but its
+        // Unicode and numeric spellings resolve to the uppercase keysym.
+        for name in ["A", "U0041", "0x41"] {
+            let override_spec = parse_keybind(&format!(
+                "[keybind]\nmodifiers = [\"alt\"]\nkey = \"{name}\"\naction = \"toggle_bar\""
+            ));
+            let merged = merge_keybinds(
+                vec![default_key(XK_A)],
+                &[override_spec],
+                KeybindOrigin::User,
+            );
+            assert_eq!(merged.len(), 1, "{name} must override the default");
+            assert_eq!(merged[0].keysym, XK_A);
+            assert!(matches!(
+                merged[0].action,
+                KeyAction::Named(NamedAction::ToggleBar)
+            ));
+
+            let unbind_spec = parse_keybind(&format!(
+                "[keybind]\nmodifiers = [\"alt\"]\nkey = \"{name}\"\naction = \"none\""
+            ));
+            assert!(
+                merge_keybinds(vec![default_key(XK_A)], &[unbind_spec], KeybindOrigin::User)
+                    .is_empty(),
+                "{name} must unbind the default"
+            );
+        }
     }
 
     #[test]

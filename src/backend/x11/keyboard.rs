@@ -109,7 +109,7 @@ pub fn grab_keys(
         }
 
         for key in &bindings {
-            if keysym == key.keysym {
+            if keysym.for_binding() == key.keysym {
                 grab_keys_for_key(conn, root, &modifiers, key, keycode);
             }
         }
