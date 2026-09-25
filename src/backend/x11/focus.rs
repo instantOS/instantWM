@@ -374,9 +374,13 @@ pub fn clear_urgency_hint(x11: &X11BackendRef, win: WindowId) {
 
 use crate::focus::{FocusBackendOps, FocusProjection};
 /// X11 implementation of `FocusBackendOps`.
+///
+/// `X11FocusBackend` needs an adapter because unlike the Wayland handle it
+/// must carry two pieces of state: the connection and the runtime config that
+/// the focus path needs to read.
 pub struct X11FocusBackend<'a> {
     pub x11: &'a X11BackendRef<'a>,
-    pub x11_runtime: &'a mut X11RuntimeConfig,
+    pub x11_runtime: &'a X11RuntimeConfig,
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
@@ -384,7 +388,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         if projection.previous != projection.current
             && let Some(previous) = projection.previous
         {
-            unfocus_win(ctx.state(), self.x11, &*self.x11_runtime, previous, false);
+            unfocus_win(ctx.state(), self.x11, self.x11_runtime, previous, false);
         }
         if let Some(current) = projection.current {
             if ctx.model().client(current).is_some_and(|c| c.is_urgent) {
@@ -393,7 +397,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
                 }
                 clear_urgency_hint(self.x11, current);
             }
-            set_focus(ctx.state_mut(), self.x11, &*self.x11_runtime, current);
+            set_focus(ctx.state_mut(), self.x11, self.x11_runtime, current);
         } else {
             let _ = self.x11.conn.set_input_focus(
                 InputFocus::POINTER_ROOT,
@@ -409,7 +413,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_desktop_binding_state_changed(&self, state: &CoreState) {
-        crate::backend::x11::keyboard::grab_keys(state, self.x11, &*self.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys(state, self.x11, self.x11_runtime);
     }
 }
 

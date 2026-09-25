@@ -57,6 +57,11 @@ fn directional_focus_prefers_the_aligned_client() {
     );
 }
 
+/// Records what a focus transition projected into the backend.
+///
+/// The trait is implemented over `&self`, so the counters need interior
+/// mutability to observe a call that already happened. The recording handle
+/// itself does not need to be held mutably by the caller.
 #[derive(Default)]
 struct RecordingBackend {
     focused: Cell<usize>,
@@ -81,7 +86,7 @@ impl FocusBackendOps for RecordingBackend {
 fn focus_from_current_selection(
     core: &mut CoreCtx<'_>,
     win: Option<WindowId>,
-    backend: &mut dyn FocusBackendOps,
+    backend: &dyn FocusBackendOps,
     refresh: BackendRefresh,
 ) -> anyhow::Result<Option<MonitorId>> {
     let previous = core.model().selected_win();
@@ -118,13 +123,13 @@ fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, Focus
 fn forced_refresh_reapplies_unchanged_backend_focus() {
     let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
 
-    focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::IfNeeded).unwrap();
     assert_eq!(backend.focused.get(), 0);
     assert_eq!(backend.binding_refreshes.get(), 0);
 
-    focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
     assert_eq!(backend.focused.get(), 1);
     assert_eq!(backend.binding_refreshes.get(), 1);
     assert_eq!(core.focus.take_pending_selection(), None);
@@ -137,13 +142,13 @@ fn projection_uses_focus_from_before_a_precommitted_model_change() {
     let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
     let actual_previous_focus = WindowId(99);
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
 
     apply_focus_transition(
         &mut core,
         None,
         Some(actual_previous_focus),
-        &mut backend,
+        &backend,
         BackendRefresh::Force,
     )
     .unwrap();
@@ -223,11 +228,11 @@ fn changing_focus_does_not_change_persistent_z_order() {
     monitor.selected = Some(upper);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
     focus_from_current_selection(
         &mut core,
         Some(WindowId(1)),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
@@ -284,19 +289,14 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
     monitor.record_focus(tag, previously_focused);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
-    focus_from_current_selection(
-        &mut core,
-        Some(popup),
-        &mut backend,
-        BackendRefresh::IfNeeded,
-    )
-    .unwrap();
+    let backend = RecordingBackend::default();
+    focus_from_current_selection(&mut core, Some(popup), &backend, BackendRefresh::IfNeeded)
+        .unwrap();
     assert_eq!(core.model().selected_win(), Some(popup));
 
     core.mutate_selection(|model| model.remove_client(popup))
         .unwrap();
-    focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
 
     assert_eq!(
         core.model().selected_win(),
@@ -340,21 +340,21 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
     monitor.selected = Some(previously_focused);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
 
     // Establish A as the maximized window visible immediately before the
     // short-lived terminal takes focus.
     focus_from_current_selection(
         &mut core,
         Some(previously_focused),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
     focus_from_current_selection(
         &mut core,
         Some(temporary_terminal),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
@@ -362,7 +362,7 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
 
     core.mutate_selection(|model| model.remove_client(temporary_terminal))
         .unwrap();
-    focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
 
     assert_eq!(
         core.model().selected_win(),
@@ -401,11 +401,11 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
     monitor.selected = Some(previously_focused);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
     focus_from_current_selection(
         &mut core,
         Some(previously_focused),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
@@ -413,7 +413,7 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
         focus_from_current_selection(
             &mut core,
             Some(terminal),
-            &mut backend,
+            &backend,
             BackendRefresh::IfNeeded,
         )
         .unwrap();
@@ -426,7 +426,7 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
     ] {
         core.mutate_selection(|model| model.remove_client(closed))
             .unwrap();
-        focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+        focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
         assert_eq!(
             core.model().selected_win(),
             Some(expected),

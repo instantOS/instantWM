@@ -3,7 +3,6 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::WindowOps;
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::core_state::CoreState;
 use crate::model::WmModel;
@@ -63,6 +62,11 @@ fn update_focus_state(model: &mut WmModel, sel_mon_id: MonitorId, target: Option
 /// Backend-specific focus operations trait.
 /// This allows the common focus logic to call backend-specific operations
 /// without duplicating the surrounding logic.
+///
+/// Implementations only ever need shared access to themselves, so
+/// `apply_focus_transition` takes `&dyn FocusBackendOps` rather than
+/// `&mut dyn`. That lets a backend implement this directly on its own handle
+/// instead of wrapping it in a throwaway adapter struct.
 pub(crate) trait FocusBackendOps {
     fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection);
     fn on_desktop_binding_state_changed(&self, state: &CoreState);
@@ -76,40 +80,6 @@ pub(crate) trait FocusBackendOps {
 pub(crate) struct FocusProjection {
     pub previous: Option<WindowId>,
     pub current: Option<WindowId>,
-}
-
-//BOZO: this field has just a single field, why deos it exist?
-struct WaylandFocusBackend<'a> {
-    wayland: &'a crate::backend::wayland::WaylandBackend,
-}
-
-impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
-    fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection) {
-        if projection.previous != projection.current
-            && let Some(previous) = projection.previous
-        {
-            self.wayland.set_window_activated(previous, false);
-        }
-        if let Some(current) = projection.current {
-            if ctx.model().client(current).is_some_and(|c| c.is_urgent)
-                && let Some(client) = ctx.model_mut().client_mut(current)
-            {
-                client.clear_urgency();
-            }
-            self.wayland.set_focus(current);
-        } else {
-            self.wayland.clear_keyboard_focus();
-        }
-    }
-
-    fn on_desktop_binding_state_changed(&self, _state: &CoreState) {}
-
-    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
-        match target {
-            Some(win) => !self.wayland.is_keyboard_focused_on(win),
-            None => false,
-        }
-    }
 }
 
 /// Whether [`apply_focus_transition`] must re-apply backend focus state even
@@ -135,7 +105,7 @@ pub(crate) fn apply_focus_transition(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     previous_focus: Option<WindowId>,
-    backend: &mut dyn FocusBackendOps,
+    backend: &dyn FocusBackendOps,
     refresh: BackendRefresh,
 ) -> Option<MonitorId> {
     let force_backend_refresh = matches!(refresh, BackendRefresh::Force);
@@ -223,30 +193,19 @@ fn focus_impl(
     use crate::contexts::WmCtx::*;
     let z_order_monitor = match ctx {
         X11(x11_ctx) => {
-            let mut backend = crate::backend::x11::focus::X11FocusBackend {
+            let backend = crate::backend::x11::focus::X11FocusBackend {
                 x11: &x11_ctx.x11,
-                x11_runtime: x11_ctx.x11_runtime,
+                x11_runtime: &*x11_ctx.x11_runtime,
             };
-            apply_focus_transition(
-                &mut x11_ctx.core,
-                win,
-                previous_focus,
-                &mut backend,
-                refresh,
-            )
+            apply_focus_transition(&mut x11_ctx.core, win, previous_focus, &backend, refresh)
         }
-        Wayland(wayland_ctx) => {
-            let mut backend = WaylandFocusBackend {
-                wayland: wayland_ctx.wayland,
-            };
-            apply_focus_transition(
-                &mut wayland_ctx.core,
-                win,
-                previous_focus,
-                &mut backend,
-                refresh,
-            )
-        }
+        Wayland(wayland_ctx) => apply_focus_transition(
+            &mut wayland_ctx.core,
+            win,
+            previous_focus,
+            wayland_ctx.wayland,
+            refresh,
+        ),
     };
     if let Some(monitor_id) = z_order_monitor {
         crate::layouts::sync_monitor_z_order(ctx, monitor_id);
