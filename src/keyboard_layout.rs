@@ -41,12 +41,16 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
 }
 
 /// Switch to a specific keyboard layout by index (0-based).
-pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
+pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) -> bool {
     if ctx.core().interaction().keyboard_layout.is_empty() {
-        return;
+        return false;
     }
-    if let Err(e) = apply_layout(ctx, index) {
-        eprintln!("instantwm: {e}");
+    match apply_layout(ctx, index) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("instantwm: {e}");
+            false
+        }
     }
 }
 
@@ -60,13 +64,7 @@ pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
         .interaction()
         .keyboard_layout
         .find_layout_index(name);
-    match index {
-        Some(idx) => {
-            set_keyboard_layout(ctx, idx);
-            true
-        }
-        None => false,
-    }
+    index.is_some_and(|idx| set_keyboard_layout(ctx, idx))
 }
 
 /// Cycle to the next or previous keyboard layout.
@@ -247,7 +245,18 @@ mod tests {
         wm.core.interaction.keyboard_layout.layouts =
             vec![KeyboardLayout::new("us"), KeyboardLayout::new("de")];
 
-        apply_layout(&mut wm.ctx(), 1).unwrap();
+        assert!(set_keyboard_layout_by_name(&mut wm.ctx(), "de"));
+        assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
+        assert!(!set_keyboard_layout_by_name(&mut wm.ctx(), "missing"));
+        wm.core
+            .interaction
+            .keyboard_layout
+            .layouts
+            .push(KeyboardLayout::new("invalid-layout-name"));
+        assert!(!set_keyboard_layout_by_name(
+            &mut wm.ctx(),
+            "invalid-layout-name"
+        ));
         assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
         let symbol = state
             .keyboard

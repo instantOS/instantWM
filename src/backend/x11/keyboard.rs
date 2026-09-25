@@ -12,10 +12,14 @@ pub(crate) fn apply_layout(
     options: Option<&str>,
     model: Option<&str>,
 ) -> Result<(), String> {
-    layout_command(layout, variant, options, model)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("failed to run setxkbmap: {e}"))
+    let status = layout_command(layout, variant, options, model)
+        .status()
+        .map_err(|e| format!("failed to run setxkbmap: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("setxkbmap exited with {status}"))
+    }
 }
 
 fn layout_command(

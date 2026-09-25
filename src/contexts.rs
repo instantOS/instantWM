@@ -373,11 +373,9 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(_) => {
                 crate::backend::x11::keyboard::apply_layout(layout, variant, options, model)
             }
-            WmCtx::Wayland(ctx) => {
-                ctx.wayland
-                    .set_keyboard_layout(layout, variant, options, model);
-                Ok(())
-            }
+            WmCtx::Wayland(ctx) => ctx
+                .wayland
+                .set_keyboard_layout(layout, variant, options, model),
         }
     }
 

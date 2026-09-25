@@ -191,14 +191,15 @@ impl WaylandBackend {
         variant: &str,
         options: Option<&str>,
         model: Option<&str>,
-    ) {
+    ) -> Result<(), String> {
         let layout = layout.to_owned();
         let variant = variant.to_owned();
         let options = options.map(str::to_owned);
         let model = model.map(str::to_owned);
-        let _ = self.with_state(move |state| {
-            state.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref());
-        });
+        self.with_state(move |state| {
+            state.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref())
+        })
+        .ok_or_else(|| "Wayland compositor state is unavailable".to_string())?
     }
 
     /// Return Wayland input devices. This is intentionally not part of the
