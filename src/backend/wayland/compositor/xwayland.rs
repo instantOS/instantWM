@@ -366,28 +366,12 @@ impl XwmHandler for WaylandState {
             geo.size.h = h as i32;
         }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            // The WM owns geometry throughout an interactive drag. Client
-            // configure requests received in the meantime must not replace
-            // the pointer's newer target.
-            if self.active_resize == Some(win) {
-                if let Some(target) = self
-                    .globals()
-                    .and_then(|state| state.model.client(win).map(|client| client.geo))
-                {
-                    let geometry = smithay::utils::Rectangle::new(
-                        (target.x, target.y).into(),
-                        (target.w.max(1), target.h.max(1)).into(),
-                    );
-                    let _ = window.configure(Some(geometry));
-                }
-                return;
-            }
-            self.push_command(super::super::commands::WmCommand::UpdateWindowSize {
+            self.push_command(super::super::commands::WmCommand::RequestX11WindowSize {
                 win,
                 w: geo.size.w,
                 h: geo.size.h,
-                acknowledged_configure: None,
             });
+            return;
         }
         let _ = window.configure(Some(geo));
     }

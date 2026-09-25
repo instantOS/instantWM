@@ -109,7 +109,7 @@ impl WaylandState {
         ))
     }
 
-    /// Sync client size from the compositor's committed window state.
+    /// Observe a native Wayland client's committed size.
     ///
     /// Wayland resizes are configure-driven, so the client may commit a
     /// different size than the compositor requested.  Keep WM geometry
@@ -119,17 +119,18 @@ impl WaylandState {
     /// Position is always owned by the WM layer and flows one-way into
     /// the compositor via `sync_space_from_globals`.  We never read it
     /// back from the Smithay space.
-    pub(crate) fn sync_client_size_from_window(&mut self, window: WindowId) {
+    pub(crate) fn observe_native_committed_size(&mut self, window: WindowId) {
         let Some(element) = self.find_window(window).cloned() else {
             return;
         };
+        debug_assert!(element.x11_surface().is_none());
         let committed = element.geometry();
         let new_w = committed.size.w.max(1);
         let new_h = committed.size.h.max(1);
         let acknowledged = self.native_acknowledged_configure(window, &element);
 
         self.push_command(
-            crate::backend::wayland::commands::WmCommand::UpdateWindowSize {
+            crate::backend::wayland::commands::WmCommand::ObserveCommittedSize {
                 win: window,
                 w: new_w,
                 h: new_h,
@@ -157,17 +158,9 @@ impl WaylandState {
         })
     }
 
-    /// Whether the window's protocol surface is an xdg-shell toplevel (as
-    /// opposed to an XWayland X11 surface).
-    fn is_xdg_toplevel(&self, window: WindowId) -> bool {
-        self.window_index
-            .get(&window)
-            .is_some_and(|element| element.toplevel().is_some())
-    }
-
     /// Decide whether committed client size may update logical floating
     /// geometry, and maintain configure retry state for rejected/stale sizes.
-    pub(crate) fn committed_size_may_update_model(
+    pub(crate) fn native_commit_may_update_model(
         &mut self,
         window: WindowId,
         new_w: i32,
@@ -210,9 +203,6 @@ impl WaylandState {
         // accepted size must become both model and protocol state, so schedule
         // one convergence configure when it differs. Stale responses returned
         // above and therefore can never initiate the A <-> B feedback loop.
-        // X11 surfaces carry position in their configures, so a client-committed
-        // size must never make a future same-size placement skip the X11
-        // configure that transports the new position.
         if decision.accept_client_size {
             let actual = (new_w.max(1), new_h.max(1));
             if self
@@ -222,7 +212,7 @@ impl WaylandState {
             {
                 self.last_configured_size.remove(&window);
                 self.request_space_sync();
-            } else if self.is_xdg_toplevel(window) {
+            } else {
                 self.last_configured_size.insert(window, actual);
             }
         }
@@ -251,6 +241,10 @@ impl WaylandState {
         {
             self.send_toplevel_configure(&element, None);
         }
+    }
+
+    pub(crate) fn is_interactive_resize(&self, window: WindowId) -> bool {
+        self.active_resize == Some(window)
     }
 
     /// Consume and return the pending warp target, if any.
@@ -350,7 +344,7 @@ mod tests {
         state.last_configured_size.insert(win, latest);
         state.pending_size_configure.insert(win, latest_serial);
 
-        assert!(!state.committed_size_may_update_model(
+        assert!(!state.native_commit_may_update_model(
             win,
             older.0,
             older.1,
@@ -361,7 +355,7 @@ mod tests {
         assert_eq!(state.last_configured_size.get(&win), Some(&latest));
         assert!(!state.take_space_sync_pending());
 
-        assert!(state.committed_size_may_update_model(
+        assert!(state.native_commit_may_update_model(
             win,
             latest.0,
             latest.1,
@@ -393,7 +387,7 @@ mod tests {
             older_request_acknowledged,
             crate::geometry::GeometryResponse::Stale
         );
-        assert!(!state.committed_size_may_update_model(
+        assert!(!state.native_commit_may_update_model(
             win,
             size.0,
             size.1,
@@ -417,7 +411,7 @@ mod tests {
         state.last_configured_size.insert(win, requested);
         state.pending_size_configure.insert(win, Serial::from(11));
 
-        assert!(state.committed_size_may_update_model(
+        assert!(state.native_commit_may_update_model(
             win,
             constrained.0,
             constrained.1,
@@ -443,7 +437,7 @@ mod tests {
         state.last_configured_size.insert(win, configured);
         state.pending_size_configure.insert(win, Serial::from(3));
 
-        assert!(!state.committed_size_may_update_model(
+        assert!(!state.native_commit_may_update_model(
             win,
             committed.0,
             committed.1,
@@ -469,7 +463,7 @@ mod tests {
         state.pending_size_configure.insert(win, Serial::from(6));
         state.pending_authoritative_sizes.insert(win, restore_size);
 
-        assert!(!state.committed_size_may_update_model(
+        assert!(!state.native_commit_may_update_model(
             win,
             fullscreen_buffer.0,
             fullscreen_buffer.1,

@@ -260,7 +260,7 @@ impl CompositorHandler for WaylandState {
                 // contain a buffer for an earlier interactive resize; only
                 // an explicit X11 configure request may change model size.
                 if window.x11_surface().is_none() {
-                    self.sync_client_size_from_window(id);
+                    self.observe_native_committed_size(id);
                 }
                 // xdg min/max sizes are double-buffered surface state and do
                 // not have a dedicated XdgShellHandler callback. Refresh the
