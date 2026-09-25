@@ -16,6 +16,7 @@ use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::{MonitorDirection, MonitorId, Rect, WindowId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+//BOZO: what does this mean? Is it messy? Should it be documented better?
 enum SendToMonitorStrategy {
     FloatingProportional,
     DirectTransfer,
@@ -68,7 +69,9 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     };
 
     match plan.strategy {
-        SendToMonitorStrategy::FloatingProportional => move_floating(ctx, plan.win, plan.target_id),
+        SendToMonitorStrategy::FloatingProportional => {
+            transfer_floating_to_monitor(ctx, plan.win, plan.target_id)
+        }
         SendToMonitorStrategy::DirectTransfer => {
             let _ = transfer_client(ctx, plan.win, plan.target_id, TransferFocus::Preserve);
         }
@@ -80,7 +83,11 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 // ---------------------------------------------------------------------------
 
 /// Move a floating client to `target_id`, preserving its relative position.
-fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
+fn transfer_floating_to_monitor(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    target_id: crate::types::MonitorId,
+) {
     // Snapshot source geometry before transfer_client() transfers ownership.
     let Some(view) = ctx.core().model().client_view(win) else {
         return;

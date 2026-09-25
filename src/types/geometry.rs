@@ -281,20 +281,28 @@ impl Rect {
 
     /// Calculate the intersection rectangle with another.
     /// Returns `None` if the rectangles don't intersect.
+    ///
+    /// Edge arithmetic runs in `i64`, so extreme rectangles (where `x + w`
+    /// approaches `i32::MAX`) clip to the visible part instead of overflowing.
+    /// The result is always inside both operands, so it fits back into `i32`.
     #[inline]
     pub fn intersection(&self, other: &Rect) -> Option<Rect> {
-        let x1 = self.x.max(other.x);
-        let y1 = self.y.max(other.y);
-        let x2 = self.right().min(other.right());
-        let y2 = self.bottom().min(other.bottom());
+        let x1 = i64::from(self.x).max(i64::from(other.x));
+        let y1 = i64::from(self.y).max(i64::from(other.y));
+        let self_right = i64::from(self.x) + i64::from(self.w);
+        let other_right = i64::from(other.x) + i64::from(other.w);
+        let self_bottom = i64::from(self.y) + i64::from(self.h);
+        let other_bottom = i64::from(other.y) + i64::from(other.h);
+        let x2 = self_right.min(other_right);
+        let y2 = self_bottom.min(other_bottom);
         if x2 <= x1 || y2 <= y1 {
             return None;
         }
         Some(Rect {
-            x: x1,
-            y: y1,
-            w: x2 - x1,
-            h: y2 - y1,
+            x: x1 as i32,
+            y: y1 as i32,
+            w: (x2 - x1) as i32,
+            h: (y2 - y1) as i32,
         })
     }
 

@@ -171,32 +171,29 @@ impl MonitorManager {
         &self,
         w: WindowId,
         clients: &HashMap<WindowId, Client>,
-    ) -> Option<MonitorId> {
-        for (i, m) in self.iter() {
-            if w == m.bar_win || w == m.bottom_bar_win {
-                return Some(i);
-            }
-        }
-
-        if let Some(c) = clients.get(&w) {
-            return self.contains(c.monitor_id).then_some(c.monitor_id);
-        }
-
-        None
+    ) -> Option<&Monitor> {
+        self.iter()
+            .map(|(_, monitor)| monitor)
+            .find(|monitor| w == monitor.bar_win || w == monitor.bottom_bar_win)
+            .or_else(|| {
+                clients
+                    .get(&w)
+                    .and_then(|client| self.get(client.monitor_id))
+            })
     }
 
     /// Find the monitor with the largest intersection with `rect`.
-    pub fn id_intersecting_rect(&self, rect: Rect) -> Option<MonitorId> {
+    pub fn monitor_intersecting_rect(&self, rect: Rect) -> Option<&Monitor> {
         let mut best = None;
         let mut max_area = 0;
-        for (id, monitor) in self.iter() {
+        for monitor in &self.monitors {
             let area = monitor
                 .monitor_rect
                 .intersection(&rect)
                 .map_or(0, |intersection| intersection.area());
             if area > max_area {
                 max_area = area;
-                best = Some(id);
+                best = Some(monitor);
             }
         }
         best
@@ -219,19 +216,16 @@ impl MonitorManager {
         self.id_at_position(target_position)
     }
 
-    pub fn find_id_by_rect(&self, rect: &Rect) -> Option<MonitorId> {
-        self.id_intersecting_rect(*rect)
-            .or_else(|| self.selected_monitor().map(Monitor::id))
+    /// Find the monitor with the largest intersection with `rect`, falling back
+    /// to the currently selected monitor.
+    pub fn monitor_by_rect(&self, rect: Rect) -> Option<&Monitor> {
+        self.monitor_intersecting_rect(rect)
+            .or_else(|| self.selected_monitor())
     }
 
-    pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
-        let rect = Rect {
-            x: ptr.x,
-            y: ptr.y,
-            w: 1,
-            h: 1,
-        };
-        self.find_id_by_rect(&rect)
+    /// Find the monitor containing `ptr`, falling back to the currently selected monitor.
+    pub fn monitor_at_pointer(&self, ptr: Point) -> Option<&Monitor> {
+        self.monitor_by_rect(Rect::new(ptr.x, ptr.y, 1, 1))
     }
 }
 
@@ -468,10 +462,13 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     }
     ctx.core_mut().queue_layout_for_all_monitors();
     ctx.core_mut().bar.mark_dirty();
-    if let Some(ptr) = ctx.pointer_backend().pointer_location()
-        && let Some(m) = ctx.core().model().monitors.find_monitor_at_pointer(ptr)
-    {
-        ctx.core_mut().select_monitor(m);
+    let target_monitor_id = ctx
+        .pointer_backend()
+        .pointer_location()
+        .and_then(|ptr| ctx.core().model().monitors.monitor_at_pointer(ptr))
+        .map(Monitor::id);
+    if let Some(id) = target_monitor_id {
+        ctx.core_mut().select_monitor(id);
     }
 }
 

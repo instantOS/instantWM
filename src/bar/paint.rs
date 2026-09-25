@@ -1,47 +1,33 @@
-use crate::types::{ColorSchemeRgba, Rect, Rgba, Size};
+use crate::types::{ColorScheme, Rect, Rgba, Size};
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct BarScheme {
-    pub foreground: Rgba,
-    pub background: Rgba,
-    pub detail: Rgba,
+/// Which color of the active [`ColorScheme`] a shape or text cell uses.
+///
+/// Replaces dwm's `invert` boolean, which meant the same thing in both
+/// positions but read as a bare `true`/`false` at every call site.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SchemeColor {
+    /// The scheme's foreground: the accent, or the inverted polarity.
+    Foreground,
+    /// The scheme's background: the resting fill.
+    Background,
 }
 
-impl BarScheme {
-    /// Rectangle fill color parity with X11 drw semantics:
-    /// invert=true => background, invert=false => foreground.
-    pub fn rect_color(&self, invert: bool) -> Rgba {
-        if invert {
-            self.background
-        } else {
-            self.foreground
-        }
-    }
-
-    /// Text colors parity with X11 drw semantics.
-    /// Returns (background, foreground).
-    pub fn text_colors(&self, invert: bool) -> (Rgba, Rgba) {
-        let bg = if invert {
-            self.foreground
-        } else {
-            self.background
-        };
-        let fg = if invert {
-            self.background
-        } else {
-            self.foreground
-        };
-        (bg, fg)
+/// The color a shape is filled with.
+pub fn fill_color(scheme: &ColorScheme, color: SchemeColor) -> Rgba {
+    match color {
+        SchemeColor::Foreground => scheme.foreground,
+        SchemeColor::Background => scheme.background,
     }
 }
 
-impl From<&ColorSchemeRgba> for BarScheme {
-    fn from(colors: &ColorSchemeRgba) -> Self {
-        Self {
-            foreground: colors.fg,
-            background: colors.bg,
-            detail: colors.detail,
-        }
+/// The `(background, foreground)` pair a text cell is painted with.
+///
+/// `SchemeColor::Background` inverts the scheme, matching X11 drw semantics.
+pub fn text_colors(scheme: &ColorScheme, color: SchemeColor) -> (Rgba, Rgba) {
+    let (background, foreground) = (scheme.background, scheme.foreground);
+    match color {
+        SchemeColor::Background => (foreground, background),
+        SchemeColor::Foreground => (background, foreground),
     }
 }
 
@@ -51,14 +37,12 @@ pub const HOVER_INDICATOR_HEIGHT: i32 = 3;
 /// Bottom accent strip in the hover colour, shared by status and systray.
 pub fn draw_hover_accent(painter: &mut dyn BarPainter, bounds: Rect, color: Rgba) {
     let height = HOVER_INDICATOR_HEIGHT.min(bounds.h).max(0);
-    painter.set_scheme(BarScheme {
-        foreground: color,
-        background: color,
-        detail: color,
-    });
+    // A uniform scheme keeps the accent on the cached allocation path: the X11
+    // backend resolves `SchemeColor` against whatever scheme is active.
+    painter.set_scheme(ColorScheme::new(color, color, color));
     painter.rect(
         Rect::new(bounds.x, bounds.bottom() - height, bounds.w, height),
-        false,
+        SchemeColor::Foreground,
     );
 }
 
@@ -66,11 +50,17 @@ pub trait BarPainter {
     /// Measure the horizontal advance of `text` using the fonts active for the
     /// monitor currently being painted.
     fn text_width(&mut self, text: &str) -> i32;
-    fn set_scheme(&mut self, scheme: BarScheme);
 
-    /// Fill `bounds` with the scheme foreground (`invert=false`) or background
-    /// (`invert=true`).
-    fn rect(&mut self, bounds: Rect, invert: bool);
+    /// Make `scheme` the active palette for subsequent [`BarPainter::rect`]
+    /// and [`BarPainter::text`] calls.
+    ///
+    /// Backends resolve scheme colors against this value rather than receiving
+    /// resolved colors per call, so repeated fills cost one lookup instead of
+    /// one native color allocation each.
+    fn set_scheme(&mut self, scheme: ColorScheme);
+
+    /// Fill `bounds` with the active scheme's `color`.
+    fn rect(&mut self, bounds: Rect, color: SchemeColor);
 
     /// Paint one complete bar cell and return `bounds.right()`.
     ///
@@ -84,11 +74,44 @@ pub trait BarPainter {
         bounds: Rect,
         lpad: i32,
         text: &str,
-        invert: bool,
+        color: SchemeColor,
         detail_height: i32,
     ) -> i32;
     /// Blit non-premultiplied RGBA8 pixels (row-major, 4 bytes per pixel)
     /// scaled to exactly fill `destination`. Used for compositor-rendered
     /// tray icons; alpha is blended over existing content.
     fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scheme() -> ColorScheme {
+        ColorScheme::new(
+            Rgba::new(1.0, 0.0, 0.0, 1.0),
+            Rgba::new(0.0, 0.0, 1.0, 1.0),
+            Rgba::ZERO,
+        )
+    }
+
+    /// `SchemeColor` replaces drw's `invert` bool, so it must resolve to
+    /// exactly the colors the old `false`/`true` arguments did: shapes take
+    /// the named color, and `Background` inverts the text pair.
+    #[test]
+    fn scheme_color_preserves_drw_invert_parity() {
+        let s = scheme();
+
+        assert_eq!(fill_color(&s, SchemeColor::Foreground), s.foreground);
+        assert_eq!(fill_color(&s, SchemeColor::Background), s.background);
+
+        assert_eq!(
+            text_colors(&s, SchemeColor::Foreground),
+            (s.background, s.foreground)
+        );
+        assert_eq!(
+            text_colors(&s, SchemeColor::Background),
+            (s.foreground, s.background)
+        );
+    }
 }

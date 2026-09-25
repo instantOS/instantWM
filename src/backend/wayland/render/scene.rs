@@ -17,9 +17,7 @@ use smithay::output::Output;
 use smithay::utils::{Physical, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
-use crate::backend::Backend;
 use crate::backend::wayland::compositor::WaylandState;
-use crate::contexts::CoreCtx;
 use crate::wm::Wm;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,29 +46,23 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
-    let mut core = CoreCtx::new(
-        &mut wm.core,
-        &mut wm.work,
-        &mut wm.running,
-        &mut wm.bar,
-        &mut wm.focus,
-    );
+    let mut ctx = wm.ctx();
+    let crate::contexts::WmCtx::Wayland(wayland) = &mut ctx else {
+        return Vec::new();
+    };
 
     let mut buffers = if show_top {
-        let Backend::Wayland(data) = &mut wm.backend else {
-            return Vec::new();
-        };
-
-        data.bar_renderer
+        wayland
+            .bar_renderer
             .set_render_ping(state.runtime.render_ping.clone());
-        crate::backend::wayland::bar::render_bar_buffers(&mut core, &mut data.bar_renderer)
+        crate::backend::wayland::bar::render_bar_buffers(&mut wayland.core, wayland.bar_renderer)
     } else {
         Vec::new()
     };
 
     if show_bottom {
         buffers.extend(crate::backend::wayland::bar::build_bottom_bar_buffers(
-            &mut core,
+            &mut wayland.core,
         ));
     }
 

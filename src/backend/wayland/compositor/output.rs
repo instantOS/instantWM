@@ -15,7 +15,10 @@ use crate::backend::output::{
     OutputTransaction, OutputTransactionError, OutputTransactionKind, OutputTransform, RequestId,
     plan_automatic_output_positions, position_after,
 };
-use crate::backend::wayland::output::{from_smithay_transform, to_smithay_transform};
+use crate::backend::wayland::output::{
+    MIN_OUTPUT_DIM, clamp_output_size, from_smithay_transform, to_smithay_mode,
+    to_smithay_transform,
+};
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
 
@@ -24,17 +27,11 @@ use super::state::WaylandState;
 
 struct OutputGlobal(Mutex<Option<GlobalId>>);
 
-fn smithay_mode(mode: TransactionOutputMode) -> OutputMode {
-    OutputMode {
-        size: (mode.width, mode.height).into(),
-        refresh: mode.refresh_millihertz,
-    }
-}
-
+//BOZO: should this be a method?
 fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
     let mode = configuration.mode.unwrap_or(TransactionOutputMode {
-        width: WaylandState::MIN_WL_DIM,
-        height: WaylandState::MIN_WL_DIM,
+        width: MIN_OUTPUT_DIM,
+        height: MIN_OUTPUT_DIM,
         refresh_millihertz: 60_000,
     });
     let (width, height) = if matches!(
@@ -59,6 +56,7 @@ fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
     )
 }
 
+//BOZO: is this lacking docs? What is a head?
 fn head_rect(head: &OutputHeadConfiguration) -> Rect {
     let size = logical_output_size(head);
     Rect::new(head.position.x, head.position.y, size.w, size.h)
@@ -131,7 +129,7 @@ impl WaylandState {
                 continue;
             };
             let config = &head.configuration;
-            let available_modes: Vec<_> = head.modes.iter().copied().map(smithay_mode).collect();
+            let available_modes: Vec<_> = head.modes.iter().copied().map(to_smithay_mode).collect();
             for mode in output.modes() {
                 if !available_modes.contains(&mode) {
                     output.delete_mode(mode);
@@ -155,7 +153,7 @@ impl WaylandState {
             );
             let location = (config.position.x, config.position.y).into();
             output.change_current_state(
-                config.mode.map(smithay_mode),
+                config.mode.map(to_smithay_mode),
                 Some(to_smithay_transform(config.transform)),
                 Some(Scale::Fractional(config.scale)),
                 Some(location),
@@ -323,11 +321,7 @@ impl WaylandState {
                 OutputHeadConfiguration {
                     id: OutputId(output.name()),
                     enabled: output_state.is_none_or(OutputManagementOutputState::enabled),
-                    mode: output.current_mode().map(|mode| TransactionOutputMode {
-                        width: mode.size.w,
-                        height: mode.size.h,
-                        refresh_millihertz: mode.refresh,
-                    }),
+                    mode: output.current_mode().map(Into::into),
                     position: Point::new(output.current_location().x, output.current_location().y),
                     transform: from_smithay_transform(output.current_transform()),
                     scale: output.current_scale().fractional_scale(),
@@ -428,7 +422,7 @@ impl WaylandState {
         size: Size,
         refresh_millihertz: Option<u32>,
     ) -> Output {
-        let safe_size = Size::new(size.w.max(Self::MIN_WL_DIM), size.h.max(Self::MIN_WL_DIM));
+        let safe_size = clamp_output_size(size);
         let mode = OutputMode {
             size: (safe_size.w, safe_size.h).into(),
             refresh: refresh_millihertz

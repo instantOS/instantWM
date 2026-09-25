@@ -29,6 +29,7 @@ use crate::types::{MonitorPosition, RelativePosition};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MirrorTarget {
     /// The output whose presentation state this mirror follows.
+    //BOZO: is String the right type for this? Should something else be used?
     pub source: String,
     /// Letterbox (`Contain`) or crop (`Cover`) when the mirror's aspect
     /// ratio differs from its source's; identical-aspect mirrors ignore it.

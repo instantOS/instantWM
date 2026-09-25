@@ -1,3 +1,5 @@
+pub mod canvas;
+pub mod image;
 pub(crate) mod model;
 pub mod paint;
 pub(crate) mod policy;
@@ -169,22 +171,42 @@ pub fn clear_hover(ctx: &mut WmCtx) {
     }
 }
 
-pub fn resolve_bar_position_at_root(
-    core: &mut CoreCtx,
-    root: Point,
-) -> Option<(MonitorId, BarPosition)> {
-    let rect = crate::mouse::pointer::point_rect(root);
-    let monitor_id = core.model().monitors.id_intersecting_rect(rect)?;
+/// Classify a root-space pointer position against the monitor bar beneath it.
+#[derive(Debug, Clone, Copy)]
+pub enum RootBarTarget<'core> {
+    /// The point belongs to this monitor but is outside its visible bar.
+    OutsideBar(&'core Monitor),
+    /// The point is on this monitor's visible bar at this logical position.
+    OnBar {
+        monitor: &'core Monitor,
+        position: BarPosition,
+    },
+}
 
-    let mon = core.model().monitor(monitor_id)?;
-    if !mon.bar_contains_y(&core.model().clients, root.y) {
-        return None;
+impl<'core> RootBarTarget<'core> {
+    pub fn monitor(&self) -> &'core Monitor {
+        match self {
+            Self::OutsideBar(monitor) | Self::OnBar { monitor, .. } => monitor,
+        }
     }
+}
 
-    Some((
-        monitor_id,
-        model::bar_position_at_x(mon, core, mon.local_work_point(root).x),
-    ))
+/// Resolve the monitor under `root` and classify whether the point is on its
+/// visible bar. `None` means no connected monitor contains the point.
+pub fn root_bar_target_at<'core>(
+    core: &'core CoreCtx<'_>,
+    root: Point,
+) -> Option<RootBarTarget<'core>> {
+    let rect = crate::mouse::pointer::point_rect(root);
+    let monitor = core.model().monitors.monitor_intersecting_rect(rect)?;
+    if monitor.bar_contains_y(&core.model().clients, root.y) {
+        Some(RootBarTarget::OnBar {
+            monitor,
+            position: model::bar_position_at_x(monitor, core, monitor.local_work_point(root).x),
+        })
+    } else {
+        Some(RootBarTarget::OutsideBar(monitor))
+    }
 }
 
 pub fn update_hover(
@@ -198,13 +220,23 @@ pub fn update_hover(
             .core()
             .model()
             .monitors
-            .id_intersecting_rect(crate::mouse::pointer::point_rect(root))
+            .monitor_intersecting_rect(crate::mouse::pointer::point_rect(root))
+            .map(Monitor::id)
     {
         crate::focus::select_monitor(ctx, monitor_id);
     }
-    let Some((monitor_id, pos)) = resolve_bar_position_at_root(ctx.core_mut(), root) else {
+    let Some(RootBarTarget::OnBar {
+        monitor,
+        position: pos,
+    }) = root_bar_target_at(ctx.core(), root)
+    else {
         clear_hover(ctx);
         return None;
+    };
+    let (monitor_id, status_position) = {
+        let monitor_id = monitor.id();
+        let status_position = Point::new(root.x - monitor.work_rect().x, root.y - monitor.bar_y());
+        (monitor_id, status_position)
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
@@ -213,13 +245,9 @@ pub fn update_hover(
     }
 
     let gesture = if pos == BarPosition::StatusText && ctx.core().bar.runtime.status_click_events {
-        let bar_position = {
-            let monitor = ctx.core().model().monitor(monitor_id)?;
-            Point::new(root.x - monitor.work_rect().x, root.y - monitor.bar_y())
-        };
         ctx.core()
             .bar
-            .status_hover_gesture(monitor_id, bar_position)
+            .status_hover_gesture(monitor_id, status_position)
     } else {
         pos.to_gesture()
     };
@@ -230,7 +258,12 @@ pub fn update_hover(
     Some(pos)
 }
 
-pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
+pub fn handle_status_text_click(
+    ctx: &mut WmCtx,
+    root: Point,
+    button_code: u8,
+    clean_state: ModMask,
+) {
     if ctx.core().model().is_overview_active() {
         ctx.reset_mode();
         return;
@@ -291,16 +324,16 @@ pub(crate) fn render_hit_caches_for_test(core: &mut CoreCtx) {
             text.chars().count() as i32 * 8
         }
 
-        fn set_scheme(&mut self, _scheme: paint::BarScheme) {}
+        fn set_scheme(&mut self, _scheme: crate::types::ColorScheme) {}
 
-        fn rect(&mut self, _bounds: Rect, _invert: bool) {}
+        fn rect(&mut self, _bounds: Rect, _color: paint::SchemeColor) {}
 
         fn text(
             &mut self,
             bounds: Rect,
             _lpad: i32,
             _text: &str,
-            _invert: bool,
+            _color: paint::SchemeColor,
             _detail_height: i32,
         ) -> i32 {
             bounds.right()

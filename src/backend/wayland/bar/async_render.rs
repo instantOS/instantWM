@@ -218,22 +218,12 @@ mod tests {
         wm
     }
 
-    fn core(wm: &mut crate::wm::Wm) -> CoreCtx<'_> {
-        CoreCtx::new(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.running,
-            &mut wm.bar,
-            &mut wm.focus,
-        )
-    }
-
     /// Returns two distinct scenes.
     fn two_scenes() -> (Vec<MonitorBarSnapshot>, Vec<MonitorBarSnapshot>) {
         let mut wm = test_wm();
-        let first = snapshots(&core(&mut wm));
+        let first = snapshots(&wm.core_ctx());
         wm.bar.set_status_text("changed");
-        let second = snapshots(&core(&mut wm));
+        let second = snapshots(&wm.core_ctx());
         assert!(first != second);
         (first, second)
     }

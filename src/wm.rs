@@ -64,15 +64,36 @@ impl Wm {
         self.ctx().reinit_bar_resources();
     }
 
+    /// Borrow the backend-neutral core state as a [`CoreCtx`].
+    ///
+    /// Use this when an operation needs only core state; [`Wm::ctx`] is the
+    /// entry point whenever the backend is involved too.
+    pub fn core_ctx(&mut self) -> CoreCtx<'_> {
+        self.split_core_and_backend().0
+    }
+
+    /// Split `Wm` into its two disjoint halves: the backend-neutral core
+    /// state and the owned backend.
+    ///
+    /// This is the one place that names the fields making up a [`CoreCtx`];
+    /// both [`Wm::core_ctx`] and [`Wm::ctx`] are built on it, so adding a
+    /// field touches a single spot.
+    fn split_core_and_backend(&mut self) -> (CoreCtx<'_>, &mut Backend) {
+        let Self {
+            core,
+            work,
+            running,
+            bar,
+            focus,
+            backend,
+            ..
+        } = self;
+        (CoreCtx::new(core, work, running, bar, focus), backend)
+    }
+
     pub fn ctx(&mut self) -> WmCtx<'_> {
-        let core = CoreCtx::new(
-            &mut self.core,
-            &mut self.work,
-            &mut self.running,
-            &mut self.bar,
-            &mut self.focus,
-        );
-        match &mut self.backend {
+        let (core, backend) = self.split_core_and_backend();
+        match backend {
             Backend::X11(data) => WmCtx::X11(WmCtxX11 {
                 core,
                 x11: crate::backend::x11::X11BackendRef::new(&data.conn, data.screen_num),
@@ -82,6 +103,7 @@ impl Wm {
             Backend::Wayland(data) => WmCtx::Wayland(WmCtxWayland {
                 core,
                 wayland: &data.backend,
+                bar_renderer: &mut data.bar_renderer,
             }),
         }
     }

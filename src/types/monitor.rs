@@ -554,6 +554,57 @@ impl Monitor {
         ordered
     }
 
+    /// The windows keyboard focus cycling walks, in cycling order.
+    ///
+    /// This is [`Self::bar_client_order`] minus every entry that cannot take
+    /// focus. The filter is [`Client::is_visible`] rather than
+    /// [`Client::shows_in_bar`], so a minimized client keeps its bar title but
+    /// drops out of the cycle.
+    ///
+    /// Maximized presentation overrides the source order: tiled clients cycle
+    /// in [`Self::tiled_tree_order`] so the cycle follows the visible tab strip,
+    /// and floating overlays are excluded. If that yields nothing — every tiled
+    /// client is minimized — the bar order is used instead, which keeps
+    /// floating clients cyclable on a monitor with no focusable tile. In
+    /// maximized presentation the result is therefore a prefix of
+    /// [`Self::bar_client_order`].
+    pub fn focus_cycle_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
+        let selected = self.visible_tags();
+
+        if self.is_maximized_layout() {
+            // The persistent tree is a stable, user-controlled order. Unlike
+            // z-order it does not change merely because a window was focused,
+            // and minimized entries keep their tree position so their bar title
+            // stays put. They cannot receive focus until explicitly restored,
+            // so the cycle skips them.
+            let tiled_cycle: Vec<WindowId> = self
+                .tiled_tree_order(clients)
+                .into_iter()
+                .filter(|win| {
+                    clients
+                        .get(win)
+                        .is_some_and(|client| client.is_visible(selected))
+                })
+                .collect();
+            if !tiled_cycle.is_empty() {
+                return tiled_cycle;
+            }
+        }
+
+        // Outside maximized presentation — and as the fallback above — the
+        // cycle follows the exact title order exposed by the bar.
+        // Hidden/minimized entries retain a title but cannot receive focus
+        // until explicitly restored, so skip them.
+        self.bar_client_order(clients)
+            .into_iter()
+            .filter(|win| {
+                clients
+                    .get(win)
+                    .is_some_and(|client| client.is_visible(selected))
+            })
+            .collect()
+    }
+
     /// Move a client within this monitor's focus list (stack order).
     ///
     /// Returns true if the position changed, false otherwise (e.g., if the client

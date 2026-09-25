@@ -1,6 +1,6 @@
 use crate::backend::x11::draw::DrawContext;
-use crate::bar::paint::{BarPainter, BarScheme};
-use crate::types::{Rect, Size};
+use crate::bar::paint::{BarPainter, SchemeColor};
+use crate::types::{ColorScheme, Rect, Size};
 
 pub struct X11BarPainter<'a> {
     drw: &'a mut DrawContext,
@@ -21,15 +21,16 @@ impl BarPainter for X11BarPainter<'_> {
         self.drw.fontset_getwidth(text) as i32
     }
 
-    fn set_scheme(&mut self, scheme: BarScheme) {
+    fn set_scheme(&mut self, scheme: ColorScheme) {
         self.drw.set_bar_scheme(&scheme);
     }
 
-    fn rect(&mut self, bounds: Rect, invert: bool) {
+    fn rect(&mut self, bounds: Rect, color: SchemeColor) {
         if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        self.drw.rect(bounds, true, invert);
+        self.drw
+            .rect(bounds, true, matches!(color, SchemeColor::Background));
     }
 
     fn text(
@@ -37,7 +38,7 @@ impl BarPainter for X11BarPainter<'_> {
         bounds: Rect,
         lpad: i32,
         text: &str,
-        invert: bool,
+        color: SchemeColor,
         detail_height: i32,
     ) -> i32 {
         if bounds.w <= 0 || bounds.h <= 0 {
@@ -47,8 +48,13 @@ impl BarPainter for X11BarPainter<'_> {
         let fitted = crate::bar::text::fit_to_width(text, bounds.w - lpad, |candidate| {
             self.drw.fontset_getwidth(candidate) as i32
         });
-        self.drw
-            .text(bounds, lpad as u32, fitted.as_ref(), invert, detail_height);
+        self.drw.text(
+            bounds,
+            lpad as u32,
+            fitted.as_ref(),
+            matches!(color, SchemeColor::Background),
+            detail_height,
+        );
         bounds.right()
     }
 

@@ -366,12 +366,12 @@ impl XwmHandler for WaylandState {
             geo.size.h = h as i32;
         }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.push_command(super::super::commands::WmCommand::UpdateWindowSize {
+            self.push_command(super::super::commands::WmCommand::RequestX11WindowSize {
                 win,
                 w: geo.size.w,
                 h: geo.size.h,
-                acknowledged_configure: None,
             });
+            return;
         }
         let _ = window.configure(Some(geo));
     }
@@ -383,51 +383,27 @@ impl XwmHandler for WaylandState {
         geometry: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
         _above: Option<smithay::xwayland::xwm::X11Window>,
     ) {
-        let window_id = window.window_id();
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
-            let element = self
-                .space
-                .elements()
-                .find(|w| {
-                    w.x11_surface()
-                        .is_some_and(|x11| x11.window_id() == window_id)
-                })
-                .cloned();
-            if let Some(element) = element {
-                // A configure can cross outputs: invalidate both the previous
-                // and new geometry without dirtying unrelated outputs.
-                self.request_visible_window_render(&element);
-                self.space.map_element(element.clone(), geometry.loc, false);
-                self.space.raise_element(&element, false);
-                self.request_visible_window_render(&element);
-            }
+        // A managed window's ConfigureNotify can answer an older WM request.
+        // Its placement and logical size remain owned by the WM model.
+        if self.window_id_for_x11_surface(&window).is_some() {
             return;
-        };
-
-        self.push_command(super::super::commands::WmCommand::UpdateWindowSize {
-            win,
-            w: geometry.size.w,
-            h: geometry.size.h,
-            acknowledged_configure: None,
-        });
-
-        // This is an acknowledgement/notification from XWayland about the
-        // geometry it is already using. Feeding it back into `resize_window`
-        // would send another X11 configure and create a resize loop.
-        let rect = crate::types::Rect::new(
-            geometry.loc.x,
-            geometry.loc.y,
-            geometry.size.w,
-            geometry.size.h,
-        );
-        let mode = self.default_window_move_mode();
-        let element = self.find_window(win).cloned();
-        if let Some(element) = element.as_ref() {
-            self.request_visible_window_render(element);
         }
-        self.set_window_target_rect(win, rect, mode);
-        if let Some(element) = element.as_ref() {
-            self.request_visible_window_render(element);
+
+        let window_id = window.window_id();
+        let element = self
+            .space
+            .elements()
+            .find(|w| {
+                w.x11_surface()
+                    .is_some_and(|x11| x11.window_id() == window_id)
+            })
+            .cloned();
+        if let Some(element) = element {
+            // An unmanaged window owns its geometry and can cross outputs.
+            self.request_visible_window_render(&element);
+            self.space.map_element(element.clone(), geometry.loc, false);
+            self.space.raise_element(&element, false);
+            self.request_visible_window_render(&element);
         }
     }
 

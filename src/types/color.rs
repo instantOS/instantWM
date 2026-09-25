@@ -89,6 +89,57 @@ impl From<Rgba> for u32 {
     }
 }
 
+// =============================================================================
+// RGBA8 color value
+// =============================================================================
+
+/// An RGBA color with one byte per channel.
+///
+/// Unlike [`Rgba`], which models colors as they arrive from config and IPC,
+/// this is the color form renderers actually produce: glyph coverage, icon
+/// bitmaps, and compositor surfaces are all 8-bit. The components are always
+/// ordered `[r, g, b, a]` and are never premultiplied — the byte order a
+/// target surface stores them in is that surface's business, not the color's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rgba8([u8; 4]);
+
+impl Rgba8 {
+    pub const ZERO: Self = Self([0, 0, 0, 0]);
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self([r, g, b, a])
+    }
+
+    /// The components in `[r, g, b, a]` order.
+    pub const fn components(self) -> [u8; 4] {
+        self.0
+    }
+
+    /// The components in `[b, g, r, a]` order, matching the in-memory layout of
+    /// an ARGB8888 surface on a little-endian host.
+    pub const fn little_endian_argb(self) -> [u8; 4] {
+        let [r, g, b, a] = self.0;
+        [b, g, r, a]
+    }
+
+    /// Whether the color is fully transparent and therefore a no-op to blend.
+    pub const fn is_transparent(self) -> bool {
+        self.0[3] == 0
+    }
+}
+
+impl From<Rgba> for Rgba8 {
+    /// Quantize to bytes, clamping components outside the normalized range.
+    fn from(rgba: Rgba) -> Self {
+        Self(rgba.to_rgba8())
+    }
+}
+
+impl From<[u8; 4]> for Rgba8 {
+    fn from(components: [u8; 4]) -> Self {
+        Self(components)
+    }
+}
+
 impl std::str::FromStr for Rgba {
     type Err = String;
 
@@ -180,16 +231,16 @@ pub enum WindowFocus {
 /// Colors are parsed once at config load time via serde, not at runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ColorSchemeRgba {
+pub struct ColorScheme {
     /// Foreground color.
-    pub fg: Rgba,
+    pub foreground: Rgba,
     /// Background color.
-    pub bg: Rgba,
+    pub background: Rgba,
     /// Detail color.
     pub detail: Rgba,
 }
 
-impl Default for ColorSchemeRgba {
+impl Default for ColorScheme {
     fn default() -> Self {
         Self::empty()
     }
@@ -199,16 +250,16 @@ impl Default for ColorSchemeRgba {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct TagColorSet {
-    pub inactive: ColorSchemeRgba,
-    pub filled: ColorSchemeRgba,
-    pub focus: ColorSchemeRgba,
-    pub nofocus: ColorSchemeRgba,
-    pub empty: ColorSchemeRgba,
-    pub urgent: ColorSchemeRgba,
+    pub inactive: ColorScheme,
+    pub filled: ColorScheme,
+    pub focus: ColorScheme,
+    pub nofocus: ColorScheme,
+    pub empty: ColorScheme,
+    pub urgent: ColorScheme,
 }
 
 impl TagColorSet {
-    pub fn colors_for(&self, role: SchemeTag) -> &ColorSchemeRgba {
+    pub fn colors_for(&self, role: SchemeTag) -> &ColorScheme {
         match role {
             SchemeTag::Inactive => &self.inactive,
             SchemeTag::Filled => &self.filled,
@@ -224,19 +275,19 @@ impl TagColorSet {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct WindowColorSet {
-    pub focus: ColorSchemeRgba,
-    pub normal: ColorSchemeRgba,
-    pub minimized: ColorSchemeRgba,
-    pub sticky: ColorSchemeRgba,
-    pub sticky_focus: ColorSchemeRgba,
-    pub edge_scratchpad: ColorSchemeRgba,
-    pub edge_scratchpad_focus: ColorSchemeRgba,
-    pub urgent: ColorSchemeRgba,
+    pub focus: ColorScheme,
+    pub normal: ColorScheme,
+    pub minimized: ColorScheme,
+    pub sticky: ColorScheme,
+    pub sticky_focus: ColorScheme,
+    pub edge_scratchpad: ColorScheme,
+    pub edge_scratchpad_focus: ColorScheme,
+    pub urgent: ColorScheme,
 }
 
 impl WindowColorSet {
     /// Resolve color scheme by orthogonal role and focus state.
-    pub fn role_colors(&self, role: WindowRole, focus: WindowFocus) -> &ColorSchemeRgba {
+    pub fn role_colors(&self, role: WindowRole, focus: WindowFocus) -> &ColorScheme {
         match (role, focus) {
             (WindowRole::Normal, WindowFocus::Normal) => &self.normal,
             (WindowRole::Normal, WindowFocus::Focused) => &self.focus,
@@ -254,15 +305,19 @@ impl WindowColorSet {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct CloseButtonColorSet {
-    pub normal: ColorSchemeRgba,
-    pub locked: ColorSchemeRgba,
-    pub fullscreen: ColorSchemeRgba,
+    pub normal: ColorScheme,
+    pub locked: ColorScheme,
+    pub fullscreen: ColorScheme,
 }
 
-impl ColorSchemeRgba {
+impl ColorScheme {
     /// Create a new color scheme from RGBA values.
-    pub fn new(fg: Rgba, bg: Rgba, detail: Rgba) -> Self {
-        Self { fg, bg, detail }
+    pub fn new(foreground: Rgba, background: Rgba, detail: Rgba) -> Self {
+        Self {
+            foreground,
+            background,
+            detail,
+        }
     }
 
     /// Construct an empty (all black) scheme.
@@ -271,7 +326,7 @@ impl ColorSchemeRgba {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.fg == Rgba::ZERO && self.bg == Rgba::ZERO && self.detail == Rgba::ZERO
+        self.foreground == Rgba::ZERO && self.background == Rgba::ZERO && self.detail == Rgba::ZERO
     }
 }
 
@@ -287,7 +342,7 @@ pub struct TagColorConfigs {
 }
 
 impl TagColorConfigs {
-    pub fn colors_for(&self, hover: SchemeHover, role: SchemeTag) -> &ColorSchemeRgba {
+    pub fn colors_for(&self, hover: SchemeHover, role: SchemeTag) -> &ColorScheme {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
@@ -314,7 +369,7 @@ impl WindowColorConfigs {
         hover: SchemeHover,
         role: WindowRole,
         focus: WindowFocus,
-    ) -> &ColorSchemeRgba {
+    ) -> &ColorScheme {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
@@ -323,7 +378,7 @@ impl WindowColorConfigs {
     }
 
     /// Resolve alert color scheme for urgent windows.
-    pub fn urgent_colors(&self, hover: SchemeHover) -> &ColorSchemeRgba {
+    pub fn urgent_colors(&self, hover: SchemeHover) -> &ColorScheme {
         match hover {
             SchemeHover::NoHover => &self.no_hover.urgent,
             SchemeHover::Hover => &self.hover.urgent,
@@ -351,7 +406,7 @@ impl CloseButtonColorConfigs {
         hover: SchemeHover,
         is_locked: bool,
         is_fullscreen: bool,
-    ) -> (&ColorSchemeRgba, Option<&ColorSchemeRgba>) {
+    ) -> (&ColorScheme, Option<&ColorScheme>) {
         let set = match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
@@ -392,9 +447,9 @@ pub struct BorderColorConfig {
 #[serde(default)]
 pub struct StatusColorConfig {
     /// Status bar foreground.
-    pub fg: Rgba,
+    pub foreground: Rgba,
     /// Status bar background.
-    pub bg: Rgba,
+    pub background: Rgba,
     /// Status bar detail/accent.
     pub detail: Rgba,
     /// Separator between i3bar status blocks.
@@ -404,8 +459,8 @@ pub struct StatusColorConfig {
 }
 
 impl StatusColorConfig {
-    pub fn as_scheme(&self) -> ColorSchemeRgba {
-        ColorSchemeRgba::new(self.fg, self.bg, self.detail)
+    pub fn as_scheme(&self) -> ColorScheme {
+        ColorScheme::new(self.foreground, self.background, self.detail)
     }
 }
 
@@ -431,6 +486,22 @@ mod tests {
         assert_eq!(hex, "#FF000080");
         let parsed: Rgba = hex.parse().unwrap();
         assert_eq!(parsed.to_string(), hex);
+    }
+
+    #[test]
+    fn rgba8_roundtrips_and_orders_argb_by_hand() {
+        let bytes: Rgba8 = [0, 128, 255, 64].into();
+        assert_eq!(bytes.components(), [0, 128, 255, 64]);
+        // The ARGB8888 word is stored little-endian, so B leads.
+        assert_eq!(bytes.little_endian_argb(), [255, 128, 0, 64]);
+        assert!(!bytes.is_transparent());
+        assert!(Rgba8::new(1, 2, 3, 0).is_transparent());
+        assert!(Rgba8::ZERO.is_transparent());
+
+        // `Rgba` clamps and rounds on the way down, and `to_rgba8` is the
+        // exact inverse of the `From` impl.
+        let floats = Rgba::new(0.0, 0.5, 1.0, 0.25);
+        assert_eq!(Rgba8::from(floats).components(), floats.to_rgba8());
     }
 
     #[test]

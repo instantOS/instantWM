@@ -6,7 +6,7 @@
 
 use crate::contexts::WmCtx;
 use crate::core_state::{CapturedInteraction, DragCancelReason, WindowDragState};
-use crate::types::{MouseButton, Point, SidebarTarget};
+use crate::types::{ModMask, MouseButton, Point, SidebarTarget};
 
 pub use crate::types::InteractionSource;
 
@@ -22,14 +22,14 @@ pub struct InteractionEvent {
     pub source: InteractionSource,
     pub phase: InteractionPhase,
     pub root: Point,
-    pub modifiers: u32,
+    pub modifiers: ModMask,
     /// Sidebar offer to restore after release, already resolved by the input
     /// adapter after accounting for higher-priority compositor UI.
     pub sidebar_hover: Option<SidebarTarget>,
 }
 
 impl InteractionEvent {
-    pub fn pointer_update(root: Point, modifiers: u32) -> Self {
+    pub fn pointer_update(root: Point, modifiers: ModMask) -> Self {
         Self {
             source: InteractionSource::Pointer,
             phase: InteractionPhase::Update,
@@ -42,7 +42,7 @@ impl InteractionEvent {
     pub fn pointer_end(
         root: Point,
         button: MouseButton,
-        modifiers: u32,
+        modifiers: ModMask,
         sidebar_hover: Option<SidebarTarget>,
         time_msec: u32,
     ) -> Self {
@@ -60,7 +60,7 @@ impl InteractionEvent {
             source: InteractionSource::Pointer,
             phase: InteractionPhase::Cancel { reason },
             root: Default::default(),
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             sidebar_hover: None,
         }
     }
@@ -118,12 +118,16 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
             _ => None,
         })?;
 
-    let Some(client) = ctx.core().model().client(state.win()) else {
-        return Some(DragCancelReason::WindowDestroyed);
+    let model = ctx.core().model();
+    let Some(view) = model.client_view(state.win()) else {
+        return Some(if model.client(state.win()).is_some() {
+            DragCancelReason::WindowUnavailable
+        } else {
+            DragCancelReason::WindowDestroyed
+        });
     };
-    let Some(monitor) = ctx.core().model().monitor(client.monitor_id) else {
-        return Some(DragCancelReason::WindowUnavailable);
-    };
+    let client = view.client;
+    let monitor = view.monitor;
 
     // A bar-title gesture may intentionally start on an explicitly hidden
     // client. That exception covers only the hidden bit: changing workspace
@@ -289,7 +293,7 @@ mod tests {
             source,
             phase: InteractionPhase::Update,
             root,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             sidebar_hover: None,
         }
     }
@@ -333,7 +337,7 @@ mod tests {
                             source,
                             phase,
                             root: Point::new(350, 275),
-                            modifiers: 0,
+                            modifiers: ModMask::NONE,
                             sidebar_hover: None,
                         }
                     ),
@@ -453,11 +457,14 @@ mod tests {
                 crate::actions::NamedAction::CancelOverview,
             )),
         };
+        let target = crate::mouse::pointer::bottom_bar_target_at(&wm.core.model, root)
+            .expect("fixture point must be on the bottom bar");
+        assert_eq!(target.monitor_id, monitor_id);
         assert!(crate::mouse::drag::bottom_bar_gesture_begin(
             &mut wm.ctx(),
             MouseButton::Left,
             InteractionSource::Pointer,
-            monitor_id,
+            target,
             root,
             0,
             actions,
@@ -479,7 +486,7 @@ mod tests {
                         time_msec,
                     },
                     root,
-                    modifiers: 0,
+                    modifiers: ModMask::NONE,
                     sidebar_hover: None,
                 }
             ),
@@ -499,7 +506,8 @@ mod tests {
         let (mut wm, monitor_id) = bottom_bar_fixture();
         let begin_root = Point::new(100, 1060);
         assert_eq!(
-            crate::mouse::pointer::bottom_bar_monitor_at(&wm.core.model, begin_root),
+            crate::mouse::pointer::bottom_bar_target_at(&wm.core.model, begin_root)
+                .map(|target| target.monitor_id),
             Some(monitor_id)
         );
 
@@ -652,7 +660,7 @@ mod tests {
                         time_msec: 0,
                     },
                     root: Point::new(700, 600),
-                    modifiers: 0,
+                    modifiers: ModMask::NONE,
                     sidebar_hover: None,
                 },
             ),

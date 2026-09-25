@@ -1,10 +1,14 @@
 //! X11-specific keyboard helpers: key grabbing, numlock detection.
 
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::config::keysyms::XK_NUM_LOCK;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::Key;
+use crate::types::{Key, Keysym, ModMask, Modifier};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+// The X11 wire type, named apart from `crate::types::ModMask` so the boundary
+// conversion is visible at the call site rather than hidden by a shared name.
+use x11rb::protocol::xproto::ModMask as XModMask;
 
 pub(crate) fn apply_layout(
     layout: &str,
@@ -12,10 +16,14 @@ pub(crate) fn apply_layout(
     options: Option<&str>,
     model: Option<&str>,
 ) -> Result<(), String> {
-    layout_command(layout, variant, options, model)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("failed to run setxkbmap: {e}"))
+    let status = layout_command(layout, variant, options, model)
+        .status()
+        .map_err(|e| format!("failed to run setxkbmap: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("setxkbmap exited with {status}"))
+    }
 }
 
 fn layout_command(
@@ -40,16 +48,16 @@ fn layout_command(
 fn grab_keys_for_key<C: Connection>(
     conn: &C,
     root: Window,
-    modifiers: &[u16],
+    modifiers: &[ModMask],
     key: &Key,
     keycode: u8,
 ) {
-    for &modif in modifiers {
+    for &lock_variation in modifiers {
         let _ = grab_key(
             conn,
             false,
             root,
-            ((key.mod_mask as u16) | modif).into(),
+            XModMask::from((key.mod_mask | lock_variation).bits()),
             keycode,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
@@ -78,25 +86,30 @@ pub fn grab_keys(
         return;
     }
 
-    let _ = ungrab_key(conn, 0, root, ModMask::ANY);
+    let _ = ungrab_key(conn, 0, root, XModMask::ANY);
 
     let (keycode_min, keycode_max): (u8, u8) = (conn.setup().min_keycode, conn.setup().max_keycode);
 
-    let modifiers: [u16; 4] = [
-        0,
-        ModMask::LOCK.bits(),
-        numlockmask as u16,
-        (numlockmask as u16) | ModMask::LOCK.bits(),
+    // A passive grab is keyed on an exact modifier state, so a binding that
+    // should also fire with Caps Lock or Num Lock held needs one grab per
+    // combination of those sticky modifiers. `Modifier::CapsLock` is bit 1, the
+    // same position as x11rb's `ModMask::LOCK`.
+    let caps_lock = ModMask::from_modifier(Modifier::CapsLock);
+    let modifiers: [ModMask; 4] = [
+        ModMask::NONE,
+        caps_lock,
+        numlockmask,
+        numlockmask | caps_lock,
     ];
 
     for keycode in keycode_min..=keycode_max {
         let keysym = x11_runtime.keyboard_mapping.keysym(keycode, 0);
-        if keysym == 0 {
+        if keysym == Keysym::NONE {
             continue;
         }
 
         for key in &bindings {
-            if keysym == key.keysym {
+            if keysym.for_binding() == key.keysym {
                 grab_keys_for_key(conn, root, &modifiers, key, keycode);
             }
         }
@@ -169,10 +182,10 @@ fn render_layout_preview(
         let windows: [Window; 4] = ids.try_into().expect("exactly four preview windows");
         let color = match x11_runtime.layout_preview_style {
             crate::types::InteractionOutlineStyle::Layout => {
-                x11_runtime.border_scheme.snap.bg.pixel()
+                x11_runtime.border_scheme.snap.background.pixel()
             }
             crate::types::InteractionOutlineStyle::Close => {
-                x11_runtime.border_scheme.close.bg.pixel()
+                x11_runtime.border_scheme.close.background.pixel()
             }
         };
         let aux = CreateWindowAux::new()
@@ -210,10 +223,10 @@ fn render_layout_preview(
     if let Some(rect) = rect {
         let color = match x11_runtime.layout_preview_style {
             crate::types::InteractionOutlineStyle::Layout => {
-                x11_runtime.border_scheme.snap.bg.pixel()
+                x11_runtime.border_scheme.snap.background.pixel()
             }
             crate::types::InteractionOutlineStyle::Close => {
-                x11_runtime.border_scheme.close.bg.pixel()
+                x11_runtime.border_scheme.close.background.pixel()
             }
         };
         for (window, side) in
@@ -296,18 +309,20 @@ pub fn refresh_keyboard_mapping(x11: &X11BackendRef, x11_runtime: &mut X11Runtim
         x11_runtime.keyboard_mapping = crate::backend::x11::X11KeyboardMapping {
             min_keycode: keycode_min,
             keysyms_per_keycode: mapping.keysyms_per_keycode,
-            keysyms: mapping.keysyms,
+            keysyms: mapping.keysyms.into_iter().map(Keysym::new).collect(),
         };
         mapping_refreshed = true;
     }
 
     if let Some(reply) = modifier_cookie.ok().and_then(|cookie| cookie.reply().ok()) {
-        let mut new_numlockmask: u32 = 0;
+        // Ask the server which modifier position Num Lock occupies rather than
+        // assuming Mod2, then trust that answer everywhere downstream.
+        let mut new_numlockmask = ModMask::NONE;
         for (i, keycode) in reply.keycodes.iter().enumerate() {
-            if x11_runtime.keyboard_mapping.keysym(*keycode, 0) == 0xff7f {
+            if x11_runtime.keyboard_mapping.keysym(*keycode, 0) == XK_NUM_LOCK {
                 let mod_index = i / reply.keycodes_per_modifier() as usize;
                 if mod_index < 8 {
-                    new_numlockmask = 1 << mod_index;
+                    new_numlockmask = ModMask::new(1 << mod_index);
                 }
             }
         }
@@ -324,12 +339,14 @@ pub fn key_press(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let state = e.state;
     let keysym = ctx.x11_runtime.keyboard_mapping.keysym(keycode, 0);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    let _ = crate::keyboard::handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
+    // The event's state is already an X11 `ModMask`, so it needs no conversion.
+    let _ = crate::keyboard::handle_keysym(&mut wm_ctx, keysym, ModMask::new(state.bits()));
 }
 
 #[cfg(test)]
 mod mapping_tests {
     use crate::backend::x11::X11KeyboardMapping;
+    use crate::types::Keysym;
 
     #[test]
     fn layout_command_clears_previous_variant_and_options() {
@@ -364,12 +381,12 @@ mod mapping_tests {
         let mapping = X11KeyboardMapping {
             min_keycode: 8,
             keysyms_per_keycode: 2,
-            keysyms: vec![10, 11, 20, 21],
+            keysyms: vec![10, 11, 20, 21].into_iter().map(Keysym::new).collect(),
         };
-        assert_eq!(mapping.keysym(8, 0), 10);
-        assert_eq!(mapping.keysym(8, 1), 11);
-        assert_eq!(mapping.keysym(9, 0), 20);
-        assert_eq!(mapping.keysym(9, 1), 21);
+        assert_eq!(mapping.keysym(8, 0), Keysym::new(10));
+        assert_eq!(mapping.keysym(8, 1), Keysym::new(11));
+        assert_eq!(mapping.keysym(9, 0), Keysym::new(20));
+        assert_eq!(mapping.keysym(9, 1), Keysym::new(21));
     }
 
     #[test]
@@ -377,11 +394,13 @@ mod mapping_tests {
         let mapping = X11KeyboardMapping {
             min_keycode: 8,
             keysyms_per_keycode: 1,
-            keysyms: vec![42, 84],
+            keysyms: vec![42, 84].into_iter().map(Keysym::new).collect(),
         };
-        assert_eq!(mapping.keysym(7, 0), 0);
-        assert_eq!(mapping.keysym(8, 1), 0);
-        assert_eq!(mapping.keysym(9, 0), 84);
-        assert_eq!(mapping.keysym(10, 0), 0);
+        // `Keysym::NONE` is how the server says "this key produces no symbol",
+        // which the grab scan and the Num Lock probe both have to detect.
+        assert_eq!(mapping.keysym(7, 0), Keysym::NONE);
+        assert_eq!(mapping.keysym(8, 1), Keysym::NONE);
+        assert_eq!(mapping.keysym(9, 0), Keysym::new(84));
+        assert_eq!(mapping.keysym(10, 0), Keysym::NONE);
     }
 }

@@ -175,22 +175,6 @@ pub(crate) fn signal_process_group(pgid: i32, signal: libc::c_int) -> bool {
     unsafe { libc::kill(-pgid, signal) == 0 }
 }
 
-pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
-    // X-protocol modifier wire masks. The keybind configuration format
-    // encodes modifiers with these bits, independent of the running backend.
-    const MOD_LOCK: u32 = 1 << 1;
-    const MOD_SHIFT: u32 = 1 << 0;
-    const MOD_CONTROL: u32 = 1 << 2;
-    const MOD_MOD1: u32 = 1 << 3;
-    const MOD_MOD2: u32 = 1 << 4;
-    const MOD_MOD3: u32 = 1 << 5;
-    const MOD_MOD4: u32 = 1 << 6;
-    const MOD_MOD5: u32 = 1 << 7;
-
-    mask & !(numlockmask | MOD_LOCK)
-        & (MOD_SHIFT | MOD_CONTROL | MOD_MOD1 | MOD_MOD2 | MOD_MOD3 | MOD_MOD4 | MOD_MOD5)
-}
-
 /// Helper macro for ignoring X11 errors in non-critical operations.
 /// Logs the error at warn level but continues execution.
 #[macro_export]

@@ -1,9 +1,9 @@
 use crate::bar::SystrayHitSlot;
-use crate::bar::paint::{BarPainter, BarScheme, draw_hover_accent};
+use crate::bar::paint::{BarPainter, SchemeColor, draw_hover_accent};
 #[allow(unused_imports)]
 use crate::systray::{MenuAction, MenuToggle, MenuView};
-use crate::types::Rect;
 use crate::types::color::Rgba;
+use crate::types::{ColorScheme, Rect};
 
 /// Hover presentation for one bar-hosted menu entry, mirroring the status
 /// block hover accent.
@@ -19,12 +19,12 @@ pub(crate) fn draw_menu(
     painter: &mut dyn BarPainter,
     menu: &MenuView,
     cells: &[SystrayHitSlot],
-    base_scheme: &BarScheme,
+    base_scheme: &ColorScheme,
     bar_height: i32,
     hover: Option<TrayMenuHover>,
     ui_scale: f64,
 ) {
-    painter.set_scheme(base_scheme.clone());
+    painter.set_scheme(*base_scheme);
     draw_entry_separators(painter, menu, cells, base_scheme, bar_height, ui_scale);
     for cell in cells {
         let Some(entry) = menu.entries.get(cell.idx) else {
@@ -43,7 +43,7 @@ pub(crate) fn draw_menu(
             continue;
         }
         if !entry.enabled {
-            let mut disabled_scheme = base_scheme.clone();
+            let mut disabled_scheme = *base_scheme;
             disabled_scheme.foreground = disabled_scheme
                 .foreground
                 .with_alpha(disabled_scheme.foreground.a() * 0.55);
@@ -53,11 +53,11 @@ pub(crate) fn draw_menu(
             Rect::new(cell.start, 0, width, bar_height),
             scaled_px(6, ui_scale),
             &entry.display_label(),
-            false,
+            SchemeColor::Foreground,
             0,
         );
         if !entry.enabled {
-            painter.set_scheme(base_scheme.clone());
+            painter.set_scheme(*base_scheme);
         }
         if let Some(hover) = hover.filter(|hover| hover.entry_index == cell.idx) {
             draw_hover_accent(
@@ -78,7 +78,7 @@ fn draw_entry_separators(
     painter: &mut dyn BarPainter,
     menu: &MenuView,
     cells: &[SystrayHitSlot],
-    base_scheme: &BarScheme,
+    base_scheme: &ColorScheme,
     bar_height: i32,
     ui_scale: f64,
 ) {
@@ -93,12 +93,12 @@ fn draw_entry_separators(
         if bordering_separator {
             continue;
         }
-        painter.set_scheme(base_scheme.clone());
+        painter.set_scheme(*base_scheme);
         let line_height = (bar_height - scaled_px(8, ui_scale)).max(1).min(bar_height);
         let line_y = (bar_height - line_height) / 2;
         painter.rect(
             Rect::new(left.end, line_y, scaled_px(1, ui_scale), line_height),
-            false,
+            SchemeColor::Foreground,
         );
     }
 }
@@ -108,11 +108,11 @@ fn draw_separator_entry(
     painter: &mut dyn BarPainter,
     start: i32,
     width: i32,
-    base_scheme: &BarScheme,
+    base_scheme: &ColorScheme,
     bar_height: i32,
     ui_scale: f64,
 ) {
-    painter.set_scheme(base_scheme.clone());
+    painter.set_scheme(*base_scheme);
     let y = (bar_height - scaled_px(1, ui_scale)) / 2;
     painter.rect(
         Rect::new(
@@ -121,21 +121,21 @@ fn draw_separator_entry(
             (width - scaled_px(8, ui_scale)).max(1),
             scaled_px(1, ui_scale),
         ),
-        false,
+        SchemeColor::Foreground,
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bar::paint::HOVER_INDICATOR_HEIGHT;
+    use crate::bar::paint::{HOVER_INDICATOR_HEIGHT, fill_color};
     use crate::systray::{MenuAction, MenuEntry};
 
     #[derive(Default)]
     struct RecordingPainter {
-        scheme: Option<BarScheme>,
+        scheme: Option<ColorScheme>,
         rectangles: Vec<(Rect, Rgba)>,
-        texts: Vec<(Rect, String, BarScheme)>,
+        texts: Vec<(Rect, String, ColorScheme)>,
     }
 
     impl BarPainter for RecordingPainter {
@@ -143,17 +143,16 @@ mod tests {
             text.chars().count() as i32 * 10
         }
 
-        fn set_scheme(&mut self, scheme: BarScheme) {
+        fn set_scheme(&mut self, scheme: ColorScheme) {
             self.scheme = Some(scheme);
         }
 
-        fn rect(&mut self, bounds: Rect, invert: bool) {
-            let color = self
+        fn rect(&mut self, bounds: Rect, color: SchemeColor) {
+            let scheme = self
                 .scheme
                 .as_ref()
-                .expect("drawing requires a color scheme")
-                .rect_color(invert);
-            self.rectangles.push((bounds, color));
+                .expect("drawing requires a color scheme");
+            self.rectangles.push((bounds, fill_color(scheme, color)));
         }
 
         fn text(
@@ -161,13 +160,10 @@ mod tests {
             bounds: Rect,
             _lpad: i32,
             text: &str,
-            _invert: bool,
+            _color: SchemeColor,
             _detail_height: i32,
         ) -> i32 {
-            let scheme = self
-                .scheme
-                .clone()
-                .expect("drawing requires a color scheme");
+            let scheme = self.scheme.expect("drawing requires a color scheme");
             self.texts.push((bounds, text.to_string(), scheme));
             bounds.x + bounds.w
         }
@@ -187,8 +183,8 @@ mod tests {
         }
     }
 
-    fn scheme() -> BarScheme {
-        BarScheme {
+    fn scheme() -> ColorScheme {
+        ColorScheme {
             foreground: Rgba::new(1.0, 1.0, 1.0, 1.0),
             background: Rgba::rgb(0.0, 0.0, 0.0),
             detail: Rgba::new(0.5, 0.5, 0.5, 0.5),

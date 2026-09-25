@@ -3,7 +3,6 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::WindowOps;
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::core_state::CoreState;
 use crate::model::WmModel;
@@ -63,6 +62,11 @@ fn update_focus_state(model: &mut WmModel, sel_mon_id: MonitorId, target: Option
 /// Backend-specific focus operations trait.
 /// This allows the common focus logic to call backend-specific operations
 /// without duplicating the surrounding logic.
+///
+/// Implementations only ever need shared access to themselves, so
+/// `apply_focus_transition` takes `&dyn FocusBackendOps` rather than
+/// `&mut dyn`. That lets a backend implement this directly on its own handle
+/// instead of wrapping it in a throwaway adapter struct.
 pub(crate) trait FocusBackendOps {
     fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection);
     fn on_desktop_binding_state_changed(&self, state: &CoreState);
@@ -78,41 +82,8 @@ pub(crate) struct FocusProjection {
     pub current: Option<WindowId>,
 }
 
-struct WaylandFocusBackend<'a> {
-    wayland: &'a crate::backend::wayland::WaylandBackend,
-}
-
-impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
-    fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection) {
-        if projection.previous != projection.current
-            && let Some(previous) = projection.previous
-        {
-            self.wayland.set_window_activated(previous, false);
-        }
-        if let Some(current) = projection.current {
-            if ctx.model().client(current).is_some_and(|c| c.is_urgent)
-                && let Some(client) = ctx.model_mut().client_mut(current)
-            {
-                client.clear_urgency();
-            }
-            self.wayland.set_focus(current);
-        } else {
-            self.wayland.clear_keyboard_focus();
-        }
-    }
-
-    fn on_desktop_binding_state_changed(&self, _state: &CoreState) {}
-
-    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
-        match target {
-            Some(win) => !self.wayland.is_keyboard_focused_on(win),
-            None => false,
-        }
-    }
-}
-
-/// Whether `focus_generic` must re-apply backend focus state even when the
-/// model selection did not change.
+/// Whether [`apply_focus_transition`] must re-apply backend focus state even
+/// when the model selection did not change.
 ///
 /// `IfNeeded` touches the backend only when the selection actually moved or the
 /// backend reports its own focus as stale. `Force` re-applies seat focus and
@@ -125,11 +96,16 @@ pub(crate) enum BackendRefresh {
 }
 
 /// Generic focus implementation shared between X11 and Wayland.
-pub(crate) fn focus_generic(
+///
+/// This is the backend-independent half of a focus change. The public
+/// [`focus`] entry point additionally follows the selection into the overview
+/// and syncs projected z-order; callers that need the previous backend focus to
+/// be re-derived from scratch use [`refresh_focus`] instead.
+pub(crate) fn apply_focus_transition(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     previous_focus: Option<WindowId>,
-    backend: &mut dyn FocusBackendOps,
+    backend: &dyn FocusBackendOps,
     refresh: BackendRefresh,
 ) -> Option<MonitorId> {
     let force_backend_refresh = matches!(refresh, BackendRefresh::Force);
@@ -217,30 +193,19 @@ fn focus_impl(
     use crate::contexts::WmCtx::*;
     let z_order_monitor = match ctx {
         X11(x11_ctx) => {
-            let mut backend = crate::backend::x11::focus::X11FocusBackend {
+            let backend = crate::backend::x11::focus::X11FocusBackend {
                 x11: &x11_ctx.x11,
-                x11_runtime: x11_ctx.x11_runtime,
+                x11_runtime: &*x11_ctx.x11_runtime,
             };
-            focus_generic(
-                &mut x11_ctx.core,
-                win,
-                previous_focus,
-                &mut backend,
-                refresh,
-            )
+            apply_focus_transition(&mut x11_ctx.core, win, previous_focus, &backend, refresh)
         }
-        Wayland(wayland_ctx) => {
-            let mut backend = WaylandFocusBackend {
-                wayland: wayland_ctx.wayland,
-            };
-            focus_generic(
-                &mut wayland_ctx.core,
-                win,
-                previous_focus,
-                &mut backend,
-                refresh,
-            )
-        }
+        Wayland(wayland_ctx) => apply_focus_transition(
+            &mut wayland_ctx.core,
+            win,
+            previous_focus,
+            wayland_ctx.wayland,
+            refresh,
+        ),
     };
     if let Some(monitor_id) = z_order_monitor {
         crate::layouts::sync_monitor_z_order(ctx, monitor_id);
@@ -360,10 +325,7 @@ fn should_hover_focus(
 /// Returns `true` if the selection actually changed (i.e. the monitor was not
 /// already selected), `false` otherwise.
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
-    if ctx.core().model().monitor(monitor_id).is_none() {
-        return false;
-    }
-    if monitor_id == ctx.core().model().selected_monitor_id() {
+    if !ctx.core().model().can_change_selected_monitor(monitor_id) {
         return false;
     }
 
@@ -381,6 +343,7 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
     true
 }
 
+//BOZO: how is this different than just selecting said client?
 pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
     let Some(monitor_id) = ctx
         .core()
@@ -426,16 +389,10 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
 }
 
 pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: Point) -> bool {
-    let Some(new_mon_id) = ctx
-        .core()
-        .state()
-        .model
-        .monitors
-        .find_monitor_at_pointer(pointer_pos)
-    else {
+    let Some(monitor) = ctx.core().model().monitors.monitor_at_pointer(pointer_pos) else {
         return false;
     };
-    select_monitor(ctx, new_mon_id)
+    select_monitor(ctx, monitor.id())
 }
 
 fn get_directional_candidate(
@@ -539,42 +496,6 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
-fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
-    let selected = mon.visible_tags();
-
-    if mon.is_maximized_layout() {
-        // The persistent tree is a stable, user-controlled order. Unlike
-        // z-order it does not change merely because a window was focused, and
-        // minimized entries keep their tree position so their bar title stays
-        // put. They cannot receive focus until explicitly restored, so the
-        // cycle skips them.
-        let stack: Vec<WindowId> = mon
-            .tiled_tree_order(clients)
-            .into_iter()
-            .filter(|win| {
-                clients
-                    .get(win)
-                    .is_some_and(|client| client.is_visible(selected))
-            })
-            .collect();
-        if !stack.is_empty() {
-            return stack;
-        }
-    }
-
-    // Outside maximized presentation, keyboard stack cycling follows the
-    // exact title order exposed by the bar. Hidden/minimized entries retain a
-    // title but cannot receive focus until explicitly restored, so skip them.
-    mon.bar_client_order(clients)
-        .into_iter()
-        .filter(|win| {
-            clients
-                .get(win)
-                .is_some_and(|client| client.is_visible(selected))
-        })
-        .collect()
-}
-
 /// Shared logic to compute the next stack index for focus.
 fn stack_focus_target(
     stack: &[WindowId],
@@ -617,7 +538,7 @@ fn get_stack_focus_target(
         return None;
     }
     let mon = model.expect_selected_monitor();
-    let stack = get_visible_stack(mon, &model.clients);
+    let stack = mon.focus_cycle_order(&model.clients);
 
     let selected_window = model
         .selected_win()

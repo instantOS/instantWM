@@ -90,14 +90,22 @@ pub fn update_tiled_drag_preview(
     ctx.update_layout_preview(preview);
 }
 
-/// Returns `true` when `root` (root-space) is inside the bar of `selmon`.
+fn selected_bar_monitor_at(
+    model: &crate::model::WmModel,
+    root: Point,
+) -> Option<&crate::types::Monitor> {
+    let monitor = model.expect_selected_monitor();
+    let mask = monitor.selected_tags();
+    (monitor.show_bar_for_mask(mask)
+        && monitor.y_in_bar(root.y)
+        && root.x >= monitor.monitor_rect.x
+        && root.x < monitor.monitor_rect.right())
+    .then_some(monitor)
+}
+
+/// Returns `true` when `root` (root-space) is inside the selected monitor's bar.
 pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
-    let mon = model.expect_selected_monitor();
-    let mask = mon.selected_tags();
-    mon.show_bar_for_mask(mask)
-        && mon.y_in_bar(root.y)
-        && root.x >= mon.monitor_rect.x
-        && root.x < mon.monitor_rect.right()
+    selected_bar_monitor_at(model, root).is_some()
 }
 
 // ── move_mouse helpers ────────────────────────────────────────────────────
@@ -105,17 +113,17 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
 /// Set the drag hover and gesture highlight when the cursor enters the bar,
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
-    let on_bar = point_is_on_bar(ctx.core().model(), root);
+    let bar_hit = selected_bar_monitor_at(ctx.core().model(), root).map(|monitor| {
+        let core = ctx.core();
+        let gesture =
+            crate::bar::model::bar_position_at_x(monitor, core, monitor.local_work_point(root).x)
+                .to_gesture();
+        (monitor.id(), gesture)
+    });
+    let on_bar = bar_hit.is_some();
     let was_on_bar = ctx.core().bar.hover.drag_active;
 
-    if on_bar {
-        let new_gesture = {
-            let core = ctx.core();
-            let mon = core.model().expect_selected_monitor();
-            crate::bar::model::bar_position_at_x(mon, core, mon.local_work_point(root).x)
-                .to_gesture()
-        };
-        let monitor_id = ctx.core().model().selected_monitor_id();
+    if let Some((monitor_id, new_gesture)) = bar_hit {
         let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
         if !was_on_bar || gesture_changed {
             ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true);
@@ -155,7 +163,7 @@ pub fn handle_bar_drop(
     win: WindowId,
     grab_start_rect: Rect,
     pointer_override: Option<Point>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
         return;
@@ -314,7 +322,7 @@ pub fn complete_move_drop(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     let pointer = pointer_override.or_else(|| ctx.pointer_backend().pointer_location());
     let edge =

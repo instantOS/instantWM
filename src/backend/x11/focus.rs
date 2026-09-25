@@ -8,7 +8,7 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
-use crate::types::{ButtonTarget, WindowId};
+use crate::types::{ButtonTarget, ModMask, Modifier, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xinput::{
@@ -17,6 +17,9 @@ use x11rb::protocol::xinput::{
 };
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
+// The X11 wire type, named apart from `crate::types::ModMask` so the boundary
+// conversion is visible at the call site rather than hidden by a shared name.
+use x11rb::protocol::xproto::ModMask as XModMask;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 // ---------------------------------------------------------------------------
@@ -119,12 +122,12 @@ pub fn refresh_border_color(
         let has_tiling = globals.model.expect_selected_monitor().is_tiling_layout();
         let isfloating = c.mode().is_free_positioned() || !has_tiling;
         if isfloating {
-            scheme.float_focus.bg.pixel()
+            scheme.float_focus.background.pixel()
         } else {
-            scheme.tile_focus.bg.pixel()
+            scheme.tile_focus.background.pixel()
         }
     } else {
-        scheme.normal.bg.pixel()
+        scheme.normal.background.pixel()
     };
 
     let x11_win: Window = win.into();
@@ -232,24 +235,24 @@ pub fn grab_buttons(
     ungrab_client_buttons(x11, x11_runtime, win);
 
     let numlockmask = x11_runtime.numlockmask;
-    let lock_mask = ModMask::LOCK.bits() as u32;
+    let lock_mask = ModMask::from_modifier(Modifier::CapsLock);
     let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
-    let mut grabs: Vec<(u8, u32)> = Vec::new();
+    let mut grabs: Vec<(u8, ModMask)> = Vec::new();
 
     // Overview owns plain left-button card interactions, including on the
     // currently focused client. Outside overview, preserve normal X11
     // click-through for the focused client.
     if !focused {
-        grabs.extend([(1, 0), (3, 0)]);
+        grabs.extend([(1, ModMask::NONE), (3, ModMask::NONE)]);
     } else if globals.model.is_overview_active() {
-        grabs.push((1, 0));
+        grabs.push((1, ModMask::NONE));
     }
 
     for button in &globals.config.bindings.buttons {
         if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }
-        if focused && button.mask == 0 {
+        if focused && button.mask.is_empty() {
             continue;
         }
 
@@ -260,8 +263,13 @@ pub fn grab_buttons(
     }
 
     for (button, base_mask) in grabs {
-        for &lock_variation in &[0u32, numlockmask, lock_mask, numlockmask | lock_mask] {
-            let mods = ModMask::from((base_mask | lock_variation) as u16);
+        for lock_variation in [
+            ModMask::NONE,
+            numlockmask,
+            lock_mask,
+            numlockmask | lock_mask,
+        ] {
+            let mods = XModMask::from((base_mask | lock_variation).bits());
             let _ = conn.grab_button(
                 false,
                 x11_win,
@@ -312,7 +320,7 @@ pub fn grab_buttons(
 /// Remove every pointer and touch grab instantWM owns on a client window.
 pub fn ungrab_client_buttons(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, win: WindowId) {
     let x11_win: Window = win.into();
-    let _ = ungrab_button(x11.conn, ButtonIndex::from(0u8), x11_win, ModMask::ANY);
+    let _ = ungrab_button(x11.conn, ButtonIndex::from(0u8), x11_win, XModMask::ANY);
     if x11_runtime.xi2_touch_grabs {
         let _ = x11.conn.xinput_xi_passive_ungrab_device(
             x11_win,
@@ -366,9 +374,13 @@ pub fn clear_urgency_hint(x11: &X11BackendRef, win: WindowId) {
 
 use crate::focus::{FocusBackendOps, FocusProjection};
 /// X11 implementation of `FocusBackendOps`.
+///
+/// `X11FocusBackend` needs an adapter because unlike the Wayland handle it
+/// must carry two pieces of state: the connection and the runtime config that
+/// the focus path needs to read.
 pub struct X11FocusBackend<'a> {
     pub x11: &'a X11BackendRef<'a>,
-    pub x11_runtime: &'a mut X11RuntimeConfig,
+    pub x11_runtime: &'a X11RuntimeConfig,
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
@@ -376,7 +388,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         if projection.previous != projection.current
             && let Some(previous) = projection.previous
         {
-            unfocus_win(ctx.state(), self.x11, &*self.x11_runtime, previous, false);
+            unfocus_win(ctx.state(), self.x11, self.x11_runtime, previous, false);
         }
         if let Some(current) = projection.current {
             if ctx.model().client(current).is_some_and(|c| c.is_urgent) {
@@ -385,7 +397,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
                 }
                 clear_urgency_hint(self.x11, current);
             }
-            set_focus(ctx.state_mut(), self.x11, &*self.x11_runtime, current);
+            set_focus(ctx.state_mut(), self.x11, self.x11_runtime, current);
         } else {
             let _ = self.x11.conn.set_input_focus(
                 InputFocus::POINTER_ROOT,
@@ -401,7 +413,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_desktop_binding_state_changed(&self, state: &CoreState) {
-        crate::backend::x11::keyboard::grab_keys(state, self.x11, &*self.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys(state, self.x11, self.x11_runtime);
     }
 }
 
@@ -424,7 +436,7 @@ fn ungrab_button(
     conn: &x11rb::rust_connection::RustConnection,
     button: ButtonIndex,
     win: Window,
-    modifiers: ModMask,
+    modifiers: XModMask,
 ) -> Result<(), x11rb::errors::ConnectionError> {
     conn.ungrab_button(button, win, modifiers)?;
     Ok(())

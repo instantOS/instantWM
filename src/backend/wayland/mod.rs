@@ -191,14 +191,15 @@ impl WaylandBackend {
         variant: &str,
         options: Option<&str>,
         model: Option<&str>,
-    ) {
+    ) -> Result<(), String> {
         let layout = layout.to_owned();
         let variant = variant.to_owned();
         let options = options.map(str::to_owned);
         let model = model.map(str::to_owned);
-        let _ = self.with_state(move |state| {
-            state.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref());
-        });
+        self.with_state(move |state| {
+            state.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref())
+        })
+        .ok_or_else(|| "Wayland compositor state is unavailable".to_string())?
     }
 
     /// Return Wayland input devices. This is intentionally not part of the
@@ -380,6 +381,47 @@ impl WindowOps for WaylandBackend {
 
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         WaylandBackend::window_protocol(self, window)
+    }
+}
+
+/// Wayland implementation of [`FocusBackendOps`].
+///
+/// The compositor handle already owns every operation this needs, so it
+/// implements the trait directly instead of being wrapped in a per-call
+/// adapter struct. Desktop bindings need no Wayland-specific refresh: key
+/// interception is owned by Smithay rather than by X11-style passive grabs.
+impl crate::focus::FocusBackendOps for WaylandBackend {
+    fn project_focus(
+        &self,
+        ctx: &mut crate::contexts::CoreCtx<'_>,
+        projection: crate::focus::FocusProjection,
+    ) {
+        use crate::backend::WindowOps as _;
+
+        if projection.previous != projection.current
+            && let Some(previous) = projection.previous
+        {
+            self.set_window_activated(previous, false);
+        }
+        if let Some(current) = projection.current {
+            if ctx.model().client(current).is_some_and(|c| c.is_urgent)
+                && let Some(client) = ctx.model_mut().client_mut(current)
+            {
+                client.clear_urgency();
+            }
+            self.set_focus(current);
+        } else {
+            self.clear_keyboard_focus();
+        }
+    }
+
+    fn on_desktop_binding_state_changed(&self, _state: &crate::core_state::CoreState) {}
+
+    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
+        match target {
+            Some(win) => !self.is_keyboard_focused_on(win),
+            None => false,
+        }
     }
 }
 

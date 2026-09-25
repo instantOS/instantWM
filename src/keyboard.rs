@@ -1,4 +1,5 @@
 use crate::actions::{KeyAction, execute_key_action};
+use crate::config::keybindings::MODKEY;
 use crate::contexts::WmCtx;
 use crate::core_state::{ActiveWmMode, BindingConfig};
 use crate::floating::change_snap;
@@ -6,40 +7,30 @@ use crate::focus::focus_stack;
 
 use crate::types::*;
 
-fn normalize_binding_keysym(keysym: u32) -> u32 {
-    if (b'A' as u32..=b'Z' as u32).contains(&keysym) {
-        keysym + u32::from(b'a' - b'A')
-    } else {
-        keysym
-    }
-}
-
-fn is_modifier_keysym(keysym: u32) -> bool {
-    use crate::config::keysyms::*;
-    matches!(
-        keysym,
-        XK_SHIFT_L | XK_SHIFT_R | XK_CONTROL_L | XK_CONTROL_R | XK_SUPER_L | XK_SUPER_R
-    )
-}
-
-pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
+/// Dispatch one key press against the active binding tables.
+///
+/// Returns whether the WM consumed the key. The chord arrives already in
+/// instantWM's X11 modifier convention from whichever backend produced it; this
+/// is the single place both backends funnel through, so binding matching, the
+/// sticky-lock cleanup and the placement-mode chord rules all live in one spot
+/// rather than being re-implemented per backend.
+pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool {
     let numlockmask = ctx.numlock_mask();
-    let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
+    let cleaned = mod_mask.cleaned(numlockmask);
     let placement_active = matches!(ctx.current_mode(), ActiveWmMode::TreePlacement(_));
     // Super may still be held after the chord that entered placement. Treat it
     // as an entry modifier, not part of commands within the mode.
     let binding_mask = if placement_active {
-        cleaned & !(crate::config::keybindings::MODKEY as u16)
+        cleaned.without(Modifier::Super)
     } else {
         cleaned
     };
-    let binding_keysym = normalize_binding_keysym(keysym);
+    let binding_keysym = keysym.for_binding();
 
     // Super + Escape always resets to default mode
     if !matches!(ctx.current_mode(), ActiveWmMode::Default)
         && keysym == crate::config::keysyms::XK_ESCAPE
-        && cleaned
-            == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
+        && cleaned == MODKEY.cleaned(numlockmask)
     {
         ctx.reset_mode();
         return true;
@@ -64,7 +55,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     } else if placement_active {
         // Modifier presses are part of forming the next chord. Every other
         // unbound key cancels and is consumed so it cannot leak to a client.
-        if !is_modifier_keysym(keysym) {
+        if !keysym.is_modifier() {
             crate::layouts::finish_keyboard_tree_placement(ctx, false);
         }
         true
@@ -137,22 +128,23 @@ pub(crate) fn passive_bindings<'a>(
 
 /// The action bound to a chord in the current mode, and whether the mode is
 /// transient.
+///
+/// `binding_mask` is expected to be already cleaned of sticky locks; the
+/// configured masks are cleaned the same way here so the two sides of the
+/// comparison are normalized identically.
 fn resolve_key_action<'a>(
     bindings: &'a BindingConfig,
     selected_client: Option<WindowId>,
     mode: &ActiveWmMode,
-    keysym: u32,
-    cleaned: u16,
-    numlockmask: u32,
+    keysym: Keysym,
+    binding_mask: ModMask,
+    numlockmask: ModMask,
 ) -> Option<(&'a KeyAction, bool)> {
     let (scopes, transient) = binding_scopes(bindings, selected_client, mode);
     scopes
         .into_iter()
         .flatten()
-        .find(|key| {
-            keysym == key.keysym
-                && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
-        })
+        .find(|key| keysym == key.keysym && key.mod_mask.cleaned(numlockmask) == binding_mask)
         .map(|key| (&key.action, transient))
 }
 
@@ -205,23 +197,46 @@ mod tests {
     fn key_normalization_handles_shifted_letters_and_modifier_keys() {
         use crate::config::keysyms::*;
 
-        assert_eq!(normalize_binding_keysym(XK_H_UPPER), XK_H);
-        assert!(is_modifier_keysym(XK_SHIFT_L));
-        assert!(is_modifier_keysym(XK_CONTROL_R));
-        assert!(!is_modifier_keysym(XK_Q));
+        assert_eq!(XK_H_UPPER.for_binding(), XK_H);
+        assert_eq!(XK_H.for_binding(), XK_H);
+        // A non-letter is already its own base keysym and must not be touched.
+        assert_eq!(XK_RETURN.for_binding(), XK_RETURN);
+        assert_eq!(XK_F1.for_binding(), XK_F1);
+
+        // Every modifier a chord could use must be recognized, not just the
+        // ones the compiled defaults happen to bind: a user-configured chord
+        // with Alt or AltGr would otherwise be cancelled mid-composition.
+        for modifier_keysym in [
+            XK_SHIFT_L,
+            XK_SHIFT_R,
+            XK_CONTROL_L,
+            XK_CONTROL_R,
+            XK_ALT_L,
+            XK_ALT_R,
+            XK_SUPER_L,
+            XK_SUPER_R,
+            XK_ISO_LEVEL3_SHIFT,
+            XK_ISO_LEVEL5_SHIFT,
+            XK_MODE_SWITCH,
+        ] {
+            assert!(modifier_keysym.is_modifier(), "{modifier_keysym:?}");
+        }
+        for ordinary in [XK_Q, XK_RETURN, XK_F1, XK_SPACE, XK_ESCAPE] {
+            assert!(!ordinary.is_modifier(), "{ordinary:?}");
+        }
     }
 
     #[test]
     fn resolve_key_action_prefers_mode_binding_and_marks_transient() {
         let mode_key = Key {
-            mod_mask: 1,
-            keysym: 42,
+            mod_mask: ModMask::from_modifier(Modifier::Shift),
+            keysym: Keysym::new(42),
             action: KeyAction::named(NamedAction::FocusNext),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_key = Key {
-            mod_mask: 1,
-            keysym: 42,
+            mod_mask: ModMask::from_modifier(Modifier::Shift),
+            keysym: Keysym::new(42),
             action: KeyAction::named(NamedAction::FocusPrev),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
@@ -244,9 +259,9 @@ mod tests {
             &bindings,
             None,
             &ActiveWmMode::Named("resize".to_string()),
-            42,
-            1,
-            0,
+            Keysym::new(42),
+            ModMask::from_modifier(Modifier::Shift),
+            ModMask::NONE,
         )
         .expect("expected action");
 
@@ -260,14 +275,14 @@ mod tests {
     #[test]
     fn placement_resolves_only_its_configured_mode_actions() {
         let placement_key = Key {
-            mod_mask: 0,
-            keysym: 42,
+            mod_mask: ModMask::NONE,
+            keysym: Keysym::new(42),
             action: KeyAction::named(NamedAction::PlacementLeft),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_key = Key {
-            mod_mask: 0,
-            keysym: 43,
+            mod_mask: ModMask::NONE,
+            keysym: Keysym::new(43),
             action: KeyAction::named(NamedAction::FocusNext),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
@@ -288,21 +303,38 @@ mod tests {
             ..BindingConfig::default()
         };
 
-        let resolved = resolve_key_action(&bindings, None, &mode, 42, 0, 0)
-            .expect("configured placement action");
+        let resolved = resolve_key_action(
+            &bindings,
+            None,
+            &mode,
+            Keysym::new(42),
+            ModMask::NONE,
+            ModMask::NONE,
+        )
+        .expect("configured placement action");
         assert!(matches!(
             resolved.0,
             KeyAction::Named(NamedAction::PlacementLeft)
         ));
         assert!(!resolved.1, "placement is intrinsically non-transient");
-        assert!(resolve_key_action(&bindings, None, &mode, 43, 0, 0).is_none());
+        assert!(
+            resolve_key_action(
+                &bindings,
+                None,
+                &mode,
+                Keysym::new(43),
+                ModMask::NONE,
+                ModMask::NONE,
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn resolve_key_action_uses_desktop_bindings_only_without_selected_client() {
         let desktop_key = Key {
-            mod_mask: 0,
-            keysym: 9,
+            mod_mask: ModMask::NONE,
+            keysym: Keysym::new(9),
             action: KeyAction::named(NamedAction::ToggleBar),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
@@ -311,8 +343,15 @@ mod tests {
             desktop_keybinds: vec![desktop_key],
             ..BindingConfig::default()
         };
-        let resolved = resolve_key_action(&bindings, None, &ActiveWmMode::Default, 9, 0, 0)
-            .expect("expected desktop action");
+        let resolved = resolve_key_action(
+            &bindings,
+            None,
+            &ActiveWmMode::Default,
+            Keysym::new(9),
+            ModMask::NONE,
+            ModMask::NONE,
+        )
+        .expect("expected desktop action");
 
         assert!(matches!(
             resolved.0,
@@ -321,8 +360,8 @@ mod tests {
 
         let blocked_bindings = BindingConfig {
             desktop_keybinds: vec![Key {
-                mod_mask: 0,
-                keysym: 9,
+                mod_mask: ModMask::NONE,
+                keysym: Keysym::new(9),
                 action: KeyAction::named(NamedAction::ToggleBar),
                 origin: crate::types::KeybindOrigin::CompiledDefault,
             }],
@@ -332,9 +371,9 @@ mod tests {
             &blocked_bindings,
             Some(WindowId(1)),
             &ActiveWmMode::Default,
-            9,
-            0,
-            0,
+            Keysym::new(9),
+            ModMask::NONE,
+            ModMask::NONE,
         );
         assert!(blocked.is_none());
     }
@@ -344,14 +383,14 @@ mod tests {
         // A user-configured mode whose name collides with the built-in overview.
         // It must NOT be consulted while the WM is in Overview mode.
         let overview_mode_key = Key {
-            mod_mask: 1,
-            keysym: 42,
+            mod_mask: ModMask::from_modifier(Modifier::Shift),
+            keysym: Keysym::new(42),
             action: KeyAction::named(NamedAction::FocusPrev),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let global_key = Key {
-            mod_mask: 1,
-            keysym: 42,
+            mod_mask: ModMask::from_modifier(Modifier::Shift),
+            keysym: Keysym::new(42),
             action: KeyAction::named(NamedAction::FocusNext),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
@@ -371,8 +410,15 @@ mod tests {
             modes,
             ..BindingConfig::default()
         };
-        let resolved = resolve_key_action(&bindings, None, &ActiveWmMode::Overview, 42, 1, 0)
-            .expect("expected global action in overview");
+        let resolved = resolve_key_action(
+            &bindings,
+            None,
+            &ActiveWmMode::Overview,
+            Keysym::new(42),
+            ModMask::from_modifier(Modifier::Shift),
+            ModMask::NONE,
+        )
+        .expect("expected global action in overview");
         assert!(matches!(
             resolved.0,
             KeyAction::Named(NamedAction::FocusNext)
@@ -402,18 +448,18 @@ mod tests {
     fn passive_grabs_match_only_bindings_the_dispatcher_can_use() {
         let global = Key {
             mod_mask: crate::config::keybindings::MODKEY,
-            keysym: 1,
+            keysym: Keysym::new(1),
             action: KeyAction::named(NamedAction::FocusNext),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let desktop = Key {
-            mod_mask: 0,
+            mod_mask: ModMask::NONE,
             keysym: crate::config::keysyms::XK_L,
             action: KeyAction::named(NamedAction::ScrollRight),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let inactive_mode = Key {
-            mod_mask: 0,
+            mod_mask: ModMask::NONE,
             keysym: crate::config::keysyms::XK_SPACE,
             action: KeyAction::named(NamedAction::PlacementCenter),
             origin: crate::types::KeybindOrigin::CompiledDefault,
@@ -448,20 +494,20 @@ mod tests {
     #[test]
     fn active_named_mode_passively_grabs_its_complete_resolution_scope() {
         let global = Key {
-            mod_mask: 1,
-            keysym: 1,
+            mod_mask: ModMask::from_modifier(Modifier::Shift),
+            keysym: Keysym::new(1),
             action: KeyAction::named(NamedAction::FocusNext),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let desktop = Key {
-            mod_mask: 0,
-            keysym: 2,
+            mod_mask: ModMask::NONE,
+            keysym: Keysym::new(2),
             action: KeyAction::named(NamedAction::ScrollRight),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
         let mode_key = Key {
-            mod_mask: 0,
-            keysym: 3,
+            mod_mask: ModMask::NONE,
+            keysym: Keysym::new(3),
             action: KeyAction::named(NamedAction::FocusPrev),
             origin: crate::types::KeybindOrigin::CompiledDefault,
         };
@@ -487,6 +533,6 @@ mod tests {
         );
         let keysyms = grabbed.iter().map(|key| key.keysym).collect::<Vec<_>>();
 
-        assert_eq!(keysyms, [3, 1, 2]);
+        assert_eq!(keysyms, [Keysym::new(3), Keysym::new(1), Keysym::new(2)]);
     }
 }

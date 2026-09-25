@@ -1,5 +1,5 @@
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{BarPosition, Gesture, MouseButton, Point, WindowId};
+use crate::types::{BarPosition, Gesture, ModMask, MouseButton, Point, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xinput::{ConnectionExt as XInputConnectionExt, EventMode, TouchBeginEvent};
@@ -41,7 +41,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
     let root = Point::new(e.root_x as i32, e.root_y as i32);
-    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
+    let clean_state = ModMask::new(e.state.bits()).cleaned(numlockmask);
 
     let target_window = ctx
         .core
@@ -171,12 +171,11 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
         if ctx.core.model().is_overview_active() {
             crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
         } else {
-            if crate::mouse::update_sidebar_offer_at(
-                &mut WmCtx::X11(ctx.reborrow()),
-                root,
-                hovered.is_some(),
-            )
-            .affects_pointer_handling()
+            let sidebar_target = (!hovered.is_some())
+                .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root))
+                .flatten();
+            if crate::mouse::set_sidebar_offer(&mut WmCtx::X11(ctx.reborrow()), sidebar_target)
+                .affects_pointer_handling()
             {
                 return;
             }

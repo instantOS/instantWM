@@ -50,21 +50,15 @@ pub(crate) fn bar_position_on_monitor(
     monitor_id: MonitorId,
     root: Point,
 ) -> Option<BarPosition> {
-    let local_x = bar_local_x_on_monitor(ctx, monitor_id, root)?;
     let core = ctx.core();
     let monitor = core.model().monitor(monitor_id)?;
+    let local_x = bar_local_x_on_monitor(monitor, root)?;
     Some(crate::bar::model::bar_position_at_x(monitor, core, local_x))
 }
 
 /// Validate a root-space point against one monitor's visible bar and return
 /// its monitor-local x coordinate.
-pub(crate) fn bar_local_x_on_monitor(
-    ctx: &WmCtx<'_>,
-    monitor_id: MonitorId,
-    root: Point,
-) -> Option<i32> {
-    let core = ctx.core();
-    let monitor = core.model().monitor(monitor_id)?;
+pub(crate) fn bar_local_x_on_monitor(monitor: &Monitor, root: Point) -> Option<i32> {
     let mask = monitor.selected_tags();
     if !monitor.show_bar_for_mask(mask)
         || !monitor.y_in_bar(root.y)
@@ -92,7 +86,7 @@ pub fn drag_move_finish(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     debug_assert!(!ctx.core().interaction().drag.has_capture());
     clear_bar_hover(ctx);

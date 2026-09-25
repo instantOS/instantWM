@@ -163,6 +163,7 @@ pub(crate) enum GeometryApplyMode {
     VisualOnly,
 }
 
+//BOZO: why does this exist?
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ClientGeometry {
     current_rect: Rect,
@@ -186,24 +187,6 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
         current_rect,
         monitor_rect: view.monitor.monitor_rect,
     })
-}
-
-fn animation_duration(
-    config: crate::config::config_toml::AnimationConfig,
-    duration: Duration,
-) -> Duration {
-    config.scale_duration(duration)
-}
-
-fn enqueue_window_animation(
-    ctx: &mut WmCtx<'_>,
-    win: WindowId,
-    from: Rect,
-    to: Rect,
-    duration: Duration,
-) {
-    let duration = animation_duration(ctx.core().config().animations, duration);
-    ctx.begin_window_animation(win, from, to, duration);
 }
 
 fn apply_resize_policies(
@@ -243,10 +226,10 @@ pub(crate) fn move_resize(
     target: Rect,
     options: MoveResizeOptions,
 ) {
-    if options.size_hints == SizeHintPolicy::Ignore && !target.is_valid() {
-        return;
-    }
-
+    // `apply_resize_policies` returns the target unchanged when size hints are
+    // ignored, so the validity check below already rejects an invalid ignored
+    // target; a separate pre-check would be dead. When hints are respected the
+    // policy hook runs first because it may adjust the rectangle in place.
     let Some(target) = apply_resize_policies(ctx, win, target, options) else {
         return;
     };
@@ -330,7 +313,12 @@ pub(crate) fn move_resize(
                     .sync_client_geometry(win, final_rect);
             }
 
-            enqueue_window_animation(ctx, win, from, final_rect, options.duration);
+            let duration = ctx
+                .core()
+                .config()
+                .animations
+                .scale_duration(options.duration);
+            ctx.begin_window_animation(win, from, final_rect, duration);
         }
     }
 }

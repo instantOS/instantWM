@@ -23,9 +23,10 @@ impl DrawContext {
         }
         // Paint background and create Xft draw surface.
         // SAFETY: Xlib/Xft drawing calls with raw pointers.
-        let bg = if invert { fg_pixel } else { bg_pixel };
+        // The cell's own fill: the scheme foreground when inverted.
+        let cell_background = if invert { fg_pixel } else { bg_pixel };
         unsafe {
-            XSetForeground(self.display, self.gc, bg as c_ulong);
+            XSetForeground(self.display, self.gc, cell_background as c_ulong);
 
             if detail_height > 0 {
                 // Main background (above the detail strip).
@@ -73,7 +74,7 @@ impl DrawContext {
     /// # Parameters
     ///
     /// * `lpad`          — horizontal padding added before the first glyph.
-    /// * `invert`        — swap fg/bg colors.
+    /// * `invert`        — swap foreground/background colors.
     /// * `detail_height` — if `> 0`, the bottom `detail_height` pixels of the
     ///   background are painted in the *detail* color.
     ///
@@ -118,10 +119,13 @@ impl DrawContext {
             let Some(ref scheme) = self.scheme else {
                 return 0;
             };
-            fg_pixel = scheme.fg.pixel();
-            bg_pixel = scheme.bg.pixel();
+            fg_pixel = scheme.foreground.pixel();
+            bg_pixel = scheme.background.pixel();
             detail_pixel = scheme.detail.pixel();
-            (Some(scheme.fg.color.clone()), Some(scheme.bg.color.clone()))
+            (
+                Some(scheme.foreground.color.clone()),
+                Some(scheme.background.color.clone()),
+            )
         } else {
             (None, None)
         };
@@ -463,8 +467,8 @@ mod tests {
                 text,
                 invert,
                 true,
-                Some(&scheme.fg.color),
-                Some(&scheme.bg.color),
+                Some(&scheme.foreground.color),
+                Some(&scheme.background.color),
             );
             assert_eq!(x, 7 + expected as i32);
             assert_eq!(remaining, 1000 - expected);
@@ -544,8 +548,8 @@ mod tests {
                 &format!("A{icon}B"),
                 false,
                 true,
-                Some(&scheme.fg.color),
-                Some(&scheme.bg.color),
+                Some(&scheme.foreground.color),
+                Some(&scheme.background.color),
             );
             let expected = if width < a {
                 0

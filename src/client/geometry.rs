@@ -394,18 +394,15 @@ fn is_floating_layout(model: &WmModel, monitor: &Monitor) -> bool {
 
 /// Calculate the target rect for scaling a client to `scale` percent of its monitor.
 fn calculate_scaled_geometry(
-    monitor_id: crate::types::MonitorId,
+    monitor_rect: Rect,
     old_geo: Rect,
     border_width: i32,
     scale: i32,
-    get_monitor_rect: impl FnOnce(crate::types::MonitorId) -> Rect,
 ) -> Rect {
-    let mon_rect = get_monitor_rect(monitor_id);
-
     let new_w = old_geo.w * scale / 100;
     let new_h = old_geo.h * scale / 100;
-    let new_x = mon_rect.x + (mon_rect.w - new_w) / 2 - border_width;
-    let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
+    let new_x = monitor_rect.x + (monitor_rect.w - new_w) / 2 - border_width;
+    let new_y = monitor_rect.y + (monitor_rect.h - new_h) / 2 - border_width;
 
     Rect {
         x: new_x,
@@ -420,19 +417,20 @@ fn calculate_scaled_geometry(
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
     let target = {
-        let core = ctx.core();
-        let c = match core.model().client(win) {
-            Some(c) => c,
-            None => return,
+        let model = ctx.core().model();
+        let (old_geo, border_width, monitor_rect) = if let Some(view) = model.client_view(win) {
+            (
+                view.client.geo,
+                view.client.border_width,
+                view.monitor.monitor_rect,
+            )
+        } else {
+            let Some(client) = model.client(win) else {
+                return;
+            };
+            (client.geo, client.border_width, client.geo)
         };
-        calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-            core.state()
-                .model
-                .monitors
-                .get(mid)
-                .map(|m| m.monitor_rect)
-                .unwrap_or(c.geo)
-        })
+        calculate_scaled_geometry(monitor_rect, old_geo, border_width, scale)
     };
 
     ctx.move_resize(win, target, MoveResizeOptions::hinted_immediate(false));

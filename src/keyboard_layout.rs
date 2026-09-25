@@ -4,14 +4,32 @@
 //! QWERTY, QWERTZ, Dvorak) through the active backend. Layouts are configured in the
 //! TOML config under `[keyboard]` and can be switched at runtime via
 //! keybindings or IPC.
+//!
+//! Every layout operation here needs the backend, because changing the active
+//! layout means installing a keymap, and that is a backend call. All of them
+//! therefore take `WmCtx` rather than `&mut CoreState`:
+//! `set_keyboard_layout_by_name`, `cycle_keyboard_layout`,
+//! `set_keyboard_layouts`, `set_swapescape`, `init_keyboard_layout`,
+//! `add_keyboard_layout` and `remove_keyboard_layout` all route through
+//! `set_keyboard_layout`, which reaches `WmCtx::apply_keyboard_layout`. There is
+//! no function in this module that takes a `WmCtx` it does not need, and the one
+//! that needs no context at all (`get_all_keyboard_layouts`, which shells out to
+//! `localectl`) already takes none. Narrowing any of these signatures to
+//! `CoreState` would compile-fail on the keymap install, or worse, silently drop
+//! the re-apply and leave the keymap out of sync with the stored state.
 
 use crate::contexts::WmCtx;
 use crate::types::KeyboardLayout;
 use crate::types::input::StackDirection;
 use std::process::Command;
 
-/// Apply one configured layout through the active backend.
-fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
+/// Switch to the configured layout at `index`.
+///
+/// This is the policy half: it resolves the layout entry, folds the
+/// `caps:swapescape` option into the XKB options, and then hands off to
+/// [`WmCtx::apply_keyboard_layout`], which performs the backend-specific
+/// keymap install.
+fn switch_to_configured_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().interaction().keyboard_layout;
     let layout = state
         .layout(index)
@@ -40,12 +58,16 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
 }
 
 /// Switch to a specific keyboard layout by index (0-based).
-pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
+pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) -> bool {
     if ctx.core().interaction().keyboard_layout.is_empty() {
-        return;
+        return false;
     }
-    if let Err(e) = apply_layout(ctx, index) {
-        eprintln!("instantwm: {e}");
+    match switch_to_configured_layout(ctx, index) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("instantwm: {e}");
+            false
+        }
     }
 }
 
@@ -59,13 +81,7 @@ pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
         .interaction()
         .keyboard_layout
         .find_layout_index(name);
-    match index {
-        Some(idx) => {
-            set_keyboard_layout(ctx, idx);
-            true
-        }
-        None => false,
-    }
+    index.is_some_and(|idx| set_keyboard_layout(ctx, idx))
 }
 
 /// Cycle to the next or previous keyboard layout.
@@ -91,6 +107,9 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
 /// Replace the configured keyboard layouts at runtime.
 ///
 /// This allows IPC clients to reconfigure layouts without editing the TOML file.
+///
+/// Takes `ctx` because re-applying the layout is a backend operation; it is not
+/// core-state-only and must not be narrowed to `&mut CoreState`.
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
     ctx.core_mut()
         .state_mut()
@@ -147,6 +166,12 @@ pub fn get_all_keyboard_layouts() -> Vec<String> {
 ///
 /// If the layout already exists, returns an error.
 /// Switches to the newly added layout.
+///
+/// These stay free functions taking `WmCtx` rather than moving onto a
+/// `KeyboardLayoutManager`. The state half already has a home in
+/// `KeyboardLayoutState`; what is left is the apply half, and that genuinely
+/// needs the backend, so a wrapper type would add indirection without removing
+/// the dependency.
 pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<(), String> {
     let new_index = ctx
         .core_mut()
@@ -243,7 +268,18 @@ mod tests {
         wm.core.interaction.keyboard_layout.layouts =
             vec![KeyboardLayout::new("us"), KeyboardLayout::new("de")];
 
-        apply_layout(&mut wm.ctx(), 1).unwrap();
+        assert!(set_keyboard_layout_by_name(&mut wm.ctx(), "de"));
+        assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
+        assert!(!set_keyboard_layout_by_name(&mut wm.ctx(), "missing"));
+        wm.core
+            .interaction
+            .keyboard_layout
+            .layouts
+            .push(KeyboardLayout::new("invalid-layout-name"));
+        assert!(!set_keyboard_layout_by_name(
+            &mut wm.ctx(),
+            "invalid-layout-name"
+        ));
         assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
         let symbol = state
             .keyboard

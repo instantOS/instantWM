@@ -812,7 +812,7 @@ impl WaylandState {
         variant: &str,
         options: Option<&str>,
         model: Option<&str>,
-    ) {
+    ) -> Result<(), String> {
         let config = XkbConfig {
             layout,
             variant,
@@ -822,9 +822,9 @@ impl WaylandState {
         };
 
         let keyboard = self.keyboard.clone();
-        if let Err(e) = keyboard.set_xkb_config(self, config) {
-            log::error!("failed to apply wayland keyboard layout: {}", e);
-        }
+        keyboard
+            .set_xkb_config(self, config)
+            .map_err(|e| format!("failed to apply Wayland keyboard layout: {e}"))
     }
 
     /// Returns `true` if the session is currently locked.

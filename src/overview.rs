@@ -192,11 +192,10 @@ pub fn begin_card_gesture(
     let Some(client) = ctx.core().model().client(window) else {
         return false;
     };
-    let monitor_id = ctx.core().model().selected_monitor_id();
-    let Some(monitor) = ctx.core().model().monitor(monitor_id) else {
+    let Some(monitor) = ctx.core().model().selected_monitor() else {
         return false;
     };
-    if client.monitor_id != monitor_id || !overview_eligible(client, monitor.visible_tags()) {
+    if client.monitor_id != monitor.id() || !overview_eligible(client, monitor.visible_tags()) {
         return false;
     }
     let threshold = (monitor.monitor_rect.h / 30).max(1);

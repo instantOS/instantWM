@@ -6,17 +6,17 @@
 
 mod async_render;
 mod buffer;
-mod pixels;
 mod text;
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::Transform;
 
-use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::canvas::Canvas;
+use crate::bar::paint::{BarPainter, SchemeColor, fill_color, text_colors};
 use crate::bar::scene;
 use crate::contexts::CoreCtx;
-use crate::types::{Point, Rect, Size};
+use crate::types::{ColorScheme, Point, Rect, Size};
 
 use self::buffer::{BarBuffer, RawBarBuffer};
 use self::text::TextRasterizer;
@@ -56,8 +56,8 @@ impl WaylandBarRenderer {
 #[derive(Default)]
 struct BarRasterizer {
     text: TextRasterizer,
-    scheme: Option<BarScheme>,
-    pixels: Vec<u8>,
+    scheme: Option<ColorScheme>,
+    canvas: Canvas,
     surface_rect: Rect,
 }
 
@@ -69,16 +69,7 @@ impl BarRasterizer {
     fn begin(&mut self, surface_rect: Rect) {
         self.scheme = None;
         self.surface_rect = surface_rect;
-        let byte_len = if surface_rect.size().is_positive() {
-            (surface_rect.w as usize)
-                .checked_mul(surface_rect.h as usize)
-                .and_then(|pixels| pixels.checked_mul(4))
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        self.pixels.clear();
-        self.pixels.resize(byte_len, 0);
+        self.canvas.resize(surface_rect.size());
     }
 
     fn finish_raw(&mut self) -> Option<RawBarBuffer> {
@@ -87,8 +78,11 @@ impl BarRasterizer {
         }
 
         Some(RawBarBuffer {
-            pixels: std::mem::take(&mut self.pixels),
-            rect: self.surface_rect,
+            // The finished image belongs to the compositor now, so the
+            // rasterizer hands its canvas over rather than copying it. The
+            // next `begin` allocates a fresh one.
+            canvas: std::mem::take(&mut self.canvas),
+            position: self.surface_rect.position(),
         })
     }
 }
@@ -98,23 +92,19 @@ impl BarPainter for BarRasterizer {
         self.text.width(text, self.surface_rect.h)
     }
 
-    fn set_scheme(&mut self, scheme: BarScheme) {
+    fn set_scheme(&mut self, scheme: ColorScheme) {
         self.scheme = Some(scheme);
     }
 
-    fn rect(&mut self, bounds: Rect, invert: bool) {
+    fn rect(&mut self, bounds: Rect, color: SchemeColor) {
         if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        let Some(scheme) = self.scheme.clone() else {
+        let Some(scheme) = self.scheme else {
             return;
         };
-        pixels::fill_rect(
-            &mut self.pixels,
-            self.surface_rect.size(),
-            bounds,
-            scheme.rect_color(invert),
-        );
+        self.canvas
+            .fill_rect(bounds, fill_color(&scheme, color).into());
     }
 
     fn text(
@@ -122,25 +112,23 @@ impl BarPainter for BarRasterizer {
         bounds: Rect,
         lpad: i32,
         text: &str,
-        invert: bool,
+        color: SchemeColor,
         detail_height: i32,
     ) -> i32 {
-        let Some(scheme) = self.scheme.clone() else {
+        let Some(scheme) = self.scheme else {
             return bounds.x;
         };
-        let (bg, fg) = scheme.text_colors(invert);
-        pixels::fill_rect(&mut self.pixels, self.surface_rect.size(), bounds, bg);
+        let (background, foreground) = text_colors(&scheme, color);
+        self.canvas.fill_rect(bounds, background.into());
         if detail_height > 0 {
-            pixels::fill_rect(
-                &mut self.pixels,
-                self.surface_rect.size(),
+            self.canvas.fill_rect(
                 Rect::new(
                     bounds.x,
                     bounds.bottom() - detail_height,
                     bounds.w,
                     detail_height,
                 ),
-                scheme.detail,
+                scheme.detail.into(),
             );
         }
         if !text.is_empty() {
@@ -155,11 +143,10 @@ impl BarPainter for BarRasterizer {
             let text_w = (bounds.w - lpad + bleed * 2).max(0);
             if text_w > 0 {
                 self.text.rasterize(
-                    &mut self.pixels,
-                    self.surface_rect.size(),
+                    &mut self.canvas,
                     Rect::new(text_x, bounds.y, text_w, bounds.h),
                     text,
-                    fg,
+                    foreground,
                 );
             }
         }
@@ -167,13 +154,7 @@ impl BarPainter for BarRasterizer {
     }
 
     fn blit_rgba(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
-        pixels::blit_rgba_scaled(
-            &mut self.pixels,
-            self.surface_rect.size(),
-            destination,
-            source_size,
-            src_rgba,
-        );
+        self.canvas.blit_rgba(destination, src_rgba, source_size);
     }
 }
 
@@ -204,8 +185,8 @@ pub fn render_bar_buffers(
 /// white rectangle in the center. Input classification (`button_region_at`)
 /// routes presses to the configured `BottomBar` bindings.
 pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
-    let bg = core.config().colors.status.bg;
-    let indicator_color = bottom_bar_indicator_color(bg);
+    let background = core.config().colors.status.background;
+    let indicator_color = bottom_bar_indicator_color(background);
     core.model()
         .monitors_iter_all()
         .filter(|mon| mon.bottom_bar_visible(&core.model().clients))
@@ -214,16 +195,11 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
             if !size.is_positive() {
                 return None;
             }
-            let mut pixels = vec![0u8; (size.w as usize) * (size.h as usize) * 4];
-            pixels::fill_rect(&mut pixels, size, Rect::new(0, 0, size.w, size.h), bg);
-            pixels::fill_rect(
-                &mut pixels,
-                size,
-                mon.bottom_bar_indicator_rect(),
-                indicator_color,
-            );
+            let mut canvas = Canvas::new(size);
+            canvas.fill_rect(canvas.bounds(), background.into());
+            canvas.fill_rect(mon.bottom_bar_indicator_rect(), indicator_color.into());
             let buffer = MemoryRenderBuffer::from_slice(
-                &pixels,
+                canvas.as_slice(),
                 Fourcc::Argb8888,
                 (size.w, size.h),
                 1,
@@ -237,10 +213,10 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
 
 /// Blend the bar background heavily toward white (~85%) so the handle reads
 /// as a bright, white pill regardless of the bar's theme color.
-fn bottom_bar_indicator_color(bg: crate::types::Rgba) -> crate::types::Rgba {
-    let [r, g, b, _] = bg.to_rgba8();
+fn bottom_bar_indicator_color(background: crate::types::Rgba) -> crate::types::Rgba {
+    let [r, g, b, _] = background.to_rgba8();
     let blend = |channel: u8| ((channel as u16 * 15 + 255 * 85) / 100) as f32 / 255.0;
-    crate::types::Rgba::new(blend(r), blend(g), blend(b), bg.a())
+    crate::types::Rgba::new(blend(r), blend(g), blend(b), background.a())
 }
 
 #[cfg(test)]
@@ -251,17 +227,27 @@ mod tests {
     fn empty_text_still_paints_and_advances_the_complete_cell() {
         let mut painter = BarRasterizer::default();
         painter.begin(Rect::new(0, 0, 8, 4));
-        painter.set_scheme(BarScheme {
+        painter.set_scheme(ColorScheme {
             foreground: crate::types::Rgba::new(1.0, 0.0, 0.0, 1.0),
             background: crate::types::Rgba::new(0.0, 0.0, 1.0, 1.0),
             detail: crate::types::Rgba::ZERO,
         });
 
-        let right = BarPainter::text(&mut painter, Rect::new(2, 0, 4, 4), 0, "", false, 0);
+        let right = BarPainter::text(
+            &mut painter,
+            Rect::new(2, 0, 4, 4),
+            0,
+            "",
+            SchemeColor::Foreground,
+            0,
+        );
 
         assert_eq!(right, 6);
         let pixel = (2 * 4) as usize;
-        assert_eq!(&painter.pixels[pixel..pixel + 4], &[255, 0, 0, 255]);
+        assert_eq!(
+            &painter.canvas.as_slice()[pixel..pixel + 4],
+            &[255, 0, 0, 255]
+        );
     }
 
     fn test_wm() -> crate::wm::Wm {
@@ -293,13 +279,7 @@ mod tests {
         mon.set_available_rect(crate::types::Rect::new(0, 0, 1920, 1080));
         wm.core.model.monitors.restore(vec![mon]);
 
-        let mut core = crate::contexts::CoreCtx::new(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.running,
-            &mut wm.bar,
-            &mut wm.focus,
-        );
+        let mut core = wm.core_ctx();
         let buffers = build_bottom_bar_buffers(&mut core);
         assert_eq!(buffers.len(), 1, "one bottom strip buffer expected");
         let (_buffer, pos) = &buffers[0];
@@ -317,8 +297,12 @@ mod tests {
             let gray = f32::from(value) / 255.0;
             bottom_bar_indicator_color(crate::types::Rgba::rgb(gray, gray, gray)).to_rgba8()[0]
         };
-        assert_eq!(blend(18), 219, "dark bg (18) must blend toward near-white");
-        assert_eq!(blend(255), 255, "white bg stays white");
-        assert_eq!(blend(0), 216, "black bg blends to ~85% white");
+        assert_eq!(
+            blend(18),
+            219,
+            "dark background (18) must blend toward near-white"
+        );
+        assert_eq!(blend(255), 255, "white background stays white");
+        assert_eq!(blend(0), 216, "black background blends to ~85% white");
     }
 }

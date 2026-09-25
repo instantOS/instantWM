@@ -19,13 +19,29 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use smithay::input::keyboard::xkb;
 
 use crate::actions::{KeyAction, NamedAction};
-use crate::config::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
-use crate::types::{Key, KeybindOrigin};
+use crate::types::{Key, KeybindOrigin, Keysym, ModMask};
 
 /// A single keybind entry from the TOML config.
+///
+/// `modifiers` and `key` are deliberately kept as `String` rather than parsed
+/// types, and "too broad" cuts two ways here, so both readings are worth
+/// stating:
+///
+/// - As a *type*, `String` is right. These are the config surface, and the
+///   unvalidated value is confined to this struct. `parse_modifiers` and
+///   [`Keysym::from_name`] convert both fields to checked types before anything
+///   else in the codebase sees them, so no unvalidated string escapes.
+/// - As a *name set*, breadth is the requirement, not the problem. `key` must
+///   accept any XKB keysym name, including the thousands instantWM has no
+///   constant for. What was genuinely too broad was the number of *accepted
+///   spellings per key*: `enter`, `esc`, `pageup` and `pagedown` each meant two
+///   things, so a config could be written in a spelling the tooling never
+///   printed. Those aliases are gone, and `Modifier` is a closed enum with one
+///   canonical name per bit. Every name the config accepts is a name it also
+///   prints, so a binding can be read out of `instantwmctl keybinds` and pasted
+///   straight back in.
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct KeybindSpec {
     #[serde(default)]
@@ -52,44 +68,19 @@ impl ActionSpec {
     }
 }
 
-pub fn parse_modifiers(mods: &[String]) -> Result<u32, String> {
-    mods.iter().try_fold(0, |mask, m| {
-        Ok(mask
-            | match m.to_ascii_lowercase().as_str() {
-                "super" | "mod" | "mod4" | "modkey" => MODKEY,
-                "shift" => SHIFT,
-                "control" | "ctrl" => CONTROL,
-                "alt" | "mod1" => MOD1,
-                "" => 0,
-                other => return Err(format!("unknown modifier '{other}'")),
-            })
+/// Combine a config's modifier names into a mask.
+///
+/// Each entry is a canonical [`Modifier`] name, matched case-insensitively.
+/// There is no alias table: `super` is the only spelling of the primary
+/// modifier, and `mod4` is not accepted for it, because a second spelling per
+/// modifier makes the config language ambiguous about which vocabulary it
+/// speaks and stops `instantwmctl keybinds` output from round-tripping.
+pub fn parse_modifiers(mods: &[String]) -> Result<ModMask, String> {
+    mods.iter().try_fold(ModMask::NONE, |mask, name| {
+        name.parse::<crate::types::Modifier>()
+            .map(|modifier| mask.with(modifier))
+            .map_err(|error| error.to_string())
     })
-}
-
-/// Resolve a key name: any XKB keysym name (case-insensitive, e.g. `Return`,
-/// `bracketleft`, `XF86AudioMute`), a single character (`-`, `/`), or one of
-/// a few short aliases.
-pub fn parse_keysym(name: &str) -> Result<u32, String> {
-    let mut chars = name.chars();
-    if let (Some(ch), None) = (chars.next(), chars.next())
-        && !ch.is_alphanumeric()
-    {
-        let keysym = xkb::utf32_to_keysym(ch as u32).raw();
-        if keysym != 0 {
-            return Ok(keysym);
-        }
-    }
-    let name = match name.to_ascii_lowercase().as_str() {
-        "enter" => "Return",
-        "esc" => "Escape",
-        "pageup" => "Prior",
-        "pagedown" => "Next",
-        _ => name,
-    };
-    match xkb::keysym_from_name(name, xkb::KEYSYM_CASE_INSENSITIVE).raw() {
-        0 => Err(format!("unknown key name '{name}'")),
-        keysym => Ok(keysym),
-    }
 }
 
 /// Compile an action spec into an executable action.
@@ -155,8 +146,13 @@ fn compile_structured_action(table: &toml::Table) -> Result<KeyAction, String> {
     NamedAction::parse(name, &args).map(KeyAction::Named)
 }
 
-fn compile_keybind(spec: &KeybindSpec) -> Result<((u32, u32), Option<KeyAction>), String> {
-    let combo = (parse_modifiers(&spec.modifiers)?, parse_keysym(&spec.key)?);
+fn compile_keybind(spec: &KeybindSpec) -> Result<((ModMask, Keysym), Option<KeyAction>), String> {
+    let combo = (
+        parse_modifiers(&spec.modifiers)?,
+        Keysym::from_name(&spec.key)
+            .map_err(|error| error.to_string())?
+            .for_binding(),
+    );
     if spec.action.is_unbind() {
         return Ok((combo, None));
     }
@@ -171,7 +167,9 @@ pub fn merge_keybinds(
     origin: KeybindOrigin,
 ) -> Vec<Key> {
     let mut keys: Vec<Option<Key>> = defaults.into_iter().map(Some).collect();
-    let mut index: HashMap<(u32, u32), usize> = keys
+    // A binding's identity is its chord, so the index is keyed on the typed
+    // chord rather than a `(u32, u32)` pair that could be assembled backwards.
+    let mut index: HashMap<(ModMask, Keysym), usize> = keys
         .iter()
         .flatten()
         .enumerate()
@@ -205,37 +203,12 @@ pub fn merge_keybinds(
     keys.into_iter().flatten().collect()
 }
 
-/// Render a modifier mask as `Super + Ctrl + Shift` (empty when no modifiers).
-pub fn format_modifiers(mask: u32) -> String {
-    [
-        (MODKEY, "Super"),
-        (CONTROL, "Ctrl"),
-        (SHIFT, "Shift"),
-        (MOD1, "Alt"),
-    ]
-    .into_iter()
-    .filter(|(bit, _)| mask & bit != 0)
-    .map(|(_, name)| name)
-    .collect::<Vec<_>>()
-    .join(" + ")
-}
-
-/// Render a keysym as the user would type it: printable symbols as the
-/// character itself, everything else by its XKB name.
-pub fn format_keysym(keysym: u32) -> String {
-    let keysym = xkb::Keysym::new(keysym);
-    let text = xkb::keysym_to_utf8(keysym);
-    let mut chars = text.chars();
-    match (chars.next(), chars.next()) {
-        (Some(ch), None) if ch.is_ascii_graphic() => text,
-        _ => xkb::keysym_get_name(keysym),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::keybindings::{CONTROL, MOD1, MOD2, MOD3, MOD5, MODKEY, SHIFT};
     use crate::config::keysyms::*;
+    use crate::types::{Keysym, ModMask, Modifier};
 
     fn parse_keybind(source: &str) -> KeybindSpec {
         #[derive(Deserialize)]
@@ -246,7 +219,7 @@ mod tests {
         toml::from_str::<Wrapper>(source).unwrap().keybind
     }
 
-    fn default_key(keysym: u32) -> Key {
+    fn default_key(keysym: Keysym) -> Key {
         Key {
             mod_mask: MOD1,
             keysym,
@@ -260,7 +233,7 @@ mod tests {
         let spec = parse_keybind(
             r#"
             [keybind]
-            modifiers = ["Mod1"]
+            modifiers = ["alt"]
             key = "p"
             action = "none"
             "#,
@@ -270,12 +243,43 @@ mod tests {
     }
 
     #[test]
+    fn uppercase_ascii_keysym_names_use_the_same_binding_as_lowercase() {
+        // XKB resolves "A" to lowercase with case-insensitive lookup, but its
+        // Unicode and numeric spellings resolve to the uppercase keysym.
+        for name in ["A", "U0041", "0x41"] {
+            let override_spec = parse_keybind(&format!(
+                "[keybind]\nmodifiers = [\"alt\"]\nkey = \"{name}\"\naction = \"toggle_bar\""
+            ));
+            let merged = merge_keybinds(
+                vec![default_key(XK_A)],
+                &[override_spec],
+                KeybindOrigin::User,
+            );
+            assert_eq!(merged.len(), 1, "{name} must override the default");
+            assert_eq!(merged[0].keysym, XK_A);
+            assert!(matches!(
+                merged[0].action,
+                KeyAction::Named(NamedAction::ToggleBar)
+            ));
+
+            let unbind_spec = parse_keybind(&format!(
+                "[keybind]\nmodifiers = [\"alt\"]\nkey = \"{name}\"\naction = \"none\""
+            ));
+            assert!(
+                merge_keybinds(vec![default_key(XK_A)], &[unbind_spec], KeybindOrigin::User)
+                    .is_empty(),
+                "{name} must unbind the default"
+            );
+        }
+    }
+
+    #[test]
     fn merge_keybinds_adds_and_overrides() {
         let specs = [
             parse_keybind(
                 r#"
                 [keybind]
-                modifiers = ["Mod1"]
+                modifiers = ["alt"]
                 key = "p"
                 action = "toggle_bar"
                 "#,
@@ -308,10 +312,10 @@ mod tests {
     fn invalid_entries_are_skipped_without_touching_defaults() {
         let specs = [
             parse_keybind(
-                "[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = \"does_not_exist\"",
+                "[keybind]\nkey = \"p\"\nmodifiers = [\"alt\"]\naction = \"does_not_exist\"",
             ),
             parse_keybind(
-                "[keybind]\nkey = \"p\"\nmodifiers = [\"Mod1\"]\naction = [\"set_layout\"]",
+                "[keybind]\nkey = \"p\"\nmodifiers = [\"alt\"]\naction = [\"set_layout\"]",
             ),
             parse_keybind("[keybind]\nkey = \"nokey\"\naction = \"zoom\""),
             parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"hyper\"]\naction = \"zoom\""),
@@ -377,18 +381,55 @@ mod tests {
         for (name, keysym) in [
             ("return", XK_RETURN),
             ("Return", XK_RETURN),
-            ("enter", XK_RETURN),
-            ("esc", XK_ESCAPE),
+            ("RETURN", XK_RETURN),
             ("page_up", XK_PAGE_UP),
             ("f12", XK_F12),
             ("A", XK_A),
-            ("7", XK_0 + 7),
+            ("a", XK_A),
+            ("7", Keysym::new(XK_0.raw() + 7)),
             ("dead_circumflex", XK_DEAD_CIRCUMFLEX),
             ("XF86AudioMute", XF86XK_AUDIO_MUTE),
         ] {
-            assert_eq!(parse_keysym(name), Ok(keysym), "{name}");
+            assert_eq!(Keysym::from_name(name), Ok(keysym), "{name}");
         }
-        assert!(parse_keysym("nokey").is_err());
+        assert!(Keysym::from_name("nokey").is_err());
+    }
+
+    #[test]
+    fn key_aliases_are_rejected_so_the_language_has_one_spelling() {
+        // `enter`, `esc`, `pageup` and `pagedown` used to be accepted as
+        // aliases for `Return`, `Escape`, `Prior` and `Next`. They resolved to
+        // the right keysym, but meant a config could be written in a spelling
+        // the tooling never printed, so it could not be read back.
+        for alias in ["enter", "esc", "pageup", "pagedown"] {
+            assert!(
+                Keysym::from_name(alias).is_err(),
+                "'{alias}' must not resolve"
+            );
+        }
+        // The canonical spellings still work, including the ambiguous pair the
+        // aliases used to paper over: main Enter is `Return`, keypad Enter is
+        // `KP_Enter`.
+        assert_eq!(Keysym::from_name("Return"), Ok(XK_RETURN));
+        assert_eq!(Keysym::from_name("KP_Enter"), Ok(Keysym::new(0xFF8D)));
+    }
+
+    #[test]
+    fn keysym_names_round_trip_through_their_rendered_form() {
+        // Whatever `instantwmctl keybinds` prints has to parse back, or the
+        // listing cannot be copied into a config.
+        for keysym in [
+            XK_A,
+            XK_RETURN,
+            XK_ESCAPE,
+            XK_DEAD_CIRCUMFLEX,
+            XK_MINUS,
+            XK_SLASH,
+            XF86XK_AUDIO_MUTE,
+        ] {
+            let rendered = keysym.to_config_name();
+            assert_eq!(Keysym::from_name(&rendered), Ok(keysym), "{rendered}");
+        }
     }
 
     #[test]
@@ -406,23 +447,84 @@ mod tests {
             ("`", "grave", XK_GRAVE),
             ("'", "apostrophe", XK_APOSTROPHE),
         ] {
-            assert_eq!(parse_keysym(sym), Ok(keysym));
-            assert_eq!(parse_keysym(name), Ok(keysym));
-            assert_eq!(format_keysym(keysym), sym);
+            assert_eq!(Keysym::from_name(sym), Ok(keysym));
+            assert_eq!(Keysym::from_name(name), Ok(keysym));
+            assert_eq!(keysym.to_config_name(), sym);
         }
-        assert_eq!(format_keysym(XK_A), "a");
-        assert_eq!(format_keysym(XK_RETURN), "Return");
-        assert_eq!(format_keysym(XK_DEAD_CIRCUMFLEX), "dead_circumflex");
+        assert_eq!(XK_A.to_config_name(), "a");
+        assert_eq!(XK_RETURN.to_config_name(), "Return");
+        assert_eq!(XK_DEAD_CIRCUMFLEX.to_config_name(), "dead_circumflex");
     }
 
     #[test]
-    fn modifier_formatting_matches_combinations() {
-        assert_eq!(format_modifiers(0), "");
-        assert_eq!(format_modifiers(MODKEY), "Super");
-        assert_eq!(format_modifiers(MODKEY | SHIFT), "Super + Shift");
+    fn modifier_names_round_trip_through_their_rendered_mask() {
+        for mask in [
+            ModMask::NONE,
+            MODKEY,
+            MODKEY | SHIFT,
+            MODKEY | CONTROL | SHIFT | MOD1,
+            ModMask::from_modifiers(Modifier::DISPLAY_ORDER),
+        ] {
+            let rendered = mask.to_string();
+            assert_eq!(rendered.parse::<ModMask>().unwrap(), mask, "{rendered}");
+        }
+        assert_eq!(ModMask::NONE.to_string(), "");
+        assert_eq!(MODKEY.to_string(), "Super");
+        assert_eq!((MODKEY | SHIFT).to_string(), "Super + Shift");
         assert_eq!(
-            format_modifiers(MODKEY | CONTROL | SHIFT | MOD1),
-            "Super + Ctrl + Shift + Alt"
+            (MODKEY | CONTROL | SHIFT | MOD1).to_string(),
+            "Super + Control + Shift + Alt"
         );
+    }
+
+    #[test]
+    fn config_modifier_names_reject_the_removed_aliases() {
+        for (spec, expected) in [
+            (r#"["super"]"#, MODKEY),
+            (r#"["alt"]"#, MOD1),
+            (r#"["control"]"#, CONTROL),
+            (r#"["shift"]"#, SHIFT),
+        ] {
+            let merged = merge_keybinds(
+                Vec::new(),
+                &[parse_keybind(&format!(
+                    "[keybind]\nmodifiers = {spec}\nkey = \"p\"\naction = \"zoom\""
+                ))],
+                KeybindOrigin::User,
+            );
+            assert_eq!(merged.len(), 1, "{spec}");
+            assert_eq!(merged[0].mod_mask, expected, "{spec}");
+        }
+
+        // `mod`, `mod4` and `modkey` all used to mean Super, and `mod1` used to
+        // mean Alt. One spelling per modifier, or a config cannot be read back
+        // as the form the tooling prints.
+        for alias in ["mod", "mod4", "modkey", "mod1", "ctrl"] {
+            let merged = merge_keybinds(
+                Vec::new(),
+                &[parse_keybind(&format!(
+                    "[keybind]\nmodifiers = [\"{alias}\"]\nkey = \"p\"\naction = \"zoom\""
+                ))],
+                KeybindOrigin::User,
+            );
+            assert!(merged.is_empty(), "'{alias}' must be rejected");
+        }
+    }
+
+    #[test]
+    fn positional_modifier_names_still_work_where_meaning_is_universal() {
+        // Mod2/Mod3/Mod5 have no universal meaning, so they are named by
+        // position and must keep working for AltGr and level-3 setups.
+        for (name, expected) in [("mod2", MOD2), ("mod3", MOD3), ("mod5", MOD5)] {
+            let merged = merge_keybinds(
+                Vec::new(),
+                &[parse_keybind(&format!(
+                    "[keybind]\nmodifiers = [\"{name}\"]\nkey = \"p\"\naction = \"zoom\""
+                ))],
+                KeybindOrigin::User,
+            );
+            assert_eq!(merged.len(), 1, "{name}");
+            assert_eq!(merged[0].mod_mask, expected, "{name}");
+        }
     }
 }

@@ -4,17 +4,19 @@ use super::{
 };
 use crate::actions::ButtonAction;
 use crate::types::{
-    AltCursor, InteractionSource, MonitorId, MouseButton, Point, Rect, ResizeDirection, TagMask,
-    WindowId,
+    AltCursor, BottomBarTarget, EdgeDirection, InteractionSource, MonitorId, MouseButton, Point,
+    Rect, ResizeDirection, SidebarTarget, TagMask, WindowId,
 };
 
 fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
     BottomBarDrag::new(
         MouseButton::Left,
         InteractionSource::Pointer,
-        MonitorId::from_raw(3),
+        BottomBarTarget {
+            monitor_id: MonitorId::from_raw(3),
+            gesture_threshold: 30,
+        },
         Point::new(anchor_x, anchor_y),
-        30,
         0,
         super::BottomBarActions {
             left: Box::new(ButtonAction::named(crate::actions::NamedAction::ScrollLeft)),
@@ -29,6 +31,20 @@ fn bottom_bar_drag(anchor_x: i32, anchor_y: i32) -> BottomBarDrag {
                 crate::actions::NamedAction::ToggleOverview,
             )),
         },
+    )
+}
+
+fn sidebar_volume_drag(monitor_id: MonitorId, anchor_y: i32, threshold: i32) -> SidebarVolumeDrag {
+    SidebarVolumeDrag::new(
+        MouseButton::Left,
+        InteractionSource::Pointer,
+        SidebarTarget {
+            monitor_id,
+            edge: EdgeDirection::Right,
+            rect: Rect::default(),
+            gesture_threshold: threshold,
+        },
+        anchor_y,
     )
 }
 
@@ -249,13 +265,7 @@ fn tag_drag_owns_bar_hover_for_its_complete_capture() {
 
 #[test]
 fn volume_drag_preserves_distance_across_compressed_motion() {
-    let mut drag = SidebarVolumeDrag::new(
-        MouseButton::Left,
-        InteractionSource::Pointer,
-        MonitorId::from_raw(3),
-        500,
-        30,
-    );
+    let mut drag = sidebar_volume_drag(MonitorId::from_raw(3), 500, 30);
 
     assert_eq!(drag.update(395), 3);
     assert_eq!(drag.update(381), 0);
@@ -264,13 +274,7 @@ fn volume_drag_preserves_distance_across_compressed_motion() {
 
 #[test]
 fn volume_drag_handles_direction_reversal_with_residual_distance() {
-    let mut drag = SidebarVolumeDrag::new(
-        MouseButton::Left,
-        InteractionSource::Pointer,
-        MonitorId::from_raw(3),
-        500,
-        30,
-    );
+    let mut drag = sidebar_volume_drag(MonitorId::from_raw(3), 500, 30);
 
     assert_eq!(drag.update(475), 0);
     assert_eq!(drag.update(510), 0);
@@ -280,13 +284,7 @@ fn volume_drag_handles_direction_reversal_with_residual_distance() {
 
 #[test]
 fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
-    let drag = SidebarVolumeDrag::new(
-        MouseButton::Left,
-        InteractionSource::Pointer,
-        MonitorId::from_raw(3),
-        500,
-        30,
-    );
+    let drag = sidebar_volume_drag(MonitorId::from_raw(3), 500, 30);
     let mut interactions = PointerInteractionState::default();
     interactions
         .begin(OverviewCardDrag::new(
@@ -436,13 +434,7 @@ fn beginning_capture_atomically_invalidates_hover_offer() {
         dir: ResizeDirection::Left,
     });
     interactions
-        .begin(SidebarVolumeDrag::new(
-            MouseButton::Left,
-            InteractionSource::Pointer,
-            MonitorId::from_raw(1),
-            500,
-            30,
-        ))
+        .begin(sidebar_volume_drag(MonitorId::from_raw(1), 500, 30))
         .unwrap();
 
     assert_eq!(interactions.hover_offer(), super::HoverOffer::None);

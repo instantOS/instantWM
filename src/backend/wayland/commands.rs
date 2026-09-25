@@ -190,15 +190,18 @@ pub enum WmCommand {
         win: WindowId,
         update: crate::backend::x11::policy::XWaylandPolicyUpdate,
     },
-    /// Reconcile a window's actual committed size with the request it answers.
-    UpdateWindowSize {
+    /// An X11 client's request to resize a managed window. The WM decides at
+    /// dispatch time whether that client may change its logical geometry.
+    RequestX11WindowSize { win: WindowId, w: i32, h: i32 },
+    /// Observe a native Wayland surface's committed size and the configure it
+    /// answered. This is never an X11 client resize request.
+    ObserveCommittedSize {
         win: WindowId,
         w: i32,
         h: i32,
         /// Serial of the xdg configure acknowledged by the surface commit this
-        /// observation reports. `None` denotes a backend/client-originated
-        /// observation without an xdg configure transaction (X11 geometry
-        /// notifications).
+        /// observation reports. `None` means there is no outstanding xdg
+        /// configure transaction.
         acknowledged_configure: Option<smithay::utils::Serial>,
     },
     /// Request to change a window's maximized state.

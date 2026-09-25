@@ -8,7 +8,7 @@
 use smithay::backend::input::{InputTime, TouchSlot};
 use smithay::input::touch::{DownEvent, MotionEvent, UpEvent};
 use smithay::reexports::wayland_server::Resource;
-use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Transform};
+use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Serial, Transform};
 use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
@@ -16,7 +16,7 @@ use crate::backend::wayland::compositor::{
     PointerFocusTarget, TOUCH_POINTER_BUTTON_CODE, WaylandState,
 };
 use crate::backend::wayland::input::modifiers_to_x11_mask;
-use crate::types::MouseButton;
+use crate::types::{ModMask, MouseButton};
 use crate::wm::Wm;
 
 /// Coordinate space used for an absolute touch device.
@@ -41,6 +41,7 @@ impl TouchMappingTarget {
 }
 
 /// Backend-neutral absolute position in the inclusive `[0, 1]` range.
+//BOZO: if this is backend neutral, should it live outside wayland?
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalizedTouchPosition {
     x: f64,
@@ -78,6 +79,72 @@ struct TouchHit {
     is_layer: bool,
 }
 
+/// Try to hand a touch contact to compositor-owned interaction before it is
+/// delivered as a native touch point.
+///
+/// Returns `true` when the contact was consumed (a WM gesture or a systray
+/// press claimed it), so the caller must not also emit a native touch point.
+/// Applying layer-shell keyboard focus is a side effect that does *not*
+/// consume the contact.
+fn claim_touch_down_for_wm(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    event: TouchPointEvent,
+    location: Point<f64, Logical>,
+    serial: Serial,
+    hit: &TouchHit,
+) -> bool {
+    if state.is_locked() {
+        return false;
+    }
+    if hit.is_layer {
+        if let Some((PointerFocusTarget::WlSurface(surface), _)) = hit.focus.as_ref() {
+            state.focus_layer_keyboard(surface, serial, LayerFocusRequest::UserInteraction);
+        }
+        return false;
+    }
+    if state.is_pointer_over_overlay(location)
+        || !can_claim_wm_gesture_slot(state.runtime.wm_gesture_touch_slot)
+    {
+        return false;
+    }
+
+    let root = root_point(location);
+    state.dismiss_native_systray_menu();
+    let modifiers = clean_modifier_state(state);
+    let input = crate::mouse::press::PressInput {
+        root,
+        button: Some(MouseButton::Left),
+        raw_button: MouseButton::Left.to_x11_detail(),
+        modifiers,
+        clicked_window: hit.hovered_window,
+        source: crate::types::InteractionSource::Touch(event.slot.into()),
+        time_msec: event.time.millis(),
+    };
+    let outcome = {
+        let mut ctx = wm.ctx();
+        crate::mouse::press::dispatch_press_policy(&mut ctx, input)
+    };
+    match outcome {
+        crate::mouse::press::PressOutcome::CapturedInteraction { .. }
+        | crate::mouse::press::PressOutcome::Consumed => {
+            state.runtime.wm_gesture_touch_slot = Some(event.slot);
+            true
+        }
+        crate::mouse::press::PressOutcome::SystrayIconPress {
+            index,
+            button,
+            root,
+        } => {
+            let mut ctx = wm.ctx();
+            crate::systray::press_icon(ctx.core_mut(), index, button, root);
+            state.runtime.wm_gesture_touch_slot = Some(event.slot);
+            true
+        }
+        crate::mouse::press::PressOutcome::ReplayToClient { .. } => false,
+    }
+}
+
 /// Deliver a new touch point.
 pub fn handle_touch_down(
     wm: &mut Wm,
@@ -95,49 +162,8 @@ pub fn handle_touch_down(
     let serial = SERIAL_COUNTER.next_serial();
     let hit = focus_at(state, location);
 
-    if !state.is_locked() {
-        if hit.is_layer {
-            if let Some((PointerFocusTarget::WlSurface(surface), _)) = hit.focus.as_ref() {
-                state.focus_layer_keyboard(surface, serial, LayerFocusRequest::UserInteraction);
-            }
-        } else if !state.is_pointer_over_overlay(location)
-            && can_claim_wm_gesture_slot(state.runtime.wm_gesture_touch_slot)
-        {
-            let root = root_point(location);
-            state.dismiss_native_systray_menu();
-            let modifiers = clean_modifier_state(state);
-            let input = crate::mouse::press::PressInput {
-                root,
-                button: Some(MouseButton::Left),
-                raw_button: MouseButton::Left.to_x11_detail(),
-                modifiers,
-                clicked_window: hit.hovered_window,
-                source: crate::types::InteractionSource::Touch(event.slot.into()),
-                time_msec: event.time.millis(),
-            };
-            let outcome = {
-                let mut ctx = wm.ctx();
-                crate::mouse::press::dispatch_press_policy(&mut ctx, input)
-            };
-            match outcome {
-                crate::mouse::press::PressOutcome::CapturedInteraction { .. }
-                | crate::mouse::press::PressOutcome::Consumed => {
-                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
-                    return;
-                }
-                crate::mouse::press::PressOutcome::SystrayIconPress {
-                    index,
-                    button,
-                    root,
-                } => {
-                    let mut ctx = wm.ctx();
-                    crate::systray::press_icon(ctx.core_mut(), index, button, root);
-                    state.runtime.wm_gesture_touch_slot = Some(event.slot);
-                    return;
-                }
-                crate::mouse::press::PressOutcome::ReplayToClient { .. } => {}
-            }
-        }
+    if claim_touch_down_for_wm(wm, state, event, location, serial, &hit) {
+        return;
     }
 
     let emulate_pointer = hit
@@ -311,8 +337,8 @@ fn root_point(location: Point<f64, Logical>) -> crate::types::Point {
     crate::types::Point::from_f64_round(location.x, location.y)
 }
 
-fn clean_modifier_state(state: &WaylandState) -> u32 {
-    crate::util::clean_mask(modifiers_to_x11_mask(&state.keyboard.modifier_state()), 0)
+fn clean_modifier_state(state: &WaylandState) -> ModMask {
+    modifiers_to_x11_mask(&state.keyboard.modifier_state()).cleaned(ModMask::NONE)
 }
 
 fn handle_wm_gesture_touch_motion(
@@ -362,7 +388,7 @@ fn cancel_wm_gesture_touch(wm: &mut Wm, _state: &mut WaylandState) {
                 reason: crate::core_state::DragCancelReason::TouchCancelled,
             },
             root: Default::default(),
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             sidebar_hover: None,
         },
     );

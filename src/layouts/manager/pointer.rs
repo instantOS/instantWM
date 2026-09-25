@@ -62,10 +62,9 @@ pub(crate) fn pointer_tree_gap_resize_start(
     point: crate::types::Point,
 ) -> Option<(WindowId, PointerTreeResizeStart)> {
     let model = ctx.core().model();
-    let monitor_id = model
+    let monitor = model
         .monitors
-        .id_intersecting_rect(crate::mouse::pointer::point_rect(point))?;
-    let monitor = model.monitor(monitor_id)?;
+        .monitor_intersecting_rect(crate::mouse::pointer::point_rect(point))?;
     if monitor.current_layout() != PresentationMode::Tiled {
         return None;
     }

@@ -105,13 +105,16 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(wm, win, update);
             }
-            WmCommand::UpdateWindowSize {
+            WmCommand::RequestX11WindowSize { win, w, h } => {
+                handle_x11_window_size_request(wm, state, win, w, h);
+            }
+            WmCommand::ObserveCommittedSize {
                 win,
                 w,
                 h,
                 acknowledged_configure,
             } => {
-                handle_update_window_size(wm, state, win, w, h, acknowledged_configure);
+                handle_committed_size_observation(wm, state, win, w, h, acknowledged_configure);
             }
             WmCommand::SetMaximized { win, maximized } => {
                 handle_set_maximized(wm, state, win, maximized);
@@ -246,7 +249,33 @@ fn handle_update_transient_for(
     crate::layouts::sync_monitor_z_order(&mut ctx, monitor_id);
 }
 
-fn handle_update_window_size(
+fn handle_x11_window_size_request(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    w: i32,
+    h: i32,
+) {
+    let Some(client) = wm.core.model.client(win) else {
+        return;
+    };
+    let current = client.geo;
+    if state.is_interactive_resize(win) || !client.client_size_is_authoritative() {
+        // A denied request still needs a configure response with the WM's
+        // current geometry. This also handles requests queued before a drag
+        // began but consumed after the pointer took ownership.
+        state.resize_window(win, current);
+        return;
+    }
+
+    wm.ctx().move_resize(
+        win,
+        crate::types::Rect::new(current.x, current.y, w.max(1), h.max(1)),
+        crate::geometry::MoveResizeOptions::immediate(),
+    );
+}
+
+fn handle_committed_size_observation(
     wm: &mut Wm,
     state: &mut WaylandState,
     win: crate::types::WindowId,
@@ -259,7 +288,7 @@ fn handle_update_window_size(
         .model
         .client(win)
         .is_some_and(|client| client.client_size_is_authoritative());
-    if !state.committed_size_may_update_model(
+    if !state.native_commit_may_update_model(
         win,
         w,
         h,
@@ -727,11 +756,12 @@ fn handle_set_maximized(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_committed_window_size, handle_set_minimized, handle_update_xwayland_policy,
-        should_update_active_drag,
+        apply_committed_window_size, drain_command_queue, handle_set_minimized,
+        handle_update_xwayland_policy, should_update_active_drag,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
+    use crate::backend::wayland::commands::WmCommand;
     use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
     use crate::wm::Wm;
 
@@ -741,6 +771,65 @@ mod tests {
         assert!(should_update_active_drag(true, false));
         assert!(should_update_active_drag(false, true));
         assert!(should_update_active_drag(false, false));
+    }
+
+    #[test]
+    fn queued_x11_size_request_cannot_override_a_newer_interactive_resize() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let backend = WaylandBackend::new();
+        backend.attach_state(&mut state);
+        let mut wm = Wm::new(Backend::new_wayland(backend));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        let win = WindowId(90);
+        let initial = Rect::new(100, 100, 800, 600);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            geo: initial,
+            mode: ClientMode::floating(),
+            ..Client::default()
+        });
+
+        state.push_command(WmCommand::RequestX11WindowSize {
+            win,
+            w: 900,
+            h: 700,
+        });
+        state.reconcile_interactive_resize(Some(win));
+        drain_command_queue(&mut wm, &mut state);
+        assert_eq!(wm.core.model.client(win).unwrap().geo, initial);
+
+        state.reconcile_interactive_resize(None);
+        state.push_command(WmCommand::RequestX11WindowSize {
+            win,
+            w: 900,
+            h: 700,
+        });
+        drain_command_queue(&mut wm, &mut state);
+        assert_eq!(
+            wm.core.model.client(win).unwrap().geo,
+            Rect::new(100, 100, 900, 700)
+        );
+
+        wm.core
+            .model
+            .client_mut(win)
+            .unwrap()
+            .set_placement(ClientPlacement::Tiling);
+        state.push_command(WmCommand::RequestX11WindowSize {
+            win,
+            w: 1000,
+            h: 800,
+        });
+        drain_command_queue(&mut wm, &mut state);
+        assert_eq!(
+            wm.core.model.client(win).unwrap().geo,
+            Rect::new(100, 100, 900, 700)
+        );
     }
 
     #[test]

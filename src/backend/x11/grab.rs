@@ -10,7 +10,7 @@
 
 use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{AltCursor, MouseButton, Point};
+use crate::types::{AltCursor, ModMask, MouseButton, Point};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -176,7 +176,7 @@ pub fn dispatch_captured_pointer_event(
                     &mut WmCtx::X11(ctx.reborrow()),
                     crate::mouse::interaction::InteractionEvent::pointer_update(
                         Point::new(motion.root_x as i32, motion.root_y as i32),
-                        u16::from(motion.state) as u32,
+                        ModMask::new(u16::from(motion.state)),
                     ),
                 );
             }
@@ -197,7 +197,7 @@ pub fn dispatch_captured_pointer_event(
                     crate::mouse::interaction::InteractionEvent::pointer_end(
                         root,
                         button,
-                        u16::from(release.state) as u32,
+                        ModMask::new(u16::from(release.state)),
                         sidebar_hover,
                         release.time,
                     ),

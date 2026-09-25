@@ -7,7 +7,7 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::drag::lifecycle::begin_resize;
-use crate::types::{InteractionSource, MouseButton, Point, Rect, WindowId};
+use crate::types::{InteractionSource, ModMask, MouseButton, Point, Rect, WindowId};
 
 fn begin_active_resize(
     ctx: &mut WmCtx<'_>,
@@ -319,7 +319,7 @@ fn apply_resize_drag_motion(
 }
 
 /// Finish the active window interaction and reconcile its derived projection.
-pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: u32) -> bool {
+pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModMask) -> bool {
     let finished =
         ctx.transition_pointer_interaction(|drag| crate::mouse::drag::lifecycle::finish(drag, btn));
     let Some(drag) = finished else {
@@ -351,8 +351,8 @@ mod tests {
     use super::apply_active_drag_motion;
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::types::{
-        Client, ClientMode, InteractionSource, Monitor, MouseButton, Point, Rect, ResizeDirection,
-        TagMask, WindowId,
+        Client, ClientMode, InteractionSource, ModMask, Monitor, MouseButton, Point, Rect,
+        ResizeDirection, TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -616,7 +616,7 @@ mod tests {
                 &mut wm.ctx(),
                 crate::mouse::interaction::InteractionEvent::pointer_update(
                     Point::new(350, 275),
-                    0
+                    ModMask::NONE
                 ),
             ),
             crate::mouse::interaction::InteractionOutcome::Captured
@@ -627,7 +627,7 @@ mod tests {
                 &mut wm.ctx(),
                 crate::mouse::interaction::InteractionEvent::pointer_update(
                     Point::new(360, 280),
-                    0
+                    ModMask::NONE
                 ),
             ),
             crate::mouse::interaction::InteractionOutcome::Ignored

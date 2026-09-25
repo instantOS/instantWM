@@ -1,7 +1,7 @@
 use super::TEXT_PADDING;
 use super::{I3Align, I3Block, I3ClickEvent, I3MinWidth, StatusClickTarget};
-use crate::bar::paint::{BarPainter, BarScheme, draw_hover_accent};
-use crate::types::{Point, Rect, Rgba};
+use crate::bar::paint::{BarPainter, SchemeColor, draw_hover_accent};
+use crate::types::{ColorScheme, ModMask, Point, Rect, Rgba};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct StatusBlockHover {
@@ -10,7 +10,7 @@ pub(crate) struct StatusBlockHover {
 }
 
 pub(crate) struct StatusRenderOptions {
-    pub base_scheme: BarScheme,
+    pub base_scheme: ColorScheme,
     pub separator_color: Rgba,
     pub hover: Option<StatusBlockHover>,
     pub edge_padding: i32,
@@ -86,32 +86,13 @@ pub(crate) fn hit_test_i3_click_target(
         .map(|target| target.block_index)
 }
 
-pub(crate) fn modifiers_from_mask(mask: u32) -> Vec<String> {
-    let mut modifiers = Vec::new();
-
-    if mask & crate::config::keybindings::SHIFT != 0 {
-        modifiers.push("Shift".to_string());
-    }
-    if mask & crate::config::keybindings::CONTROL != 0 {
-        modifiers.push("Control".to_string());
-    }
-    if mask & crate::config::keybindings::MOD1 != 0 {
-        modifiers.push("Mod1".to_string());
-    }
-    if mask & crate::config::keybindings::MOD2 != 0 {
-        modifiers.push("Mod2".to_string());
-    }
-    if mask & crate::config::keybindings::MOD3 != 0 {
-        modifiers.push("Mod3".to_string());
-    }
-    if mask & crate::config::keybindings::MODKEY != 0 {
-        modifiers.push("Mod4".to_string());
-    }
-    if mask & crate::config::keybindings::MOD5 != 0 {
-        modifiers.push("Mod5".to_string());
-    }
-
-    modifiers
+/// Modifier names for an i3bar click event.
+///
+/// These go onto the bar's stdin, where user scripts read them, so they use the
+/// positional vocabulary the i3bar protocol specifies rather than instantWM's
+/// own canonical modifier names. See [`Modifier::i3_name`].
+pub(crate) fn modifiers_from_mask(mask: ModMask) -> Vec<String> {
+    mask.i3_names().map(str::to_string).collect::<Vec<String>>()
 }
 
 pub(crate) fn make_i3_click_event(
@@ -119,7 +100,7 @@ pub(crate) fn make_i3_click_event(
     target: StatusClickTarget,
     button: u8,
     geometry: StatusClickGeometry,
-    clean_state: u32,
+    clean_state: ModMask,
 ) -> I3ClickEvent {
     let relative_position = Point::new(
         geometry.bar_position.x - target.bounds.x,
@@ -148,7 +129,7 @@ pub(crate) fn i3_click_event(
     click_targets: &[StatusClickTarget],
     geometry: StatusClickGeometry,
     button: u8,
-    clean_state: u32,
+    clean_state: ModMask,
 ) -> Option<I3ClickEvent> {
     let target = click_targets
         .iter()
@@ -398,8 +379,8 @@ pub(crate) fn draw_status_blocks(
         return StatusRenderOutput::default();
     }
 
-    painter.set_scheme(base_scheme.clone());
-    painter.rect(layout.clip_bounds, true);
+    painter.set_scheme(base_scheme);
+    painter.rect(layout.clip_bounds, SchemeColor::Background);
 
     let mut click_targets = Vec::new();
     for laid_out in layout.blocks {
@@ -446,7 +427,7 @@ fn draw_i3_block(
     visible: Rect,
     text: &str,
     block: &I3Block,
-    base_scheme: &BarScheme,
+    base_scheme: &ColorScheme,
 ) {
     let bounds = laid_out.bounds;
     let mut foreground = block
@@ -466,20 +447,20 @@ fn draw_i3_block(
         detail = foreground;
     }
 
-    let block_scheme = BarScheme {
+    let block_scheme = ColorScheme {
         foreground,
         background,
         detail,
     };
-    painter.set_scheme(block_scheme.clone());
-    painter.rect(visible, true);
+    painter.set_scheme(block_scheme);
+    painter.rect(visible, SchemeColor::Background);
 
     let border_color = block
         .border
         .as_deref()
         .and_then(|s| s.parse().ok())
         .unwrap_or(block_scheme.detail);
-    painter.set_scheme(BarScheme {
+    painter.set_scheme(ColorScheme {
         foreground: border_color,
         background: block_scheme.background,
         detail: border_color,
@@ -497,14 +478,14 @@ fn draw_i3_block(
         Rect::new(bounds.right() - right, bounds.y, right, bounds.h),
     ] {
         if let Some(edge) = edge.intersection(&visible) {
-            painter.rect(edge, false);
+            painter.rect(edge, SchemeColor::Foreground);
         }
     }
 
     if let Some(text_bounds) = laid_out.text_bounds.intersection(&visible) {
         let lpad = (laid_out.text_bounds.x + laid_out.text_lpad - text_bounds.x).max(0);
         painter.set_scheme(block_scheme);
-        painter.text(text_bounds, lpad, text, false, 0);
+        painter.text(text_bounds, lpad, text, SchemeColor::Foreground, 0);
     }
 }
 
@@ -513,10 +494,10 @@ fn draw_separator(
     bounds: Rect,
     draw_line: bool,
     separator_color: Rgba,
-    base_scheme: &BarScheme,
+    base_scheme: &ColorScheme,
 ) {
-    painter.set_scheme(base_scheme.clone());
-    painter.rect(bounds, true);
+    painter.set_scheme(*base_scheme);
+    painter.rect(bounds, SchemeColor::Background);
     if !draw_line || bounds.w <= 0 || bounds.h <= 0 {
         return;
     }
@@ -524,17 +505,20 @@ fn draw_separator(
     let line_height = (bounds.h - 8).max(1).min(bounds.h);
     let line_y = bounds.y + (bounds.h - line_height) / 2;
     let line_x = bounds.x + bounds.w / 2;
-    painter.set_scheme(BarScheme {
+    painter.set_scheme(ColorScheme {
         foreground: separator_color,
         background: base_scheme.background,
         detail: base_scheme.detail,
     });
-    painter.rect(Rect::new(line_x, line_y, 1, line_height), false);
+    painter.rect(
+        Rect::new(line_x, line_y, 1, line_height),
+        SchemeColor::Foreground,
+    );
 }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bar::paint::HOVER_INDICATOR_HEIGHT;
+    use crate::bar::paint::{HOVER_INDICATOR_HEIGHT, fill_color};
     use crate::types::{Insets, Size};
 
     #[derive(Default)]
@@ -542,7 +526,7 @@ mod tests {
         texts: Vec<String>,
         text_bounds: Vec<Rect>,
         measurement_calls: usize,
-        scheme: Option<BarScheme>,
+        scheme: Option<ColorScheme>,
         rectangles: Vec<(Rect, Rgba)>,
     }
 
@@ -552,17 +536,16 @@ mod tests {
             text.chars().count() as i32 * 10
         }
 
-        fn set_scheme(&mut self, scheme: BarScheme) {
+        fn set_scheme(&mut self, scheme: ColorScheme) {
             self.scheme = Some(scheme);
         }
 
-        fn rect(&mut self, bounds: Rect, invert: bool) {
-            let color = self
+        fn rect(&mut self, bounds: Rect, color: SchemeColor) {
+            let scheme = self
                 .scheme
                 .as_ref()
-                .expect("drawing requires a color scheme")
-                .rect_color(invert);
-            self.rectangles.push((bounds, color));
+                .expect("drawing requires a color scheme");
+            self.rectangles.push((bounds, fill_color(scheme, color)));
         }
 
         fn text(
@@ -570,7 +553,7 @@ mod tests {
             bounds: Rect,
             _lpad: i32,
             text: &str,
-            _invert: bool,
+            _color: SchemeColor,
             _detail_height: i32,
         ) -> i32 {
             self.texts.push(text.to_string());
@@ -588,9 +571,9 @@ mod tests {
         }
     }
 
-    fn scheme() -> BarScheme {
+    fn scheme() -> ColorScheme {
         use crate::types::Rgba;
-        BarScheme {
+        ColorScheme {
             foreground: Rgba::new(1.0, 1.0, 1.0, 1.0),
             background: Rgba::rgb(0.0, 0.0, 0.0),
             detail: Rgba::new(0.5, 0.5, 0.5, 0.5),
@@ -792,7 +775,7 @@ mod tests {
                 output_position: Point::new(80, 30),
                 bar_position: Point::new(95, 10),
             },
-            0,
+            ModMask::NONE,
         );
 
         assert_eq!((event.x, event.y), (2000, 30));

@@ -19,7 +19,7 @@ pub struct TagDragState {
     /// Whether cursor is still on the bar.
     pub cursor_on_bar: bool,
     /// Last motion coordinates + modifier state (for release handling).
-    pub last_motion: Option<(Point, u32)>,
+    pub last_motion: Option<(Point, ModMask)>,
     /// The mouse button that started the drag.
     pub button: MouseButton,
     /// Input stream that owns this interaction.
@@ -76,19 +76,18 @@ impl BottomBarDrag {
     pub fn new(
         button: MouseButton,
         source: InteractionSource,
-        monitor_id: MonitorId,
+        target: BottomBarTarget,
         anchor: Point,
-        threshold: i32,
         press_time_msec: u32,
         actions: BottomBarActions,
     ) -> Self {
         Self {
             button,
             source,
-            monitor_id,
+            monitor_id: target.monitor_id,
             anchor_x: anchor.x,
             anchor_y: anchor.y,
-            threshold: threshold.max(1),
+            threshold: target.gesture_threshold.max(1),
             press_time_msec,
             actions,
             direction: None,
@@ -211,16 +210,15 @@ impl SidebarVolumeDrag {
     pub fn new(
         button: MouseButton,
         source: InteractionSource,
-        monitor_id: MonitorId,
+        target: SidebarTarget,
         anchor_y: i32,
-        threshold: i32,
     ) -> Self {
         Self {
             button,
             source,
-            monitor_id,
+            monitor_id: target.monitor_id,
             anchor_y,
-            threshold: threshold.max(1),
+            threshold: target.gesture_threshold.max(1),
         }
     }
 

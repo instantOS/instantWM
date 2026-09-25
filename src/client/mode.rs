@@ -295,14 +295,16 @@ impl WmModel {
         win: WindowId,
         maximized: bool,
     ) -> Option<ClientMaximizeIntentTransition> {
-        let monitor_id = self.client(win)?.monitor_id;
-        let floating_presentation = self.monitor(monitor_id)?.current_layout()
-            == crate::layouts::PresentationMode::Floating;
+        let view = self.client_view(win)?;
+        let monitor_id = view.client.monitor_id;
+        let floating_presentation =
+            view.monitor.current_layout() == crate::layouts::PresentationMode::Floating;
+        let work_rect = view.monitor.work_rect();
+        let rejected = view.client.is_fixed_size
+            || view.client.transient_for.is_some()
+            || view.client.is_scratchpad();
 
-        let client = self.client(win)?;
-        if maximized
-            && (client.is_fixed_size || client.transient_for.is_some() || client.is_scratchpad())
-        {
+        if maximized && rejected {
             return Some(ClientMaximizeIntentTransition {
                 monitor_id,
                 outcome: ClientMaximizeIntentOutcome::Rejected,
@@ -310,7 +312,6 @@ impl WmModel {
         }
 
         if floating_presentation {
-            let work_rect = self.monitor(monitor_id)?.work_rect();
             let was_client_maximized = self.client(win)?.mode().has_maximized_presentation();
             if maximized
                 && self
@@ -351,7 +352,6 @@ impl WmModel {
             });
         }
 
-        let work_rect = self.monitor(monitor_id)?.work_rect();
         let target = if maximized {
             ClientPlacement::Tiling
         } else {

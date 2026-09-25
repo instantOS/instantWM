@@ -152,9 +152,8 @@ fn point_occluded_above(model: &WmModel, monitor: &Monitor, win: WindowId, point
 /// Return the floating window + direction currently targeted by hover-resize.
 fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit> {
     let point = Rect::new(root.x, root.y, 1, 1);
-    let monitor_id = model.monitors.id_intersecting_rect(point)?;
-    let mon = model.monitor(monitor_id)?;
-    if mon.bar_contains_y(&model.clients, root.y) {
+    let monitor = model.monitors.monitor_intersecting_rect(point)?;
+    if monitor.bar_contains_y(&model.clients, root.y) {
         return None;
     }
     // Topmost first: the border the user *sees* must win the offer even when
@@ -163,7 +162,7 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
     // pointer equally hides every border below it, so the scan stops there
     // rather than offering the seam of a covered window. One resolved view
     // per window serves both the band check and the occlusion stop.
-    for win in mon.z_order.iter_top_to_bottom() {
+    for win in monitor.z_order.iter_top_to_bottom() {
         let Some(view) = model.client_view(win) else {
             continue;
         };
@@ -268,17 +267,6 @@ pub fn set_sidebar_offer(
     }
 
     SidebarOfferUpdate::None
-}
-
-pub fn update_sidebar_offer_at(
-    ctx: &mut WmCtx,
-    root: crate::types::Point,
-    blocked_by_non_desktop: bool,
-) -> SidebarOfferUpdate {
-    let target = (!blocked_by_non_desktop)
-        .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core().model(), root))
-        .flatten();
-    set_sidebar_offer(ctx, target)
 }
 
 #[cfg(test)]

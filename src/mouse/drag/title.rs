@@ -263,9 +263,9 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// The selected window's close-button and resize-widget zones belong to its
 /// title cell, so they resolve to that window like the rest of the cell.
 fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Option<WindowId> {
-    let local_x = super::bar_local_x_on_monitor(ctx, monitor_id, root)?;
     let core = ctx.core();
     let monitor = core.model().monitor(monitor_id)?;
+    let local_x = super::bar_local_x_on_monitor(monitor, root)?;
     let order = monitor.bar_client_order(&core.model().clients);
     // Rendering is asynchronous on Wayland. Geometry remains useful across a
     // reorder, but its captured window identities do not: using them can make

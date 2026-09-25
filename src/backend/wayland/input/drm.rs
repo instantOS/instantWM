@@ -78,6 +78,7 @@ fn configure_device(
     // not via libinput. Nothing to do here for it.
 }
 
+//BOZO: should this be a method on Device instead?
 fn device_type_key(device: &smithay::reexports::input::Device) -> &'static str {
     use smithay::reexports::input::DeviceCapability;
 
@@ -92,6 +93,7 @@ fn device_type_key(device: &smithay::reexports::input::Device) -> &'static str {
     }
 }
 
+//BOZO: should this be inlined?
 fn resolve_touch_output<'a>(
     device: &smithay::reexports::input::Device,
     input_config: &'a HashMap<String, InputConfig>,

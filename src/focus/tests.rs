@@ -1,6 +1,5 @@
 use super::{
-    BackendRefresh, FocusBackendOps, FocusProjection, focus_generic as focus_generic_impl,
-    get_visible_stack, stack_focus_target,
+    BackendRefresh, FocusBackendOps, FocusProjection, apply_focus_transition, stack_focus_target,
 };
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
@@ -57,6 +56,11 @@ fn directional_focus_prefers_the_aligned_client() {
     );
 }
 
+/// Records what a focus transition projected into the backend.
+///
+/// The trait is implemented over `&self`, so the counters need interior
+/// mutability to observe a call that already happened. The recording handle
+/// itself does not need to be held mutably by the caller.
 #[derive(Default)]
 struct RecordingBackend {
     focused: Cell<usize>,
@@ -76,14 +80,18 @@ impl FocusBackendOps for RecordingBackend {
     }
 }
 
-fn focus_generic(
+/// Run a focus transition using the model's current selection as the previous
+/// backend focus, which is what [`super::focus`] does for `WmCtx` holders.
+fn focus_from_current_selection(
     core: &mut CoreCtx<'_>,
     win: Option<WindowId>,
-    backend: &mut dyn FocusBackendOps,
+    backend: &dyn FocusBackendOps,
     refresh: BackendRefresh,
 ) -> anyhow::Result<Option<MonitorId>> {
     let previous = core.model().selected_win();
-    Ok(focus_generic_impl(core, win, previous, backend, refresh))
+    Ok(apply_focus_transition(
+        core, win, previous, backend, refresh,
+    ))
 }
 
 fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, FocusState) {
@@ -114,13 +122,13 @@ fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, Focus
 fn forced_refresh_reapplies_unchanged_backend_focus() {
     let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
 
-    focus_generic(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::IfNeeded).unwrap();
     assert_eq!(backend.focused.get(), 0);
     assert_eq!(backend.binding_refreshes.get(), 0);
 
-    focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
     assert_eq!(backend.focused.get(), 1);
     assert_eq!(backend.binding_refreshes.get(), 1);
     assert_eq!(core.focus.take_pending_selection(), None);
@@ -133,13 +141,13 @@ fn projection_uses_focus_from_before_a_precommitted_model_change() {
     let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
     let actual_previous_focus = WindowId(99);
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
 
-    focus_generic_impl(
+    apply_focus_transition(
         &mut core,
         None,
         Some(actual_previous_focus),
-        &mut backend,
+        &backend,
         BackendRefresh::Force,
     )
     .unwrap();
@@ -188,6 +196,21 @@ fn monitor_switch_records_the_global_window_transition() {
 }
 
 #[test]
+fn missing_monitor_is_rejected_before_selection_changes() {
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::wm::Wm;
+
+    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let selected = wm.core.model.monitors.push(Monitor::default());
+    let missing = MonitorId::from_raw(999);
+
+    assert!(!super::select_monitor(&mut wm.ctx(), missing));
+    assert_eq!(wm.core.model.selected_monitor_id(), selected);
+    assert_eq!(wm.focus.take_pending_selection(), None);
+}
+
+#[test]
 fn changing_focus_does_not_change_persistent_z_order() {
     let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
     let monitor_id = state.model.selected_monitor_id();
@@ -204,11 +227,11 @@ fn changing_focus_does_not_change_persistent_z_order() {
     monitor.selected = Some(upper);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
-    focus_generic(
+    let backend = RecordingBackend::default();
+    focus_from_current_selection(
         &mut core,
         Some(WindowId(1)),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
@@ -265,19 +288,14 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
     monitor.record_focus(tag, previously_focused);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
-    focus_generic(
-        &mut core,
-        Some(popup),
-        &mut backend,
-        BackendRefresh::IfNeeded,
-    )
-    .unwrap();
+    let backend = RecordingBackend::default();
+    focus_from_current_selection(&mut core, Some(popup), &backend, BackendRefresh::IfNeeded)
+        .unwrap();
     assert_eq!(core.model().selected_win(), Some(popup));
 
     core.mutate_selection(|model| model.remove_client(popup))
         .unwrap();
-    focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
 
     assert_eq!(
         core.model().selected_win(),
@@ -321,21 +339,21 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
     monitor.selected = Some(previously_focused);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
+    let backend = RecordingBackend::default();
 
     // Establish A as the maximized window visible immediately before the
     // short-lived terminal takes focus.
-    focus_generic(
+    focus_from_current_selection(
         &mut core,
         Some(previously_focused),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
-    focus_generic(
+    focus_from_current_selection(
         &mut core,
         Some(temporary_terminal),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
@@ -343,7 +361,7 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
 
     core.mutate_selection(|model| model.remove_client(temporary_terminal))
         .unwrap();
-    focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
 
     assert_eq!(
         core.model().selected_win(),
@@ -382,19 +400,19 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
     monitor.selected = Some(previously_focused);
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
-    let mut backend = RecordingBackend::default();
-    focus_generic(
+    let backend = RecordingBackend::default();
+    focus_from_current_selection(
         &mut core,
         Some(previously_focused),
-        &mut backend,
+        &backend,
         BackendRefresh::IfNeeded,
     )
     .unwrap();
     for terminal in terminals {
-        focus_generic(
+        focus_from_current_selection(
             &mut core,
             Some(terminal),
-            &mut backend,
+            &backend,
             BackendRefresh::IfNeeded,
         )
         .unwrap();
@@ -407,84 +425,13 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
     ] {
         core.mutate_selection(|model| model.remove_client(closed))
             .unwrap();
-        focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+        focus_from_current_selection(&mut core, None, &backend, BackendRefresh::Force).unwrap();
         assert_eq!(
             core.model().selected_win(),
             Some(expected),
             "closing {closed:?} should restore the preceding MRU client"
         );
     }
-}
-
-#[test]
-fn maximized_stack_uses_tree_order_and_excludes_floating_clients() {
-    let tag = TagMask::single(1).unwrap();
-    let mut monitor = Monitor::default();
-    monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
-    monitor.per_tag_state().layout_tree.apply_preset(
-        crate::layouts::tree::Preset::MasterStack,
-        &[WindowId(3), WindowId(1), WindowId(2)],
-        1,
-    );
-    monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
-    let clients = [WindowId(1), WindowId(2), WindowId(3)]
-        .into_iter()
-        .map(|win| {
-            let mut client = Client {
-                win,
-                tags: tag,
-                ..Client::default()
-            };
-            if win == WindowId(2) {
-                client.set_placement(crate::types::ClientPlacement::Floating);
-            }
-            (win, client)
-        })
-        .collect();
-
-    let cycle_order = get_visible_stack(&monitor, &clients);
-    let bar_order = monitor.bar_client_order(&clients);
-    assert_eq!(cycle_order, vec![WindowId(3), WindowId(1)]);
-    assert_eq!(&bar_order[..cycle_order.len()], cycle_order);
-}
-
-#[test]
-fn maximized_cycle_skips_minimized_tree_positions() {
-    let tag = TagMask::single(1).unwrap();
-    let mut monitor = Monitor::default();
-    monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
-    monitor.per_tag_state().layout_tree.apply_preset(
-        crate::layouts::tree::Preset::MasterStack,
-        &[WindowId(1), WindowId(2), WindowId(3)],
-        1,
-    );
-    monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
-    let clients = [WindowId(1), WindowId(2), WindowId(3)]
-        .into_iter()
-        .map(|win| {
-            let mut client = Client {
-                win,
-                tags: tag,
-                ..Client::default()
-            };
-            if win == WindowId(2) {
-                client.is_hidden = true;
-            }
-            (win, client)
-        })
-        .collect();
-
-    // The minimized entry keeps its title position but cannot receive focus.
-    assert_eq!(
-        monitor.bar_client_order(&clients),
-        vec![WindowId(1), WindowId(2), WindowId(3)]
-    );
-    assert_eq!(
-        get_visible_stack(&monitor, &clients),
-        vec![WindowId(1), WindowId(3)]
-    );
 }
 
 #[test]
