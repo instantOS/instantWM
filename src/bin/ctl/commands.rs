@@ -5,7 +5,7 @@ use instantwm::ipc_types::{
     PendingTmpRuleCmd, ScratchpadCommand, TagCommand, TestCommand, WindowCommand,
 };
 use instantwm::layouts::LayoutCommand;
-use instantwm::types::{FocusFollowsMouseMode, MonitorDirection, ToggleAction};
+use instantwm::types::MonitorDirection;
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum LayoutAction {
@@ -55,25 +55,6 @@ pub enum TestAction {
         #[arg(long)]
         exact: bool,
     },
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum ToggleCliAction {
-    /// Toggle window animations
-    Animated { action: Option<ToggleAction> },
-    /// Set focus-follows-mouse behavior
-    FocusFollowsMouse {
-        /// off: disabled; normal: pointer motion only; force: include scene changes
-        mode: FocusFollowsMouseMode,
-    },
-    /// Toggle focus-follows-mouse for floating windows
-    FocusFollowsFloatMouse { action: Option<ToggleAction> },
-    /// Toggle alt-tag mode
-    AltTag { action: Option<ToggleAction> },
-    /// Show/hide tag bar
-    HideTags { action: Option<ToggleAction> },
-    /// Toggle the bottom gesture strip
-    BottomBar { action: Option<ToggleAction> },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -130,11 +111,6 @@ pub enum CommandKind {
     Tag {
         #[command(subcommand)]
         action: TagAction,
-    },
-    /// Toggle compositor features.
-    Toggle {
-        #[command(subcommand)]
-        action: ToggleCliAction,
     },
     /// Launch a command through the compositor.
     Spawn {
@@ -235,21 +211,6 @@ fn run(action: NamedAction) -> IpcCommand {
     }
 }
 
-impl ToggleCliAction {
-    fn into_action(self) -> NamedAction {
-        match self {
-            Self::Animated { action } => NamedAction::ToggleAnimated(action),
-            Self::FocusFollowsMouse { mode } => NamedAction::SetFocusFollowsMouse(mode),
-            Self::FocusFollowsFloatMouse { action } => {
-                NamedAction::ToggleFocusFollowsFloatMouse(action)
-            }
-            Self::AltTag { action } => NamedAction::ToggleAltTag(action),
-            Self::HideTags { action } => NamedAction::ToggleHideTags(action),
-            Self::BottomBar { action } => NamedAction::ToggleBottomBar(action),
-        }
-    }
-}
-
 impl CommandKind {
     /// The IPC request for this command, or the command itself when the
     /// client handles it alone (`action --list`, `config default`, test paths
@@ -277,7 +238,6 @@ impl CommandKind {
             Self::Tag {
                 action: TagAction::Remote(command),
             } => IpcCommand::Tag(command),
-            Self::Toggle { action } => run(action.into_action()),
             Self::Spawn { command } => run(NamedAction::Spawn(command)),
             Self::WarpFocus => run(NamedAction::WarpFocus),
             Self::SendMon { direction } => run(NamedAction::SendMon(direction)),

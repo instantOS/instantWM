@@ -421,7 +421,6 @@ impl CoreState {
         };
         let show_bottom_bar = next.bar.show_bottom;
         let show_tags = next.bar.show_tags;
-        let show_alt_names = next.tags.show_alt_names;
         let tag_template = next.tag_template.clone();
         let tag_colors = next.colors.tag.clone();
 
@@ -429,7 +428,6 @@ impl CoreState {
         self.interaction.keyboard_layout = keyboard_layout;
         self.model.tags.colors = tag_colors;
         self.model.tags.num_tags = tag_template.len();
-        self.model.tags.set_alternative_names(show_alt_names);
 
         // The bottom bar and tag-visibility states are global defaults.
         // Reloading them resets interactive toggles so existing outputs

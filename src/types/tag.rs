@@ -27,7 +27,6 @@ impl Tag {
 pub struct TagSet {
     pub num_tags: usize,
     pub colors: TagColorConfigs,
-    pub show_alternative_names: bool,
 }
 
 impl TagSet {
@@ -39,10 +38,5 @@ impl TagSet {
     #[inline]
     pub fn count(&self) -> usize {
         self.num_tags
-    }
-
-    /// Show configured alternative tag names instead of the defaults.
-    pub fn set_alternative_names(&mut self, enabled: bool) {
-        self.show_alternative_names = enabled;
     }
 }

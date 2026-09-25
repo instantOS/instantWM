@@ -81,6 +81,6 @@ mod tests {
                 Response::Ok
             ));
         }
-        assert!(wm.core.model.tags.show_alternative_names);
+        assert!(wm.core.config.tags.show_alt_names);
     }
 }

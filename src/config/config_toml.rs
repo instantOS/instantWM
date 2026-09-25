@@ -207,9 +207,9 @@ impl<'de> Deserialize<'de> for AnimationSpeed {
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Serialize)]
 #[serde(default)]
 pub struct AnimationConfig {
-    /// Master switch for window animations. `instantwmctl toggle animated`
-    /// flips this at runtime; `instantwmctl reload` restores the configured
-    /// value.
+    /// Master switch for window animations. `instantwmctl config toggle
+    /// animations.enabled` flips this at runtime; `instantwmctl reload`
+    /// restores the configured value.
     pub enabled: bool,
     pub speed: AnimationSpeed,
 }

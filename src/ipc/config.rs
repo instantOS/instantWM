@@ -75,6 +75,7 @@ pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
     match cmd {
         ConfigCommand::Get { key } => get(wm, &key),
         ConfigCommand::Set { key, value } => set(wm, &key, value),
+        ConfigCommand::Toggle { key } => toggle(wm, &key),
         ConfigCommand::List { prefix } => list(wm, prefix.as_deref()),
     }
 }
@@ -182,6 +183,35 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
     }
     apply_side_effects(wm, section);
     Response::ok()
+}
+
+/// Flip a boolean option in place (e.g. `config toggle window.decor_hints`).
+///
+/// Implemented as read-then-`set`, so validation and side effects are exactly
+/// those of an explicit set, and the new value comes back for scripting.
+fn toggle(wm: &mut Wm, key: &str) -> Response {
+    let current = match get(wm, key) {
+        Response::ConfigValue(value) => value,
+        other => return other,
+    };
+    let flipped = match current.as_str() {
+        "true" => "false",
+        "false" => "true",
+        // Input toggles are `ToggleSetting` enums that render as these two
+        // strings; flip them so `config toggle` covers every boolean-like
+        // option uniformly.
+        "enabled" => "disabled",
+        "disabled" => "enabled",
+        _ => {
+            return Response::err(format!(
+                "config toggle only works on boolean options; '{key}' is '{current}'"
+            ));
+        }
+    };
+    match set(wm, key, flipped.to_string()) {
+        Response::Ok => Response::ConfigValue(flipped.to_string()),
+        other => other,
+    }
 }
 
 /// List every key, or only those equal to or beneath `prefix` (a section,
@@ -441,6 +471,9 @@ mod tests {
             },
         )
     }
+    fn do_toggle(wm: &mut Wm, key: &str) -> Response {
+        handle_config_command(wm, ConfigCommand::Toggle { key: key.into() })
+    }
     fn do_list(wm: &mut Wm) -> Response {
         handle_config_command(wm, ConfigCommand::List { prefix: None })
     }
@@ -500,6 +533,85 @@ mod tests {
 
         match do_get(&mut wm, "layout.inner_gap") {
             Response::ConfigValue(v) => assert_eq!(v, "42"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn toggle_flips_boolean_options_and_returns_the_new_value() {
+        let mut wm = test_wm();
+        // Defaults: decor_hints on, show_alt_names off.
+        match do_toggle(&mut wm, "window.decor_hints") {
+            Response::ConfigValue(v) => assert_eq!(v, "false"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+        assert!(!wm.core.config.window.decor_hints);
+        match do_toggle(&mut wm, "window.decor_hints") {
+            Response::ConfigValue(v) => assert_eq!(v, "true"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+        assert!(wm.core.config.window.decor_hints);
+
+        match do_toggle(&mut wm, "tags.show_alt_names") {
+            Response::ConfigValue(v) => assert_eq!(v, "true"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+        // The bar reads this live from config, so the flip is effective.
+        assert!(wm.core.config.tags.show_alt_names);
+    }
+
+    #[test]
+    fn toggle_flips_input_toggle_settings() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "input.type:touchpad.tap", "enabled"),
+            Response::Ok
+        ));
+        match do_toggle(&mut wm, "input.type:touchpad.tap") {
+            Response::ConfigValue(v) => assert_eq!(v, "disabled"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+        assert_eq!(
+            wm.core.config.input["type:touchpad"].tap,
+            Some(crate::config::config_toml::ToggleSetting::Disabled)
+        );
+    }
+
+    #[test]
+    fn toggle_rejects_non_boolean_keys_without_mutating() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "layout.inner_gap", "42"),
+            Response::Ok
+        ));
+        for key in [
+            "layout.inner_gap",              // integer
+            "window.focus_follows_mouse",     // three-state enum
+            "window.border_width_px",         // integer
+            "window.nonexistent",             // unknown field
+            "nonexistent.field",              // unknown section
+            "nodot",                          // malformed key
+        ] {
+            assert!(
+                matches!(do_toggle(&mut wm, key), Response::Err(_)),
+                "toggle should reject '{key}'"
+            );
+        }
+        assert_eq!(wm.core.config.layout.inner_gap, 42);
+    }
+
+    #[test]
+    fn tags_set_takes_effect_live() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "tags.show_alt_names", "true"),
+            Response::Ok
+        ));
+        // The bar reads this straight from config, so an IPC set is live
+        // immediately — there is no model copy left to fall out of sync.
+        assert!(wm.core.config.tags.show_alt_names);
+        match do_get(&mut wm, "tags.show_alt_names") {
+            Response::ConfigValue(v) => assert_eq!(v, "true"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
     }

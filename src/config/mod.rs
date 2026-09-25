@@ -373,7 +373,7 @@ mod resolution_tests {
     }
 
     #[test]
-    fn apply_config_seeds_tag_and_bar_defaults_into_the_model() {
+    fn apply_config_applies_tag_and_bar_defaults() {
         use crate::backend::Backend;
         use crate::backend::wayland::WaylandBackend;
         use crate::types::{Monitor, Rect};
@@ -392,7 +392,9 @@ mod resolution_tests {
         });
         wm.core.apply_config(config);
 
-        assert!(wm.core.model.tags.show_alternative_names);
+        // Alt-tag display is read live from config; bar states are seeded
+        // into each monitor.
+        assert!(wm.core.config.tags.show_alt_names);
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
         assert!(monitor.hide_tags);
         assert!(monitor.show_bottom_bar);

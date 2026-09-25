@@ -103,7 +103,7 @@ else
   run_ctl test wait windows "$WINDOWS" --timeout-ms 10000
 fi
 
-run_ctl toggle animated on
+run_ctl action toggle_animated on
 
 if [[ "$WORKLOAD" == "standard" ]]; then
   # Make one window floating over the tiled clients. Coordinates are relative

@@ -251,13 +251,7 @@ mod tests {
     #[test]
     fn convenience_commands_compile_to_canonical_actions() {
         for (argv, name, args) in [
-            (
-                &["toggle", "alt-tag", "on"][..],
-                "toggle_alt_tag",
-                &["on"][..],
-            ),
-            (&["toggle", "animated"], "toggle_animated", &[]),
-            (&["layout", "set", "grid"], "set_layout", &["grid"]),
+            (&["layout", "set", "grid"][..], "set_layout", &["grid"][..]),
             (&["mode", "set", "resize"], "set_mode", &["resize"]),
             (&["tag", "view", "4"], "view_tag", &["4"]),
             (&["follow-mon", "prev"], "follow_mon", &["prev"]),

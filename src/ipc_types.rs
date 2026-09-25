@@ -77,6 +77,9 @@ pub enum ConfigCommand {
     Get { key: String },
     /// Set a runtime config value by key (e.g. layout.inner_gap 12).
     Set { key: String, value: String },
+    /// Flip a boolean runtime config value by key (e.g. window.decor_hints).
+    /// Returns the new value.
+    Toggle { key: String },
     /// List runtime config keys and their current values, optionally only
     /// those under a section or key prefix (e.g. `fonts`, `fonts.icon_size`).
     List { prefix: Option<String> },

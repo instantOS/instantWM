@@ -788,7 +788,7 @@ mod tests {
         let action = NamedAction::ToggleAltTag(Some(ToggleAction::SetTrue));
         action.execute(&mut wm.ctx()).unwrap();
         action.execute(&mut wm.ctx()).unwrap();
-        assert!(wm.core.model.tags.show_alternative_names);
+        assert!(wm.core.config.tags.show_alt_names);
     }
 
     #[test]
