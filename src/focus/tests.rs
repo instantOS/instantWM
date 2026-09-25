@@ -1,6 +1,6 @@
 use super::{
-    BackendRefresh, FocusBackendOps, FocusProjection, apply_focus_transition as focus_generic_impl,
-    get_visible_stack, stack_focus_target,
+    BackendRefresh, FocusBackendOps, FocusProjection, apply_focus_transition, get_visible_stack,
+    stack_focus_target,
 };
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
@@ -76,14 +76,16 @@ impl FocusBackendOps for RecordingBackend {
     }
 }
 
-fn focus_generic(
+/// Run a focus transition using the model's current selection as the previous
+/// backend focus, which is what [`super::focus`] does for `WmCtx` holders.
+fn focus_from_current_selection(
     core: &mut CoreCtx<'_>,
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
     refresh: BackendRefresh,
 ) -> anyhow::Result<Option<MonitorId>> {
     let previous = core.model().selected_win();
-    Ok(focus_generic_impl(core, win, previous, backend, refresh))
+    Ok(apply_focus_transition(core, win, previous, backend, refresh))
 }
 
 fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, FocusState) {
@@ -116,11 +118,11 @@ fn forced_refresh_reapplies_unchanged_backend_focus() {
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
     let mut backend = RecordingBackend::default();
 
-    focus_generic(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
+    focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
     assert_eq!(backend.focused.get(), 0);
     assert_eq!(backend.binding_refreshes.get(), 0);
 
-    focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+    focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
     assert_eq!(backend.focused.get(), 1);
     assert_eq!(backend.binding_refreshes.get(), 1);
     assert_eq!(core.focus.take_pending_selection(), None);
@@ -220,7 +222,7 @@ fn changing_focus_does_not_change_persistent_z_order() {
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
     let mut backend = RecordingBackend::default();
-    focus_generic(
+    focus_from_current_selection(
         &mut core,
         Some(WindowId(1)),
         &mut backend,

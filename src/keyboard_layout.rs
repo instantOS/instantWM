@@ -10,9 +10,13 @@ use crate::types::KeyboardLayout;
 use crate::types::input::StackDirection;
 use std::process::Command;
 
-/// Apply one configured layout through the active backend.
-//BOZO: why do we have both apply_layout and apply_keyboard_layout?
-fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
+/// Switch to the configured layout at `index`.
+///
+/// This is the policy half: it resolves the layout entry, folds the
+/// `caps:swapescape` option into the XKB options, and then hands off to
+/// [`WmCtx::apply_keyboard_layout`], which performs the backend-specific
+/// keymap install.
+fn switch_to_configured_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().interaction().keyboard_layout;
     let layout = state
         .layout(index)
@@ -45,7 +49,7 @@ pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) -> bool {
     if ctx.core().interaction().keyboard_layout.is_empty() {
         return false;
     }
-    match apply_layout(ctx, index) {
+    match switch_to_configured_layout(ctx, index) {
         Ok(()) => true,
         Err(e) => {
             eprintln!("instantwm: {e}");

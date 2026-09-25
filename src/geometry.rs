@@ -226,11 +226,10 @@ pub(crate) fn move_resize(
     target: Rect,
     options: MoveResizeOptions,
 ) {
-    //BOZO: should these returns be collapsed/a single statement instead?
-    if options.size_hints == SizeHintPolicy::Ignore && !target.is_valid() {
-        return;
-    }
-
+    // `apply_resize_policies` returns the target unchanged when size hints are
+    // ignored, so the validity check below already rejects an invalid ignored
+    // target; a separate pre-check would be dead. When hints are respected the
+    // policy hook runs first because it may adjust the rectangle in place.
     let Some(target) = apply_resize_policies(ctx, win, target, options) else {
         return;
     };

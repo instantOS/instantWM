@@ -112,8 +112,8 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
     }
 }
 
-/// Whether `focus_generic` must re-apply backend focus state even when the
-/// model selection did not change.
+/// Whether [`apply_focus_transition`] must re-apply backend focus state even
+/// when the model selection did not change.
 ///
 /// `IfNeeded` touches the backend only when the selection actually moved or the
 /// backend reports its own focus as stale. `Force` re-applies seat focus and
@@ -125,8 +125,12 @@ pub(crate) enum BackendRefresh {
     Force,
 }
 
-//BOZO: why is there both focus_generic and focus in this file?
 /// Generic focus implementation shared between X11 and Wayland.
+///
+/// This is the backend-independent half of a focus change. The public
+/// [`focus`] entry point additionally follows the selection into the overview
+/// and syncs projected z-order; callers that need the previous backend focus to
+/// be re-derived from scratch use [`refresh_focus`] instead.
 pub(crate) fn apply_focus_transition(
     core: &mut CoreCtx,
     win: Option<WindowId>,

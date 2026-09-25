@@ -6,7 +6,7 @@
 //! | Module            | What lives there                                        |
 //! |-------------------|---------------------------------------------------------|
 //! | [`appearance`]    | Color palette and per-scheme color tables                |
-//! | [`keybindings`]   | Normal-mode key bindings (`get_keys`, `get_desktop_keybinds`)      |
+//! | [`keybindings`]   | Normal-mode key bindings (`default_keybinds`, `get_desktop_keybinds`) |
 //! | [`buttons`]       | Mouse button bindings (`get_buttons`)                   |
 //! | [`rules`]         | Window placement rules (`get_rules`)                    |
 //! | [`keysyms`]       | X11 keysym constants (re-exported via `use keysyms::*`) |
@@ -112,7 +112,7 @@ pub fn resolve_config(
     let layout = theme.layout.validated()?;
     theme.fonts = theme.fonts.validated()?;
     let keys = keybind_config::merge_keybinds(
-        keybindings::get_keys(backend),
+        keybindings::default_keybinds(backend),
         &theme.keybinds,
         KeybindOrigin::User,
     );

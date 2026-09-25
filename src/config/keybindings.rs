@@ -1,4 +1,4 @@
-//! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
+//! Keyboard bindings: normal keys (`default_keybinds`) and prefix-mode keys (`get_desktop_keybinds`).
 
 use crate::actions::{KeyAction, NamedAction};
 use crate::backend::BackendKind;
@@ -44,8 +44,8 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     ]
 }
 
-//BOZO: is this a good name?
-pub fn get_keys(backend: BackendKind) -> Vec<Key> {
+/// The compiled default key table for `backend`.
+pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         key!(MODKEY | MOD1, XK_J => KeyAction::named(NamedAction::KeyResizeDown)),
         key!(MODKEY | MOD1, XK_K => KeyAction::named(NamedAction::KeyResizeUp)),
@@ -270,7 +270,7 @@ mod tests {
     }
 
     fn default_named_action(modifiers: u32, keysym: u32) -> Option<NamedAction> {
-        get_keys(BackendKind::Wayland)
+        default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
             .and_then(|key| match key.action {
@@ -426,7 +426,7 @@ mod tests {
         for backend in [BackendKind::X11, BackendKind::Wayland] {
             assert!(default_spawn_args_for(backend, MODKEY | CONTROL, XK_L).is_some());
             assert!(default_spawn_args_for(backend, MODKEY, XK_RETURN).is_some());
-            let chords = get_keys(backend)
+            let chords = default_keybinds(backend)
                 .iter()
                 .filter(|key| key.mod_mask == MODKEY && key.keysym == XK_RETURN)
                 .count();
@@ -439,7 +439,7 @@ mod tests {
         modifiers: u32,
         keysym: u32,
     ) -> Option<Vec<String>> {
-        get_keys(backend)
+        default_keybinds(backend)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
             .and_then(|key| match key.action {
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn super_ctrl_c_launches_settings_gui() {
-        let spawn_args = get_keys(BackendKind::Wayland)
+        let spawn_args = default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == MODKEY | CONTROL && key.keysym == XK_C)
             .and_then(|key| match key.action {
@@ -469,7 +469,7 @@ mod tests {
     }
 
     fn default_spawn_args(modifiers: u32, keysym: u32) -> Option<Vec<String>> {
-        get_keys(BackendKind::Wayland)
+        default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
             .and_then(|key| match key.action {
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn super_r_launches_terminal_file_manager_through_default_aliases() {
-        let spawn_args = get_keys(BackendKind::Wayland)
+        let spawn_args = default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == MODKEY && key.keysym == XK_R)
             .and_then(|key| match key.action {

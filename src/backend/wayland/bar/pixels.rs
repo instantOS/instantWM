@@ -1,20 +1,5 @@
 use crate::types::{Point, Rect, Rgba, Size};
 
-//BOZO: could this use or be an existing Rect method?
-fn clipped_rect(canvas_size: Size, rect: Rect) -> Option<Rect> {
-    if !canvas_size.is_positive() || !rect.size().is_positive() {
-        return None;
-    }
-    let x = rect.x.max(0);
-    let y = rect.y.max(0);
-    let right = (i64::from(rect.x) + i64::from(rect.w)).min(i64::from(canvas_size.w));
-    let bottom = (i64::from(rect.y) + i64::from(rect.h)).min(i64::from(canvas_size.h));
-    if right <= i64::from(x) || bottom <= i64::from(y) {
-        return None;
-    }
-    Some(Rect::new(x, y, right as i32 - x, bottom as i32 - y))
-}
-
 fn pixel_offset(canvas_size: Size, point: Point) -> Option<usize> {
     (point.y as usize)
         .checked_mul(canvas_size.w as usize)?
@@ -53,7 +38,9 @@ pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, col
 }
 
 pub(super) fn fill_rect(pixels: &mut [u8], canvas_size: Size, rect: Rect, color: Rgba) {
-    let Some(rect) = clipped_rect(canvas_size, rect) else {
+    // Clip to the canvas; `Rect::intersection` is overflow-safe for the
+    // extreme rectangles callers pass here.
+    let Some(rect) = Rect::new(0, 0, canvas_size.w, canvas_size.h).intersection(&rect) else {
         return;
     };
     let [r, g, b, a] = color.to_rgba8();
@@ -93,7 +80,7 @@ pub(crate) fn blit_rgba_scaled(
     source_size: Size,
     src_rgba: &[u8],
 ) {
-    let Some(clipped) = clipped_rect(canvas_size, dst) else {
+    let Some(clipped) = Rect::new(0, 0, canvas_size.w, canvas_size.h).intersection(&dst) else {
         return;
     };
     if !source_size.is_positive() {
