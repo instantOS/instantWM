@@ -369,7 +369,8 @@ fn init_schemes(
         .expect("Failed to create status bar colors");
 
     x11_runtime.border_scheme = borderscheme;
-    x11_runtime.status_scheme = AllocScheme::new(status.foreground, status.background, status.detail);
+    x11_runtime.status_scheme =
+        AllocScheme::new(status.foreground, status.background, status.detail);
 }
 
 #[cfg(test)]

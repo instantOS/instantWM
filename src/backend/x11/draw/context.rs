@@ -70,7 +70,8 @@ impl Clone for CachedBarScheme {
     }
 }
 
-/// Cache key for an allocated bar scheme: `[fg, bg, detail]`, quantized to
+/// Cache key for an allocated bar scheme: `[foreground, background, detail]`,
+/// quantized to
 /// bytes.
 ///
 /// Keying on the quantized components rather than the raw `f32` bits means
@@ -727,14 +728,18 @@ impl DrawContext {
     pub fn scm_create(&mut self, clrnames: &[&str]) -> Result<AllocScheme, String> {
         if clrnames.len() != 3 {
             return Err(format!(
-                "scm_create requires exactly 3 colors (fg, bg, detail), got {}",
+                "scm_create requires exactly 3 colors (foreground, background, detail), got {}",
                 clrnames.len()
             ));
         }
-        let fg = self.clr_create(clrnames[0])?;
-        let bg = self.clr_create(clrnames[1])?;
+        let foreground = self.clr_create(clrnames[0])?;
+        let background = self.clr_create(clrnames[1])?;
         let detail = self.clr_create(clrnames[2])?;
-        Ok(AllocScheme { fg, bg, detail })
+        Ok(AllocScheme {
+            foreground,
+            background,
+            detail,
+        })
     }
 }
 
@@ -951,7 +956,7 @@ impl DrawContext {
     /// Fill or stroke a rectangle.
     ///
     /// * `filled` — fill if `true`, stroke outline if `false`.
-    /// * `invert` — swap fg/bg colors.
+    /// * `invert` — swap foreground/background colors.
     pub fn rect(&self, bounds: WmRect, filled: bool, invert: bool) {
         if self.display.is_null() || !bounds.size().is_positive() {
             return;
@@ -990,7 +995,7 @@ impl DrawContext {
     /// Fill or stroke an ellipse inscribed in the given bounding box.
     ///
     /// * `filled` — fill if `true`, stroke if `false`.
-    /// * `invert` — swap fg/bg colors.
+    /// * `invert` — swap foreground/background colors.
     pub fn circ(&self, bounds: WmRect, filled: bool, invert: bool) {
         if self.display.is_null() || !bounds.size().is_positive() {
             return;

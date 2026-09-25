@@ -63,7 +63,10 @@ mod tests {
             wm.core.config.colors.border.tile_focus,
             nord.border.tile_focus
         );
-        assert_eq!(wm.core.config.colors.status.foreground, nord.status.foreground);
+        assert_eq!(
+            wm.core.config.colors.status.foreground,
+            nord.status.foreground
+        );
     }
 
     #[test]

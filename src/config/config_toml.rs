@@ -1080,7 +1080,7 @@ mod theme_tests {
             r##"
             theme = "catppuccin-latte"
             [colors.status]
-            bg = "#123456"
+            background = "#123456"
             "##,
         );
         assert_eq!(config.colors.status.background, "#123456".parse().unwrap());

@@ -105,7 +105,13 @@ mod tests {
         assert_eq!(fill_color(&s, SchemeColor::Foreground), s.foreground);
         assert_eq!(fill_color(&s, SchemeColor::Background), s.background);
 
-        assert_eq!(text_colors(&s, SchemeColor::Foreground), (s.background, s.foreground));
-        assert_eq!(text_colors(&s, SchemeColor::Background), (s.foreground, s.background));
+        assert_eq!(
+            text_colors(&s, SchemeColor::Foreground),
+            (s.background, s.foreground)
+        );
+        assert_eq!(
+            text_colors(&s, SchemeColor::Background),
+            (s.foreground, s.background)
+        );
     }
 }

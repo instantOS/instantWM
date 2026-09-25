@@ -297,8 +297,12 @@ mod tests {
             let gray = f32::from(value) / 255.0;
             bottom_bar_indicator_color(crate::types::Rgba::rgb(gray, gray, gray)).to_rgba8()[0]
         };
-        assert_eq!(blend(18), 219, "dark bg (18) must blend toward near-white");
-        assert_eq!(blend(255), 255, "white bg stays white");
-        assert_eq!(blend(0), 216, "black bg blends to ~85% white");
+        assert_eq!(
+            blend(18),
+            219,
+            "dark background (18) must blend toward near-white"
+        );
+        assert_eq!(blend(255), 255, "white background stays white");
+        assert_eq!(blend(0), 216, "black background blends to ~85% white");
     }
 }

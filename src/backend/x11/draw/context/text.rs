@@ -23,9 +23,10 @@ impl DrawContext {
         }
         // Paint background and create Xft draw surface.
         // SAFETY: Xlib/Xft drawing calls with raw pointers.
-        let bg = if invert { fg_pixel } else { bg_pixel };
+        // The cell's own fill: the scheme foreground when inverted.
+        let cell_background = if invert { fg_pixel } else { bg_pixel };
         unsafe {
-            XSetForeground(self.display, self.gc, bg as c_ulong);
+            XSetForeground(self.display, self.gc, cell_background as c_ulong);
 
             if detail_height > 0 {
                 // Main background (above the detail strip).
@@ -73,7 +74,7 @@ impl DrawContext {
     /// # Parameters
     ///
     /// * `lpad`          — horizontal padding added before the first glyph.
-    /// * `invert`        — swap fg/bg colors.
+    /// * `invert`        — swap foreground/background colors.
     /// * `detail_height` — if `> 0`, the bottom `detail_height` pixels of the
     ///   background are painted in the *detail* color.
     ///
@@ -121,7 +122,10 @@ impl DrawContext {
             fg_pixel = scheme.foreground.pixel();
             bg_pixel = scheme.background.pixel();
             detail_pixel = scheme.detail.pixel();
-            (Some(scheme.foreground.color.clone()), Some(scheme.background.color.clone()))
+            (
+                Some(scheme.foreground.color.clone()),
+                Some(scheme.background.color.clone()),
+            )
         } else {
             (None, None)
         };

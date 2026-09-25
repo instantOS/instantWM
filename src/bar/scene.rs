@@ -982,7 +982,10 @@ mod tests {
 
         let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
 
-        assert_eq!(scheme.background, colors.urgent_colors(SchemeHover::NoHover).background);
+        assert_eq!(
+            scheme.background,
+            colors.urgent_colors(SchemeHover::NoHover).background
+        );
     }
 
     #[test]
@@ -1004,7 +1007,10 @@ mod tests {
 
         let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
 
-        assert_eq!(scheme.background, colors.urgent_colors(SchemeHover::NoHover).background);
+        assert_eq!(
+            scheme.background,
+            colors.urgent_colors(SchemeHover::NoHover).background
+        );
     }
 
     #[test]

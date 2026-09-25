@@ -467,8 +467,8 @@ fn draw_i3_block(
     }
 
     let block_scheme = ColorScheme {
-        foreground: foreground,
-        background: background,
+        foreground,
+        background,
         detail,
     };
     painter.set_scheme(block_scheme);
