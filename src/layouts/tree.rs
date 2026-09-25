@@ -78,6 +78,7 @@ impl Node {
             || matches!(self, Self::Split(split) if split.children.iter().any(|child| child.node.contains_key(key)))
     }
 
+    //BOZO: is this a trivial forwarder? Why does it exist?
     fn replace_key(self, key: NodeKey, replacement: Node) -> Self {
         self.replace_key_once(key, &mut Some(replacement))
     }
@@ -291,6 +292,7 @@ fn take_split_id(next: &mut u64) -> SplitId {
     id
 }
 
+//BOZO: is this reinventing the std lib?
 fn finite_clamp(value: f64, minimum: f64, maximum: f64, fallback: f64) -> f64 {
     if value.is_finite() {
         value.clamp(minimum, maximum)
@@ -336,6 +338,7 @@ fn make_split(id: SplitId, axis: Axis, items: Vec<WeightedNode>) -> Option<Node>
     }
 }
 
+//BOZO: should this be a method on something? What are groups Why do we need to balance them? Or should it at least be documented better?
 fn balanced_group_sizes(item_count: usize, group_count: usize) -> Vec<usize> {
     debug_assert!(item_count > 0);
     debug_assert!((1..=item_count).contains(&group_count));
@@ -390,6 +393,7 @@ fn build_grouped_nodes(
     (root, next_split_id)
 }
 
+//BOZO: are we reinventing the Rect struct here? Should Rect instead become generic?
 #[derive(Debug, Clone, Copy)]
 struct FRect {
     x: f64,

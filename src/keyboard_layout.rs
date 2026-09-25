@@ -11,6 +11,7 @@ use crate::types::input::StackDirection;
 use std::process::Command;
 
 /// Apply one configured layout through the active backend.
+//BOZO: why do we have both apply_layout and apply_keyboard_layout?
 fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().interaction().keyboard_layout;
     let layout = state
@@ -91,6 +92,8 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
 /// Replace the configured keyboard layouts at runtime.
 ///
 /// This allows IPC clients to reconfigure layouts without editing the TOML file.
+//BOZO: why does this take ctx if it only uses core_mut and core? Should it be passed mut corestate?
+//BOZO: and if that is the case here, are there more candidates?
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
     ctx.core_mut()
         .state_mut()
@@ -147,6 +150,7 @@ pub fn get_all_keyboard_layouts() -> Vec<String> {
 ///
 /// If the layout already exists, returns an error.
 /// Switches to the newly added layout.
+//BOZO: would a keyboard layout manager struct make sense? It seems right now all of these take WmCtx (god object danger) and are free functions?
 pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<(), String> {
     let new_index = ctx
         .core_mut()

@@ -137,6 +137,15 @@ impl WmModel {
         self.monitors.selected()
     }
 
+    /// Whether `monitor_id` identifies a connected monitor other than the
+    /// currently selected one.
+    ///
+    /// Callers use this before performing selection side effects, while
+    /// [`Self::set_selected_monitor`] provides the guarded mutation primitive.
+    pub(crate) fn can_change_selected_monitor(&self, monitor_id: MonitorId) -> bool {
+        self.monitor(monitor_id).is_some() && self.selected_monitor_id() != monitor_id
+    }
+
     /// Change the currently selected monitor.
     pub fn set_selected_monitor(&mut self, id: MonitorId) {
         self.monitors.set_selected(id);
@@ -454,6 +463,18 @@ impl Default for WmModel {
 mod tests {
     use super::*;
     use crate::types::{ClientMode, Rect, TagMask};
+
+    #[test]
+    fn monitor_selection_requires_a_connected_non_current_monitor() {
+        let mut model = WmModel::new();
+        let first = model.monitors.push(Monitor::default());
+        let second = model.monitors.push(Monitor::default());
+        model.set_selected_monitor(first);
+
+        assert!(model.can_change_selected_monitor(second));
+        assert!(!model.can_change_selected_monitor(first));
+        assert!(!model.can_change_selected_monitor(MonitorId::from_raw(999)));
+    }
 
     #[test]
     fn client_view_resolves_client_and_assigned_monitor() {

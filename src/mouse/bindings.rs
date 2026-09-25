@@ -21,6 +21,7 @@ pub struct ButtonBindingEvent {
 /// explicit precedence rule when duplicate targets are present; callers that
 /// need several operations should expose a compound action instead of relying
 /// on backend-dependent duplicate dispatch.
+//BOZO: is this function well named? Or would a different name be better?
 pub(crate) fn run_first_matching(
     ctx: &mut WmCtx<'_>,
     event: ButtonBindingEvent,

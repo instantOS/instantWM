@@ -362,12 +362,7 @@ fn should_hover_focus(
 /// Returns `true` if the selection actually changed (i.e. the monitor was not
 /// already selected), `false` otherwise.
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
-    //BOZO: is this really the place where non-existent monitor IDs should be handled? Couldnt we clean them up in a central place and guarantee a monitor ID is valid?
-    if ctx.core().model().monitor(monitor_id).is_none() {
-        return false;
-    }
-    //BOZO: is this the place for this defense? Should defending against monitors not being existent not be more centralized?
-    if monitor_id == ctx.core().model().selected_monitor_id() {
+    if !ctx.core().model().can_change_selected_monitor(monitor_id) {
         return false;
     }
 

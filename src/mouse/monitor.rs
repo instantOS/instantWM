@@ -21,6 +21,7 @@ use crate::contexts::WmCtx;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::*;
 
+//BOZO: is the following comment stale?
 /// Check whether `rect` lies on a different monitor than the currently
 /// selected one and, if so, migrate the window and update `selmon`.
 ///

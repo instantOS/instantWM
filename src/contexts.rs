@@ -189,7 +189,7 @@ impl<'a> CoreCtx<'a> {
 
     pub fn select_monitor(&mut self, monitor_id: MonitorId) -> bool {
         self.mutate_selection(|model| {
-            if model.monitor(monitor_id).is_none() || model.selected_monitor_id() == monitor_id {
+            if !model.can_change_selected_monitor(monitor_id) {
                 return false;
             }
             model.set_selected_monitor(monitor_id);

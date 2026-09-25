@@ -16,6 +16,7 @@ use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::{MonitorDirection, MonitorId, Rect, WindowId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+//BOZO: what does this mean? Is it messy? Should it be documented better?
 enum SendToMonitorStrategy {
     FloatingProportional,
     DirectTransfer,

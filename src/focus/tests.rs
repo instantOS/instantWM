@@ -188,6 +188,21 @@ fn monitor_switch_records_the_global_window_transition() {
 }
 
 #[test]
+fn missing_monitor_is_rejected_before_selection_changes() {
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::wm::Wm;
+
+    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let selected = wm.core.model.monitors.push(Monitor::default());
+    let missing = MonitorId::from_raw(999);
+
+    assert!(!super::select_monitor(&mut wm.ctx(), missing));
+    assert_eq!(wm.core.model.selected_monitor_id(), selected);
+    assert_eq!(wm.focus.take_pending_selection(), None);
+}
+
+#[test]
 fn changing_focus_does_not_change_persistent_z_order() {
     let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
     let monitor_id = state.model.selected_monitor_id();

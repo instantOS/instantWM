@@ -55,6 +55,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 }
 
 /// Reset every tag's name back to its configured label on all monitors.
+//BOZO: should there maybe be a Tag struct which this is a method of? Is there already such a struct maybe?
 pub fn reset_name_tag(ctx: &mut WmCtx) {
     let configured = ctx.core().config().tag_template.clone();
     let num_tags = ctx.core().model().tags.num_tags.min(MAX_TAGS);
