@@ -157,7 +157,11 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let monitor_id = wm.core.model.monitors.push(Monitor::new_with_values());
         wm.core.model.monitors.set_selected(monitor_id);
-        wm.core.model.monitor_mut(monitor_id).unwrap().bar_default_show = show;
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .bar_default_show = show;
         wm
     }
 

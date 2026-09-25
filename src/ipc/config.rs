@@ -27,15 +27,13 @@ pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
                 Err(error) => Response::err(error),
             }
         }
-        ConfigCommand::Toggle { key } => {
-            match runtime::toggle_runtime_field(&mut wm.core, &key) {
-                Ok((effect, value)) => {
-                    apply_effect(wm, effect);
-                    Response::ConfigValue(value)
-                }
-                Err(error) => Response::err(error),
+        ConfigCommand::Toggle { key } => match runtime::toggle_runtime_field(&mut wm.core, &key) {
+            Ok((effect, value)) => {
+                apply_effect(wm, effect);
+                Response::ConfigValue(value)
             }
-        }
+            Err(error) => Response::err(error),
+        },
         ConfigCommand::List { prefix } => {
             match runtime::list_runtime_fields(&wm.core, prefix.as_deref()) {
                 Ok(entries) => Response::ConfigList(entries),
@@ -191,12 +189,12 @@ mod tests {
             Response::Ok
         ));
         for key in [
-            "layout.inner_gap",              // integer
-            "window.focus_follows_mouse",     // three-state enum
-            "window.border_width_px",         // integer
-            "window.nonexistent",             // unknown field
-            "nonexistent.field",              // unknown section
-            "nodot",                          // malformed key
+            "layout.inner_gap",           // integer
+            "window.focus_follows_mouse", // three-state enum
+            "window.border_width_px",     // integer
+            "window.nonexistent",         // unknown field
+            "nonexistent.field",          // unknown section
+            "nodot",                      // malformed key
         ] {
             assert!(
                 matches!(do_toggle(&mut wm, key), Response::Err(_)),

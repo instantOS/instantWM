@@ -103,9 +103,10 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.monitors.push(Monitor::default());
         wm.core.apply_config(config);
-        wm.core.model.expect_selected_monitor_mut().set_selected_tags(
-            crate::types::TagMask::single(1).unwrap(),
-        );
+        wm.core
+            .model
+            .expect_selected_monitor_mut()
+            .set_selected_tags(crate::types::TagMask::single(1).unwrap());
         wm
     }
 

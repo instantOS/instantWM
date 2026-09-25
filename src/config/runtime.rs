@@ -139,8 +139,9 @@ pub fn get_runtime_field(core: &CoreState, key: &str) -> Result<String, String> 
     let section = RuntimeConfigSection::parse(section_name)?;
     let state = &core.config;
     match section {
-        RuntimeConfigSection::Window => field_get(&state.window, rest)
-            .ok_or_else(|| unknown_field(section.name(), rest)),
+        RuntimeConfigSection::Window => {
+            field_get(&state.window, rest).ok_or_else(|| unknown_field(section.name(), rest))
+        }
         RuntimeConfigSection::Bar => {
             field_get(&state.bar, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }
@@ -153,8 +154,9 @@ pub fn get_runtime_field(core: &CoreState, key: &str) -> Result<String, String> 
         RuntimeConfigSection::Layout => {
             field_get(&state.layout, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }
-        RuntimeConfigSection::Animations => field_get(&state.animations, rest)
-            .ok_or_else(|| unknown_field(section.name(), rest)),
+        RuntimeConfigSection::Animations => {
+            field_get(&state.animations, rest).ok_or_else(|| unknown_field(section.name(), rest))
+        }
         RuntimeConfigSection::Colors => {
             field_get(&state.colors, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }

@@ -774,11 +774,13 @@ impl TagsConfig {
 
 /// The stock tag labels: `"1"` … `"20"` followed by the scratchpad tag.
 pub fn default_tag_names() -> Vec<String> {
-    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-        "17", "18", "19", "20", "s"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+    [
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
+        "17", "18", "19", "20", "s",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 pub fn load_config_file() -> Result<UserConfig, String> {
@@ -1101,7 +1103,11 @@ mod theme_tests {
     fn floating_click_raise_is_an_explicit_opt_in() {
         assert!(!parse("").raise_floating_on_click);
         assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
-        assert!(parse("[window]\nraise_floating_on_click = true").window.raise_floating_on_click);
+        assert!(
+            parse("[window]\nraise_floating_on_click = true")
+                .window
+                .raise_floating_on_click
+        );
     }
 
     #[test]
@@ -1165,10 +1171,7 @@ mod theme_tests {
         assert!(default.window.focus_follows_float_mouse);
         assert!(!default.tags.show_icons);
         assert!(default.bar.show_empty_tags);
-        assert_eq!(
-            default.bar.tag_slots,
-            crate::types::tag::DEFAULT_TAG_SLOTS
-        );
+        assert_eq!(default.bar.tag_slots, crate::types::tag::DEFAULT_TAG_SLOTS);
     }
 
     #[test]
@@ -1179,10 +1182,7 @@ mod theme_tests {
                 &format!("[bar]\ntag_slots = {}", crate::types::MAX_TAGS + 1),
                 "bar.tag_slots",
             ),
-            (
-                "[monitors.DP-1]\ntag_slots = 0",
-                "monitors.DP-1.tag_slots",
-            ),
+            ("[monitors.DP-1]\ntag_slots = 0", "monitors.DP-1.tag_slots"),
         ] {
             let user: UserConfig = toml::from_str(source).unwrap();
             let monitor_error = user

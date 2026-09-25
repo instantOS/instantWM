@@ -95,10 +95,7 @@ mod tests {
         let config = config_with(&[]);
         let policy = TagBarPolicy::resolve(&config, "DP-1");
         assert!(policy.show_empty_tags);
-        assert_eq!(
-            policy.tag_slots,
-            crate::types::tag::DEFAULT_TAG_SLOTS
-        );
+        assert_eq!(policy.tag_slots, crate::types::tag::DEFAULT_TAG_SLOTS);
     }
 
     #[test]
