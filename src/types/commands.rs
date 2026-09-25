@@ -63,6 +63,7 @@ impl ToggleAction {
     serde::Deserialize,
     clap::ValueEnum,
 )]
+#[serde(rename_all = "lowercase")]
 pub enum FocusFollowsMouseMode {
     /// Never move keyboard focus in response to pointer focus.
     Off,

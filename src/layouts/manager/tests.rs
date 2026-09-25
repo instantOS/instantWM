@@ -79,7 +79,7 @@ fn keyboard_config() -> crate::layouts::tree::CommandConfig {
 #[test]
 fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
     let mut wm = wayland_wm();
-    wm.core.behavior.animated = false;
+    wm.core.config.animations.enabled = false;
     wm.core.config.layout.inner_gap = 20;
     wm.core.config.layout.outer_gap = 20;
     let first = WindowId(1);
@@ -185,7 +185,7 @@ fn disabled_animation_is_still_consumed_after_first_layout() {
     let mut wm = wayland_wm();
     let win = WindowId(1);
     let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
-    wm.core.behavior.animated = false;
+    wm.core.config.animations.enabled = false;
     wm.work.spawn_animations.insert(win);
 
     super::arrange(&mut wm.ctx(), Some(monitor_id));
@@ -1391,7 +1391,7 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
     let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
         crate::backend::wayland::WaylandBackend::new(),
     ));
-    wm.core.behavior.animated = false;
+    wm.core.config.animations.enabled = false;
 
     let win = WindowId(1);
     let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 1600, 1200));

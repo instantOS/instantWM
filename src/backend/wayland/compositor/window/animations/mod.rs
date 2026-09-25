@@ -122,7 +122,7 @@ impl WaylandState {
 
     pub(crate) fn animations_enabled(&self) -> bool {
         self.globals()
-            .map(|state| state.behavior.animated)
+            .map(|state| state.config.animations.enabled)
             .unwrap_or(false)
     }
 

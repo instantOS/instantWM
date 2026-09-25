@@ -44,11 +44,19 @@ impl DisplayConfig {
 
 /// Window behaviour settings.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct WindowConfig {
     pub border_width_px: i32,
     pub snap_threshold: i32,
     pub resize_hints: bool,
     pub decor_hints: bool,
+    /// Pointer-focus policy: `"off"`, `"normal"`, or `"force"`.
+    ///
+    /// `toggle focus-follows-mouse` overrides this for the session; `reload`
+    /// restores the configured value.
+    pub focus_follows_mouse: FocusFollowsMouseMode,
+    /// Whether hover focus also applies to floating windows.
+    pub focus_follows_float_mouse: bool,
     /// Raise a floating window when its client area is left-clicked.
     ///
     /// Focus and stacking are otherwise independent; move/resize and bar-title
@@ -63,6 +71,8 @@ impl Default for WindowConfig {
             snap_threshold: 32,
             resize_hints: true,
             decor_hints: true,
+            focus_follows_mouse: FocusFollowsMouseMode::Normal,
+            focus_follows_float_mouse: true,
             raise_floating_on_click: false,
         }
     }
@@ -320,6 +330,7 @@ pub struct EffectiveConfig {
     pub window: WindowConfig,
     pub bar: crate::config::config_toml::BarConfig,
     pub systray: SystrayConfig,
+    pub tags: crate::config::config_toml::TagsConfig,
     pub layout: crate::config::config_toml::LayoutConfig,
     pub animations: crate::config::config_toml::AnimationConfig,
     pub colors: ColorConfig,
@@ -409,6 +420,8 @@ impl CoreState {
             current: 0,
         };
         let show_bottom_bar = next.bar.show_bottom;
+        let show_tags = next.bar.show_tags;
+        let show_alt_names = next.tags.show_alt_names;
         let tag_template = next.tag_template.clone();
         let tag_colors = next.colors.tag.clone();
 
@@ -416,11 +429,14 @@ impl CoreState {
         self.interaction.keyboard_layout = keyboard_layout;
         self.model.tags.colors = tag_colors;
         self.model.tags.num_tags = tag_template.len();
+        self.model.tags.set_alternative_names(show_alt_names);
 
-        // The bottom bar state is global. Reloading it resets interactive
-        // toggles so existing outputs immediately match newly created outputs.
+        // The bottom bar and tag-visibility states are global defaults.
+        // Reloading them resets interactive toggles so existing outputs
+        // immediately match newly created outputs.
         for (_id, monitor) in self.model.monitors_iter_mut() {
             monitor.show_bottom_bar = show_bottom_bar;
+            monitor.hide_tags = !show_tags;
             monitor.init_tags(&tag_template);
         }
     }
@@ -646,12 +662,14 @@ fn cross_axis_distance(current: Point, candidate: Point, side: crate::layouts::t
     }
 }
 
-/// Runtime behaviour toggles and transient WM mode state.
+/// Transient WM session state.
+///
+/// Deliberately holds no user preferences: every tunable a user may want as a
+/// standing default lives in [`EffectiveConfig`] (read live) and is restored
+/// by config reload. This struct only carries per-session state that has no
+/// meaningful persisted form.
 #[derive(Debug, Clone)]
 pub struct WmBehavior {
-    pub animated: bool,
-    pub focus_follows_mouse: FocusFollowsMouseMode,
-    pub focus_follows_float_mouse: bool,
     /// Runtime-added one-shot rules waiting to match the next matching window.
     /// Each entry has an absolute deadline; see [`crate::client::rules`] for
     /// the matching/consumption path.
@@ -663,9 +681,6 @@ pub struct WmBehavior {
 impl Default for WmBehavior {
     fn default() -> Self {
         Self {
-            animated: true,
-            focus_follows_mouse: FocusFollowsMouseMode::Normal,
-            focus_follows_float_mouse: true,
             pending_tmp_rules: Vec::new(),
             current_mode: ActiveWmMode::Default,
         }
@@ -681,18 +696,6 @@ impl WmBehavior {
         if !mode_exists {
             self.current_mode = ActiveWmMode::Default;
         }
-    }
-
-    pub fn toggle_animated(&mut self, action: ToggleAction) {
-        action.apply(&mut self.animated);
-    }
-
-    pub fn set_focus_follows_mouse(&mut self, mode: FocusFollowsMouseMode) {
-        self.focus_follows_mouse = mode;
-    }
-
-    pub fn toggle_focus_follows_float_mouse(&mut self, action: ToggleAction) {
-        action.apply(&mut self.focus_follows_float_mouse);
     }
 }
 

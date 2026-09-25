@@ -148,7 +148,7 @@ pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
 fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<WindowId>) {
     // Handle focus-follows-mouse monitor switching
     if ctx.core.behavior().current_mode.tree_placement().is_none()
-        && ctx.core.behavior().focus_follows_mouse.is_enabled()
+        && ctx.core.config().window.focus_follows_mouse.is_enabled()
         && crate::focus::select_monitor_at_pointer(&mut WmCtx::X11(ctx.reborrow()), root)
     {
         return;

@@ -433,7 +433,7 @@ impl<'a> WmCtx<'a> {
         // from interpolation. Pointer previews must track motion immediately.
         let animate = previous.is_some()
             && rect.is_some()
-            && self.core().behavior().animated
+            && self.core().config().animations.enabled
             && self.current_mode().tree_placement().is_some();
         self.core_mut().state_mut().interaction.layout_preview = rect;
         self.core_mut().state_mut().interaction.layout_preview_style = style;

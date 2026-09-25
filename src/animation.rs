@@ -137,7 +137,7 @@ impl WindowAnimation {
 /// owns presentation only: it does not initiate layout or mutate window
 /// policy. Fullscreen windows skip the decorative transition.
 pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
-    let animated = ctx.core().behavior().animated;
+    let animated = ctx.core().config().animations.enabled;
 
     let Some((target, is_tiling, is_visible)) =
         ctx.core().model().client_view(window).and_then(|view| {

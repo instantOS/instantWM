@@ -234,6 +234,14 @@ pub fn resolve_config(
     }
 
     let bar = theme.bar.validated()?;
+    let window = WindowConfig {
+        // The legacy top-level key and the `[window]` section are merged so
+        // either spelling enables the opt-in behaviour.
+        raise_floating_on_click: theme.raise_floating_on_click
+            || theme.window.raise_floating_on_click,
+        ..theme.window
+    }
+    .validated()?;
     let hooks = hooks::resolve_hooks(std::mem::take(&mut theme.hooks))?;
     let mut keyboard = theme.keyboard;
     if keyboard.layouts.is_empty() {
@@ -267,12 +275,10 @@ pub fn resolve_config(
         .collect();
 
     Ok(EffectiveConfig {
-        window: WindowConfig {
-            raise_floating_on_click: theme.raise_floating_on_click,
-            ..WindowConfig::default()
-        },
+        window,
         bar,
         systray: theme.systray,
+        tags: theme.tags,
         layout,
         animations: theme.animations,
         colors: theme.colors,
@@ -301,6 +307,7 @@ pub fn resolve_config(
 mod resolution_tests {
     use super::*;
     use crate::core_state::SystrayConfig;
+    use crate::wm::Wm;
 
     #[test]
     fn resolution_rejects_invalid_layout_before_building_effective_config() {
@@ -329,6 +336,66 @@ mod resolution_tests {
         assert_eq!(effective.tag_template.len(), MAX_TAGS);
         assert_eq!(effective.window, WindowConfig::default());
         assert_eq!(effective.systray, SystrayConfig::default());
+    }
+
+    #[test]
+    fn window_section_resolves_into_the_effective_config() {
+        let user: config_toml::UserConfig =
+            toml::from_str("[window]\ndecor_hints = false\nborder_width_px = 5").unwrap();
+
+        let effective = resolve_config(user, crate::backend::BackendKind::X11).unwrap();
+
+        assert!(!effective.window.decor_hints);
+        assert_eq!(effective.window.border_width_px, 5);
+        assert_eq!(effective.window.snap_threshold, 32);
+        assert!(!effective.window.raise_floating_on_click);
+    }
+
+    #[test]
+    fn legacy_top_level_click_raise_merges_with_the_window_section() {
+        let user: config_toml::UserConfig =
+            toml::from_str("raise_floating_on_click = true").unwrap();
+        let effective = resolve_config(user, crate::backend::BackendKind::X11).unwrap();
+        assert!(effective.window.raise_floating_on_click);
+    }
+
+    #[test]
+    fn invalid_window_settings_are_rejected_during_resolution() {
+        let user: config_toml::UserConfig =
+            toml::from_str("[window]\nborder_width_px = -2").unwrap();
+
+        let error = match resolve_config(user, crate::backend::BackendKind::X11) {
+            Ok(_) => panic!("invalid window.border_width_px must be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("window.border_width_px"), "{error}");
+    }
+
+    #[test]
+    fn apply_config_seeds_tag_and_bar_defaults_into_the_model() {
+        use crate::backend::Backend;
+        use crate::backend::wayland::WaylandBackend;
+        use crate::types::{Monitor, Rect};
+
+        let user: config_toml::UserConfig = toml::from_str(
+            "[tags]\nshow_alt_names = true\n[bar]\nshow_tags = false\nshow_bottom = true",
+        )
+        .unwrap();
+        let config = crate::config::resolve_config(user, crate::backend::BackendKind::Wayland)
+            .expect("valid config");
+
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 800, 600),
+            ..Monitor::default()
+        });
+        wm.core.apply_config(config);
+
+        assert!(wm.core.model.tags.show_alternative_names);
+        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        assert!(monitor.hide_tags);
+        assert!(monitor.show_bottom_bar);
     }
 
     #[test]

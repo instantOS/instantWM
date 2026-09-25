@@ -441,7 +441,7 @@ impl ScratchpadShowOptions {
         Self {
             monitor_id: ctx.core().model().selected_monitor_id(),
             focus: true,
-            warp_pointer: ctx.core().behavior().focus_follows_mouse.is_enabled(),
+            warp_pointer: ctx.core().config().window.focus_follows_mouse.is_enabled(),
         }
     }
 }

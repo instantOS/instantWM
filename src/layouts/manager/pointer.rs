@@ -258,13 +258,13 @@ pub(crate) fn update_pointer_tree_resize(
         .expect("client view guaranteed its monitor exists")
         .per_tag_state()
         .layout_tree = candidate;
-    let animated = ctx.core().behavior().animated;
+    let animated = ctx.core().config().animations.enabled;
     if animated {
-        ctx.core_mut().behavior_mut().animated = false;
+        ctx.core_mut().state_mut().config.animations.enabled = false;
     }
     arrange(ctx, Some(monitor_id));
     if animated {
-        ctx.core_mut().behavior_mut().animated = true;
+        ctx.core_mut().state_mut().config.animations.enabled = true;
     }
     true
 }

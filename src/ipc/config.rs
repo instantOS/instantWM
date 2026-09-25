@@ -19,6 +19,7 @@ enum RuntimeConfigSection {
     Window,
     Bar,
     Systray,
+    Tags,
     Layout,
     Animations,
     Colors,
@@ -29,10 +30,11 @@ enum RuntimeConfigSection {
 }
 
 impl RuntimeConfigSection {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::Window,
         Self::Bar,
         Self::Systray,
+        Self::Tags,
         Self::Layout,
         Self::Animations,
         Self::Colors,
@@ -47,6 +49,7 @@ impl RuntimeConfigSection {
             Self::Window => "window",
             Self::Bar => "bar",
             Self::Systray => "systray",
+            Self::Tags => "tags",
             Self::Layout => "layout",
             Self::Animations => "animations",
             Self::Colors => "colors",
@@ -89,6 +92,7 @@ fn get(wm: &Wm, key: &str) -> Response {
         RuntimeConfigSection::Window => field_get(&state.config.window, rest),
         RuntimeConfigSection::Bar => field_get(&state.config.bar, rest),
         RuntimeConfigSection::Systray => field_get(&state.config.systray, rest),
+        RuntimeConfigSection::Tags => field_get(&state.config.tags, rest),
         RuntimeConfigSection::Layout => field_get(&state.config.layout, rest),
         RuntimeConfigSection::Animations => field_get(&state.config.animations, rest),
         RuntimeConfigSection::Colors => field_get(&state.config.colors, rest),
@@ -125,6 +129,7 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
             .and_then(crate::config::config_toml::BarConfig::validated)
             .map(|candidate| state.config.bar = candidate),
         RuntimeConfigSection::Systray => parse_then_set(&mut state.config.systray, rest, value),
+        RuntimeConfigSection::Tags => parse_then_set(&mut state.config.tags, rest, value),
         RuntimeConfigSection::Layout => set_field_from_raw(&state.config.layout, rest, value)
             .and_then(crate::config::config_toml::LayoutConfig::validated)
             .map(|candidate| state.config.layout = candidate),
@@ -215,6 +220,7 @@ fn collect_section(
         RuntimeConfigSection::Window => collect(&core.config.window, prefix, entries),
         RuntimeConfigSection::Bar => collect(&core.config.bar, prefix, entries),
         RuntimeConfigSection::Systray => collect(&core.config.systray, prefix, entries),
+        RuntimeConfigSection::Tags => collect(&core.config.tags, prefix, entries),
         RuntimeConfigSection::Layout => collect(&core.config.layout, prefix, entries),
         RuntimeConfigSection::Animations => collect(&core.config.animations, prefix, entries),
         RuntimeConfigSection::Colors => collect(&core.config.colors, prefix, entries),
@@ -377,6 +383,11 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
         RuntimeConfigSection::Systray => {
             wm.bar.mark_dirty();
         }
+        RuntimeConfigSection::Tags => {
+            wm.bar.mark_dirty();
+            let mut ctx = wm.ctx();
+            ctx.request_bar_update();
+        }
         RuntimeConfigSection::Input | RuntimeConfigSection::Monitors => {}
     }
 }
@@ -384,9 +395,11 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
 fn sync_bar_config_to_monitors(wm: &mut Wm) {
     let show_bar = wm.core.config.bar.show;
     let show_bottom_bar = wm.core.config.bar.show_bottom;
+    let show_tags = wm.core.config.bar.show_tags;
     for monitor in wm.core.model.monitors_iter_all_mut() {
         monitor.show_bar = show_bar;
         monitor.show_bottom_bar = show_bottom_bar;
+        monitor.hide_tags = !show_tags;
         for state in monitor.per_tag.values_mut() {
             state.show_bar = show_bar;
         }

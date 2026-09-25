@@ -217,7 +217,8 @@ pub fn update_resize_offer_with_focus_at(ctx: &mut WmCtx, root: Point) -> bool {
         // pointer after the resize-offer check.
         let should_focus = ctx
             .core()
-            .behavior()
+            .config()
+            .window
             .focus_follows_mouse
             .allows(crate::types::HoverFocusTrigger::PointerMotion)
             && ctx.core().model().selected_win() != Some(win)

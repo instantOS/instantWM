@@ -308,7 +308,7 @@ pub(crate) fn move_resize(
                 return;
             }
 
-            let animated = ctx.core().behavior().animated;
+            let animated = ctx.core().config().animations.enabled;
 
             if !animated || options.duration.is_zero() {
                 ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);

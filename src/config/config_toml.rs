@@ -1,6 +1,6 @@
 use super::appearance::ColorConfig;
 use crate::config::keybind_config::KeybindSpec;
-use crate::core_state::{FontConfig, SystrayConfig};
+use crate::core_state::{FontConfig, SystrayConfig, WindowConfig};
 use crate::types::{KeyboardLayout, Rule};
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,8 @@ pub struct UserConfig {
     pub modes: HashMap<String, ModeSpec>,
     /// Cursor configuration (Wayland only).
     pub cursor: CursorConfig,
+    /// Tag display settings.
+    pub tags: TagsConfig,
     /// Layout geometry configuration.
     pub layout: LayoutConfig,
     /// Animation timing configuration.
@@ -58,7 +60,13 @@ pub struct UserConfig {
     pub bar: BarConfig,
     /// System tray settings.
     pub systray: SystrayConfig,
+    /// Window behaviour: border width, snapping, size hints and decoration
+    /// hints.
+    pub window: WindowConfig,
     /// Raise a floating window when its client area is left-clicked.
+    ///
+    /// Legacy top-level spelling of `window.raise_floating_on_click`; either
+    /// location enables it.
     ///
     /// Disabled by default so focus-follows-mouse and click-to-focus do not
     /// disturb the explicit floating-window stack.
@@ -84,6 +92,9 @@ pub struct BarConfig {
     pub show: bool,
     /// Show the bottom gesture strip (plain background, no contents).
     pub show_bottom: bool,
+    /// Show the tag indicators section. Per-monitor runtime toggles
+    /// (`toggle hide-tags`) override this until the next reload.
+    pub show_tags: bool,
     /// Bar height in logical pixels. `0` derives it from font metrics.
     pub height: i32,
     /// Width of the start-menu hit target in logical pixels.
@@ -95,6 +106,7 @@ impl Default for BarConfig {
         Self {
             show: true,
             show_bottom: false,
+            show_tags: true,
             height: 0,
             startmenu_size: 30,
         }
@@ -188,14 +200,27 @@ impl<'de> Deserialize<'de> for AnimationSpeed {
 ///
 /// ```toml
 /// [animations]
+/// enabled = true
 /// # 0.5 = half speed; 2.0 = twice as fast
 /// speed = 1.0
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Serialize)]
 #[serde(default)]
-#[derive(Default)]
 pub struct AnimationConfig {
+    /// Master switch for window animations. `instantwmctl toggle animated`
+    /// flips this at runtime; `instantwmctl reload` restores the configured
+    /// value.
+    pub enabled: bool,
     pub speed: AnimationSpeed,
+}
+
+impl Default for AnimationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            speed: AnimationSpeed::default(),
+        }
+    }
 }
 
 impl AnimationConfig {
@@ -508,14 +533,19 @@ pub enum MirrorFit {
 }
 
 /// Toggle setting for boolean-like input options (tap, natural_scroll).
+///
+/// Serde accepts the CLI's `on`/`off` aliases so `config set input.*.tap on`
+/// and the TOML schema speak the same grammar as `instantwmctl mouse tap`.
 #[derive(
     Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize, Encode, Decode, clap::ValueEnum,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum ToggleSetting {
     #[value(alias = "on")]
+    #[serde(alias = "on")]
     Enabled,
     #[value(alias = "off")]
+    #[serde(alias = "off")]
     Disabled,
 }
 
@@ -598,6 +628,21 @@ pub struct KeyboardConfig {
     pub model: Option<String>,
     /// Swap Caps Lock and Escape.
     pub swapescape: bool,
+}
+
+/// Tag display configuration.
+///
+/// ```toml
+/// [tags]
+/// show_alt_names = false
+/// ```
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(default)]
+pub struct TagsConfig {
+    /// Show alternative tag names (icon glyphs) in the bar instead of the
+    /// plain tag names. `toggle alt-tag` flips this for the session; `reload`
+    /// restores the configured value.
+    pub show_alt_names: bool,
 }
 
 pub fn load_config_file() -> Result<UserConfig, String> {
@@ -805,6 +850,42 @@ mod theme_tests {
     }
 
     #[test]
+    fn input_toggles_accept_the_cli_on_off_aliases() {
+        for (value, canonical, variant) in [
+            (
+                "\"enabled\"",
+                "enabled",
+                crate::config::config_toml::ToggleSetting::Enabled,
+            ),
+            (
+                "\"disabled\"",
+                "disabled",
+                crate::config::config_toml::ToggleSetting::Disabled,
+            ),
+            (
+                "\"on\"",
+                "enabled",
+                crate::config::config_toml::ToggleSetting::Enabled,
+            ),
+            (
+                "\"off\"",
+                "disabled",
+                crate::config::config_toml::ToggleSetting::Disabled,
+            ),
+        ] {
+            let user = parse(&format!("[input.\"type:touchpad\"]\ntap = {value}"));
+            assert_eq!(user.input["type:touchpad"].tap, Some(variant));
+            // Round-trip: aliases parse, but serialization stays canonical.
+            let roundtrip = toml::to_string(&user).unwrap();
+            assert!(
+                roundtrip.contains(&format!("tap = \"{canonical}\"")),
+                "expected canonical form in:\n{roundtrip}"
+            );
+        }
+        assert!(toml::from_str::<UserConfig>("[input.x]\ntap = \"nope\"").is_err());
+    }
+
+    #[test]
     fn layout_validation_reports_the_invalid_field() {
         for (config, field) in [
             (
@@ -881,6 +962,68 @@ mod theme_tests {
     fn floating_click_raise_is_an_explicit_opt_in() {
         assert!(!parse("").raise_floating_on_click);
         assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
+        assert!(parse("[window]\nraise_floating_on_click = true").window.raise_floating_on_click);
+    }
+
+    #[test]
+    fn window_section_parses_and_keeps_defaults_for_missing_fields() {
+        let config = parse(
+            r#"
+            [window]
+            border_width_px = 2
+            decor_hints = false
+            "#,
+        );
+        assert_eq!(config.window.border_width_px, 2);
+        assert!(!config.window.decor_hints);
+        assert_eq!(config.window.snap_threshold, 32);
+        assert!(config.window.resize_hints);
+    }
+
+    #[test]
+    fn negative_window_values_are_rejected_by_name() {
+        for (source, field) in [
+            ("[window]\nborder_width_px = -1", "border_width_px"),
+            ("[window]\nsnap_threshold = -1", "snap_threshold"),
+        ] {
+            let user: UserConfig = toml::from_str(source).unwrap();
+            let error = user.window.validated().unwrap_err();
+            assert!(error.contains(field), "{error}");
+        }
+    }
+
+    #[test]
+    fn focus_and_tag_preferences_parse_with_cli_grammar() {
+        let config = parse(
+            r#"
+            [window]
+            focus_follows_mouse = "force"
+            focus_follows_float_mouse = false
+
+            [tags]
+            show_alt_names = true
+
+            [bar]
+            show_tags = false
+            "#,
+        );
+        assert_eq!(
+            config.window.focus_follows_mouse,
+            crate::types::FocusFollowsMouseMode::Force
+        );
+        assert!(!config.window.focus_follows_float_mouse);
+        assert!(config.tags.show_alt_names);
+        assert!(!config.bar.show_tags);
+
+        // Defaults for a config that omits the sections.
+        let default = parse("");
+        assert_eq!(
+            default.window.focus_follows_mouse,
+            crate::types::FocusFollowsMouseMode::Normal
+        );
+        assert!(default.window.focus_follows_float_mouse);
+        assert!(!default.tags.show_alt_names);
+        assert!(default.bar.show_tags);
     }
 
     #[test]
@@ -932,6 +1075,7 @@ mod theme_tests {
     #[test]
     fn animation_speed_defaults_to_the_neutral_multiplier() {
         let default = parse("").animations;
+        assert!(default.enabled);
         let neutral = parse("[animations]\nspeed = 1.0").animations;
         let slow = parse("[animations]\nspeed = 0.25").animations;
         let fast = parse("[animations]\nspeed = 2.0").animations;

@@ -550,6 +550,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let template = ctx.core().config().tag_template.clone();
     let show_bar = ctx.core().config().bar.show;
     let show_bottom_bar = ctx.core().config().bar.show_bottom;
+    let show_tags = ctx.core().config().bar.show_tags;
 
     let layout_size = output_layout_extent(&outputs);
     let mut changed = sync_runtime_screen_size(ctx.core_mut().derived_mut(), layout_size);
@@ -568,6 +569,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
             &template,
             show_bar,
             show_bottom_bar,
+            show_tags,
         )
     });
     changed |= reconciliation.changed;
@@ -617,6 +619,7 @@ fn reconcile_monitor_model(
     tag_template: &[crate::types::Tag],
     show_bar: bool,
     show_bottom_bar: bool,
+    show_tags: bool,
 ) -> MonitorReconciliation {
     debug_assert_eq!(outputs.len(), metrics.len());
     let mut changed = model.monitors.len() != outputs.len();
@@ -645,6 +648,7 @@ fn reconcile_monitor_model(
                 let id = model.monitors.allocate_id();
                 let mut m = Monitor::new_with_values(show_bar);
                 m.show_bottom_bar = show_bottom_bar;
+                m.hide_tags = !show_tags;
                 m.monitor_id = id;
                 m.init_tags(tag_template);
                 apply_output_to_monitor(&mut m, i, output, metrics);
@@ -779,6 +783,7 @@ mod tests {
             &[],
             true,
             false,
+            true,
         );
 
         assert!(result.changed);
@@ -846,6 +851,7 @@ mod tests {
             &[],
             true,
             false,
+            true,
         );
 
         assert!(result.changed);
@@ -890,6 +896,7 @@ mod tests {
             &[],
             true,
             false,
+            true,
         );
 
         // Only the geometry moved: the monitor keeps its identity and its bar

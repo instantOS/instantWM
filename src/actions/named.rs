@@ -557,10 +557,10 @@ define_named_actions!(
     ToggleFloating => { name: "toggle_floating", doc: "toggle focused window between tiled and floating", run: |ctx| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", doc: "toggle sticky (visible on all tags)", run: |ctx| { with_selected_win(ctx, toggle_sticky); } },
     ToggleAltTag(Option<ToggleAction>) => { name: "toggle_alt_tag", overview: Preserve, doc: "toggle or set alt-tag mode", run: |ctx, action| { toggle_alt_tag(ctx, action.unwrap_or_default()); } },
-    ToggleAnimated(Option<ToggleAction>) => { name: "toggle_animated", overview: Preserve, doc: "toggle or set window animations", run: |ctx, action| { let action = action.unwrap_or_default(); ctx.with_behavior_mut(|behavior| behavior.toggle_animated(action)); } },
+    ToggleAnimated(Option<ToggleAction>) => { name: "toggle_animated", overview: Preserve, doc: "toggle or set window animations", run: |ctx, action| { let action = action.unwrap_or_default(); let mut enabled = ctx.core().config().animations.enabled; action.apply(&mut enabled); ctx.core_mut().state_mut().config.animations.enabled = enabled; } },
     ToggleHideTags(Option<ToggleAction>) => { name: "toggle_hide_tags", overview: Preserve, doc: "toggle or set hiding empty tags in the bar", run: |ctx, action| { toggle_hide_tags(ctx, action.unwrap_or_default()); } },
-    ToggleFocusFollowsFloatMouse(Option<ToggleAction>) => { name: "toggle_focus_follows_float_mouse", overview: Preserve, doc: "toggle or set focus-follows-mouse for floating windows", run: |ctx, action| { let action = action.unwrap_or_default(); ctx.with_behavior_mut(|behavior| behavior.toggle_focus_follows_float_mouse(action)); } },
-    SetFocusFollowsMouse(FocusFollowsMouseMode) => { name: "set_focus_follows_mouse", overview: Preserve, doc: "set focus-follows-mouse behavior", run: |ctx, mode| { let mode = *mode; ctx.with_behavior_mut(|behavior| behavior.set_focus_follows_mouse(mode)); } },
+    ToggleFocusFollowsFloatMouse(Option<ToggleAction>) => { name: "toggle_focus_follows_float_mouse", overview: Preserve, doc: "toggle or set focus-follows-mouse for floating windows", run: |ctx, action| { let action = action.unwrap_or_default(); let mut enabled = ctx.core().config().window.focus_follows_float_mouse; action.apply(&mut enabled); ctx.core_mut().state_mut().config.window.focus_follows_float_mouse = enabled; } },
+    SetFocusFollowsMouse(FocusFollowsMouseMode) => { name: "set_focus_follows_mouse", overview: Preserve, doc: "set focus-follows-mouse behavior", run: |ctx, mode| { let mode = *mode; ctx.core_mut().state_mut().config.window.focus_follows_mouse = mode; } },
     ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; toggle_mode(ctx, mode); } },
     UnhideAll => { name: "unhide_all", doc: "show all hidden windows", run: |ctx| { unhide_all(ctx); } },
     Hide => { name: "hide", doc: "minimize focused window or hide the visible scratchpad", run: |ctx| { with_selected_win(ctx, crate::client::hide_for_user); } },
@@ -674,6 +674,27 @@ mod tests {
             Some(LayoutCommand::BottomStack)
         );
         assert_eq!(LayoutCommand::from_name("bad"), None);
+    }
+
+    #[test]
+    fn toggle_animated_flips_the_config_animation_switch() {
+        let mut wm = maximized_tiled_wm(&[WindowId(1)], WindowId(1));
+        assert!(wm.core.config.animations.enabled);
+
+        NamedAction::ToggleAnimated(None)
+            .execute(&mut wm.ctx())
+            .unwrap();
+        assert!(!wm.core.config.animations.enabled);
+
+        NamedAction::ToggleAnimated(Some(ToggleAction::SetTrue))
+            .execute(&mut wm.ctx())
+            .unwrap();
+        assert!(wm.core.config.animations.enabled);
+
+        NamedAction::ToggleAnimated(Some(ToggleAction::SetFalse))
+            .execute(&mut wm.ctx())
+            .unwrap();
+        assert!(!wm.core.config.animations.enabled);
     }
 
     fn parse(name: &str, args: &[&str]) -> Result<NamedAction, String> {

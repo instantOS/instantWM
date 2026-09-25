@@ -382,7 +382,7 @@ mod tests {
         .check()
         .unwrap();
         let mut wm = Wm::new(Backend::new_x11(conn, screen));
-        wm.core.behavior.animated = true;
+        wm.core.config.animations.enabled = true;
         wm.core.derived.display.width = 1920;
         wm.core.derived.display.height = 1080;
         let tags = TagMask::single(1).unwrap();

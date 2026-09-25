@@ -31,7 +31,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     // Cursor placement must use destination geometry, not the stale rectangle
     // from the tag we just left.
     crate::layouts::arrange(ctx, Some(monitor_id));
-    if ctx.core().behavior().focus_follows_mouse.is_enabled() {
+    if ctx.core().config().window.focus_follows_mouse.is_enabled() {
         ctx.warp_cursor_to_client_center(win);
     }
     true
@@ -65,7 +65,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
         .client_mut(win)?
         .reset_sticky(current_tag);
 
-    if ctx.core().behavior().animated {
+    if ctx.core().config().animations.enabled {
         play_slide_animation(ctx, win, dir);
     }
 

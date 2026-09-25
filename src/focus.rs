@@ -258,7 +258,13 @@ pub fn apply_hover_focus(
     pointer_pos: Option<Point>,
     trigger: crate::types::HoverFocusTrigger,
 ) {
-    if !ctx.core().behavior().focus_follows_mouse.allows(trigger) {
+    if !ctx
+        .core()
+        .config()
+        .window
+        .focus_follows_mouse
+        .allows(trigger)
+    {
         return;
     }
     // Overview owns a pending selection rather than immediately sending
@@ -293,7 +299,7 @@ pub fn apply_hover_focus(
 
     if should_hover_focus(
         ctx.core().model(),
-        ctx.core().behavior(),
+        &ctx.core().config().window,
         hovered_win,
         entering_root,
     ) {
@@ -326,7 +332,7 @@ pub fn raise_floating_on_client_click(
 /// Returns `true` when hover focus should proceed for `hovered_win`.
 fn should_hover_focus(
     model: &crate::model::WmModel,
-    behavior: &crate::core_state::WmBehavior,
+    window: &crate::core_state::WindowConfig,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) -> bool {
@@ -343,7 +349,7 @@ fn should_hover_focus(
         .map(|c| c.placement() == ClientPlacement::Floating)
         .unwrap_or(false);
     let has_tiling = model.expect_selected_monitor().is_tiling_layout();
-    if !behavior.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
+    if !window.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
         return false;
     }
     true
