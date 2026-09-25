@@ -171,12 +171,11 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
         if ctx.core.model().is_overview_active() {
             crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
         } else {
-            if crate::mouse::update_sidebar_offer_at(
-                &mut WmCtx::X11(ctx.reborrow()),
-                root,
-                hovered.is_some(),
-            )
-            .affects_pointer_handling()
+            let sidebar_target = (!hovered.is_some())
+                .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root))
+                .flatten();
+            if crate::mouse::set_sidebar_offer(&mut WmCtx::X11(ctx.reborrow()), sidebar_target)
+                .affects_pointer_handling()
             {
                 return;
             }

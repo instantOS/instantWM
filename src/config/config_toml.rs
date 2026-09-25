@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct IncludeConfig {
+    //BOZO: should this be another type?
     pub file: String,
 }
 

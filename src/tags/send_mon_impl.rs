@@ -81,6 +81,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 // ---------------------------------------------------------------------------
 
 /// Move a floating client to `target_id`, preserving its relative position.
+//BOZO: questioname naming?
 fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
     // Snapshot source geometry before transfer_client() transfers ownership.
     let Some(view) = ctx.core().model().client_view(win) else {

@@ -413,7 +413,7 @@ pub(crate) fn build_monitor_snapshots(
         });
 
         snapshots.push(MonitorBarSnapshot {
-            monitor_id: mon.id(),
+            monitor_id,
             rect: Rect::new(
                 mon.work_rect().x,
                 mon.bar_y(),

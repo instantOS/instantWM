@@ -95,8 +95,16 @@ fn monitor_lookup_includes_bar_outside_work_area() {
 
     let mut monitors = crate::monitor::MonitorManager::new();
     let id = monitors.push(monitor);
+    let lookup = Rect::new(200, 60, 1, 1);
     assert_eq!(
-        monitors.id_intersecting_rect(Rect::new(200, 60, 1, 1)),
+        monitors.monitor_intersecting_rect(lookup).map(|m| m.id()),
+        Some(id)
+    );
+    assert_eq!(monitors.id_intersecting_rect(lookup), Some(id));
+    assert_eq!(
+        monitors
+            .monitor_at_pointer(Point::new(1_000, 1_000))
+            .map(|monitor| monitor.id()),
         Some(id)
     );
 }

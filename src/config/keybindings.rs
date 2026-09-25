@@ -44,6 +44,7 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     ]
 }
 
+//BOZO: is this a good name?
 pub fn get_keys(backend: BackendKind) -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         key!(MODKEY | MOD1, XK_J => KeyAction::named(NamedAction::KeyResizeDown)),

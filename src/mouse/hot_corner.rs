@@ -39,9 +39,8 @@ fn corner_at(
     root: Point,
 ) -> Option<(MonitorId, HotCornerZones)> {
     let point = Rect::new(root.x, root.y, 1, 1);
-    let monitor_id = monitors.id_intersecting_rect(point)?;
-    let monitor = monitors.get(monitor_id)?;
-    Some((monitor_id, top_right_zones(monitor.monitor_rect)))
+    let monitor = monitors.monitor_intersecting_rect(point)?;
+    Some((monitor.id(), top_right_zones(monitor.monitor_rect)))
 }
 
 /// Update the top-right overlay hot corner and apply a transition if it fires.

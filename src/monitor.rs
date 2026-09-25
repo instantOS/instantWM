@@ -171,35 +171,37 @@ impl MonitorManager {
         &self,
         w: WindowId,
         clients: &HashMap<WindowId, Client>,
-    ) -> Option<MonitorId> {
-        for (i, m) in self.iter() {
-            if w == m.bar_win || w == m.bottom_bar_win {
-                return Some(i);
-            }
-        }
-
-        if let Some(c) = clients.get(&w) {
-            return self.contains(c.monitor_id).then_some(c.monitor_id);
-        }
-
-        None
+    ) -> Option<&Monitor> {
+        self.iter()
+            .map(|(_, monitor)| monitor)
+            .find(|monitor| w == monitor.bar_win || w == monitor.bottom_bar_win)
+            .or_else(|| {
+                clients
+                    .get(&w)
+                    .and_then(|client| self.get(client.monitor_id))
+            })
     }
 
     /// Find the monitor with the largest intersection with `rect`.
-    pub fn id_intersecting_rect(&self, rect: Rect) -> Option<MonitorId> {
+    pub fn monitor_intersecting_rect(&self, rect: Rect) -> Option<&Monitor> {
         let mut best = None;
         let mut max_area = 0;
-        for (id, monitor) in self.iter() {
+        for monitor in &self.monitors {
             let area = monitor
                 .monitor_rect
                 .intersection(&rect)
                 .map_or(0, |intersection| intersection.area());
             if area > max_area {
                 max_area = area;
-                best = Some(id);
+                best = Some(monitor);
             }
         }
         best
+    }
+
+    /// Find the ID of the monitor with the largest intersection with `rect`.
+    pub fn id_intersecting_rect(&self, rect: Rect) -> Option<MonitorId> {
+        self.monitor_intersecting_rect(rect).map(Monitor::id)
     }
 
     /// Find the adjacent monitor in spatial order, wrapping at either end.
@@ -224,14 +226,19 @@ impl MonitorManager {
             .or_else(|| self.selected_monitor().map(Monitor::id))
     }
 
-    pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
+    pub fn monitor_at_pointer(&self, ptr: Point) -> Option<&Monitor> {
         let rect = Rect {
             x: ptr.x,
             y: ptr.y,
             w: 1,
             h: 1,
         };
-        self.find_id_by_rect(&rect)
+        self.monitor_intersecting_rect(rect)
+            .or_else(|| self.selected_monitor())
+    }
+
+    pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
+        self.monitor_at_pointer(ptr).map(Monitor::id)
     }
 }
 

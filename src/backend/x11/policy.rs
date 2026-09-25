@@ -84,9 +84,10 @@ pub(crate) fn apply_xwayland_policy(
     win: WindowId,
     update: XWaylandPolicyUpdate,
 ) -> Option<XWaylandPolicyOutcome> {
-    let monitor_id = model.client(win)?.monitor_id;
-    let work_area = model.monitor(monitor_id)?.work_rect();
-    let before = PolicyState::capture(model.client(win)?);
+    let view = model.client_view(win)?;
+    let monitor_id = view.client.monitor_id;
+    let work_area = view.monitor.work_rect();
+    let before = PolicyState::capture(view.client);
 
     // Fullscreen owns mode, border, and floating-restore geometry as one model
     // transaction. Policy reconciliation must not bypass that boundary by

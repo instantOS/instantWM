@@ -200,25 +200,17 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
     let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
-    let Some(client) = ctx.core().model().client(win) else {
+    let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
-    let was_fake = client.mode().is_fake_fullscreen();
-    let monitor_id = client.monitor_id;
-    let old_border_width = client.old_border_width;
+    let was_fake = view.client.mode().is_fake_fullscreen();
+    let old_border_width = view.client.old_border_width;
+    let promotion_monitor_rect = was_fake.then_some(view.monitor.monitor_rect);
 
     // Fake → real promotion: claim the monitor rectangle immediately so the
     // transition reads as a single step instead of waiting for the layout.
-    if was_fake {
+    if let Some(mon_rect) = promotion_monitor_rect {
         let border_px = ctx.core().config().window.border_width_px;
-        let Some(mon_rect) = ctx
-            .core()
-            .model()
-            .monitor(monitor_id)
-            .map(|monitor| monitor.monitor_rect)
-        else {
-            return;
-        };
         ctx.move_resize(
             win,
             Rect {

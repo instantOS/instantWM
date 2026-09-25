@@ -118,12 +118,16 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
             _ => None,
         })?;
 
-    let Some(client) = ctx.core().model().client(state.win()) else {
-        return Some(DragCancelReason::WindowDestroyed);
+    let model = ctx.core().model();
+    let Some(view) = model.client_view(state.win()) else {
+        return Some(if model.client(state.win()).is_some() {
+            DragCancelReason::WindowUnavailable
+        } else {
+            DragCancelReason::WindowDestroyed
+        });
     };
-    let Some(monitor) = ctx.core().model().monitor(client.monitor_id) else {
-        return Some(DragCancelReason::WindowUnavailable);
-    };
+    let client = view.client;
+    let monitor = view.monitor;
 
     // A bar-title gesture may intentionally start on an explicitly hidden
     // client. That exception covers only the hidden bit: changing workspace
@@ -453,11 +457,14 @@ mod tests {
                 crate::actions::NamedAction::CancelOverview,
             )),
         };
+        let target = crate::mouse::pointer::bottom_bar_target_at(&wm.core.model, root)
+            .expect("fixture point must be on the bottom bar");
+        assert_eq!(target.monitor_id, monitor_id);
         assert!(crate::mouse::drag::bottom_bar_gesture_begin(
             &mut wm.ctx(),
             MouseButton::Left,
             InteractionSource::Pointer,
-            monitor_id,
+            target,
             root,
             0,
             actions,
@@ -499,7 +506,8 @@ mod tests {
         let (mut wm, monitor_id) = bottom_bar_fixture();
         let begin_root = Point::new(100, 1060);
         assert_eq!(
-            crate::mouse::pointer::bottom_bar_monitor_at(&wm.core.model, begin_root),
+            crate::mouse::pointer::bottom_bar_target_at(&wm.core.model, begin_root)
+                .map(|target| target.monitor_id),
             Some(monitor_id)
         );
 

@@ -26,6 +26,7 @@ use smithay::output::{Mode as OutputMode, Output};
 use smithay::utils::Transform;
 
 /// Clamp output dimensions so Smithay never sees a zero-sized surface.
+//BOZO: should this be a method on Size?
 pub fn sanitize_size(size: Size) -> Size {
     const WAYLAND_MIN_DIM: i32 = 64;
     Size::new(size.w.max(WAYLAND_MIN_DIM), size.h.max(WAYLAND_MIN_DIM))

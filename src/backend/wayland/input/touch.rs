@@ -41,6 +41,7 @@ impl TouchMappingTarget {
 }
 
 /// Backend-neutral absolute position in the inclusive `[0, 1]` range.
+//BOZO: if this is backend neutral, should it live outside wayland?
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalizedTouchPosition {
     x: f64,

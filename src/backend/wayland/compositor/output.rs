@@ -24,6 +24,7 @@ use super::state::WaylandState;
 
 struct OutputGlobal(Mutex<Option<GlobalId>>);
 
+//BOZO: should that be a method instead?
 fn smithay_mode(mode: TransactionOutputMode) -> OutputMode {
     OutputMode {
         size: (mode.width, mode.height).into(),
@@ -31,6 +32,7 @@ fn smithay_mode(mode: TransactionOutputMode) -> OutputMode {
     }
 }
 
+//BOZO: should this be a method?
 fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
     let mode = configuration.mode.unwrap_or(TransactionOutputMode {
         width: WaylandState::MIN_WL_DIM,
@@ -59,6 +61,7 @@ fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
     )
 }
 
+//BOZO: is this lacking docs? What is a head?
 fn head_rect(head: &OutputHeadConfiguration) -> Rect {
     let size = logical_output_size(head);
     Rect::new(head.position.x, head.position.y, size.w, size.h)

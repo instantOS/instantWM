@@ -70,6 +70,16 @@ pub struct SidebarTarget {
     pub monitor_id: MonitorId,
     pub edge: EdgeDirection,
     pub rect: Rect,
+    /// Vertical pointer travel required to emit one volume step.
+    pub gesture_threshold: i32,
+}
+
+/// A pointer press on one monitor's visible bottom gesture strip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BottomBarTarget {
+    pub monitor_id: MonitorId,
+    /// Horizontal pointer travel required to latch a swipe direction.
+    pub gesture_threshold: i32,
 }
 
 /// Alternative cursor states for special operations.

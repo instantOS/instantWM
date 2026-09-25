@@ -40,13 +40,9 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_hide_tags(ctx: &mut WmCtx, action: ToggleAction) {
-    let (_selmon_id, new_hide_tags) = {
-        let selmon_id = ctx.core().model().selected_monitor_id();
-
+    let new_hide_tags = {
         let hide_tags = ctx.core().model().expect_selected_monitor().hide_tags;
-        let new_hide_tags = toggled_bool(hide_tags, action);
-
-        (selmon_id, new_hide_tags)
+        toggled_bool(hide_tags, action)
     };
 
     ctx.core_mut()

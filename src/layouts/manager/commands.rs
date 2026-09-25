@@ -424,8 +424,14 @@ pub fn toggle_floating_presentation(ctx: &mut WmCtx<'_>) {
 }
 
 pub(crate) fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selected_monitor_id = ctx.core().model().selected_monitor_id();
-    finish_layout_change_for_monitor(ctx, selected_monitor_id);
+    let (monitor_id, is_floating) = {
+        let monitor = ctx.core().model().expect_selected_monitor();
+        (
+            monitor.id(),
+            monitor.current_layout() == PresentationMode::Floating,
+        )
+    };
+    finish_layout_change_with_presentation(ctx, monitor_id, is_floating);
 }
 
 /// Complete a layout change on `monitor_id`: reconcile tiling invariants,
@@ -443,6 +449,14 @@ pub(crate) fn finish_layout_change_for_monitor(
         .model()
         .monitor(monitor_id)
         .is_some_and(|monitor| monitor.current_layout() == PresentationMode::Floating);
+    finish_layout_change_with_presentation(ctx, monitor_id, is_floating);
+}
+
+fn finish_layout_change_with_presentation(
+    ctx: &mut WmCtx<'_>,
+    monitor_id: crate::types::MonitorId,
+    is_floating: bool,
+) {
     if !is_floating {
         ctx.core_mut()
             .model_mut()

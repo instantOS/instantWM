@@ -23,10 +23,12 @@ use crate::types::*;
 /// that.  Each cell receives one window, sized to exactly fill its cell.
 ///
 /// Does nothing when there are no qualifying windows.
+//BOZO: should this be in floating mod?
 pub fn distribute_clients(ctx: &mut WmCtx) {
-    let sel_mon_id = ctx.core().model().selected_monitor_id();
-
-    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core().model(), sel_mon_id);
+    let Some(monitor) = ctx.core().model().selected_monitor() else {
+        return;
+    };
+    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core().model(), monitor);
 
     if floating_wins.is_empty() {
         return;
@@ -68,21 +70,15 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
 /// is needed in the caller.
 fn collect_distribute_targets(
     model: &crate::model::WmModel,
-    sel_mon_id: MonitorId,
+    monitor: &Monitor,
 ) -> (Vec<WindowId>, Rect) {
-    let empty = (Vec::new(), Rect::default());
-
-    let Some(mon) = model.monitor(sel_mon_id) else {
-        return empty;
-    };
-
-    let tag_set = mon.selected_tags();
+    let tag_set = monitor.selected_tags();
     // work_rect already accounts for bar height and position (top or bottom),
     // so it is the correct region to fill with the grid.
-    let work_rect = mon.work_rect();
+    let work_rect = monitor.work_rect();
 
     let mut wins = Vec::new();
-    for (c_win, c) in mon.iter_clients(&model.clients) {
+    for (c_win, c) in monitor.iter_clients(&model.clients) {
         if c.mode().is_normal_floating()
             && !c.is_fixed_size
             && c.tags.intersects(tag_set)

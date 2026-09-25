@@ -16,7 +16,7 @@ use crate::backend::wayland::input::pointer::constraints::{
 };
 use crate::backend::wayland::input::pointer::drag::active_drag_window;
 use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::mouse::{clear_hover_offer, update_sidebar_offer_at};
+use crate::mouse::{clear_hover_offer, set_sidebar_offer};
 use crate::types::BarPosition;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
@@ -902,9 +902,8 @@ fn dispatch_pointer_motion(
             // Layer/overlay hit testing is substantially richer than the
             // monitor-rectangle sidebar test. Only pay for it inside the edge
             // strip; ordinary pointer motion must not gain another scene walk.
-            let in_sidebar =
-                crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root).is_some();
-            let blocked_by_non_desktop = in_sidebar
+            let sidebar_target = crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root);
+            let blocked_by_non_desktop = sidebar_target.is_some()
                 && (state
                     .logical_window_under_pointer(pointer_location)
                     .is_some()
@@ -912,12 +911,13 @@ fn dispatch_pointer_motion(
                         .layer_surface_under_pointer(pointer_location)
                         .is_some()
                     || state.is_pointer_over_overlay(pointer_location));
+            let target = if blocked_by_non_desktop {
+                None
+            } else {
+                sidebar_target
+            };
             matches!(
-                update_sidebar_offer_at(
-                    &mut WmCtx::Wayland(ctx.reborrow()),
-                    root,
-                    blocked_by_non_desktop,
-                ),
+                set_sidebar_offer(&mut WmCtx::Wayland(ctx.reborrow()), target),
                 crate::mouse::SidebarOfferUpdate::Active
             )
         } else {
@@ -976,13 +976,12 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     wm.core
         .model
         .monitors
-        .id_intersecting_rect(Rect {
+        .monitor_intersecting_rect(Rect {
             x: root.x,
             y: root.y,
             w: 1,
             h: 1,
         })
-        .and_then(|mid| wm.core.model.monitor(mid))
         .map(|mon| {
             let bar_visible = monitor_bar_visible(wm, mon);
             let in_bar = bar_visible && mon.y_in_bar(root.y);

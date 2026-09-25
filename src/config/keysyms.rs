@@ -11,6 +11,8 @@
 // Control / navigation
 // ---------------------------------------------------------------------------
 
+//BOZO: should this be an enum instead maybe with a n into implementation or something? Would that allow us less primitive obsession?
+
 pub const XK_BACKSPACE: u32 = 0xFF08;
 pub const XK_TAB: u32 = 0xFF09;
 pub const XK_RETURN: u32 = 0xFF0D;

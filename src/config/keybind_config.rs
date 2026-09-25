@@ -29,7 +29,9 @@ use crate::types::{Key, KeybindOrigin};
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct KeybindSpec {
     #[serde(default)]
+    //BOZO: should modifiers use another type than string?
     pub modifiers: Vec<String>,
+    //BOZO: Is string too broad?
     pub key: String,
     pub action: ActionSpec,
 }

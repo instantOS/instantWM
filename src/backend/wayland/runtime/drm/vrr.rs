@@ -27,7 +27,7 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     if matches!(
         wm.core.behavior.current_mode,
         crate::core_state::ActiveWmMode::Overview
-    ) && wm.core.model.selected_monitor_id() == mon.id()
+    ) && wm.core.model.is_overview_active_on(mon)
     {
         return false;
     }

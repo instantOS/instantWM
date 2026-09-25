@@ -221,8 +221,8 @@ fn execute_button_action_inner(
             click,
             hold,
         } => {
-            let Some(monitor_id) =
-                crate::mouse::pointer::bottom_bar_monitor_at(ctx.core().model(), arg.root)
+            let Some(target) =
+                crate::mouse::pointer::bottom_bar_target_at(ctx.core().model(), arg.root)
             else {
                 return;
             };
@@ -237,7 +237,7 @@ fn execute_button_action_inner(
                 ctx,
                 arg.btn,
                 arg.source,
-                monitor_id,
+                target,
                 arg.root,
                 arg.time_msec,
                 actions,

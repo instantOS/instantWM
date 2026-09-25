@@ -95,9 +95,8 @@ pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: O
     let was_selected = ctx
         .core()
         .model()
-        .client(win)
-        .and_then(|client| ctx.core().model().monitor(client.monitor_id))
-        .is_some_and(|monitor| monitor.selected == Some(win));
+        .client_view(win)
+        .is_some_and(|view| view.monitor.selected == Some(win));
     let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
         if c.is_hidden {
             return;

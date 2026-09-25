@@ -141,24 +141,16 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(monitor_id) = ctx
+    if let Some(monitor) = ctx
         .core
         .state
         .model
         .monitors
         .find_monitor_for(event_win, &ctx.core.model().clients)
+        && event_win == monitor.bar_win
     {
-        let is_bar_win = ctx
-            .core
-            .state
-            .model
-            .monitors
-            .get(monitor_id)
-            .is_some_and(|m| event_win == m.bar_win);
-        if is_bar_win {
-            ctx.core.bar.mark_dirty();
-        }
-    };
+        ctx.core.bar.mark_dirty();
+    }
 }
 
 pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {

@@ -36,13 +36,8 @@ impl WaylandState {
         request: crate::systray::status_notifier::NativeMenuRequest,
     ) -> Result<WindowId, Box<ToplevelSurface>> {
         let Some((monitor_id, opened_tags, work_rect)) = self.globals().and_then(|globals| {
-            let monitor_id = globals
-                .model
-                .monitors
-                .find_monitor_at_pointer(request.anchor)
-                .or_else(|| globals.model.selected_monitor().map(|monitor| monitor.id()))?;
-            let monitor = globals.model.monitor(monitor_id)?;
-            Some((monitor_id, monitor.selected_tags(), monitor.work_rect()))
+            let monitor = globals.model.monitors.monitor_at_pointer(request.anchor)?;
+            Some((monitor.id(), monitor.selected_tags(), monitor.work_rect()))
         }) else {
             return Err(Box::new(surface));
         };

@@ -36,7 +36,7 @@ pub fn layout_status(wm: &Wm) -> Response {
         PresentationMode::Maximized => "maximized",
     };
     Response::LayoutStatus(LayoutStatusInfo {
-        monitor_id: wm.core.model.selected_monitor_id().get(),
+        monitor_id: monitor.id().get(),
         presentation: presentation.to_string(),
         layout: layout_info(monitor.current_layout_command(), true),
     })

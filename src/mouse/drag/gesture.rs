@@ -29,20 +29,10 @@ fn begin_sidebar_gesture(
     target: SidebarTarget,
     start: Point,
 ) -> bool {
-    let threshold = ctx
-        .core()
-        .model()
-        .monitor(target.monitor_id)
-        .map(|monitor| (monitor.monitor_rect.h / 30).max(1))
-        .unwrap_or_else(|| (target.rect.h / 30).max(1));
     if ctx
         .transition_pointer_interaction(|drag| {
             drag.begin(crate::core_state::SidebarVolumeDrag::new(
-                btn,
-                source,
-                target.monitor_id,
-                start.y,
-                threshold,
+                btn, source, target, start.y,
             ))
         })
         .is_err()
@@ -116,25 +106,18 @@ pub fn bottom_bar_gesture_begin(
     ctx: &mut WmCtx,
     btn: MouseButton,
     source: InteractionSource,
-    monitor_id: MonitorId,
+    target: BottomBarTarget,
     start: Point,
     press_time_msec: u32,
     actions: crate::core_state::BottomBarActions,
 ) -> bool {
-    let threshold = ctx
-        .core()
-        .model()
-        .monitor(monitor_id)
-        .map(|monitor| (monitor.monitor_rect.w / 30).max(1))
-        .unwrap_or(1);
     if ctx
         .transition_pointer_interaction(|drag| {
             drag.begin(BottomBarDrag::new(
                 btn,
                 source,
-                monitor_id,
+                target,
                 start,
-                threshold,
                 press_time_msec,
                 actions,
             ))

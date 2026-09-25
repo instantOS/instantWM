@@ -7,17 +7,31 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
 
+#[derive(Clone, Copy)]
+struct BarSurfaceTarget {
+    monitor_id: MonitorId,
+    window_id: WindowId,
+}
+
 pub fn update_status(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
-    let selmon_idx = core.model().selected_monitor_id();
-    draw_bar(core, x11_runtime, selmon_idx);
+    let Some(target) = core
+        .model()
+        .selected_monitor()
+        .map(|monitor| BarSurfaceTarget {
+            monitor_id: monitor.id(),
+            window_id: monitor.bar_win,
+        })
+    else {
+        return;
+    };
+    draw_bar(core, x11_runtime, target);
 }
 
 fn paint_bar_snapshot(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
-    monitor_id: MonitorId,
+    target: BarSurfaceTarget,
     snapshot: &crate::bar::scene::MonitorBarSnapshot,
-    bar_win: WindowId,
 ) {
     let work_rect_w = snapshot.rect.w;
     let bar_height = snapshot.rect.h;
@@ -31,31 +45,34 @@ fn paint_bar_snapshot(
     drw.resize(work_rect_w as u32, bar_height as u32);
     let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
     let hit = crate::bar::scene::render_monitor_snapshot(snapshot, &mut painter);
-    core.bar.replace_hit_cache(monitor_id, hit);
-    painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
+    core.bar.replace_hit_cache(target.monitor_id, hit);
+    painter.map(target.window_id, Rect::new(0, 0, work_rect_w, bar_height));
 }
 
-pub fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, mon_idx: MonitorId) {
-    let Some(monitor) = core.model().monitor(mon_idx).cloned() else {
-        return;
-    };
-    let bar_win = monitor.bar_win;
-    if bar_win == WindowId::default() {
+fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, target: BarSurfaceTarget) {
+    if target.window_id == WindowId::default() {
         return;
     }
     let snapshots =
         crate::bar::scene::build_monitor_snapshots(core, core.bar.runtime.external_tray_width);
     let Some(snapshot) = snapshots
         .iter()
-        .find(|snapshot| snapshot.monitor_id == mon_idx)
+        .find(|snapshot| snapshot.monitor_id == target.monitor_id)
     else {
         return;
     };
-    paint_bar_snapshot(core, x11_runtime, mon_idx, snapshot, bar_win);
+    paint_bar_snapshot(core, x11_runtime, target, snapshot);
 }
 
 pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
-    let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
+    let targets: Vec<BarSurfaceTarget> = core
+        .model()
+        .monitors_iter()
+        .map(|(monitor_id, monitor)| BarSurfaceTarget {
+            monitor_id,
+            window_id: monitor.bar_win,
+        })
+        .collect();
     let snapshots =
         crate::bar::scene::build_monitor_snapshots(core, core.bar.runtime.external_tray_width);
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
@@ -64,17 +81,14 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
             .map(|snapshot| (snapshot.monitor_id, snapshot))
             .collect();
 
-    for monitor_id in monitor_ids {
-        let Some(bar_win) = core.model().monitor(monitor_id).map(|m| m.bar_win) else {
-            continue;
-        };
-        if bar_win == WindowId::default() {
+    for target in targets {
+        if target.window_id == WindowId::default() {
             continue;
         }
-        let Some(snapshot) = snapshot_by_monitor_id.get(&monitor_id).copied() else {
+        let Some(snapshot) = snapshot_by_monitor_id.get(&target.monitor_id).copied() else {
             continue;
         };
-        paint_bar_snapshot(core, x11_runtime, monitor_id, snapshot, bar_win);
+        paint_bar_snapshot(core, x11_runtime, target, snapshot);
     }
     core.bar.mark_drawn();
 }
@@ -83,29 +97,20 @@ fn sync_monitor_bar_window(
     core: &CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
-    systray: Option<&XEmbedTray>,
-    monitor_id: MonitorId,
+    monitor: &Monitor,
+    tray_monitor_id: Option<MonitorId>,
+    tray_width: u32,
 ) {
-    let tray_monitor =
-        crate::backend::x11::systray::systray_to_mon(core.model(), &core.config().systray);
-    let Some(m) = core.model().monitor(monitor_id) else {
-        return;
-    };
     let bar_height = core.config().bar_metrics().height;
-    let showsystray = core.config().systray.show;
-    let is_tray_monitor = monitor_id == tray_monitor;
+    let is_tray_monitor = tray_monitor_id == Some(monitor.id());
 
-    let mut w = m.work_rect().w as u32;
-    if showsystray && is_tray_monitor {
-        w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
-            &core.config().systray,
-            bar_height,
-            systray,
-        ));
+    let mut w = monitor.work_rect().w as u32;
+    if core.config().systray.show && is_tray_monitor {
+        w = w.saturating_sub(tray_width);
     }
 
-    let x11_bar_win: Window = m.bar_win.into();
-    let bounds = Rect::new(m.work_rect().x, m.bar_y(), w as i32, bar_height);
+    let x11_bar_win: Window = monitor.bar_win.into();
+    let bounds = Rect::new(monitor.work_rect().x, monitor.bar_y(), w as i32, bar_height);
     if let Some(draw) = x11_runtime.draw.as_ref() {
         draw.queue_move_resize_window(x11_bar_win, bounds);
     } else {
@@ -132,9 +137,20 @@ pub fn sync_top_bar_surfaces(
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,
 ) {
-    let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
-    for monitor_id in monitor_ids {
-        sync_monitor_bar_window(core, x11, x11_runtime, systray.as_ref(), monitor_id);
+    let tray_monitor_id =
+        crate::backend::x11::systray::systray_monitor(core.model(), &core.config().systray)
+            .map(Monitor::id);
+    let tray_width = if core.config().systray.show {
+        crate::backend::x11::systray::get_systray_width(
+            &core.config().systray,
+            core.config().bar_metrics().height,
+            systray.as_ref(),
+        )
+    } else {
+        0
+    };
+    for (_, monitor) in core.model().monitors_iter() {
+        sync_monitor_bar_window(core, x11, x11_runtime, monitor, tray_monitor_id, tray_width);
     }
     if let Some(draw) = x11_runtime.draw.as_ref() {
         draw.flush();
@@ -200,18 +216,15 @@ fn create_missing_bar_windows(
         let root = x11_runtime.root;
         let selected_monitor_id = globals.model.selected_monitor_id();
 
-        // Collect systray widths first to avoid borrow issues
-        let mut systray_widths: HashMap<MonitorId, u32> = HashMap::new();
-        if showsystray {
-            systray_widths.insert(
-                selected_monitor_id,
-                crate::backend::x11::systray::get_systray_width(
-                    &globals.config.systray,
-                    bar_height,
-                    systray,
-                ),
-            );
-        }
+        let systray_width = if showsystray {
+            crate::backend::x11::systray::get_systray_width(
+                &globals.config.systray,
+                bar_height,
+                systray,
+            )
+        } else {
+            0
+        };
 
         let mut bar_configs = Vec::new();
         for (i, m) in globals.model.monitors_iter() {
@@ -221,7 +234,7 @@ fn create_missing_bar_windows(
 
             let mut w = m.work_rect().w as u32;
             if showsystray && selected_monitor_id == i {
-                w = w.saturating_sub(*systray_widths.get(&i).unwrap_or(&0));
+                w = w.saturating_sub(systray_width);
             }
             bar_configs.push((i, m.work_rect().x, m.bar_y(), w, bar_height));
         }

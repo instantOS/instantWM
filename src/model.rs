@@ -396,8 +396,7 @@ impl WmModel {
         win: WindowId,
         direction: crate::types::StackDirection,
     ) -> bool {
-        let sel_mon_id = self.selected_monitor_id();
-        if let Some(mon) = self.monitors.get_mut(sel_mon_id) {
+        if let Some(mon) = self.monitors.selected_monitor_mut() {
             mon.move_client_in_stack(win, direction, &self.clients)
         } else {
             false

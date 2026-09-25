@@ -1,5 +1,6 @@
 use crate::types::{Point, Rect, Rgba, Size};
 
+//BOZO: could this use or be an existing Rect method?
 fn clipped_rect(canvas_size: Size, rect: Rect) -> Option<Rect> {
     if !canvas_size.is_positive() || !rect.size().is_positive() {
         return None;
@@ -21,6 +22,7 @@ fn pixel_offset(canvas_size: Size, point: Point) -> Option<usize> {
         .checked_mul(4)
 }
 
+//BOZO: this seems weakly typed. Intentional or oversight?
 pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, color: [u8; 4]) {
     let [r, g, b, a] = color;
     if point.x < 0 || point.y < 0 || point.x >= canvas_size.w || point.y >= canvas_size.h {
@@ -83,6 +85,7 @@ pub(super) fn fill_rect(pixels: &mut [u8], canvas_size: Size, rect: Rect, color:
     }
 }
 
+//BOZO: what is a blit? Odd name? or do I just not know?
 pub(crate) fn blit_rgba_scaled(
     pixels: &mut [u8],
     canvas_size: Size,

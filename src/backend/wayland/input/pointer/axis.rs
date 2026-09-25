@@ -192,8 +192,10 @@ mod tests {
         );
         crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
-            if let Some((_, crate::types::BarPosition::Tag(tag))) =
-                crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))
+            if let Some(crate::bar::RootBarTarget::OnBar {
+                position: crate::types::BarPosition::Tag(tag),
+                ..
+            }) = crate::bar::root_bar_target_at(&core, Point::new(x, 10))
                 && tag == index
             {
                 match span {
@@ -277,8 +279,10 @@ mod tests {
         );
         crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
-            if let Some((_, crate::types::BarPosition::WinTitle(hit))) =
-                crate::bar::resolve_bar_position_at_root(&mut core, Point::new(x, 10))
+            if let Some(crate::bar::RootBarTarget::OnBar {
+                position: crate::types::BarPosition::WinTitle(hit),
+                ..
+            }) = crate::bar::root_bar_target_at(&core, Point::new(x, 10))
                 && hit == win
             {
                 match span {
