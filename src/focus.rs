@@ -430,12 +430,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
 }
 
 pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: Point) -> bool {
-    let Some(monitor) = ctx
-        .core()
-        .model()
-        .monitors
-        .monitor_at_pointer(pointer_pos)
-    else {
+    let Some(monitor) = ctx.core().model().monitors.monitor_at_pointer(pointer_pos) else {
         return false;
     };
     select_monitor(ctx, monitor.id())

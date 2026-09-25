@@ -64,6 +64,23 @@ impl Wm {
         self.ctx().reinit_bar_resources();
     }
 
+    /// Borrow the backend-neutral core state as a [`CoreCtx`].
+    ///
+    /// Use this when an operation needs only core state. Callers that also
+    /// need the backend (i.e. [`Wm::ctx`]) cannot: the returned context
+    /// borrows all of `Wm`, so those must keep splitting the fields by hand.
+    pub fn core_ctx(&mut self) -> CoreCtx<'_> {
+        let Self {
+            core,
+            work,
+            running,
+            bar,
+            focus,
+            ..
+        } = self;
+        CoreCtx::new(core, work, running, bar, focus)
+    }
+
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let core = CoreCtx::new(
             &mut self.core,

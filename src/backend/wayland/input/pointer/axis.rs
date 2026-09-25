@@ -183,13 +183,7 @@ mod tests {
     /// shared hit-test so the test cannot drift from the renderer's layout.
     fn tag_cell_center(wm: &mut crate::wm::Wm, index: usize) -> i32 {
         let mut span: Option<(i32, i32)> = None;
-        let mut core = crate::contexts::CoreCtx::new(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.running,
-            &mut wm.bar,
-            &mut wm.focus,
-        );
+        let mut core = wm.core_ctx();
         crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
             if let Some(crate::bar::RootBarTarget::OnBar {
@@ -270,13 +264,7 @@ mod tests {
     /// hit-test so the test cannot drift from the renderer's layout.
     fn title_cell_center(wm: &mut crate::wm::Wm, win: WindowId) -> i32 {
         let mut span: Option<(i32, i32)> = None;
-        let mut core = crate::contexts::CoreCtx::new(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.running,
-            &mut wm.bar,
-            &mut wm.focus,
-        );
+        let mut core = wm.core_ctx();
         crate::bar::render_hit_caches_for_test(&mut core);
         for x in 0..1200 {
             if let Some(crate::bar::RootBarTarget::OnBar {

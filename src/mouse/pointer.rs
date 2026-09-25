@@ -189,13 +189,7 @@ mod tests {
         tall.monitor_id = wm.core.model.monitors.allocate_id();
         wm.core.model.monitors.restore(vec![short, tall]);
 
-        let core = crate::contexts::CoreCtx::new(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.running,
-            &mut wm.bar,
-            &mut wm.focus,
-        );
+        let core = wm.core_ctx();
 
         assert_eq!(
             button_region_at(&core, Point::new(100, 1060), None),

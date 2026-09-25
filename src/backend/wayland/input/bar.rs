@@ -12,20 +12,8 @@ pub fn update_bar_hit_state(
 }
 
 /// Close the bar-hosted DBusMenu, returning whether a menu was open.
-//BOZO: should this be inlined?
 pub fn close_systray_menu(wm: &mut Wm) -> bool {
-    crate::systray::close_menu(&mut core_ctx(wm))
-}
-
-//BOZO: is this hacky? Should it go away long term?
-fn core_ctx(wm: &mut Wm) -> crate::contexts::CoreCtx<'_> {
-    crate::contexts::CoreCtx::new(
-        &mut wm.core,
-        &mut wm.work,
-        &mut wm.running,
-        &mut wm.bar,
-        &mut wm.focus,
-    )
+    crate::systray::close_menu(&mut wm.core_ctx())
 }
 
 pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point, clean_state: u32) {

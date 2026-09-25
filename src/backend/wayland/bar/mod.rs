@@ -293,13 +293,7 @@ mod tests {
         mon.set_available_rect(crate::types::Rect::new(0, 0, 1920, 1080));
         wm.core.model.monitors.restore(vec![mon]);
 
-        let mut core = crate::contexts::CoreCtx::new(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.running,
-            &mut wm.bar,
-            &mut wm.focus,
-        );
+        let mut core = wm.core_ctx();
         let buffers = build_bottom_bar_buffers(&mut core);
         assert_eq!(buffers.len(), 1, "one bottom strip buffer expected");
         let (_buffer, pos) = &buffers[0];

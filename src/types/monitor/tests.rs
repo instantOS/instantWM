@@ -100,10 +100,7 @@ fn monitor_lookup_includes_bar_outside_work_area() {
         monitors.monitor_intersecting_rect(lookup).map(|m| m.id()),
         Some(id)
     );
-    assert_eq!(
-        monitors.monitor_by_rect(lookup).map(|m| m.id()),
-        Some(id)
-    );
+    assert_eq!(monitors.monitor_by_rect(lookup).map(|m| m.id()), Some(id));
     assert_eq!(
         monitors
             .monitor_at_pointer(Point::new(1_000, 1_000))
