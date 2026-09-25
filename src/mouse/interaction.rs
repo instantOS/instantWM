@@ -255,7 +255,7 @@ mod tests {
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
             available_rect: Rect::new(0, 0, 1920, 1080),
-            show_bar: false,
+            bar_default_show: false,
             ..Monitor::default()
         });
         wm.core.model.insert_client(Client {
@@ -413,7 +413,7 @@ mod tests {
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
             available_rect: Rect::new(0, 0, 1920, 1080),
-            show_bar: true,
+            bar_default_show: true,
             show_bottom_bar: true,
             bottom_bar_height: 30,
             ..Monitor::default()

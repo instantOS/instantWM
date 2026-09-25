@@ -436,6 +436,7 @@ impl CoreState {
             monitor.show_bottom_bar = show_bottom_bar;
             let policy = crate::bar::policy::TagBarPolicy::resolve(&self.config, &monitor.name);
             policy.apply_to(monitor);
+            crate::config::runtime::clear_bar_overrides(monitor);
             monitor.init_tags(&tag_template);
         }
     }

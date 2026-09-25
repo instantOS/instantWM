@@ -146,7 +146,7 @@ fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
         monitor_rect: Rect::new(100, 50, 800, 600),
         available_rect: Rect::new(100, 50, 800, 600),
         bar_height: 30,
-        show_bar: true,
+        bar_default_show: true,
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
@@ -178,7 +178,7 @@ fn visible_content_rect_preserves_external_exclusive_area() {
         monitor_rect: Rect::new(100, 50, 800, 600),
         available_rect: Rect::new(100, 90, 800, 560),
         bar_height: 30,
-        show_bar: true,
+        bar_default_show: true,
         ..Monitor::default()
     };
 

@@ -15,6 +15,7 @@
 //! only — `reload` reloads from disk and discards them.
 
 use crate::core_state::CoreState;
+use crate::types::Monitor;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -271,22 +272,28 @@ pub fn list_runtime_fields(
     Ok(entries)
 }
 
-/// Push `bar` config values onto every monitor and tag state.
+/// Apply `bar` config values to every monitor and drop per-view bar
+/// overrides.
 ///
-/// Tag-visibility state is resolved per output through
-/// [`TagBarPolicy`](crate::bar::policy::TagBarPolicy), so a
-/// `[monitors.<name>]` override is honoured alongside the global default.
+/// `config set bar.show` is an explicit statement of the configured
+/// visibility, so it replaces the session's `toggle_bar` overrides; the
+/// per-output policy is re-resolved so a `[monitors.<name>]` override is
+/// honoured alongside the global default.
 pub fn sync_bar_config_to_monitors(core: &mut CoreState) {
-    let show_bar = core.config.bar.show;
     let show_bottom_bar = core.config.bar.show_bottom;
     for monitor in core.model.monitors_iter_all_mut() {
-        monitor.show_bar = show_bar;
         monitor.show_bottom_bar = show_bottom_bar;
         let policy = crate::bar::policy::TagBarPolicy::resolve(&core.config, &monitor.name);
         policy.apply_to(monitor);
-        for state in monitor.per_tag.values_mut() {
-            state.show_bar = show_bar;
-        }
+        clear_bar_overrides(monitor);
+    }
+}
+
+/// Drop every per-view `toggle_bar` override on one monitor, so each tag
+/// mask falls back to the configured visibility again.
+pub fn clear_bar_overrides(monitor: &mut Monitor) {
+    for state in monitor.per_tag.values_mut() {
+        state.show_bar = None;
     }
 }
 

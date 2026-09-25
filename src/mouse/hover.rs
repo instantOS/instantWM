@@ -301,7 +301,7 @@ mod tests {
 
         let mut monitor = Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
-            show_bar: false,
+            bar_default_show: false,
             ..Monitor::default()
         };
         monitor.set_selected_tags(tags);
@@ -379,7 +379,7 @@ mod tests {
 
         let mut monitor = Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
-            show_bar: false,
+            bar_default_show: false,
             ..Monitor::default()
         };
         monitor.set_selected_tags(tags);

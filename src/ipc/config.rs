@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn bar_set_recomputes_monitor_bar_geometry() {
         let mut wm = test_wm();
-        let mut monitor = Monitor::new_with_values(true);
+        let mut monitor = Monitor::new_with_values();
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
@@ -787,9 +787,12 @@ mod tests {
     #[test]
     fn bar_show_and_top_apply_to_existing_monitor() {
         let mut wm = test_wm();
-        let mut monitor = Monitor::new_with_values(true);
+        let mut monitor = Monitor::new_with_values();
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
+        // A session `toggle_bar` override on the current view, which an
+        // explicit `config set bar.show` must replace.
+        monitor.per_tag_state().show_bar = Some(true);
         wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
@@ -799,7 +802,8 @@ mod tests {
             .model
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
-        assert!(!monitor.show_bar);
+        assert!(!monitor.bar_default_show);
+        assert!(!monitor.shows_bar());
         assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 600));
 
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
@@ -808,7 +812,8 @@ mod tests {
             .model
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
-        assert!(monitor.show_bar);
+        assert!(monitor.bar_default_show);
+        assert!(monitor.shows_bar());
         assert_eq!(monitor.bar_y(), 0);
         assert_eq!(monitor.work_rect(), Rect::new(0, 32, 800, 568));
     }

@@ -554,7 +554,6 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let previous_focus = ctx.core().model().selected_win();
 
     let template = ctx.core().config().tag_template.clone();
-    let show_bar = ctx.core().config().bar.show;
     let show_bottom_bar = ctx.core().config().bar.show_bottom;
 
     let layout_size = output_layout_extent(&outputs);
@@ -577,7 +576,6 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
             &outputs,
             &metrics,
             &template,
-            show_bar,
             show_bottom_bar,
             &policies,
         )
@@ -627,7 +625,6 @@ fn reconcile_monitor_model(
     outputs: &[BackendOutputInfo],
     metrics: &[MonitorUiMetrics],
     tag_template: &[crate::types::Tag],
-    show_bar: bool,
     show_bottom_bar: bool,
     policies: &[TagBarPolicy],
 ) -> MonitorReconciliation {
@@ -657,7 +654,7 @@ fn reconcile_monitor_model(
                 changed = true;
                 added_monitors = true;
                 let id = model.monitors.allocate_id();
-                let mut m = Monitor::new_with_values(show_bar);
+                let mut m = Monitor::new_with_values();
                 m.show_bottom_bar = show_bottom_bar;
                 policies[i].apply_to(&mut m);
                 m.monitor_id = id;
@@ -792,9 +789,9 @@ mod tests {
                 startmenu_size: 30,
             }],
             &[],
-            true,
             false,
             &[TagBarPolicy {
+                show_bar: true,
                 show_empty_tags: true,
                 tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
             }],
@@ -863,14 +860,15 @@ mod tests {
                 },
             ],
             &[],
-            true,
             false,
             &[
                 TagBarPolicy {
+                    show_bar: true,
                     show_empty_tags: true,
                     tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
                 },
                 TagBarPolicy {
+                    show_bar: true,
                     // The new output hides empty tags through its own policy.
                     show_empty_tags: false,
                     tag_slots: 5,
@@ -922,9 +920,9 @@ mod tests {
                 startmenu_size: 30,
             }],
             &[],
-            true,
             false,
             &[TagBarPolicy {
+                show_bar: true,
                 show_empty_tags: true,
                 tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
             }],

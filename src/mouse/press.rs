@@ -270,7 +270,7 @@ mod tests {
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
             available_rect: Rect::new(0, 0, 1920, 1080),
-            show_bar: false,
+            bar_default_show: false,
             ..Monitor::default()
         });
         wm.core.model.monitors.set_selected(monitor_id);
@@ -508,7 +508,7 @@ mod tests {
         let (mut wm, win, monitor_id) = setup_wm();
         {
             let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-            monitor.show_bar = true;
+            monitor.bar_default_show = true;
             // Direct field write rather than `set_ui_metrics`: this fixture
             // only cares about the top bar's height, and going through the
             // metrics setter would also recompute the bottom gesture strip.

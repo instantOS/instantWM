@@ -636,7 +636,7 @@ mod tests {
         let mut state = CoreState::default();
         state.model.tags.num_tags = 9;
 
-        let mut mon = Monitor::new_with_values(true);
+        let mut mon = Monitor::new_with_values();
         mon.set_selected_tags(TagMask::single(1).unwrap());
         state.model.monitors.push(mon);
 
@@ -806,7 +806,7 @@ mod tests {
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
-        state.model.monitors.push(Monitor::new_with_values(true));
+        state.model.monitors.push(Monitor::new_with_values());
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("tile-when-renamed")),
             instance: None,
@@ -846,7 +846,7 @@ mod tests {
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
-        state.model.monitors.push(Monitor::new_with_values(true)); // Add a monitor
+        state.model.monitors.push(Monitor::new_with_values()); // Add a monitor
 
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("test")),
@@ -889,7 +889,7 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        let mut monitor = Monitor::new_with_values(true);
+        let mut monitor = Monitor::new_with_values();
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         state.model.monitors.push(monitor);
         state.config.bindings.rules = vec![Rule {
@@ -931,7 +931,7 @@ mod tests {
         let mut state = CoreState::default();
         state.model.tags.num_tags = 3;
         let selected_tags = TagMask::single(2).unwrap();
-        let mut monitor = Monitor::new_with_values(true);
+        let mut monitor = Monitor::new_with_values();
         monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(selected_tags);
@@ -1022,7 +1022,7 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        let mut monitor = Monitor::new_with_values(true);
+        let mut monitor = Monitor::new_with_values();
         monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
         monitor.available_rect = monitor.monitor_rect;
         monitor.bar_height = 32;
@@ -1070,7 +1070,7 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        let mut monitor = Monitor::new_with_values(true);
+        let mut monitor = Monitor::new_with_values();
         monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
         monitor.available_rect = monitor.monitor_rect;
         monitor.bar_height = 32;

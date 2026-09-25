@@ -210,7 +210,7 @@ mod tests {
     fn test_wm() -> crate::wm::Wm {
         use crate::backend::{Backend, wayland::WaylandBackend};
         let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let mut monitor = crate::types::Monitor::new_with_values(true);
+        let mut monitor = crate::types::Monitor::new_with_values();
         monitor.set_available_rect(crate::types::Rect::new(0, 0, 800, 600));
         monitor.bar_height = 24;
         let id = wm.core.model.monitors.push(monitor);

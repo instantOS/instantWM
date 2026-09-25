@@ -124,7 +124,7 @@ mod tests {
             monitor_rect: Rect::new(0, 0, 1200, 800),
             available_rect: Rect::new(0, 0, 1200, 800),
             bar_height: 30,
-            show_bar: true,
+            bar_default_show: true,
             ..Monitor::default()
         });
         let template = wm.core.config.tag_template.clone();

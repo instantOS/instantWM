@@ -282,7 +282,8 @@ mod tests {
             "bottom bar defaults to hidden — opt in via ToggleBottomBar / config"
         );
 
-        let mut mon = crate::types::Monitor::new_with_values(show_bar);
+        let mut mon = crate::types::Monitor::new_with_values();
+        mon.bar_default_show = show_bar;
         // Enable the bar for this test only — the production default is
         // hidden, so the test must opt in to exercise the buffer pipeline.
         mon.show_bottom_bar = true;

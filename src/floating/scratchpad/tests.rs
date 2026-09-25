@@ -269,7 +269,7 @@ fn restoring_a_hidden_portable_scratchpad_returns_to_its_original_monitor() {
     let monitor = Monitor {
         monitor_rect: Rect::new(0, 0, 1920, 1080),
         available_rect: Rect::new(0, 0, 1920, 1080),
-        show_bar: false,
+        bar_default_show: false,
         ..Monitor::default()
     };
     let original_monitor = wm.core.model.monitors.push(monitor.clone());

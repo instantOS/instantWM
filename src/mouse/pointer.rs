@@ -162,7 +162,7 @@ mod tests {
     fn bottom_bar_hit_test_is_scoped_to_the_pointer_monitor() {
         let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
 
-        let mut short = Monitor::new_with_values(true);
+        let mut short = Monitor::new_with_values();
         short.show_bottom_bar = true;
         short.bottom_bar_height = 30;
         short.monitor_rect = Rect::new(0, 0, 1920, 1080);
@@ -170,7 +170,7 @@ mod tests {
         let short_id = wm.core.model.monitors.allocate_id();
         short.monitor_id = short_id;
 
-        let mut tall = Monitor::new_with_values(true);
+        let mut tall = Monitor::new_with_values();
         tall.show_bottom_bar = false;
         tall.bottom_bar_height = 30;
         tall.monitor_rect = Rect::new(1920, 0, 1920, 1200);
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn bottom_bar_monitor_at_respects_visibility_and_y_band() {
         let mut model = WmModel::new();
-        let mut mon = Monitor::new_with_values(true);
+        let mut mon = Monitor::new_with_values();
         mon.show_bottom_bar = true;
         mon.bottom_bar_height = 30;
         mon.monitor_rect = Rect::new(0, 0, 1920, 1080);

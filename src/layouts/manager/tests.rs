@@ -37,7 +37,7 @@ fn add_tiled_monitor(
     let monitor_id = wm.core.model.monitors.push(Monitor {
         monitor_rect,
         available_rect: monitor_rect,
-        show_bar: false,
+        bar_default_show: false,
         ..Monitor::default()
     });
     wm.core.model.monitors.set_selected(monitor_id);
@@ -165,7 +165,7 @@ fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
     let arranged_monitor = wm.core.model.monitors.push(Monitor {
         monitor_rect: Rect::new(0, 0, 800, 600),
         available_rect: Rect::new(0, 0, 800, 600),
-        show_bar: false,
+        bar_default_show: false,
         ..Monitor::default()
     });
     wm.work.spawn_animations.extend([live, destroyed]);

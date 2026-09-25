@@ -69,7 +69,7 @@ mod tests {
             .core
             .model
             .monitors
-            .push(crate::types::Monitor::new_with_values(true));
+            .push(crate::types::Monitor::new_with_values());
 
         reload_config(&mut wm).unwrap();
 

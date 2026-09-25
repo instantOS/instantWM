@@ -17,9 +17,12 @@
 use crate::core_state::EffectiveConfig;
 use crate::types::Monitor;
 
-/// The effective tag-display settings for one output.
+/// The effective bar and tag-display settings for one output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TagBarPolicy {
+    /// Whether the bar is shown on this output at all. The fallback for tag
+    /// masks without a session override; not per-output configurable yet.
+    pub show_bar: bool,
     /// Show tags with no windows that are not selected.
     pub show_empty_tags: bool,
     /// Number of tag cells in this output's bar.
@@ -35,6 +38,7 @@ impl TagBarPolicy {
         let wildcard = config.monitors.get("*");
         let named = config.monitors.get(name);
         Self {
+            show_bar: config.bar.show,
             show_empty_tags: named
                 .and_then(|entry| entry.show_empty_tags)
                 .or_else(|| wildcard.and_then(|entry| entry.show_empty_tags))
@@ -52,8 +56,12 @@ impl TagBarPolicy {
     /// the policy inputs change (`config set bar.*`, `config set
     /// monitors.*`). A `toggle_hide_tags` override applied in between is
     /// intentionally discarded — configuration re-seeds, the session layer
-    /// does not persist.
+    /// does not persist. Per-view `toggle_bar` overrides live in
+    /// [`Monitor::per_tag`](crate::types::Monitor) and are cleared by the
+    /// reload and `config set bar.show` paths, not here, so an unrelated
+    /// monitor change cannot drop them.
     pub fn apply_to(&self, monitor: &mut Monitor) {
+        monitor.bar_default_show = self.show_bar;
         monitor.hide_tags = !self.show_empty_tags;
     }
 }
@@ -121,14 +129,17 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_seeds_hide_tags_from_the_policy() {
+    fn apply_to_seeds_the_configured_bar_visibility_and_hide_tags() {
         let config = config_with(&[("DP-1", Some(false), None)]);
         let mut monitor = Monitor::default();
 
         TagBarPolicy::resolve(&config, "DP-1").apply_to(&mut monitor);
         assert!(monitor.hide_tags);
+        assert!(monitor.bar_default_show);
 
-        TagBarPolicy::resolve(&config, "HDMI-1").apply_to(&mut monitor);
-        assert!(!monitor.hide_tags);
+        let mut hidden = config.clone();
+        hidden.bar.show = false;
+        TagBarPolicy::resolve(&hidden, "DP-1").apply_to(&mut monitor);
+        assert!(!monitor.bar_default_show);
     }
 }

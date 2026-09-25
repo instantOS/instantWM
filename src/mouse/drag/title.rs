@@ -497,7 +497,7 @@ mod tests {
         let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1200, 800),
             available_rect: Rect::new(0, 0, 1200, 800),
-            show_bar: false,
+            bar_default_show: false,
             ..Monitor::default()
         });
         wm.core.model.monitors.set_selected(monitor_id);
@@ -567,7 +567,7 @@ mod tests {
             monitor_rect: Rect::new(0, 0, 1200, 800),
             available_rect: Rect::new(0, 0, 1200, 800),
             bar_height: 30,
-            show_bar: true,
+            bar_default_show: true,
             ..Monitor::default()
         });
         wm.core.model.monitors.set_selected(monitor_id);

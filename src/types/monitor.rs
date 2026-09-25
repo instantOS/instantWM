@@ -73,8 +73,12 @@ pub struct Monitor {
     pub sel_tags: bool,
     /// Tag sets (two sets for switching).
     pub tag_set: [TagMask; 2],
-    /// Whether to show the bar.
-    pub show_bar: bool,
+    /// Configured bar visibility for this output, seeded from
+    /// `bar.show` by [`TagBarPolicy::apply_to`](crate::bar::policy::TagBarPolicy).
+    ///
+    /// The fallback for tag masks without a session override in
+    /// [`Self::per_tag`]; it is not itself toggled at runtime.
+    pub bar_default_show: bool,
     /// Whether the bottom bar is shown (single global session setting).
     pub show_bottom_bar: bool,
     /// Bar window handle.
@@ -123,7 +127,7 @@ impl Default for Monitor {
             available_rect: Rect::default(),
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
-            show_bar: true,
+            bar_default_show: true,
             show_bottom_bar: false,
             bar_win: WindowId::default(),
             bottom_bar_win: WindowId::default(),
@@ -262,12 +266,13 @@ impl Monitor {
         self.bar_visible(clients) && self.y_in_bar(root_y)
     }
 
-    /// Create a new monitor with specific configuration values.
+    /// Create a new monitor with its initial tag selection.
     ///
-    /// Note: tags must be initialized separately via `init_tags()`.
-    pub fn new_with_values(show_bar: bool) -> Self {
+    /// Note: tags must be initialized separately via `init_tags()`, and the
+    /// configured bar visibility is seeded by
+    /// [`TagBarPolicy::apply_to`](crate::bar::policy::TagBarPolicy).
+    pub fn new_with_values() -> Self {
         Self {
-            show_bar,
             per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             prev_tag: Some(1),
@@ -334,10 +339,7 @@ impl Monitor {
     /// Get or initialize state for the current tag mask.
     pub fn per_tag_state(&mut self) -> &mut PerTagState {
         let mask = self.selected_tags();
-        let default_show_bar = self.show_bar;
-        self.per_tag
-            .entry(mask)
-            .or_insert_with(|| PerTagState::new(default_show_bar))
+        self.per_tag.entry(mask).or_default()
     }
 
     /// Read the current pertag state, returning `None` if no entry exists yet.
@@ -674,12 +676,14 @@ impl Monitor {
             && !self.has_external_bar_on_internal_bar_edge()
     }
 
-    /// Returns showbar state for the given tag mask.
+    /// Effective bar visibility for the given tag mask: the per-view
+    /// session override when one is set, otherwise the configured default
+    /// ([`Self::bar_default_show`]).
     pub fn show_bar_for_mask(&self, mask: TagMask) -> bool {
         self.per_tag
             .get(&mask)
-            .map(|s| s.show_bar)
-            .unwrap_or(self.show_bar)
+            .and_then(|state| state.show_bar)
+            .unwrap_or(self.bar_default_show)
     }
 
     /// Returns true when an exclusive layer-shell surface reserves space on the

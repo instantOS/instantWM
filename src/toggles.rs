@@ -93,11 +93,13 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
-    let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-    selected_monitor.per_tag_state().show_bar = !selected_monitor.per_tag_state().show_bar;
-    selected_monitor.show_bar = selected_monitor.per_tag_state().show_bar;
-
-    let selmon_idx = ctx.core().model().selected_monitor_id();
+    let selmon_idx = {
+        let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+        let current = selected_monitor.show_bar_for_mask(selected_monitor.selected_tags());
+        // A per-view session override; the configured default is untouched.
+        selected_monitor.per_tag_state().show_bar = Some(!current);
+        ctx.core().model().selected_monitor_id()
+    };
 
     ctx.refresh_top_bars();
 
@@ -148,6 +150,80 @@ mod tests {
         assert!(toggled_bool(false, ToggleAction::Toggle));
         assert!(toggled_bool(false, ToggleAction::SetTrue));
         assert!(!toggled_bool(true, ToggleAction::SetFalse));
+    }
+
+    /// A WM with one output whose configured bar visibility is `show`.
+    fn wm_with_bar(show: bool) -> Wm {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::new_with_values());
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.model.monitor_mut(monitor_id).unwrap().bar_default_show = show;
+        wm
+    }
+
+    fn bar_visible(wm: &Wm) -> bool {
+        wm.core.model.expect_selected_monitor().shows_bar()
+    }
+
+    #[test]
+    fn toggle_bar_is_a_per_view_override_that_leaves_the_default_alone() {
+        let mut wm = wm_with_bar(true);
+
+        super::toggle_bar(&mut wm.ctx());
+        assert!(!bar_visible(&wm));
+        // The configured default is untouched; only the view overrides it.
+        assert!(wm.core.model.expect_selected_monitor().bar_default_show);
+
+        super::toggle_bar(&mut wm.ctx());
+        assert!(bar_visible(&wm));
+    }
+
+    #[test]
+    fn a_bar_override_applies_only_to_the_view_it_was_set_on() {
+        let mut wm = wm_with_bar(true);
+        wm.core
+            .model
+            .expect_selected_monitor_mut()
+            .set_selected_tags(TagMask::single(1).unwrap());
+
+        super::toggle_bar(&mut wm.ctx());
+        assert!(!bar_visible(&wm));
+
+        // Switching to another view falls back to the configured value.
+        wm.core
+            .model
+            .expect_selected_monitor_mut()
+            .set_selected_tags(TagMask::single(2).unwrap());
+        assert!(bar_visible(&wm));
+
+        // …and coming back restores the override.
+        wm.core
+            .model
+            .expect_selected_monitor_mut()
+            .set_selected_tags(TagMask::single(1).unwrap());
+        assert!(!bar_visible(&wm));
+    }
+
+    #[test]
+    fn reloading_restores_the_configured_bar_visibility() {
+        let mut wm = wm_with_bar(true);
+        super::toggle_bar(&mut wm.ctx());
+        assert!(!bar_visible(&wm));
+
+        // A reload is "restore every configured value", overrides included.
+        let config = wm.core.config.clone();
+        wm.core.apply_config(config);
+        assert!(bar_visible(&wm));
+        assert!(
+            wm.core
+                .model
+                .expect_selected_monitor()
+                .per_tag()
+                .unwrap()
+                .show_bar
+                .is_none(),
+            "reload drops the session override entirely"
+        );
     }
 
     #[test]

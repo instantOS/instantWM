@@ -5,7 +5,11 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct PerTagState {
     pub master_count: usize,
-    pub show_bar: bool,
+    /// Per-view bar visibility override. `None` follows the monitor's
+    /// configured default (`Monitor::bar_default_show`); `Some` is a
+    /// session override from `toggle_bar`, cleared on reload and on
+    /// `config set bar.show`.
+    pub show_bar: Option<bool>,
     pub presentation: crate::layouts::PresentationMode,
     /// Live manual tiling topology of the *active* layout slot for this exact
     /// visible tag mask. Every tree edit applies here, whatever the layout.
@@ -24,15 +28,15 @@ pub struct PerTagState {
 
 impl Default for PerTagState {
     fn default() -> Self {
-        Self::new(true)
+        Self::new()
     }
 }
 
 impl PerTagState {
-    pub fn new(show_bar: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             master_count: 1,
-            show_bar,
+            show_bar: None,
             presentation: crate::layouts::PresentationMode::Tiled,
             layout_tree: crate::layouts::tree::LayoutTree::default(),
             active_preset: crate::layouts::tree::Preset::MasterStack,
