@@ -52,13 +52,13 @@ pub enum PressOutcome {
 pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOutcome {
     // 1. Monitor Selection:
     // First select the monitor containing the press coordinates.
-    if let Some(monitor_id) = ctx
+    if let Some(monitor) = ctx
         .core()
         .model()
         .monitors
-        .id_intersecting_rect(crate::mouse::pointer::point_rect(input.root))
+        .monitor_intersecting_rect(crate::mouse::pointer::point_rect(input.root))
     {
-        crate::focus::select_monitor(ctx, monitor_id);
+        crate::focus::select_monitor(ctx, monitor.id());
     }
     // If clicking a client window, select the monitor that client belongs to.
     if let Some(win) = input.clicked_window {
@@ -67,7 +67,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
 
     // 2. Pointer Region Classification:
     let region =
-        crate::mouse::pointer::button_region_at(ctx.core_mut(), input.root, input.clicked_window);
+        crate::mouse::pointer::button_region_at(ctx.core(), input.root, input.clicked_window);
 
     // 3. Overview Card Gesture:
     if let (crate::mouse::pointer::PointerRegion::Client(window), Some(MouseButton::Left)) =

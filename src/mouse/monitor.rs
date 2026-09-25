@@ -34,7 +34,9 @@ use crate::types::*;
 /// * `c_win` - The client window to potentially move
 /// * `rect` - The window's geometry to check against monitor boundaries
 pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    let new_mon = ctx.core().model().monitors.find_id_by_rect(rect);
+    let Some(target) = ctx.core().model().monitors.monitor_by_rect(*rect) else {
+        return;
+    };
 
     let Some(current_mon) = ctx
         .core()
@@ -45,12 +47,11 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         return;
     };
 
-    let Some(target) = new_mon else { return };
-    if target == current_mon {
+    if target.id() == current_mon {
         return;
     }
 
-    let _ = transfer_client(ctx, c_win, target, TransferFocus::FollowWindow);
+    let _ = transfer_client(ctx, c_win, target.id(), TransferFocus::FollowWindow);
 }
 
 /// Convenience wrapper that reads the client's current geometry and delegates

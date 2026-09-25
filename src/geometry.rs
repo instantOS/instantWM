@@ -189,26 +189,6 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
     })
 }
 
-//BOZO: should this be inlined?
-fn animation_duration(
-    config: crate::config::config_toml::AnimationConfig,
-    duration: Duration,
-) -> Duration {
-    config.scale_duration(duration)
-}
-
-//BOZO: should this be inlined?
-fn enqueue_window_animation(
-    ctx: &mut WmCtx<'_>,
-    win: WindowId,
-    from: Rect,
-    to: Rect,
-    duration: Duration,
-) {
-    let duration = animation_duration(ctx.core().config().animations, duration);
-    ctx.begin_window_animation(win, from, to, duration);
-}
-
 fn apply_resize_policies(
     ctx: &mut WmCtx<'_>,
     win: WindowId,
@@ -246,6 +226,7 @@ pub(crate) fn move_resize(
     target: Rect,
     options: MoveResizeOptions,
 ) {
+    //BOZO: should these returns be collapsed/a single statement instead?
     if options.size_hints == SizeHintPolicy::Ignore && !target.is_valid() {
         return;
     }
@@ -333,7 +314,12 @@ pub(crate) fn move_resize(
                     .sync_client_geometry(win, final_rect);
             }
 
-            enqueue_window_animation(ctx, win, from, final_rect, options.duration);
+            let duration = ctx
+                .core()
+                .config()
+                .animations
+                .scale_duration(options.duration);
+            ctx.begin_window_animation(win, from, final_rect, duration);
         }
     }
 }

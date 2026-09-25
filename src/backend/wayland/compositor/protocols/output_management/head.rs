@@ -17,11 +17,7 @@ pub struct OutputModeData {
 }
 
 pub(super) fn transaction_mode(mode: Mode) -> TransactionOutputMode {
-    TransactionOutputMode {
-        width: mode.size.w,
-        height: mode.size.h,
-        refresh_millihertz: mode.refresh,
-    }
+    mode.into()
 }
 
 /// Create a `zwlr_output_head_v1` resource for `output` on `instance` and

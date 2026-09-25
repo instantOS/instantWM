@@ -80,6 +80,7 @@ struct TouchHit {
 }
 
 /// Deliver a new touch point.
+//BOZO: is this function too long? Refactor?
 pub fn handle_touch_down(
     wm: &mut Wm,
     state: &mut WaylandState,

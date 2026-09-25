@@ -100,7 +100,10 @@ fn monitor_lookup_includes_bar_outside_work_area() {
         monitors.monitor_intersecting_rect(lookup).map(|m| m.id()),
         Some(id)
     );
-    assert_eq!(monitors.id_intersecting_rect(lookup), Some(id));
+    assert_eq!(
+        monitors.monitor_by_rect(lookup).map(|m| m.id()),
+        Some(id)
+    );
     assert_eq!(
         monitors
             .monitor_at_pointer(Point::new(1_000, 1_000))
@@ -142,7 +145,9 @@ fn monitor_lookup_returns_stable_id_for_each_full_output() {
     monitors.push(left);
     let right_id = monitors.push(right);
     assert_eq!(
-        monitors.id_intersecting_rect(Rect::new(150, 5, 1, 1)),
+        monitors
+            .monitor_intersecting_rect(Rect::new(150, 5, 1, 1))
+            .map(|m| m.id()),
         Some(right_id)
     );
 }

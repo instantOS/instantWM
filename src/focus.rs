@@ -426,16 +426,15 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
 }
 
 pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: Point) -> bool {
-    let Some(new_mon_id) = ctx
+    let Some(monitor) = ctx
         .core()
-        .state()
-        .model
+        .model()
         .monitors
-        .find_monitor_at_pointer(pointer_pos)
+        .monitor_at_pointer(pointer_pos)
     else {
         return false;
     };
-    select_monitor(ctx, new_mon_id)
+    select_monitor(ctx, monitor.id())
 }
 
 fn get_directional_candidate(

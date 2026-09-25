@@ -1,7 +1,29 @@
 //! Smithay adapters for backend-neutral output types.
 
-use crate::backend::output::OutputTransform;
+use crate::backend::output::{OutputMode, OutputTransform};
+use smithay::output::Mode;
 use smithay::utils::Transform;
+
+pub(crate) fn to_smithay_mode(mode: OutputMode) -> Mode {
+    Mode {
+        size: (mode.width, mode.height).into(),
+        refresh: mode.refresh_millihertz,
+    }
+}
+
+pub(crate) fn from_smithay_mode(mode: Mode) -> OutputMode {
+    OutputMode {
+        width: mode.size.w,
+        height: mode.size.h,
+        refresh_millihertz: mode.refresh,
+    }
+}
+
+impl From<Mode> for OutputMode {
+    fn from(mode: Mode) -> Self {
+        from_smithay_mode(mode)
+    }
+}
 
 pub(crate) fn to_smithay_transform(transform: OutputTransform) -> Transform {
     match transform {
@@ -50,5 +72,16 @@ mod tests {
                 transform
             );
         }
+    }
+
+    #[test]
+    fn mode_round_trips_through_smithay() {
+        let mode = OutputMode {
+            width: 1920,
+            height: 1080,
+            refresh_millihertz: 144_000,
+        };
+        assert_eq!(from_smithay_mode(to_smithay_mode(mode)), mode);
+        assert_eq!(OutputMode::from(to_smithay_mode(mode)), mode);
     }
 }
