@@ -248,6 +248,11 @@ impl<'a> WmCtxX11<'a> {
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
     pub wayland: &'a crate::backend::wayland::WaylandBackend,
+    /// Bar rendering resources. Like [`WmCtxX11`]'s runtime state, this is a
+    /// backend resource rather than backend-neutral core state; carrying it
+    /// here lets bar rendering borrow core state and the renderer at once
+    /// instead of reaching around `WmCtx` for a second borrow of `Wm`.
+    pub bar_renderer: &'a mut crate::backend::wayland::bar::WaylandBarRenderer,
 }
 
 impl<'a> WmCtxWayland<'a> {
@@ -255,6 +260,7 @@ impl<'a> WmCtxWayland<'a> {
         WmCtxWayland {
             core: self.core.reborrow(),
             wayland: self.wayland,
+            bar_renderer: self.bar_renderer,
         }
     }
 }

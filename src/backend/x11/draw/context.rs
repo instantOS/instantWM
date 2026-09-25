@@ -45,6 +45,7 @@ use super::ffi::{
 };
 use super::font::Fnt;
 
+use crate::bar::image::Rgba8Image;
 use crate::types::Rect as WmRect;
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
@@ -496,25 +497,20 @@ impl DrawContext {
 
     /// Composite non-premultiplied RGBA8 pixels over the off-screen pixmap.
     ///
-    /// The source is scaled to exactly fill `bounds` (nearest neighbor, same
-    /// rule as the Wayland painter), uploaded to a temporary depth-32 pixmap
-    /// and alpha-composited with XRender `PictOpOver`. All temporaries are
-    /// freed before returning; tray icons are few and redraws infrequent, so
-    /// per-call allocation keeps the context free of cache invalidation logic.
+    /// The source is scaled to exactly fill `bounds`, uploaded to a temporary
+    /// depth-32 pixmap and alpha-composited with XRender `PictOpOver`. Which
+    /// source pixel lands on which destination pixel is decided by
+    /// [`Rgba8Image`], shared with the Wayland painter; only the conversion to
+    /// X11's premultiplied BGRA is local. All temporaries are freed before
+    /// returning; tray icons are few and redraws infrequent, so per-call
+    /// allocation keeps the context free of cache invalidation logic.
     pub fn blit_rgba(&self, bounds: WmRect, source_size: crate::types::Size, src_rgba: &[u8]) {
-        if self.display.is_null() || !bounds.size().is_positive() || !source_size.is_positive() {
+        if self.display.is_null() || !bounds.size().is_positive() {
             return;
         }
-        let needed = match (source_size.w as usize)
-            .checked_mul(source_size.h as usize)
-            .and_then(|pixels| pixels.checked_mul(4))
-        {
-            Some(needed) => needed,
-            None => return,
+        let Some(source) = Rgba8Image::new(src_rgba, source_size) else {
+            return;
         };
-        if src_rgba.len() < needed {
-            return;
-        }
 
         // Scale to destination size and convert to premultiplied BGRA, the
         // byte order of depth-32 ZPixmap pixels on little-endian hosts. The
@@ -522,25 +518,29 @@ impl DrawContext {
         // byte first.
         let premultiply =
             |value: u8, alpha: u32| -> u8 { ((u16::from(value) * alpha as u16 + 127) / 255) as u8 };
+        let origin = bounds.position();
         let mut buffer = vec![0u8; bounds.w as usize * bounds.h as usize * 4];
         for row in 0..bounds.h {
-            let src_y = (i64::from(row) * i64::from(source_size.h) / i64::from(bounds.h)) as usize;
+            let Some(source_row) = source.scaled_row(bounds, origin.y + row) else {
+                continue;
+            };
             for col in 0..bounds.w {
-                let src_x =
-                    (i64::from(col) * i64::from(source_size.w) / i64::from(bounds.w)) as usize;
-                let si = (src_y * source_size.w as usize + src_x) * 4;
+                let Some(color) = source_row.sample_scaled(origin.x + col) else {
+                    continue;
+                };
+                let [r, g, b, a] = color.components();
+                let alpha = u32::from(a);
                 let di = (row as usize * bounds.w as usize + col as usize) * 4;
-                let a = u32::from(src_rgba[si + 3]);
                 if cfg!(target_endian = "little") {
-                    buffer[di] = premultiply(src_rgba[si + 2], a);
-                    buffer[di + 1] = premultiply(src_rgba[si + 1], a);
-                    buffer[di + 2] = premultiply(src_rgba[si], a);
-                    buffer[di + 3] = src_rgba[si + 3];
+                    buffer[di] = premultiply(b, alpha);
+                    buffer[di + 1] = premultiply(g, alpha);
+                    buffer[di + 2] = premultiply(r, alpha);
+                    buffer[di + 3] = a;
                 } else {
-                    buffer[di] = src_rgba[si + 3];
-                    buffer[di + 1] = premultiply(src_rgba[si], a);
-                    buffer[di + 2] = premultiply(src_rgba[si + 1], a);
-                    buffer[di + 3] = premultiply(src_rgba[si + 2], a);
+                    buffer[di] = a;
+                    buffer[di + 1] = premultiply(r, alpha);
+                    buffer[di + 2] = premultiply(g, alpha);
+                    buffer[di + 3] = premultiply(b, alpha);
                 }
             }
         }

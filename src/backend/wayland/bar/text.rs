@@ -6,11 +6,10 @@ use cosmic_text::{
     Shaping, SwashCache, Wrap,
 };
 
+use crate::bar::canvas::Canvas;
 use crate::bar::text::{self as bar_text, FontRole};
 use crate::core_state::FontConfig;
-use crate::types::{Point, Rect, Size};
-
-use super::pixels;
+use crate::types::{Point, Rect, Rgba8};
 
 // A normal bar has a few dozen stable labels. True LRU promotion keeps those
 // hot entries resident while clocks and counters churn through the remaining
@@ -306,8 +305,7 @@ impl TextRasterizer {
 
     pub(super) fn rasterize(
         &self,
-        pixels: &mut [u8],
-        canvas_size: Size,
+        canvas: &mut Canvas,
         bounds: Rect,
         text: &str,
         color: crate::types::color::Rgba,
@@ -372,11 +370,11 @@ impl TextRasterizer {
                 if gx < 0 || gy < 0 || gx >= bounds.w || gy >= bounds.h {
                     return;
                 }
-                pixels::fill_pixel(
-                    pixels,
-                    canvas_size,
+                // Glyphs are clipped to their own cell here rather than the
+                // canvas, because shaping can place them outside it.
+                canvas.fill_pixel(
                     Point::new(bounds.x + gx, bounds.y + gy),
-                    [color.r(), color.g(), color.b(), color.a()],
+                    Rgba8::new(color.r(), color.g(), color.b(), color.a()),
                 );
             });
     }

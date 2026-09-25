@@ -2,7 +2,8 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::Transform;
 
-use crate::types::{Point, Rect};
+use crate::bar::canvas::Canvas;
+use crate::types::Point;
 
 pub struct BarBuffer {
     pub buffer: MemoryRenderBuffer,
@@ -11,8 +12,9 @@ pub struct BarBuffer {
 
 #[derive(Clone)]
 pub(super) struct RawBarBuffer {
-    pub(super) pixels: Vec<u8>,
-    pub(super) rect: Rect,
+    pub(super) canvas: Canvas,
+    /// Where the canvas sits in the global coordinate space.
+    pub(super) position: Point,
 }
 
 impl Clone for BarBuffer {
@@ -26,17 +28,18 @@ impl Clone for BarBuffer {
 
 impl From<&RawBarBuffer> for BarBuffer {
     fn from(raw: &RawBarBuffer) -> Self {
+        let size = raw.canvas.size();
         let buffer = MemoryRenderBuffer::from_slice(
-            &raw.pixels,
+            raw.canvas.as_slice(),
             Fourcc::Argb8888,
-            (raw.rect.w, raw.rect.h),
+            (size.w, size.h),
             1,
             Transform::Normal,
             None,
         );
         BarBuffer {
             buffer,
-            position: raw.rect.position(),
+            position: raw.position,
         }
     }
 }

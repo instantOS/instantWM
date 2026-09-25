@@ -89,6 +89,57 @@ impl From<Rgba> for u32 {
     }
 }
 
+// =============================================================================
+// RGBA8 color value
+// =============================================================================
+
+/// An RGBA color with one byte per channel.
+///
+/// Unlike [`Rgba`], which models colors as they arrive from config and IPC,
+/// this is the color form renderers actually produce: glyph coverage, icon
+/// bitmaps, and compositor surfaces are all 8-bit. The components are always
+/// ordered `[r, g, b, a]` and are never premultiplied — the byte order a
+/// target surface stores them in is that surface's business, not the color's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rgba8([u8; 4]);
+
+impl Rgba8 {
+    pub const ZERO: Self = Self([0, 0, 0, 0]);
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self([r, g, b, a])
+    }
+
+    /// The components in `[r, g, b, a]` order.
+    pub const fn components(self) -> [u8; 4] {
+        self.0
+    }
+
+    /// The components in `[b, g, r, a]` order, matching the in-memory layout of
+    /// an ARGB8888 surface on a little-endian host.
+    pub const fn little_endian_argb(self) -> [u8; 4] {
+        let [r, g, b, a] = self.0;
+        [b, g, r, a]
+    }
+
+    /// Whether the color is fully transparent and therefore a no-op to blend.
+    pub const fn is_transparent(self) -> bool {
+        self.0[3] == 0
+    }
+}
+
+impl From<Rgba> for Rgba8 {
+    /// Quantize to bytes, clamping components outside the normalized range.
+    fn from(rgba: Rgba) -> Self {
+        Self(rgba.to_rgba8())
+    }
+}
+
+impl From<[u8; 4]> for Rgba8 {
+    fn from(components: [u8; 4]) -> Self {
+        Self(components)
+    }
+}
+
 impl std::str::FromStr for Rgba {
     type Err = String;
 
@@ -431,6 +482,22 @@ mod tests {
         assert_eq!(hex, "#FF000080");
         let parsed: Rgba = hex.parse().unwrap();
         assert_eq!(parsed.to_string(), hex);
+    }
+
+    #[test]
+    fn rgba8_roundtrips_and_orders_argb_by_hand() {
+        let bytes: Rgba8 = [0, 128, 255, 64].into();
+        assert_eq!(bytes.components(), [0, 128, 255, 64]);
+        // The ARGB8888 word is stored little-endian, so B leads.
+        assert_eq!(bytes.little_endian_argb(), [255, 128, 0, 64]);
+        assert!(!bytes.is_transparent());
+        assert!(Rgba8::new(1, 2, 3, 0).is_transparent());
+        assert!(Rgba8::ZERO.is_transparent());
+
+        // `Rgba` clamps and rounds on the way down, and `to_rgba8` is the
+        // exact inverse of the `From` impl.
+        let floats = Rgba::new(0.0, 0.5, 1.0, 0.25);
+        assert_eq!(Rgba8::from(floats).components(), floats.to_rgba8());
     }
 
     #[test]
