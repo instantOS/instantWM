@@ -1,458 +1,64 @@
-//! Runtime config get/set/list over IPC.
+//! Runtime config get/set/toggle/list over IPC.
 //!
-//! Each fixed section (`window`, `bar`, ...) round-trips through serde_json
-//! to read/write fields by name. The two HashMap sections (`input`,
-//! `monitors`) take a `<section>.<id>.<field>` key and auto-create missing
-//! entries so users can add new device/monitor configs at runtime.
+//! Thin transport shim: the reflection-by-name reads/writes and their
+//! validation live in [`crate::config::runtime`], shared with the
+//! `config_set`/`config_toggle` named actions, and this module only applies
+//! the returned [`ConfigEffect`] with a full [`Wm`].
 //!
 //! **Persistence:** edits made through this command live in the running
 //! WM only — `reload` reloads from disk and discards them.
 
+use crate::config::runtime::{self, ConfigEffect};
 use crate::ipc_types::{ConfigCommand, Response};
 use crate::wm::Wm;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use std::collections::HashMap;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RuntimeConfigSection {
-    Window,
-    Bar,
-    Systray,
-    Tags,
-    Layout,
-    Animations,
-    Colors,
-    Cursor,
-    Fonts,
-    Input,
-    Monitors,
-}
-
-impl RuntimeConfigSection {
-    const ALL: [Self; 11] = [
-        Self::Window,
-        Self::Bar,
-        Self::Systray,
-        Self::Tags,
-        Self::Layout,
-        Self::Animations,
-        Self::Colors,
-        Self::Cursor,
-        Self::Fonts,
-        Self::Input,
-        Self::Monitors,
-    ];
-
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Window => "window",
-            Self::Bar => "bar",
-            Self::Systray => "systray",
-            Self::Tags => "tags",
-            Self::Layout => "layout",
-            Self::Animations => "animations",
-            Self::Colors => "colors",
-            Self::Cursor => "cursor",
-            Self::Fonts => "fonts",
-            Self::Input => "input",
-            Self::Monitors => "monitors",
-        }
-    }
-
-    fn parse(name: &str) -> Result<Self, String> {
-        Self::ALL
-            .into_iter()
-            .find(|section| section.name() == name)
-            .ok_or_else(|| {
-                let known: Vec<_> = Self::ALL.into_iter().map(Self::name).collect();
-                format!("unknown section '{name}' (known: {})", known.join(", "))
-            })
-    }
-}
 
 pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
     match cmd {
-        ConfigCommand::Get { key } => get(wm, &key),
-        ConfigCommand::Set { key, value } => set(wm, &key, value),
-        ConfigCommand::Toggle { key } => toggle(wm, &key),
-        ConfigCommand::List { prefix } => list(wm, prefix.as_deref()),
-    }
-}
-
-fn get(wm: &Wm, key: &str) -> Response {
-    let Some((section_name, rest)) = key.split_once('.') else {
-        return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
-    };
-    let section = match RuntimeConfigSection::parse(section_name) {
-        Ok(section) => section,
-        Err(error) => return Response::err(error),
-    };
-    let state = &wm.core;
-    let val = match section {
-        RuntimeConfigSection::Window => field_get(&state.config.window, rest),
-        RuntimeConfigSection::Bar => field_get(&state.config.bar, rest),
-        RuntimeConfigSection::Systray => field_get(&state.config.systray, rest),
-        RuntimeConfigSection::Tags => field_get(&state.config.tags, rest),
-        RuntimeConfigSection::Layout => field_get(&state.config.layout, rest),
-        RuntimeConfigSection::Animations => field_get(&state.config.animations, rest),
-        RuntimeConfigSection::Colors => field_get(&state.config.colors, rest),
-        RuntimeConfigSection::Cursor => field_get(&state.config.cursor, rest),
-        RuntimeConfigSection::Fonts => field_get(&state.config.fonts, rest),
-        RuntimeConfigSection::Input => return map_get(&state.config.input, section.name(), rest),
-        RuntimeConfigSection::Monitors => {
-            return map_get(&state.config.monitors, section.name(), rest);
-        }
-    };
-    val.map(Response::ConfigValue).unwrap_or_else(|| {
-        Response::err(format!(
-            "unknown field '{rest}' on section '{}'",
-            section.name()
-        ))
-    })
-}
-
-fn set(wm: &mut Wm, key: &str, value: String) -> Response {
-    let Some((section_name, rest)) = key.split_once('.') else {
-        return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
-    };
-    let section = match RuntimeConfigSection::parse(section_name) {
-        Ok(section) => section,
-        Err(error) => return Response::err(error),
-    };
-
-    let state = &mut wm.core;
-    let result = match section {
-        RuntimeConfigSection::Window => set_field_from_raw(&state.config.window, rest, value)
-            .and_then(crate::core_state::WindowConfig::validated)
-            .map(|candidate| state.config.window = candidate),
-        RuntimeConfigSection::Bar => set_field_from_raw(&state.config.bar, rest, value)
-            .and_then(crate::config::config_toml::BarConfig::validated)
-            .map(|candidate| state.config.bar = candidate),
-        RuntimeConfigSection::Systray => parse_then_set(&mut state.config.systray, rest, value),
-        RuntimeConfigSection::Tags => parse_then_set(&mut state.config.tags, rest, value),
-        RuntimeConfigSection::Layout => set_field_from_raw(&state.config.layout, rest, value)
-            .and_then(crate::config::config_toml::LayoutConfig::validated)
-            .map(|candidate| state.config.layout = candidate),
-        RuntimeConfigSection::Animations => {
-            parse_then_set(&mut state.config.animations, rest, value)
-        }
-        RuntimeConfigSection::Colors => parse_then_set(&mut state.config.colors, rest, value),
-        RuntimeConfigSection::Cursor => parse_then_set(&mut state.config.cursor, rest, value),
-        RuntimeConfigSection::Fonts => set_field_from_raw(&state.config.fonts, rest, value)
-            .and_then(crate::core_state::FontConfig::validated)
-            .map(|candidate| state.config.fonts = candidate),
-        RuntimeConfigSection::Input => {
-            let resp = map_set(&mut state.config.input, section.name(), rest, value);
-            if matches!(resp, Response::Ok) {
-                wm.work.queue_input_config_apply();
-            }
-            return resp;
-        }
-        RuntimeConfigSection::Monitors => {
-            // Validate against a clone first: a fatal mirror error keyed to
-            // this entry must reject the command without touching config.
-            let mut prospective = state.config.monitors.clone();
-            let resp = map_set(&mut prospective, section.name(), rest, value);
-            if matches!(resp, Response::Ok) {
-                if let Some((id, field)) = rest.split_once('.') {
-                    if field == "mirror"
-                        && let Some(config) = prospective.get_mut(id)
-                        && config.mirror.as_deref() == Some("")
-                    {
-                        // `config set monitors.X.mirror ""` clears the mirror
-                        // instead of tripping EmptyTarget at apply time.
-                        config.mirror = None;
-                    }
-                    let (_, errors) = crate::output_mirror::MirrorMap::build(&prospective);
-                    if let Some(error) = errors
-                        .into_iter()
-                        .find(|error| error.is_fatal() && error.declaration_key() == Some(id))
-                    {
-                        return Response::err(format!("{error}"));
-                    }
+        ConfigCommand::Get { key } => match runtime::get_runtime_field(&wm.core, &key) {
+            Ok(value) => Response::ConfigValue(value),
+            Err(error) => Response::err(error),
+        },
+        ConfigCommand::Set { key, value } => {
+            match runtime::set_runtime_field(&mut wm.core, &key, value) {
+                Ok(effect) => {
+                    apply_effect(wm, effect);
+                    Response::ok()
                 }
-                state.config.monitors = prospective;
-                wm.work.queue_monitor_config_apply();
+                Err(error) => Response::err(error),
             }
-            return resp;
         }
-    };
-    if let Err(e) = result {
-        return Response::err(e);
+        ConfigCommand::Toggle { key } => {
+            match runtime::toggle_runtime_field(&mut wm.core, &key) {
+                Ok((effect, value)) => {
+                    apply_effect(wm, effect);
+                    Response::ConfigValue(value)
+                }
+                Err(error) => Response::err(error),
+            }
+        }
+        ConfigCommand::List { prefix } => {
+            match runtime::list_runtime_fields(&wm.core, prefix.as_deref()) {
+                Ok(entries) => Response::ConfigList(entries),
+                Err(error) => Response::err(error),
+            }
+        }
     }
-    apply_side_effects(wm, section);
-    Response::ok()
 }
 
-/// Flip a boolean option in place (e.g. `config toggle window.decor_hints`).
+/// Apply the follow-up work a config edit requires.
 ///
-/// Implemented as read-then-`set`, so validation and side effects are exactly
-/// those of an explicit set, and the new value comes back for scripting.
-fn toggle(wm: &mut Wm, key: &str) -> Response {
-    let current = match get(wm, key) {
-        Response::ConfigValue(value) => value,
-        other => return other,
-    };
-    let flipped = match current.as_str() {
-        "true" => "false",
-        "false" => "true",
-        // Input toggles are `ToggleSetting` enums that render as these two
-        // strings; flip them so `config toggle` covers every boolean-like
-        // option uniformly.
-        "enabled" => "disabled",
-        "disabled" => "enabled",
-        _ => {
-            return Response::err(format!(
-                "config toggle only works on boolean options; '{key}' is '{current}'"
-            ));
-        }
-    };
-    match set(wm, key, flipped.to_string()) {
-        Response::Ok => Response::ConfigValue(flipped.to_string()),
-        other => other,
-    }
-}
-
-/// List every key, or only those equal to or beneath `prefix` (a section,
-/// `section.id` or a full key).
-fn list(wm: &Wm, prefix: Option<&str>) -> Response {
-    let mut entries = Vec::new();
-    match prefix {
-        None => {
-            for section in RuntimeConfigSection::ALL {
-                collect_section(&wm.core, section, &mut entries);
-            }
-        }
-        Some(prefix) => {
-            let section_name = prefix
-                .split_once('.')
-                .map_or(prefix, |(section, _)| section);
-            match RuntimeConfigSection::parse(section_name) {
-                Ok(section) => collect_section(&wm.core, section, &mut entries),
-                Err(error) => return Response::err(error),
-            }
-            let nested = format!("{prefix}.");
-            entries.retain(|(key, _)| key == prefix || key.starts_with(&nested));
-        }
-    }
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    Response::ConfigList(entries)
-}
-
-fn collect_section(
-    core: &crate::core_state::CoreState,
-    section: RuntimeConfigSection,
-    entries: &mut Vec<(String, String)>,
-) {
-    let prefix = section.name();
-    match section {
-        RuntimeConfigSection::Window => collect(&core.config.window, prefix, entries),
-        RuntimeConfigSection::Bar => collect(&core.config.bar, prefix, entries),
-        RuntimeConfigSection::Systray => collect(&core.config.systray, prefix, entries),
-        RuntimeConfigSection::Tags => collect(&core.config.tags, prefix, entries),
-        RuntimeConfigSection::Layout => collect(&core.config.layout, prefix, entries),
-        RuntimeConfigSection::Animations => collect(&core.config.animations, prefix, entries),
-        RuntimeConfigSection::Colors => collect(&core.config.colors, prefix, entries),
-        RuntimeConfigSection::Cursor => collect(&core.config.cursor, prefix, entries),
-        RuntimeConfigSection::Fonts => collect(&core.config.fonts, prefix, entries),
-        RuntimeConfigSection::Input => {
-            for (id, config) in &core.config.input {
-                collect(config, &format!("{prefix}.{id}"), entries);
-            }
-        }
-        RuntimeConfigSection::Monitors => {
-            for (id, config) in &core.config.monitors {
-                collect(config, &format!("{prefix}.{id}"), entries);
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Field-level get/set via serde round-tripping (reflection-by-name).
-// ---------------------------------------------------------------------------
-
-/// Render a config value as a string. Strings come back unquoted so shell
-/// users see `my-cursor`, not `"my-cursor"`.
-fn render_value(v: &serde_json::Value) -> String {
-    match v {
-        serde_json::Value::String(s) => s.clone(),
-        other => serde_json::to_string(other).unwrap_or_default(),
-    }
-}
-
-fn field_get<T: Serialize>(obj: &T, field: &str) -> Option<String> {
-    let v = serde_json::to_value(obj).ok()?;
-    Some(render_value(v.get(field)?))
-}
-
-/// Return a copy of `obj` with `field` set from a raw user string.
-///
-/// We try the value as JSON first (so `12`, `true`, `[1,2,3]` work), and
-/// fall back to treating it as a plain string when either:
-///   * the JSON parse fails (e.g. `my-cursor`), or
-///   * the parsed JSON value can't be deserialised into the target field
-///     (e.g. someone wrote `set monitors.DP-1.position 12` and the
-///     `Value::Number` was rejected by `Option<String>`).
-///
-/// The fallback is necessary for `Option<String>` fields too — when the
-/// current value is `None`, we can't tell from a serde snapshot that the
-/// field expects a string, so we have to actually attempt the set and
-/// retry on type error.
-fn set_field_from_raw<T: Serialize + DeserializeOwned>(
-    obj: &T,
-    field: &str,
-    raw: String,
-) -> Result<T, String> {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
-        && let Ok(new) = field_set_owned(obj, field, value)
-    {
-        return Ok(new);
-    }
-    // JSON parsed but didn't fit the field — fall through and retry as
-    // a plain string (e.g. a bare value for an `Option<String>` field).
-    field_set_owned(obj, field, serde_json::Value::String(raw))
-}
-
-fn parse_then_set<T: Serialize + DeserializeOwned>(
-    obj: &mut T,
-    field: &str,
-    raw: String,
-) -> Result<(), String> {
-    *obj = set_field_from_raw(&*obj, field, raw)?;
-    Ok(())
-}
-
-fn field_set_owned<T: Serialize + DeserializeOwned>(
-    obj: &T,
-    field: &str,
-    value: serde_json::Value,
-) -> Result<T, String> {
-    let mut v = serde_json::to_value(obj).map_err(|e| e.to_string())?;
-    let map = v.as_object_mut().ok_or("expected object")?;
-    if !map.contains_key(field) {
-        return Err(format!("unknown field '{field}'"));
-    }
-    map.insert(field.to_string(), value);
-    serde_json::from_value(v).map_err(|e| format!("type error: {e}"))
-}
-
-fn collect<T: Serialize>(obj: &T, prefix: &str, entries: &mut Vec<(String, String)>) {
-    if let Ok(serde_json::Value::Object(map)) = serde_json::to_value(obj) {
-        for (field, val) in map {
-            entries.push((format!("{prefix}.{field}"), render_value(&val)));
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// HashMap-shaped sections: key format `<section>.<id>.<field>`.
-// ---------------------------------------------------------------------------
-
-fn map_get<T: Serialize>(map: &HashMap<String, T>, section: &str, rest: &str) -> Response {
-    let Some((id, field)) = rest.split_once('.') else {
-        return Response::err(format!("{section} key must be '{section}.<name>.<field>'"));
-    };
-    let Some(cfg) = map.get(id) else {
-        return Response::err(format!("unknown {section} entry '{id}'"));
-    };
-    field_get(cfg, field)
-        .map(Response::ConfigValue)
-        .unwrap_or_else(|| {
-            Response::err(format!("unknown field '{field}' on {section} entry '{id}'"))
-        })
-}
-
-fn map_set<T: Serialize + DeserializeOwned + Default>(
-    map: &mut HashMap<String, T>,
-    section: &str,
-    rest: &str,
-    raw: String,
-) -> Response {
-    let Some((id, field)) = rest.split_once('.') else {
-        return Response::err(format!("{section} key must be '{section}.<name>.<field>'"));
-    };
-    let default;
-    let existing = match map.get(id) {
-        Some(cfg) => cfg,
-        None => {
-            default = T::default();
-            &default
-        }
-    };
-    match set_field_from_raw(existing, field, raw) {
-        Ok(cfg) => {
-            map.insert(id.to_string(), cfg);
-            Response::ok()
-        }
-        Err(e) => Response::err(e),
-    }
-}
-
-fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
-    match section {
-        RuntimeConfigSection::Bar => {
-            sync_bar_config_to_monitors(wm);
-            wm.reinit_bar_resources();
-            let mut ctx = wm.ctx();
-            ctx.request_bar_update();
-            crate::layouts::manager::arrange(&mut ctx, None);
-        }
-        RuntimeConfigSection::Window | RuntimeConfigSection::Layout => {
-            let mut ctx = wm.ctx();
-            ctx.request_bar_update();
-            crate::layouts::manager::arrange(&mut ctx, None);
-        }
-        RuntimeConfigSection::Colors | RuntimeConfigSection::Fonts => recolor(wm),
-        RuntimeConfigSection::Animations => {}
-        RuntimeConfigSection::Cursor => {
-            wm.work.queue_cursor_config_apply();
-            wm.bar.mark_dirty();
-        }
-        RuntimeConfigSection::Systray => {
-            wm.bar.mark_dirty();
-        }
-        RuntimeConfigSection::Tags => {
-            wm.bar.mark_dirty();
-            let mut ctx = wm.ctx();
-            ctx.request_bar_update();
-        }
-        RuntimeConfigSection::Input | RuntimeConfigSection::Monitors => {}
-    }
-}
-
-fn sync_bar_config_to_monitors(wm: &mut Wm) {
-    let show_bar = wm.core.config.bar.show;
-    let show_bottom_bar = wm.core.config.bar.show_bottom;
-    let show_tags = wm.core.config.bar.show_tags;
-    for monitor in wm.core.model.monitors_iter_all_mut() {
-        monitor.show_bar = show_bar;
-        monitor.show_bottom_bar = show_bottom_bar;
-        monitor.hide_tags = !show_tags;
-        for state in monitor.per_tag.values_mut() {
-            state.show_bar = show_bar;
-        }
-    }
-}
-
-/// Push colour/font changes to the screen after `wm.core.config.colors` (or the
-/// tag colours) have been mutated.
-///
-/// Resource rebuilding is owned by [`Wm::reinit_bar_resources`]; on X11 the
-/// rebuilt schemes only take effect once the bar redraws, so mark it dirty.
-pub(crate) fn recolor(wm: &mut Wm) {
-    wm.reinit_bar_resources();
-    wm.bar.mark_dirty();
-    let mut ctx = wm.ctx();
-    ctx.request_bar_update();
-    crate::layouts::manager::arrange(&mut ctx, None);
+/// A `WmCtx` is borrowed purely to run [`crate::actions::apply_config_effect`],
+/// the single applier shared with the `config_set`/`config_toggle` actions, so
+/// IPC edits and keybind edits cannot drift.
+fn apply_effect(wm: &mut Wm, effect: ConfigEffect) {
+    crate::actions::apply_config_effect(&mut wm.ctx(), effect);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::config::runtime::RuntimeConfigSection;
     use crate::types::{Monitor, Rect};
 
     fn test_wm() -> Wm {

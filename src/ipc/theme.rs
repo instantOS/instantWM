@@ -6,7 +6,7 @@
 //! contains.
 
 use crate::config::config_toml::ColorTheme;
-use crate::ipc::config;
+use crate::config::runtime::ConfigEffect;
 use crate::ipc_types::Response;
 use crate::wm::Wm;
 
@@ -33,7 +33,7 @@ pub fn set_theme(wm: &mut Wm, theme: ColorTheme) -> Response {
     wm.core.model.tags.colors = colors.tag.clone();
     wm.core.config.colors = colors;
     wm.core.config.theme = theme;
-    config::recolor(wm);
+    crate::actions::apply_config_effect(&mut wm.ctx(), ConfigEffect::Recolor);
     Response::ok()
 }
 

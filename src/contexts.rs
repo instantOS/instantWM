@@ -160,6 +160,10 @@ impl<'a> CoreCtx<'a> {
         self.work.queue_input_config_apply();
     }
 
+    pub fn queue_cursor_config_apply(&mut self) {
+        self.work.queue_cursor_config_apply();
+    }
+
     pub fn pending_work(&self) -> &PendingWork {
         self.work
     }
@@ -1008,6 +1012,24 @@ impl<'a> WmCtx<'a> {
     pub fn request_bar_geometry_update(&mut self, monitor_id: MonitorId) {
         self.refresh_top_bars();
         self.refresh_monitor_bottom_bar(monitor_id);
+    }
+
+    /// Rebuild backend bar resources (X11 draw context, cursors, schemes)
+    /// and re-project bar metrics onto every monitor.
+    ///
+    /// Single owner of that choreography: full reloads ([`crate::reload`])
+    /// and incremental config edits — from IPC or the `config_set` /
+    /// `config_toggle` actions — all funnel through here, so they cannot
+    /// drift. When adding a backend re-init step for bar resources, add it
+    /// here rather than at a call site.
+    pub fn reinit_bar_resources(&mut self) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::startup::init_drw_and_schemes_impl(
+                &mut *ctx.x11_runtime,
+                ctx.core.config(),
+            );
+        }
+        crate::monitor::resync_monitor_ui_metrics(self.core_mut().state_mut());
     }
 
     pub fn current_mode(&self) -> &crate::core_state::ActiveWmMode {

@@ -93,7 +93,7 @@ pub struct BarConfig {
     /// Show the bottom gesture strip (plain background, no contents).
     pub show_bottom: bool,
     /// Show the tag indicators section. Per-monitor runtime toggles
-    /// (`toggle hide-tags`) override this until the next reload.
+    /// (`toggle_hide_tags` action) override this until the next reload.
     pub show_tags: bool,
     /// Bar height in logical pixels. `0` derives it from font metrics.
     pub height: i32,
@@ -640,7 +640,8 @@ pub struct KeyboardConfig {
 #[serde(default)]
 pub struct TagsConfig {
     /// Show alternative tag names (icon glyphs) in the bar instead of the
-    /// plain tag names. `toggle alt-tag` flips this for the session; `reload`
+    /// plain tag names. `instantwmctl config toggle tags.show_alt_names` (or
+    /// the `config_toggle` action) flips this for the session; `reload`
     /// restores the configured value.
     pub show_alt_names: bool,
 }

@@ -28,9 +28,7 @@ use crate::tags::{
     cancel_overview, follow_view, last_view, move_client_follow_view, send_to_monitor, shift_tag,
     shift_view, toggle_overview, win_view,
 };
-use crate::toggles::{
-    toggle_alt_tag, toggle_bar, toggle_hide_tags, toggle_mode, toggle_sticky, unhide_all,
-};
+use crate::toggles::{toggle_bar, toggle_hide_tags, toggle_mode, toggle_sticky, unhide_all};
 use crate::types::{
     EdgeDirection, FocusFollowsMouseMode, HorizontalDirection, MonitorDirection, StackDirection,
     TagMask, TagSelection, ToggleAction, VerticalDirection,
@@ -221,6 +219,74 @@ impl ActionArgs for Vec<String> {
 
     fn usage() -> String {
         "COMMAND [ARG ...]".to_string()
+    }
+}
+
+/// A `KEY VALUE` pair for the `config_set` action.
+///
+/// Both parts stay raw strings: the runtime-config layer parses values
+/// through serde, exactly as `instantwmctl config set` does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigAssignment {
+    pub key: String,
+    pub value: String,
+}
+
+impl ActionArgs for ConfigAssignment {
+    fn parse(args: &[String]) -> Result<Self, String> {
+        match args {
+            [key, value] => Ok(Self {
+                key: key.clone(),
+                value: value.clone(),
+            }),
+            _ => Err(format!("expected KEY VALUE, got {} arguments", args.len())),
+        }
+    }
+
+    fn render(&self) -> Vec<String> {
+        vec![self.key.clone(), self.value.clone()]
+    }
+
+    fn usage() -> String {
+        "KEY VALUE".to_string()
+    }
+}
+
+/// Apply the follow-up work a runtime-config edit requires.
+///
+/// The `WmCtx` counterpart of [`crate::ipc::config`]'s applier: the same
+/// [`ConfigEffect`] vocabulary, so a keybind-, hook- or IPC-triggered edit
+/// validates and applies identically.
+pub(crate) fn apply_config_effect(
+    ctx: &mut WmCtx<'_>,
+    effect: crate::config::runtime::ConfigEffect,
+) {
+    use crate::config::runtime::{ConfigEffect, sync_bar_config_to_monitors};
+    match effect {
+        ConfigEffect::None => {}
+        ConfigEffect::Bar => {
+            sync_bar_config_to_monitors(ctx.core_mut().state_mut());
+            ctx.reinit_bar_resources();
+            ctx.request_bar_update();
+            crate::layouts::manager::arrange(ctx, None);
+        }
+        ConfigEffect::Rearrange => {
+            ctx.request_bar_update();
+            crate::layouts::manager::arrange(ctx, None);
+        }
+        ConfigEffect::Recolor => {
+            ctx.reinit_bar_resources();
+            ctx.request_bar_update();
+            crate::layouts::manager::arrange(ctx, None);
+        }
+        // `request_bar_update` is the backend-agnostic "mark dirty".
+        ConfigEffect::BarUpdate => ctx.request_bar_update(),
+        ConfigEffect::Input => ctx.core_mut().queue_input_config_apply(),
+        ConfigEffect::Monitors => ctx.core_mut().queue_monitor_config_apply(),
+        ConfigEffect::Cursor => {
+            ctx.core_mut().queue_cursor_config_apply();
+            ctx.request_bar_update();
+        }
     }
 }
 
@@ -556,11 +622,9 @@ define_named_actions!(
     } },
     ToggleFloating => { name: "toggle_floating", doc: "toggle focused window between tiled and floating", run: |ctx| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", doc: "toggle sticky (visible on all tags)", run: |ctx| { with_selected_win(ctx, toggle_sticky); } },
-    ToggleAltTag(Option<ToggleAction>) => { name: "toggle_alt_tag", overview: Preserve, doc: "toggle or set alt-tag mode", run: |ctx, action| { toggle_alt_tag(ctx, action.unwrap_or_default()); } },
-    ToggleAnimated(Option<ToggleAction>) => { name: "toggle_animated", overview: Preserve, doc: "toggle or set window animations", run: |ctx, action| { let action = action.unwrap_or_default(); let mut enabled = ctx.core().config().animations.enabled; action.apply(&mut enabled); ctx.core_mut().state_mut().config.animations.enabled = enabled; } },
+    ConfigSet(ConfigAssignment) => { name: "config_set", overview: Preserve, doc: "set a runtime config value (e.g. config_set layout.inner_gap 12)", run: |ctx, assignment| { let effect = crate::config::runtime::set_runtime_field(ctx.core_mut().state_mut(), &assignment.key, assignment.value.clone())?; apply_config_effect(ctx, effect); } },
+    ConfigToggle(String) => { name: "config_toggle", overview: Preserve, doc: "flip a boolean runtime config value (e.g. config_toggle window.decor_hints)", run: |ctx, key| { let (effect, _) = crate::config::runtime::toggle_runtime_field(ctx.core_mut().state_mut(), key)?; apply_config_effect(ctx, effect); } },
     ToggleHideTags(Option<ToggleAction>) => { name: "toggle_hide_tags", overview: Preserve, doc: "toggle or set hiding empty tags in the bar", run: |ctx, action| { toggle_hide_tags(ctx, action.unwrap_or_default()); } },
-    ToggleFocusFollowsFloatMouse(Option<ToggleAction>) => { name: "toggle_focus_follows_float_mouse", overview: Preserve, doc: "toggle or set focus-follows-mouse for floating windows", run: |ctx, action| { let action = action.unwrap_or_default(); let mut enabled = ctx.core().config().window.focus_follows_float_mouse; action.apply(&mut enabled); ctx.core_mut().state_mut().config.window.focus_follows_float_mouse = enabled; } },
-    SetFocusFollowsMouse(FocusFollowsMouseMode) => { name: "set_focus_follows_mouse", overview: Preserve, doc: "set focus-follows-mouse behavior", run: |ctx, mode| { let mode = *mode; ctx.core_mut().state_mut().config.window.focus_follows_mouse = mode; } },
     ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; toggle_mode(ctx, mode); } },
     UnhideAll => { name: "unhide_all", doc: "show all hidden windows", run: |ctx| { unhide_all(ctx); } },
     Hide => { name: "hide", doc: "minimize focused window or hide the visible scratchpad", run: |ctx| { with_selected_win(ctx, crate::client::hide_for_user); } },
@@ -615,7 +679,7 @@ define_named_actions!(
 
 #[cfg(test)]
 mod tests {
-    use super::{NamedAction, focus_vertical, move_horizontal, move_vertical};
+    use super::{ConfigAssignment, NamedAction, focus_vertical, move_horizontal, move_vertical};
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
@@ -623,7 +687,7 @@ mod tests {
     use crate::layouts::{LayoutCommand, PresentationMode};
     use crate::types::{
         Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,
-        ToggleAction, VerticalDirection, WindowId,
+        VerticalDirection, WindowId,
     };
     use crate::wm::Wm;
 
@@ -677,23 +741,31 @@ mod tests {
     }
 
     #[test]
-    fn toggle_animated_flips_the_config_animation_switch() {
+    fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
         let mut wm = maximized_tiled_wm(&[WindowId(1)], WindowId(1));
         assert!(wm.core.config.animations.enabled);
 
-        NamedAction::ToggleAnimated(None)
+        NamedAction::ConfigToggle("animations.enabled".into())
             .execute(&mut wm.ctx())
             .unwrap();
         assert!(!wm.core.config.animations.enabled);
 
-        NamedAction::ToggleAnimated(Some(ToggleAction::SetTrue))
-            .execute(&mut wm.ctx())
-            .unwrap();
+        let force_on = || {
+            NamedAction::ConfigSet(ConfigAssignment {
+                key: "animations.enabled".into(),
+                value: "true".into(),
+            })
+        };
+        force_on().execute(&mut wm.ctx()).unwrap();
         assert!(wm.core.config.animations.enabled);
 
-        NamedAction::ToggleAnimated(Some(ToggleAction::SetFalse))
-            .execute(&mut wm.ctx())
-            .unwrap();
+        let force_off = || {
+            NamedAction::ConfigSet(ConfigAssignment {
+                key: "animations.enabled".into(),
+                value: "false".into(),
+            })
+        };
+        force_off().execute(&mut wm.ctx()).unwrap();
         assert!(!wm.core.config.animations.enabled);
     }
 
@@ -713,12 +785,15 @@ mod tests {
             Ok(NamedAction::FocusStack(StackDirection::Previous))
         );
         assert_eq!(
-            parse("toggle_alt_tag", &[]),
-            Ok(NamedAction::ToggleAltTag(None))
+            parse("config_toggle", &["animations.enabled"]),
+            Ok(NamedAction::ConfigToggle("animations.enabled".into()))
         );
         assert_eq!(
-            parse("toggle_alt_tag", &["on"]),
-            Ok(NamedAction::ToggleAltTag(Some(ToggleAction::SetTrue)))
+            parse("config_set", &["tags.show_alt_names", "true"]),
+            Ok(NamedAction::ConfigSet(ConfigAssignment {
+                key: "tags.show_alt_names".into(),
+                value: "true".into(),
+            }))
         );
         assert_eq!(
             parse("set_layout", &["bottom-stack"]),
@@ -726,7 +801,8 @@ mod tests {
         );
 
         for (name, args) in [
-            ("toggle_alt_tag", &["sometimes"][..]),
+            ("config_toggle", &["a", "b"][..]),
+            ("config_set", &["onlykey"][..]),
             ("focus_next", &["unexpected"]),
             ("set_layout", &[]),
             ("set_layout", &["not-a-layout"]),
@@ -745,7 +821,10 @@ mod tests {
         for action in [
             NamedAction::Spawn(vec!["printf".into(), "hello world".into()]),
             NamedAction::FocusMon(crate::types::MonitorDirection::Prev),
-            NamedAction::ToggleAnimated(Some(ToggleAction::SetFalse)),
+            NamedAction::ConfigSet(ConfigAssignment {
+                key: "window.focus_follows_mouse".into(),
+                value: "force".into(),
+            }),
             NamedAction::IncMasterCount(Some(-1)),
             NamedAction::SetBorder(None),
         ] {
@@ -783,12 +862,42 @@ mod tests {
     }
 
     #[test]
-    fn toggle_actions_can_set_idempotently() {
+    fn config_actions_are_idempotent_when_set_and_alternate_when_toggled() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let action = NamedAction::ToggleAltTag(Some(ToggleAction::SetTrue));
-        action.execute(&mut wm.ctx()).unwrap();
-        action.execute(&mut wm.ctx()).unwrap();
+        let set_on = || {
+            NamedAction::ConfigSet(ConfigAssignment {
+                key: "tags.show_alt_names".into(),
+                value: "true".into(),
+            })
+        };
+        set_on().execute(&mut wm.ctx()).unwrap();
+        set_on().execute(&mut wm.ctx()).unwrap();
         assert!(wm.core.config.tags.show_alt_names);
+
+        let toggle = || NamedAction::ConfigToggle("tags.show_alt_names".into());
+        toggle().execute(&mut wm.ctx()).unwrap();
+        assert!(!wm.core.config.tags.show_alt_names);
+        toggle().execute(&mut wm.ctx()).unwrap();
+        assert!(wm.core.config.tags.show_alt_names);
+    }
+
+    #[test]
+    fn config_actions_reject_bad_keys_and_values_without_mutating() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        assert!(
+            NamedAction::ConfigToggle("layout.inner_gap".into())
+                .execute(&mut wm.ctx())
+                .is_err()
+        );
+        assert!(
+            NamedAction::ConfigSet(ConfigAssignment {
+                key: "window.border_width_px".into(),
+                value: "-2".into(),
+            })
+            .execute(&mut wm.ctx())
+            .is_err()
+        );
+        assert!(wm.core.config.window.border_width_px > 0);
     }
 
     #[test]

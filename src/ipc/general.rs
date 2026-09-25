@@ -60,23 +60,31 @@ mod tests {
         assert!(matches!(
             run_action(
                 &mut wm,
-                "toggle_alt_tag".to_string(),
-                vec!["invalid".to_string()],
+                "config_toggle".to_string(),
+                vec!["a".to_string(), "b".to_string()],
             ),
-            Response::Err(message) if message.contains("expected toggle|off|on")
+            Response::Err(message) if message.contains("expected 1 argument")
+        ));
+        assert!(matches!(
+            run_action(
+                &mut wm,
+                "config_toggle".to_string(),
+                vec!["layout.inner_gap".to_string()],
+            ),
+            Response::Err(message) if message.contains("only works on boolean options")
         ));
     }
 
     #[test]
-    fn run_action_is_the_ipc_path_for_idempotent_toggle_updates() {
+    fn run_action_is_the_ipc_path_for_idempotent_config_updates() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
 
         for _ in 0..2 {
             assert!(matches!(
                 run_action(
                     &mut wm,
-                    "toggle_alt_tag".to_string(),
-                    vec!["on".to_string()],
+                    "config_set".to_string(),
+                    vec!["tags.show_alt_names".to_string(), "true".to_string()],
                 ),
                 Response::Ok
             ));

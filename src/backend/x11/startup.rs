@@ -250,12 +250,24 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     let Some(data) = wm.backend.x11_data_mut() else {
         return;
     };
+    init_drw_and_schemes_impl(&mut data.x11_runtime, &wm.core.config);
+}
+
+/// Build the draw context, cursors and colour schemes from `config`.
+///
+/// Takes only the X11 runtime and the effective config so both the startup
+/// path ([`init_drw_and_schemes`]) and
+/// [`crate::contexts::WmCtx::reinit_bar_resources`] share it.
+pub fn init_drw_and_schemes_impl(
+    x11_runtime: &mut X11RuntimeConfig,
+    config: &crate::core_state::EffectiveConfig,
+) {
     let mut drw = match DrawContext::new(None) {
         Ok(d) => d,
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
 
-    let font_patterns = xft_font_patterns(&wm.core.config.fonts);
+    let font_patterns = xft_font_patterns(&config.fonts);
     let fonts: Vec<_> = font_patterns
         .iter()
         .map(|(role, pattern)| (*role, pattern.as_str()))
@@ -263,25 +275,25 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     drw.fontset_create(&fonts)
         .unwrap_or_else(|error| panic!("instantwm: {error}"));
     drw.set_icon_gap_px(crate::bar::text::icon_boundary_pad_px(
-        wm.core.config.fonts.text_size,
-        wm.core.config.fonts.icon_size,
+        config.fonts.text_size,
+        config.fonts.icon_size,
     ));
 
-    let bordercolors = wm.core.config.colors.border;
-    let statusbarcolors = wm.core.config.colors.status;
-    let close_color = wm.core.config.colors.close_button.gesture_color();
+    let bordercolors = config.colors.border;
+    let statusbarcolors = config.colors.status;
+    let close_color = config.colors.close_button.gesture_color();
 
-    init_cursors(&mut data.x11_runtime, &mut drw);
+    init_cursors(x11_runtime, &mut drw);
     init_schemes(
-        &mut data.x11_runtime,
+        x11_runtime,
         &mut drw,
         &bordercolors,
         &statusbarcolors,
         close_color,
     );
 
-    data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
-    data.x11_runtime.draw = Some(drw);
+    x11_runtime.xlibdisplay = XlibDisplay(drw.display());
+    x11_runtime.draw = Some(drw);
 }
 
 fn xft_font_patterns(

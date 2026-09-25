@@ -16,14 +16,6 @@ fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
     }
 }
 
-pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
-    let new_value = toggled_bool(ctx.core().config().tags.show_alt_names, action);
-
-    ctx.core_mut().state_mut().config.tags.show_alt_names = new_value;
-
-    ctx.request_bar_update();
-}
-
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         if client.is_scratchpad() {

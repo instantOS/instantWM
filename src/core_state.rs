@@ -52,8 +52,8 @@ pub struct WindowConfig {
     pub decor_hints: bool,
     /// Pointer-focus policy: `"off"`, `"normal"`, or `"force"`.
     ///
-    /// `toggle focus-follows-mouse` overrides this for the session; `reload`
-    /// restores the configured value.
+    /// `instantwmctl config set window.focus_follows_mouse <mode>` overrides
+    /// this for the session; `reload` restores the configured value.
     pub focus_follows_mouse: FocusFollowsMouseMode,
     /// Whether hover focus also applies to floating windows.
     pub focus_follows_float_mouse: bool,

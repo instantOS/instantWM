@@ -55,21 +55,13 @@ impl Wm {
 
     /// Rebuild backend-owned bar resources after config changes.
     ///
-    /// X11 bakes schemes/fonts into the DrawContext at startup, so they must be
-    /// rebuilt for new values to show without a restart. Both backends
-    /// project the configured bar metrics into each monitor's scaled copy via
-    /// [`crate::monitor::resync_monitor_ui_metrics`]. Callers decide what
-    /// happens next: immediate arrange, deferred work flags, or both.
-    ///
-    /// This is the single owner of that choreography — used by full config
-    /// reloads ([`crate::reload`]) and incremental `config set` side effects
-    /// ([`crate::ipc::config`]) alike. When adding a backend re-init step for
-    /// bar resources, add it here rather than at a call site.
+    /// Thin wrapper over [`WmCtx::reinit_bar_resources`], which owns the
+    /// choreography (X11 bakes schemes/fonts into the DrawContext at
+    /// startup; both backends re-project bar metrics onto each monitor).
+    /// Kept for `&mut Wm` call sites; prefer the `WmCtx` method when a
+    /// context is already in hand.
     pub fn reinit_bar_resources(&mut self) {
-        if matches!(self.backend, Backend::X11(_)) {
-            crate::backend::x11::startup::init_drw_and_schemes(self);
-        }
-        crate::monitor::resync_monitor_ui_metrics(&mut self.core);
+        self.ctx().reinit_bar_resources();
     }
 
     pub fn ctx(&mut self) -> WmCtx<'_> {

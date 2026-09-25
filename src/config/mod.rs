@@ -29,6 +29,7 @@ pub mod keybind_config;
 pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
+pub mod runtime;
 
 // Re-export modifier key constants (used by backend/wayland/input/modifiers.rs via crate::config::*).
 pub use crate::types::{EdgeDirection, SchemeHover, SchemeTag, WindowFocus, WindowRole};
