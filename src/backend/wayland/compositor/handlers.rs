@@ -256,7 +256,12 @@ impl CompositorHandler for WaylandState {
                 .map(|marker| marker.id)
             {
                 self.reconcile_completed_window_animation(id, window.geometry().size);
-                self.sync_client_size_from_window(id);
+                // X11 configures are owned by the WM. A surface commit can
+                // contain a buffer for an earlier interactive resize; only
+                // an explicit X11 configure request may change model size.
+                if window.x11_surface().is_none() {
+                    self.sync_client_size_from_window(id);
+                }
                 // xdg min/max sizes are double-buffered surface state and do
                 // not have a dedicated XdgShellHandler callback. Refresh the
                 // core snapshot on root commits; unchanged properties are
