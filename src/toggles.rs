@@ -104,14 +104,6 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
-    let animated = ctx.core().behavior().animated;
-    let client_count = ctx.core().model().clients.len() as i32;
-    let mut tmp_no_anim = false;
-    if animated && client_count > 6 {
-        ctx.core_mut().behavior_mut().animated = false;
-        tmp_no_anim = true;
-    }
-
     let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     selected_monitor.per_tag_state().show_bar = !selected_monitor.per_tag_state().show_bar;
     selected_monitor.show_bar = selected_monitor.per_tag_state().show_bar;
@@ -121,10 +113,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     ctx.refresh_top_bars();
 
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
-
-    if tmp_no_anim {
-        ctx.core_mut().behavior_mut().animated = true;
-    }
 }
 
 /// Set the bottom bar visibility everywhere.
