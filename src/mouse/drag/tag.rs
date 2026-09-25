@@ -1,6 +1,5 @@
 //! Click and drag interactions for tag indicators in the bar.
 
-use crate::config::{CONTROL, MOD1};
 use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::types::*;
@@ -12,8 +11,8 @@ pub(crate) enum TagDropBehavior {
 }
 
 impl TagDropBehavior {
-    fn from_modifiers(modifiers: u32) -> Self {
-        if modifiers & MOD1 != 0 {
+    fn from_modifiers(modifiers: ModMask) -> Self {
+        if modifiers.contains(Modifier::Alt) {
             Self::MoveAndFollow
         } else {
             Self::Move
@@ -28,7 +27,7 @@ enum TagReleaseAction {
     DropWindow {
         win: WindowId,
         tags: TagMask,
-        modifiers: u32,
+        modifiers: ModMask,
     },
     TagAll {
         tags: TagMask,
@@ -40,16 +39,16 @@ fn resolve_tag_release(
     drag: &crate::core_state::TagDragState,
     selected_window: Option<WindowId>,
     final_tag: Option<TagMask>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) -> TagReleaseAction {
     if drag.dragging {
         let (Some(win), Some(tags)) = (selected_window, final_tag) else {
             return TagReleaseAction::None;
         };
-        if modifiers & CONTROL != 0 {
+        if modifiers.contains(Modifier::Control) {
             TagReleaseAction::TagAll {
                 tags,
-                follow: modifiers & MOD1 != 0,
+                follow: modifiers.contains(Modifier::Alt),
             }
         } else {
             TagReleaseAction::DropWindow {
@@ -58,7 +57,7 @@ fn resolve_tag_release(
                 modifiers,
             }
         }
-    } else if modifiers & MOD1 != 0 {
+    } else if modifiers.contains(Modifier::Alt) {
         selected_window.map_or(TagReleaseAction::View(drag.initial_tag), |win| {
             TagReleaseAction::DropWindow {
                 win,
@@ -79,7 +78,7 @@ pub(crate) fn apply_window_tag_drop(
     ctx: &mut WmCtx,
     win: WindowId,
     tag_mask: TagMask,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     match TagDropBehavior::from_modifiers(modifiers) {
         TagDropBehavior::Move => crate::tags::client_tags::set_client_tag(ctx, win, tag_mask),
@@ -121,7 +120,7 @@ pub fn drag_tag_begin(
             monitor_id,
             last_tag: Some(tag_idx),
             cursor_on_bar: true,
-            last_motion: Some((start, 0)),
+            last_motion: Some((start, ModMask::NONE)),
             button: btn,
             source,
         })
@@ -145,7 +144,8 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             drag.monitor_id,
             drag.start,
             drag.dragging,
-            drag.last_motion.map_or(0, |(_, modifiers)| modifiers),
+            drag.last_motion
+                .map_or(ModMask::NONE, |(_, modifiers)| modifiers),
         )
     };
     ctx.transition_pointer_interaction(|state| {
@@ -207,7 +207,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 }
 
 /// Finish a tag click or drag using the modifiers held at release time.
-pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
+pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: ModMask) {
     let Some(button) = ctx
         .core()
         .interaction()
@@ -272,8 +272,10 @@ fn finish_tag_release_presentation(
 
 #[cfg(test)]
 mod tests {
-    use super::{CONTROL, MOD1, TagDropBehavior, TagReleaseAction, resolve_tag_release};
-    use crate::types::{InteractionSource, MonitorId, MouseButton, Point, TagMask, WindowId};
+    use super::{TagDropBehavior, TagReleaseAction, resolve_tag_release};
+    use crate::types::{
+        InteractionSource, ModMask, Modifier, MonitorId, MouseButton, Point, TagMask, WindowId,
+    };
 
     fn drag(dragging: bool, initial_tag: TagMask) -> crate::core_state::TagDragState {
         crate::core_state::TagDragState {
@@ -291,17 +293,23 @@ mod tests {
 
     #[test]
     fn alt_is_the_only_modifier_that_makes_a_tag_drop_follow() {
-        assert_eq!(TagDropBehavior::from_modifiers(0), TagDropBehavior::Move);
         assert_eq!(
-            TagDropBehavior::from_modifiers(CONTROL),
+            TagDropBehavior::from_modifiers(ModMask::NONE),
             TagDropBehavior::Move
         );
         assert_eq!(
-            TagDropBehavior::from_modifiers(MOD1),
+            TagDropBehavior::from_modifiers(ModMask::from_modifiers([Modifier::Control])),
+            TagDropBehavior::Move
+        );
+        assert_eq!(
+            TagDropBehavior::from_modifiers(ModMask::from_modifiers([Modifier::Alt])),
             TagDropBehavior::MoveAndFollow
         );
         assert_eq!(
-            TagDropBehavior::from_modifiers(MOD1 | CONTROL),
+            TagDropBehavior::from_modifiers(ModMask::from_modifiers([
+                Modifier::Alt,
+                Modifier::Control
+            ])),
             TagDropBehavior::MoveAndFollow
         );
     }
@@ -313,7 +321,7 @@ mod tests {
         let win = WindowId(10);
 
         assert_eq!(
-            resolve_tag_release(&drag(false, initial), None, None, 0),
+            resolve_tag_release(&drag(false, initial), None, None, ModMask::NONE),
             TagReleaseAction::View(initial)
         );
         assert_eq!(
@@ -321,7 +329,7 @@ mod tests {
                 &drag(true, initial),
                 Some(win),
                 Some(target),
-                CONTROL | MOD1
+                ModMask::from_modifiers([Modifier::Alt, Modifier::Control])
             ),
             TagReleaseAction::TagAll {
                 tags: target,
@@ -329,7 +337,7 @@ mod tests {
             }
         );
         assert_eq!(
-            resolve_tag_release(&drag(true, initial), Some(win), None, 0),
+            resolve_tag_release(&drag(true, initial), Some(win), None, ModMask::NONE),
             TagReleaseAction::None
         );
     }

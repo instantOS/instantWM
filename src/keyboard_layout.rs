@@ -4,6 +4,19 @@
 //! QWERTY, QWERTZ, Dvorak) through the active backend. Layouts are configured in the
 //! TOML config under `[keyboard]` and can be switched at runtime via
 //! keybindings or IPC.
+//!
+//! Every layout operation here needs the backend, because changing the active
+//! layout means installing a keymap, and that is a backend call. All of them
+//! therefore take `WmCtx` rather than `&mut CoreState`:
+//! `set_keyboard_layout_by_name`, `cycle_keyboard_layout`,
+//! `set_keyboard_layouts`, `set_swapescape`, `init_keyboard_layout`,
+//! `add_keyboard_layout` and `remove_keyboard_layout` all route through
+//! `set_keyboard_layout`, which reaches `WmCtx::apply_keyboard_layout`. There is
+//! no function in this module that takes a `WmCtx` it does not need, and the one
+//! that needs no context at all (`get_all_keyboard_layouts`, which shells out to
+//! `localectl`) already takes none. Narrowing any of these signatures to
+//! `CoreState` would compile-fail on the keymap install, or worse, silently drop
+//! the re-apply and leave the keymap out of sync with the stored state.
 
 use crate::contexts::WmCtx;
 use crate::types::KeyboardLayout;
@@ -94,8 +107,9 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
 /// Replace the configured keyboard layouts at runtime.
 ///
 /// This allows IPC clients to reconfigure layouts without editing the TOML file.
-//BOZO: why does this take ctx if it only uses core_mut and core? Should it be passed mut corestate?
-//BOZO: and if that is the case here, are there more candidates?
+///
+/// Takes `ctx` because re-applying the layout is a backend operation; it is not
+/// core-state-only and must not be narrowed to `&mut CoreState`.
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
     ctx.core_mut()
         .state_mut()
@@ -152,7 +166,12 @@ pub fn get_all_keyboard_layouts() -> Vec<String> {
 ///
 /// If the layout already exists, returns an error.
 /// Switches to the newly added layout.
-//BOZO: would a keyboard layout manager struct make sense? It seems right now all of these take WmCtx (god object danger) and are free functions?
+///
+/// These stay free functions taking `WmCtx` rather than moving onto a
+/// `KeyboardLayoutManager`. The state half already has a home in
+/// `KeyboardLayoutState`; what is left is the apply half, and that genuinely
+/// needs the backend, so a wrapper type would add indirection without removing
+/// the dependency.
 pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<(), String> {
     let new_index = ctx
         .core_mut()

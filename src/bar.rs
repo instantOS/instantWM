@@ -258,7 +258,12 @@ pub fn update_hover(
     Some(pos)
 }
 
-pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
+pub fn handle_status_text_click(
+    ctx: &mut WmCtx,
+    root: Point,
+    button_code: u8,
+    clean_state: ModMask,
+) {
     if ctx.core().model().is_overview_active() {
         ctx.reset_mode();
         return;

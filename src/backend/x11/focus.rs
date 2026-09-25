@@ -8,7 +8,7 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
-use crate::types::{ButtonTarget, WindowId};
+use crate::types::{ButtonTarget, ModMask, Modifier, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xinput::{
@@ -17,6 +17,9 @@ use x11rb::protocol::xinput::{
 };
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
+// The X11 wire type, named apart from `crate::types::ModMask` so the boundary
+// conversion is visible at the call site rather than hidden by a shared name.
+use x11rb::protocol::xproto::ModMask as XModMask;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 // ---------------------------------------------------------------------------
@@ -232,24 +235,24 @@ pub fn grab_buttons(
     ungrab_client_buttons(x11, x11_runtime, win);
 
     let numlockmask = x11_runtime.numlockmask;
-    let lock_mask = ModMask::LOCK.bits() as u32;
+    let lock_mask = ModMask::from_modifier(Modifier::CapsLock);
     let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
-    let mut grabs: Vec<(u8, u32)> = Vec::new();
+    let mut grabs: Vec<(u8, ModMask)> = Vec::new();
 
     // Overview owns plain left-button card interactions, including on the
     // currently focused client. Outside overview, preserve normal X11
     // click-through for the focused client.
     if !focused {
-        grabs.extend([(1, 0), (3, 0)]);
+        grabs.extend([(1, ModMask::NONE), (3, ModMask::NONE)]);
     } else if globals.model.is_overview_active() {
-        grabs.push((1, 0));
+        grabs.push((1, ModMask::NONE));
     }
 
     for button in &globals.config.bindings.buttons {
         if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }
-        if focused && button.mask == 0 {
+        if focused && button.mask.is_empty() {
             continue;
         }
 
@@ -260,8 +263,13 @@ pub fn grab_buttons(
     }
 
     for (button, base_mask) in grabs {
-        for &lock_variation in &[0u32, numlockmask, lock_mask, numlockmask | lock_mask] {
-            let mods = ModMask::from((base_mask | lock_variation) as u16);
+        for lock_variation in [
+            ModMask::NONE,
+            numlockmask,
+            lock_mask,
+            numlockmask | lock_mask,
+        ] {
+            let mods = XModMask::from((base_mask | lock_variation).bits());
             let _ = conn.grab_button(
                 false,
                 x11_win,
@@ -312,7 +320,7 @@ pub fn grab_buttons(
 /// Remove every pointer and touch grab instantWM owns on a client window.
 pub fn ungrab_client_buttons(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, win: WindowId) {
     let x11_win: Window = win.into();
-    let _ = ungrab_button(x11.conn, ButtonIndex::from(0u8), x11_win, ModMask::ANY);
+    let _ = ungrab_button(x11.conn, ButtonIndex::from(0u8), x11_win, XModMask::ANY);
     if x11_runtime.xi2_touch_grabs {
         let _ = x11.conn.xinput_xi_passive_ungrab_device(
             x11_win,
@@ -424,7 +432,7 @@ fn ungrab_button(
     conn: &x11rb::rust_connection::RustConnection,
     button: ButtonIndex,
     win: Window,
-    modifiers: ModMask,
+    modifiers: XModMask,
 ) -> Result<(), x11rb::errors::ConnectionError> {
     conn.ungrab_button(button, win, modifiers)?;
     Ok(())

@@ -6,7 +6,9 @@
 //! focus, raise, & overview exit -> configured binding dispatch -> fallthrough/replay.
 
 use crate::contexts::WmCtx;
-use crate::types::{BarPosition, ButtonTarget, InteractionSource, MouseButton, Point, WindowId};
+use crate::types::{
+    BarPosition, ButtonTarget, InteractionSource, ModMask, MouseButton, Point, WindowId,
+};
 
 /// Normalized button press input from a backend or touch adapter.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -14,7 +16,7 @@ pub struct PressInput {
     pub root: Point,
     pub button: Option<MouseButton>,
     pub raw_button: u8,
-    pub modifiers: u32,
+    pub modifiers: ModMask,
     pub clicked_window: Option<WindowId>,
     pub source: InteractionSource,
     pub time_msec: u32,
@@ -121,7 +123,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
 
             if let Some(btn) = input.button {
                 let numlockmask = ctx.numlock_mask();
-                crate::mouse::bindings::run_first_matching(
+                crate::mouse::bindings::dispatch_button_binding(
                     ctx,
                     crate::mouse::bindings::ButtonBindingEvent {
                         target: ButtonTarget::Bar(pos),
@@ -147,7 +149,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
         crate::mouse::pointer::PointerRegion::BottomBar { .. } => {
             if let Some(btn) = input.button {
                 let numlockmask = ctx.numlock_mask();
-                crate::mouse::bindings::run_first_matching(
+                crate::mouse::bindings::dispatch_button_binding(
                     ctx,
                     crate::mouse::bindings::ButtonBindingEvent {
                         target: ButtonTarget::BottomBar,
@@ -172,7 +174,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
 
     // 5. Sidebar Gesture (on Root):
     if matches!(region, crate::mouse::pointer::PointerRegion::Root { .. })
-        && input.modifiers == 0
+        && input.modifiers.is_empty()
         && let Some(btn @ MouseButton::Left) = input.button
         && let Some(target) =
             crate::mouse::pointer::sidebar_target_at(ctx.core().model(), input.root)
@@ -183,7 +185,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
 
     // 6. Hover Resize / Decoration Border Gesture:
     if input.source == InteractionSource::Pointer
-        && input.modifiers == 0
+        && input.modifiers.is_empty()
         && let Some(btn) = input.button
         && crate::mouse::drag::hover_drag_begin(ctx, input.root, btn, input.source)
     {
@@ -224,7 +226,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
         && let (Some(target), Some(btn)) = (region.binding_target(), input.button)
     {
         let numlockmask = ctx.numlock_mask();
-        binding_matched = crate::mouse::bindings::run_first_matching(
+        binding_matched = crate::mouse::bindings::dispatch_button_binding(
             ctx,
             crate::mouse::bindings::ButtonBindingEvent {
                 target,
@@ -297,7 +299,7 @@ mod tests {
             root: Point::new(150, 150),
             button: Some(MouseButton::Left),
             raw_button: 1,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             clicked_window: Some(win),
             source: InteractionSource::Pointer,
             time_msec: 100,
@@ -318,7 +320,7 @@ mod tests {
             root: Point::new(800, 800),
             button: Some(MouseButton::Left),
             raw_button: 1,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             clicked_window: None,
             source: InteractionSource::Pointer,
             time_msec: 100,
@@ -338,7 +340,7 @@ mod tests {
             root: Point::new(150, 150),
             button: Some(MouseButton::Left),
             raw_button: 1,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             clicked_window: Some(win),
             source: InteractionSource::Pointer,
             time_msec: 100,
@@ -363,7 +365,7 @@ mod tests {
             root: Point::new(800, 800),
             button: Some(MouseButton::Left),
             raw_button: 1,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             clicked_window: None,
             source: InteractionSource::Pointer,
             time_msec: 100,
@@ -377,7 +379,7 @@ mod tests {
     fn overview_binding() -> Button {
         Button {
             target: ButtonTarget::Root,
-            mask: 0,
+            mask: ModMask::NONE,
             button: MouseButton::Left,
             action: ButtonAction::named(NamedAction::ToggleOverview),
         }
@@ -394,7 +396,7 @@ mod tests {
                 root: Point::new(800, 800),
                 button: Some(MouseButton::Left),
                 raw_button: 1,
-                modifiers: 0,
+                modifiers: ModMask::NONE,
                 clicked_window: None,
                 source: InteractionSource::Pointer,
                 time_msec: 100,
@@ -416,7 +418,7 @@ mod tests {
                 root: Point::new(800, 800),
                 button: Some(MouseButton::Left),
                 raw_button: 1,
-                modifiers: 0,
+                modifiers: ModMask::NONE,
                 clicked_window: None,
                 source: InteractionSource::Touch(1),
                 time_msec: 100,
@@ -439,7 +441,7 @@ mod tests {
                 root: border,
                 button: Some(MouseButton::Left),
                 raw_button: 1,
-                modifiers: 0,
+                modifiers: ModMask::NONE,
                 clicked_window: Some(win),
                 source: InteractionSource::Touch(1),
                 time_msec: 100,
@@ -457,7 +459,7 @@ mod tests {
                 root: border,
                 button: Some(MouseButton::Left),
                 raw_button: 1,
-                modifiers: 0,
+                modifiers: ModMask::NONE,
                 clicked_window: Some(pointer_win),
                 source: InteractionSource::Pointer,
                 time_msec: 100,
@@ -487,7 +489,7 @@ mod tests {
                 root: border,
                 button: Some(MouseButton::Middle),
                 raw_button: 2,
-                modifiers: 0,
+                modifiers: ModMask::NONE,
                 clicked_window: Some(win),
                 source: InteractionSource::Pointer,
                 time_msec: 100,
@@ -539,7 +541,7 @@ mod tests {
             root: Point::new(x, 15),
             button: Some(MouseButton::Left),
             raw_button: 1,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             clicked_window: None,
             source: InteractionSource::Pointer,
             time_msec: 100,
@@ -551,7 +553,7 @@ mod tests {
         let (mut wm, _, _) = bar_hit_wm();
         wm.core.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::Tag(0)),
-            mask: 0,
+            mask: ModMask::NONE,
             button: MouseButton::Left,
             action: ButtonAction::DragTagBegin,
         }];
@@ -575,7 +577,7 @@ mod tests {
         let (mut wm, win, _) = bar_hit_wm();
         wm.core.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::WinTitle(win)),
-            mask: 0,
+            mask: ModMask::NONE,
             button: MouseButton::Left,
             action: ButtonAction::WindowTitleMouseHandler,
         }];
@@ -599,7 +601,7 @@ mod tests {
         let (mut wm, win, _) = bar_hit_wm();
         wm.core.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::WinTitle(win)),
-            mask: 0,
+            mask: ModMask::NONE,
             button: MouseButton::Left,
             action: ButtonAction::ToggleClickedViewTag,
         }];

@@ -7,20 +7,24 @@ use crate::config::generated_keybinds::{
     backend_launcher, resolve_lockscreen_command, resolve_terminal_command,
 };
 use crate::layouts::LayoutCommand;
-use crate::types::{Key, KeybindOrigin, MonitorDirection};
+use crate::types::{Key, KeybindOrigin, ModMask, Modifier, MonitorDirection};
 
 use super::keysyms::*;
 
-pub const MODKEY: u32 = 1 << 6;
-pub const CONTROL: u32 = 1 << 2;
-pub const SHIFT: u32 = 1 << 0;
-pub const MOD1: u32 = 1 << 3;
+// instantWM's primary modifier is pinned to the X11 `Mod4Mask` position. This is
+// the WM's own choice rather than something the protocol dictates, and it is the
+// reason [`Modifier`] names bit 6 `Super` while calling bits 4, 5 and 7 `Mod2`,
+// `Mod3` and `Mod5` — those have no universal meaning to name semantically.
+pub const MODKEY: ModMask = ModMask::from_modifier(Modifier::Super);
+pub const CONTROL: ModMask = ModMask::from_modifier(Modifier::Control);
+pub const SHIFT: ModMask = ModMask::from_modifier(Modifier::Shift);
+pub const MOD1: ModMask = ModMask::from_modifier(Modifier::Alt);
 /// X-protocol modifier bit for Mod2 (usually Num Lock).
-pub const MOD2: u32 = 1 << 4;
+pub const MOD2: ModMask = ModMask::from_modifier(Modifier::Mod2);
 /// X-protocol modifier bit for Mod3.
-pub const MOD3: u32 = 1 << 5;
-/// X-protocol modifier bit for Mod5.
-pub const MOD5: u32 = 1 << 7;
+pub const MOD3: ModMask = ModMask::from_modifier(Modifier::Mod3);
+/// X-protocol modifier bit for Mod5 (usually AltGr).
+pub const MOD5: ModMask = ModMask::from_modifier(Modifier::Mod5);
 
 macro_rules! key {
     ($mods:expr, $sym:expr => $action:expr) => {
@@ -33,7 +37,7 @@ macro_rules! key {
     };
 }
 
-fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
+fn tag_keys(keysym: Keysym, tag_idx: usize) -> [Key; 6] {
     [
         key!(MODKEY, keysym => KeyAction::ViewTag { tag_idx }),
         key!(MODKEY | CONTROL, keysym => KeyAction::ToggleViewTag { tag_idx }),
@@ -166,20 +170,20 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
         key!(MODKEY | SHIFT, XK_PRINT => KeyAction::spawn(screenshot::FULL)),
         key!(MODKEY | CONTROL, XK_PRINT => KeyAction::spawn(screenshot::CLIPBOARD)),
         key!(MODKEY | MOD1, XK_PRINT => KeyAction::spawn(screenshot::FULL_CLIPBOARD)),
-        key!(0, XF86XK_MON_BRIGHTNESS_UP => KeyAction::spawn(media::UP_BRIGHT)),
-        key!(0, XF86XK_MON_BRIGHTNESS_DOWN => KeyAction::spawn(media::DOWN_BRIGHT)),
-        key!(0, XF86XK_AUDIO_LOWER_VOLUME => KeyAction::spawn(media::DOWN_VOL)),
-        key!(0, XF86XK_AUDIO_MUTE => KeyAction::spawn(media::MUTE_VOL)),
-        key!(0, XF86XK_AUDIO_RAISE_VOLUME => KeyAction::spawn(media::UP_VOL)),
-        key!(0, XF86XK_AUDIO_MIC_MUTE => KeyAction::spawn(media::MIC_MUTE)),
-        key!(0, XF86XK_AUDIO_PLAY => KeyAction::spawn(&["playerctl", "play-pause"])),
-        key!(0, XF86XK_AUDIO_PAUSE => KeyAction::spawn(&["playerctl", "play-pause"])),
-        key!(0, XF86XK_AUDIO_NEXT => KeyAction::spawn(&["playerctl", "next"])),
-        key!(0, XF86XK_AUDIO_PREV => KeyAction::spawn(&["playerctl", "previous"])),
+        key!(ModMask::NONE, XF86XK_MON_BRIGHTNESS_UP => KeyAction::spawn(media::UP_BRIGHT)),
+        key!(ModMask::NONE, XF86XK_MON_BRIGHTNESS_DOWN => KeyAction::spawn(media::DOWN_BRIGHT)),
+        key!(ModMask::NONE, XF86XK_AUDIO_LOWER_VOLUME => KeyAction::spawn(media::DOWN_VOL)),
+        key!(ModMask::NONE, XF86XK_AUDIO_MUTE => KeyAction::spawn(media::MUTE_VOL)),
+        key!(ModMask::NONE, XF86XK_AUDIO_RAISE_VOLUME => KeyAction::spawn(media::UP_VOL)),
+        key!(ModMask::NONE, XF86XK_AUDIO_MIC_MUTE => KeyAction::spawn(media::MIC_MUTE)),
+        key!(ModMask::NONE, XF86XK_AUDIO_PLAY => KeyAction::spawn(&["playerctl", "play-pause"])),
+        key!(ModMask::NONE, XF86XK_AUDIO_PAUSE => KeyAction::spawn(&["playerctl", "play-pause"])),
+        key!(ModMask::NONE, XF86XK_AUDIO_NEXT => KeyAction::spawn(&["playerctl", "next"])),
+        key!(ModMask::NONE, XF86XK_AUDIO_PREV => KeyAction::spawn(&["playerctl", "previous"])),
     ];
 
     for tag_idx in 0..9 {
-        keys.extend_from_slice(&tag_keys(XK_1 + tag_idx as u32, tag_idx));
+        keys.extend_from_slice(&tag_keys(Keysym::new(XK_1.raw() + tag_idx as u32), tag_idx));
     }
 
     keys
@@ -187,33 +191,33 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
 
 pub fn get_desktop_keybinds() -> Vec<Key> {
     vec![
-        key!(0, XK_RETURN => KeyAction::spawn(defaults::TERMINAL)),
-        key!(0, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
-        key!(0, XK_E => KeyAction::spawn(defaults::EDITOR)),
-        key!(0, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
-        key!(0, XK_SPACE => KeyAction::spawn(defaults::APPMENU)),
-        key!(0, XK_Y => KeyAction::spawn(menu::SMART)),
-        key!(0, XK_F => KeyAction::spawn(defaults::BROWSER)),
-        key!(0, XK_TAB => KeyAction::spawn(ROFI_WINDOW_SWITCH)),
-        key!(0, XK_PLUS => KeyAction::spawn(media::UP_VOL)),
-        key!(0, XK_MINUS => KeyAction::spawn(media::DOWN_VOL)),
-        key!(0, XK_H => KeyAction::named(NamedAction::ScrollLeft)),
-        key!(0, XK_L => KeyAction::named(NamedAction::ScrollRight)),
-        key!(0, XK_LEFT => KeyAction::named(NamedAction::ScrollLeft)),
-        key!(0, XK_RIGHT => KeyAction::named(NamedAction::ScrollRight)),
-        key!(0, XK_K => KeyAction::named(NamedAction::ShiftViewRight)),
-        key!(0, XK_J => KeyAction::named(NamedAction::ShiftViewLeft)),
-        key!(0, XK_UP => KeyAction::named(NamedAction::ShiftViewRight)),
-        key!(0, XK_DOWN => KeyAction::named(NamedAction::ShiftViewLeft)),
-        key!(0, XK_1 => KeyAction::ViewTag { tag_idx: 0 }),
-        key!(0, XK_2 => KeyAction::ViewTag { tag_idx: 1 }),
-        key!(0, XK_3 => KeyAction::ViewTag { tag_idx: 2 }),
-        key!(0, XK_4 => KeyAction::ViewTag { tag_idx: 3 }),
-        key!(0, XK_5 => KeyAction::ViewTag { tag_idx: 4 }),
-        key!(0, XK_6 => KeyAction::ViewTag { tag_idx: 5 }),
-        key!(0, XK_7 => KeyAction::ViewTag { tag_idx: 6 }),
-        key!(0, XK_8 => KeyAction::ViewTag { tag_idx: 7 }),
-        key!(0, XK_9 => KeyAction::ViewTag { tag_idx: 8 }),
+        key!(ModMask::NONE, XK_RETURN => KeyAction::spawn(defaults::TERMINAL)),
+        key!(ModMask::NONE, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
+        key!(ModMask::NONE, XK_E => KeyAction::spawn(defaults::EDITOR)),
+        key!(ModMask::NONE, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
+        key!(ModMask::NONE, XK_SPACE => KeyAction::spawn(defaults::APPMENU)),
+        key!(ModMask::NONE, XK_Y => KeyAction::spawn(menu::SMART)),
+        key!(ModMask::NONE, XK_F => KeyAction::spawn(defaults::BROWSER)),
+        key!(ModMask::NONE, XK_TAB => KeyAction::spawn(ROFI_WINDOW_SWITCH)),
+        key!(ModMask::NONE, XK_PLUS => KeyAction::spawn(media::UP_VOL)),
+        key!(ModMask::NONE, XK_MINUS => KeyAction::spawn(media::DOWN_VOL)),
+        key!(ModMask::NONE, XK_H => KeyAction::named(NamedAction::ScrollLeft)),
+        key!(ModMask::NONE, XK_L => KeyAction::named(NamedAction::ScrollRight)),
+        key!(ModMask::NONE, XK_LEFT => KeyAction::named(NamedAction::ScrollLeft)),
+        key!(ModMask::NONE, XK_RIGHT => KeyAction::named(NamedAction::ScrollRight)),
+        key!(ModMask::NONE, XK_K => KeyAction::named(NamedAction::ShiftViewRight)),
+        key!(ModMask::NONE, XK_J => KeyAction::named(NamedAction::ShiftViewLeft)),
+        key!(ModMask::NONE, XK_UP => KeyAction::named(NamedAction::ShiftViewRight)),
+        key!(ModMask::NONE, XK_DOWN => KeyAction::named(NamedAction::ShiftViewLeft)),
+        key!(ModMask::NONE, XK_1 => KeyAction::ViewTag { tag_idx: 0 }),
+        key!(ModMask::NONE, XK_2 => KeyAction::ViewTag { tag_idx: 1 }),
+        key!(ModMask::NONE, XK_3 => KeyAction::ViewTag { tag_idx: 2 }),
+        key!(ModMask::NONE, XK_4 => KeyAction::ViewTag { tag_idx: 3 }),
+        key!(ModMask::NONE, XK_5 => KeyAction::ViewTag { tag_idx: 4 }),
+        key!(ModMask::NONE, XK_6 => KeyAction::ViewTag { tag_idx: 5 }),
+        key!(ModMask::NONE, XK_7 => KeyAction::ViewTag { tag_idx: 6 }),
+        key!(ModMask::NONE, XK_8 => KeyAction::ViewTag { tag_idx: 7 }),
+        key!(ModMask::NONE, XK_9 => KeyAction::ViewTag { tag_idx: 8 }),
     ]
 }
 
@@ -223,14 +227,14 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
 /// an ordinary named action under `[modes.placement]`.
 pub fn get_tree_placement_keybinds() -> Vec<Key> {
     vec![
-        key!(0, XK_LEFT => KeyAction::named(NamedAction::PlacementLeft)),
-        key!(0, XK_H => KeyAction::named(NamedAction::PlacementLeft)),
-        key!(0, XK_RIGHT => KeyAction::named(NamedAction::PlacementRight)),
-        key!(0, XK_L => KeyAction::named(NamedAction::PlacementRight)),
-        key!(0, XK_UP => KeyAction::named(NamedAction::PlacementUp)),
-        key!(0, XK_K => KeyAction::named(NamedAction::PlacementUp)),
-        key!(0, XK_DOWN => KeyAction::named(NamedAction::PlacementDown)),
-        key!(0, XK_J => KeyAction::named(NamedAction::PlacementDown)),
+        key!(ModMask::NONE, XK_LEFT => KeyAction::named(NamedAction::PlacementLeft)),
+        key!(ModMask::NONE, XK_H => KeyAction::named(NamedAction::PlacementLeft)),
+        key!(ModMask::NONE, XK_RIGHT => KeyAction::named(NamedAction::PlacementRight)),
+        key!(ModMask::NONE, XK_L => KeyAction::named(NamedAction::PlacementRight)),
+        key!(ModMask::NONE, XK_UP => KeyAction::named(NamedAction::PlacementUp)),
+        key!(ModMask::NONE, XK_K => KeyAction::named(NamedAction::PlacementUp)),
+        key!(ModMask::NONE, XK_DOWN => KeyAction::named(NamedAction::PlacementDown)),
+        key!(ModMask::NONE, XK_J => KeyAction::named(NamedAction::PlacementDown)),
         key!(SHIFT, XK_LEFT => KeyAction::named(NamedAction::PlacementSwapLeft)),
         key!(SHIFT, XK_H => KeyAction::named(NamedAction::PlacementSwapLeft)),
         key!(SHIFT, XK_RIGHT => KeyAction::named(NamedAction::PlacementSwapRight)),
@@ -247,11 +251,11 @@ pub fn get_tree_placement_keybinds() -> Vec<Key> {
         key!(CONTROL, XK_K => KeyAction::named(NamedAction::PlacementResizeUp)),
         key!(CONTROL, XK_DOWN => KeyAction::named(NamedAction::PlacementResizeDown)),
         key!(CONTROL, XK_J => KeyAction::named(NamedAction::PlacementResizeDown)),
-        key!(0, XK_TAB => KeyAction::named(NamedAction::PlacementNext)),
+        key!(ModMask::NONE, XK_TAB => KeyAction::named(NamedAction::PlacementNext)),
         key!(SHIFT, XK_TAB => KeyAction::named(NamedAction::PlacementPrevious)),
-        key!(0, XK_SPACE => KeyAction::named(NamedAction::PlacementCenter)),
-        key!(0, XK_RETURN => KeyAction::named(NamedAction::PlacementApply)),
-        key!(0, XK_ESCAPE => KeyAction::named(NamedAction::PlacementCancel)),
+        key!(ModMask::NONE, XK_SPACE => KeyAction::named(NamedAction::PlacementCenter)),
+        key!(ModMask::NONE, XK_RETURN => KeyAction::named(NamedAction::PlacementApply)),
+        key!(ModMask::NONE, XK_ESCAPE => KeyAction::named(NamedAction::PlacementCancel)),
     ]
 }
 
@@ -259,7 +263,7 @@ pub fn get_tree_placement_keybinds() -> Vec<Key> {
 mod tests {
     use super::*;
 
-    fn named_action(modifiers: u32, keysym: u32) -> Option<NamedAction> {
+    fn named_action(modifiers: ModMask, keysym: Keysym) -> Option<NamedAction> {
         get_tree_placement_keybinds()
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
@@ -269,7 +273,7 @@ mod tests {
             })
     }
 
-    fn default_named_action(modifiers: u32, keysym: u32) -> Option<NamedAction> {
+    fn default_named_action(modifiers: ModMask, keysym: Keysym) -> Option<NamedAction> {
         default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
@@ -398,7 +402,10 @@ mod tests {
 
     #[test]
     fn placement_defaults_are_regular_named_actions() {
-        assert_eq!(named_action(0, XK_H), Some(NamedAction::PlacementLeft));
+        assert_eq!(
+            named_action(ModMask::NONE, XK_H),
+            Some(NamedAction::PlacementLeft)
+        );
         assert_eq!(
             named_action(SHIFT, XK_LEFT),
             Some(NamedAction::PlacementSwapLeft)
@@ -408,7 +415,7 @@ mod tests {
             Some(NamedAction::PlacementResizeDown)
         );
         assert_eq!(
-            named_action(0, XK_ESCAPE),
+            named_action(ModMask::NONE, XK_ESCAPE),
             Some(NamedAction::PlacementCancel)
         );
     }
@@ -436,8 +443,8 @@ mod tests {
 
     fn default_spawn_args_for(
         backend: BackendKind,
-        modifiers: u32,
-        keysym: u32,
+        modifiers: ModMask,
+        keysym: Keysym,
     ) -> Option<Vec<String>> {
         default_keybinds(backend)
             .into_iter()
@@ -468,7 +475,7 @@ mod tests {
         );
     }
 
-    fn default_spawn_args(modifiers: u32, keysym: u32) -> Option<Vec<String>> {
+    fn default_spawn_args(modifiers: ModMask, keysym: Keysym) -> Option<Vec<String>> {
         default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
@@ -497,7 +504,7 @@ mod tests {
     #[test]
     fn mic_mute_key_defaults_to_assist_chord() {
         assert_eq!(
-            default_spawn_args(0, XF86XK_AUDIO_MIC_MUTE),
+            default_spawn_args(ModMask::NONE, XF86XK_AUDIO_MIC_MUTE),
             Some(vec![
                 "ins".to_string(),
                 "assist".to_string(),

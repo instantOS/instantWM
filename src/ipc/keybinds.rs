@@ -1,6 +1,9 @@
 use crate::ipc_types::{KeybindInfo, Response};
-use crate::types::KeybindOrigin;
+use crate::types::{Key, KeybindOrigin};
 use crate::wm::Wm;
+
+use crate::config::keybindings::MODKEY;
+use crate::config::keysyms::XK_ESCAPE;
 
 const RESET_MODE_ACTION: &str = "reset_mode";
 
@@ -12,9 +15,6 @@ pub fn list_keybinds(wm: &mut Wm) -> Response {
 }
 
 fn keybind_entries(bindings: &crate::core_state::BindingConfig) -> Vec<KeybindInfo> {
-    use crate::config::keybindings::MODKEY;
-    use crate::config::keysyms::XK_ESCAPE;
-
     let mut entries: Vec<KeybindInfo> = Vec::new();
 
     // Global bindings (always active).
@@ -54,21 +54,24 @@ fn keybind_entries(bindings: &crate::core_state::BindingConfig) -> Vec<KeybindIn
     entries
 }
 
+/// The `Super + Escape` chord that leaves any mode, rendered through the same
+/// types as every other entry so the list has one vocabulary. It used to be
+/// hand-written as the strings `"Super"` and `"Esc"`, which meant the reserved
+/// chord was the one entry a user could not copy back into their config.
 fn reset_mode_entry(mode: &str) -> KeybindInfo {
     KeybindInfo {
-        modifiers: "Super".to_string(),
-        key: "Esc".to_string(),
+        modifiers: MODKEY.to_string(),
+        key: XK_ESCAPE.to_string(),
         action: RESET_MODE_ACTION.to_string(),
         mode: Some(mode.to_string()),
         origin: KeybindOrigin::CompiledDefault,
     }
 }
 
-fn to_entry(key: &crate::types::Key, mode: Option<&str>) -> KeybindInfo {
-    use crate::config::keybind_config::{format_keysym, format_modifiers};
+fn to_entry(key: &Key, mode: Option<&str>) -> KeybindInfo {
     KeybindInfo {
-        modifiers: format_modifiers(key.mod_mask),
-        key: format_keysym(key.keysym),
+        modifiers: key.mod_mask.to_string(),
+        key: key.keysym.to_string(),
         action: key.action.describe(),
         mode: mode.map(str::to_string),
         origin: key.origin,
@@ -80,10 +83,7 @@ mod tests {
     use super::*;
     use crate::actions::{KeyAction, NamedAction};
     use crate::config::ModeConfig;
-    use crate::config::keybindings::MODKEY;
-    use crate::config::keysyms::XK_ESCAPE;
     use crate::core_state::BindingConfig;
-    use crate::types::Key;
 
     #[test]
     fn reserved_mode_reset_replaces_shadowed_config_binding() {
@@ -111,7 +111,7 @@ mod tests {
 
         assert_eq!(resize_entries.len(), 1);
         assert_eq!(resize_entries[0].modifiers, "Super");
-        assert_eq!(resize_entries[0].key, "Esc");
+        assert_eq!(resize_entries[0].key, "Escape");
         assert_eq!(resize_entries[0].action, RESET_MODE_ACTION);
         assert_eq!(resize_entries[0].origin, KeybindOrigin::CompiledDefault);
     }
@@ -123,9 +123,25 @@ mod tests {
         assert!(entries.iter().any(|entry| {
             entry.mode.as_deref() == Some("overview")
                 && entry.modifiers == "Super"
-                && entry.key == "Esc"
+                && entry.key == "Escape"
                 && entry.action == RESET_MODE_ACTION
         }));
+    }
+
+    #[test]
+    fn every_listed_chord_can_be_copied_back_into_a_config() {
+        // The listing is the tool a user reads to discover what to write. If its
+        // output does not parse as config, it is documentation they cannot use.
+        for entry in keybind_entries(&BindingConfig::default()) {
+            entry
+                .modifiers
+                .parse::<crate::types::ModMask>()
+                .unwrap_or_else(|error| {
+                    panic!("modifiers {:?} do not parse: {error}", entry.modifiers)
+                });
+            crate::types::Keysym::from_name(&entry.key)
+                .unwrap_or_else(|error| panic!("key {:?} does not parse: {error}", entry.key));
+        }
     }
 
     #[test]

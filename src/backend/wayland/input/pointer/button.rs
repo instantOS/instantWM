@@ -9,7 +9,7 @@ use crate::backend::wayland::commands::PointerButtonCommand;
 use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::backend::wayland::input::modifiers_to_x11_mask;
-use crate::types::{MouseButton, Point as RootPoint};
+use crate::types::{ModMask, MouseButton, Point as RootPoint};
 use crate::wm::Wm;
 
 #[derive(Debug, Clone, Copy)]
@@ -87,8 +87,8 @@ fn forward_button(
     );
 }
 
-fn clean_modifier_state(keyboard_handle: &KeyboardHandle<WaylandState>) -> u32 {
-    crate::util::clean_mask(modifiers_to_x11_mask(&keyboard_handle.modifier_state()), 0)
+fn clean_modifier_state(keyboard_handle: &KeyboardHandle<WaylandState>) -> ModMask {
+    modifiers_to_x11_mask(&keyboard_handle.modifier_state()).cleaned(ModMask::NONE)
 }
 
 fn handle_button_press(

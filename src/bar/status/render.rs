@@ -1,7 +1,7 @@
 use super::TEXT_PADDING;
 use super::{I3Align, I3Block, I3ClickEvent, I3MinWidth, StatusClickTarget};
 use crate::bar::paint::{BarPainter, SchemeColor, draw_hover_accent};
-use crate::types::{ColorScheme, Point, Rect, Rgba};
+use crate::types::{ColorScheme, ModMask, Point, Rect, Rgba};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct StatusBlockHover {
@@ -86,32 +86,13 @@ pub(crate) fn hit_test_i3_click_target(
         .map(|target| target.block_index)
 }
 
-pub(crate) fn modifiers_from_mask(mask: u32) -> Vec<String> {
-    let mut modifiers = Vec::new();
-
-    if mask & crate::config::keybindings::SHIFT != 0 {
-        modifiers.push("Shift".to_string());
-    }
-    if mask & crate::config::keybindings::CONTROL != 0 {
-        modifiers.push("Control".to_string());
-    }
-    if mask & crate::config::keybindings::MOD1 != 0 {
-        modifiers.push("Mod1".to_string());
-    }
-    if mask & crate::config::keybindings::MOD2 != 0 {
-        modifiers.push("Mod2".to_string());
-    }
-    if mask & crate::config::keybindings::MOD3 != 0 {
-        modifiers.push("Mod3".to_string());
-    }
-    if mask & crate::config::keybindings::MODKEY != 0 {
-        modifiers.push("Mod4".to_string());
-    }
-    if mask & crate::config::keybindings::MOD5 != 0 {
-        modifiers.push("Mod5".to_string());
-    }
-
-    modifiers
+/// Modifier names for an i3bar click event.
+///
+/// These go onto the bar's stdin, where user scripts read them, so they use the
+/// positional vocabulary the i3bar protocol specifies rather than instantWM's
+/// own canonical modifier names. See [`Modifier::i3_name`].
+pub(crate) fn modifiers_from_mask(mask: ModMask) -> Vec<String> {
+    mask.i3_names().map(str::to_string).collect::<Vec<String>>()
 }
 
 pub(crate) fn make_i3_click_event(
@@ -119,7 +100,7 @@ pub(crate) fn make_i3_click_event(
     target: StatusClickTarget,
     button: u8,
     geometry: StatusClickGeometry,
-    clean_state: u32,
+    clean_state: ModMask,
 ) -> I3ClickEvent {
     let relative_position = Point::new(
         geometry.bar_position.x - target.bounds.x,
@@ -148,7 +129,7 @@ pub(crate) fn i3_click_event(
     click_targets: &[StatusClickTarget],
     geometry: StatusClickGeometry,
     button: u8,
-    clean_state: u32,
+    clean_state: ModMask,
 ) -> Option<I3ClickEvent> {
     let target = click_targets
         .iter()
@@ -794,7 +775,7 @@ mod tests {
                 output_position: Point::new(80, 30),
                 bar_position: Point::new(95, 10),
             },
-            0,
+            ModMask::NONE,
         );
 
         assert_eq!((event.x, event.y), (2000, 30));

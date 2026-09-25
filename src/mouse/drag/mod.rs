@@ -86,7 +86,7 @@ pub fn drag_move_finish(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     debug_assert!(!ctx.core().interaction().drag.has_capture());
     clear_bar_hover(ctx);

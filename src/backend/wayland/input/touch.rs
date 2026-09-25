@@ -16,7 +16,7 @@ use crate::backend::wayland::compositor::{
     PointerFocusTarget, TOUCH_POINTER_BUTTON_CODE, WaylandState,
 };
 use crate::backend::wayland::input::modifiers_to_x11_mask;
-use crate::types::MouseButton;
+use crate::types::{ModMask, MouseButton};
 use crate::wm::Wm;
 
 /// Coordinate space used for an absolute touch device.
@@ -337,8 +337,8 @@ fn root_point(location: Point<f64, Logical>) -> crate::types::Point {
     crate::types::Point::from_f64_round(location.x, location.y)
 }
 
-fn clean_modifier_state(state: &WaylandState) -> u32 {
-    crate::util::clean_mask(modifiers_to_x11_mask(&state.keyboard.modifier_state()), 0)
+fn clean_modifier_state(state: &WaylandState) -> ModMask {
+    modifiers_to_x11_mask(&state.keyboard.modifier_state()).cleaned(ModMask::NONE)
 }
 
 fn handle_wm_gesture_touch_motion(
@@ -388,7 +388,7 @@ fn cancel_wm_gesture_touch(wm: &mut Wm, _state: &mut WaylandState) {
                 reason: crate::core_state::DragCancelReason::TouchCancelled,
             },
             root: Default::default(),
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             sidebar_hover: None,
         },
     );

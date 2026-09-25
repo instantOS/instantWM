@@ -6,7 +6,7 @@
 
 use crate::contexts::WmCtx;
 use crate::core_state::{CapturedInteraction, DragCancelReason, WindowDragState};
-use crate::types::{MouseButton, Point, SidebarTarget};
+use crate::types::{ModMask, MouseButton, Point, SidebarTarget};
 
 pub use crate::types::InteractionSource;
 
@@ -22,14 +22,14 @@ pub struct InteractionEvent {
     pub source: InteractionSource,
     pub phase: InteractionPhase,
     pub root: Point,
-    pub modifiers: u32,
+    pub modifiers: ModMask,
     /// Sidebar offer to restore after release, already resolved by the input
     /// adapter after accounting for higher-priority compositor UI.
     pub sidebar_hover: Option<SidebarTarget>,
 }
 
 impl InteractionEvent {
-    pub fn pointer_update(root: Point, modifiers: u32) -> Self {
+    pub fn pointer_update(root: Point, modifiers: ModMask) -> Self {
         Self {
             source: InteractionSource::Pointer,
             phase: InteractionPhase::Update,
@@ -42,7 +42,7 @@ impl InteractionEvent {
     pub fn pointer_end(
         root: Point,
         button: MouseButton,
-        modifiers: u32,
+        modifiers: ModMask,
         sidebar_hover: Option<SidebarTarget>,
         time_msec: u32,
     ) -> Self {
@@ -60,7 +60,7 @@ impl InteractionEvent {
             source: InteractionSource::Pointer,
             phase: InteractionPhase::Cancel { reason },
             root: Default::default(),
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             sidebar_hover: None,
         }
     }
@@ -293,7 +293,7 @@ mod tests {
             source,
             phase: InteractionPhase::Update,
             root,
-            modifiers: 0,
+            modifiers: ModMask::NONE,
             sidebar_hover: None,
         }
     }
@@ -337,7 +337,7 @@ mod tests {
                             source,
                             phase,
                             root: Point::new(350, 275),
-                            modifiers: 0,
+                            modifiers: ModMask::NONE,
                             sidebar_hover: None,
                         }
                     ),
@@ -486,7 +486,7 @@ mod tests {
                         time_msec,
                     },
                     root,
-                    modifiers: 0,
+                    modifiers: ModMask::NONE,
                     sidebar_hover: None,
                 }
             ),
@@ -660,7 +660,7 @@ mod tests {
                         time_msec: 0,
                     },
                     root: Point::new(700, 600),
-                    modifiers: 0,
+                    modifiers: ModMask::NONE,
                     sidebar_hover: None,
                 },
             ),

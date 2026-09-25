@@ -16,7 +16,13 @@ pub fn close_systray_menu(wm: &mut Wm) -> bool {
     crate::systray::close_menu(&mut wm.core_ctx())
 }
 
-pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point, clean_state: u32) {
+pub fn handle_bar_scroll(
+    wm: &mut Wm,
+    pos: BarPosition,
+    delta: f64,
+    root: Point,
+    clean_state: ModMask,
+) {
     // libinput/wl_pointer report vertical axis values as positive when
     // scrolling down (toward the user), matching X11 where the wheel arrives
     // as button 5 (ScrollDown) / button 4 (ScrollUp).
@@ -45,10 +51,10 @@ fn run_bar_bindings(
     btn: MouseButton,
     source: InteractionSource,
     root: Point,
-    clean_state: u32,
+    clean_state: ModMask,
 ) {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    crate::mouse::bindings::run_first_matching(
+    crate::mouse::bindings::dispatch_button_binding(
         &mut wm_ctx,
         crate::mouse::bindings::ButtonBindingEvent {
             target: ButtonTarget::Bar(pos),
@@ -59,6 +65,6 @@ fn run_bar_bindings(
             clean_state,
             time_msec: 0,
         },
-        0,
+        ModMask::NONE,
     );
 }

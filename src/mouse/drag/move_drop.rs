@@ -163,7 +163,7 @@ pub fn handle_bar_drop(
     win: WindowId,
     grab_start_rect: Rect,
     pointer_override: Option<Point>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
         return;
@@ -322,7 +322,7 @@ pub fn complete_move_drop(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
-    modifiers: u32,
+    modifiers: ModMask,
 ) {
     let pointer = pointer_override.or_else(|| ctx.pointer_backend().pointer_location());
     let edge =

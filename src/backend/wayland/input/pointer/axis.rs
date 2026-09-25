@@ -7,8 +7,7 @@ use smithay::utils::Point;
 use crate::backend::wayland::commands::PointerAxisCommand;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::input::modifiers_to_x11_mask;
-use crate::types::Point as RootPoint;
-use crate::util::clean_mask;
+use crate::types::{ModMask, Point as RootPoint};
 use crate::wm::Wm;
 
 use crate::backend::wayland::input::bar::{handle_bar_scroll, update_bar_hit_state};
@@ -60,7 +59,7 @@ pub(crate) fn handle_pointer_axis(
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0)
         && let Some(pos) = bar_pos
     {
-        let clean_state = clean_mask(modifiers_to_x11_mask(&keyboard.modifier_state()), 0);
+        let clean_state = modifiers_to_x11_mask(&keyboard.modifier_state()).cleaned(ModMask::NONE);
         handle_bar_scroll(wm, pos, delta, root, clean_state);
     }
 

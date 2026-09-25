@@ -200,6 +200,105 @@ Resize focused window while dragging. Tiled windows will be toggled to the float
 .SH CUSTOMIZATION
 instantWM is customized by creating a custom config.h and (re)compiling the source
 code. This keeps it fast, secure and simple.
+.SH KEYBIND CONFIGURATION
+Bindings are declared in the config file as
+.BR [[keybinds]] ,
+.BR [[desktop_keybinds]]
+and
+.BR [[modes.<name>.keybinds]] .
+Each entry takes a
+.BR modifiers ,
+a
+.BR key ,
+and an
+.BR action :
+
+.nf
+.RS
+[[keybinds]]
+modifiers = ["super", "shift"]
+key = "Return"
+action = { spawn = ["st"] }
+.RE
+.fi
+
+An entry with
+.B action = "none"
+removes the matching default binding instead of adding one.
+
+.SS Modifiers
+Modifiers are named with exactly one spelling each, matched
+case-insensitively. The complete set is:
+
+.TP
+.B shift
+.TQ
+.B control
+.TQ
+.B alt
+.TQ
+.B super
+.TQ
+.B mod2
+.TQ
+.B mod3
+.TQ
+.B mod5
+.TQ
+.B capslock
+
+.B super
+is the primary modifier, mapped to the X11
+.B Mod4
+position.
+.B mod2
+.BR mod3 " and " mod5
+are named by position because their meaning is not fixed: they are commonly Num
+Lock, level-3 select and AltGr respectively, but a system may map them
+differently or leave them unbound. Use them if you need to bind a modifier your
+layout puts outside the ordinary range.
+
+There are no aliases. Spellings such as
+.BR mod ", " mod4 ", " modkey ", " mod1 " or " ctrl
+are rejected, so a config can be read back in the form
+.B instantwmctl keybinds
+prints. Use
+.BR super ", " alt " and " control
+for the modifiers whose meaning is fixed everywhere.
+
+.SS Keys
+The
+.B key
+field takes any XKB keysym name, matched case-insensitively
+.RB ( Return ,
+.BR Escape ,
+.BR bracketleft ,
+.BR XF86AudioMute ),
+or a single character for punctuation keys
+.RB ( \- ", " / ", " + ).
+The key is named by the symbol it produces after the keyboard layout is
+applied, not by its position on the keyboard, so a binding written against
+.B a
+follows the letter wherever the layout puts it.
+
+There are no key aliases either. Write
+.B Return
+rather than
+.BR enter ,
+and
+.B Prior
+or
+.B page_up
+rather than
+.BR pageup .
+.B KP_Enter
+is a distinct key from
+.BR Return .
+.PP
+Run
+.B instantwmctl keybinds
+to list the active bindings. Its output uses the same spellings the config
+accepts, so any row can be copied back into a config file.
 .SH SEE ALSO
 .BR instantmenu (1),
 .BR st (1)

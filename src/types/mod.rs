@@ -9,6 +9,7 @@
 //! - `client` - Client/window management types
 //! - `monitor` - Monitor/screen types
 //! - `input` - Input handling (mouse, keyboard, gestures)
+//! - `keysym` - X11 keysyms, their constants, and modifier masks
 //! - `rules` - Window rules and matching
 //! - `commands` - Command action types
 //! - `window` - Window system types
@@ -50,6 +51,12 @@ pub use input::*;
 // Keyboard layout values shared by runtime state and IPC
 pub mod keyboard;
 pub use keyboard::*;
+
+// X11 keysyms, their constants, and keyboard modifier masks
+pub mod keysym;
+pub use keysym::*;
+pub mod modifier;
+pub use modifier::*;
 
 // Window rules
 pub mod rules;

@@ -4,7 +4,7 @@
 
 use crate::actions::{ButtonAction, KeyAction};
 use crate::types::input::{BarPosition, InteractionSource, MouseButton};
-use crate::types::{Point, Size};
+use crate::types::{Keysym, ModMask, Point, Size};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
@@ -76,12 +76,17 @@ pub enum KeybindOrigin {
 }
 
 /// A keyboard binding.
+///
+/// The chord is a keysym plus a modifier mask. Both are newtypes rather than
+/// bare `u32`s so a keysym can never be matched against a modifier mask, and so
+/// the binding tables cannot drift away from the X11 convention both backends
+/// already share.
 #[derive(Clone)]
 pub struct Key {
-    /// Modifier mask (e.g., Mod1Mask, ControlMask).
-    pub mod_mask: u32,
-    /// Keysym value.
-    pub keysym: u32,
+    /// Modifiers that must be held for this binding to fire.
+    pub mod_mask: ModMask,
+    /// Key that must be pressed.
+    pub keysym: Keysym,
     /// Action to execute when key is pressed.
     pub action: KeyAction,
     /// Provenance: compiled default or user config.
@@ -126,8 +131,8 @@ pub enum ButtonTarget {
 pub struct Button {
     /// Which bar/screen region this binding applies to.
     pub target: ButtonTarget,
-    /// Modifier mask.
-    pub mask: u32,
+    /// Modifiers that must be held. Same X11 convention as [`Key::mod_mask`].
+    pub mask: ModMask,
     /// Mouse button.
     pub button: MouseButton,
     /// Action to execute when button is pressed.
@@ -166,12 +171,12 @@ impl Debug for Button {
 mod tests {
     use super::{Button, ButtonTarget, WindowId};
     use crate::actions::ButtonAction;
-    use crate::types::{BarPosition, MouseButton};
+    use crate::types::{BarPosition, ModMask, MouseButton};
 
     fn button(target: ButtonTarget) -> Button {
         Button {
             target,
-            mask: 0,
+            mask: ModMask::NONE,
             button: MouseButton::Left,
             action: ButtonAction::HideEdgeScratchpad,
         }

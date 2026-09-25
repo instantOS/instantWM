@@ -16,7 +16,7 @@ use crate::backend::x11::draw::{AllocScheme, BorderScheme, Cursor, DrawContext};
 use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
-use crate::types::{Point, Rect, WindowId};
+use crate::types::{Keysym, ModMask, Point, Rect, WindowId};
 
 #[derive(Clone, Copy)]
 pub struct XlibDisplay(pub *mut c_void);
@@ -31,7 +31,9 @@ pub struct X11RuntimeConfig {
     pub netatom: NetAtoms,
     pub xatom: XAtoms,
     pub motifatom: Atom,
-    pub numlockmask: u32,
+    /// Which modifier position Num Lock is mapped to, discovered from the
+    /// server. Sticky, so it is stripped before any binding or button match.
+    pub numlockmask: ModMask,
     /// Whether the server supports XI2.2 passive touch grabs. These let
     /// click-to-focus observe a touch without degrading it to Button1.
     pub xi2_touch_grabs: bool,
@@ -89,7 +91,7 @@ impl Default for X11RuntimeConfig {
             netatom: NetAtoms::default(),
             xatom: XAtoms::default(),
             motifatom: 0,
-            numlockmask: 0,
+            numlockmask: ModMask::NONE,
             xi2_touch_grabs: false,
             keyboard_mapping: X11KeyboardMapping::default(),
             root: 0,
@@ -121,7 +123,7 @@ impl Default for X11RuntimeConfig {
 pub struct X11KeyboardMapping {
     pub min_keycode: u8,
     pub keysyms_per_keycode: u8,
-    pub keysyms: Vec<u32>,
+    pub keysyms: Vec<Keysym>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -166,20 +168,22 @@ mod protocol_cache_tests {
 }
 
 impl X11KeyboardMapping {
-    pub fn keysym(&self, keycode: u8, index: usize) -> u32 {
+    /// The keysym a keycode produces at `index`, or [`Keysym::NONE`] when the
+    /// server reports no symbol there.
+    pub fn keysym(&self, keycode: u8, index: usize) -> Keysym {
         if index >= self.keysyms_per_keycode as usize {
-            return 0;
+            return Keysym::NONE;
         }
         let Some(offset) = keycode.checked_sub(self.min_keycode) else {
-            return 0;
+            return Keysym::NONE;
         };
         let Some(index) = (offset as usize)
             .checked_mul(self.keysyms_per_keycode as usize)
             .and_then(|base| base.checked_add(index))
         else {
-            return 0;
+            return Keysym::NONE;
         };
-        self.keysyms.get(index).copied().unwrap_or(0)
+        self.keysyms.get(index).copied().unwrap_or(Keysym::NONE)
     }
 }
 

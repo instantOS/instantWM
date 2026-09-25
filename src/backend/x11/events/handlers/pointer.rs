@@ -1,5 +1,5 @@
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{BarPosition, Gesture, MouseButton, Point, WindowId};
+use crate::types::{BarPosition, Gesture, ModMask, MouseButton, Point, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xinput::{ConnectionExt as XInputConnectionExt, EventMode, TouchBeginEvent};
@@ -41,7 +41,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
     let root = Point::new(e.root_x as i32, e.root_y as i32);
-    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
+    let clean_state = ModMask::new(e.state.bits()).cleaned(numlockmask);
 
     let target_window = ctx
         .core

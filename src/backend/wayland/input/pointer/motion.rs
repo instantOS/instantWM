@@ -18,6 +18,7 @@ use crate::backend::wayland::input::pointer::drag::active_drag_window;
 use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::mouse::{clear_hover_offer, set_sidebar_offer};
 use crate::types::BarPosition;
+use crate::types::ModMask;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
 use crate::wm::Wm;
@@ -1035,7 +1036,7 @@ fn handle_resize_drag_motion(
             &mut WmCtx::Wayland(ctx.reborrow()),
             crate::mouse::interaction::InteractionEvent::pointer_update(
                 RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
-                0,
+                ModMask::NONE,
             ),
         )
         .captured()

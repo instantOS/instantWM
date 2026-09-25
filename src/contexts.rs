@@ -22,7 +22,7 @@ use crate::client::focus::FocusState;
 use crate::core_state::{CoreState, DerivedState, EffectiveConfig, PendingWork, WmBehavior};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
-use crate::types::{MonitorId, Rect, WindowId, XEmbedTray};
+use crate::types::{ModMask, MonitorId, Rect, WindowId, XEmbedTray};
 use std::time::{Duration, Instant};
 
 pub struct CoreCtx<'a> {
@@ -361,10 +361,16 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn numlock_mask(&self) -> u32 {
+    /// The modifier bit that Num Lock is currently mapped to.
+    ///
+    /// Discovered from the X server's modifier map, so it is whichever of the
+    /// eight positions Num Lock happens to occupy on this system. Wayland
+    /// clients report modifiers per-key rather than as sticky state, so nothing
+    /// needs stripping there.
+    pub fn numlock_mask(&self) -> ModMask {
         match self {
             WmCtx::X11(ctx) => ctx.x11_runtime().numlockmask,
-            WmCtx::Wayland(_) => 0, // Wayland handles modifiers internally
+            WmCtx::Wayland(_) => ModMask::NONE,
         }
     }
 
