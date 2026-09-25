@@ -1,6 +1,5 @@
 use super::{
-    BackendRefresh, FocusBackendOps, FocusProjection, apply_focus_transition, get_visible_stack,
-    stack_focus_target,
+    BackendRefresh, FocusBackendOps, FocusProjection, apply_focus_transition, stack_focus_target,
 };
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
@@ -433,77 +432,6 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
             "closing {closed:?} should restore the preceding MRU client"
         );
     }
-}
-
-#[test]
-fn maximized_stack_uses_tree_order_and_excludes_floating_clients() {
-    let tag = TagMask::single(1).unwrap();
-    let mut monitor = Monitor::default();
-    monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
-    monitor.per_tag_state().layout_tree.apply_preset(
-        crate::layouts::tree::Preset::MasterStack,
-        &[WindowId(3), WindowId(1), WindowId(2)],
-        1,
-    );
-    monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
-    let clients = [WindowId(1), WindowId(2), WindowId(3)]
-        .into_iter()
-        .map(|win| {
-            let mut client = Client {
-                win,
-                tags: tag,
-                ..Client::default()
-            };
-            if win == WindowId(2) {
-                client.set_placement(crate::types::ClientPlacement::Floating);
-            }
-            (win, client)
-        })
-        .collect();
-
-    let cycle_order = get_visible_stack(&monitor, &clients);
-    let bar_order = monitor.bar_client_order(&clients);
-    assert_eq!(cycle_order, vec![WindowId(3), WindowId(1)]);
-    assert_eq!(&bar_order[..cycle_order.len()], cycle_order);
-}
-
-#[test]
-fn maximized_cycle_skips_minimized_tree_positions() {
-    let tag = TagMask::single(1).unwrap();
-    let mut monitor = Monitor::default();
-    monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
-    monitor.per_tag_state().layout_tree.apply_preset(
-        crate::layouts::tree::Preset::MasterStack,
-        &[WindowId(1), WindowId(2), WindowId(3)],
-        1,
-    );
-    monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
-    let clients = [WindowId(1), WindowId(2), WindowId(3)]
-        .into_iter()
-        .map(|win| {
-            let mut client = Client {
-                win,
-                tags: tag,
-                ..Client::default()
-            };
-            if win == WindowId(2) {
-                client.is_hidden = true;
-            }
-            (win, client)
-        })
-        .collect();
-
-    // The minimized entry keeps its title position but cannot receive focus.
-    assert_eq!(
-        monitor.bar_client_order(&clients),
-        vec![WindowId(1), WindowId(2), WindowId(3)]
-    );
-    assert_eq!(
-        get_visible_stack(&monitor, &clients),
-        vec![WindowId(1), WindowId(3)]
-    );
 }
 
 #[test]

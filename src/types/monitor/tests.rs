@@ -276,6 +276,116 @@ fn tiled_client_count_matches_collected_tiled_clients() {
 }
 
 #[test]
+fn maximized_focus_cycle_uses_tree_order_and_excludes_floating_clients() {
+    let tag = TagMask::single(1).unwrap();
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(tag);
+    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
+    monitor.per_tag_state().layout_tree.apply_preset(
+        crate::layouts::tree::Preset::MasterStack,
+        &[WindowId(3), WindowId(1), WindowId(2)],
+        1,
+    );
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let mut client = Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            };
+            if win == WindowId(2) {
+                client.set_placement(crate::types::ClientPlacement::Floating);
+            }
+            (win, client)
+        })
+        .collect::<HashMap<_, _>>();
+
+    let cycle_order = monitor.focus_cycle_order(&clients);
+    let bar_order = monitor.bar_client_order(&clients);
+    assert_eq!(cycle_order, vec![WindowId(3), WindowId(1)]);
+    assert_eq!(&bar_order[..cycle_order.len()], cycle_order);
+}
+
+#[test]
+fn focus_cycle_skips_minimized_tree_positions() {
+    let tag = TagMask::single(1).unwrap();
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(tag);
+    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
+    monitor.per_tag_state().layout_tree.apply_preset(
+        crate::layouts::tree::Preset::MasterStack,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        1,
+    );
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let mut client = Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            };
+            if win == WindowId(2) {
+                client.is_hidden = true;
+            }
+            (win, client)
+        })
+        .collect::<HashMap<_, _>>();
+
+    // The minimized entry keeps its title position but cannot receive focus.
+    assert_eq!(
+        monitor.bar_client_order(&clients),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+    assert_eq!(
+        monitor.focus_cycle_order(&clients),
+        vec![WindowId(1), WindowId(3)]
+    );
+}
+
+#[test]
+fn maximized_focus_cycle_falls_back_to_bar_order_when_no_tile_is_focusable() {
+    let tag = TagMask::single(1).unwrap();
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(tag);
+    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
+    monitor.per_tag_state().layout_tree.apply_preset(
+        crate::layouts::tree::Preset::MasterStack,
+        &[WindowId(1), WindowId(2)],
+        1,
+    );
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let mut client = Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            };
+            match win {
+                // Every tiled client is minimized.
+                WindowId(1) | WindowId(2) => client.is_hidden = true,
+                // The only focusable client is a floating overlay.
+                _ => client.set_placement(crate::types::ClientPlacement::Floating),
+            }
+            (win, client)
+        })
+        .collect::<HashMap<_, _>>();
+
+    // With no focusable tile the tree order would be empty, so floating
+    // clients must stay cyclable.
+    assert_eq!(
+        monitor.tiled_tree_order(&clients),
+        vec![WindowId(1), WindowId(2)]
+    );
+    assert_eq!(monitor.focus_cycle_order(&clients), vec![WindowId(3)]);
+}
+
+#[test]
 fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
     let tag = TagMask::single(1).unwrap();
     let mut monitor = Monitor::default();

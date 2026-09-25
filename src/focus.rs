@@ -496,43 +496,6 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
-//BOZO: is this function named and/or documented well?
-fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
-    let selected = mon.visible_tags();
-
-    if mon.is_maximized_layout() {
-        // The persistent tree is a stable, user-controlled order. Unlike
-        // z-order it does not change merely because a window was focused, and
-        // minimized entries keep their tree position so their bar title stays
-        // put. They cannot receive focus until explicitly restored, so the
-        // cycle skips them.
-        let stack: Vec<WindowId> = mon
-            .tiled_tree_order(clients)
-            .into_iter()
-            .filter(|win| {
-                clients
-                    .get(win)
-                    .is_some_and(|client| client.is_visible(selected))
-            })
-            .collect();
-        if !stack.is_empty() {
-            return stack;
-        }
-    }
-
-    // Outside maximized presentation, keyboard stack cycling follows the
-    // exact title order exposed by the bar. Hidden/minimized entries retain a
-    // title but cannot receive focus until explicitly restored, so skip them.
-    mon.bar_client_order(clients)
-        .into_iter()
-        .filter(|win| {
-            clients
-                .get(win)
-                .is_some_and(|client| client.is_visible(selected))
-        })
-        .collect()
-}
-
 /// Shared logic to compute the next stack index for focus.
 fn stack_focus_target(
     stack: &[WindowId],
@@ -575,7 +538,7 @@ fn get_stack_focus_target(
         return None;
     }
     let mon = model.expect_selected_monitor();
-    let stack = get_visible_stack(mon, &model.clients);
+    let stack = mon.focus_cycle_order(&model.clients);
 
     let selected_window = model
         .selected_win()
