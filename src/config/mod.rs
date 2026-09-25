@@ -231,6 +231,9 @@ pub fn resolve_config(
 
     let tags = theme.tags.validated()?;
     let tag_template = tags.tag_template();
+    for (output, entry) in &theme.monitors {
+        entry.validated(output)?;
+    }
 
     Ok(EffectiveConfig {
         window,
@@ -347,7 +350,7 @@ mod resolution_tests {
             icons = ["W", "", "C"]
             show_icons = true
             [bar]
-            show_tags = false
+            show_empty_tags = false
             show_bottom = true
             "#,
         )

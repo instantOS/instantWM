@@ -420,7 +420,6 @@ impl CoreState {
             current: 0,
         };
         let show_bottom_bar = next.bar.show_bottom;
-        let show_tags = next.bar.show_tags;
         let tag_template = next.tag_template.clone();
         let tag_colors = next.colors.tag.clone();
 
@@ -429,12 +428,14 @@ impl CoreState {
         self.model.tags.colors = tag_colors;
         self.model.tags.num_tags = tag_template.len();
 
-        // The bottom bar and tag-visibility states are global defaults.
-        // Reloading them resets interactive toggles so existing outputs
-        // immediately match newly created outputs.
+        // Re-seed the session state each output derives from configuration.
+        // Reloading resets interactive toggles so existing outputs
+        // immediately match newly created outputs; per-output tag display
+        // is resolved through the one policy (see `bar::policy`).
         for (_id, monitor) in self.model.monitors_iter_mut() {
             monitor.show_bottom_bar = show_bottom_bar;
-            monitor.hide_tags = !show_tags;
+            let policy = crate::bar::policy::TagBarPolicy::resolve(&self.config, &monitor.name);
+            policy.apply_to(monitor);
             monitor.init_tags(&tag_template);
         }
     }

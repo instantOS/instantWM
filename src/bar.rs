@@ -1,5 +1,6 @@
 pub(crate) mod model;
 pub mod paint;
+pub(crate) mod policy;
 pub(crate) mod scene;
 pub mod status;
 pub(crate) mod text;

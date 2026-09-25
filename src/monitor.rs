@@ -4,6 +4,7 @@
 //! for monitor-related operations.
 
 use crate::backend::BackendOutputInfo;
+use crate::bar::policy::TagBarPolicy;
 use crate::contexts::WmCtx;
 use crate::core_state::{CoreState, DerivedState, EffectiveConfig};
 use crate::focus::refresh_focus_after_selection;
@@ -370,6 +371,11 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
     let policy = crate::output_mirror::MonitorPolicy::new(&ctx.core().config().monitors);
     ctx.apply_monitor_configs(&policy);
     ctx.core_mut().derived_mut().monitor_policy = policy;
+    // Per-output tag display can change through this command
+    // (`config set monitors.<name>.show_empty_tags`), so re-seed it; the
+    // render-time settings (tag cells) need no seeding.
+    crate::config::runtime::apply_tag_bar_policy_to_monitors(ctx.core_mut().state_mut());
+    ctx.request_bar_update();
     refresh_monitor_layout(ctx);
 }
 
@@ -550,15 +556,19 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let template = ctx.core().config().tag_template.clone();
     let show_bar = ctx.core().config().bar.show;
     let show_bottom_bar = ctx.core().config().bar.show_bottom;
-    let show_tags = ctx.core().config().bar.show_tags;
 
     let layout_size = output_layout_extent(&outputs);
     let mut changed = sync_runtime_screen_size(ctx.core_mut().derived_mut(), layout_size);
 
-    // Pre-compute per-output UI metrics while we hold an immutable config borrow.
+    // Pre-compute per-output UI metrics and tag-display policies while we
+    // hold an immutable config borrow.
     let metrics: Vec<MonitorUiMetrics> = outputs
         .iter()
         .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), o.scale))
+        .collect();
+    let policies: Vec<TagBarPolicy> = outputs
+        .iter()
+        .map(|o| TagBarPolicy::resolve(ctx.core().config(), &o.name))
         .collect();
 
     let reconciliation = ctx.core_mut().mutate_selection(|model| {
@@ -569,7 +579,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
             &template,
             show_bar,
             show_bottom_bar,
-            show_tags,
+            &policies,
         )
     });
     changed |= reconciliation.changed;
@@ -619,9 +629,10 @@ fn reconcile_monitor_model(
     tag_template: &[crate::types::Tag],
     show_bar: bool,
     show_bottom_bar: bool,
-    show_tags: bool,
+    policies: &[TagBarPolicy],
 ) -> MonitorReconciliation {
     debug_assert_eq!(outputs.len(), metrics.len());
+    debug_assert_eq!(outputs.len(), policies.len());
     let mut changed = model.monitors.len() != outputs.len();
     let mut added_monitors = false;
 
@@ -648,7 +659,7 @@ fn reconcile_monitor_model(
                 let id = model.monitors.allocate_id();
                 let mut m = Monitor::new_with_values(show_bar);
                 m.show_bottom_bar = show_bottom_bar;
-                m.hide_tags = !show_tags;
+                policies[i].apply_to(&mut m);
                 m.monitor_id = id;
                 m.init_tags(tag_template);
                 apply_output_to_monitor(&mut m, i, output, metrics);
@@ -783,7 +794,10 @@ mod tests {
             &[],
             true,
             false,
-            true,
+            &[TagBarPolicy {
+                show_empty_tags: true,
+                tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
+            }],
         );
 
         assert!(result.changed);
@@ -851,7 +865,17 @@ mod tests {
             &[],
             true,
             false,
-            true,
+            &[
+                TagBarPolicy {
+                    show_empty_tags: true,
+                    tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
+                },
+                TagBarPolicy {
+                    // The new output hides empty tags through its own policy.
+                    show_empty_tags: false,
+                    tag_slots: 5,
+                },
+            ],
         );
 
         assert!(result.changed);
@@ -864,6 +888,10 @@ mod tests {
             .find_map(|(id, monitor)| (monitor.name == "HDMI-A-1").then_some(id))
             .expect("new HDMI monitor");
         assert_ne!(hdmi_id, retained);
+        // A new output is seeded from its own policy (show_empty_tags=false
+        // means empty tags are hidden), not from the retained output's.
+        assert!(model.monitor(hdmi_id).unwrap().hide_tags);
+        assert!(!model.monitor(retained).unwrap().hide_tags);
     }
 
     #[test]
@@ -896,7 +924,10 @@ mod tests {
             &[],
             true,
             false,
-            true,
+            &[TagBarPolicy {
+                show_empty_tags: true,
+                tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
+            }],
         );
 
         // Only the geometry moved: the monitor keeps its identity and its bar

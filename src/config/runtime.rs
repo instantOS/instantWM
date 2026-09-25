@@ -271,18 +271,35 @@ pub fn list_runtime_fields(
     Ok(entries)
 }
 
-/// Push `bar`/`bar.show_tags` config values onto every monitor and tag state.
+/// Push `bar` config values onto every monitor and tag state.
+///
+/// Tag-visibility state is resolved per output through
+/// [`TagBarPolicy`](crate::bar::policy::TagBarPolicy), so a
+/// `[monitors.<name>]` override is honoured alongside the global default.
 pub fn sync_bar_config_to_monitors(core: &mut CoreState) {
     let show_bar = core.config.bar.show;
     let show_bottom_bar = core.config.bar.show_bottom;
-    let show_tags = core.config.bar.show_tags;
     for monitor in core.model.monitors_iter_all_mut() {
         monitor.show_bar = show_bar;
         monitor.show_bottom_bar = show_bottom_bar;
-        monitor.hide_tags = !show_tags;
+        let policy = crate::bar::policy::TagBarPolicy::resolve(&core.config, &monitor.name);
+        policy.apply_to(monitor);
         for state in monitor.per_tag.values_mut() {
             state.show_bar = show_bar;
         }
+    }
+}
+
+/// Re-seed only the per-output tag-visibility state from configuration.
+///
+/// Used when the policy inputs change without a full bar reconfiguration
+/// (`config set monitors.<name>.…`); bar visibility and per-tag bar state
+/// are deliberately left alone so a session `toggle_hide_tags` or
+/// `toggle_bar` on an unrelated control is not clobbered.
+pub fn apply_tag_bar_policy_to_monitors(core: &mut CoreState) {
+    for monitor in core.model.monitors_iter_all_mut() {
+        let policy = crate::bar::policy::TagBarPolicy::resolve(&core.config, &monitor.name);
+        policy.apply_to(monitor);
     }
 }
 
@@ -419,6 +436,10 @@ fn set_monitor_field(
     let mut prospective = map.clone();
     map_set(&mut prospective, section, rest, raw)?;
     if let Some((id, field)) = rest.split_once('.') {
+        // Reject values the WM cannot present before committing.
+        if let Some(entry) = prospective.get(id) {
+            entry.validated(id)?;
+        }
         if field == "mirror"
             && let Some(config) = prospective.get_mut(id)
             && config.mirror.as_deref() == Some("")

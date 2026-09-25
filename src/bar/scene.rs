@@ -249,8 +249,14 @@ fn collect_tag_cells(
     drag_active: bool,
 ) -> Vec<TagCellSnapshot> {
     let mut tags = Vec::new();
-    let show_icons = core.config().tags.show_icons;
-    for tag in crate::tags::bar::visible_tags(mon, occupied_tags, show_icons) {
+    let config = core.config();
+    let policy = crate::bar::policy::TagBarPolicy::resolve(config, &mon.name);
+    for tag in crate::tags::bar::visible_tags(
+        mon,
+        occupied_tags,
+        config.tags.show_icons,
+        policy.tag_slots as usize,
+    ) {
         let is_hover = gesture == Gesture::Tag(tag.slot);
         let mut scheme = tag_scheme(
             core.model(),

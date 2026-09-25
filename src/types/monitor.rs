@@ -925,15 +925,16 @@ impl Monitor {
         !occupied.contains(tag_num) && !self.visible_tags().contains(tag_num)
     }
 
-    /// Map a bar slot (0..8) to the actual tag index.
+    /// Map a bar slot (`0..slots`) to the actual tag index.
     ///
-    /// Slot 8 is remapped to `current_tag - 1` when the monitor has more than 9
-    /// tags active (the "overflow" slot).
-    pub fn tag_index_for_slot(&self, slot: usize) -> usize {
-        const MAX_BAR_SLOTS: usize = 9;
-        if slot == MAX_BAR_SLOTS - 1
+    /// The last slot is remapped to `current_tag - 1` when the monitor has
+    /// more tags than the bar has cells (the "overflow" slot), so a wide
+    /// tag set stays navigable from a narrow bar.
+    pub fn tag_index_for_slot(&self, slot: usize, slots: usize) -> usize {
+        let slots = slots.max(1);
+        if slot == slots - 1
             && let Some(current_tag) = self.current_tag_number()
-            && current_tag > MAX_BAR_SLOTS
+            && current_tag > slots
         {
             current_tag - 1
         } else {

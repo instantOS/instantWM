@@ -246,6 +246,48 @@ mod tests {
     }
 
     #[test]
+    fn per_output_tag_display_overrides_apply_live() {
+        use crate::types::Monitor;
+
+        let mut wm = test_wm();
+        wm.core.model.monitors.push(Monitor {
+            name: "DP-1".to_string(),
+            ..Monitor::default()
+        });
+        // Global default: empty tags shown.
+        crate::bar::policy::TagBarPolicy::resolve(&wm.core.config, "DP-1")
+            .apply_to(wm.core.model.expect_selected_monitor_mut());
+        assert!(!wm.core.model.expect_selected_monitor().hide_tags);
+
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.show_empty_tags", "false"),
+            Response::Ok
+        ));
+        // The override is queued like every other monitor change…
+        assert!(wm.work.monitor_config);
+        // …and takes effect when the apply runs, without a reload.
+        crate::monitor::apply_monitor_config(&mut wm.ctx());
+        assert!(wm.core.model.expect_selected_monitor().hide_tags);
+
+        // A session toggle still overrides the configured value…
+        crate::toggles::toggle_hide_tags(&mut wm.ctx(), crate::types::ToggleAction::Toggle);
+        assert!(!wm.core.model.expect_selected_monitor().hide_tags);
+        // …until the next policy apply restores it.
+        crate::monitor::apply_monitor_config(&mut wm.ctx());
+        assert!(wm.core.model.expect_selected_monitor().hide_tags);
+    }
+
+    #[test]
+    fn invalid_per_output_tag_display_is_rejected() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.tag_slots", "0"),
+            Response::Err(message) if message.contains("monitors.DP-1.tag_slots")
+        ));
+        assert!(!wm.core.config.monitors.contains_key("DP-1"));
+    }
+
+    #[test]
     fn invalid_layout_updates_are_rejected_without_changing_config() {
         let mut wm = test_wm();
         let original = wm.core.config.layout;

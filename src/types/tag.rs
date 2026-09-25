@@ -6,6 +6,9 @@ use crate::types::{TagMask, color::TagColorConfigs};
 /// label, shared by the config schema and runtime renames.
 pub const MAX_TAG_NAME_BYTES: usize = 16;
 
+/// Default number of tag cells in the bar (`bar.tag_slots`).
+pub const DEFAULT_TAG_SLOTS: u32 = 9;
+
 /// A single workspace tag.
 #[derive(Debug, Clone, Default)]
 pub struct Tag {

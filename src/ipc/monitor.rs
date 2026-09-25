@@ -184,6 +184,9 @@ fn set_monitor_config(wm: &mut Wm, identifier: String, patch: MonitorConfig) -> 
 
     let mut prospective = wm.core.config.monitors.clone();
     prospective.insert(resolved_id.clone(), candidate.clone());
+    if let Err(error) = candidate.validated(&resolved_id) {
+        return Response::err(error);
+    }
     let (_, errors) = MirrorMap::build(&prospective);
     for error in errors {
         if error.is_fatal() && error.declaration_key() == Some(resolved_id.as_str()) {
@@ -575,6 +578,8 @@ mod tests {
             vrr: Some(VrrMode::On),
             mirror: None,
             mirror_fit: None,
+            show_empty_tags: None,
+            tag_slots: None,
         };
 
         // Some overwrites, None keeps.

@@ -86,15 +86,28 @@ pub struct UserConfig {
 }
 
 /// Status bar settings shared by the user schema and effective configuration.
+///
+/// Every tag-display setting here is a *default for all outputs*; an output
+/// may override it in its `[monitors.<name>]` entry (or `[monitors."*"]` for
+/// all of them). See [`crate::bar::policy::TagBarPolicy`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct BarConfig {
     pub show: bool,
     /// Show the bottom gesture strip (plain background, no contents).
     pub show_bottom: bool,
-    /// Show the tag indicators section. Per-monitor runtime toggles
-    /// (`toggle_hide_tags` action) override this until the next reload.
-    pub show_tags: bool,
+    /// Show tags that hold no windows and are not selected. Hidden-tag
+    /// suppression is per output: `[monitors.<name>].show_empty_tags`
+    /// overrides this. The `toggle_hide_tags` action flips the selected
+    /// output for the session; a reload or policy re-apply restores the
+    /// configured value.
+    pub show_empty_tags: bool,
+    /// Number of tag cells in the bar, 1..=[`MAX_TAGS`](crate::types::MAX_TAGS).
+    /// Outputs with fewer tags render all of them. When the tag set is
+    /// larger, the last cell shows the current tag instead of a fixed
+    /// index (dwm-style overflow). `[monitors.<name>].tag_slots` overrides
+    /// this per output.
+    pub tag_slots: u32,
     /// Bar height in logical pixels. `0` derives it from font metrics.
     pub height: i32,
     /// Width of the start-menu hit target in logical pixels.
@@ -106,7 +119,8 @@ impl Default for BarConfig {
         Self {
             show: true,
             show_bottom: false,
-            show_tags: true,
+            show_empty_tags: true,
+            tag_slots: crate::types::tag::DEFAULT_TAG_SLOTS,
             height: 0,
             startmenu_size: 30,
         }
@@ -127,8 +141,20 @@ impl BarConfig {
                 self.startmenu_size
             ));
         }
+        validate_tag_slots(self.tag_slots, "bar.tag_slots")?;
         Ok(self)
     }
+}
+
+/// Shared bounds for a tag-cell count: at least one cell, at most one per tag.
+pub(crate) fn validate_tag_slots(slots: u32, field: &str) -> Result<(), String> {
+    if slots < 1 || slots as usize > crate::types::MAX_TAGS {
+        return Err(format!(
+            "{field} must be between 1 and {}, got {slots}",
+            crate::types::MAX_TAGS
+        ));
+    }
+    Ok(())
 }
 
 /// Validated animation speed multiplier.
@@ -438,6 +464,27 @@ pub struct MonitorConfig {
     /// (and cleared at apply time) on a non-mirror output. Wayland only.
     #[arg(long)]
     pub mirror_fit: Option<MirrorFit>,
+    /// Show tags that hold no windows and are not selected on this output,
+    /// overriding `bar.show_empty_tags`. Omitted means "inherit".
+    #[arg(long)]
+    pub show_empty_tags: Option<bool>,
+    /// Number of tag cells in this output's bar, overriding
+    /// `bar.tag_slots`. Omitted means "inherit".
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=crate::types::MAX_TAGS as i64))]
+    pub tag_slots: Option<u32>,
+}
+
+impl MonitorConfig {
+    /// Reject values the WM cannot present. The hardware fields are
+    /// sanitized elsewhere (mirrors) or clamped by the backends; this only
+    /// covers the display-policy fields, which must fail loudly. `key` is
+    /// the config entry name (`*` for the wildcard) and only labels errors.
+    pub fn validated(&self, key: &str) -> Result<(), String> {
+        if let Some(slots) = self.tag_slots {
+            validate_tag_slots(slots, &format!("monitors.{key}.tag_slots"))?;
+        }
+        Ok(())
+    }
 }
 
 /// Output transform, named as in config and on the command line.
@@ -1096,7 +1143,8 @@ mod theme_tests {
             show_icons = true
 
             [bar]
-            show_tags = false
+            show_empty_tags = false
+            tag_slots = 5
             "#,
         );
         assert_eq!(
@@ -1105,7 +1153,8 @@ mod theme_tests {
         );
         assert!(!config.window.focus_follows_float_mouse);
         assert!(config.tags.show_icons);
-        assert!(!config.bar.show_tags);
+        assert!(!config.bar.show_empty_tags);
+        assert_eq!(config.bar.tag_slots, 5);
 
         // Defaults for a config that omits the sections.
         let default = parse("");
@@ -1115,7 +1164,36 @@ mod theme_tests {
         );
         assert!(default.window.focus_follows_float_mouse);
         assert!(!default.tags.show_icons);
-        assert!(default.bar.show_tags);
+        assert!(default.bar.show_empty_tags);
+        assert_eq!(
+            default.bar.tag_slots,
+            crate::types::tag::DEFAULT_TAG_SLOTS
+        );
+    }
+
+    #[test]
+    fn bar_tag_slots_are_validated_by_field_name() {
+        for (source, field) in [
+            ("[bar]\ntag_slots = 0", "bar.tag_slots"),
+            (
+                &format!("[bar]\ntag_slots = {}", crate::types::MAX_TAGS + 1),
+                "bar.tag_slots",
+            ),
+            (
+                "[monitors.DP-1]\ntag_slots = 0",
+                "monitors.DP-1.tag_slots",
+            ),
+        ] {
+            let user: UserConfig = toml::from_str(source).unwrap();
+            let monitor_error = user
+                .monitors
+                .iter()
+                .find_map(|(key, entry)| entry.validated(key).err());
+            let error = monitor_error
+                .or_else(|| user.bar.validated().err())
+                .unwrap_or_else(|| panic!("{source} should have been rejected"));
+            assert!(error.contains(field), "{error}");
+        }
     }
 
     #[test]
