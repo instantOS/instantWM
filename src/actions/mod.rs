@@ -1,10 +1,11 @@
+mod config_effect;
 mod dispatch;
 mod named;
 
 pub use dispatch::{execute_button_action, execute_key_action, try_execute_key_action};
 pub use named::{NamedAction, action_infos};
 
-pub(crate) use named::apply_config_effect;
+pub(crate) use config_effect::apply_config_effect;
 
 /// Documentation of one named action, as listed by `instantwm --list-actions`
 /// and `instantwmctl action --list`.
