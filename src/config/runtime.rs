@@ -63,10 +63,11 @@ pub(crate) enum RuntimeConfigSection {
     Fonts,
     Input,
     Monitors,
+    Focus,
 }
 
 impl RuntimeConfigSection {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 12] = [
         Self::Window,
         Self::Bar,
         Self::Systray,
@@ -78,6 +79,7 @@ impl RuntimeConfigSection {
         Self::Fonts,
         Self::Input,
         Self::Monitors,
+        Self::Focus,
     ];
 
     pub(crate) const fn name(self) -> &'static str {
@@ -93,6 +95,7 @@ impl RuntimeConfigSection {
             Self::Fonts => "fonts",
             Self::Input => "input",
             Self::Monitors => "monitors",
+            Self::Focus => "focus",
         }
     }
 
@@ -120,7 +123,9 @@ impl RuntimeConfigSection {
             Self::Input => ConfigEffect::Input,
             Self::Monitors if field.ends_with(".tag_slots") => ConfigEffect::BarUpdate,
             Self::Monitors => ConfigEffect::Monitors,
-            Self::Animations => ConfigEffect::None,
+            // Focus policy is read fresh on every key press, so a write only
+            // has to land in the config.
+            Self::Animations | Self::Focus => ConfigEffect::None,
         }
     }
 }
@@ -171,6 +176,9 @@ pub fn get_runtime_field(core: &CoreState, key: &str) -> Result<String, String> 
         RuntimeConfigSection::Fonts => {
             field_get(&state.fonts, rest).ok_or_else(|| unknown_field(section.name(), rest))
         }
+        RuntimeConfigSection::Focus => {
+            field_get(&state.focus, rest).ok_or_else(|| unknown_field(section.name(), rest))
+        }
         RuntimeConfigSection::Input => map_get(&state.input, section.name(), rest),
         RuntimeConfigSection::Monitors => map_get(&state.monitors, section.name(), rest),
     }
@@ -213,6 +221,7 @@ pub fn set_runtime_field(
         RuntimeConfigSection::Fonts => set_field_from_raw(&state.fonts, rest, value)
             .and_then(crate::core_state::FontConfig::validated)
             .map(|candidate| state.fonts = candidate),
+        RuntimeConfigSection::Focus => parse_then_set(&mut state.focus, rest, value),
         RuntimeConfigSection::Input => {
             map_set(&mut state.input, section.name(), rest, value)?;
             Ok(())
@@ -473,6 +482,7 @@ fn collect_section(
         RuntimeConfigSection::Colors => collect(&config.colors, prefix, entries),
         RuntimeConfigSection::Cursor => collect(&config.cursor, prefix, entries),
         RuntimeConfigSection::Fonts => collect(&config.fonts, prefix, entries),
+        RuntimeConfigSection::Focus => collect(&config.focus, prefix, entries),
         RuntimeConfigSection::Input => {
             for (id, config) in &config.input {
                 collect(config, &format!("{prefix}.{id}"), entries);

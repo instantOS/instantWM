@@ -42,6 +42,7 @@ pub struct UserConfig {
     /// Keyboard layout configuration.
     pub keyboard: KeyboardConfig,
     /// Input configuration (mouse, touchpad).
+    //BOZO: is string the right type here? Or something more narrow?
     pub input: HashMap<String, InputConfig>,
     /// Monitor configuration.
     pub monitors: HashMap<String, MonitorConfig>,
@@ -51,6 +52,8 @@ pub struct UserConfig {
     pub modes: HashMap<String, ModeSpec>,
     /// Cursor configuration (Wayland only).
     pub cursor: CursorConfig,
+    /// Focus navigation settings.
+    pub focus: FocusConfig,
     /// Tag display settings.
     pub tags: TagsConfig,
     /// Layout geometry configuration.
@@ -395,6 +398,69 @@ pub enum NewWindowPlacement {
     /// Consecutive untouched force insertions adapt that generated region into
     /// balanced rows or columns; a manual tree edit starts a new sequence.
     Force,
+}
+
+/// What horizontal focus navigation does once it runs out of windows.
+///
+/// This only ever decides the *fallthrough*: `focus_left` / `focus_right`
+/// always try to move to a neighbouring window first, and only ask this
+/// policy what to do when there is none left in that direction on the
+/// current tag.
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HorizontalEdge {
+    /// Continue into the adjacent tag, the traditional window manager
+    /// behaviour. Reaching the first or last tag simply stops.
+    #[default]
+    Overflow,
+    /// Cycle focus to the opposite end of the current tag. The tag never
+    /// changes, so a key press at the spatial edge stays on this workspace.
+    Wrap,
+    /// Consume the key press without moving focus or tags.
+    None,
+}
+
+/// What vertical focus navigation does once it runs out of windows.
+///
+/// Deliberately a separate, smaller value set than [`HorizontalEdge`]:
+/// `overflow` is the "carry on into the adjacent workspace" policy, and tags
+/// only vary along the horizontal axis, so there is nothing for it to select
+/// on this one. Only wrapping within the tag and stopping are available.
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VerticalEdge {
+    /// Jump focus to the opposite edge of the tag — no window is above, so
+    /// take the bottom-most one, and vice versa. This is the default and the
+    /// exact counterpart of [`HorizontalEdge::Wrap`].
+    ///
+    /// Maximized presentation is the one exception: every window occupies the
+    /// same region there, so there is no top or bottom to wrap across and the
+    /// cycle falls back to bar order instead.
+    #[default]
+    Wrap,
+    /// Consume the key press without moving focus.
+    None,
+}
+
+/// Focus navigation configuration from the TOML `[focus]` section.
+///
+/// Both fields only ever decide the *fallthrough*: directional focus always
+/// moves to a neighbour first and asks the policy what to do only once there
+/// is none left in that direction. Their value sets differ because only the
+/// horizontal axis has a neighbouring workspace to overflow into.
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FocusConfig {
+    /// What `focus_left` / `focus_right` do once focus has run out of
+    /// windows in that direction on the current tag. The default, `overflow`,
+    /// is the traditional compromise between a tiling window manager and
+    /// a traditional one: walk the windows, then step to the next tag.
+    pub horizontal_edge: HorizontalEdge,
+    /// What `focus_up` / `focus_down` do once focus has run out of windows
+    /// above or below on the current tag. The default, `wrap`, jumps to the
+    /// opposite edge; `none` stops at it. There is no `overflow` because tags
+    /// do not stack vertically.
+    pub vertical_edge: VerticalEdge,
 }
 
 /// Cursor configuration for Wayland.
@@ -1156,6 +1222,78 @@ mod theme_tests {
         assert!(default.window.focus_follows_float_mouse);
         assert!(!default.tags.show_icons);
         assert_eq!(default.bar.tag_slots, crate::types::tag::DEFAULT_TAG_SLOTS);
+    }
+
+    #[test]
+    fn focus_horizontal_edge_parses_and_defaults_to_overflow() {
+        for (source, expected) in [
+            (
+                r#"
+                [focus]
+                horizontal_edge = "overflow"
+                "#,
+                HorizontalEdge::Overflow,
+            ),
+            (
+                r#"
+                [focus]
+                horizontal_edge = "wrap"
+                "#,
+                HorizontalEdge::Wrap,
+            ),
+            (
+                r#"
+                [focus]
+                horizontal_edge = "none"
+                "#,
+                HorizontalEdge::None,
+            ),
+        ] {
+            let config: UserConfig = toml::from_str(source).unwrap();
+            assert_eq!(config.focus.horizontal_edge, expected);
+        }
+
+        // A config that never mentions `[focus]` keeps the historical
+        // behaviour of continuing into the adjacent tag.
+        let default: UserConfig = toml::from_str("").unwrap();
+        assert_eq!(default.focus.horizontal_edge, HorizontalEdge::Overflow);
+        assert!(toml::from_str::<UserConfig>("[focus]\nhorizontal_edge = \"bounce\"").is_err());
+    }
+
+    #[test]
+    fn focus_vertical_edge_parses_and_defaults_to_wrap() {
+        for (source, expected) in [
+            (
+                r#"
+                [focus]
+                vertical_edge = "wrap"
+                "#,
+                VerticalEdge::Wrap,
+            ),
+            (
+                r#"
+                [focus]
+                vertical_edge = "none"
+                "#,
+                VerticalEdge::None,
+            ),
+        ] {
+            let config: UserConfig = toml::from_str(source).unwrap();
+            assert_eq!(config.focus.vertical_edge, expected);
+        }
+
+        // A config that never mentions `[focus]` keeps wrapping to the
+        // opposite edge of the tag at the top and bottom boundaries.
+        let default: UserConfig = toml::from_str("").unwrap();
+        assert_eq!(default.focus.vertical_edge, VerticalEdge::Wrap);
+
+        // `overflow` names the workspace switch, and tags do not stack
+        // vertically, so it must not be selectable on this axis.
+        assert!(
+            toml::from_str::<UserConfig>("[focus]\nvertical_edge = \"overflow\"").is_err(),
+            "vertical_edge must not accept overflow"
+        );
+        assert!(toml::from_str::<UserConfig>("[focus]\nvertical_edge = \"bounce\"").is_err());
     }
 
     #[test]

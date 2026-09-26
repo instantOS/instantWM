@@ -222,6 +222,7 @@ impl WmModel {
     /// Fake fullscreen is deliberately considered distinct from real
     /// fullscreen: a real fullscreen request promotes it, while an
     /// unfullscreen request leaves either fullscreen variant.
+    //BOZO: should this take a client reference instead of a window id?
     pub(crate) fn set_fullscreen(
         &mut self,
         win: WindowId,
@@ -258,6 +259,7 @@ impl WmModel {
         Some(FullscreenTransition { monitor_id, change })
     }
 
+    //BOZO: should this take a client reference instead of a window id?
     fn set_maximized(&mut self, win: WindowId, maximized: bool) -> Option<MaximizedTransition> {
         let clients = &mut self.clients;
         let monitors = &self.monitors;

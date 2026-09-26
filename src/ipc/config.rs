@@ -165,6 +165,67 @@ mod tests {
     }
 
     #[test]
+    fn focus_horizontal_edge_round_trips_and_rejects_unknown_policies() {
+        let mut wm = test_wm();
+        // The default keeps the historical "walk the windows, then the tags".
+        match do_get(&mut wm, "focus.horizontal_edge") {
+            Response::ConfigValue(v) => assert_eq!(v, "overflow"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+
+        do_set(&mut wm, "focus.horizontal_edge", "wrap");
+        assert_eq!(
+            wm.core.config.focus.horizontal_edge,
+            crate::config::config_toml::HorizontalEdge::Wrap
+        );
+        match do_get(&mut wm, "focus.horizontal_edge") {
+            Response::ConfigValue(v) => assert_eq!(v, "wrap"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+
+        // An unknown policy must be rejected without mutating the config.
+        assert!(matches!(
+            do_set(&mut wm, "focus.horizontal_edge", "bounce"),
+            Response::Err(_)
+        ));
+        assert_eq!(
+            wm.core.config.focus.horizontal_edge,
+            crate::config::config_toml::HorizontalEdge::Wrap
+        );
+    }
+
+    #[test]
+    fn focus_vertical_edge_round_trips_and_rejects_overflow() {
+        let mut wm = test_wm();
+        // The default answers the boundary by jumping to the far edge.
+        match do_get(&mut wm, "focus.vertical_edge") {
+            Response::ConfigValue(v) => assert_eq!(v, "wrap"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+
+        do_set(&mut wm, "focus.vertical_edge", "none");
+        assert_eq!(
+            wm.core.config.focus.vertical_edge,
+            crate::config::config_toml::VerticalEdge::None
+        );
+        match do_get(&mut wm, "focus.vertical_edge") {
+            Response::ConfigValue(v) => assert_eq!(v, "none"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+
+        // `overflow` is the horizontal workspace switch, which has no
+        // vertical counterpart, so it must be rejected without mutating.
+        assert!(matches!(
+            do_set(&mut wm, "focus.vertical_edge", "overflow"),
+            Response::Err(_)
+        ));
+        assert_eq!(
+            wm.core.config.focus.vertical_edge,
+            crate::config::config_toml::VerticalEdge::None
+        );
+    }
+
+    #[test]
     fn toggle_flips_input_toggle_settings() {
         let mut wm = test_wm();
         assert!(matches!(

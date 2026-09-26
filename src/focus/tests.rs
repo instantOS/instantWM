@@ -56,6 +56,203 @@ fn directional_focus_prefers_the_aligned_client() {
     );
 }
 
+#[test]
+fn wrapping_focus_lands_on_the_far_edge_not_the_bar_order() {
+    // Three windows in a row, but listed by the monitor as B, A, C so that a
+    // bar-order cycle answers B where the geometry answers A.
+    let (a, b, c) = (WindowId(1), WindowId(2), WindowId(3));
+    let tags = TagMask::single(1).unwrap();
+    let client = |win: WindowId, x: i32| {
+        (
+            win,
+            Client {
+                win,
+                tags,
+                geo: crate::types::Rect::new(x, 0, 400, 800),
+                ..Client::default()
+            },
+        )
+    };
+    let clients = std::collections::HashMap::from([client(a, 0), client(b, 400), client(c, 800)]);
+    let bar_order = [b, a, c];
+
+    // Off the right edge: the leftmost window is A.
+    assert_eq!(
+        super::get_wrapping_window(
+            &bar_order,
+            &clients,
+            tags,
+            c,
+            crate::types::Point::new(1000, 400),
+            crate::types::Direction::Right,
+        ),
+        Some(a)
+    );
+    // Off the left edge: the rightmost window is C.
+    assert_eq!(
+        super::get_wrapping_window(
+            &bar_order,
+            &clients,
+            tags,
+            a,
+            crate::types::Point::new(200, 400),
+            crate::types::Direction::Left,
+        ),
+        Some(c)
+    );
+}
+
+#[test]
+fn wrapping_focus_refuses_a_degenerate_axis() {
+    // One column: every window shares an x, so a horizontal wrap has nowhere
+    // to go and must not quietly become a vertical move.
+    let column = [WindowId(1), WindowId(2)];
+    let tags = TagMask::single(1).unwrap();
+    let column_clients = std::collections::HashMap::from([column[0], column[1]].map(|win| {
+        (
+            win,
+            Client {
+                win,
+                tags,
+                geo: crate::types::Rect::new(0, win.0 as i32 * 400, 1200, 400),
+                ..Client::default()
+            },
+        )
+    }));
+    let column_source = crate::types::Point::new(600, 200);
+
+    for direction in [
+        crate::types::Direction::Left,
+        crate::types::Direction::Right,
+    ] {
+        assert_eq!(
+            super::get_wrapping_window(
+                &column,
+                &column_clients,
+                tags,
+                column[0],
+                column_source,
+                direction
+            ),
+            None
+        );
+    }
+
+    // One row: every window shares a y, so a vertical wrap has nowhere to go
+    // and must not quietly become a horizontal move.
+    let row = [WindowId(1), WindowId(2)];
+    let row_clients = std::collections::HashMap::from([row[0], row[1]].map(|win| {
+        (
+            win,
+            Client {
+                win,
+                tags,
+                geo: crate::types::Rect::new(win.0 as i32 * 400, 0, 400, 800),
+                ..Client::default()
+            },
+        )
+    }));
+    let row_source = crate::types::Point::new(200, 400);
+
+    for direction in [crate::types::Direction::Up, crate::types::Direction::Down] {
+        assert_eq!(
+            super::get_wrapping_window(&row, &row_clients, tags, row[0], row_source, direction),
+            None
+        );
+    }
+}
+
+#[test]
+fn vertical_wrapping_focus_lands_on_the_opposite_edge() {
+    // Three windows stacked down the screen. There is no window above A, so
+    // running off the top edge has to land on the bottom-most one — and the
+    // answer must come from geometry, not from bar order.
+    let (top, middle, bottom) = (WindowId(1), WindowId(2), WindowId(3));
+    let tags = TagMask::single(1).unwrap();
+    let clients = std::collections::HashMap::from([(top, 0), (middle, 400), (bottom, 800)].map(
+        |(win, y)| {
+            (
+                win,
+                Client {
+                    win,
+                    tags,
+                    geo: crate::types::Rect::new(0, y, 400, 400),
+                    ..Client::default()
+                },
+            )
+        },
+    ));
+    // Bar order deliberately disagrees with the screen, which reads
+    // top, middle, bottom.
+    let bar_order = [middle, top, bottom];
+
+    // Off the top edge: the bottom-most window.
+    assert_eq!(
+        super::get_wrapping_window(
+            &bar_order,
+            &clients,
+            tags,
+            top,
+            crate::types::Point::new(200, 200),
+            crate::types::Direction::Up,
+        ),
+        Some(bottom)
+    );
+    // Off the bottom edge: the topmost one.
+    assert_eq!(
+        super::get_wrapping_window(
+            &bar_order,
+            &clients,
+            tags,
+            bottom,
+            crate::types::Point::new(200, 1000),
+            crate::types::Direction::Down,
+        ),
+        Some(top)
+    );
+}
+
+#[test]
+fn wrapping_focus_skips_windows_on_other_tags() {
+    let (visible, hidden) = (WindowId(1), WindowId(2));
+    let tags = TagMask::single(1).unwrap();
+    let other = TagMask::single(2).unwrap();
+    let clients = std::collections::HashMap::from([
+        (
+            visible,
+            Client {
+                win: visible,
+                tags,
+                geo: crate::types::Rect::new(400, 0, 400, 800),
+                ..Client::default()
+            },
+        ),
+        (
+            hidden,
+            Client {
+                win: hidden,
+                tags: other,
+                // Further left than the visible window, so ignoring the tag
+                // filter would pick it.
+                geo: crate::types::Rect::new(0, 0, 400, 800),
+                ..Client::default()
+            },
+        ),
+    ]);
+
+    assert_eq!(
+        super::get_wrapping_window(
+            &[visible, hidden],
+            &clients,
+            tags,
+            visible,
+            crate::types::Point::new(600, 400),
+            crate::types::Direction::Right,
+        ),
+        None
+    );
+}
+
 /// Records what a focus transition projected into the backend.
 ///
 /// The trait is implemented over `&self`, so the counters need interior
