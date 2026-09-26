@@ -5,8 +5,28 @@ use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::contexts::CoreCtx;
 use crate::core_state::{CoreState, PendingWork};
+use crate::test_support::{add_client, add_selected_client, push_monitor};
 use crate::types::{Client, Monitor, MonitorId, StackDirection, TagMask, WindowId};
 use std::cell::Cell;
+
+/// Build a monitor whose focus stack is exactly `stack` and which owns
+/// `clients`.
+///
+/// The order is assigned directly rather than arriving through
+/// [`crate::model::WmModel::add_client`], which prepends to the stack. The
+/// navigation tests below deliberately make the focus order disagree with
+/// screen geometry, and that disagreement is the thing under test — a helper
+/// that imposed insertion order would erase it.
+fn monitor_with_stack(
+    stack: &[WindowId],
+    clients: impl IntoIterator<Item = (WindowId, Client)>,
+) -> Monitor {
+    Monitor {
+        stack: stack.to_vec(),
+        clients: clients.into_iter().collect(),
+        ..Monitor::default()
+    }
+}
 
 #[test]
 fn directional_focus_prefers_the_aligned_client() {
@@ -14,39 +34,28 @@ fn directional_focus_prefers_the_aligned_client() {
     let aligned = WindowId(2);
     let diagonal = WindowId(3);
     let tags = TagMask::single(1).unwrap();
-    let clients = std::collections::HashMap::from([
+    let client = |win: WindowId, geo: crate::types::Rect| {
         (
-            source,
+            win,
             Client {
-                win: source,
+                win,
                 tags,
-                geo: crate::types::Rect::new(0, 0, 100, 100),
+                geo,
                 ..Client::default()
             },
-        ),
-        (
-            aligned,
-            Client {
-                win: aligned,
-                tags,
-                geo: crate::types::Rect::new(120, 0, 100, 100),
-                ..Client::default()
-            },
-        ),
-        (
-            diagonal,
-            Client {
-                win: diagonal,
-                tags,
-                geo: crate::types::Rect::new(100, 300, 100, 100),
-                ..Client::default()
-            },
-        ),
-    ]);
+        )
+    };
+    let monitor = monitor_with_stack(
+        &[source, diagonal, aligned],
+        [
+            client(source, crate::types::Rect::new(0, 0, 100, 100)),
+            client(aligned, crate::types::Rect::new(120, 0, 100, 100)),
+            client(diagonal, crate::types::Rect::new(100, 300, 100, 100)),
+        ],
+    );
     assert_eq!(
         super::get_directional_candidate(
-            &[source, diagonal, aligned],
-            &clients,
+            &monitor,
             tags,
             source,
             crate::types::Point::new(50, 50),
@@ -73,14 +82,13 @@ fn wrapping_focus_lands_on_the_far_edge_not_the_bar_order() {
             },
         )
     };
-    let clients = std::collections::HashMap::from([client(a, 0), client(b, 400), client(c, 800)]);
     let bar_order = [b, a, c];
+    let monitor = monitor_with_stack(&bar_order, [client(a, 0), client(b, 400), client(c, 800)]);
 
     // Off the right edge: the leftmost window is A.
     assert_eq!(
         super::get_wrapping_window(
-            &bar_order,
-            &clients,
+            &monitor,
             tags,
             c,
             crate::types::Point::new(1000, 400),
@@ -91,8 +99,7 @@ fn wrapping_focus_lands_on_the_far_edge_not_the_bar_order() {
     // Off the left edge: the rightmost window is C.
     assert_eq!(
         super::get_wrapping_window(
-            &bar_order,
-            &clients,
+            &monitor,
             tags,
             a,
             crate::types::Point::new(200, 400),
@@ -108,17 +115,20 @@ fn wrapping_focus_refuses_a_degenerate_axis() {
     // to go and must not quietly become a vertical move.
     let column = [WindowId(1), WindowId(2)];
     let tags = TagMask::single(1).unwrap();
-    let column_clients = std::collections::HashMap::from([column[0], column[1]].map(|win| {
-        (
-            win,
-            Client {
+    let column_monitor = monitor_with_stack(
+        &column,
+        [column[0], column[1]].map(|win| {
+            (
                 win,
-                tags,
-                geo: crate::types::Rect::new(0, win.0 as i32 * 400, 1200, 400),
-                ..Client::default()
-            },
-        )
-    }));
+                Client {
+                    win,
+                    tags,
+                    geo: crate::types::Rect::new(0, win.0 as i32 * 400, 1200, 400),
+                    ..Client::default()
+                },
+            )
+        }),
+    );
     let column_source = crate::types::Point::new(600, 200);
 
     for direction in [
@@ -126,14 +136,7 @@ fn wrapping_focus_refuses_a_degenerate_axis() {
         crate::types::Direction::Right,
     ] {
         assert_eq!(
-            super::get_wrapping_window(
-                &column,
-                &column_clients,
-                tags,
-                column[0],
-                column_source,
-                direction
-            ),
+            super::get_wrapping_window(&column_monitor, tags, column[0], column_source, direction),
             None
         );
     }
@@ -141,22 +144,25 @@ fn wrapping_focus_refuses_a_degenerate_axis() {
     // One row: every window shares a y, so a vertical wrap has nowhere to go
     // and must not quietly become a horizontal move.
     let row = [WindowId(1), WindowId(2)];
-    let row_clients = std::collections::HashMap::from([row[0], row[1]].map(|win| {
-        (
-            win,
-            Client {
+    let row_monitor = monitor_with_stack(
+        &row,
+        [row[0], row[1]].map(|win| {
+            (
                 win,
-                tags,
-                geo: crate::types::Rect::new(win.0 as i32 * 400, 0, 400, 800),
-                ..Client::default()
-            },
-        )
-    }));
+                Client {
+                    win,
+                    tags,
+                    geo: crate::types::Rect::new(win.0 as i32 * 400, 0, 400, 800),
+                    ..Client::default()
+                },
+            )
+        }),
+    );
     let row_source = crate::types::Point::new(200, 400);
 
     for direction in [crate::types::Direction::Up, crate::types::Direction::Down] {
         assert_eq!(
-            super::get_wrapping_window(&row, &row_clients, tags, row[0], row_source, direction),
+            super::get_wrapping_window(&row_monitor, tags, row[0], row_source, direction),
             None
         );
     }
@@ -169,8 +175,12 @@ fn vertical_wrapping_focus_lands_on_the_opposite_edge() {
     // answer must come from geometry, not from bar order.
     let (top, middle, bottom) = (WindowId(1), WindowId(2), WindowId(3));
     let tags = TagMask::single(1).unwrap();
-    let clients = std::collections::HashMap::from([(top, 0), (middle, 400), (bottom, 800)].map(
-        |(win, y)| {
+    // Bar order deliberately disagrees with the screen, which reads
+    // top, middle, bottom.
+    let bar_order = [middle, top, bottom];
+    let monitor = monitor_with_stack(
+        &bar_order,
+        [(top, 0), (middle, 400), (bottom, 800)].map(|(win, y)| {
             (
                 win,
                 Client {
@@ -180,17 +190,13 @@ fn vertical_wrapping_focus_lands_on_the_opposite_edge() {
                     ..Client::default()
                 },
             )
-        },
-    ));
-    // Bar order deliberately disagrees with the screen, which reads
-    // top, middle, bottom.
-    let bar_order = [middle, top, bottom];
+        }),
+    );
 
     // Off the top edge: the bottom-most window.
     assert_eq!(
         super::get_wrapping_window(
-            &bar_order,
-            &clients,
+            &monitor,
             tags,
             top,
             crate::types::Point::new(200, 200),
@@ -201,8 +207,7 @@ fn vertical_wrapping_focus_lands_on_the_opposite_edge() {
     // Off the bottom edge: the topmost one.
     assert_eq!(
         super::get_wrapping_window(
-            &bar_order,
-            &clients,
+            &monitor,
             tags,
             bottom,
             crate::types::Point::new(200, 1000),
@@ -217,33 +222,35 @@ fn wrapping_focus_skips_windows_on_other_tags() {
     let (visible, hidden) = (WindowId(1), WindowId(2));
     let tags = TagMask::single(1).unwrap();
     let other = TagMask::single(2).unwrap();
-    let clients = std::collections::HashMap::from([
-        (
-            visible,
-            Client {
-                win: visible,
-                tags,
-                geo: crate::types::Rect::new(400, 0, 400, 800),
-                ..Client::default()
-            },
-        ),
-        (
-            hidden,
-            Client {
-                win: hidden,
-                tags: other,
-                // Further left than the visible window, so ignoring the tag
-                // filter would pick it.
-                geo: crate::types::Rect::new(0, 0, 400, 800),
-                ..Client::default()
-            },
-        ),
-    ]);
+    let monitor = monitor_with_stack(
+        &[visible, hidden],
+        [
+            (
+                visible,
+                Client {
+                    win: visible,
+                    tags,
+                    geo: crate::types::Rect::new(400, 0, 400, 800),
+                    ..Client::default()
+                },
+            ),
+            (
+                hidden,
+                Client {
+                    win: hidden,
+                    tags: other,
+                    // Further left than the visible window, so ignoring the tag
+                    // filter would pick it.
+                    geo: crate::types::Rect::new(0, 0, 400, 800),
+                    ..Client::default()
+                },
+            ),
+        ],
+    );
 
     assert_eq!(
         super::get_wrapping_window(
-            &[visible, hidden],
-            &clients,
+            &monitor,
             tags,
             visible,
             crate::types::Point::new(600, 400),
@@ -293,19 +300,23 @@ fn focus_from_current_selection(
 
 fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, FocusState) {
     let mut state = CoreState::default();
-    let monitor_id = state.model.monitors.push(Monitor::default());
+    let monitor_id = push_monitor(&mut state.model);
     let win = WindowId(1);
     let tag = TagMask::single(1).unwrap();
-    state.model.insert_client(Client {
-        win,
+    add_selected_client(
+        &mut state.model,
         monitor_id,
-        tags: tag,
-        ..Client::default()
-    });
-    let monitor = state.model.monitor_mut(monitor_id).unwrap();
-    monitor.set_selected_tags(tag);
-    monitor.z_order.attach_top(win);
-    monitor.selected = Some(win);
+        Client {
+            win,
+            tags: tag,
+            ..Client::default()
+        },
+    );
+    state
+        .model
+        .monitor_mut(monitor_id)
+        .unwrap()
+        .set_selected_tags(tag);
     (
         state,
         PendingWork::default(),
@@ -368,17 +379,20 @@ fn monitor_switch_records_the_global_window_transition() {
     let first_monitor = wm.core.model.monitors.push(Monitor::default());
     let second_monitor = wm.core.model.monitors.push(Monitor::default());
     for (monitor_id, win) in [(first_monitor, first), (second_monitor, second)] {
-        wm.core.model.insert_client(Client {
-            win,
+        add_selected_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag,
-            ..Client::default()
-        });
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tag);
-        monitor.clients.push(win);
-        monitor.z_order.attach_top(win);
-        monitor.set_selected(Some(win));
+            Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            },
+        );
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tag);
     }
     wm.core.model.monitors.set_selected(first_monitor);
 
@@ -413,15 +427,15 @@ fn changing_focus_does_not_change_persistent_z_order() {
     let monitor_id = state.model.selected_monitor_id();
     let tag = TagMask::single(1).unwrap();
     let upper = WindowId(2);
-    state.model.insert_client(Client {
-        win: upper,
+    add_selected_client(
+        &mut state.model,
         monitor_id,
-        tags: tag,
-        ..Client::default()
-    });
-    let monitor = state.model.monitor_mut(monitor_id).unwrap();
-    monitor.z_order.attach_top(upper);
-    monitor.selected = Some(upper);
+        Client {
+            win: upper,
+            tags: tag,
+            ..Client::default()
+        },
+    );
 
     let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
     let backend = RecordingBackend::default();
@@ -457,17 +471,10 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
     let previously_focused = WindowId(1);
     let newer_tiled = WindowId(2);
     let popup = WindowId(3);
-    state
-        .model
-        .monitor_mut(monitor_id)
-        .unwrap()
-        .clients
-        .push(previously_focused);
 
     for (win, floating) in [(newer_tiled, false), (popup, true)] {
         let mut client = Client {
             win,
-            monitor_id,
             tags: tag,
             ..Client::default()
         };
@@ -475,8 +482,7 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
             client.set_placement(crate::types::ClientPlacement::Floating);
             client.transient_for = Some(previously_focused);
         }
-        assert!(state.model.insert_client(client));
-        assert!(state.model.attach_client(win));
+        add_client(&mut state.model, monitor_id, client);
     }
 
     let monitor = state.model.monitor_mut(monitor_id).unwrap();
@@ -509,21 +515,17 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
     let previously_focused = WindowId(1);
     let other_group_window = WindowId(2);
     let temporary_terminal = WindowId(3);
-    state
-        .model
-        .monitor_mut(monitor_id)
-        .unwrap()
-        .clients
-        .push(previously_focused);
 
     for win in [other_group_window, temporary_terminal] {
-        assert!(state.model.insert_client(Client {
-            win,
+        add_client(
+            &mut state.model,
             monitor_id,
-            tags: tag,
-            ..Client::default()
-        }));
-        assert!(state.model.attach_client(win));
+            Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            },
+        );
     }
 
     let monitor = state.model.monitor_mut(monitor_id).unwrap();
@@ -575,21 +577,17 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
     let previously_focused = WindowId(1);
     let other_group_window = WindowId(2);
     let terminals = [WindowId(3), WindowId(4), WindowId(5)];
-    state
-        .model
-        .monitor_mut(monitor_id)
-        .unwrap()
-        .clients
-        .push(previously_focused);
 
     for win in std::iter::once(other_group_window).chain(terminals) {
-        assert!(state.model.insert_client(Client {
-            win,
+        add_client(
+            &mut state.model,
             monitor_id,
-            tags: tag,
-            ..Client::default()
-        }));
-        assert!(state.model.attach_client(win));
+            Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            },
+        );
     }
 
     let monitor = state.model.monitor_mut(monitor_id).unwrap();

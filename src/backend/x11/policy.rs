@@ -85,7 +85,7 @@ pub(crate) fn apply_xwayland_policy(
     update: XWaylandPolicyUpdate,
 ) -> Option<XWaylandPolicyOutcome> {
     let view = model.client_view(win)?;
-    let monitor_id = view.client.monitor_id;
+    let monitor_id = view.monitor.id();
     let work_area = view.monitor.work_rect();
     let before = PolicyState::capture(view.client);
 
@@ -212,6 +212,7 @@ pub fn should_float_for_x11_type(window_type: Option<WmWindowType>) -> bool {
 mod tests {
     use super::{XWaylandPolicyUpdate, apply_xwayland_policy};
     use crate::model::WmModel;
+    use crate::test_support::add_client;
     use crate::types::{Client, ClientPlacement, Monitor, Rect, WindowId};
 
     #[test]
@@ -227,7 +228,6 @@ mod tests {
         let floating_rect = Rect::new(300, 200, 900, 600);
         let mut client = Client {
             win,
-            monitor_id,
             geo: floating_rect,
             old_geo: floating_rect,
             border_width: 2,
@@ -235,7 +235,7 @@ mod tests {
             ..Client::default()
         };
         client.set_placement(ClientPlacement::Floating);
-        model.insert_client(client);
+        add_client(&mut model, monitor_id, client);
 
         let update = |is_fullscreen| XWaylandPolicyUpdate {
             hints: None,

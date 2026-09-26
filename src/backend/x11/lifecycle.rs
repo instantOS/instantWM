@@ -1,16 +1,16 @@
 //! Client lifecycle: adopting and releasing X11 windows.
 //!
-//! Note on title initialization: `update_title` writes into `globals.model.clients`,
-//! so we cannot use it before the client is inserted.  Instead we call the
-//! shared property reader (which returns a `String`) and store the
-//! result directly on the local `Client` before insertion.
+//! Note on title initialization: `update_title` writes into the monitor-owned
+//! client maps, so we cannot use it before the client is adopted.  Instead we
+//! call the shared property reader (which returns a `String`) and store the
+//! result directly on the local `Client` before adoption.
 //!
 //! # The two entry points
 //!
 //! * [`manage`]   – called when the WM first sees a window (either at startup
 //!   via `QueryTree`, or at runtime via a `MapRequest` event).
-//!   Builds a [`Client`], attaches it to the correct monitor and linked lists,
-//!   applies rules/hints, and arranges the monitor.
+//!   Builds a [`Client`], hands it to its monitor in one
+//!   `add_client` step, applies rules/hints, and arranges the monitor.
 //!
 //! * [`unmanage`] – called when a window is destroyed or deliberately withdrawn.
 //!   Detaches it from every list, optionally restores X11 state (border, event
@@ -19,9 +19,12 @@
 //! # Monitor assignment
 //!
 //! A new window inherits its monitor from its transient-for parent when one
-//! exists; otherwise it goes to the currently selected monitor. After
+//! exists; otherwise it goes to the currently selected monitor. The shared
+//! assignment policy returns that monitor id, which is threaded into
+//! `add_client` instead of being stored on the client. After
 //! [`crate::client::apply_rules`] runs, the assignment may be
-//! overridden again by a matching rule.
+//! overridden again by a matching rule, and the EWMH hint readers below can
+//! re-home the window again via `reassign_client_monitor`.
 //!
 //! # Animation
 //!
@@ -71,21 +74,25 @@ pub fn manage(
         ctx.x11_runtime,
         window,
     );
-    if !crate::client::lifecycle::assign_initial_monitor_and_tags(
+    // The shared assignment policy decides the destination monitor and stamps
+    // the client-local tag/placement state. The monitor id is returned rather
+    // than stored on the client so `add_client` below can adopt the finished
+    // client in one step.
+    let Some(monitor_id) = crate::client::lifecycle::assign_initial_monitor_and_tags(
         ctx.core.model(),
         &mut client,
         transient_for,
         launch_context,
-    ) {
+    ) else {
         return;
-    }
+    };
     // Subscribe before taking cached snapshots so a concurrent property
     // mutation always produces an invalidation event after the snapshot.
     subscribe_manage_events(&ctx.x11, window);
     client.is_hidden =
         crate::backend::x11::visibility::get_state(&ctx.x11, ctx.x11_runtime.wmatom.state, window)
             == crate::backend::x11::constants::WM_STATE_ICONIC;
-    if !ctx.core.model_mut().insert_client(client) {
+    if !ctx.core.model_mut().add_client(monitor_id, client) {
         return;
     }
     let (properties, protocols) = crate::backend::x11::properties::initial_window_properties(
@@ -166,8 +173,8 @@ pub fn manage(
         ctx.x11.raise_window_visual_only(window);
     }
 
-    let attached = ctx.core.model_mut().attach_client(window);
-    debug_assert!(attached, "managed X11 client must have a valid monitor");
+    // Adoption happened in `add_client`; the remaining steps only refine the
+    // client now that its monitor owns it.
     crate::client::fullscreen::sync_client_maximized_signal(
         &mut WmCtx::X11(ctx.reborrow()),
         window,
@@ -181,12 +188,16 @@ pub fn manage(
         &[x11_window],
     );
 
-    let client = ctx
+    // Re-resolve the owner: the EWMH hint readers above may have restored a
+    // different monitor from the previous session.
+    let view = ctx
         .core
         .model()
-        .client(window)
+        .client_view(window)
         .expect("managed client must exist before arrange");
-    let (geo, monitor_id, initially_hidden) = (client.geo, client.monitor_id, client.is_hidden);
+    let geo = view.client.geo;
+    let monitor_id = view.monitor.id();
+    let initially_hidden = view.client.is_hidden;
     if !initially_hidden {
         set_client_state(&ctx.x11, ctx.x11_runtime, window, WM_STATE_NORMAL);
     }
@@ -375,9 +386,11 @@ fn read_client_info(
 
     if let Some(client) = model.client_mut(window) {
         client.set_tag_mask(crate::types::TagMask::from_bits(tags));
-        if let Some(monitor_id) = target_monitor {
-            client.monitor_id = monitor_id;
-        }
+    }
+    // Ownership moves as a model transaction, so it cannot share the mutable
+    // client borrow above.
+    if let Some(monitor_id) = target_monitor {
+        model.reassign_client_monitor(window, monitor_id);
     }
 }
 
@@ -431,10 +444,13 @@ fn read_wm_desktop_hint(
     };
 
     if let Some(client) = model.client_mut(window) {
-        client.monitor_id = monitor_id;
         client.is_sticky = false;
         client.set_tag_mask(tags);
     }
+    // Ownership moves as a model transaction, so it cannot share the mutable
+    // client borrow above. The requested desktop may live on a different output
+    // than the one the shared assignment policy picked.
+    model.reassign_client_monitor(window, monitor_id);
 }
 
 pub(crate) fn get_transient_for_hint(x11: &X11BackendRef, window: WindowId) -> Option<WindowId> {
@@ -470,7 +486,7 @@ pub fn cleanup(wm: &mut Wm) {
     let _grab = ServerGrab::new(conn);
 
     for (_monitor_id, monitor) in wm.core.model.monitors_iter() {
-        for (window, _client) in monitor.iter_clients(&wm.core.model.clients) {
+        for (window, _client) in monitor.iter_clients() {
             let Some(&original_border_width) = x11_runtime.original_border_widths.get(&window)
             else {
                 continue;
@@ -505,15 +521,17 @@ pub fn cleanup(wm: &mut Wm) {
 mod tests {
     use super::initialize_floating_state;
     use crate::model::WmModel;
+    use crate::test_support::{add_client, push_monitor};
     use crate::types::{Client, ClientMode, ClientPlacement, WindowId};
 
     #[test]
     fn transient_policy_changes_fullscreen_restore_mode_without_exiting() {
         let mut model = WmModel::default();
+        let monitor_id = push_monitor(&mut model);
         let win = WindowId(71);
         let mut client = Client::new(win);
         client.enter_fullscreen();
-        model.insert_client(client);
+        add_client(&mut model, monitor_id, client);
 
         assert!(initialize_floating_state(&mut model, win, true));
 

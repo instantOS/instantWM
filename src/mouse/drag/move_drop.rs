@@ -368,12 +368,13 @@ pub fn promote_to_floating(
     // freely in that presentation.
     crate::client::fullscreen::leave_maximized(ctx, win);
 
-    let (is_floating, geo, monitor_id) = ctx
-        .core()
-        .state()
-        .model
-        .client(win)
-        .map(|c| (c.mode().is_normal_floating(), c.geo, c.monitor_id))?;
+    let (is_floating, geo, monitor_id) = ctx.core().state().model.client_view(win).map(|view| {
+        (
+            view.client.mode().is_normal_floating(),
+            view.client.geo,
+            view.monitor.id(),
+        )
+    })?;
 
     if is_floating {
         return Some((geo, false));
@@ -410,6 +411,7 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::client::geometry::FloatingPlacementIntent;
     use crate::layouts::PresentationMode;
+    use crate::test_support::{add_client, add_client_with};
     use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
@@ -446,13 +448,11 @@ mod tests {
             .per_tag_state()
             .presentation = PresentationMode::Floating;
         let win = WindowId(42);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::tiled(),
-            geo: Rect::new(100, 100, 400, 300),
-            ..Client::default()
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = TagMask::single(1).unwrap();
+            client.mode = ClientMode::tiled();
+            client.geo = Rect::new(100, 100, 400, 300);
         });
 
         let result = promote_to_floating(
@@ -482,15 +482,13 @@ mod tests {
         let saved = Rect::new(220, 170, 680, 480);
         let mut client = Client {
             win,
-            monitor_id,
             tags: TagMask::single(1).unwrap(),
             mode: ClientMode::maximized(ClientPlacement::Floating),
             geo: work_rect,
             ..Client::default()
         };
         client.save_floating_placement(saved, work_rect);
-        wm.core.model.insert_client(client);
-        assert!(wm.core.model.attach_client(win));
+        add_client(&mut wm.core.model, monitor_id, client);
 
         let result = promote_to_floating(
             &mut wm.ctx(),

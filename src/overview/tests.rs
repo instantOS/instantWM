@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::add_client;
 
 fn wm_with_overview_clients(
     selected_tags: TagMask,
@@ -19,20 +20,22 @@ fn wm_with_overview_clients(
     });
     wm.core.model.monitors.set_selected(monitor_id);
     for &(win, tags) in clients {
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags,
-            geo: Rect::new(100, 100, 700, 500),
-            ..Client::default()
-        });
+            Client {
+                win,
+                tags,
+                geo: Rect::new(100, 100, 700, 500),
+                ..Client::default()
+            },
+        );
     }
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(selected_tags);
-    monitor.clients = clients.iter().map(|(win, _)| *win).collect();
-    for &(win, _) in clients {
-        monitor.z_order.attach_top(win);
-    }
+    // Adoption prepends, so the focus stack is restored to the list order. The
+    // card hand is laid out from that stack, so it is the order under test.
+    monitor.stack = clients.iter().map(|(win, _)| *win).collect();
     monitor.selected = clients.first().map(|(win, _)| *win);
     wm
 }
@@ -116,7 +119,7 @@ fn every_card_uses_one_duration_even_in_a_dense_overview() {
     let mut monitor = Monitor {
         monitor_rect: Rect::new(0, 0, 1200, 700),
         available_rect: Rect::new(0, 0, 1200, 700),
-        clients: windows.clone(),
+        stack: windows.clone(),
         overview_state: Some(OverviewState::new(
             tags,
             windows.clone(),
@@ -126,7 +129,7 @@ fn every_card_uses_one_duration_even_in_a_dense_overview() {
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
-    let clients = windows
+    monitor.clients = windows
         .iter()
         .copied()
         .map(|win| {
@@ -140,9 +143,9 @@ fn every_card_uses_one_duration_even_in_a_dense_overview() {
                 },
             )
         })
-        .collect::<HashMap<_, _>>();
+        .collect();
 
-    let layout = compute(&mut monitor, &clients);
+    let layout = compute(&mut monitor);
 
     assert_eq!(layout.moves.len(), windows.len());
     assert!(layout.moves.iter().all(|output| {
@@ -230,38 +233,38 @@ fn overview_order_groups_windows_by_their_first_tag_stably() {
     let tag1 = TagMask::single(1).unwrap();
     let tag2 = TagMask::single(2).unwrap();
     let monitor = Monitor {
-        clients: vec![WindowId(3), WindowId(1), WindowId(2)],
+        stack: vec![WindowId(3), WindowId(1), WindowId(2)],
+        clients: HashMap::from([
+            (
+                WindowId(1),
+                Client {
+                    win: WindowId(1),
+                    tags: tag1,
+                    ..Client::default()
+                },
+            ),
+            (
+                WindowId(2),
+                Client {
+                    win: WindowId(2),
+                    tags: tag1,
+                    ..Client::default()
+                },
+            ),
+            (
+                WindowId(3),
+                Client {
+                    win: WindowId(3),
+                    tags: tag2,
+                    ..Client::default()
+                },
+            ),
+        ]),
         ..Monitor::default()
     };
-    let clients = HashMap::from([
-        (
-            WindowId(1),
-            Client {
-                win: WindowId(1),
-                tags: tag1,
-                ..Client::default()
-            },
-        ),
-        (
-            WindowId(2),
-            Client {
-                win: WindowId(2),
-                tags: tag1,
-                ..Client::default()
-            },
-        ),
-        (
-            WindowId(3),
-            Client {
-                win: WindowId(3),
-                tags: tag2,
-                ..Client::default()
-            },
-        ),
-    ]);
 
     assert_eq!(
-        initial_window_order(&monitor, &clients, tag1 | tag2),
+        initial_window_order(&monitor, tag1 | tag2),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
 }
@@ -273,23 +276,27 @@ fn a_window_mapped_during_overview_gets_one_restore_snapshot() {
     let original = Rect::new(40, 60, 500, 400);
     let mut monitor = Monitor {
         available_rect: Rect::new(0, 0, 1000, 700),
-        clients: vec![win],
+        stack: vec![win],
         overview_state: Some(OverviewState::new(tags, Vec::new(), HashMap::new(), None)),
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
-    let mut client = Client {
+    monitor.clients.insert(
         win,
-        tags,
-        geo: original,
-        ..Client::default()
-    };
-    let mut clients = HashMap::from([(win, client.clone())]);
+        Client {
+            win,
+            tags,
+            geo: original,
+            ..Client::default()
+        },
+    );
 
-    let _ = compute(&mut monitor, &clients);
-    client.geo = Rect::new(300, 200, 500, 400);
-    clients.insert(win, client);
-    let _ = compute(&mut monitor, &clients);
+    let _ = compute(&mut monitor);
+    // Mapping during overview settles the window on its real geometry. The
+    // monitor owns the client, so the projection reads the new rectangle from
+    // the owner rather than from a caller-supplied snapshot.
+    monitor.client_mut(win).unwrap().geo = Rect::new(300, 200, 500, 400);
+    let _ = compute(&mut monitor);
 
     assert_eq!(
         monitor.overview_state.as_ref().unwrap().restore_geometry[&win],

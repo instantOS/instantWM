@@ -3,7 +3,7 @@ use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::mouse::slop::is_valid_window_size;
-use crate::types::{MonitorSelector, Rect, WindowId};
+use crate::types::{Client, MonitorId, MonitorSelector, Rect, WindowId};
 use crate::wm::Wm;
 
 pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
@@ -30,19 +30,26 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
 
 fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id;
-    let mut wins: Vec<_> = if let Some(win) = target {
-        wm.core.model.client(win).into_iter().collect()
+    // Every client is owned by exactly one monitor, so carry the owning
+    // monitor's ID alongside the client to resolve its spatial position.
+    let mut wins: Vec<(MonitorId, &Client)> = if let Some(win) = target {
+        wm.core
+            .model
+            .monitor_of_client(win)
+            .zip(wm.core.model.client(win))
+            .into_iter()
+            .collect()
     } else {
-        wm.core.model.clients.values().collect()
+        wm.core.model.clients_iter_all().collect()
     };
-    wins.sort_by_key(|c| c.win.0);
+    wins.sort_by_key(|(_, c)| c.win.0);
 
     let tag_mask = wm.core.model.tags.mask();
     let selected = wm.core.model.selected_win();
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .filter_map(|c| {
-            let mon_pos = wm.core.model.monitors.position_of(c.monitor_id)?;
+        .filter_map(|(monitor_id, c)| {
+            let mon_pos = wm.core.model.monitors.position_of(*monitor_id)?;
             Some(WindowInfo::from_client(
                 c,
                 tag_mask,
@@ -123,10 +130,10 @@ fn resize_window(
         return Response::err("no target window");
     };
 
-    let (current_monitor_id, is_floating) = match wm.core.model.client(win) {
-        Some(c) => (
-            c.monitor_id,
-            c.placement() == crate::types::ClientPlacement::Floating,
+    let (current_monitor_id, is_floating) = match wm.core.model.client_view(win) {
+        Some(view) => (
+            view.monitor.id(),
+            view.client.placement() == crate::types::ClientPlacement::Floating,
         ),
         None => return Response::err("window not found"),
     };

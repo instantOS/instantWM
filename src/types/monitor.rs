@@ -1,6 +1,14 @@
 //! Monitor/screen types.
 //!
 //! Types for managing multiple monitors/screens.
+//!
+//! A [`Monitor`] owns the clients assigned to it. Ownership, rather than a
+//! `monitor_id` field on the client, is what makes the relationship trustworthy:
+//! there is exactly one place a client can live, so no assignment can name the
+//! wrong monitor or go stale. Two orderings over those owned clients are kept
+//! alongside them — [`Monitor::stack`] (focus order) and
+//! [`Monitor::z_order`] (stacking order) — and a debug assertion keeps both
+//! consistent with the owned set.
 
 use std::collections::{HashMap, HashSet};
 

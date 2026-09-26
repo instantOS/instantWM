@@ -212,7 +212,7 @@ fn apply_resize_policies(
     ctx.refine_size_hints(win, outcome.should_apply_client_hints, &mut adjusted);
     let changed = crate::client::geometry::size_hints_changed(ctx.core().model(), win, &adjusted);
 
-    let client_count = ctx.core().model().clients.len();
+    let client_count = ctx.core().model().client_count();
     if changed || client_count == 1 || options.bounds == BoundsPolicy::FloatingTransition {
         Some(adjusted)
     } else {
@@ -372,12 +372,14 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(11);
-        model.insert_client(Client {
-            win,
-            monitor_id: left,
-            geo: Rect::new(100, 100, 800, 600),
-            ..Client::default()
-        });
+        model.add_client(
+            left,
+            Client {
+                win,
+                geo: Rect::new(100, 100, 800, 600),
+                ..Client::default()
+            },
+        );
 
         let geometry = client_geometry(&model, win).expect("client geometry");
 
@@ -393,31 +395,19 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(12);
-        model.insert_client(Client {
-            win,
+        model.add_client(
             monitor_id,
-            geo: Rect::default(),
-            old_geo: Rect::new(10, 20, 640, 480),
-            ..Client::default()
-        });
+            Client {
+                win,
+                geo: Rect::default(),
+                old_geo: Rect::new(10, 20, 640, 480),
+                ..Client::default()
+            },
+        );
 
         let geometry = client_geometry(&model, win).expect("client geometry");
 
         assert_eq!(geometry.current_rect, Rect::new(10, 20, 640, 480));
-    }
-
-    #[test]
-    fn client_geometry_rejects_stale_monitor_assignment() {
-        let mut model = WmModel::new();
-        let win = WindowId(13);
-        model.insert_client(Client {
-            win,
-            monitor_id: crate::types::MonitorId::from_raw(1234),
-            geo: Rect::new(10, 20, 640, 480),
-            ..Client::default()
-        });
-
-        assert!(client_geometry(&model, win).is_none());
     }
 
     #[test]
@@ -432,13 +422,12 @@ mod tests {
         let win = WindowId(14);
         let mut client = Client {
             win,
-            monitor_id,
             geo: Rect::new(0, 0, 50, 50),
             ..Client::default()
         };
         client.size_hints.max_width = 120;
         client.size_hints.max_height = 90;
-        wm.core.model.insert_client(client);
+        wm.core.model.add_client(monitor_id, client);
 
         wm.ctx().move_resize(
             win,

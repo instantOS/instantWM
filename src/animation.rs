@@ -232,15 +232,16 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
     crate::layouts::arrange(ctx, Some(selmon_id));
 
-    let (selected_tags, clients) = {
+    let (selected_tags, client_windows) = {
         let Some(monitor) = ctx.core().model().monitor(selmon_id) else {
             return;
         };
-        (monitor.selected_tags(), monitor.clients.clone())
+        let client_windows: Vec<WindowId> = monitor.clients.keys().copied().collect();
+        (monitor.selected_tags(), client_windows)
     };
 
     let mut animation_targets = Vec::new();
-    for win in clients {
+    for win in client_windows {
         let Some(client) = ctx.core().model().client(win).cloned() else {
             continue;
         };

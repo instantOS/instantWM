@@ -261,7 +261,8 @@ mod tests {
     use crate::actions::{ButtonAction, NamedAction};
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Button, Client, ClientMode, Monitor, MonitorId, Rect, TagMask, WindowId};
+    use crate::test_support::{add_selected_client_with, push_monitor_with};
+    use crate::types::{Button, ClientMode, MonitorId, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     fn setup_wm() -> (Wm, WindowId, MonitorId) {
@@ -269,26 +270,19 @@ mod tests {
         wm.core.model.tags.num_tags = 4;
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(10);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.available_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.bar_default_show = false;
+            monitor.set_selected_tags(tags);
         });
         wm.core.model.monitors.set_selected(monitor_id);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::floating(),
-            geo: Rect::new(100, 100, 500, 300),
-            ..Client::default()
+        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.mode = ClientMode::floating();
+            client.geo = Rect::new(100, 100, 500, 300);
         });
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![win];
-        monitor.z_order.attach_top(win);
-        monitor.selected = Some(win);
         (wm, win, monitor_id)
     }
 

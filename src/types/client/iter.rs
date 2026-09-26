@@ -16,8 +16,10 @@ pub struct TiledClientInfo {
 
 /// Iterator joining an ordered window list with the client map.
 ///
-/// Stale IDs are skipped so callers never have to separate ordering from
-/// lookup or handle partially removed clients.
+/// Both come from the same monitor, which owns its clients, so an id in the
+/// ordering normally always resolves. Ids that do not resolve are still skipped
+/// rather than panicking, because the ordering collections are only checked
+/// against ownership by a debug assertion.
 pub struct OrderedClients<'a> {
     windows: std::slice::Iter<'a, WindowId>,
     clients: &'a HashMap<WindowId, Client>,

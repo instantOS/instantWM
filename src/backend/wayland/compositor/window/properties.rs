@@ -371,7 +371,8 @@ impl WaylandState {
 mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, Monitor, WindowId};
+    use crate::test_support::{add_client, push_monitor};
+    use crate::types::{Client, WindowId};
     use crate::wm::Wm;
 
     #[test]
@@ -383,18 +384,23 @@ mod tests {
 
         let first = WindowId(1);
         let second = WindowId(2);
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         wm.core.model.monitors.set_selected(monitor_id);
         for win in [first, second] {
-            wm.core.model.insert_client(Client {
-                win,
+            add_client(
+                &mut wm.core.model,
                 monitor_id,
-                ..Client::default()
-            });
+                Client {
+                    win,
+                    ..Client::default()
+                },
+            );
         }
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.clients = vec![first, second];
-        monitor.set_selected(Some(first));
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected(Some(first));
 
         state.reconcile_foreign_toplevel_selection(None);
         assert_eq!(

@@ -6,7 +6,6 @@
 
 use crate::monitor::MonitorManager;
 use crate::types::{Client, Monitor, MonitorId, Rect, SnapPosition, TagSet, WindowId};
-use std::collections::HashMap;
 
 /// A managed client together with the monitor that owns it.
 ///
@@ -156,8 +155,9 @@ impl WmModel {
     /// Take `win` out of its owning monitor, returning the client and whether
     /// it held that monitor's selection.
     ///
-    /// The client leaves the model entirely; callers re-home it with
-    /// [`Self::attach_client`] or drop it.
+    /// The client leaves the model entirely: callers re-home it through
+    /// [`Self::readopt_client`], hand it to a composed transaction such as
+    /// [`Self::move_client_to_monitor`], or drop it.
     fn detach_client(&mut self, win: WindowId) -> Option<(Client, bool)> {
         let monitor_id = self.monitor_of_client(win)?;
         let monitor = self.monitors.get_mut(monitor_id)?;
@@ -324,8 +324,11 @@ impl WmModel {
     /// Move a client to `target_monitor`, rebuilding every monitor-owned
     /// reference as one model transaction.
     ///
-    /// Returns whether the client held its source monitor's selection, so
-    /// callers can mirror focus policy onto the target.
+    /// Returns whether the client is now owned by `target_monitor`. Callers
+    /// that need to know whether the client held its *source* monitor's
+    /// selection — which only a composed transfer like
+    /// [`Self::move_client_to_monitor`] can act on — read that from the
+    /// returned [`ClientTransferOutcome`] instead.
     pub(crate) fn reassign_client_monitor(
         &mut self,
         win: WindowId,
@@ -339,7 +342,7 @@ impl WmModel {
         };
         self.attach_client(target_monitor, client, was_selected);
         self.debug_assert_client_graph();
-        was_selected
+        true
     }
 
     #[cfg(debug_assertions)]
@@ -467,13 +470,14 @@ impl Default for WmModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{add_client, add_selected_client, push_monitor, push_monitor_with};
     use crate::types::{ClientMode, Rect, TagMask};
 
     #[test]
     fn monitor_selection_requires_a_connected_non_current_monitor() {
         let mut model = WmModel::new();
-        let first = model.monitors.push(Monitor::default());
-        let second = model.monitors.push(Monitor::default());
+        let first = push_monitor(&mut model);
+        let second = push_monitor(&mut model);
         model.set_selected_monitor(first);
 
         assert!(model.can_change_selected_monitor(second));
@@ -482,19 +486,19 @@ mod tests {
     }
 
     #[test]
-    fn client_view_resolves_client_and_assigned_monitor() {
+    fn client_view_resolves_client_and_owning_monitor() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(1920, 0, 2560, 1440),
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut model, |monitor| {
+            monitor.monitor_rect = Rect::new(1920, 0, 2560, 1440);
         });
-        let win = WindowId(42);
-        model.insert_client(Client {
-            win,
+        let win = add_client(
+            &mut model,
             monitor_id,
-            geo: Rect::new(2000, 100, 800, 600),
-            ..Client::default()
-        });
+            Client {
+                geo: Rect::new(2000, 100, 800, 600),
+                ..Client::default()
+            },
+        );
 
         let view = model.client_view(win).expect("client view");
 
@@ -505,47 +509,78 @@ mod tests {
     }
 
     #[test]
-    fn client_view_requires_a_valid_client_monitor_relationship() {
+    fn a_managed_client_always_has_an_owner() {
+        let mut model = WmModel::new();
+        let monitor_id = push_monitor(&mut model);
+        let win = add_client(&mut model, monitor_id, Client::default());
+
+        // A managed client cannot fail to resolve its monitor, so `client_view`
+        // and `client` agree on existence instead of disagreeing about a stale
+        // assignment.
+        assert_eq!(
+            model.client_view(win).is_some(),
+            model.client(win).is_some()
+        );
+        assert_eq!(model.monitor_of_client(win), Some(monitor_id));
+        assert!(model.client_view(WindowId(8)).is_none());
+        assert_eq!(model.monitor_of_client(WindowId(8)), None);
+    }
+
+    #[test]
+    fn adding_to_an_unknown_monitor_leaves_the_client_unmanaged() {
         let mut model = WmModel::new();
         let win = WindowId(7);
-        model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::from_raw(999),
-            ..Client::default()
-        });
 
-        assert!(model.client(win).is_some());
-        assert!(model.client_view(win).is_none());
-        assert!(model.client_view(WindowId(8)).is_none());
+        let added = model.add_client(
+            MonitorId::from_raw(999),
+            Client {
+                win,
+                ..Client::default()
+            },
+        );
+
+        assert!(!added);
+        assert!(model.client(win).is_none());
+        assert_eq!(model.client_count(), 0);
     }
 
     #[test]
     fn selected_view_visibility_is_resolved_as_one_model_query() {
         let mut model = WmModel::new();
         let visible_tags = TagMask::single(2).unwrap();
-        let selected_monitor = model.monitors.push(Monitor::default());
-        let other_monitor = model.monitors.push(Monitor::default());
+        let selected_monitor = push_monitor_with(&mut model, |monitor| {
+            monitor.set_selected_tags(visible_tags);
+        });
+        let other_monitor = push_monitor(&mut model);
         model.monitors.set_selected(selected_monitor);
-        model
-            .monitor_mut(selected_monitor)
-            .unwrap()
-            .set_selected_tags(visible_tags);
 
-        let visible = WindowId(1);
-        let hidden = WindowId(2);
-        let elsewhere = WindowId(3);
-        for (win, monitor_id, tags) in [
-            (visible, selected_monitor, visible_tags),
-            (hidden, selected_monitor, TagMask::single(1).unwrap()),
-            (elsewhere, other_monitor, visible_tags),
-        ] {
-            model.insert_client(Client {
-                win,
-                monitor_id,
-                tags,
+        let visible = add_client(
+            &mut model,
+            selected_monitor,
+            Client {
+                win: WindowId(1),
+                tags: visible_tags,
                 ..Client::default()
-            });
-        }
+            },
+        );
+        let hidden = add_client(
+            &mut model,
+            selected_monitor,
+            Client {
+                win: WindowId(2),
+                tags: TagMask::single(1).unwrap(),
+                ..Client::default()
+            },
+        );
+        let elsewhere = add_client(
+            &mut model,
+            other_monitor,
+            Client {
+                win: WindowId(3),
+                tags: visible_tags,
+                ..Client::default()
+            },
+        );
 
         assert!(model.client_is_visible_on_selected_monitor(visible));
         assert!(!model.client_is_visible_on_selected_monitor(hidden));
@@ -553,40 +588,27 @@ mod tests {
     }
 
     #[test]
-    fn invalid_transfer_target_does_not_modify_client_assignment() {
+    fn invalid_transfer_target_does_not_modify_client_ownership() {
         let mut model = WmModel::new();
-        let source = model.monitors.push(Monitor::default());
-        let win = WindowId(9);
-        model.insert_client(Client {
-            win,
-            monitor_id: source,
-            ..Client::default()
-        });
+        let source = push_monitor(&mut model);
+        let win = add_client(&mut model, source, Client::default());
 
         let outcome = model.move_client_to_monitor(win, MonitorId::from_raw(999));
 
         assert!(outcome.is_none());
-        assert_eq!(
-            model.client(win).map(|client| client.monitor_id),
-            Some(source)
-        );
+        assert_eq!(model.monitor_of_client(win), Some(source));
+        assert!(model.monitor(source).unwrap().has_client(win));
     }
 
     #[test]
     fn transfer_outcome_preserves_the_resolved_transaction_state() {
         let mut model = WmModel::new();
-        let source = model.monitors.push(Monitor::default());
-        let target = model.monitors.push(Monitor::default());
+        let source = push_monitor(&mut model);
+        let target = push_monitor(&mut model);
         model.monitors.set_selected(source);
-        let win = WindowId(10);
-        model.insert_client(Client {
-            win,
-            monitor_id: source,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-        assert!(model.attach_client(win));
-        model.monitor_mut(source).unwrap().selected = Some(win);
+        let mut client = Client::default();
+        client.set_mode_for_test(ClientMode::tiled());
+        let win = add_selected_client(&mut model, source, client);
 
         let outcome = model.move_client_to_monitor(win, target).unwrap();
 
@@ -595,7 +617,8 @@ mod tests {
         assert!(outcome.was_selected);
         assert!(outcome.needs_arrange);
         assert!(!outcome.is_scratchpad);
-        assert_eq!(model.client(win).unwrap().monitor_id, target);
+        assert_eq!(model.monitor_of_client(win), Some(target));
+        assert!(!model.monitor(source).unwrap().has_client(win));
         assert_eq!(model.monitor(source).unwrap().selected, None);
         assert_eq!(model.monitor(target).unwrap().selected, Some(win));
     }
@@ -603,53 +626,49 @@ mod tests {
     #[test]
     fn transfer_to_current_monitor_is_a_noop() {
         let mut model = WmModel::new();
-        let source = model.monitors.push(Monitor::default());
-        let win = WindowId(11);
-        model.insert_client(Client {
-            win,
-            monitor_id: source,
-            ..Client::default()
-        });
-        assert!(model.attach_client(win));
+        let source = push_monitor(&mut model);
+        let win = add_client(&mut model, source, Client::default());
 
         assert!(model.move_client_to_monitor(win, source).is_none());
-        assert_eq!(model.client(win).unwrap().monitor_id, source);
-        assert!(model.monitor(source).unwrap().clients.contains(&win));
+        assert_eq!(model.monitor_of_client(win), Some(source));
+        assert!(model.monitor(source).unwrap().has_client(win));
     }
 
     #[test]
     fn removing_client_clears_every_monitor_owned_reference() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor::default());
-        let win = WindowId(10);
-        let other = WindowId(11);
+        let monitor_id = push_monitor(&mut model);
         let tags = TagMask::single(1).unwrap();
-        model.insert_client(Client {
-            win,
+        let other = add_client(
+            &mut model,
             monitor_id,
-            tags,
-            ..Client::default()
-        });
-        model.insert_client(Client {
-            win: other,
+            Client {
+                win: WindowId(1),
+                tags,
+                ..Client::default()
+            },
+        );
+        let win = add_selected_client(
+            &mut model,
             monitor_id,
-            tags,
-            ..Client::default()
-        });
-
-        let monitor = model.monitor_mut(monitor_id).unwrap();
-        monitor.clients = vec![other, win];
-        monitor.z_order.attach_top(other);
-        monitor.z_order.attach_top(win);
-        monitor.selected = Some(win);
-        monitor.record_focus(tags, win);
+            Client {
+                win: WindowId(2),
+                tags,
+                ..Client::default()
+            },
+        );
+        model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .record_focus(tags, win);
 
         let removed = model.remove_client(win);
 
         assert_eq!(removed.map(|client| client.win), Some(win));
         assert!(model.client(win).is_none());
         let monitor = model.monitor(monitor_id).unwrap();
-        assert_eq!(monitor.clients, vec![other]);
+        assert!(!monitor.has_client(win));
+        assert_eq!(monitor.stack, vec![other]);
         assert_eq!(monitor.z_order.as_slice(), &[other]);
         assert_eq!(monitor.selected, None);
         assert!(
@@ -660,42 +679,40 @@ mod tests {
     }
 
     #[test]
-    fn attaching_client_updates_focus_order_and_z_order_together() {
+    fn adding_a_client_adopts_it_into_every_monitor_collection_at_once() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor::default());
-        let win = WindowId(12);
-        model.insert_client(Client {
-            win,
-            monitor_id,
-            ..Client::default()
-        });
-
-        assert!(model.attach_client(win));
-        assert!(model.attach_client(win));
+        let monitor_id = push_monitor(&mut model);
+        let win = add_client(&mut model, monitor_id, Client::default());
 
         let monitor = model.monitor(monitor_id).unwrap();
-        assert_eq!(monitor.clients, vec![win]);
+        assert!(monitor.has_client(win));
+        assert_eq!(monitor.stack, vec![win]);
         assert_eq!(monitor.z_order.as_slice(), &[win]);
+        assert_eq!(model.client_count(), 1);
     }
 
     #[test]
-    fn inserting_duplicate_client_cannot_replace_existing_state() {
+    fn adding_a_duplicate_client_cannot_replace_existing_state() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut model);
         let win = WindowId(14);
-        assert!(model.insert_client(Client {
-            win,
+        assert!(model.add_client(
             monitor_id,
-            name: "original".to_string(),
-            ..Client::default()
-        }));
+            Client {
+                win,
+                name: "original".to_string(),
+                ..Client::default()
+            },
+        ));
 
-        assert!(!model.insert_client(Client {
-            win,
+        assert!(!model.add_client(
             monitor_id,
-            name: "replacement".to_string(),
-            ..Client::default()
-        }));
+            Client {
+                win,
+                name: "replacement".to_string(),
+                ..Client::default()
+            },
+        ));
         assert_eq!(
             model.client(win).map(|client| client.name.as_str()),
             Some("original")
@@ -705,36 +722,65 @@ mod tests {
     #[test]
     fn reassigning_client_clears_source_references_and_attaches_target() {
         let mut model = WmModel::new();
-        let source = model.monitors.push(Monitor::default());
-        let target = model.monitors.push(Monitor::default());
-        let win = WindowId(13);
+        let source = push_monitor(&mut model);
+        let target = push_monitor(&mut model);
         let tags = TagMask::single(1).unwrap();
-        model.insert_client(Client {
-            win,
-            monitor_id: source,
-            tags,
-            ..Client::default()
-        });
-        assert!(model.attach_client(win));
-        let source_monitor = model.monitor_mut(source).unwrap();
-        source_monitor.selected = Some(win);
-        source_monitor.record_focus(tags, win);
+        let win = add_selected_client(
+            &mut model,
+            source,
+            Client {
+                tags,
+                ..Client::default()
+            },
+        );
+        model.monitor_mut(source).unwrap().record_focus(tags, win);
 
         assert!(model.reassign_client_monitor(win, target));
 
         let source_monitor = model.monitor(source).unwrap();
-        assert!(source_monitor.clients.is_empty());
+        assert!(!source_monitor.has_client(win));
+        assert!(source_monitor.stack.is_empty());
         assert!(source_monitor.z_order.as_slice().is_empty());
         assert_eq!(source_monitor.selected, None);
         assert!(source_monitor.focus_history_windows().next().is_none());
         let target_monitor = model.monitor(target).unwrap();
-        assert_eq!(target_monitor.clients, vec![win]);
+        assert!(target_monitor.has_client(win));
+        assert_eq!(target_monitor.stack, vec![win]);
         assert_eq!(target_monitor.z_order.as_slice(), &[win]);
         assert_eq!(target_monitor.selected, Some(win));
-        assert_eq!(
-            model.client(win).map(|client| client.monitor_id),
-            Some(target)
+        assert_eq!(model.monitor_of_client(win), Some(target));
+    }
+
+    #[test]
+    fn clients_iter_all_reports_each_client_with_its_owner() {
+        let mut model = WmModel::new();
+        let first = push_monitor(&mut model);
+        let second = push_monitor(&mut model);
+        let on_first = add_client(
+            &mut model,
+            first,
+            Client {
+                win: WindowId(1),
+                ..Client::default()
+            },
         );
+        let on_second = add_client(
+            &mut model,
+            second,
+            Client {
+                win: WindowId(2),
+                ..Client::default()
+            },
+        );
+
+        let mut owned: Vec<(WindowId, MonitorId)> = model
+            .clients_iter_all()
+            .map(|(monitor_id, client)| (client.win, monitor_id))
+            .collect();
+        owned.sort();
+
+        assert_eq!(owned, vec![(on_first, first), (on_second, second)]);
+        assert_eq!(model.client_count(), 2);
     }
 }
 #[test]

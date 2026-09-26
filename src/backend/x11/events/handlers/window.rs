@@ -141,12 +141,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(monitor) = ctx
-        .core
-        .state
-        .model
-        .monitors
-        .find_monitor_for(event_win, &ctx.core.model().clients)
+    if let Some(monitor) = ctx.core.state.model.monitors.find_monitor_for(event_win)
         && event_win == monitor.bar_win
     {
         ctx.core.bar.mark_dirty();
@@ -245,11 +240,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             x if x == u32::from(AtomEnum::WM_TRANSIENT_FOR) => {
                 let parent =
                     crate::backend::x11::lifecycle::get_transient_for_hint(&ctx.x11, event_win);
-                let monitor_id = ctx
-                    .core
-                    .model()
-                    .client(event_win)
-                    .map(|client| client.monitor_id);
+                let monitor_id = ctx.core.model().monitor_of_client(event_win);
                 let needs_float = ctx.core.model().client(event_win).is_some_and(|client| {
                     parent.is_some()
                         && client.placement() != crate::types::ClientPlacement::Floating

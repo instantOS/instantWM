@@ -167,7 +167,12 @@ pub fn update_ewmh_desktop_props(
         &workarea,
     );
 
-    for win in globals.model.clients.keys().copied().collect::<Vec<_>>() {
+    for win in globals
+        .model
+        .clients_iter_all()
+        .map(|(_, client)| client.win)
+        .collect::<Vec<_>>()
+    {
         set_wm_desktop_prop(globals, x11, x11_runtime, win);
     }
 
@@ -236,15 +241,16 @@ fn set_wm_desktop_prop(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(client) = globals.model.client(win) else {
+    let Some(view) = globals.model.client_view(win) else {
         return;
     };
 
+    let client = view.client;
     let desktop = if client.is_sticky || client.is_scratchpad() {
         u32::MAX
     } else {
         let tag = client.tags.first_tag().unwrap_or(1);
-        desktop_for_monitor_tag(globals, client.monitor_id, tag).unwrap_or(0)
+        desktop_for_monitor_tag(globals, view.monitor.id(), tag).unwrap_or(0)
     };
 
     let x11_win: Window = win.into();
@@ -262,10 +268,12 @@ pub fn update_client_list(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
+    // `_NET_CLIENT_LIST` is published in each monitor's focus order, which is the
+    // order its stack preserves; the owning map itself is unordered.
     let windows: Vec<Window> = globals
         .model
         .monitors_iter_all()
-        .flat_map(|mon| mon.clients.iter().map(|&win| Window::from(win)))
+        .flat_map(|mon| mon.iter_clients().map(|(win, _client)| Window::from(win)))
         .collect();
     let conn = x11.conn;
     let _ = conn.change_property32(

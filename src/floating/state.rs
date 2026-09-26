@@ -194,18 +194,16 @@ mod tests {
         });
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(91);
-        wm.core.model.insert_client(Client {
+        let mut client = Client {
             win,
-            monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode,
             geo,
             border_width: 2,
             old_border_width: 2,
             ..Client::default()
-        });
-        assert!(wm.core.model.attach_client(win));
-        wm.core.model.monitor_mut(monitor_id).unwrap().selected = Some(win);
+        };
+        client.set_mode_for_test(mode);
+        assert!(wm.core.model.readopt_client(monitor_id, client, true));
         (wm, win)
     }
 

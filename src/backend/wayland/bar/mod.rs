@@ -189,7 +189,7 @@ pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, 
     let indicator_color = bottom_bar_indicator_color(background);
     core.model()
         .monitors_iter_all()
-        .filter(|mon| mon.bottom_bar_visible(&core.model().clients))
+        .filter(|mon| mon.bottom_bar_visible())
         .filter_map(|mon| {
             let size = Size::new(mon.work_rect().w, mon.bottom_bar_height);
             if !size.is_positive() {

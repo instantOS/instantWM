@@ -15,7 +15,8 @@ mod tests {
     use super::*;
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::geometry::MoveResizeOptions;
-    use crate::types::{Client, Monitor};
+    use crate::test_support::{add_client, push_monitor_with};
+    use crate::types::Client;
     use crate::wm::Wm;
 
     #[test]
@@ -25,19 +26,21 @@ mod tests {
         let backend = WaylandBackend::new();
         backend.attach_state(&mut state);
         let mut wm = Wm::new(Backend::new_wayland(backend));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
         });
         let win = WindowId(1);
         let from = Rect::new(0, 0, 600, 400);
         let target = Rect::new(200, 100, 600, 400);
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            geo: target,
-            ..Client::default()
-        });
+            Client {
+                win,
+                geo: target,
+                ..Client::default()
+            },
+        );
         state.window_animations.insert(
             win,
             WaylandWindowAnimation::new(

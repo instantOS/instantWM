@@ -135,16 +135,12 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
             HorizontalDirection::Left => tagset.rotate_right(step as usize, numtags),
         };
 
-        let clients = ctx.core().model().expect_selected_monitor().clients.clone();
-
-        for &win in &clients {
-            if let Some(c) = ctx.core().model().client(win)
-                && c.tags.intersects(next_mask)
-            {
-                found = true;
-                break;
-            }
-        }
+        found = ctx
+            .core()
+            .model()
+            .expect_selected_monitor()
+            .iter_clients()
+            .any(|(_, client)| client.tags.intersects(next_mask));
 
         if found {
             break;
@@ -213,7 +209,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
         let m = ctx.core().model().expect_selected_monitor();
-        for (win, c) in m.iter_clients(&ctx.core().model().clients) {
+        for (win, c) in m.iter_clients() {
             let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
                 result.push(win);

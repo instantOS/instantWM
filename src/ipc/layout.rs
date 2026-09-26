@@ -57,18 +57,18 @@ mod tests {
             ..Monitor::default()
         });
         wm.core.model.monitors.set_selected(monitor_id);
-        let win = WindowId(1);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
+        let mut client = Client {
+            win: WindowId(1),
             tags,
-            mode: ClientMode::tiled(),
             ..Client::default()
-        });
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![win];
-        monitor.selected = Some(win);
+        };
+        client.set_mode_for_test(ClientMode::tiled());
+        wm.core.model.readopt_client(monitor_id, client, true);
         wm
     }
 

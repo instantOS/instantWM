@@ -276,7 +276,7 @@ fn collect_title_cells(
     gesture: Gesture,
 ) -> Vec<TitleCellSnapshot> {
     let mut titles = Vec::new();
-    for win in mon.bar_client_order(&core.model().clients) {
+    for win in mon.bar_client_order() {
         let Some(c) = core.model().client(win) else {
             continue;
         };
@@ -354,12 +354,12 @@ pub(crate) fn build_monitor_snapshots(
 
     let mut snapshots = Vec::new();
     for (monitor_id, mon) in core.model().monitors_iter() {
-        if !mon.bar_visible(&core.model().clients) {
+        if !mon.bar_visible() {
             continue;
         }
         let fonts = base_fonts.scaled(mon.ui_scale as f32);
 
-        let stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
+        let stats = crate::bar::model::ClientBarStats::collect(mon);
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = bar_hover.gesture_on(monitor_id);
@@ -848,6 +848,7 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
 mod tests {
     use super::*;
     use crate::model::WmModel;
+    use crate::test_support::{add_client, add_selected_client};
     use crate::types::color::Rgba;
     use crate::types::{
         Client, CloseButtonColorConfigs, ColorScheme, Monitor, SchemeHover, SchemeTag,
@@ -924,14 +925,15 @@ mod tests {
         let mut model = WmModel::new();
         let monitor_id = model.monitors.push(Monitor::default());
         model.monitors.set_selected(monitor_id);
-        let win = WindowId(42);
-        model.insert_client(Client {
-            win,
+        let win = add_selected_client(
+            &mut model,
             monitor_id,
-            is_sticky: true,
-            ..Client::default()
-        });
-        model.monitor_mut(monitor_id).unwrap().selected = Some(win);
+            Client {
+                win: WindowId(42),
+                is_sticky: true,
+                ..Client::default()
+            },
+        );
         let mut colors = WindowColorConfigs::default();
         colors.no_hover.sticky_focus = marker(0.6);
 
@@ -964,14 +966,16 @@ mod tests {
         let mut model = WmModel::new();
         let monitor_id = model.monitors.push(Monitor::default());
         model.monitors.set_selected(monitor_id);
-        let win = WindowId(42);
-        model.insert_client(Client {
-            win,
+        let win = add_client(
+            &mut model,
             monitor_id,
-            is_sticky: true,
-            is_urgent: true,
-            ..Client::default()
-        });
+            Client {
+                win: WindowId(42),
+                is_sticky: true,
+                is_urgent: true,
+                ..Client::default()
+            },
+        );
         let mut colors = WindowColorConfigs::default();
         colors.no_hover.urgent = marker(0.9);
         colors.no_hover.sticky = marker(0.3);
@@ -989,14 +993,16 @@ mod tests {
         let mut model = WmModel::new();
         let monitor_id = model.monitors.push(Monitor::default());
         model.monitors.set_selected(monitor_id);
-        let win = WindowId(42);
-        model.insert_client(Client {
-            win,
+        let win = add_client(
+            &mut model,
             monitor_id,
-            is_hidden: true,
-            is_urgent: true,
-            ..Client::default()
-        });
+            Client {
+                win: WindowId(42),
+                is_hidden: true,
+                is_urgent: true,
+                ..Client::default()
+            },
+        );
         let mut colors = WindowColorConfigs::default();
         colors.no_hover.urgent = marker(0.9);
         colors.no_hover.minimized = marker(0.2);

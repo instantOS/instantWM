@@ -242,18 +242,22 @@ mod tests {
     use super::{apply_fullscreen_request, apply_maximized_request};
     use crate::bar::BarState;
     use crate::core_state::{CoreState, PendingWork};
-    use crate::types::{Client, ClientPlacement, Monitor, Rect, WindowId};
+    use crate::test_support::{add_client, push_monitor, push_monitor_with};
+    use crate::types::{Client, ClientPlacement, Rect, WindowId};
 
     #[test]
     fn fullscreen_request_updates_authoritative_state_before_acknowledgement() {
         let mut core = CoreState::default();
-        let monitor_id = core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut core.model);
         let win = WindowId(40);
-        core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut core.model,
             monitor_id,
-            ..Client::default()
-        });
+            Client {
+                win,
+                ..Client::default()
+            },
+        );
         let mut work = PendingWork::default();
         work.layout.clear();
         let mut bar = BarState::default();
@@ -283,15 +287,14 @@ mod tests {
     #[test]
     fn maximize_request_updates_model_and_schedules_projection_atomically() {
         let mut core = CoreState::default();
-        let monitor_id = core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut core.model);
         let win = WindowId(42);
         let mut client = Client {
             win,
-            monitor_id,
             ..Client::default()
         };
         client.set_placement(ClientPlacement::Floating);
-        core.model.insert_client(client);
+        add_client(&mut core.model, monitor_id, client);
         let mut work = PendingWork::default();
         work.layout.clear();
         let mut bar = BarState::default();
@@ -309,17 +312,15 @@ mod tests {
     #[test]
     fn unfullscreen_request_restores_floating_geometry_before_layout() {
         let mut core = CoreState::default();
-        let monitor_id = core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.available_rect = Rect::new(0, 0, 1920, 1080);
         });
         let win = WindowId(41);
         let floating_rect = Rect::new(200, 150, 960, 540);
         let fullscreen_rect = Rect::new(0, 0, 1920, 1080);
         let mut client = Client {
             win,
-            monitor_id,
             geo: floating_rect,
             old_geo: floating_rect,
             border_width: 2,
@@ -327,7 +328,7 @@ mod tests {
             ..Client::default()
         };
         client.set_placement(ClientPlacement::Floating);
-        core.model.insert_client(client);
+        add_client(&mut core.model, monitor_id, client);
         let mut work = PendingWork::default();
         let mut bar = BarState::default();
 

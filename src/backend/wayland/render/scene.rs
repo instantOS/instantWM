@@ -417,7 +417,7 @@ pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
     };
     let selected_tags = monitor.visible_tags();
     monitor
-        .iter_clients(&wm.core.model.clients)
+        .iter_clients()
         .any(|(_, client)| client.mode().is_true_fullscreen() && client.is_visible(selected_tags))
 }
 

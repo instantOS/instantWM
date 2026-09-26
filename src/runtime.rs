@@ -128,7 +128,7 @@ pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkRes
 }
 
 fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
-    if wm.core.model.clients.is_empty() {
+    if wm.core.model.client_count() == 0 {
         return false;
     }
 

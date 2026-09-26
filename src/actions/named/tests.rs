@@ -7,11 +7,25 @@ use crate::config::config_toml::{HorizontalEdge, VerticalEdge};
 use crate::layouts::tree::Preset;
 
 use crate::layouts::{LayoutCommand, PresentationMode};
+use crate::test_support::add_client;
 use crate::types::{
-    Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,
+    Client, ClientMode, HorizontalDirection, Monitor, MonitorId, Rect, StackDirection, TagMask,
     VerticalDirection, WindowId,
 };
 use crate::wm::Wm;
+
+/// Restore a monitor's focus stack to `order`.
+///
+/// `add_client` prepends, so fixtures that care about bar order — or that
+/// deliberately scramble it so a test can prove geometry wins — spell the
+/// order out instead of inheriting it from the insertion sequence.
+fn set_focus_order(wm: &mut Wm, monitor_id: MonitorId, order: &[WindowId]) {
+    wm.core
+        .model
+        .monitor_mut(monitor_id)
+        .expect("monitor")
+        .stack = order.to_vec();
+}
 
 fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
@@ -24,17 +38,20 @@ fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     });
     wm.core.model.monitors.set_selected(monitor_id);
     for &win in windows {
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
+            Client {
+                win,
+                tags: tag,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            },
+        );
     }
+    set_focus_order(&mut wm, monitor_id, windows);
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag);
-    monitor.clients = windows.to_vec();
     monitor.selected = Some(selected);
     monitor
         .per_tag_state()
@@ -260,17 +277,20 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
     let left = WindowId(1);
     let right = WindowId(2);
     for win in [left, right] {
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag1,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
+            Client {
+                win,
+                tags: tag1,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            },
+        );
     }
+    set_focus_order(&mut wm, monitor_id, &[left, right]);
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag1);
-    monitor.clients = vec![left, right];
     monitor.selected = Some(left);
     monitor
         .per_tag_state()
@@ -326,7 +346,7 @@ fn maximized_window_move_reorders_adjacent_titles_not_hidden_visual_neighbors() 
         vec![WindowId(1), WindowId(2), WindowId(4), WindowId(3)]
     );
     assert_eq!(
-        monitor.bar_client_order(&wm.core.model.clients),
+        monitor.bar_client_order(),
         vec![WindowId(1), WindowId(2), WindowId(4), WindowId(3)]
     );
     assert_eq!(monitor.selected, Some(selected));
@@ -467,18 +487,21 @@ fn stacked_wm() -> (Wm, [WindowId; 3]) {
     // Three equal bands, so `direction_focus` has a real "below" to resolve
     // for the first two and genuinely nothing for the last.
     for (win, y) in [(top, 0), (middle, 266), (bottom, 533)] {
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag,
-            mode: ClientMode::tiled(),
-            geo: Rect::new(0, y, 1200, 267),
-            ..Client::default()
-        });
+            Client {
+                win,
+                tags: tag,
+                mode: ClientMode::tiled(),
+                geo: Rect::new(0, y, 1200, 267),
+                ..Client::default()
+            },
+        );
     }
+    set_focus_order(&mut wm, monitor_id, &[top, middle, bottom]);
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag);
-    monitor.clients = [top, middle, bottom].to_vec();
     monitor.selected = Some(top);
     monitor.per_tag_state().layout_tree.apply_preset(
         Preset::MasterStack,
@@ -575,18 +598,21 @@ fn tiled_row_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     // to move across.
     let width = 1200 / windows.len() as i32;
     for (index, &win) in windows.iter().enumerate() {
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag,
-            mode: ClientMode::tiled(),
-            geo: Rect::new(index as i32 * width, 0, width, 800),
-            ..Client::default()
-        });
+            Client {
+                win,
+                tags: tag,
+                mode: ClientMode::tiled(),
+                geo: Rect::new(index as i32 * width, 0, width, 800),
+                ..Client::default()
+            },
+        );
     }
+    set_focus_order(&mut wm, monitor_id, windows);
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag);
-    monitor.clients = windows.to_vec();
     monitor.selected = Some(selected);
     monitor
         .per_tag_state()
@@ -647,19 +673,22 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
     });
     wm.core.model.monitors.set_selected(monitor_id);
     for (win, x) in [(a, 0), (b, 400), (c, 800)] {
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag1,
-            mode: ClientMode::tiled(),
-            geo: Rect::new(x, 0, 400, 800),
-            ..Client::default()
-        });
+            Client {
+                win,
+                tags: tag1,
+                mode: ClientMode::tiled(),
+                geo: Rect::new(x, 0, 400, 800),
+                ..Client::default()
+            },
+        );
     }
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag1);
     // Scrambled bar order is the thing the wrap must ignore.
-    monitor.clients = vec![b, a, c];
+    monitor.stack = vec![b, a, c];
     monitor.selected = Some(c);
     monitor
         .per_tag_state()
@@ -719,19 +748,24 @@ fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
     // Park a window on the next tag, positioned further left than anything
     // on this one. If the tag filter were dropped it would win the wrap, so
     // this pins down that the wrap is both tag-local and geometric.
-    wm.core.model.insert_client(Client {
-        win: WindowId(3),
+    add_client(
+        &mut wm.core.model,
         monitor_id,
-        tags: TagMask::single(2).unwrap(),
-        mode: ClientMode::tiled(),
-        geo: Rect::new(-400, 0, 400, 800),
-        ..Client::default()
-    });
+        Client {
+            win: WindowId(3),
+            tags: TagMask::single(2).unwrap(),
+            mode: ClientMode::tiled(),
+            geo: Rect::new(-400, 0, 400, 800),
+            ..Client::default()
+        },
+    );
+    // Appended to the focus list rather than prepended, so this window sits
+    // after the two on the current tag.
     wm.core
         .model
         .monitor_mut(monitor_id)
         .unwrap()
-        .clients
+        .stack
         .push(WindowId(3));
 
     focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);

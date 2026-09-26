@@ -416,7 +416,7 @@ impl CoreState {
     pub fn apply_config(&mut self, next: EffectiveConfig) -> Result<(), String> {
         let new_count = next.tags.count;
         let allowed = TagMask::all(new_count);
-        for (win, client) in &self.model.clients {
+        for (_monitor_id, client) in self.model.clients_iter_all() {
             let ordinary_tags = client
                 .scratchpad()
                 .map_or(client.tags, |scratchpad| scratchpad.original_tags());
@@ -428,7 +428,7 @@ impl CoreState {
                 };
                 return Err(format!(
                     "cannot reduce tags.count to {new_count}: window {} has removed {detail}",
-                    win.0
+                    client.win.0
                 ));
             }
         }
@@ -878,12 +878,14 @@ mod tag_count_reload_tests {
         wm.core.apply_config(config_with_count(5)).unwrap();
         let id = wm.core.model.monitors.push(Monitor::new_with_values());
         let win = WindowId(42);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id: id,
-            tags: TagMask::single(5).unwrap(),
-            ..Client::default()
-        });
+        wm.core.model.add_client(
+            id,
+            Client {
+                win,
+                tags: TagMask::single(5).unwrap(),
+                ..Client::default()
+            },
+        );
 
         let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
         assert!(error.contains("window 42"), "{error}");
@@ -902,14 +904,13 @@ mod tag_count_reload_tests {
         let win = WindowId(43);
         let mut client = Client {
             win,
-            monitor_id: id,
             tags: TagMask::single(5).unwrap(),
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("test", None, 800, 600)
+            .promote_to_scratchpad(id, "test", None, 800, 600)
             .unwrap();
-        wm.core.model.insert_client(client);
+        wm.core.model.add_client(id, client);
 
         let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
         assert!(error.contains("window 43"), "{error}");
@@ -930,14 +931,13 @@ mod tag_count_reload_tests {
         let win = WindowId(44);
         let mut client = Client {
             win,
-            monitor_id: id,
             tags: TagMask::single(2).unwrap(),
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("test", None, 800, 600)
+            .promote_to_scratchpad(id, "test", None, 800, 600)
             .unwrap();
-        wm.core.model.insert_client(client);
+        wm.core.model.add_client(id, client);
 
         wm.core.apply_config(config_with_count(4)).unwrap();
         let scratchpad = wm.core.model.client(win).unwrap();

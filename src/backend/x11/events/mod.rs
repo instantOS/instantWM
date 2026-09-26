@@ -4,8 +4,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::WM_STATE_ICONIC;
 use crate::backend::x11::lifecycle::manage;
 use crate::contexts::WmCtxX11;
-use crate::types::{Client, Rect, WindowId};
-use std::collections::HashMap;
+use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::*;
 
 // ---------------------------------------------------------------------------
@@ -43,8 +42,13 @@ pub(crate) fn query_manageable_window_geometry(
 }
 
 /// Partition `children` into `(managed, transients)`.
+///
+/// `model` is consulted only to skip windows that are already managed, which is
+/// a whole-model question: clients now live in their owning `Monitor`, so there
+/// is no single map to hand over and per-monitor iteration would say nothing
+/// extra.
 fn classify_windows(
-    clients: &HashMap<WindowId, Client>,
+    model: &crate::model::WmModel,
     x11: &X11BackendRef,
     x11_runtime: &crate::backend::x11::X11RuntimeConfig,
     children: Vec<Window>,
@@ -103,7 +107,7 @@ fn classify_windows(
         }
 
         // Skip already-managed windows.
-        if clients.contains_key(&window) {
+        if model.client(window).is_some() {
             continue;
         }
 
@@ -138,12 +142,8 @@ pub fn scan(ctx: &mut WmCtxX11<'_>) {
         tree_reply.children
     };
 
-    let (managed, transients) = classify_windows(
-        &ctx.core.model().clients,
-        &ctx.x11,
-        ctx.x11_runtime,
-        children,
-    );
+    let (managed, transients) =
+        classify_windows(ctx.core.model(), &ctx.x11, ctx.x11_runtime, children);
 
     let geometry_requests: Vec<_> = managed
         .into_iter()

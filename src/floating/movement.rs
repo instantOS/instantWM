@@ -161,15 +161,13 @@ mod tests {
         let saved = Rect::new(200, 150, 600, 450);
         let mut client = Client {
             win,
-            monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::maximized(ClientPlacement::Floating),
             geo: work_rect,
             ..Client::default()
         };
+        client.set_mode_for_test(ClientMode::maximized(ClientPlacement::Floating));
         client.save_floating_placement(saved, work_rect);
-        wm.core.model.insert_client(client);
-        assert!(wm.core.model.attach_client(win));
+        assert!(wm.core.model.add_client(monitor_id, client));
 
         assert!(key_move(&mut wm.ctx(), win, Direction::Right));
 

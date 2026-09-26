@@ -23,7 +23,7 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
     let mut plan = Vec::new();
     for mon in model.monitors_iter_all() {
         let selected_tags = mon.visible_tags();
-        for (win, client) in mon.iter_clients(&model.clients) {
+        for (win, client) in mon.iter_clients() {
             plan.push(VisibilityEntry {
                 win,
                 rect: client.geo,
@@ -46,15 +46,18 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
 /// activation must request it through `crate::focus` after revealing the
 /// client.
 pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
-        if !c.is_hidden {
-            return;
-        }
-        c.is_hidden = false;
-        c.monitor_id
-    } else {
+    // The owning monitor is resolved before the mutable borrow: a client cannot
+    // name a monitor other than the one holding it.
+    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
         return;
     };
+    let Some(client) = ctx.core_mut().model_mut().client_mut(win) else {
+        return;
+    };
+    if !client.is_hidden {
+        return;
+    }
+    client.is_hidden = false;
 
     ctx.reveal_client(win);
 
@@ -97,22 +100,23 @@ pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: O
         .model()
         .client_view(win)
         .is_some_and(|view| view.monitor.selected == Some(win));
-    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
-        if c.is_hidden {
-            return;
-        }
-        let mid = c.monitor_id;
-
-        ctx.conceal_client(win);
-
-        if let Some(c_mut) = ctx.core_mut().model_mut().client_mut(win) {
-            c_mut.is_hidden = true;
-        }
-
-        mid
-    } else {
+    // Resolved before the mutable borrow: a client cannot name a monitor other
+    // than the one holding it.
+    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
         return;
     };
+    let Some(client) = ctx.core_mut().model_mut().client_mut(win) else {
+        return;
+    };
+    if client.is_hidden {
+        return;
+    }
+
+    ctx.conceal_client(win);
+
+    if let Some(c_mut) = ctx.core_mut().model_mut().client_mut(win) {
+        c_mut.is_hidden = true;
+    }
 
     if was_selected {
         let next = preferred_focus.or_else(|| {
@@ -134,17 +138,10 @@ mod tests {
     use crate::types::*;
     use crate::wm::Wm;
 
-    fn make_client(
-        win: WindowId,
-        tags: TagMask,
-        mon: MonitorId,
-        hidden: bool,
-        sticky: bool,
-    ) -> Client {
+    fn make_client(win: WindowId, tags: TagMask, hidden: bool, sticky: bool) -> Client {
         Client {
             win,
             tags,
-            monitor_id: mon,
             is_hidden: hidden,
             is_sticky: sticky,
             mode: ClientMode::tiled(),
@@ -166,18 +163,14 @@ mod tests {
         let focused = WindowId(1);
         let hidden = WindowId(2);
         for (win, is_hidden) in [(focused, false), (hidden, true)] {
-            wm.core.model.insert_client(Client {
-                win,
+            assert!(wm.core.model.add_client(
                 monitor_id,
-                is_hidden,
-                ..Client::default()
-            });
-            wm.core
-                .model
-                .monitor_mut(monitor_id)
-                .unwrap()
-                .clients
-                .push(win);
+                Client {
+                    win,
+                    is_hidden,
+                    ..Client::default()
+                }
+            ));
         }
         wm.core
             .model
@@ -191,24 +184,29 @@ mod tests {
         assert_eq!(wm.core.model.selected_win(), Some(focused));
     }
 
-    /// Build a single monitor with given selected tags and client list.
-    fn make_monitor(id: usize, selected: TagMask, client_wins: Vec<WindowId>) -> Monitor {
-        let mut mon = Monitor {
-            monitor_id: MonitorId::from_raw(id as u64),
-            ..Monitor::default()
-        };
+    /// Build a single monitor showing `selected` tags.
+    fn make_monitor(selected: TagMask) -> Monitor {
+        let mut mon = Monitor::default();
         mon.set_selected_tags(selected);
-        mon.clients = client_wins;
         mon
     }
 
-    fn make_model(monitors: Vec<Monitor>, clients: Vec<Client>) -> WmModel {
+    /// Build a model whose monitors are configured with `selected_tags`, and
+    /// whose clients are owned by the monitor at the same index.
+    fn make_model(selected_tags: &[TagMask], clients: Vec<(usize, Client)>) -> WmModel {
         let mut model = WmModel::new();
-        for m in monitors {
-            model.monitors.push(m);
-        }
-        for c in clients {
-            model.insert_client(c);
+        let monitor_ids: Vec<MonitorId> = selected_tags
+            .iter()
+            .map(|selected| model.monitors.push(make_monitor(*selected)))
+            .collect();
+        // `add_client` adopts newest-first into the focus stack, so adding in
+        // reverse keeps the clients' written order as the monitor's focus order.
+        for (monitor_index, client) in clients.into_iter().rev() {
+            let win = client.win;
+            assert!(
+                model.add_client(monitor_ids[monitor_index], client),
+                "test fixture must add {win:?} to a known, unoccupied monitor slot"
+            );
         }
         model
     }
@@ -221,11 +219,10 @@ mod tests {
         let tag2 = TagMask::single(2).unwrap();
 
         let clients = vec![
-            make_client(win1, tag1, MonitorId::from_raw(0), false, false),
-            make_client(win2, tag2, MonitorId::from_raw(0), false, false),
+            (0, make_client(win1, tag1, false, false)),
+            (0, make_client(win2, tag2, false, false)),
         ];
-        let mon = make_monitor(0, tag1, vec![win1, win2]);
-        let model = make_model(vec![mon], clients);
+        let model = make_model(&[tag1], clients);
 
         let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 2);
@@ -243,9 +240,8 @@ mod tests {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = vec![make_client(win, tag, MonitorId::from_raw(0), true, false)];
-        let mon = make_monitor(0, tag, vec![win]);
-        let model = make_model(vec![mon], clients);
+        let clients = vec![(0, make_client(win, tag, true, false))];
+        let model = make_model(&[tag], clients);
 
         let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 1);
@@ -259,9 +255,8 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = vec![make_client(win, tag1, MonitorId::from_raw(0), false, true)];
-        let mon = make_monitor(0, tag2, vec![win]);
-        let model = make_model(vec![mon], clients);
+        let clients = vec![(0, make_client(win, tag1, false, true))];
+        let model = make_model(&[tag2], clients);
 
         let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 1);
@@ -278,12 +273,10 @@ mod tests {
         let tag = TagMask::single(1).unwrap();
 
         let clients = vec![
-            make_client(win1, tag, MonitorId::from_raw(0), false, false),
-            make_client(win2, tag, MonitorId::from_raw(1), false, false),
+            (0, make_client(win1, tag, false, false)),
+            (1, make_client(win2, tag, false, false)),
         ];
-        let mon0 = make_monitor(0, tag, vec![win1]);
-        let mon1 = make_monitor(1, tag, vec![win2]);
-        let model = make_model(vec![mon0, mon1], clients);
+        let model = make_model(&[tag, tag], clients);
 
         let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 2);
@@ -302,14 +295,13 @@ mod tests {
             h: 300,
         };
 
-        let mut client = make_client(win, tag, MonitorId::from_raw(0), false, false);
+        let mut client = make_client(win, tag, false, false);
         client.geo = rect;
         client.border_width = 2;
         client.set_placement(crate::types::ClientPlacement::Floating);
 
-        let clients = vec![client];
-        let mon = make_monitor(0, tag, vec![win]);
-        let model = make_model(vec![mon], clients);
+        let clients = vec![(0, client)];
+        let model = make_model(&[tag], clients);
 
         let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 1);

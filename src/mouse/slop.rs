@@ -410,7 +410,8 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, Monitor};
+    use crate::test_support::add_client_with;
+    use crate::types::{ClientMode, Monitor};
     use crate::wm::Wm;
 
     fn wm_with_monitor(monitor: Monitor) -> (Wm, crate::types::MonitorId) {
@@ -428,21 +429,12 @@ mod tests {
         win: WindowId,
         geo: Rect,
     ) {
-        let mut client = Client {
-            win,
-            monitor_id,
-            geo,
-            mode: ClientMode::floating(),
-            ..Client::default()
-        };
-        client.set_placement(crate::types::ClientPlacement::Floating);
-        wm.core.model.insert_client(client);
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .clients
-            .push(win);
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.geo = geo;
+            client.mode = ClientMode::floating();
+            client.set_placement(crate::types::ClientPlacement::Floating);
+        });
     }
 
     #[test]

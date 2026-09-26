@@ -252,7 +252,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     }
 
-    let old_mon = ctx.core.model().client(win).map(|client| client.monitor_id);
+    let old_mon = ctx.core.model().monitor_of_client(win);
     let previous_focus = ctx.core.model().selected_win();
     let reassigned = ctx.core.mutate_selection(|model| {
         if let Some(client) = model.client_mut(win) {

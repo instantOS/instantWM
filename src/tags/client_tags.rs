@@ -63,7 +63,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
     let m = ctx.core().model().expect_selected_monitor();
     let clients_on_tag: Vec<_> = m
-        .iter_clients(&ctx.core().model().clients)
+        .iter_clients()
         .filter(|(_, c)| c.tags.intersects(current_tag_mask))
         .map(|(win, _)| win)
         .collect();
@@ -108,6 +108,7 @@ mod tests {
     use super::set_client_tag;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::{add_client, add_selected_client};
     use crate::types::{Client, ClientPlacement, Monitor, TagMask, WindowId};
     use crate::wm::Wm;
 
@@ -128,17 +129,14 @@ mod tests {
         let win = WindowId(42);
         let mut client = Client {
             win,
-            monitor_id,
             tags: original_tags,
             is_sticky: true,
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("term", None, 1920, 1080)
+            .promote_to_scratchpad(monitor_id, "term", None, 1920, 1080)
             .unwrap();
-        assert!(wm.core.model.insert_client(client));
-        assert!(wm.core.model.attach_client(win));
-        wm.core.model.monitor_mut(monitor_id).unwrap().selected = Some(win);
+        add_selected_client(&mut wm.core.model, monitor_id, client);
 
         set_client_tag(&mut wm.ctx(), win, target_tags);
 
@@ -168,13 +166,15 @@ mod tests {
         let win_b = WindowId(2);
         let win_c = WindowId(3);
         for win in [win_b, win_c] {
-            assert!(wm.core.model.insert_client(Client {
-                win,
+            add_client(
+                &mut wm.core.model,
                 monitor_id,
-                tags: tag2,
-                ..Client::default()
-            }));
-            assert!(wm.core.model.attach_client(win));
+                Client {
+                    win,
+                    tags: tag2,
+                    ..Client::default()
+                },
+            );
         }
         // Populate focus history for tag 2 by viewing it and focusing B.
         crate::tags::view::view_tags(&mut wm.ctx(), tag2);
@@ -187,13 +187,15 @@ mod tests {
             mon.set_selected_tags(tag1);
         }
         let win_a = WindowId(1);
-        assert!(wm.core.model.insert_client(Client {
-            win: win_a,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag1,
-            ..Client::default()
-        }));
-        assert!(wm.core.model.attach_client(win_a));
+            Client {
+                win: win_a,
+                tags: tag1,
+                ..Client::default()
+            },
+        );
         crate::tags::view::view_tags(&mut wm.ctx(), tag1);
         crate::focus::focus(&mut wm.ctx(), Some(win_a));
         assert_eq!(wm.core.model.selected_win(), Some(win_a));

@@ -28,7 +28,7 @@
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
 use crate::model::{ClientView, WmModel};
-use crate::types::{Monitor, Point, Rect, ResizeDirection, WindowId};
+use crate::types::{Client, Monitor, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
 
@@ -128,32 +128,40 @@ fn resize_target_for_window(view: ClientView<'_>, root: Point) -> Option<HoverRe
 ///
 /// Mirrors the backend hit tests: what matters is the surface the pointer is
 /// actually over, not focus order. Hidden windows do not occlude.
-fn view_covers_point(view: ClientView<'_>, point: Point) -> bool {
-    view.client.is_visible(view.monitor.visible_tags())
-        && view.client.total_rect().contains_point(point)
+fn client_covers_point(client: &Client, monitor: &Monitor, point: Point) -> bool {
+    client.is_visible(monitor.visible_tags()) && client.total_rect().contains_point(point)
 }
 
-/// [`view_covers_point`] by window id. Stale ids simply do not occlude.
-fn is_point_over_client_surface(model: &WmModel, win: WindowId, point: Point) -> bool {
-    model
-        .client_view(win)
-        .is_some_and(|view| view_covers_point(view, point))
+/// [`client_covers_point`] for an already-resolved view.
+fn view_covers_point(view: ClientView<'_>, point: Point) -> bool {
+    client_covers_point(view.client, view.monitor, point)
+}
+
+/// [`client_covers_point`] by window id inside `monitor`. Ids the monitor does
+/// not own simply do not occlude.
+fn is_point_over_client_surface(monitor: &Monitor, win: WindowId, point: Point) -> bool {
+    monitor
+        .client(win)
+        .is_some_and(|client| client_covers_point(client, monitor, point))
 }
 
 /// `true` when a visible window stacked above `win` covers `point`.
-fn point_occluded_above(model: &WmModel, monitor: &Monitor, win: WindowId, point: Point) -> bool {
+///
+/// The scan stays on `monitor`: only its own z-order stacks its windows, and
+/// its own map resolves each entry without searching the other outputs.
+fn point_occluded_above(monitor: &Monitor, win: WindowId, point: Point) -> bool {
     monitor
         .z_order
         .iter_top_to_bottom()
         .take_while(|&above| above != win)
-        .any(|above| is_point_over_client_surface(model, above, point))
+        .any(|above| is_point_over_client_surface(monitor, above, point))
 }
 
 /// Return the floating window + direction currently targeted by hover-resize.
 fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit> {
     let point = Rect::new(root.x, root.y, 1, 1);
     let monitor = model.monitors.monitor_intersecting_rect(point)?;
-    if monitor.bar_contains_y(&model.clients, root.y) {
+    if monitor.bar_contains_y(root.y) {
         return None;
     }
     // Topmost first: the border the user *sees* must win the offer even when
@@ -179,13 +187,13 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
 pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Option<HoverResizeHit> {
     let win = model.selected_win()?;
     let view = model.client_view(win)?;
-    if view.monitor.bar_contains_y(&model.clients, position.y) {
+    if view.monitor.bar_contains_y(position.y) {
         return None;
     }
     // A click must never commit a border the user cannot see: when another
     // window's surface covers the position, the press belongs to that window.
     // Checked before the band test so an occluded seam skips the hit math.
-    if point_occluded_above(model, view.monitor, win, position) {
+    if point_occluded_above(view.monitor, win, position) {
         return None;
     }
     resize_target_for_window(view, position)
@@ -198,7 +206,7 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
     let selected = mon.visible_tags();
     has_tiling
         && mon
-            .iter_clients(&model.clients)
+            .iter_clients()
             .any(|(_, c)| c.is_visible(selected) && !c.mode().is_normal_floating())
 }
 
@@ -274,7 +282,8 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, Monitor, TagMask, WindowId};
+    use crate::test_support::{add_client_with, add_selected_client_with};
+    use crate::types::{ClientMode, Monitor, TagMask, WindowId};
     use crate::wm::Wm;
 
     /// Two floating windows whose top border zones overlap: the visually
@@ -287,32 +296,31 @@ mod tests {
         let bottom = WindowId(1);
         let top = WindowId(2);
 
-        let mut monitor = Monitor {
+        let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
             bar_default_show: false,
             ..Monitor::default()
-        };
-        monitor.set_selected_tags(tags);
-        // Focus order: `bottom` is the focused window.
-        monitor.clients = vec![bottom, top];
-        // Persistent z-order: `top` stacks above `bottom`.
-        monitor.z_order.attach_top(bottom);
-        monitor.z_order.attach_top(top);
-        let monitor_id = wm.core.model.monitors.push(monitor);
+        });
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
         wm.core.model.monitors.set_selected(monitor_id);
 
+        // Adding `bottom` first stacks `top` above it, and the focus stack is
+        // pinned so the two orders disagree.
         for (win, y) in [(bottom, 100), (top, 90)] {
-            let mut client = Client {
-                win,
-                monitor_id,
-                tags,
-                geo: Rect::new(100, y, 600, 400),
-                mode: ClientMode::floating(),
-                ..Client::default()
-            };
-            client.set_placement(crate::types::ClientPlacement::Floating);
-            wm.core.model.insert_client(client);
+            add_client_with(&mut wm.core.model, monitor_id, |client| {
+                client.win = win;
+                client.tags = tags;
+                client.geo = Rect::new(100, y, 600, 400);
+                client.mode = ClientMode::floating();
+                client.set_placement(crate::types::ClientPlacement::Floating);
+            });
         }
+        // Focus order: `bottom` is the focused window.
+        wm.core.model.monitor_mut(monitor_id).unwrap().stack = vec![bottom, top];
 
         // Inside both windows' top border zones (30 px band above each edge).
         let target = hover_resize_target_at(&wm.core.model, Point::new(300, 85));
@@ -339,19 +347,13 @@ mod tests {
             .set_selected_tags(tags);
 
         let win = WindowId(3);
-        let mut client = Client {
-            win,
-            monitor_id: right_id,
-            tags,
-            geo: Rect::new(2000, 100, 600, 400),
-            mode: ClientMode::floating(),
-            ..Client::default()
-        };
-        client.set_placement(crate::types::ClientPlacement::Floating);
-        wm.core.model.insert_client(client);
-        let right = wm.core.model.monitor_mut(right_id).unwrap();
-        right.clients.push(win);
-        right.z_order.attach_top(win);
+        add_client_with(&mut wm.core.model, right_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.geo = Rect::new(2000, 100, 600, 400);
+            client.mode = ClientMode::floating();
+            client.set_placement(crate::types::ClientPlacement::Floating);
+        });
 
         let target = hover_resize_target_at(&wm.core.model, Point::new(2200, 95));
         assert_eq!(target.map(|target| target.win), Some(win));
@@ -365,33 +367,35 @@ mod tests {
         let bottom = WindowId(1);
         let top = WindowId(2);
 
-        let mut monitor = Monitor {
+        let monitor_id = wm.core.model.monitors.push(Monitor {
             monitor_rect: Rect::new(0, 0, 1920, 1080),
             bar_default_show: false,
             ..Monitor::default()
-        };
-        monitor.set_selected_tags(tags);
-        // Focus order: `bottom` is the focused window.
-        monitor.clients = vec![bottom, top];
-        monitor.selected = Some(bottom);
-        // Persistent z-order: `top` stacks above `bottom`.
-        monitor.z_order.attach_top(bottom);
-        monitor.z_order.attach_top(top);
-        let monitor_id = wm.core.model.monitors.push(monitor);
+        });
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
         wm.core.model.monitors.set_selected(monitor_id);
 
-        for (win, geo) in [(bottom, bottom_geo), (top, top_geo)] {
-            let mut client = Client {
-                win,
-                monitor_id,
-                tags,
-                geo,
-                mode: ClientMode::floating(),
-                ..Client::default()
-            };
+        // Adding `bottom` first stacks `top` above it in the persistent z-order.
+        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = bottom;
+            client.tags = tags;
+            client.geo = bottom_geo;
+            client.mode = ClientMode::floating();
             client.set_placement(crate::types::ClientPlacement::Floating);
-            wm.core.model.insert_client(client);
-        }
+        });
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = top;
+            client.tags = tags;
+            client.geo = top_geo;
+            client.mode = ClientMode::floating();
+            client.set_placement(crate::types::ClientPlacement::Floating);
+        });
+        // Focus order: `bottom` is the focused window.
+        wm.core.model.monitor_mut(monitor_id).unwrap().stack = vec![bottom, top];
     }
 
     /// A smaller floating window fully covered by a larger one must not offer

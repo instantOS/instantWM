@@ -21,9 +21,8 @@ use crate::contexts::WmCtx;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::*;
 
-//BOZO: is the following comment stale?
-/// Check whether `rect` lies on a different monitor than the currently
-/// selected one and, if so, migrate the window and update `selmon`.
+/// Check whether `rect` lies on a different monitor than the one currently
+/// owning `c_win` and, if so, migrate the window and update `selmon`.
 ///
 /// This is the low-level primitive.  Most call-sites should use
 /// [`handle_client_monitor_switch`] which reads the rect from the client.
@@ -38,12 +37,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         return;
     };
 
-    let Some(current_mon) = ctx
-        .core()
-        .model()
-        .client(c_win)
-        .map(|client| client.monitor_id)
-    else {
+    let Some(current_mon) = ctx.core().model().monitor_of_client(c_win) else {
         return;
     };
 
@@ -78,7 +72,8 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, Monitor, TagMask};
+    use crate::test_support::add_client_with;
+    use crate::types::{Monitor, TagMask};
     use crate::wm::Wm;
 
     #[test]
@@ -108,33 +103,16 @@ mod tests {
         wm.core.model.set_selected_monitor(target);
 
         let win = WindowId(41);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id: source,
-            tags,
-            geo: Rect::new(100, 100, 400, 300),
-            ..Client::default()
+        add_client_with(&mut wm.core.model, source, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.geo = Rect::new(100, 100, 400, 300);
         });
-        wm.core.model.monitor_mut(source).unwrap().clients.push(win);
 
         handle_monitor_switch(&mut wm.ctx(), win, &Rect::new(1200, 100, 400, 300));
 
-        assert_eq!(wm.core.model.client(win).unwrap().monitor_id, target);
-        assert!(
-            !wm.core
-                .model
-                .monitor(source)
-                .unwrap()
-                .clients
-                .contains(&win)
-        );
-        assert!(
-            wm.core
-                .model
-                .monitor(target)
-                .unwrap()
-                .clients
-                .contains(&win)
-        );
+        assert_eq!(wm.core.model.monitor_of_client(win), Some(target));
+        assert!(!wm.core.model.monitor(source).unwrap().has_client(win));
+        assert!(wm.core.model.monitor(target).unwrap().has_client(win));
     }
 }

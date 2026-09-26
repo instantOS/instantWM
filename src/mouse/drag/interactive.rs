@@ -350,9 +350,10 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModM
 mod tests {
     use super::apply_active_drag_motion;
     use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::test_support::add_client_with;
     use crate::types::{
-        Client, ClientMode, InteractionSource, ModMask, Monitor, MouseButton, Point, Rect,
-        ResizeDirection, TagMask, WindowId,
+        ClientMode, InteractionSource, ModMask, Monitor, MouseButton, Point, Rect, ResizeDirection,
+        TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -400,15 +401,13 @@ mod tests {
             .set_selected_tags(tags);
         let win = WindowId::from(xid);
         let original = Rect::new(100, 100, 500, 300);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::floating(),
-            geo: original,
-            size_hints_valid: true,
-            border_width: 0,
-            ..Client::default()
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.mode = ClientMode::floating();
+            client.geo = original;
+            client.size_hints_valid = true;
+            client.border_width = 0;
         });
         wm.core
             .interaction
@@ -514,14 +513,12 @@ mod tests {
             .set_selected_tags(tags);
         let win = WindowId(17);
         let geometry = Rect::new(100, 100, 500, 300);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::floating(),
-            geo: geometry,
-            border_width: 5,
-            ..Client::default()
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.mode = ClientMode::floating();
+            client.geo = geometry;
+            client.border_width = 5;
         });
         wm.core
             .interaction
@@ -580,13 +577,11 @@ mod tests {
             .unwrap()
             .set_selected_tags(tags);
         let win = WindowId(17);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::floating(),
-            geo: Rect::new(100, 100, 500, 300),
-            ..Client::default()
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.mode = ClientMode::floating();
+            client.geo = Rect::new(100, 100, 500, 300);
         });
         wm.core
             .interaction

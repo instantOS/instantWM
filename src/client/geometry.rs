@@ -444,9 +444,7 @@ mod tests {
     };
     use crate::core_state::{CoreState, DisplayConfig};
     use crate::model::WmModel;
-    use crate::types::{
-        Client, Monitor, MonitorId, Point, Rect, Size, SnapPosition, TagMask, WindowId,
-    };
+    use crate::types::{Client, Monitor, Point, Rect, Size, SnapPosition, TagMask, WindowId};
 
     fn outer_rect(rect: Rect, border: i32) -> Rect {
         Rect::new(
@@ -464,11 +462,10 @@ mod tests {
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        globals.model.monitors.push(monitor);
+        let monitor_id = globals.model.monitors.push(monitor);
 
         let mut client = Client {
             win: WindowId::from(1_u32),
-            monitor_id: MonitorId::default(),
             ..Client::default()
         };
         client.set_tag_mask(TagMask::single(1).unwrap());
@@ -477,7 +474,7 @@ mod tests {
         client.geo = rect;
         client.save_floating_placement(rect, work_rect);
         client.old_geo = rect;
-        globals.model.insert_client(client);
+        assert!(globals.model.add_client(monitor_id, client));
 
         globals
     }
@@ -582,12 +579,14 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(77);
-        model.insert_client(Client {
-            win,
+        assert!(model.add_client(
             monitor_id,
-            geo: Rect::new(0, 30, 1000, 770),
-            ..Client::default()
-        });
+            Client {
+                win,
+                geo: Rect::new(0, 30, 1000, 770),
+                ..Client::default()
+            }
+        ));
 
         model.sync_client_geometry(win, Rect::new(10, 40, 900, 700));
         assert_eq!(model.client(win).unwrap().saved_floating_placement(), None);
@@ -628,13 +627,12 @@ mod tests {
         let restored = Rect::new(200, 150, 900, 600);
         let mut client = Client {
             win,
-            monitor_id,
             geo: restored,
             old_geo: fullscreen,
             ..Client::default()
         };
         client.set_placement(crate::types::ClientPlacement::Floating);
-        model.insert_client(client);
+        assert!(model.add_client(monitor_id, client));
 
         model.sync_client_geometry(win, restored);
 
@@ -712,13 +710,16 @@ mod tests {
             2,
             Rect::new(0, 32, 1920, 1048),
         );
+        let parent_monitor = globals
+            .model
+            .monitor_of_client(WindowId::from(1_u32))
+            .unwrap();
         let parent = Client {
             win: WindowId::from(2_u32),
-            monitor_id: MonitorId::default(),
             geo: Rect::new(500, 300, 800, 600),
             ..Client::default()
         };
-        globals.model.insert_client(parent);
+        assert!(globals.model.add_client(parent_monitor, parent));
 
         let rect = resolve_floating_placement(
             &globals.model,

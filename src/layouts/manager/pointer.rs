@@ -70,7 +70,7 @@ pub(crate) fn pointer_tree_gap_resize_start(
     }
     let visible_tags = monitor.visible_tags();
     if monitor
-        .iter_clients(&model.clients)
+        .iter_clients()
         .any(|(_, client)| client.is_visible(visible_tags) && client.geo.contains_point(point))
     {
         return None;
@@ -78,7 +78,6 @@ pub(crate) fn pointer_tree_gap_resize_start(
 
     let tiling = TilingContext::for_monitor(
         monitor,
-        &model.clients,
         &ctx.core().config().layout,
         ctx.core().config().window.resize_hints,
     );
@@ -115,7 +114,7 @@ pub(crate) fn uses_manual_tree_pointer_interaction(
     model.client_view(window).is_some_and(|view| {
         view.monitor.current_layout() == PresentationMode::Tiled
             && view.client.mode().is_normal_tiling()
-            && view.monitor.tiled_client_count(&model.clients) > 1
+            && view.monitor.tiled_client_count() > 1
     })
 }
 
@@ -222,7 +221,6 @@ pub(crate) fn update_pointer_tree_resize(
         };
         let tiling = TilingContext::for_monitor(
             view.monitor,
-            &core.model().clients,
             &core.config().layout,
             core.config().window.resize_hints,
         );
@@ -273,7 +271,6 @@ pub(crate) fn selected_tiling(ctx: &WmCtx<'_>) -> TilingContext {
     let core = ctx.core();
     TilingContext::for_monitor(
         core.model().expect_selected_monitor(),
-        &core.model().clients,
         &core.config().layout,
         core.config().window.resize_hints,
     )

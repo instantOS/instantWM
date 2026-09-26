@@ -94,7 +94,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
     let (windows, master_count) = {
         let monitor = ctx.core().model().expect_selected_monitor();
         let windows = monitor
-            .collect_tiling_tree_members(&ctx.core().model().clients)
+            .collect_tiling_tree_members()
             .into_iter()
             .map(|client| client.win)
             .collect::<Vec<_>>();
@@ -195,15 +195,14 @@ pub fn reorder_maximized_stack(
     direction: StackDirection,
 ) -> MaximizedStackReorder {
     let pair = {
-        let model = ctx.core().model();
-        let monitor = model.expect_selected_monitor();
+        let monitor = ctx.core().model().expect_selected_monitor();
         if !monitor.is_maximized_layout() {
             return MaximizedStackReorder::NotApplicable;
         }
         let Some(selected) = monitor.selected else {
             return MaximizedStackReorder::NotApplicable;
         };
-        let order = monitor.tiled_tree_order(&model.clients);
+        let order = monitor.tiled_tree_order();
         let Some(index) = order.iter().position(|&win| win == selected) else {
             return MaximizedStackReorder::NotApplicable;
         };
@@ -257,12 +256,12 @@ pub fn swap_bar_titles(
         let Some(model) = ctx.core().model().monitor(monitor_id) else {
             return false;
         };
-        let order = model.bar_client_order(&ctx.core().model().clients);
+        let order = model.bar_client_order();
         if !order.contains(&first) || !order.contains(&second) {
             return false;
         }
         model.is_maximized_layout() && {
-            let tree_order = model.tiled_tree_order(&ctx.core().model().clients);
+            let tree_order = model.tiled_tree_order();
             tree_order.contains(&first) && tree_order.contains(&second)
         }
     };
@@ -346,15 +345,14 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     }
 
     let tiling = super::pointer::selected_tiling(ctx);
-    let candidate_order = {
-        let model = ctx.core().model();
-        let monitor = model.expect_selected_monitor();
-        monitor
-            .collect_tiled(&model.clients)
-            .into_iter()
-            .map(|client| client.win)
-            .collect::<Vec<_>>()
-    };
+    let candidate_order = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .collect_tiled()
+        .into_iter()
+        .map(|client| client.win)
+        .collect::<Vec<_>>();
 
     // Raise immediately so the promoted window appears on top while the
     // resulting layout pass is applied.
@@ -470,10 +468,9 @@ fn finish_layout_change_with_presentation(
     let windows = ctx
         .core()
         .model()
-        .clients
-        .values()
-        .filter(|client| client.monitor_id == monitor_id)
-        .map(|client| client.win)
+        .clients_iter_all()
+        .filter(|(id, _)| *id == monitor_id)
+        .map(|(_, client)| client.win)
         .collect::<Vec<_>>();
     for win in windows {
         crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
@@ -539,7 +536,7 @@ pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
         .core()
         .model()
         .expect_selected_monitor()
-        .tiled_client_count(&ctx.core().model().clients);
+        .tiled_client_count();
     if window_count == 0 || delta == 0 {
         return;
     }

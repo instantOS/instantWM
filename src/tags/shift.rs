@@ -121,6 +121,7 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::{add_client, add_selected_client};
     use crate::types::{Client, ClientMode, Monitor};
     use crate::wm::Wm;
 
@@ -144,23 +145,29 @@ mod tests {
 
         let moved = WindowId(1);
         let destination_peer = WindowId(2);
-        wm.core.model.insert_client(Client {
-            win: moved,
+        // Adoption prepends to the monitor's focus stack, so the peer is added
+        // first to leave the stack in the `moved`-then-`destination_peer` order
+        // that the explicit list used to spell out.
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag1,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-        wm.core.model.insert_client(Client {
-            win: destination_peer,
+            Client {
+                win: destination_peer,
+                tags: tag2,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            },
+        );
+        add_selected_client(
+            &mut wm.core.model,
             monitor_id,
-            tags: tag2,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
-        let monitor = wm.core.model.monitor_mut(monitor_id).expect("monitor");
-        monitor.clients = vec![moved, destination_peer];
-        monitor.selected = Some(moved);
+            Client {
+                win: moved,
+                tags: tag1,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            },
+        );
 
         move_client_follow_view(&mut wm.ctx(), HorizontalDirection::Right);
 

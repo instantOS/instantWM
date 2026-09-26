@@ -272,21 +272,17 @@ mod tests {
             .set_selected_tags(tags);
 
         let win = WindowId(7);
-        wm.core.model.insert_client(Client {
-            win,
+        assert!(wm.core.model.add_client(
             monitor_id,
-            tags,
-            geo: Rect::new(200, 150, 500, 400),
-            border_width: 3,
-            old_border_width: 3,
-            ..Client::default()
-        });
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .clients
-            .push(win);
+            Client {
+                win,
+                tags,
+                geo: Rect::new(200, 150, 500, 400),
+                border_width: 3,
+                old_border_width: 3,
+                ..Client::default()
+            }
+        ));
         wm.core
             .model
             .monitor_mut(monitor_id)

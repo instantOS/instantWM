@@ -17,7 +17,8 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
-    use crate::types::{Client, ClientMode, Monitor, MouseButton, Point, Rect, TagMask, WindowId};
+    use crate::test_support::{add_client, push_monitor_with};
+    use crate::types::{Client, ClientMode, MouseButton, Point, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     const SAMPLE_COUNT: usize = 8_192;
@@ -26,28 +27,31 @@ mod tests {
     fn twenty_window_drag_fixture() -> (Wm, WindowId) {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.available_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.bar_default_show = false;
         });
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = (1..=20).map(WindowId).collect::<Vec<_>>();
-        for &win in &windows {
-            wm.core.model.insert_client(Client {
-                win,
+        // `add_client` focuses newest-first, so adopt in reverse to keep the
+        // focus stack (and therefore the drag hit order) oldest-first.
+        for &win in windows.iter().rev() {
+            add_client(
+                &mut wm.core.model,
                 monitor_id,
-                tags,
-                mode: ClientMode::tiled(),
-                ..Client::default()
-            });
+                Client {
+                    win,
+                    tags,
+                    mode: ClientMode::tiled(),
+                    ..Client::default()
+                },
+            );
         }
 
         let bounds = {
             let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
             monitor.set_selected_tags(tags);
-            monitor.clients = windows.clone();
             monitor.selected = Some(windows[0]);
             monitor
                 .per_tag_state()

@@ -380,7 +380,7 @@ pub(crate) fn sync_visibility(wm: &mut crate::wm::Wm) {
 fn status_visible(model: &crate::model::WmModel) -> bool {
     model
         .selected_monitor()
-        .is_some_and(|monitor| monitor.bar_visible(&model.clients))
+        .is_some_and(|monitor| monitor.bar_visible())
 }
 
 fn default_status_text() -> String {

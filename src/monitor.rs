@@ -9,7 +9,6 @@ use crate::contexts::WmCtx;
 use crate::core_state::{CoreState, DerivedState, EffectiveConfig};
 use crate::focus::refresh_focus_after_selection;
 use crate::types::*;
-use std::collections::HashMap;
 
 /// Manages the collection of monitors and the current selection.
 ///
@@ -751,17 +750,18 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(42);
-        model.insert_client(Client {
-            win,
-            monitor_id: removed,
-            tags: TagMask::single(2).unwrap(),
-            ..Client::default()
-        });
+        model.add_client(
+            removed,
+            Client {
+                win,
+                tags: TagMask::single(2).unwrap(),
+                ..Client::default()
+            },
+        );
         model
             .monitor_mut(retained)
             .unwrap()
             .set_selected_tags(TagMask::single(1).unwrap());
-        model.monitor_mut(removed).unwrap().clients.push(win);
 
         let outputs = [BackendOutputInfo {
             name: "retained".to_string(),
@@ -795,7 +795,7 @@ mod tests {
             [removed_bar, removed_bottom_bar]
         );
         assert!(model.monitor(retained).is_some());
-        assert_eq!(model.client(win).unwrap().monitor_id, retained);
+        assert_eq!(model.monitor_of_client(win), Some(retained));
         assert_eq!(
             model.monitor(retained).unwrap().selected_tags(),
             TagMask::single(1).unwrap() | TagMask::single(2).unwrap()
