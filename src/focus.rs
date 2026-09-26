@@ -565,18 +565,118 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) -> bool {
     }
 }
 
-pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction, true) {
+/// Focus the window at the far edge of the current tag, resolving a
+/// directional focus step that ran off the edge instead of giving up.
+///
+/// This is the geometric counterpart of [`direction_focus`]: that one looks
+/// for a neighbour in `direction` and reports failure at the boundary, this
+/// one answers the boundary question. Running off the right edge lands on the
+/// leftmost window, running off the top edge on the bottom-most, and so on.
+///
+/// Shared by both axes, but reached under different circumstances: horizontally
+/// it is [`crate::config::config_toml::HorizontalEdge::Wrap`], vertically it is
+/// the tiled half of [`crate::config::config_toml::VerticalEdge::Wrap`].
+///
+/// Returns whether focus moved.
+pub fn wrap_direction_focus(ctx: &mut WmCtx, direction: Direction) -> bool {
+    if let Some(target) = get_wrapping_candidate(ctx.core().model(), direction) {
         focus(ctx, Some(target));
+        true
+    } else {
+        false
     }
 }
 
-/// Focus the adjacent window in stable stack/bar order without wrapping.
+fn get_wrapping_candidate(model: &crate::model::WmModel, direction: Direction) -> Option<WindowId> {
+    if model.monitors.is_empty() {
+        return None;
+    }
+    let mon = model.expect_selected_monitor();
+    let source_win = mon.selected?;
+    let source_client = model.client(source_win)?;
+    let source_center = source_client.geo.center();
+
+    let selected = mon.visible_tags();
+
+    get_wrapping_window(
+        &mon.clients,
+        &model.clients,
+        selected,
+        source_win,
+        source_center,
+        direction,
+    )
+}
+
+/// Pick the window that a wrapped step should land on.
 ///
-/// Returns `false` at the outer edge, allowing a caller to continue navigation
-/// into an adjacent tag instead of cycling back within the current one.
-pub fn focus_stack_neighbor(ctx: &mut WmCtx, direction: StackDirection) -> bool {
-    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction, false) {
+/// Candidates are ranked by the coordinate along `direction`, inverted so the
+/// *far* edge sorts first: running off the right edge wants the smallest `x`,
+/// running off the top edge the largest `y`. The secondary key mirrors
+/// [`get_directional_candidate`], preferring candidates that are also close on
+/// the cross axis so motion stays continuous when a whole row or column of
+/// windows shares one coordinate.
+fn get_wrapping_window(
+    clients: &[WindowId],
+    globals_map: &HashMap<WindowId, Client>,
+    selected_tags: TagMask,
+    source_win: WindowId,
+    source_center: crate::types::Point,
+    direction: Direction,
+) -> Option<WindowId> {
+    crate::types::OrderedClients::new(clients, globals_map)
+        .filter(|(win, client)| {
+            if *win == source_win || !client.is_visible(selected_tags) {
+                return false;
+            }
+            // A wrapped step still has to move *along* its axis. When every
+            // visible window shares the source's coordinate there is no edge
+            // to wrap around, and the honest answer is "nowhere" rather than a
+            // cross-axis move dressed up as an along-axis one. Tiling tree
+            // navigation usually intercepts a pure row/column before this is
+            // reached, so treat it as a guard on the degenerate input rather
+            // than a behaviour users are expected to hit.
+            let center = client.geo.center();
+            match direction {
+                Direction::Left | Direction::Right => center.x != source_center.x,
+                Direction::Up | Direction::Down => center.y != source_center.y,
+            }
+        })
+        .min_by_key(|(_, client)| {
+            let center = client.geo.center();
+            let dx = center.abs_diff_x(&source_center);
+            let dy = center.abs_diff_y(&source_center);
+            // Running off the right edge wraps onto the leftmost window, off
+            // the top edge onto the bottom-most. `min_by_key` needs a minimum
+            // in every case, so negate the ones that sort farthest first —
+            // widening first so no coordinate can overflow the inversion.
+            let edge_rank = match direction {
+                Direction::Right => i64::from(center.x),
+                Direction::Left => -i64::from(center.x),
+                Direction::Down => i64::from(center.y),
+                Direction::Up => -i64::from(center.y),
+            };
+            let cross_axis_distance = match direction {
+                Direction::Up | Direction::Down => dx + dy / 4,
+                Direction::Left | Direction::Right => dy + dx / 4,
+            };
+            (edge_rank, cross_axis_distance)
+        })
+        .map(|(win, _)| win)
+}
+
+pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
+    let _ = focus_stack_neighbor(ctx, direction, true);
+}
+
+/// Focus the adjacent window in stable stack/bar order.
+///
+/// `wrap` selects the boundary model: `false` stops at the outer edge so the
+/// caller can run its own boundary policy, `true` cycles back to the other
+/// end. Returns whether focus moved, so a caller can hand a `false` straight
+/// to its boundary action without re-deriving why focus did not move.
+pub fn focus_stack_neighbor(ctx: &mut WmCtx, direction: StackDirection, wrap: bool) -> bool {
+    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction, wrap) {
         focus(ctx, Some(target));
         true
     } else {

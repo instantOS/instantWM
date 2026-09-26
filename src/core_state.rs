@@ -347,6 +347,8 @@ pub struct EffectiveConfig {
     pub monitors: HashMap<String, crate::config::config_toml::MonitorConfig>,
     pub status_command: Option<String>,
     pub cursor: crate::config::config_toml::CursorConfig,
+    /// Boundary policy for directional focus movement.
+    pub focus: crate::config::config_toml::FocusConfig,
     pub exec_once: Vec<String>,
     pub exec: Vec<String>,
     pub hooks: Vec<crate::config::hooks::Hook>,

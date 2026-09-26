@@ -250,6 +250,7 @@ pub fn resolve_config(
         monitors: theme.monitors,
         status_command: theme.status_command,
         cursor: theme.cursor,
+        focus: theme.focus,
         exec_once: theme.exec_once,
         exec: theme.exec,
         hooks,
