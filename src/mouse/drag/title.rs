@@ -511,7 +511,7 @@ mod tests {
         let bounds = {
             let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
             monitor.set_selected_tags(tags);
-            monitor.stack = windows.to_vec();
+            assert!(monitor.set_focus_order(windows.to_vec()));
             monitor.selected = Some(windows[0]);
             monitor
                 .per_tag_state()
@@ -579,7 +579,7 @@ mod tests {
         }
         let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
         monitor.set_selected_tags(tags);
-        monitor.stack = windows.to_vec();
+        assert!(monitor.set_focus_order(windows.to_vec()));
         monitor.selected = Some(windows[0]);
         monitor.per_tag_state().presentation = presentation;
         if presentation == crate::layouts::PresentationMode::Maximized {

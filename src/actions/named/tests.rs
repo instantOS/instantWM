@@ -20,11 +20,13 @@ use crate::wm::Wm;
 /// deliberately scramble it so a test can prove geometry wins — spell the
 /// order out instead of inheriting it from the insertion sequence.
 fn set_focus_order(wm: &mut Wm, monitor_id: MonitorId, order: &[WindowId]) {
-    wm.core
-        .model
-        .monitor_mut(monitor_id)
-        .expect("monitor")
-        .stack = order.to_vec();
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .expect("monitor")
+            .set_focus_order(order.to_vec())
+    );
 }
 
 fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
@@ -688,7 +690,7 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
     let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag1);
     // Scrambled bar order is the thing the wrap must ignore.
-    monitor.stack = vec![b, a, c];
+    assert!(monitor.set_focus_order(vec![b, a, c]));
     monitor.selected = Some(c);
     monitor
         .per_tag_state()
@@ -759,14 +761,14 @@ fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
             ..Client::default()
         },
     );
-    // Appended to the focus list rather than prepended, so this window sits
-    // after the two on the current tag.
-    wm.core
-        .model
-        .monitor_mut(monitor_id)
-        .unwrap()
-        .stack
-        .push(WindowId(3));
+    // Keep the off-tag window after the two visible windows in focus order.
+    assert!(
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_focus_order(vec![WindowId(1), WindowId(2), WindowId(3)])
+    );
 
     focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));

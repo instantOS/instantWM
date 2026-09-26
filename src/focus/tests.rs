@@ -21,11 +21,12 @@ fn monitor_with_stack(
     stack: &[WindowId],
     clients: impl IntoIterator<Item = (WindowId, Client)>,
 ) -> Monitor {
-    Monitor {
-        stack: stack.to_vec(),
-        clients: clients.into_iter().collect(),
-        ..Monitor::default()
+    let mut monitor = Monitor::default();
+    for (_, client) in clients {
+        monitor.adopt_client(client, false);
     }
+    assert!(monitor.set_focus_order(stack.to_vec()));
+    monitor
 }
 
 #[test]

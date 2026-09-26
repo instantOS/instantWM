@@ -320,7 +320,13 @@ mod tests {
             });
         }
         // Focus order: `bottom` is the focused window.
-        wm.core.model.monitor_mut(monitor_id).unwrap().stack = vec![bottom, top];
+        assert!(
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .set_focus_order(vec![bottom, top])
+        );
 
         // Inside both windows' top border zones (30 px band above each edge).
         let target = hover_resize_target_at(&wm.core.model, Point::new(300, 85));
@@ -395,7 +401,13 @@ mod tests {
             client.set_placement(crate::types::ClientPlacement::Floating);
         });
         // Focus order: `bottom` is the focused window.
-        wm.core.model.monitor_mut(monitor_id).unwrap().stack = vec![bottom, top];
+        assert!(
+            wm.core
+                .model
+                .monitor_mut(monitor_id)
+                .unwrap()
+                .set_focus_order(vec![bottom, top])
+        );
     }
 
     /// A smaller floating window fully covered by a larger one must not offer

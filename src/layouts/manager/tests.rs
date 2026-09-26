@@ -315,10 +315,9 @@ fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
     monitor.selected = Some(selected);
     monitor.bar_win = WindowId(99);
     for &win in order {
-        monitor.z_order.attach_top(win);
-        monitor.clients.insert(win, visible_client(win));
+        monitor.adopt_client(visible_client(win), false);
     }
-    monitor.stack = order.to_vec();
+    assert!(monitor.set_focus_order(order.to_vec()));
     monitor
 }
 
@@ -329,9 +328,10 @@ fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
 /// window halfway through are written as an explicit oldest-first order, and
 /// newest-first insertion would reverse the order they describe.
 fn append_visible_client(monitor: &mut Monitor, win: WindowId) {
-    monitor.clients.insert(win, visible_client(win));
-    monitor.stack.push(win);
-    monitor.z_order.attach_top(win);
+    monitor.adopt_client(visible_client(win), false);
+    let mut order = monitor.stack.to_vec();
+    order.rotate_left(1);
+    assert!(monitor.set_focus_order(order));
 }
 
 #[test]
@@ -510,7 +510,7 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         WindowId(1),
     );
     monitor.available_rect = crate::types::Rect::new(0, 0, 100, 100);
-    let windows = monitor.stack.clone();
+    let windows = monitor.stack.to_vec();
     monitor
         .per_tag_state()
         .layout_tree
@@ -628,7 +628,8 @@ fn arrange_softens_impossible_minimums_and_restores_them_when_space_returns() {
     let mut monitor = monitor_with_order(&windows, WindowId(1));
     monitor.available_rect = Rect::new(0, 0, 300, 100);
     monitor.monitor_rect = monitor.available_rect;
-    for client in monitor.clients.values_mut() {
+    for win in windows {
+        let client = monitor.client_mut(win).unwrap();
         client.size_hints.min_width = 200;
         client.size_hints.min_height = 50;
     }
@@ -704,9 +705,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
-    monitor.stack = vec![win];
-    monitor.clients.insert(
-        win,
+    monitor.adopt_client(
         Client {
             win,
             tags,
@@ -714,6 +713,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
             mode: ClientMode::tiled().as_fullscreen(),
             ..Client::default()
         },
+        false,
     );
 
     let plan = monitor.compute_arrange(&LayoutConfig::default(), true, false);

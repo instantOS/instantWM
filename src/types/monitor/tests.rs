@@ -2,11 +2,26 @@ use super::*;
 
 /// Give `monitor` ownership of `clients`, with `order` as its focus stack.
 fn adopt_clients(monitor: &mut Monitor, order: &[WindowId], clients: Vec<Client>) {
-    monitor.clients = clients
-        .into_iter()
-        .map(|client| (client.win, client))
-        .collect();
-    monitor.stack = order.to_vec();
+    for client in clients {
+        monitor.adopt_client(client, false);
+    }
+    if !order.is_empty() {
+        assert!(monitor.set_focus_order(order.to_vec()));
+    }
+}
+
+#[test]
+fn focus_order_rejects_missing_duplicate_and_foreign_windows() {
+    let mut monitor = Monitor::default();
+    monitor.adopt_client(Client::new(WindowId(1)), false);
+    monitor.adopt_client(Client::new(WindowId(2)), false);
+    let original = monitor.stack.to_vec();
+
+    assert!(!monitor.set_focus_order(vec![WindowId(1)]));
+    assert!(!monitor.set_focus_order(vec![WindowId(1), WindowId(1)]));
+    assert!(!monitor.set_focus_order(vec![WindowId(1), WindowId(3)]));
+    assert_eq!(monitor.stack.as_slice(), original);
+    assert!(monitor.set_focus_order(vec![WindowId(1), WindowId(2)]));
 }
 
 #[test]
@@ -41,10 +56,6 @@ fn focus_history_is_deduplicated_mru_and_supports_filtered_recovery() {
 fn first_visible_client_prefers_topmost_visible_stack_entry() {
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(TagMask::single(1).unwrap());
-    monitor.z_order.attach_top(WindowId(1));
-    monitor.z_order.attach_top(WindowId(2));
-    monitor.z_order.attach_top(WindowId(3));
-
     let clients = [WindowId(1), WindowId(2), WindowId(3)]
         .into_iter()
         .map(|win| {

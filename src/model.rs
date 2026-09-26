@@ -27,7 +27,8 @@ pub(crate) struct ClientView<'a> {
 /// single source of truth for the client/monitor relationship, so a client can
 /// never name a monitor other than the one holding it and no assignment can go
 /// stale. Monitor count is small and `MonitorManager` already resolves monitors
-/// by linear scan, so scanning for a client costs no more than a hash lookup.
+/// by linear scan. A global client lookup costs one hash lookup per monitor in
+/// the worst case; monitor-local operations need only their owner's lookup.
 pub struct WmModel {
     /// All monitors/screens, each owning its clients.
     pub(crate) monitors: MonitorManager,
@@ -58,7 +59,7 @@ impl WmModel {
     pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
         self.monitors
             .iter_all_mut()
-            .find_map(|monitor| monitor.clients.get_mut(&win))
+            .find_map(|monitor| monitor.client_mut(win))
     }
 
     /// Return the monitor that owns `win`.
@@ -135,9 +136,7 @@ impl WmModel {
         if self.client(win).is_some() || self.monitor(monitor_id).is_none() {
             return false;
         }
-        if !self.attach_client(monitor_id, client, selected) {
-            return false;
-        }
+        self.attach_client(monitor_id, client, selected);
         self.debug_assert_client_graph();
         true
     }
@@ -161,31 +160,17 @@ impl WmModel {
     fn detach_client(&mut self, win: WindowId) -> Option<(Client, bool)> {
         let monitor_id = self.monitor_of_client(win)?;
         let monitor = self.monitors.get_mut(monitor_id)?;
-        let client = monitor.clients.remove(&win)?;
-        monitor.stack.retain(|candidate| *candidate != win);
-        monitor.z_order.remove(win);
-        let was_selected = monitor.selected == Some(win);
-        if was_selected {
-            monitor.selected = None;
-        }
-        monitor.forget_focus(win);
-        Some((client, was_selected))
+        monitor.take_client(win)
     }
 
     /// Place an owned client into `monitor_id`, rebuilding its monitor-owned
     /// references and restoring selection when the client held it.
-    fn attach_client(&mut self, monitor_id: MonitorId, client: Client, selected: bool) -> bool {
-        let win = client.win;
-        let Some(monitor) = self.monitors.get_mut(monitor_id) else {
-            return false;
-        };
-        monitor.clients.insert(win, client);
-        monitor.stack.insert(0, win);
-        monitor.z_order.attach_top(win);
-        if selected {
-            monitor.selected = Some(win);
-        }
-        true
+    fn attach_client(&mut self, monitor_id: MonitorId, client: Client, selected: bool) {
+        let monitor = self
+            .monitors
+            .get_mut(monitor_id)
+            .expect("validated target monitor must still exist");
+        monitor.adopt_client(client, selected);
     }
 
     /// Resolve a managed client and its owning monitor as one coherent view.
@@ -347,15 +332,32 @@ impl WmModel {
 
     #[cfg(debug_assertions)]
     fn debug_assert_client_graph(&self) {
+        let mut owned = std::collections::HashSet::new();
         for monitor in self.monitors.iter_all() {
             let monitor_id = monitor.id();
+            let mut stacked = std::collections::HashSet::new();
             for win in monitor.stack.iter().copied() {
                 assert!(
                     monitor.has_client(win),
                     "monitor {monitor_id:?} focus stack references unowned {win:?}"
                 );
+                assert!(
+                    stacked.insert(win),
+                    "monitor {monitor_id:?} has duplicate focus entry {win:?}"
+                );
+            }
+            for &win in monitor.clients.keys() {
+                assert!(
+                    owned.insert(win),
+                    "client {win:?} is owned by multiple monitors"
+                );
+                assert!(
+                    stacked.contains(&win),
+                    "monitor {monitor_id:?} owns {win:?} outside its focus stack"
+                );
             }
 
+            let mut layered = std::collections::HashSet::new();
             for win in monitor.z_order.iter_bottom_to_top() {
                 assert!(
                     monitor.has_client(win),
@@ -365,7 +367,15 @@ impl WmModel {
                     monitor.stack.contains(&win),
                     "monitor {monitor_id:?} z-order client {win:?} is absent from its focus list"
                 );
+                assert!(
+                    layered.insert(win),
+                    "monitor {monitor_id:?} has duplicate z-order entry {win:?}"
+                );
             }
+            assert_eq!(
+                layered, stacked,
+                "monitor {monitor_id:?} client orderings differ"
+            );
 
             for (source, win) in std::iter::once(("selection", monitor.selected)).chain(
                 monitor
@@ -395,7 +405,7 @@ impl WmModel {
             return;
         };
         if let Some(monitor) = self.monitors.get_mut(monitor_id) {
-            monitor.z_order.raise(win);
+            monitor.raise_client(win);
         }
     }
 
@@ -668,7 +678,7 @@ mod tests {
         assert!(model.client(win).is_none());
         let monitor = model.monitor(monitor_id).unwrap();
         assert!(!monitor.has_client(win));
-        assert_eq!(monitor.stack, vec![other]);
+        assert_eq!(monitor.stack.as_slice(), &[other]);
         assert_eq!(monitor.z_order.as_slice(), &[other]);
         assert_eq!(monitor.selected, None);
         assert!(
@@ -686,7 +696,7 @@ mod tests {
 
         let monitor = model.monitor(monitor_id).unwrap();
         assert!(monitor.has_client(win));
-        assert_eq!(monitor.stack, vec![win]);
+        assert_eq!(monitor.stack.as_slice(), &[win]);
         assert_eq!(monitor.z_order.as_slice(), &[win]);
         assert_eq!(model.client_count(), 1);
     }
@@ -745,7 +755,7 @@ mod tests {
         assert!(source_monitor.focus_history_windows().next().is_none());
         let target_monitor = model.monitor(target).unwrap();
         assert!(target_monitor.has_client(win));
-        assert_eq!(target_monitor.stack, vec![win]);
+        assert_eq!(target_monitor.stack.as_slice(), &[win]);
         assert_eq!(target_monitor.z_order.as_slice(), &[win]);
         assert_eq!(target_monitor.selected, Some(win));
         assert_eq!(model.monitor_of_client(win), Some(target));
