@@ -8,10 +8,67 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Deserialize, Serialize, Default)]
-pub struct IncludeConfig {
-    //BOZO: should this be another type?
-    pub file: String,
+/// One entry of a config file's `includes` list: a file whose contents are
+/// inlined as if they had been written at that point.
+///
+/// This is a *loader directive*, not a configuration value: [`load_config_file`]
+/// consumes it while building the merged TOML tree, so it never reaches
+/// [`UserConfig`] and is not part of the effective config. It lives here
+/// because this module owns the config schema, and it is the only description of
+/// the `includes` syntax — the loader deserialises through it rather than
+/// reaching into the raw table, so the two cannot drift apart.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IncludeSpec {
+    /// Path of the file to inline. A leading `~/` is the user's home directory,
+    /// and a relative path resolves against the directory of the *including*
+    /// file. See [`IncludeSpec::resolve`].
+    pub file: PathBuf,
+}
+
+impl IncludeSpec {
+    /// Resolve this entry against the file that included it.
+    ///
+    /// A leading `~` or `~/` is the user's home directory, so a config can name
+    /// a file in `$HOME` without the user having to spell out their home path.
+    /// Otherwise an absolute path is taken as written, and a relative path
+    /// resolves against `including_file`'s directory — not the process working
+    /// directory — so a split-up config resolves the same way no matter which
+    /// file pulls it in, and `instantwm` started from anywhere still finds it.
+    fn resolve(&self, including_file: &Path) -> Result<PathBuf, String> {
+        // The tilde is matched on raw text: `Path` compares whole components, so
+        // it cannot tell `~/colors.toml` from the `~user/colors.toml` form.
+        if let Some(text) = self.file.to_str().filter(|text| text.starts_with('~')) {
+            return match text {
+                "~" => home_dir(),
+                _ => match text.strip_prefix("~/") {
+                    Some(rest) => Ok(home_dir()?.join(rest)),
+                    // `~user` names another account, which needs a passwd lookup
+                    // this does not do. Say so rather than resolving a literal
+                    // directory that happens to be called `~user`.
+                    None => Err(format!(
+                        "unsupported include path '{text}': \
+                         use '~/' for your home directory, or an absolute path"
+                    )),
+                },
+            };
+        }
+
+        if self.file.is_absolute() {
+            return Ok(self.file.clone());
+        }
+
+        Ok(including_file
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join(&self.file))
+    }
+}
+
+/// The user's home directory, for `~` in an include path.
+fn home_dir() -> Result<PathBuf, String> {
+    dirs::home_dir()
+        .ok_or_else(|| "cannot expand '~' in an include path: no home directory is set".to_string())
 }
 
 /// Mode specification for sway-like modes.
@@ -27,12 +84,16 @@ pub struct ModeSpec {
     pub keybinds: Vec<KeybindSpec>,
 }
 
+/// The user's configuration, as a single value.
+///
+/// A value of this type always describes an *already-merged* config: the
+/// `includes` directive is resolved by [`load_config_file`] before this struct
+/// is built, which is why `includes` is not a field here. See [`IncludeSpec`].
 #[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct UserConfig {
     /// Built-in colour theme used as the base for `[colors]` overrides.
     pub theme: ColorTheme,
-    pub includes: Vec<IncludeConfig>,
     pub fonts: FontConfig,
     pub colors: ColorConfig,
     /// User-defined keybinds (override/extend defaults).
@@ -836,6 +897,11 @@ impl TagsConfig {
     }
 }
 
+/// Read the user's config, resolving `includes` and theme colours first.
+///
+/// This is the boundary between the *file on disk* — which may be split across
+/// several files and may select a theme — and the single merged [`UserConfig`]
+/// value the rest of the window manager sees.
 pub fn load_config_file() -> Result<UserConfig, String> {
     let path = match dirs::config_dir() {
         Some(dir) => dir.join("instantwm").join("config.toml"),
@@ -846,8 +912,8 @@ pub fn load_config_file() -> Result<UserConfig, String> {
         return Ok(UserConfig::default());
     }
 
-    let mut visited = HashSet::new();
-    let merged = load_and_merge_config(&path, &mut visited)?;
+    let mut state = IncludeState::default();
+    let merged = load_and_merge_config(&path, &mut state)?;
     resolve_theme_colors(merged)?
         .try_into::<UserConfig>()
         .map_err(|error| format!("config parse error in {}: {error}", path.display()))
@@ -906,6 +972,14 @@ pub fn generate_commented_config() -> String {
     out.push_str("# Config changes are applied on reload (instantwmctl reload).\n");
     out.push_str("#\n");
     out.push_str(
+        "# A config can be split across files. Each `includes` entry names a file to inline as if it\n\
+         # were written here. The including file wins on conflicts, `~/` is your home directory, and\n\
+         # any other relative path resolves against the file that includes it:\n\
+         #\n\
+         #     includes = [{ file = \"colors.toml\" }, { file = \"~/dotfiles/keys.toml\" }]\n\
+         #\n",
+    );
+    out.push_str(
         "# Use `instantwm --print-config` to see the full default config with all values.\n",
     );
     out.push_str("# Use `instantwm --list-actions` to see valid action names for keybinds.\n");
@@ -924,10 +998,31 @@ pub fn generate_commented_config() -> String {
     out
 }
 
-fn load_and_merge_config(
-    path: &Path,
-    visited: &mut HashSet<PathBuf>,
-) -> Result<toml::Value, String> {
+/// Include-recursion bookkeeping for [`load_and_merge_config`].
+///
+/// The two sets answer different questions and both are needed. `stack` holds
+/// the files currently being loaded, so a file that includes one of its own
+/// ancestors is a cycle. `merged` holds the files that have already been
+/// inlined, so a file reachable through two different include chains is applied
+/// once instead of twice. Conflating them — as a single ever-seen set does —
+/// turns every diamond include into a spurious "circular include" error.
+#[derive(Default)]
+struct IncludeState {
+    /// Canonical paths of the files currently being loaded, outermost first.
+    stack: Vec<PathBuf>,
+    /// Canonical paths of the files already merged into the result. Disjoint
+    /// from `stack` by construction: a path is only added once it is off the
+    /// stack and fully merged.
+    merged: HashSet<PathBuf>,
+}
+
+/// Read one config file and return it with its `includes` inlined.
+///
+/// Included files form the base and this file is merged over them, so a value
+/// written in the including file always wins. Later includes are merged over
+/// earlier ones, and arrays accumulate rather than replace, which is what makes
+/// splitting a config across files compose the way it reads.
+fn load_and_merge_config(path: &Path, state: &mut IncludeState) -> Result<toml::Value, String> {
     let canonical_path = path.canonicalize().map_err(|error| {
         format!(
             "could not canonicalize config path {}: {error}",
@@ -935,69 +1030,97 @@ fn load_and_merge_config(
         )
     })?;
 
-    if visited.contains(&canonical_path) {
+    if state.stack.contains(&canonical_path) {
         return Err(format!(
-            "circular config include detected at {}",
-            canonical_path.display()
+            "circular config include: {}",
+            describe_include_chain(state, &canonical_path)
         ));
     }
-    visited.insert(canonical_path.clone());
+
+    // Already inlined by an earlier include chain. Merging it again would
+    // duplicate every array it contributes, and its scalar values cannot
+    // disagree with themselves, so there is nothing left to contribute.
+    if state.merged.contains(&canonical_path) {
+        return Ok(toml::Value::Table(toml::Table::new()));
+    }
 
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("could not read config file {}: {error}", path.display()))?;
 
-    let value: toml::Value = toml::from_str(&contents)
+    let mut value: toml::Value = toml::from_str(&contents)
         .map_err(|error| format!("config parse error in {}: {error}", path.display()))?;
+
+    // Taken, not copied: `includes` is consumed here, which is what keeps it
+    // out of the merged tree and therefore out of `UserConfig`.
+    let specs = take_include_specs(&mut value, path)?;
 
     let mut merged_base = toml::Value::Table(toml::Table::new());
 
-    if let Some(includes) = value.get("includes").and_then(|v| v.as_array()) {
-        let parent_dir = path.parent().unwrap_or(Path::new("."));
+    state.stack.push(canonical_path.clone());
+    for (index, spec) in specs.iter().enumerate() {
+        let include_path = spec.resolve(path).map_err(|error| {
+            format!(
+                "config error in {}: includes[{index}]: {error}",
+                path.display()
+            )
+        })?;
 
-        for include in includes {
-            if let Some(file_path_str) = include.get("file").and_then(|v| v.as_str()) {
-                let include_path = if Path::new(file_path_str).is_absolute() {
-                    PathBuf::from(file_path_str)
-                } else {
-                    parent_dir.join(file_path_str)
-                };
-
-                if !include_path.exists() {
-                    return Err(format!(
-                        "included config file {} does not exist",
-                        include_path.display()
-                    ));
-                }
-
-                let included_value = load_and_merge_config(&include_path, visited)?;
-                merge_toml_values(&mut merged_base, included_value);
-            }
+        if !include_path.exists() {
+            return Err(format!(
+                "config error in {}: includes[{index}] references {}, which does not exist",
+                path.display(),
+                include_path.display()
+            ));
         }
-    }
 
-    // Merge current file OVER includes
+        let included = load_and_merge_config(&include_path, state)?;
+        merge_toml_values(&mut merged_base, included);
+    }
+    state.stack.pop();
+
+    // Merge the current file OVER its includes.
     merge_toml_values(&mut merged_base, value);
+    state.merged.insert(canonical_path);
 
     Ok(merged_base)
+}
+
+/// Take a file's `includes` list out of its parsed value.
+///
+/// Removing the key is what makes `includes` a directive rather than data: the
+/// merged tree cannot carry it upwards, so no configuration value can ever
+/// observe it. Unknown keys and wrong types are errors rather than skips, so a
+/// mistyped include fails the load instead of quietly dropping a file.
+fn take_include_specs(value: &mut toml::Value, path: &Path) -> Result<Vec<IncludeSpec>, String> {
+    let Some(table) = value.as_table_mut() else {
+        return Ok(Vec::new());
+    };
+    let Some(raw) = table.remove("includes") else {
+        return Ok(Vec::new());
+    };
+    raw.try_into().map_err(|error| {
+        format!(
+            "config parse error in {}: invalid `includes`: {error}",
+            path.display()
+        )
+    })
+}
+
+/// Render the active include chain for a cycle report, as `a -> b -> a`.
+fn describe_include_chain(state: &IncludeState, repeated: &Path) -> String {
+    let mut chain: Vec<String> = state
+        .stack
+        .iter()
+        .map(|entry| entry.display().to_string())
+        .collect();
+    chain.push(repeated.display().to_string());
+    chain.join(" -> ")
 }
 
 fn merge_toml_values(base: &mut toml::Value, over: toml::Value) {
     match (base, over) {
         (toml::Value::Table(base_table), toml::Value::Table(over_table)) => {
             for (key, value) in over_table {
-                if key == "includes" {
-                    if let Some(base_includes) = base_table.get_mut("includes") {
-                        if let (toml::Value::Array(base_arr), toml::Value::Array(over_arr)) =
-                            (base_includes, value)
-                        {
-                            base_arr.extend(over_arr);
-                        }
-                    } else {
-                        base_table.insert(key, value);
-                    }
-                    continue;
-                }
-
                 if let Some(base_value) = base_table.get_mut(&key) {
                     merge_toml_values(base_value, value);
                 } else {
@@ -1566,5 +1689,339 @@ mod theme_tests {
         assert_eq!(config.theme, ColorTheme::default());
         // …and the rest of the config still loads.
         assert_eq!(config.layout.inner_gap, 7);
+    }
+}
+
+#[cfg(test)]
+mod include_tests {
+    use super::*;
+
+    /// Lay out a config tree on disk and return the root file.
+    ///
+    /// Each test gets its own directory, named after the test, so cases cannot
+    /// see each other's files however the runner schedules them.
+    fn tree(test: &str, files: &[(&str, &str)]) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("instantwm-includes-{}-{test}", std::process::id()));
+        fs::remove_dir_all(&root).ok();
+        for (name, body) in files {
+            let path = root.join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, body).unwrap();
+        }
+        root.join("config.toml")
+    }
+
+    fn load(root: &Path) -> Result<UserConfig, String> {
+        let mut state = IncludeState::default();
+        let merged = load_and_merge_config(root, &mut state)?;
+        resolve_theme_colors(merged)?
+            .try_into::<UserConfig>()
+            .map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn included_values_apply_and_the_including_file_wins() {
+        let root = tree(
+            "precedence",
+            &[
+                (
+                    "config.toml",
+                    "includes = [{ file = \"colors.toml\" }]\n[layout]\ninner_gap = 9\n",
+                ),
+                (
+                    "colors.toml",
+                    "[bar]\nheight = 30\n[layout]\ninner_gap = 3\n",
+                ),
+            ],
+        );
+
+        let config = load(&root).unwrap();
+
+        // The included file contributes what the including file leaves out…
+        assert_eq!(config.bar.height, 30);
+        // …and loses where they overlap.
+        assert_eq!(config.layout.inner_gap, 9);
+    }
+
+    #[test]
+    fn later_includes_are_merged_over_earlier_ones() {
+        let root = tree(
+            "order",
+            &[
+                (
+                    "config.toml",
+                    "includes = [{ file = \"first.toml\" }, { file = \"second.toml\" }]\n",
+                ),
+                ("first.toml", "[layout]\ninner_gap = 3\nouter_gap = 1\n"),
+                ("second.toml", "[layout]\ninner_gap = 7\n"),
+            ],
+        );
+
+        let config = load(&root).unwrap();
+
+        assert_eq!(config.layout.inner_gap, 7);
+        // A key only one include sets still survives.
+        assert_eq!(config.layout.outer_gap, 1);
+    }
+
+    #[test]
+    fn relative_paths_resolve_against_the_including_file() {
+        let root = tree(
+            "relative",
+            &[
+                ("config.toml", "includes = [{ file = \"sub/a.toml\" }]\n"),
+                (
+                    "sub/a.toml",
+                    // `b.toml` sits next to *this* file, not next to the root.
+                    "includes = [{ file = \"b.toml\" }]\n[layout]\ninner_gap = 5\n",
+                ),
+                ("sub/b.toml", "[bar]\nheight = 44\n"),
+            ],
+        );
+
+        let config = load(&root).unwrap();
+
+        assert_eq!(config.layout.inner_gap, 5);
+        assert_eq!(config.bar.height, 44);
+    }
+
+    #[test]
+    fn a_file_reachable_twice_is_applied_once() {
+        let root = tree(
+            "diamond",
+            &[
+                (
+                    "config.toml",
+                    "includes = [{ file = \"b.toml\" }, { file = \"c.toml\" }]\n",
+                ),
+                (
+                    "b.toml",
+                    "includes = [{ file = \"shared.toml\" }]\n[[keybinds]]\nkey = \"F1\"\naction = \"close\"\n",
+                ),
+                (
+                    "c.toml",
+                    "includes = [{ file = \"shared.toml\" }]\n[[keybinds]]\nkey = \"F2\"\naction = \"close\"\n",
+                ),
+                (
+                    "shared.toml",
+                    "[[keybinds]]\nkey = \"F3\"\naction = \"close\"\n",
+                ),
+            ],
+        );
+
+        // A diamond is not a cycle: the shared file applies once. If it were
+        // merged twice its keybind would appear twice.
+        let config = load(&root).unwrap();
+
+        let mut keys: Vec<&str> = config
+            .keybinds
+            .iter()
+            .map(|bind| bind.key.as_str())
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["F1", "F2", "F3"]);
+    }
+
+    #[test]
+    fn a_true_cycle_is_rejected_with_the_chain() {
+        let root = tree(
+            "cycle",
+            &[
+                ("config.toml", "includes = [{ file = \"b.toml\" }]\n"),
+                ("b.toml", "includes = [{ file = \"c.toml\" }]\n"),
+                ("c.toml", "includes = [{ file = \"b.toml\" }]\n"),
+            ],
+        );
+
+        let error = load(&root).unwrap_err();
+
+        assert!(
+            error.starts_with("circular config include:"),
+            "expected a cycle report, got: {error}"
+        );
+        // The chain names the whole loop, so the offending file is obvious.
+        assert!(error.contains("b.toml"), "{error}");
+        assert!(error.contains("c.toml"), "{error}");
+    }
+
+    #[test]
+    fn a_file_including_itself_is_rejected() {
+        let root = tree(
+            "self",
+            &[("config.toml", "includes = [{ file = \"config.toml\" }]\n")],
+        );
+
+        assert!(
+            load(&root)
+                .unwrap_err()
+                .starts_with("circular config include:")
+        );
+    }
+
+    #[test]
+    fn a_bare_path_string_is_not_accepted() {
+        // The obvious shorthand, and the easiest way to typo silently. It is
+        // rejected outright rather than quietly ignored.
+        let root = tree(
+            "shorthand",
+            &[("config.toml", "includes = [\"colors.toml\"]\n")],
+        );
+
+        let error = load(&root).unwrap_err();
+
+        assert!(error.contains("invalid `includes`"), "{error}");
+    }
+
+    #[test]
+    fn unknown_include_keys_are_rejected() {
+        let root = tree(
+            "unknown-key",
+            &[(
+                "config.toml",
+                "includes = [{ file = \"colors.toml\", if_exists = true }]\n",
+            )],
+        );
+
+        let error = load(&root).unwrap_err();
+
+        assert!(error.contains("invalid `includes`"), "{error}");
+        assert!(error.contains("if_exists"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_include_names_the_file_that_asked_for_it() {
+        let root = tree(
+            "missing",
+            &[("config.toml", "includes = [{ file = \"typo.toml\" }]\n")],
+        );
+
+        let error = load(&root).unwrap_err();
+
+        assert!(error.contains("includes[0]"), "{error}");
+        assert!(error.contains("typo.toml"), "{error}");
+        // The including file, so the report points at the line to fix.
+        assert!(error.contains("config.toml"), "{error}");
+    }
+
+    #[test]
+    fn includes_are_a_directive_and_never_reach_the_config() {
+        let root = tree(
+            "directive",
+            &[
+                ("config.toml", "includes = [{ file = \"colors.toml\" }]\n"),
+                ("colors.toml", "[bar]\nheight = 30\n"),
+            ],
+        );
+
+        let mut state = IncludeState::default();
+        let merged = load_and_merge_config(&root, &mut state).unwrap();
+
+        // Consumed on the way in, so it cannot be observed as a value…
+        assert!(merged.get("includes").is_none());
+        // …and therefore never printed back out as a phantom setting.
+        let template = generate_commented_config();
+        assert!(!template.contains("includes = []"), "{template}");
+        // The directive is still discoverable, with its real syntax.
+        assert!(template.contains("includes = [{ file ="), "{template}");
+    }
+
+    #[test]
+    fn a_tilde_expands_to_the_home_directory() {
+        let home = home_dir().unwrap();
+        let including = Path::new("/etc/instantwm/config.toml");
+
+        assert_eq!(
+            IncludeSpec {
+                file: "~/colors.toml".into()
+            }
+            .resolve(including)
+            .unwrap(),
+            home.join("colors.toml")
+        );
+        // A bare `~` is the directory itself, not a path under a literal `~`.
+        assert_eq!(
+            IncludeSpec { file: "~".into() }.resolve(including).unwrap(),
+            home
+        );
+        // Nested and absolute-in-home paths both work.
+        assert_eq!(
+            IncludeSpec {
+                file: "~/dotfiles/iwm/colors.toml".into()
+            }
+            .resolve(including)
+            .unwrap(),
+            home.join("dotfiles/iwm/colors.toml")
+        );
+    }
+
+    #[test]
+    fn another_users_home_directory_is_rejected() {
+        // `~root/x` names another account, which needs a passwd lookup this does
+        // not do. It must not resolve to a literal directory called `~root`.
+        let error = IncludeSpec {
+            file: "~root/colors.toml".into(),
+        }
+        .resolve(Path::new("/etc/instantwm/config.toml"))
+        .unwrap_err();
+
+        assert!(error.contains("~root/colors.toml"), "{error}");
+        assert!(error.contains("'~/'"), "{error}");
+    }
+
+    #[test]
+    fn non_tilde_paths_keep_their_own_rules() {
+        // Absolute paths are taken as written; relative ones resolve against the
+        // including file, never the process working directory.
+        assert_eq!(
+            IncludeSpec {
+                file: "/etc/iwm/colors.toml".into()
+            }
+            .resolve(Path::new("/home/u/.config/instantwm/config.toml"))
+            .unwrap(),
+            Path::new("/etc/iwm/colors.toml")
+        );
+        assert_eq!(
+            IncludeSpec {
+                file: "colors.toml".into()
+            }
+            .resolve(Path::new("/home/u/.config/instantwm/config.toml"))
+            .unwrap(),
+            Path::new("/home/u/.config/instantwm/colors.toml")
+        );
+        // A `~` that is not the whole first component is an ordinary name.
+        assert_eq!(
+            IncludeSpec {
+                file: "backup~/colors.toml".into()
+            }
+            .resolve(Path::new("/cfg/config.toml"))
+            .unwrap(),
+            Path::new("/cfg/backup~/colors.toml")
+        );
+    }
+
+    #[test]
+    fn an_expanded_tilde_reaches_the_loader() {
+        let root = tree(
+            "tilde",
+            &[(
+                "config.toml",
+                "includes = [{ file = \"~/instantwm-include-tilde-probe.toml\" }]\n",
+            )],
+        );
+
+        let error = load(&root).unwrap_err();
+
+        // Expansion happened before the existence check, so the report names the
+        // real path rather than a literal `~/…`.
+        assert!(!error.contains('~'), "{error}");
+        assert!(
+            error.contains("instantwm-include-tilde-probe.toml"),
+            "{error}"
+        );
+        assert!(
+            error.contains(&home_dir().unwrap().display().to_string()),
+            "{error}"
+        );
     }
 }
