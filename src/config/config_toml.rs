@@ -20,10 +20,55 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct IncludeSpec {
-    /// Path of the file to inline. A relative path resolves against the
-    /// directory of the *including* file, so a split-up config keeps resolving
-    /// the same way no matter which file pulls it in.
+    /// Path of the file to inline. A leading `~/` is the user's home directory,
+    /// and a relative path resolves against the directory of the *including*
+    /// file. See [`IncludeSpec::resolve`].
     pub file: PathBuf,
+}
+
+impl IncludeSpec {
+    /// Resolve this entry against the file that included it.
+    ///
+    /// A leading `~` or `~/` is the user's home directory, so a config can name
+    /// a file in `$HOME` without the user having to spell out their home path.
+    /// Otherwise an absolute path is taken as written, and a relative path
+    /// resolves against `including_file`'s directory — not the process working
+    /// directory — so a split-up config resolves the same way no matter which
+    /// file pulls it in, and `instantwm` started from anywhere still finds it.
+    fn resolve(&self, including_file: &Path) -> Result<PathBuf, String> {
+        // The tilde is matched on raw text: `Path` compares whole components, so
+        // it cannot tell `~/colors.toml` from the `~user/colors.toml` form.
+        if let Some(text) = self.file.to_str().filter(|text| text.starts_with('~')) {
+            return match text {
+                "~" => home_dir(),
+                _ => match text.strip_prefix("~/") {
+                    Some(rest) => Ok(home_dir()?.join(rest)),
+                    // `~user` names another account, which needs a passwd lookup
+                    // this does not do. Say so rather than resolving a literal
+                    // directory that happens to be called `~user`.
+                    None => Err(format!(
+                        "unsupported include path '{text}': \
+                         use '~/' for your home directory, or an absolute path"
+                    )),
+                },
+            };
+        }
+
+        if self.file.is_absolute() {
+            return Ok(self.file.clone());
+        }
+
+        Ok(including_file
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join(&self.file))
+    }
+}
+
+/// The user's home directory, for `~` in an include path.
+fn home_dir() -> Result<PathBuf, String> {
+    dirs::home_dir()
+        .ok_or_else(|| "cannot expand '~' in an include path: no home directory is set".to_string())
 }
 
 /// Mode specification for sway-like modes.
@@ -926,10 +971,12 @@ pub fn generate_commented_config() -> String {
     out.push_str("# Config changes are applied on reload (instantwmctl reload).\n");
     out.push_str("#\n");
     out.push_str(
-        "# A config can be split across files. Each `includes` entry names a file to \
-         inline as if it\n# were written here; relative paths resolve against the file that \
-         includes it, and the\n# including file wins on conflicts:\n#\n#     includes = [{ file = \
-         \"colors.toml\" }]\n#\n",
+        "# A config can be split across files. Each `includes` entry names a file to inline as if it\n\
+         # were written here. The including file wins on conflicts, `~/` is your home directory, and\n\
+         # any other relative path resolves against the file that includes it:\n\
+         #\n\
+         #     includes = [{ file = \"colors.toml\" }, { file = \"~/dotfiles/keys.toml\" }]\n\
+         #\n",
     );
     out.push_str(
         "# Use `instantwm --print-config` to see the full default config with all values.\n",
@@ -1005,17 +1052,17 @@ fn load_and_merge_config(path: &Path, state: &mut IncludeState) -> Result<toml::
     // Taken, not copied: `includes` is consumed here, which is what keeps it
     // out of the merged tree and therefore out of `UserConfig`.
     let specs = take_include_specs(&mut value, path)?;
-    let parent_dir = path.parent().unwrap_or(Path::new("."));
 
     let mut merged_base = toml::Value::Table(toml::Table::new());
 
     state.stack.push(canonical_path.clone());
     for (index, spec) in specs.iter().enumerate() {
-        let include_path = if spec.file.is_absolute() {
-            spec.file.clone()
-        } else {
-            parent_dir.join(&spec.file)
-        };
+        let include_path = spec.resolve(path).map_err(|error| {
+            format!(
+                "config error in {}: includes[{index}]: {error}",
+                path.display()
+            )
+        })?;
 
         if !include_path.exists() {
             return Err(format!(
@@ -1876,5 +1923,104 @@ mod include_tests {
         assert!(!template.contains("includes = []"), "{template}");
         // The directive is still discoverable, with its real syntax.
         assert!(template.contains("includes = [{ file ="), "{template}");
+    }
+
+    #[test]
+    fn a_tilde_expands_to_the_home_directory() {
+        let home = home_dir().unwrap();
+        let including = Path::new("/etc/instantwm/config.toml");
+
+        assert_eq!(
+            IncludeSpec {
+                file: "~/colors.toml".into()
+            }
+            .resolve(including)
+            .unwrap(),
+            home.join("colors.toml")
+        );
+        // A bare `~` is the directory itself, not a path under a literal `~`.
+        assert_eq!(
+            IncludeSpec { file: "~".into() }.resolve(including).unwrap(),
+            home
+        );
+        // Nested and absolute-in-home paths both work.
+        assert_eq!(
+            IncludeSpec {
+                file: "~/dotfiles/iwm/colors.toml".into()
+            }
+            .resolve(including)
+            .unwrap(),
+            home.join("dotfiles/iwm/colors.toml")
+        );
+    }
+
+    #[test]
+    fn another_users_home_directory_is_rejected() {
+        // `~root/x` names another account, which needs a passwd lookup this does
+        // not do. It must not resolve to a literal directory called `~root`.
+        let error = IncludeSpec {
+            file: "~root/colors.toml".into(),
+        }
+        .resolve(Path::new("/etc/instantwm/config.toml"))
+        .unwrap_err();
+
+        assert!(error.contains("~root/colors.toml"), "{error}");
+        assert!(error.contains("'~/'"), "{error}");
+    }
+
+    #[test]
+    fn non_tilde_paths_keep_their_own_rules() {
+        // Absolute paths are taken as written; relative ones resolve against the
+        // including file, never the process working directory.
+        assert_eq!(
+            IncludeSpec {
+                file: "/etc/iwm/colors.toml".into()
+            }
+            .resolve(Path::new("/home/u/.config/instantwm/config.toml"))
+            .unwrap(),
+            Path::new("/etc/iwm/colors.toml")
+        );
+        assert_eq!(
+            IncludeSpec {
+                file: "colors.toml".into()
+            }
+            .resolve(Path::new("/home/u/.config/instantwm/config.toml"))
+            .unwrap(),
+            Path::new("/home/u/.config/instantwm/colors.toml")
+        );
+        // A `~` that is not the whole first component is an ordinary name.
+        assert_eq!(
+            IncludeSpec {
+                file: "backup~/colors.toml".into()
+            }
+            .resolve(Path::new("/cfg/config.toml"))
+            .unwrap(),
+            Path::new("/cfg/backup~/colors.toml")
+        );
+    }
+
+    #[test]
+    fn an_expanded_tilde_reaches_the_loader() {
+        let root = tree(
+            "tilde",
+            &[(
+                "config.toml",
+                "includes = [{ file = \"~/instantwm-include-tilde-probe.toml\" }]\n",
+            )],
+        );
+
+        let error = load(&root).unwrap_err();
+
+        // Expansion happened before the existence check, so the report names the
+        // real path rather than a literal `~/…`.
+        assert!(!error.contains('~'), "{error}");
+        assert!(
+            error.contains("instantwm-include-tilde-probe.toml"),
+            "{error}"
+        );
+        assert!(
+            error.contains(&home_dir().unwrap().display().to_string()),
+            "{error}"
+        );
     }
 }
