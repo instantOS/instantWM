@@ -89,12 +89,19 @@ impl WaylandState {
     fn register_toplevel(&mut self, surface: ToplevelSurface, is_overlay: bool) -> WindowId {
         let window = Window::new_wayland_window(surface);
         let window_id = self.alloc_window_id();
-        let _ = window
+        // This is a write, not a lazy cache: `window` was constructed on the line
+        // above, so an already-present marker would mean the window carries an id
+        // that disagrees with the `window_index` key inserted below.
+        let marker_inserted = window
             .user_data()
-            .get_or_insert_threadsafe(|| WindowIdMarker {
+            .insert_if_missing_threadsafe(|| WindowIdMarker {
                 id: window_id,
                 is_overlay,
             });
+        debug_assert!(
+            marker_inserted,
+            "fresh Window already carries a WindowIdMarker; its id would diverge from window_index"
+        );
 
         self.window_index.insert(window_id, window.clone());
 

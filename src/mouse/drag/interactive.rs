@@ -350,12 +350,27 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModM
 mod tests {
     use super::apply_active_drag_motion;
     use crate::backend::{Backend, wayland::WaylandBackend};
-    use crate::test_support::add_client_with;
+    use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::{
-        ClientMode, InteractionSource, ModMask, Monitor, MouseButton, Point, Rect, ResizeDirection,
-        TagMask, WindowId,
+        ClientMode, InteractionSource, ModMask, MonitorId, MouseButton, Point, Rect,
+        ResizeDirection, TagMask, WindowId,
     };
     use crate::wm::Wm;
+
+    /// Push the 1920x1080 monitor these drag fixtures sit on.
+    ///
+    /// The tag list is seeded because every caller then selects tag 1, which a
+    /// monitor without tags would silently swallow.
+    fn push_drag_monitor(wm: &mut Wm, bar_shown: bool) -> MonitorId {
+        let rect = Rect::new(0, 0, 1920, 1080);
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(rect, rect)
+                .bar(0, bar_shown)
+                .tag_count(9)
+                .build(),
+        )
+    }
 
     #[test]
     #[ignore = "requires a dedicated Xvfb display"]
@@ -387,12 +402,7 @@ mod tests {
         wm.core.derived.display.width = 1920;
         wm.core.derived.display.height = 1080;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, false);
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -500,11 +510,7 @@ mod tests {
     fn end_edge_resize_accounts_for_the_modelled_border() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, true);
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -565,11 +571,7 @@ mod tests {
     fn mid_drag_tag_switch_cancels_instead_of_steering_a_hidden_window() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, true);
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model

@@ -72,24 +72,26 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::test_support::add_client_with;
-    use crate::types::{Monitor, TagMask};
+    use crate::test_support::{MonitorBuilder, add_client_with};
+    use crate::types::TagMask;
     use crate::wm::Wm;
 
     #[test]
     fn drop_uses_the_clients_assignment_not_the_selected_monitor() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let source = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1000, 800),
-            available_rect: Rect::new(0, 0, 1000, 800),
-            ..Monitor::default()
-        });
-        let target = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(1000, 0, 1000, 800),
-            available_rect: Rect::new(1000, 0, 1000, 800),
-            ..Monitor::default()
-        });
+        let source = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1000, 800))
+                .tag_count(4)
+                .build(),
+        );
+        let target = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(1000, 0, 1000, 800))
+                .tag_count(4)
+                .build(),
+        );
         wm.core
             .model
             .monitor_mut(source)

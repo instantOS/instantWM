@@ -236,7 +236,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
         let Some(monitor) = ctx.core().model().monitor(selmon_id) else {
             return;
         };
-        let client_windows: Vec<WindowId> = monitor.clients.keys().copied().collect();
+        let client_windows: Vec<WindowId> = monitor.clients().keys().copied().collect();
         (monitor.selected_tags(), client_windows)
     };
 

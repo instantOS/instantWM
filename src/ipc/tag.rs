@@ -44,7 +44,8 @@ mod tests {
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::config_toml::TagsConfig;
     use crate::config::resolve_config;
-    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, Rect, TagMask, WindowId};
 
     fn wm(show_icons: bool) -> Wm {
         let mut user: crate::config::config_toml::UserConfig = toml::from_str("").unwrap();
@@ -56,10 +57,11 @@ mod tests {
         };
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 800, 600),
-            ..Monitor::default()
-        });
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 800, 600))
+                .build(),
+        );
         wm.core.apply_config(config).unwrap();
         wm.core
             .model

@@ -58,7 +58,7 @@ pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Option<Vec<WindowId>
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
     let mut transient_stack = Vec::new();
-    for win in monitor.z_order.iter_bottom_to_top() {
+    for win in monitor.z_order().iter_bottom_to_top() {
         if let Some(c) = monitor.client(win)
             && c.is_visible(selected_tags)
         {

@@ -5,7 +5,7 @@ use super::{
 use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
-use crate::test_support::{add_client, add_selected_client};
+use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
 use crate::types::{
     Client, ClientMode, ClientPlacement, InteractionSource, Monitor, MonitorUiMetrics, MouseButton,
     Point, Rect, ResizeDirection, Size, TagMask, WindowId,
@@ -35,12 +35,14 @@ fn add_tiled_monitor(
     monitor_rect: Rect,
 ) -> crate::types::MonitorId {
     let tags = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect,
-        available_rect: monitor_rect,
-        bar_default_show: false,
-        ..Monitor::default()
-    });
+    let monitor_id = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .rect(monitor_rect, monitor_rect)
+            .bar(0, false)
+            .tag_count(9)
+            .selected_tags(tags)
+            .build(),
+    );
     wm.core.model.monitors.set_selected(monitor_id);
     // Adoption pushes each window onto the front of the focus list, so adding
     // back-to-front leaves it in `windows` order — the order these fixtures
@@ -58,11 +60,6 @@ fn add_tiled_monitor(
             add_client(&mut wm.core.model, monitor_id, client);
         }
     }
-    wm.core
-        .model
-        .monitor_mut(monitor_id)
-        .unwrap()
-        .set_selected_tags(tags);
     monitor_id
 }
 
@@ -171,12 +168,11 @@ fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
     let live = WindowId(1);
     let destroyed = WindowId(2);
     let unrelated_monitor = add_tiled_monitor(&mut wm, &[live], Rect::new(800, 0, 800, 600));
-    let arranged_monitor = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 800, 600),
-        available_rect: Rect::new(0, 0, 800, 600),
-        bar_default_show: false,
-        ..Monitor::default()
-    });
+    let arranged_monitor = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 800, 600))
+            .build(),
+    );
     wm.work.spawn_animations.extend([live, destroyed]);
 
     super::arrange(&mut wm.ctx(), Some(arranged_monitor));
@@ -306,18 +302,19 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
 /// A bar-bearing monitor that owns `order` bottom-to-top, with `selected`
 /// focused.
 ///
-/// The monitor is built outside any model, so it must own its clients itself:
-/// `order` is both its focus list and its persistent z-order, and each window
-/// gets a plain visible-on-tag-1 client.
+/// The monitor is built outside any model, so `MonitorBuilder::owning` is what
+/// puts each window in the focus list and the persistent z-order at once:
+/// `order` is both. Each window gets a plain visible-on-tag-1 client, and the
+/// tag list is seeded so selecting tag 1 is a real selection rather than an
+/// empty mask that reads as an all-tags view.
 fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
-    let mut monitor = Monitor::default();
-    monitor.set_selected_tags(TagMask::single(1).unwrap());
-    monitor.selected = Some(selected);
-    monitor.bar_win = WindowId(99);
-    for &win in order {
-        monitor.adopt_client(visible_client(win), false);
-    }
-    assert!(monitor.set_focus_order(order.to_vec()));
+    let mut monitor = MonitorBuilder::new()
+        .bar_window(WindowId(99))
+        .tag_count(9)
+        .selected_tags(TagMask::single(1).unwrap())
+        .owning(order, order.iter().copied().map(visible_client))
+        .build();
+    monitor.set_selected(Some(selected));
     monitor
 }
 
@@ -329,7 +326,7 @@ fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
 /// newest-first insertion would reverse the order they describe.
 fn append_visible_client(monitor: &mut Monitor, win: WindowId) {
     monitor.adopt_client(visible_client(win), false);
-    let mut order = monitor.stack.to_vec();
+    let mut order = monitor.focus_order().to_vec();
     order.rotate_left(1);
     assert!(monitor.set_focus_order(order));
 }
@@ -439,7 +436,7 @@ fn tiled_focus_does_not_mutate_or_project_a_different_persistent_order() {
         vec![WindowId(1), WindowId(2), WindowId(3), WindowId(99)]
     );
     assert_eq!(
-        monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+        monitor.z_order().iter_bottom_to_top().collect::<Vec<_>>(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
 }
@@ -510,7 +507,7 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         WindowId(1),
     );
     monitor.available_rect = crate::types::Rect::new(0, 0, 100, 100);
-    let windows = monitor.stack.to_vec();
+    let windows = monitor.focus_order().to_vec();
     monitor
         .per_tag_state()
         .layout_tree
@@ -693,28 +690,29 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
     let tags = TagMask::single(1).unwrap();
     let win = WindowId(1);
     let original = Rect::new(0, 0, 1200, 800);
-    let mut monitor = Monitor {
-        monitor_rect: original,
-        available_rect: original,
-        overview_state: Some(crate::overview::OverviewState::new(
-            tags,
-            vec![win],
-            HashMap::from([(win, original)]),
-            Some(win),
-        )),
-        ..Monitor::default()
-    };
-    monitor.set_selected_tags(tags);
-    monitor.adopt_client(
-        Client {
-            win,
-            tags,
-            geo: original,
-            mode: ClientMode::tiled().as_fullscreen(),
-            ..Client::default()
-        },
-        false,
-    );
+    let mut monitor = MonitorBuilder::new()
+        .monitor_rect(original)
+        .tag_count(9)
+        .selected_tags(tags)
+        .configure(|monitor| {
+            monitor.overview_state = Some(crate::overview::OverviewState::new(
+                tags,
+                vec![win],
+                HashMap::from([(win, original)]),
+                Some(win),
+            ));
+        })
+        .owning(
+            &[win],
+            [Client {
+                win,
+                tags,
+                geo: original,
+                mode: ClientMode::tiled().as_fullscreen(),
+                ..Client::default()
+            }],
+        )
+        .build();
 
     let plan = monitor.compute_arrange(&LayoutConfig::default(), true, false);
 
@@ -948,7 +946,7 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
         vec![WindowId(3), WindowId(1), WindowId(99), WindowId(2)]
     );
     assert_eq!(
-        monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+        monitor.z_order().iter_bottom_to_top().collect::<Vec<_>>(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
 }

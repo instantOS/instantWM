@@ -46,22 +46,20 @@ pub fn layout_status(wm: &Wm) -> Response {
 mod tests {
     use super::*;
     use crate::backend::{Backend, wayland::WaylandBackend};
-    use crate::types::{Client, ClientMode, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
 
     fn wm_with_monitor() -> Wm {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1200, 800))
+                .tag_count(1)
+                .selected_tags(tags)
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .set_selected_tags(tags);
         let mut client = Client {
             win: WindowId(1),
             tags,

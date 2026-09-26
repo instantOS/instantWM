@@ -59,19 +59,21 @@ pub(crate) fn visible_tags(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::MonitorBuilder;
     use crate::types::Tag;
 
     fn monitor_with(tags: &[(&str, &str)]) -> Monitor {
-        Monitor {
-            tags: tags
-                .iter()
-                .map(|(name, icon)| Tag {
-                    name: (*name).to_string(),
-                    icon: (*icon).to_string(),
-                })
-                .collect(),
-            ..Monitor::default()
-        }
+        MonitorBuilder::new()
+            .configure(|monitor| {
+                monitor.tags = tags
+                    .iter()
+                    .map(|(name, icon)| Tag {
+                        name: (*name).to_string(),
+                        icon: (*icon).to_string(),
+                    })
+                    .collect();
+            })
+            .build()
     }
 
     #[test]

@@ -380,7 +380,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
         .core()
         .model()
         .expect_selected_monitor()
-        .clients
+        .clients()
         .is_empty()
     {
         return;

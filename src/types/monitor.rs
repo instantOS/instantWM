@@ -11,7 +11,6 @@
 //! consistent with the owned set.
 
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 
 use crate::layouts::LayoutCommand;
 use crate::layouts::PresentationMode;
@@ -50,49 +49,12 @@ pub struct MonitorUiMetrics {
     pub startmenu_size: i32,
 }
 
-/// The clients owned by one monitor. Other modules may inspect this map, but
-/// ownership changes must go through `Monitor` so its orderings stay in sync.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct OwnedClients(HashMap<WindowId, Client>);
-
-/// Read-only focus order outside the monitor's own mutation methods.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct FocusOrder(Vec<WindowId>);
-
-impl Deref for FocusOrder {
-    type Target = Vec<WindowId>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-/// Read-only persistent stacking order outside the monitor's own methods.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct OwnedZOrder(ClientZOrder);
-
-impl Deref for OwnedZOrder {
-    type Target = ClientZOrder;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 /// Client state carried away from a disconnected output. The two orders are
 /// independent: focus order drives cycling, while z-order drives overlap.
 #[derive(Debug)]
 pub(crate) struct OrphanedMonitorClients {
     pub clients_in_reverse_focus_order: Vec<(Client, bool)>,
     pub z_order: Vec<WindowId>,
-}
-
-impl Deref for OwnedClients {
-    type Target = HashMap<WindowId, Client>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 /// Internal state of a monitor (screen) in the window manager.
@@ -145,11 +107,16 @@ pub struct Monitor {
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
     pub tags: Vec<Tag>,
-    /// Clients this monitor owns. The map has no external insertion or removal
-    /// API; ownership changes update the focus and z-order lists together.
-    pub(crate) clients: OwnedClients,
-    /// Client list (focus order).
-    pub(crate) stack: FocusOrder,
+    /// Clients this monitor owns. Private because ownership changes must also
+    /// update the focus stack and z-order; read it through
+    /// [`Self::clients`] and change it through [`Self::adopt_client`] or
+    /// [`Self::take_client`].
+    clients: HashMap<WindowId, Client>,
+    /// Client list (focus order). Private for the same reason as `clients`;
+    /// read it through [`Self::focus_order`] and change it through
+    /// [`Self::set_focus_order`], [`Self::move_client_in_stack`], or
+    /// [`Self::swap_clients_in_stack`].
+    stack: Vec<WindowId>,
     /// Currently selected client.
     pub selected: Option<WindowId>,
     /// Most-recently-used focus order per tag mask, oldest to newest.
@@ -162,8 +129,10 @@ pub struct Monitor {
     pub per_tag: HashMap<TagMask, PerTagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
-    /// Persistent client z-order.
-    pub(crate) z_order: OwnedZOrder,
+    /// Persistent client z-order. Private because a reorder must not be able
+    /// to drop a window from the owned set; read it through [`Self::z_order`]
+    /// and change it through [`Self::raise_client`] or the adopt/take pair.
+    z_order: ClientZOrder,
     /// Monitor name (e.g., "DP-1", "HDMI-1").
     pub name: String,
 }
@@ -189,13 +158,13 @@ impl Default for Monitor {
             bottom_bar_indicator_win: WindowId::default(),
             prev_tag: None,
             tags: Vec::new(),
-            clients: OwnedClients::default(),
-            stack: FocusOrder::default(),
+            clients: HashMap::new(),
+            stack: Vec::new(),
             selected: None,
             focus_history: HashMap::new(),
             per_tag: HashMap::new(),
             overview_state: None,
-            z_order: OwnedZOrder::default(),
+            z_order: ClientZOrder::default(),
             name: String::new(),
         }
     }
@@ -460,10 +429,40 @@ impl Monitor {
         self.clients.get(&win)
     }
 
+    /// The clients this monitor owns, keyed by window.
+    ///
+    /// Read-only by design: the owned set, focus stack, and z-order are one
+    /// graph, so inserting or removing here directly would leave the other two
+    /// stale. Use [`Self::adopt_client`] / [`Self::take_client`] to change
+    /// ownership, or [`Self::client_mut`] to edit a client in place.
+    #[inline]
+    pub fn clients(&self) -> &HashMap<WindowId, Client> {
+        &self.clients
+    }
+
+    /// This monitor's focus order, oldest first.
+    ///
+    /// Read-only for the same reason as [`Self::clients`]. Runtime reordering
+    /// goes through [`Self::move_client_in_stack`] or
+    /// [`Self::swap_clients_in_stack`].
+    #[inline]
+    pub fn focus_order(&self) -> &[WindowId] {
+        &self.stack
+    }
+
+    /// This monitor's persistent stacking order, bottom to top.
+    ///
+    /// Read-only for the same reason as [`Self::clients`]. Reordering goes
+    /// through [`Self::raise_client`] or the adopt/take pair.
+    #[inline]
+    pub fn z_order(&self) -> &ClientZOrder {
+        &self.z_order
+    }
+
     /// Return a client this monitor owns, mutably.
     #[inline]
     pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
-        self.clients.0.get_mut(&win)
+        self.clients.get_mut(&win)
     }
 
     /// Whether this monitor owns `win`.
@@ -482,13 +481,13 @@ impl Monitor {
         {
             return false;
         }
-        self.stack.0 = order;
+        self.stack = order;
         true
     }
 
     /// Raise a client in this monitor's persistent overlap order.
     pub(crate) fn raise_client(&mut self, win: WindowId) -> bool {
-        self.has_client(win) && self.z_order.0.raise(win)
+        self.has_client(win) && self.z_order.raise(win)
     }
 
     /// Adopt a client already checked for global uniqueness by `WmModel`.
@@ -498,9 +497,9 @@ impl Monitor {
             !self.has_client(win),
             "client already owned by this monitor"
         );
-        self.clients.0.insert(win, client);
-        self.stack.0.insert(0, win);
-        self.z_order.0.attach_top(win);
+        self.clients.insert(win, client);
+        self.stack.insert(0, win);
+        self.z_order.attach_top(win);
         if selected {
             self.selected = Some(win);
         }
@@ -508,9 +507,9 @@ impl Monitor {
 
     /// Remove a client and all monitor-local references to it.
     pub(crate) fn take_client(&mut self, win: WindowId) -> Option<(Client, bool)> {
-        let client = self.clients.0.remove(&win)?;
-        self.stack.0.retain(|candidate| *candidate != win);
-        self.z_order.0.remove(win);
+        let client = self.clients.remove(&win)?;
+        self.stack.retain(|candidate| *candidate != win);
+        self.z_order.remove(win);
         let was_selected = self.selected == Some(win);
         if was_selected {
             self.selected = None;
@@ -539,8 +538,8 @@ impl Monitor {
         let mut orphaned = Vec::with_capacity(self.clients.len());
         // Adoption prepends. Walk the old stack backwards to preserve its
         // order after every client has been placed on the survivor.
-        for win in std::mem::take(&mut self.stack.0).into_iter().rev() {
-            if let Some(client) = self.clients.0.remove(&win) {
+        for win in std::mem::take(&mut self.stack).into_iter().rev() {
+            if let Some(client) = self.clients.remove(&win) {
                 orphaned.push((client, selected == Some(win)));
             }
         }
@@ -774,27 +773,27 @@ impl Monitor {
             match direction {
                 StackDirection::Previous => {
                     if pos > 0 {
-                        self.stack.0.swap(pos, pos - 1);
+                        self.stack.swap(pos, pos - 1);
                         return true;
                     } else {
                         // Wrap to end: move first element to end
                         if self.stack.len() > 1 {
-                            let first = self.stack.0.remove(0);
-                            self.stack.0.push(first);
+                            let first = self.stack.remove(0);
+                            self.stack.push(first);
                             return true;
                         }
                     }
                 }
                 StackDirection::Next => {
                     if pos + 1 < self.stack.len() {
-                        self.stack.0.swap(pos, pos + 1);
+                        self.stack.swap(pos, pos + 1);
                         return true;
                     } else {
                         // Wrap to beginning: move last element to front
                         if self.stack.len() > 1 {
-                            let last = self.stack.0.pop();
+                            let last = self.stack.pop();
                             if let Some(last) = last {
-                                self.stack.0.insert(0, last);
+                                self.stack.insert(0, last);
                                 return true;
                             }
                         }
@@ -826,7 +825,7 @@ impl Monitor {
         if a == b {
             return false;
         }
-        self.stack.0.swap(a, b);
+        self.stack.swap(a, b);
         true
     }
 

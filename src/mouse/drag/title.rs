@@ -481,22 +481,38 @@ mod tests {
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::tree::Preset;
     use crate::mouse::constants::DRAG_THRESHOLD;
-    use crate::test_support::add_client_with;
+    use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::{
-        Client, ClientMode, InteractionSource, Monitor, MonitorId, MouseButton, Point, Rect,
-        SnapPosition, TagMask, WindowId,
+        Client, ClientMode, InteractionSource, MonitorId, MouseButton, Point, Rect, SnapPosition,
+        TagMask, WindowId,
     };
     use crate::wm::Wm;
+
+    /// Push the 1200x800 monitor every drag fixture sits on.
+    ///
+    /// `tag_count` must be non-zero for a fixture that calls
+    /// `set_selected_tags`: a monitor with no tag list leaves the selection
+    /// looking like an all-tags view.
+    fn push_drag_monitor(
+        wm: &mut Wm,
+        available: Rect,
+        bar_height: i32,
+        bar_shown: bool,
+        tag_count: usize,
+    ) -> MonitorId {
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1200, 800), available)
+                .bar(bar_height, bar_shown)
+                .tag_count(tag_count)
+                .build(),
+        )
+    }
 
     fn tiled_pair_fixture() -> (Wm, WindowId, Rect) {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            bar_default_show: false,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 0, false, 9);
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(21), WindowId(22)];
         // `add_client` adopts newest-first, so add back-to-front to leave the
@@ -560,13 +576,7 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            bar_height: 30,
-            bar_default_show: true,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 30, true, 9);
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(31), WindowId(32)];
         for &win in windows.iter().rev() {
@@ -743,11 +753,7 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
         let work = Rect::new(0, 30, 1200, 770);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: work,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, work, 0, true, 0);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(23);
         let saved = Rect::new(250, 180, 600, 420);
@@ -779,11 +785,7 @@ mod tests {
     #[test]
     fn edge_scratchpad_cannot_start_a_move_drag() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 30, 1200, 770),
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 30, 1200, 770), 0, true, 0);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(24);
         let mut client = Client {

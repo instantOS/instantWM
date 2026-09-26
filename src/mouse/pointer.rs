@@ -139,6 +139,7 @@ mod tests {
     };
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::model::WmModel;
+    use crate::test_support::MonitorBuilder;
     use crate::types::{Monitor, Point, Rect, SIDEBAR_WIDTH, WindowId};
 
     #[test]
@@ -226,11 +227,12 @@ mod tests {
     #[test]
     fn global_sidebar_hit_test_depends_only_on_monitor_geometry() {
         let mut model = WmModel::new();
-        model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            bar_height: 30,
-            ..Monitor::default()
-        });
+        model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(30, true)
+                .build(),
+        );
         let point = Point::new(1900, 500);
 
         let target = sidebar_target_at(&model, point).expect("sidebar hit");

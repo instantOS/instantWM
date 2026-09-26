@@ -252,7 +252,8 @@ mod tests {
     use super::toggle_fake_fullscreen;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     #[test]
@@ -260,16 +261,13 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.config.window.border_width_px = 3;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(100, 50, 1200, 800),
-            available_rect: Rect::new(100, 50, 1200, 800),
-            ..Monitor::default()
-        });
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .set_selected_tags(tags);
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(100, 50, 1200, 800), Rect::new(100, 50, 1200, 800))
+                .tag_count(1)
+                .selected_tags(tags)
+                .build(),
+        );
 
         let win = WindowId(7);
         assert!(wm.core.model.add_client(

@@ -248,8 +248,8 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::test_support::{add_selected_client_with, push_monitor_with};
-    use crate::types::{ClientMode, Monitor, MonitorId, Rect, TagMask, WindowId};
+    use crate::test_support::{MonitorBuilder, add_selected_client_with, push_monitor_with};
+    use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     fn floating_drag_fixture(source: InteractionSource) -> (Wm, WindowId) {
@@ -408,14 +408,14 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
         let tags = TagMask::single(2).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: true,
-            show_bottom_bar: true,
-            bottom_bar_height: 30,
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(0, true)
+                .bottom_bar(30, true)
+                .tag_count(9)
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model

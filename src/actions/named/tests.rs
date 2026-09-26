@@ -7,9 +7,9 @@ use crate::config::config_toml::{HorizontalEdge, VerticalEdge};
 use crate::layouts::tree::Preset;
 
 use crate::layouts::{LayoutCommand, PresentationMode};
-use crate::test_support::add_client;
+use crate::test_support::{MonitorBuilder, add_client};
 use crate::types::{
-    Client, ClientMode, HorizontalDirection, Monitor, MonitorId, Rect, StackDirection, TagMask,
+    Client, ClientMode, HorizontalDirection, MonitorId, Rect, StackDirection, TagMask,
     VerticalDirection, WindowId,
 };
 use crate::wm::Wm;
@@ -33,11 +33,12 @@ fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
     wm.core.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 1200, 800),
-        available_rect: Rect::new(0, 0, 1200, 800),
-        ..Monitor::default()
-    });
+    let monitor_id = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1200, 800))
+            .tag_count(3)
+            .build(),
+    );
     wm.core.model.monitors.set_selected(monitor_id);
     for &win in windows {
         add_client(
@@ -269,11 +270,12 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
     wm.core.model.tags.num_tags = 3;
     let tag1 = TagMask::single(1).unwrap();
     let tag2 = TagMask::single(2).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 1200, 800),
-        available_rect: Rect::new(0, 0, 1200, 800),
-        ..Monitor::default()
-    });
+    let monitor_id = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1200, 800))
+            .tag_count(3)
+            .build(),
+    );
     wm.core.model.monitors.set_selected(monitor_id);
 
     let left = WindowId(1);
@@ -478,11 +480,12 @@ fn stacked_wm() -> (Wm, [WindowId; 3]) {
     let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
     wm.core.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 1200, 800),
-        available_rect: Rect::new(0, 0, 1200, 800),
-        ..Monitor::default()
-    });
+    let monitor_id = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1200, 800))
+            .tag_count(3)
+            .build(),
+    );
     wm.core.model.monitors.set_selected(monitor_id);
 
     let [top, middle, bottom] = [WindowId(1), WindowId(2), WindowId(3)];
@@ -589,11 +592,12 @@ fn tiled_row_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
     wm.core.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 1200, 800),
-        available_rect: Rect::new(0, 0, 1200, 800),
-        ..Monitor::default()
-    });
+    let monitor_id = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1200, 800))
+            .tag_count(3)
+            .build(),
+    );
     wm.core.model.monitors.set_selected(monitor_id);
     // Real geometry laid out left to right, in slice order. Without it every
     // window would share one centre and a geometric wrap would have nothing
@@ -668,11 +672,12 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
     let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
     wm.core.model.tags.num_tags = 3;
     let tag1 = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(Monitor {
-        monitor_rect: Rect::new(0, 0, 1200, 800),
-        available_rect: Rect::new(0, 0, 1200, 800),
-        ..Monitor::default()
-    });
+    let monitor_id = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1200, 800))
+            .tag_count(3)
+            .build(),
+    );
     wm.core.model.monitors.set_selected(monitor_id);
     for (win, x) in [(a, 0), (b, 400), (c, 800)] {
         add_client(

@@ -181,6 +181,7 @@ mod tests {
     };
     use crate::config::config_toml::LayoutConfig;
     use crate::layouts::PresentationMode;
+    use crate::test_support::MonitorBuilder;
     use crate::types::{Monitor, Rect};
 
     fn config_with_gaps(inner_gap: i32, outer_gap: i32, smart_gaps: bool) -> LayoutConfig {
@@ -194,10 +195,9 @@ mod tests {
     }
 
     fn monitor_with_work_rect(work_rect: Rect) -> Monitor {
-        Monitor {
-            available_rect: work_rect,
-            ..Monitor::default()
-        }
+        MonitorBuilder::new()
+            .configure(|monitor| monitor.available_rect = work_rect)
+            .build()
     }
 
     #[test]

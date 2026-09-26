@@ -444,6 +444,7 @@ mod tests {
     };
     use crate::core_state::{CoreState, DisplayConfig};
     use crate::model::WmModel;
+    use crate::test_support::MonitorBuilder;
     use crate::types::{Client, Monitor, Point, Rect, Size, SnapPosition, TagMask, WindowId};
 
     fn outer_rect(rect: Rect, border: i32) -> Rect {
@@ -573,11 +574,11 @@ mod tests {
     #[test]
     fn geometry_sync_records_only_real_floating_placements() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1000, 800),
-            available_rect: Rect::new(0, 30, 1000, 770),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1000, 800), Rect::new(0, 30, 1000, 770))
+                .build(),
+        );
         let win = WindowId(77);
         assert!(model.add_client(
             monitor_id,
@@ -617,11 +618,11 @@ mod tests {
     #[test]
     fn geometry_sync_does_not_double_apply_an_authoritative_rectangle() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 30, 1920, 1050),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1920, 1080), Rect::new(0, 30, 1920, 1050))
+                .build(),
+        );
         let win = WindowId(78);
         let fullscreen = Rect::new(0, 0, 1920, 1080);
         let restored = Rect::new(200, 150, 900, 600);

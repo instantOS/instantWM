@@ -151,7 +151,7 @@ fn is_point_over_client_surface(monitor: &Monitor, win: WindowId, point: Point) 
 /// its own map resolves each entry without searching the other outputs.
 fn point_occluded_above(monitor: &Monitor, win: WindowId, point: Point) -> bool {
     monitor
-        .z_order
+        .z_order()
         .iter_top_to_bottom()
         .take_while(|&above| above != win)
         .any(|above| is_point_over_client_surface(monitor, above, point))
@@ -170,7 +170,7 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
     // pointer equally hides every border below it, so the scan stops there
     // rather than offering the seam of a covered window. One resolved view
     // per window serves both the band check and the occlusion stop.
-    for win in monitor.z_order.iter_top_to_bottom() {
+    for win in monitor.z_order().iter_top_to_bottom() {
         let Some(view) = model.client_view(win) else {
             continue;
         };
@@ -282,9 +282,23 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::test_support::{add_client_with, add_selected_client_with};
-    use crate::types::{ClientMode, Monitor, TagMask, WindowId};
+    use crate::test_support::{MonitorBuilder, add_client_with, add_selected_client_with};
+    use crate::types::{ClientMode, MonitorId, TagMask, WindowId};
     use crate::wm::Wm;
+
+    /// Push one taggable monitor for a hover fixture.
+    ///
+    /// The tag list must be non-empty before `set_selected_tags` can select
+    /// anything, so the count is seeded here rather than at each call site.
+    fn push_hover_monitor(wm: &mut Wm, rect: Rect, bar_shown: bool) -> MonitorId {
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(rect)
+                .bar(0, bar_shown)
+                .tag_count(9)
+                .build(),
+        )
+    }
 
     /// Two floating windows whose top border zones overlap: the visually
     /// topmost one must win the offer even when focus order puts the other
@@ -296,11 +310,7 @@ mod tests {
         let bottom = WindowId(1);
         let top = WindowId(2);
 
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
-        });
+        let monitor_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), false);
         wm.core
             .model
             .monitor_mut(monitor_id)
@@ -337,14 +347,8 @@ mod tests {
     fn border_scan_uses_the_monitor_under_the_pointer() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let left_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
-        let right_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(1920, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let left_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), true);
+        let right_id = push_hover_monitor(&mut wm, Rect::new(1920, 0, 1920, 1080), true);
         wm.core.model.monitors.set_selected(left_id);
         wm.core
             .model
@@ -373,11 +377,7 @@ mod tests {
         let bottom = WindowId(1);
         let top = WindowId(2);
 
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
-        });
+        let monitor_id = push_hover_monitor(wm, Rect::new(0, 0, 1920, 1080), false);
         wm.core
             .model
             .monitor_mut(monitor_id)

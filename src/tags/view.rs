@@ -302,17 +302,18 @@ mod view_selection_tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::CoreState;
     use crate::monitor::MonitorManager;
+    use crate::test_support::MonitorBuilder;
     use crate::types::*;
     use crate::wm::Wm;
 
     fn make_globals_with_one_monitor(selected: TagMask) -> CoreState {
         let mut state = CoreState::default();
         let mut mmgr = MonitorManager::new();
-        let mut mon = Monitor {
-            monitor_id: MonitorId::from_raw(0),
-            ..Monitor::default()
-        };
-        mon.set_selected_tags(selected);
+        let mon = MonitorBuilder::new()
+            .configure(|monitor| monitor.monitor_id = MonitorId::from_raw(0))
+            .tag_count(9)
+            .selected_tags(selected)
+            .build();
         mmgr.push(mon);
         mmgr.set_selected(MonitorId::from_raw(0));
         state.model.monitors = mmgr;

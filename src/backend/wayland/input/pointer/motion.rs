@@ -175,10 +175,10 @@ mod tests {
     use crate::backend::wayland::compositor::window::hit_test::{
         pointer_hit_counters, reset_pointer_hit_counters,
     };
-    use crate::test_support::{add_selected_client, push_monitor_with};
+    use crate::test_support::{MonitorBuilder, add_selected_client, push_monitor_with};
     use crate::types::{
-        Client, ClientMode, HoverFocusTrigger, Monitor, MouseButton, Point as RootPoint, Rect,
-        TagMask, WindowId,
+        Client, ClientMode, HoverFocusTrigger, MouseButton, Point as RootPoint, Rect, TagMask,
+        WindowId,
     };
     use crate::wm::Wm;
     use smithay::backend::input::InputTime;
@@ -325,12 +325,12 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.derived.display.width = 1920;
         wm.core.derived.display.height = 1080;
-        wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_height: 30,
-            ..Monitor::default()
-        });
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(30, true)
+                .build(),
+        );
         let pointer = state.seat.get_pointer().unwrap();
         let keyboard = state.seat.get_keyboard().unwrap();
 

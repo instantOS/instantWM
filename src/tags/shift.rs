@@ -121,8 +121,8 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::test_support::{add_client, add_selected_client};
-    use crate::types::{Client, ClientMode, Monitor};
+    use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
+    use crate::types::{Client, ClientMode, TagMask};
     use crate::wm::Wm;
 
     #[test]
@@ -131,17 +131,14 @@ mod tests {
         wm.core.model.tags.num_tags = 3;
         let tag1 = TagMask::single(1).expect("tag 1");
         let tag2 = TagMask::single(2).expect("tag 2");
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1200, 800))
+                .tag_count(3)
+                .selected_tags(tag1)
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .expect("monitor")
-            .set_selected_tags(tag1);
 
         let moved = WindowId(1);
         let destination_peer = WindowId(2);

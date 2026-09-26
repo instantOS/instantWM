@@ -212,18 +212,16 @@ pub fn should_float_for_x11_type(window_type: Option<WmWindowType>) -> bool {
 mod tests {
     use super::{XWaylandPolicyUpdate, apply_xwayland_policy};
     use crate::model::WmModel;
-    use crate::test_support::add_client;
-    use crate::types::{Client, ClientPlacement, Monitor, Rect, WindowId};
+    use crate::test_support::{MonitorBuilder, add_client};
+    use crate::types::{Client, ClientPlacement, Rect, WindowId};
 
     #[test]
     fn xwayland_policy_uses_authoritative_fullscreen_geometry_restore() {
         let mut model = WmModel::default();
         let output_rect = Rect::new(0, 0, 1920, 1080);
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: output_rect,
-            available_rect: output_rect,
-            ..Monitor::default()
-        });
+        let monitor_id = model
+            .monitors
+            .push(MonitorBuilder::new().monitor_rect(output_rect).build());
         let win = WindowId(90);
         let floating_rect = Rect::new(300, 200, 900, 600);
         let mut client = Client {

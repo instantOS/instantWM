@@ -52,7 +52,7 @@ impl WmModel {
     pub fn client(&self, win: WindowId) -> Option<&Client> {
         self.monitors
             .iter_all()
-            .find_map(|monitor| monitor.clients.get(&win))
+            .find_map(|monitor| monitor.clients().get(&win))
     }
 
     /// Return a managed client mutably by window ID.
@@ -74,7 +74,7 @@ impl WmModel {
     pub fn clients_iter_all(&self) -> impl Iterator<Item = (MonitorId, &Client)> {
         self.monitors.iter().flat_map(|(monitor_id, monitor)| {
             monitor
-                .clients
+                .clients()
                 .values()
                 .map(move |client| (monitor_id, client))
         })
@@ -84,7 +84,7 @@ impl WmModel {
     pub fn client_count(&self) -> usize {
         self.monitors
             .iter_all()
-            .map(|monitor| monitor.clients.len())
+            .map(|monitor| monitor.clients().len())
             .sum()
     }
 
@@ -179,7 +179,7 @@ impl WmModel {
     /// has an owner, so this cannot fail for a stale assignment.
     pub(crate) fn client_view(&self, win: WindowId) -> Option<ClientView<'_>> {
         for monitor in self.monitors.iter_all() {
-            if let Some(client) = monitor.clients.get(&win) {
+            if let Some(client) = monitor.clients().get(&win) {
                 return Some(ClientView { client, monitor });
             }
         }
@@ -336,7 +336,7 @@ impl WmModel {
         for monitor in self.monitors.iter_all() {
             let monitor_id = monitor.id();
             let mut stacked = std::collections::HashSet::new();
-            for win in monitor.stack.iter().copied() {
+            for win in monitor.focus_order().iter().copied() {
                 assert!(
                     monitor.has_client(win),
                     "monitor {monitor_id:?} focus stack references unowned {win:?}"
@@ -346,7 +346,7 @@ impl WmModel {
                     "monitor {monitor_id:?} has duplicate focus entry {win:?}"
                 );
             }
-            for &win in monitor.clients.keys() {
+            for &win in monitor.clients().keys() {
                 assert!(
                     owned.insert(win),
                     "client {win:?} is owned by multiple monitors"
@@ -358,13 +358,13 @@ impl WmModel {
             }
 
             let mut layered = std::collections::HashSet::new();
-            for win in monitor.z_order.iter_bottom_to_top() {
+            for win in monitor.z_order().iter_bottom_to_top() {
                 assert!(
                     monitor.has_client(win),
                     "monitor {monitor_id:?} z-order references unowned {win:?}"
                 );
                 assert!(
-                    monitor.stack.contains(&win),
+                    monitor.focus_order().contains(&win),
                     "monitor {monitor_id:?} z-order client {win:?} is absent from its focus list"
                 );
                 assert!(
@@ -388,7 +388,7 @@ impl WmModel {
                     "monitor {monitor_id:?} {source} references unowned {win:?}"
                 );
                 assert!(
-                    monitor.stack.contains(&win),
+                    monitor.focus_order().contains(&win),
                     "monitor {monitor_id:?} {source} client {win:?} is absent from its focus list"
                 );
             }
@@ -678,8 +678,8 @@ mod tests {
         assert!(model.client(win).is_none());
         let monitor = model.monitor(monitor_id).unwrap();
         assert!(!monitor.has_client(win));
-        assert_eq!(monitor.stack.as_slice(), &[other]);
-        assert_eq!(monitor.z_order.as_slice(), &[other]);
+        assert_eq!(monitor.focus_order(), &[other]);
+        assert_eq!(monitor.z_order().as_slice(), &[other]);
         assert_eq!(monitor.selected, None);
         assert!(
             !monitor
@@ -696,8 +696,8 @@ mod tests {
 
         let monitor = model.monitor(monitor_id).unwrap();
         assert!(monitor.has_client(win));
-        assert_eq!(monitor.stack.as_slice(), &[win]);
-        assert_eq!(monitor.z_order.as_slice(), &[win]);
+        assert_eq!(monitor.focus_order(), &[win]);
+        assert_eq!(monitor.z_order().as_slice(), &[win]);
         assert_eq!(model.client_count(), 1);
     }
 
@@ -749,14 +749,14 @@ mod tests {
 
         let source_monitor = model.monitor(source).unwrap();
         assert!(!source_monitor.has_client(win));
-        assert!(source_monitor.stack.is_empty());
-        assert!(source_monitor.z_order.as_slice().is_empty());
+        assert!(source_monitor.focus_order().is_empty());
+        assert!(source_monitor.z_order().as_slice().is_empty());
         assert_eq!(source_monitor.selected, None);
         assert!(source_monitor.focus_history_windows().next().is_none());
         let target_monitor = model.monitor(target).unwrap();
         assert!(target_monitor.has_client(win));
-        assert_eq!(target_monitor.stack.as_slice(), &[win]);
-        assert_eq!(target_monitor.z_order.as_slice(), &[win]);
+        assert_eq!(target_monitor.focus_order(), &[win]);
+        assert_eq!(target_monitor.z_order().as_slice(), &[win]);
         assert_eq!(target_monitor.selected, Some(win));
         assert_eq!(model.monitor_of_client(win), Some(target));
     }

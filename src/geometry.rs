@@ -329,7 +329,8 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::model::WmModel;
-    use crate::types::{Client, Monitor};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::Client;
     use crate::wm::Wm;
 
     #[test]
@@ -363,14 +364,16 @@ mod tests {
     #[test]
     fn client_geometry_uses_assigned_monitor_not_virtual_layout_extent() {
         let mut model = WmModel::new();
-        let left = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
-        model.monitors.push(Monitor {
-            monitor_rect: Rect::new(1920, 0, 2560, 1440),
-            ..Monitor::default()
-        });
+        let left = model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .build(),
+        );
+        model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(1920, 0, 2560, 1440))
+                .build(),
+        );
         let win = WindowId(11);
         model.add_client(
             left,
@@ -390,10 +393,11 @@ mod tests {
     #[test]
     fn client_geometry_falls_back_to_previous_valid_client_rect() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .build(),
+        );
         let win = WindowId(12);
         model.add_client(
             monitor_id,
@@ -413,11 +417,11 @@ mod tests {
     #[test]
     fn wayland_hinted_resize_applies_stored_protocol_maximum() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 500, 400),
-            available_rect: Rect::new(0, 0, 500, 400),
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 500, 400), Rect::new(0, 0, 500, 400))
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(14);
         let mut client = Client {

@@ -236,7 +236,8 @@ fn prune_pending_launches(pending_launches: &mut VecDeque<PendingLaunch>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Client, ClientPlacement, Monitor, MonitorId, TagMask, WindowId};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, ClientPlacement, MonitorId, TagMask, WindowId};
 
     fn pending(pid: u32) -> PendingLaunch {
         PendingLaunch {
@@ -280,14 +281,18 @@ mod tests {
     #[test]
     fn transient_destination_takes_priority_over_launch_context() {
         let mut model = WmModel::new();
-        let selected_id = model.monitors.push(Monitor {
-            tag_set: [TagMask::single(1).unwrap(); 2],
-            ..Monitor::default()
-        });
-        let parent_monitor_id = model.monitors.push(Monitor {
-            tag_set: [TagMask::single(2).unwrap(); 2],
-            ..Monitor::default()
-        });
+        let selected_id = model.monitors.push(
+            MonitorBuilder::new()
+                .tag_count(2)
+                .selected_tags(TagMask::single(1).unwrap())
+                .build(),
+        );
+        let parent_monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .tag_count(2)
+                .selected_tags(TagMask::single(2).unwrap())
+                .build(),
+        );
         model.set_selected_monitor(selected_id);
 
         let parent = WindowId(10);
@@ -324,10 +329,12 @@ mod tests {
     fn stale_launch_destination_falls_back_to_selected_monitor() {
         let mut model = WmModel::new();
         let selected_tags = TagMask::single(2).unwrap();
-        let selected_id = model.monitors.push(Monitor {
-            tag_set: [selected_tags; 2],
-            ..Monitor::default()
-        });
+        let selected_id = model.monitors.push(
+            MonitorBuilder::new()
+                .tag_count(2)
+                .selected_tags(selected_tags)
+                .build(),
+        );
         model.set_selected_monitor(selected_id);
 
         let mut client = Client::new(WindowId(20));
@@ -353,16 +360,20 @@ mod tests {
         let mut model = WmModel::new();
         model.tags.num_tags = 4;
         let real_tags = TagMask::single(2).unwrap();
-        let monitor_id = model.monitors.push(Monitor {
-            tag_set: [real_tags; 2],
-            overview_state: Some(crate::overview::OverviewState::new(
-                TagMask::all(4),
-                Vec::new(),
-                std::collections::HashMap::new(),
-                None,
-            )),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .tag_count(4)
+                .selected_tags(real_tags)
+                .configure(|m| {
+                    m.overview_state = Some(crate::overview::OverviewState::new(
+                        TagMask::all(4),
+                        Vec::new(),
+                        std::collections::HashMap::new(),
+                        None,
+                    ))
+                })
+                .build(),
+        );
         model.set_selected_monitor(monitor_id);
 
         assert_eq!(

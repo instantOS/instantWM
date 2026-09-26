@@ -20,7 +20,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
         .core()
         .model()
         .expect_selected_monitor()
-        .clients
+        .clients()
         .is_empty();
 
     if has_clients {

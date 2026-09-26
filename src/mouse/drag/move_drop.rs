@@ -411,9 +411,18 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::client::geometry::FloatingPlacementIntent;
     use crate::layouts::PresentationMode;
-    use crate::test_support::{add_client, add_client_with};
-    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::{MonitorBuilder, add_client, add_client_with};
+    use crate::types::{Client, ClientMode, ClientPlacement, MonitorId, Rect, TagMask, WindowId};
     use crate::wm::Wm;
+
+    /// Push the 1200x800 monitor these drop fixtures sit on.
+    fn push_drop_monitor(wm: &mut Wm, available: Rect) -> MonitorId {
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1200, 800), available)
+                .build(),
+        )
+    }
 
     #[test]
     fn edge_drop_keeps_the_pre_drag_floating_restore_rectangle() {
@@ -434,11 +443,7 @@ mod tests {
     #[test]
     fn floating_presentation_drag_does_not_change_tiled_placement() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            ..Monitor::default()
-        });
+        let monitor_id = push_drop_monitor(&mut wm, Rect::new(0, 0, 1200, 800));
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -472,11 +477,7 @@ mod tests {
     fn dragging_client_maximized_floating_window_restores_its_float_geometry() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let work_rect = Rect::new(0, 30, 1200, 770);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: work_rect,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drop_monitor(&mut wm, work_rect);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(43);
         let saved = Rect::new(220, 170, 680, 480);

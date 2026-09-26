@@ -123,7 +123,7 @@ pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: O
             ctx.core()
                 .model()
                 .monitor(monitor_id)
-                .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win))
+                .and_then(|m| m.z_order().iter_top_to_bottom().find(|&w| w != win))
         });
         crate::focus::focus(ctx, next);
     }

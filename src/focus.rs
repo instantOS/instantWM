@@ -399,7 +399,7 @@ fn get_directional_candidate(
     source_center: crate::types::Point,
     direction: Direction,
 ) -> Option<WindowId> {
-    crate::types::OrderedClients::new(&monitor.stack, &monitor.clients)
+    crate::types::OrderedClients::new(monitor.focus_order(), monitor.clients())
         .filter(|(win, client)| {
             if *win == source_win || !client.is_visible(selected_tags) {
                 return false;
@@ -607,7 +607,7 @@ fn get_wrapping_window(
     source_center: crate::types::Point,
     direction: Direction,
 ) -> Option<WindowId> {
-    crate::types::OrderedClients::new(&monitor.stack, &monitor.clients)
+    crate::types::OrderedClients::new(monitor.focus_order(), monitor.clients())
         .filter(|(win, client)| {
             if *win == source_win || !client.is_visible(selected_tags) {
                 return false;

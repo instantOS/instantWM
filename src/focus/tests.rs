@@ -459,7 +459,7 @@ fn changing_focus_does_not_change_persistent_z_order() {
     assert_eq!(backend.current.get(), Some(WindowId(1)));
 
     assert_eq!(
-        core.model().expect_selected_monitor().z_order.as_slice(),
+        core.model().expect_selected_monitor().z_order().as_slice(),
         &[WindowId(1), WindowId(2)]
     );
 }

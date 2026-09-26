@@ -426,7 +426,7 @@ impl WmModel {
     ) -> Vec<WindowId> {
         let windows = self
             .monitor(monitor_id)
-            .map(|monitor| monitor.clients.keys().copied().collect::<Vec<_>>())
+            .map(|monitor| monitor.clients().keys().copied().collect::<Vec<_>>())
             .unwrap_or_default();
         let mut changed = Vec::new();
 
@@ -472,15 +472,16 @@ impl WmModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Client, Monitor};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::Client;
 
     fn model_with_client(mode: ClientMode) -> (WmModel, WindowId, MonitorId) {
         let mut model = WmModel::default();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1920, 1080), Rect::new(0, 0, 1920, 1080))
+                .build(),
+        );
         let win = WindowId(1);
         let mut client = Client {
             win,

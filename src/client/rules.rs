@@ -518,7 +518,9 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::{CoreState, LayoutWorkTargets};
-    use crate::test_support::{add_client, add_selected_client, push_monitor, push_monitor_with};
+    use crate::test_support::{
+        MonitorBuilder, add_client, add_selected_client, push_monitor, push_monitor_with,
+    };
     use crate::types::{Client, ClientMode, Monitor, Rect, RuleFloat, TagMask, WindowId};
     use crate::wm::Wm;
 
@@ -1265,10 +1267,10 @@ mod tests {
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
         push_monitor(&mut state.model);
-        let side_id = state.model.monitors.push(Monitor {
-            name: "DP-1".to_owned(),
-            ..Monitor::default()
-        });
+        let side_id = state
+            .model
+            .monitors
+            .push(MonitorBuilder::new().named("DP-1").build());
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("side-me")),
             instance: None,

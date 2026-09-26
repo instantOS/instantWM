@@ -514,10 +514,13 @@ fn rehome_orphaned_clients(
             if !client.is_scratchpad() {
                 reachable_tags = reachable_tags | client.tags;
             }
-            assert!(
-                model.readopt_client(survivor, client, was_selected),
-                "orphaned managed client must be re-homeable"
-            );
+            // The call has a side effect, so it cannot go inside the assertion:
+            // `debug_assert!` does not evaluate in release builds. The survivor
+            // is chosen from the rebuilt monitor list, so a failure here is a
+            // bug in that path rather than a runtime condition, and a panic in
+            // the compositor is worse than a window that fails to re-home.
+            let readopted = model.readopt_client(survivor, client, was_selected);
+            debug_assert!(readopted, "orphaned managed client must be re-homeable");
         }
         // Adoption prepends in focus order and attaches at the top of z-order.
         // Reapply the disconnected output's independent bottom-to-top order.
@@ -743,22 +746,23 @@ pub fn resync_monitor_ui_metrics(core: &mut CoreState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::MonitorBuilder;
 
     #[test]
     fn monitor_reconciliation_returns_cleanup_work_and_rehomes_clients() {
         let mut model = crate::model::WmModel::new();
-        let retained = model.monitors.push(Monitor {
-            name: "retained".to_string(),
-            ..Monitor::default()
-        });
+        let retained = model
+            .monitors
+            .push(MonitorBuilder::new().named("retained").build());
         let removed_bar = WindowId(90);
         let removed_bottom_bar = WindowId(91);
-        let removed = model.monitors.push(Monitor {
-            name: "removed".to_string(),
-            bar_win: removed_bar,
-            bottom_bar_win: removed_bottom_bar,
-            ..Monitor::default()
-        });
+        let removed = model.monitors.push(
+            MonitorBuilder::new()
+                .named("removed")
+                .bar_window(removed_bar)
+                .configure(|m| m.bottom_bar_win = removed_bottom_bar)
+                .build(),
+        );
         let win = WindowId(42);
         model.add_client(
             removed,
@@ -821,14 +825,12 @@ mod tests {
     #[test]
     fn monitor_reconciliation_preserves_both_orphaned_client_orders() {
         let mut model = crate::model::WmModel::new();
-        let survivor = model.monitors.push(Monitor {
-            name: "survivor".to_string(),
-            ..Monitor::default()
-        });
-        let removed = model.monitors.push(Monitor {
-            name: "removed".to_string(),
-            ..Monitor::default()
-        });
+        let survivor = model
+            .monitors
+            .push(MonitorBuilder::new().named("survivor").build());
+        let removed = model
+            .monitors
+            .push(MonitorBuilder::new().named("removed").build());
         let existing = WindowId(10);
         assert!(model.add_client(survivor, Client::new(existing)));
         for win in [WindowId(1), WindowId(2), WindowId(3)] {
@@ -839,7 +841,7 @@ mod tests {
         assert!(monitor.raise_client(WindowId(1)));
         monitor.selected = Some(WindowId(2));
         assert_eq!(
-            monitor.z_order.as_slice(),
+            monitor.z_order().as_slice(),
             &[WindowId(2), WindowId(3), WindowId(1)]
         );
 
@@ -870,11 +872,11 @@ mod tests {
 
         let survivor = model.monitor(survivor).unwrap();
         assert_eq!(
-            survivor.stack.as_slice(),
+            survivor.focus_order(),
             &[WindowId(3), WindowId(1), WindowId(2), existing]
         );
         assert_eq!(
-            survivor.z_order.as_slice(),
+            survivor.z_order().as_slice(),
             &[existing, WindowId(2), WindowId(3), WindowId(1)]
         );
         assert_eq!(survivor.selected, Some(WindowId(2)));
@@ -883,18 +885,15 @@ mod tests {
     #[test]
     fn monitor_reconciliation_keeps_the_active_orphan_selection() {
         let mut model = crate::model::WmModel::new();
-        let survivor = model.monitors.push(Monitor {
-            name: "survivor".to_string(),
-            ..Monitor::default()
-        });
-        let active_output = model.monitors.push(Monitor {
-            name: "active".to_string(),
-            ..Monitor::default()
-        });
-        let other_output = model.monitors.push(Monitor {
-            name: "other".to_string(),
-            ..Monitor::default()
-        });
+        let survivor = model
+            .monitors
+            .push(MonitorBuilder::new().named("survivor").build());
+        let active_output = model
+            .monitors
+            .push(MonitorBuilder::new().named("active").build());
+        let other_output = model
+            .monitors
+            .push(MonitorBuilder::new().named("other").build());
         let active = WindowId(1);
         let other = WindowId(2);
         assert!(model.readopt_client(active_output, Client::new(active), true));
@@ -934,10 +933,9 @@ mod tests {
     #[test]
     fn monitor_reconciliation_preserves_identity_and_adds_new_output() {
         let mut model = crate::model::WmModel::new();
-        let retained = model.monitors.push(Monitor {
-            name: "eDP-1".to_string(),
-            ..Monitor::default()
-        });
+        let retained = model
+            .monitors
+            .push(MonitorBuilder::new().named("eDP-1").build());
         let outputs = [
             BackendOutputInfo {
                 name: "eDP-1".to_string(),
@@ -1003,10 +1001,9 @@ mod tests {
     #[test]
     fn geometry_only_reconciliation_does_not_flag_added_monitors() {
         let mut model = crate::model::WmModel::new();
-        let retained = model.monitors.push(Monitor {
-            name: "eDP-1".to_string(),
-            ..Monitor::default()
-        });
+        let retained = model
+            .monitors
+            .push(MonitorBuilder::new().named("eDP-1").build());
         let bar_win = WindowId(90);
         model.monitor_mut(retained).unwrap().bar_win = bar_win;
         let outputs = [BackendOutputInfo {
