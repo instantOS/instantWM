@@ -794,7 +794,7 @@ mod tests {
 
     #[test]
     fn a_press_armed_for_region_selection_owns_motion_until_its_release() {
-        let (mut wm, monitor_id) = bottom_bar_fixture();
+        let (mut wm, _) = bottom_bar_fixture();
         let win = WindowId(7);
         assert!(crate::mouse::slop::arm_region_selection_press(
             &mut wm.ctx(),
@@ -832,7 +832,6 @@ mod tests {
             InteractionOutcome::Captured
         );
         assert!(wm.core.interaction.drag.capture().is_none());
-        let _ = monitor_id;
     }
 
     #[test]

@@ -819,6 +819,13 @@ pub struct PendingWork {
     /// the backend reports the exit animation finished, so the overlay slides
     /// out instead of vanishing on the first frame.
     pending_scratchpad_hides: BTreeSet<WindowId>,
+    /// Window whose press already ended and whose region-selection tool this
+    /// tick should start.
+    ///
+    /// Deferred rather than spawned from the release handler because backends
+    /// still own pointer transport while that handler runs, and the tool grabs
+    /// the pointer itself. Main-thread only, like the rest of this queue.
+    pending_region_selection: Option<WindowId>,
 }
 
 impl Default for PendingWork {
@@ -833,6 +840,7 @@ impl Default for PendingWork {
             hooked_monitors: Vec::new(),
             spawn_animations: BTreeSet::new(),
             pending_scratchpad_hides: BTreeSet::new(),
+            pending_region_selection: None,
         }
     }
 }
@@ -856,6 +864,25 @@ impl PendingWork {
     /// Snapshot the windows with a deferred hide awaiting their animation.
     pub fn pending_scratchpad_hide_windows(&self) -> Vec<WindowId> {
         self.pending_scratchpad_hides.iter().copied().collect()
+    }
+
+    /// Queue the region-selection tool start for `win`.
+    ///
+    /// A press that has not been started yet is replaced rather than queued
+    /// behind: only the most recent request can still be what the user meant,
+    /// and the tool already kills a superseded selection when it starts.
+    pub fn queue_region_selection(&mut self, win: WindowId) {
+        self.pending_region_selection = Some(win);
+    }
+
+    /// Claim the queued region-selection start, if any.
+    pub fn take_region_selection(&mut self) -> Option<WindowId> {
+        self.pending_region_selection.take()
+    }
+
+    /// The window whose region-selection tool this tick would start.
+    pub fn region_selection(&self) -> Option<WindowId> {
+        self.pending_region_selection
     }
 }
 

@@ -217,14 +217,9 @@ pub fn finish_region_selection_press(ctx: &mut WmCtx, button: MouseButton) -> bo
     else {
         return false;
     };
-    let runtime = region_selection_runtime();
-    match runtime.pending.lock() {
-        Ok(mut slot) => *slot = Some(armed.window),
-        Err(_) => {
-            log::warn!("region-selection pending slot is poisoned; press ignored");
-            return false;
-        }
-    }
+    ctx.core_mut()
+        .pending_work_mut()
+        .queue_region_selection(armed.window);
     true
 }
 
@@ -250,10 +245,6 @@ struct RegionSelectionRuntime {
     receiver: Mutex<mpsc::Receiver<SelectionOutcome>>,
     ping: Mutex<Option<calloop::ping::Ping>>,
     active: Mutex<ActiveSelection>,
-    /// Window whose press has ended and whose tool is ready to start. Kept here
-    /// rather than spawned from the release handler so the backend has already
-    /// handed pointer ownership back; see [`finish_region_selection_press`].
-    pending: Mutex<Option<WindowId>>,
 }
 
 static REGION_SELECTION_RUNTIME: OnceLock<RegionSelectionRuntime> = OnceLock::new();
@@ -269,7 +260,6 @@ fn region_selection_runtime() -> &'static RegionSelectionRuntime {
                 generation: 0,
                 child: None,
             }),
-            pending: Mutex::new(None),
         }
     })
 }
@@ -486,21 +476,15 @@ pub fn drain_region_selection(wm: &mut crate::wm::Wm) -> bool {
 /// Spawn the tool for a press that has already been released.
 ///
 /// Runs from the shared tick so pointer ownership is already back with the
-/// server, and a superseded press is replaced rather than queued behind a
-/// longer selection.
+/// server.
 fn start_pending_region_selection(wm: &mut crate::wm::Wm) {
-    let runtime = region_selection_runtime();
-    let Ok(mut slot) = runtime.pending.lock() else {
-        return;
-    };
-    let Some(win) = slot.take() else {
+    let Some(win) = wm.work.take_region_selection() else {
         return;
     };
     if wm.core.model.client(win).is_none() {
         log::debug!("dropping region selection for closed window {win:?}");
         return;
     }
-    drop(slot);
     spawn_region_selection(wm.backend_kind(), win);
 }
 
@@ -541,13 +525,9 @@ mod tests {
         });
     }
 
-    /// The window whose selection the module would start on the next tick.
-    fn pending_region_selection() -> Option<WindowId> {
-        *region_selection_runtime().pending.lock().unwrap()
-    }
-
-    fn take_pending_region_selection() -> Option<WindowId> {
-        region_selection_runtime().pending.lock().unwrap().take()
+    /// The window whose selection the next tick would start a tool for.
+    fn pending_region_selection(wm: &Wm) -> Option<WindowId> {
+        wm.work.region_selection()
     }
 
     fn is_tool_running() -> bool {
@@ -689,7 +669,6 @@ mod tests {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let win = WindowId(1);
         insert_floating_client(&mut wm, monitor_id, win, Rect::new(10, 10, 600, 400));
-        let _ = take_pending_region_selection();
 
         assert!(arm_region_selection_press(
             &mut wm.ctx(),
@@ -705,7 +684,7 @@ mod tests {
             Some(MouseButton::Left)
         );
         assert!(!is_tool_running());
-        assert_eq!(pending_region_selection(), None);
+        assert_eq!(pending_region_selection(&wm), None);
 
         assert!(finish_region_selection_press(
             &mut wm.ctx(),
@@ -713,8 +692,7 @@ mod tests {
         ));
 
         assert!(wm.core.interaction.drag.capture().is_none());
-        assert_eq!(pending_region_selection(), Some(win));
-        let _ = take_pending_region_selection();
+        assert_eq!(pending_region_selection(&wm), Some(win));
     }
 
     #[test]
@@ -722,7 +700,6 @@ mod tests {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let win = WindowId(1);
         insert_floating_client(&mut wm, monitor_id, win, Rect::new(10, 10, 600, 400));
-        let _ = take_pending_region_selection();
         assert!(arm_region_selection_press(
             &mut wm.ctx(),
             win,
@@ -734,20 +711,18 @@ mod tests {
             &mut wm.ctx(),
             MouseButton::Right
         ));
-        assert_eq!(pending_region_selection(), None);
+        assert_eq!(pending_region_selection(&wm), None);
         // The press is still armed, so its own release still completes it.
         assert!(finish_region_selection_press(
             &mut wm.ctx(),
             MouseButton::Left
         ));
-        assert_eq!(pending_region_selection(), Some(win));
-        let _ = take_pending_region_selection();
+        assert_eq!(pending_region_selection(&wm), Some(win));
     }
 
     #[test]
     fn a_press_for_an_unmanaged_window_arms_nothing() {
         let (mut wm, _) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
-        let _ = take_pending_region_selection();
 
         assert!(!arm_region_selection_press(
             &mut wm.ctx(),
@@ -756,7 +731,7 @@ mod tests {
             InteractionSource::Pointer,
         ));
         assert!(wm.core.interaction.drag.capture().is_none());
-        assert_eq!(pending_region_selection(), None);
+        assert_eq!(pending_region_selection(&wm), None);
     }
 
     #[test]
@@ -764,7 +739,6 @@ mod tests {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let win = WindowId(1);
         insert_floating_client(&mut wm, monitor_id, win, Rect::new(10, 10, 600, 400));
-        let _ = take_pending_region_selection();
         assert!(arm_region_selection_press(
             &mut wm.ctx(),
             win,
@@ -779,7 +753,7 @@ mod tests {
         wm.core.model.remove_client(win).unwrap();
         drain_region_selection(&mut wm);
 
-        assert_eq!(pending_region_selection(), None);
+        assert_eq!(pending_region_selection(&wm), None);
         assert!(!is_tool_running());
     }
 }
