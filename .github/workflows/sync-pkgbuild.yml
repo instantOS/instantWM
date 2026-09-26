@@ -9,7 +9,7 @@ on:
 jobs:
   sync:
     if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
       image: archlinux:latest
     defaults:

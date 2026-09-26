@@ -13,9 +13,9 @@ on:
 jobs:
   metadata:
     name: Prepare release metadata
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
-      image: ubuntu:24.04
+      image: ubuntu:26.04
     if: ${{ github.repository_owner == 'instantOS' }}
     permissions:
       contents: write
@@ -42,7 +42,7 @@ jobs:
         run: bash scripts/ci/determine-release.sh
   build:
     name: Build release artifacts
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 360
     container:
       image: archlinux:latest
@@ -108,7 +108,7 @@ jobs:
     # architectures into one dpkg database, so per-mirror publish timing can no
     # longer make the build unsatisfiable (see install-deps-ubuntu.sh).
     name: Cross-compile ${{ matrix.target }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 360
     container:
       image: ubuntu:26.04
@@ -179,7 +179,7 @@ jobs:
         run: rm -rf /opt/cargo /opt/rustup
   pkgbuild:
     name: Build Arch binary package
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 360
     container:
       image: archlinux:latest
@@ -243,9 +243,9 @@ jobs:
           path: artifacts/
   deb:
     name: Build Debian package
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
-      image: ubuntu:24.04
+      image: ubuntu:26.04
     needs:
       - metadata
       - build
@@ -292,9 +292,9 @@ jobs:
           path: artifacts/
   release:
     name: Publish GitHub release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
-      image: ubuntu:24.04
+      image: ubuntu:26.04
     needs:
       - metadata
       - build

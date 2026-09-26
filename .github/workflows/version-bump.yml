@@ -26,9 +26,9 @@ on:
 jobs:
   version-bump:
     name: Prepare release PR
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
-      image: ubuntu:24.04
+      image: ubuntu:26.04
     if: ${{ github.repository_owner == 'instantOS' }}
     permissions:
       contents: write
