@@ -23,6 +23,18 @@ pub struct WindowProperties {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum InitialRulePlacement {
     /// Keep the backend-derived placement policy.
+    ///
+    /// A rule may adjust geometry without claiming the position, and this is
+    /// that variant. [`RuleFloat::Float`] is the case in point: it pins
+    /// `geo.y` to the top of the work area so a client-requested position
+    /// cannot open a window under the bar, but leaves the x axis and the spawn
+    /// policy alone.
+    ///
+    /// That is only sound because the value it writes is derived from the work
+    /// area, and is therefore already sane whether or not the backend's
+    /// position wins. A rule that needs its position to survive regardless
+    /// reports [`Self::Preserve`] instead — as `FloatFullscreen` and an
+    /// explicit `RuleGeometry` both do.
     #[default]
     Default,
     /// Center the new floating window even if X11 supplied a position.
@@ -268,36 +280,61 @@ pub fn update_window_properties(
     core.model().selected_win() != previous_selection
 }
 
+/// Monitor geometry available to rule application.
+///
+/// Only the monitor's own derived rectangles travel this far, and rules must
+/// read "below the bar" from [`Self::work_rect`] rather than rebuilding it from
+/// `monitor_rect` and `bar_height`.
+///
+/// The bar's own state is deliberately absent. A rule is applied while the
+/// client is still on [`TagMask::EMPTY`] — `clamp_client_tags` only assigns the
+/// real mask afterwards — so any bar lookup keyed on the client's tags would
+/// miss the tag the window is about to land on and silently fall back to the
+/// monitor-wide default. `work_rect` is resolved against the monitor's selected
+/// tags instead, so it cannot disagree with the placement the resolver runs
+/// moments later.
+#[derive(Debug, Clone, Copy)]
+struct RuleMonitorGeo {
+    monitor_rect: Rect,
+    work_rect: Rect,
+}
+
 /// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
 /// using the supplied monitor geometry.
+///
+/// Both geometry-writing arms read [`RuleMonitorGeo::work_rect`], which already
+/// accounts for the built-in bar, for an external layer-shell bar reserving the
+/// same edge, and for bar hiding under true fullscreen.
 fn apply_float_rule(
     client: &mut crate::types::client::Client,
     float_rule: &RuleFloat,
-    mon_geo: (Rect, Rect, bool, i32),
+    geo: RuleMonitorGeo,
 ) {
-    let (monitor_rect, work_rect, show_bar, bar_height) = mon_geo;
-
     match float_rule {
         RuleFloat::FloatCenter => {
             client.set_placement(ClientPlacement::Floating);
         }
         RuleFloat::FloatFullscreen => {
             client.set_placement(ClientPlacement::Floating);
-            client.geo.w = monitor_rect.w;
-            client.geo.h = work_rect.h;
-            client.geo.x = monitor_rect.x;
-            if show_bar {
-                client.geo.y = monitor_rect.y + bar_height;
-            }
+            // Full monitor width, work-area height: span under the bar
+            // horizontally, never vertically.
+            client.geo = Rect::new(
+                geo.monitor_rect.x,
+                geo.work_rect.y,
+                geo.monitor_rect.w,
+                geo.work_rect.h,
+            );
         }
         RuleFloat::Scratchpad => {
             client.set_placement(ClientPlacement::Floating);
         }
         RuleFloat::Float => {
             client.set_placement(ClientPlacement::Floating);
-            if show_bar {
-                client.geo.y = monitor_rect.y + bar_height;
-            }
+            // Pin the top edge to the work area so a client-requested position
+            // cannot open a window underneath the bar. The x axis and the
+            // spawn policy are left alone — see
+            // [`InitialRulePlacement::Default`].
+            client.geo.y = geo.work_rect.y;
         }
         RuleFloat::Tiled => {
             client.set_placement(ClientPlacement::Tiling);
@@ -326,20 +363,18 @@ fn apply_rule(
 
     apply_monitor_rule(state, win, rule);
 
-    // Look up monitor geometry for FloatFullscreen / Float rules.
-    let mon_geo = {
+    // Derived monitor geometry for the float / geometry rule arms. Both
+    // rectangles are the monitor's own; the client's tag mask is still empty
+    // here, so nothing about this lookup may depend on it.
+    let geo = {
         let view = match state.model.client_view(win) {
             Some(view) => view,
             None => return,
         };
-        let mon = view.monitor;
-        let mask = view.client.tags;
-        (
-            mon.monitor_rect,
-            mon.work_rect(),
-            mon.show_bar_for_mask(mask),
-            mon.bar_height,
-        )
+        RuleMonitorGeo {
+            monitor_rect: view.monitor.monitor_rect,
+            work_rect: view.monitor.work_rect(),
+        }
     };
 
     if let Some(c) = state.model.client_mut(win) {
@@ -349,7 +384,7 @@ fn apply_rule(
             .is_floating
             .or_else(|| rule.geometry.is_some().then_some(RuleFloat::Float));
         if let Some(ref float_rule) = effective_float {
-            apply_float_rule(c, float_rule, mon_geo);
+            apply_float_rule(c, float_rule, geo);
             *placement = match float_rule {
                 RuleFloat::FloatCenter => InitialRulePlacement::Center,
                 RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
@@ -357,7 +392,7 @@ fn apply_rule(
             };
         }
         if let Some(geometry) = rule.geometry {
-            apply_geometry_rule(c, geometry, mon_geo);
+            apply_geometry_rule(c, geometry, geo);
             *placement = InitialRulePlacement::Preserve;
         }
         if rule.borderless {
@@ -393,13 +428,12 @@ fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types:
 fn apply_geometry_rule(
     client: &mut crate::types::client::Client,
     geometry: RuleGeometry,
-    mon_geo: (Rect, Rect, bool, i32),
+    geo: RuleMonitorGeo,
 ) {
-    let (_, work_rect, _, _) = mon_geo;
     client.set_placement(ClientPlacement::Floating);
     client.geo = Rect::new(
-        work_rect.x + geometry.x,
-        work_rect.y + geometry.y,
+        geo.work_rect.x + geometry.x,
+        geo.work_rect.y + geometry.y,
         geometry.width.max(1),
         geometry.height.max(1),
     );
@@ -1083,6 +1117,102 @@ mod tests {
             state.model.client(win).unwrap().geo,
             Rect::new(1920, 32, 1920, 1048)
         );
+    }
+
+    /// Build a single-monitor state with one `float`-rule and a client that
+    /// already carries a backend-supplied position, then report where the rule
+    /// left `geo.y` next to the work area it should have used.
+    fn float_rule_y_against_work_area(configure: impl FnOnce(&mut Monitor)) -> (i32, i32) {
+        use crate::types::{MonitorSelector, Rect, Rule, RuleFloat};
+        use std::borrow::Cow;
+
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 2;
+        let mut monitor = Monitor::new_with_values();
+        monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.bar_height = 32;
+        monitor.bar_default_show = true;
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        configure(&mut monitor);
+        let work_rect = monitor.work_rect();
+        let monitor_id = state.model.monitors.push(monitor);
+
+        state.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("float-me")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            is_floating: Some(RuleFloat::Float),
+            monitor: MonitorSelector::Any,
+            geometry: None,
+            borderless: false,
+        }];
+
+        let win = WindowId(47);
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                geo: Rect::new(400, 400, 500, 300),
+                ..Default::default()
+            },
+        );
+
+        let outcome = apply_initial_rules(
+            &mut state,
+            win,
+            &WindowProperties {
+                class: "float-me".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert_eq!(outcome.placement, InitialRulePlacement::Default);
+        (state.model.client(win).unwrap().geo.y, work_rect.y)
+    }
+
+    #[test]
+    fn initial_float_rule_follows_the_work_area_when_the_target_tag_hides_the_bar() {
+        // The client lands on the monitor's selected tag, whose bar the user
+        // has toggled off. `work_rect` starts at the monitor's top edge, so the
+        // rule must not reserve space for a bar that is not drawn.
+        //
+        // Regression: the rule used to consult `show_bar_for_mask`, keyed on a
+        // client tag mask that `apply_rules_impl` had already blanked, and so
+        // read the monitor-wide default and pushed the window `bar_height` too
+        // low.
+        let (rule_y, work_y) = float_rule_y_against_work_area(|monitor| {
+            monitor.per_tag_state().show_bar = Some(false);
+        });
+
+        assert_eq!(work_y, 0);
+        assert_eq!(rule_y, work_y);
+    }
+
+    #[test]
+    fn initial_float_rule_agrees_with_the_work_area_when_the_bar_is_drawn() {
+        let (rule_y, work_y) = float_rule_y_against_work_area(|monitor| {
+            monitor.per_tag_state().show_bar = Some(true);
+        });
+
+        assert_eq!(work_y, 32);
+        assert_eq!(rule_y, work_y);
+    }
+
+    #[test]
+    fn initial_float_rule_clears_an_external_bar_reserving_the_same_edge() {
+        // A layer-shell bar on the top edge shrinks `available_rect`, which
+        // makes the built-in bar redundant and moves the work area down. The
+        // rule must clear the external bar, not the built-in one.
+        let (rule_y, work_y) = float_rule_y_against_work_area(|monitor| {
+            monitor.set_available_rect(Rect::new(0, 40, 1920, 1040));
+        });
+
+        assert_eq!(work_y, 40);
+        assert_eq!(rule_y, work_y);
     }
 
     #[test]
