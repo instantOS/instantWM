@@ -31,29 +31,27 @@ use crate::types::*;
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     crate::client::fullscreen::leave_maximized(ctx, win);
-    let work_area = ctx
-        .core()
-        .model()
-        .client_view(win)
-        .map(|view| view.monitor.work_rect());
-    let (monitor_id, _snap_status) =
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-            let status = client.snap_status;
+    // The owning monitor answers both the work area and the monitor the snap
+    // target is resolved against; a client no longer names its own monitor.
+    let Some(view) = ctx.core().model().client_view(win) else {
+        return;
+    };
+    let monitor_id = view.monitor.id();
+    let work_area = view.monitor.work_rect();
+    let _snap_status = if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        let status = client.snap_status;
 
-            // Save geometry before entering snap for the first time.
-            let new_snap = status.next(direction);
+        // Save geometry before entering snap for the first time.
+        let new_snap = status.next(direction);
 
-            if status == SnapPosition::None
-                && client.mode().is_normal_floating()
-                && let Some(work_area) = work_area
-            {
-                client.save_floating_placement(client.geo, work_area);
-            }
-            client.snap_status = new_snap;
-            (client.monitor_id, status)
-        } else {
-            return;
-        };
+        if status == SnapPosition::None && client.mode().is_normal_floating() {
+            client.save_floating_placement(client.geo, work_area);
+        }
+        client.snap_status = new_snap;
+        status
+    } else {
+        return;
+    };
 
     ctx.raise_client(win);
 

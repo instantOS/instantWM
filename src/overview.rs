@@ -189,13 +189,14 @@ pub fn begin_card_gesture(
     if !ctx.core().model().is_overview_active() || button != crate::types::MouseButton::Left {
         return false;
     }
-    let Some(client) = ctx.core().model().client(window) else {
+    let Some(view) = ctx.core().model().client_view(window) else {
         return false;
     };
     let Some(monitor) = ctx.core().model().selected_monitor() else {
         return false;
     };
-    if client.monitor_id != monitor.id() || !overview_eligible(client, monitor.visible_tags()) {
+    if view.monitor.id() != monitor.id() || !overview_eligible(view.client, monitor.visible_tags())
+    {
         return false;
     }
     let threshold = (monitor.monitor_rect.h / 30).max(1);
@@ -261,7 +262,7 @@ fn enter(ctx: &mut WmCtx<'_>) {
     let window_order = {
         let model = ctx.core().model();
         let monitor = model.expect_selected_monitor();
-        initial_window_order(monitor, &model.clients, all_tags)
+        initial_window_order(monitor, all_tags)
     };
     let active_window = selected_window
         .filter(|win| window_order.contains(win))
@@ -325,10 +326,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             let selected_window = state
                 .active_window
                 .filter(|win| {
-                    ctx.core()
-                        .model()
-                        .client(*win)
-                        .is_some_and(|client| client.monitor_id == selected_monitor_id)
+                    ctx.core().model().monitor_of_client(*win) == Some(selected_monitor_id)
                 })
                 .or_else(|| ctx.core().model().selected_win());
             let selected_tags = selected_window.and_then(|win| {
@@ -382,7 +380,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
         .core()
         .model()
         .expect_selected_monitor()
-        .clients
+        .clients()
         .is_empty()
     {
         return;
@@ -423,8 +421,9 @@ pub fn hover_window(
     let eligible = hovered_window.filter(|win| {
         let model = ctx.core().model();
         let monitor = model.expect_selected_monitor();
-        model.client(*win).is_some_and(|client| {
-            client.monitor_id == monitor_id && overview_eligible(client, monitor.visible_tags())
+        model.client_view(*win).is_some_and(|view| {
+            view.monitor.id() == monitor_id
+                && overview_eligible(view.client, monitor.visible_tags())
         })
     });
 
@@ -471,7 +470,7 @@ pub fn focus_direction(ctx: &mut WmCtx<'_>, direction: Direction) -> bool {
         let Some(state) = monitor.overview_state.as_ref() else {
             return false;
         };
-        let windows = eligible_order(monitor, &model.clients, &state.window_order);
+        let windows = eligible_order(monitor, &state.window_order);
         grid_neighbor(
             &windows,
             state.active_window.or(monitor.selected),
@@ -490,14 +489,11 @@ pub fn focus_direction(ctx: &mut WmCtx<'_>, direction: Direction) -> bool {
 /// preserved: only their origins change. Because origins advance monotonically
 /// in the same direction as z-order, every card retains an exposed, clickable
 /// strip even when later cards overlap it.
-pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> OverviewLayout {
+pub fn compute(monitor: &mut Monitor) -> OverviewLayout {
     let selected_tags = monitor.visible_tags();
     let newly_visible = monitor
-        .clients
-        .iter()
-        .copied()
-        .filter_map(|win| {
-            let client = clients.get(&win)?;
+        .iter_clients()
+        .filter_map(|(win, client)| {
             overview_eligible(client, selected_tags).then_some((win, client.geo))
         })
         .collect::<Vec<_>>();
@@ -512,18 +508,14 @@ pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> Ov
         .map(|state| state.window_order.clone())
         .unwrap_or_default();
     ordered_windows.retain(|win| {
-        clients
-            .get(win)
+        monitor
+            .client(*win)
             .is_some_and(|client| overview_eligible(client, selected_tags))
     });
     // Windows mapped during overview join at the top of the hand without
     // disturbing the positions of existing cards.
-    for &win in &monitor.clients {
-        if !ordered_windows.contains(&win)
-            && clients
-                .get(&win)
-                .is_some_and(|client| overview_eligible(client, selected_tags))
-        {
+    for (win, client) in monitor.iter_clients() {
+        if !ordered_windows.contains(&win) && overview_eligible(client, selected_tags) {
             ordered_windows.push(win);
         }
     }
@@ -535,7 +527,7 @@ pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> Ov
         .iter()
         .copied()
         .filter_map(|win| {
-            let c = clients.get(&win)?;
+            let c = monitor.client(win)?;
             Some((win, Size::new(c.geo.w.max(1), c.geo.h.max(1))))
         })
         .collect();
@@ -580,10 +572,9 @@ pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> Ov
     // an unspecified level which could cover the cards.
     let card_windows = ordered_windows.iter().copied().collect::<HashSet<_>>();
     let mut z_order = monitor
-        .clients
-        .iter()
-        .copied()
-        .filter(|win| clients.contains_key(win) && !card_windows.contains(win))
+        .iter_clients()
+        .map(|(win, _)| win)
+        .filter(|win| !card_windows.contains(win))
         .collect::<Vec<_>>();
     z_order.extend(ordered_windows);
 
@@ -596,12 +587,7 @@ fn restore_window_geometry(
     geometry: &HashMap<WindowId, Rect>,
 ) {
     for (&win, &rect) in geometry {
-        if ctx
-            .core()
-            .model()
-            .client(win)
-            .is_some_and(|client| client.monitor_id == monitor_id)
-        {
+        if ctx.core().model().monitor_of_client(win) == Some(monitor_id) {
             ctx.move_resize(win, rect, MoveResizeOptions::immediate());
         }
     }
@@ -611,26 +597,18 @@ fn overview_eligible(client: &Client, selected_tags: TagMask) -> bool {
     client.is_visible(selected_tags) && !client.is_edge_scratchpad()
 }
 
-pub(crate) fn has_cards(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> bool {
-    monitor.clients.iter().any(|win| {
-        clients
-            .get(win)
-            .is_some_and(|client| overview_eligible(client, monitor.visible_tags()))
-    })
+pub(crate) fn has_cards(monitor: &Monitor) -> bool {
+    let selected_tags = monitor.visible_tags();
+    monitor
+        .iter_clients()
+        .any(|(_, client)| overview_eligible(client, selected_tags))
 }
 
-fn initial_window_order(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-    selected_tags: TagMask,
-) -> Vec<WindowId> {
+fn initial_window_order(monitor: &Monitor, selected_tags: TagMask) -> Vec<WindowId> {
     let mut windows = monitor
-        .clients
-        .iter()
-        .copied()
+        .iter_clients()
         .enumerate()
-        .filter_map(|(index, win)| {
-            let client = clients.get(&win)?;
+        .filter_map(|(index, (win, client))| {
             overview_eligible(client, selected_tags).then_some((
                 client
                     .tags
@@ -646,18 +624,15 @@ fn initial_window_order(
     windows.into_iter().map(|(_, _, win)| win).collect()
 }
 
-fn eligible_order(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-    preferred_order: &[WindowId],
-) -> Vec<WindowId> {
+fn eligible_order(monitor: &Monitor, preferred_order: &[WindowId]) -> Vec<WindowId> {
+    let selected_tags = monitor.visible_tags();
     preferred_order
         .iter()
         .copied()
         .filter(|win| {
-            clients
-                .get(win)
-                .is_some_and(|client| overview_eligible(client, monitor.visible_tags()))
+            monitor
+                .client(*win)
+                .is_some_and(|client| overview_eligible(client, selected_tags))
         })
         .collect()
 }

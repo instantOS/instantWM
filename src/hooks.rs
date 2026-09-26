@@ -266,16 +266,20 @@ mod tests {
     #[test]
     fn startup_topology_is_recorded_and_later_changes_fire_once() {
         use crate::monitor::MonitorManager;
-        use crate::types::{Monitor, MonitorId};
+        use crate::test_support::MonitorBuilder;
+        use crate::types::MonitorId;
 
         let push = |wm: &mut Wm, id: u64, name: &str, x: i32| {
-            wm.core.model.monitors.push(Monitor {
-                monitor_id: MonitorId::from_raw(id),
-                name: name.into(),
-                monitor_rect: Rect::new(x, 0, 1920, 1080),
-                ui_scale: 1.0,
-                ..Monitor::default()
-            });
+            wm.core.model.monitors.push(
+                MonitorBuilder::new()
+                    .named(name)
+                    .monitor_rect(Rect::new(x, 0, 1920, 1080))
+                    .configure(|m| {
+                        m.monitor_id = MonitorId::from_raw(id);
+                        m.ui_scale = 1.0;
+                    })
+                    .build(),
+            );
         };
         let mut wm = wm_with_mode_hooks(vec![(HookEvent::MonitorsChanged, None, "changed")]);
         wm.core.model.monitors = MonitorManager::new();

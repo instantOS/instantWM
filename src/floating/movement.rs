@@ -136,20 +136,19 @@ mod tests {
     use super::key_move;
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::PresentationMode;
-    use crate::types::{
-        Client, ClientMode, ClientPlacement, Direction, Monitor, Rect, TagMask, WindowId,
-    };
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, ClientMode, ClientPlacement, Direction, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     #[test]
     fn moving_literal_floating_presentation_maximize_restores_and_clears_protocol_state() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let work_rect = Rect::new(0, 30, 1200, 770);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: work_rect,
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1200, 800), work_rect)
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -161,15 +160,13 @@ mod tests {
         let saved = Rect::new(200, 150, 600, 450);
         let mut client = Client {
             win,
-            monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::maximized(ClientPlacement::Floating),
             geo: work_rect,
             ..Client::default()
         };
+        client.set_mode_for_test(ClientMode::maximized(ClientPlacement::Floating));
         client.save_floating_placement(saved, work_rect);
-        wm.core.model.insert_client(client);
-        assert!(wm.core.model.attach_client(win));
+        assert!(wm.core.model.add_client(monitor_id, client));
 
         assert!(key_move(&mut wm.ctx(), win, Direction::Right));
 

@@ -222,12 +222,7 @@ fn handle_update_transient_for(
     parent: Option<crate::types::WindowId>,
 ) {
     let mut ctx = wm.ctx();
-    let Some(monitor_id) = ctx
-        .core()
-        .model()
-        .client(win)
-        .map(|client| client.monitor_id)
-    else {
+    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
         return;
     };
     let needs_float = ctx.core().model().client(win).is_some_and(|client| {
@@ -407,7 +402,7 @@ fn handle_map_window(
         launch_pid,
         launch_startup_id.as_deref(),
     );
-    let Some(client) = build_initial_wayland_client(
+    let Some((monitor_id, client)) = build_initial_wayland_client(
         state,
         win,
         &properties,
@@ -419,7 +414,7 @@ fn handle_map_window(
         return;
     };
 
-    if !state.model.insert_client(client) {
+    if !state.model.add_client(monitor_id, client) {
         return;
     }
     let rule_outcome = crate::client::apply_initial_rules(state, win, &properties, launch_context);
@@ -515,7 +510,7 @@ fn build_initial_wayland_client(
         Option<x11rb::properties::WmHints>,
         Option<x11rb::properties::WmSizeHints>,
     ),
-) -> Option<crate::types::Client> {
+) -> Option<(crate::types::MonitorId, crate::types::Client)> {
     let mut client = crate::types::Client::new(win);
     client.name = properties.title.clone();
     client.transient_for = parent;
@@ -526,14 +521,12 @@ fn build_initial_wayland_client(
     client.border_width = state.config.window.border_width_px;
     client.old_border_width = state.config.window.border_width_px;
 
-    if !crate::client::lifecycle::assign_initial_monitor_and_tags(
+    let monitor_id = crate::client::lifecycle::assign_initial_monitor_and_tags(
         &state.model,
         &mut client,
         parent,
         launch_context,
-    ) {
-        return None;
-    }
+    )?;
 
     crate::backend::x11::policy::apply_wm_hints_to_client(&mut client, x11_policy_hints.0);
     crate::backend::x11::policy::apply_size_hints_to_client(&mut client, x11_policy_hints.1);
@@ -542,7 +535,7 @@ fn build_initial_wayland_client(
         client.geo = geo;
         client.set_preferred_floating_size(geo.size());
     } else {
-        let monitor_rect = state.model.monitor(client.monitor_id)?.work_rect();
+        let monitor_rect = state.model.monitor(monitor_id)?.work_rect();
         client.geo = crate::types::Rect::new(
             monitor_rect.x,
             monitor_rect.y,
@@ -550,7 +543,7 @@ fn build_initial_wayland_client(
             monitor_rect.h.max(100),
         );
     }
-    Some(client)
+    Some((monitor_id, client))
 }
 
 fn apply_wayland_surface_policy(
@@ -624,12 +617,20 @@ fn position_new_wayland_floating_window(
     }
 }
 
+/// Resolve where the freshly managed client ended up and whether it should be
+/// focused.
+///
+/// The client is already owned by its monitor by the time this runs:
+/// `WmModel::add_client` is the single point where a client enters the model,
+/// so there is no separate attach step left to perform here.
 fn finalize_wayland_client(
     state: &mut crate::core_state::CoreState,
     win: crate::types::WindowId,
 ) -> Option<(crate::types::MonitorId, bool)> {
-    let attached = state.model.attach_client(win);
-    debug_assert!(attached, "managed Wayland client must have a valid monitor");
+    debug_assert!(
+        state.model.client(win).is_some(),
+        "managed Wayland client must still be in the model"
+    );
 
     if state
         .model
@@ -642,7 +643,7 @@ fn finalize_wayland_client(
 
     state.model.client_view(win).map(|view| {
         (
-            view.client.monitor_id,
+            view.monitor.id(),
             view.client.is_visible(view.monitor.visible_tags()),
         )
     })
@@ -762,7 +763,8 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::backend::wayland::commands::WmCommand;
-    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, WindowId};
+    use crate::test_support::{add_client, push_monitor, push_monitor_with};
+    use crate::types::{Client, ClientMode, ClientPlacement, Rect, WindowId};
     use crate::wm::Wm;
 
     #[test]
@@ -780,19 +782,21 @@ mod tests {
         let backend = WaylandBackend::new();
         backend.attach_state(&mut state);
         let mut wm = Wm::new(Backend::new_wayland(backend));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
         });
         let win = WindowId(90);
         let initial = Rect::new(100, 100, 800, 600);
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            geo: initial,
-            mode: ClientMode::floating(),
-            ..Client::default()
-        });
+            Client {
+                win,
+                geo: initial,
+                mode: ClientMode::floating(),
+                ..Client::default()
+            },
+        );
 
         state.push_command(WmCommand::RequestX11WindowSize {
             win,
@@ -835,24 +839,21 @@ mod tests {
     #[test]
     fn unminimizing_reveals_without_activating() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         wm.core.model.monitors.set_selected(monitor_id);
         let focused = WindowId(80);
         let minimized = WindowId(81);
 
         for (win, is_hidden) in [(focused, false), (minimized, true)] {
-            wm.core.model.insert_client(Client {
-                win,
+            add_client(
+                &mut wm.core.model,
                 monitor_id,
-                is_hidden,
-                ..Client::default()
-            });
-            wm.core
-                .model
-                .monitor_mut(monitor_id)
-                .unwrap()
-                .clients
-                .push(win);
+                Client {
+                    win,
+                    is_hidden,
+                    ..Client::default()
+                },
+            );
         }
         wm.core
             .model
@@ -869,13 +870,16 @@ mod tests {
     #[test]
     fn initial_fullscreen_intent_is_applied_after_window_creation() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(72);
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            ..Client::default()
-        });
+            Client {
+                win,
+                ..Client::default()
+            },
+        );
 
         wm.core.model.apply_initial_presentation_intent(
             win,
@@ -898,15 +902,14 @@ mod tests {
     #[test]
     fn initial_maximize_becomes_the_fullscreen_restore_mode() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(73);
         let mut client = Client {
             win,
-            monitor_id,
             ..Client::default()
         };
         client.set_placement(ClientPlacement::Floating);
-        wm.core.model.insert_client(client);
+        add_client(&mut wm.core.model, monitor_id, client);
 
         wm.core.model.apply_initial_presentation_intent(
             win,
@@ -924,16 +927,19 @@ mod tests {
     #[test]
     fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(70);
         let geo = Rect::new(20, 30, 800, 600);
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            geo,
-            mode: ClientMode::tiled(),
-            ..Client::default()
-        });
+            Client {
+                win,
+                geo,
+                mode: ClientMode::tiled(),
+                ..Client::default()
+            },
+        );
         wm.work.layout.clear();
         let bar_seq = wm.bar.update_seq();
 
@@ -965,20 +971,19 @@ mod tests {
     #[test]
     fn stale_wayland_commit_does_not_override_scratchpad_geometry() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(71);
         let geo = Rect::new(480, 216, 960, 648);
         let mut client = Client {
             win,
-            monitor_id,
             geo,
             mode: ClientMode::floating(),
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("insmenu", None, 1920, 1080)
+            .promote_to_scratchpad(monitor_id, "insmenu", None, 1920, 1080)
             .unwrap();
-        wm.core.model.insert_client(client);
+        add_client(&mut wm.core.model, monitor_id, client);
 
         apply_committed_window_size(&mut wm, win, 1920, 1080);
 

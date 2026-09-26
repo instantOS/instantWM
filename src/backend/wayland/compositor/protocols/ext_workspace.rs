@@ -126,20 +126,19 @@ impl WorkspaceSnapshot {
                     crate::types::Monitor::selected_tags,
                 );
                 let urgent_tags = monitor.map_or(crate::types::TagMask::EMPTY, |monitor| {
-                    monitor
-                        .clients
-                        .iter()
-                        .fold(crate::types::TagMask::EMPTY, |urgent, window| {
-                            let client = globals.and_then(|globals| globals.model.client(*window));
-                            client
-                                .filter(|client| client.is_urgent)
-                                .map_or(urgent, |client| urgent | client.tags)
-                        })
+                    monitor.iter_clients().fold(
+                        crate::types::TagMask::EMPTY,
+                        |urgent, (_, client)| {
+                            if client.is_urgent {
+                                urgent | client.tags
+                            } else {
+                                urgent
+                            }
+                        },
+                    )
                 });
                 let occupied_tags = monitor.map_or(crate::types::TagMask::EMPTY, |monitor| {
-                    globals.map_or(crate::types::TagMask::EMPTY, |globals| {
-                        monitor.occupied_tags(&globals.model.clients)
-                    })
+                    monitor.occupied_tags()
                 });
                 let tag_names = monitor.map_or_else(
                     || (1..=9).map(|index| index.to_string()).collect(),
@@ -236,19 +235,17 @@ fn refresh_needed(state: &WaylandState) -> bool {
         };
         let urgent_tags =
             monitor
-                .clients
-                .iter()
-                .fold(crate::types::TagMask::EMPTY, |urgent, window| {
-                    globals
-                        .model
-                        .client(*window)
-                        .filter(|client| client.is_urgent)
-                        .map_or(urgent, |client| urgent | client.tags)
+                .iter_clients()
+                .fold(crate::types::TagMask::EMPTY, |urgent, (_, client)| {
+                    if client.is_urgent {
+                        urgent | client.tags
+                    } else {
+                        urgent
+                    }
                 });
         if protocol.last_tags.get(&output_name) != Some(&monitor.selected_tags())
             || protocol.last_urgent_tags.get(&output_name) != Some(&urgent_tags)
-            || protocol.last_occupied_tags.get(&output_name)
-                != Some(&monitor.occupied_tags(&globals.model.clients))
+            || protocol.last_occupied_tags.get(&output_name) != Some(&monitor.occupied_tags())
             || protocol
                 .last_tag_names
                 .get(&output_name)

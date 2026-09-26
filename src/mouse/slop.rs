@@ -410,14 +410,20 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, Monitor};
+    use crate::test_support::{MonitorBuilder, add_client_with};
+    use crate::types::ClientMode;
     use crate::wm::Wm;
 
-    fn wm_with_monitor(monitor: Monitor) -> (Wm, crate::types::MonitorId) {
+    /// Build a window manager whose single output covers `rect`.
+    fn wm_with_monitor(rect: Rect) -> (Wm, crate::types::MonitorId) {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        wm.core.derived.display.width = monitor.monitor_rect.w.max(1);
-        wm.core.derived.display.height = monitor.monitor_rect.h.max(1);
-        let monitor_id = wm.core.model.monitors.push(monitor);
+        wm.core.derived.display.width = rect.w.max(1);
+        wm.core.derived.display.height = rect.h.max(1);
+        let monitor_id = wm
+            .core
+            .model
+            .monitors
+            .push(MonitorBuilder::new().monitor_rect(rect).build());
         wm.core.model.monitors.set_selected(monitor_id);
         (wm, monitor_id)
     }
@@ -428,21 +434,12 @@ mod tests {
         win: WindowId,
         geo: Rect,
     ) {
-        let mut client = Client {
-            win,
-            monitor_id,
-            geo,
-            mode: ClientMode::floating(),
-            ..Client::default()
-        };
-        client.set_placement(crate::types::ClientPlacement::Floating);
-        wm.core.model.insert_client(client);
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .clients
-            .push(win);
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.geo = geo;
+            client.mode = ClientMode::floating();
+            client.set_placement(crate::types::ClientPlacement::Floating);
+        });
     }
 
     #[test]
@@ -509,10 +506,7 @@ mod tests {
 
     #[test]
     fn selections_on_outputs_left_of_the_origin_validate() {
-        let (mut wm, monitor_id) = wm_with_monitor(Monitor {
-            monitor_rect: Rect::new(-1920, -50, 1920, 1080),
-            ..Monitor::default()
-        });
+        let (mut wm, monitor_id) = wm_with_monitor(Rect::new(-1920, -50, 1920, 1080));
         let win = WindowId(1);
         insert_floating_client(&mut wm, monitor_id, win, Rect::new(-1920, -50, 600, 400));
 
@@ -532,11 +526,7 @@ mod tests {
 
     #[test]
     fn drain_applies_outcomes_to_their_pinned_windows() {
-        let (mut wm, monitor_id) = wm_with_monitor(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let pinned = WindowId(1);
         let selected = WindowId(2);
         insert_floating_client(&mut wm, monitor_id, pinned, Rect::new(10, 10, 600, 400));

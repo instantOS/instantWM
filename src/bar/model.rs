@@ -1,6 +1,5 @@
 use crate::bar::{MonitorHitCache, TrayMenuHit};
 use crate::contexts::CoreCtx;
-use crate::model::WmModel;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -11,12 +10,12 @@ pub(crate) struct ClientBarStats {
 
 impl ClientBarStats {
     /// Collect bar statistics for the given monitor.
-    pub(crate) fn collect(monitor: &Monitor, model: &WmModel) -> Self {
+    pub(crate) fn collect(monitor: &Monitor) -> Self {
         let mut stats = Self::default();
 
         // Occupied / urgent tag bits from all clients on this monitor.
         let mut occupied = TagMask::EMPTY;
-        for (_win, client) in monitor.iter_clients(&model.clients) {
+        for (_win, client) in monitor.iter_clients() {
             occupied = occupied | client.tags;
             if client.is_urgent {
                 stats.urgent_tags = stats.urgent_tags | client.tags;

@@ -11,15 +11,17 @@ fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
+        return;
+    };
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         if client.is_scratchpad() {
             return;
         }
         client.is_sticky = !client.is_sticky;
-        client.monitor_id
     } else {
         return;
-    };
+    }
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
@@ -38,10 +40,10 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
         .core()
         .state()
         .model
-        .clients
-        .iter()
-        .filter(|(_, c)| c.is_hidden && !c.is_scratchpad())
-        .map(|(win, _)| *win)
+        .clients_iter_all()
+        .filter_map(|(_, client)| {
+            (client.is_hidden && !client.is_scratchpad()).then_some(client.win)
+        })
         .collect();
 
     for win in clients_to_unhide {
@@ -117,6 +119,7 @@ mod tests {
     use super::{set_bottom_bar_shown, toggle_mode_name, unhide_all};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::core_state::ActiveWmMode;
+    use crate::test_support::{add_client, add_selected_client};
     use crate::types::{Client, Monitor, TagMask, WindowId};
     use crate::wm::Wm;
 
@@ -219,25 +222,28 @@ mod tests {
         let focused = WindowId(1);
         let hidden = WindowId(2);
         let also_hidden = WindowId(3);
-        for (win, is_hidden) in [(focused, false), (hidden, true), (also_hidden, true)] {
-            wm.core.model.insert_client(Client {
-                win,
+        // Adoption prepends to the monitor's focus stack, so the hidden windows
+        // are adopted first and the focused one lands on top — the order the
+        // explicit list used to give.
+        for (win, is_hidden) in [(also_hidden, true), (hidden, true)] {
+            add_client(
+                &mut wm.core.model,
                 monitor_id,
-                is_hidden,
-                ..Client::default()
-            });
-            wm.core
-                .model
-                .monitor_mut(monitor_id)
-                .unwrap()
-                .clients
-                .push(win);
+                Client {
+                    win,
+                    is_hidden,
+                    ..Client::default()
+                },
+            );
         }
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .set_selected(Some(focused));
+        add_selected_client(
+            &mut wm.core.model,
+            monitor_id,
+            Client {
+                win: focused,
+                ..Client::default()
+            },
+        );
 
         unhide_all(&mut wm.ctx());
 

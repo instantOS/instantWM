@@ -205,12 +205,19 @@ impl XwmHandler for WaylandState {
         let element = smithay::desktop::Window::new_x11_window(window.clone());
         let win = self.alloc_window_id();
         let is_overlay = is_unmanaged_x11_overlay(&window);
-        let _ = element
+        // This is a write, not a lazy cache: `element` was constructed on the line
+        // above, so an already-present marker would mean the window carries an id
+        // that disagrees with the `window_index` key inserted below.
+        let marker_inserted = element
             .user_data()
-            .get_or_insert_threadsafe(|| WindowIdMarker {
+            .insert_if_missing_threadsafe(|| WindowIdMarker {
                 id: win,
                 is_overlay,
             });
+        debug_assert!(
+            marker_inserted,
+            "fresh X11 Window already carries a WindowIdMarker; its id would diverge from window_index"
+        );
 
         self.space.map_element(element.clone(), geo.loc, false);
         self.window_index.insert(win, element);

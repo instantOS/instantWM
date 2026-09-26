@@ -15,7 +15,6 @@ pub use mode::{
 };
 pub use scratchpad::ScratchpadData;
 
-use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, SizeHints};
 use crate::types::input::SnapPosition;
 use crate::types::{TagMask, WindowId};
@@ -86,8 +85,6 @@ pub struct Client {
     /// can only change the role through explicit transitions.
     #[cfg(test)]
     pub(crate) scratchpad: Option<ScratchpadData>,
-    /// Monitor this client is on.
-    pub monitor_id: MonitorId,
     /// Managed toplevel this window is transient for, when advertised by the
     /// client protocol (`xdg_toplevel.set_parent` / `WM_TRANSIENT_FOR`).
     ///
@@ -189,6 +186,12 @@ mod tests {
     use super::{Client, ClientMode, ClientPlacement};
     use crate::types::{EdgeDirection, MonitorId, Rect, TagMask};
 
+    /// A client promoted to scratchpad records the monitor it came from. These
+    /// tests exercise `Client` in isolation, so any allocated id will do.
+    fn source_monitor() -> MonitorId {
+        MonitorId::from_raw(0)
+    }
+
     #[test]
     fn fullscreen_restores_previous_tiling_mode() {
         let mut client = Client::default();
@@ -231,7 +234,7 @@ mod tests {
     fn scratchpad_focus_restore_is_consumed_once() {
         let mut client = Client::default();
         client
-            .promote_to_scratchpad("menu", None, 1920, 1080)
+            .promote_to_scratchpad(source_monitor(), "menu", None, 1920, 1080)
             .unwrap();
         let scratchpad = client.scratchpad.as_mut().unwrap();
         scratchpad.remember_focus(Some(crate::types::WindowId(42)));
@@ -250,7 +253,7 @@ mod tests {
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("term", None, 1920, 1080)
+            .promote_to_scratchpad(source_monitor(), "term", None, 1920, 1080)
             .unwrap();
 
         client.tags = TagMask::single(3).unwrap();
@@ -269,7 +272,7 @@ mod tests {
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("term", None, 1920, 1080)
+            .promote_to_scratchpad(source_monitor(), "term", None, 1920, 1080)
             .unwrap();
 
         assert!(!client.is_sticky);
@@ -281,7 +284,6 @@ mod tests {
     #[test]
     fn scratchpad_restore_recovers_complete_ordinary_window_state() {
         let mut client = Client {
-            monitor_id: MonitorId::default(),
             tags: TagMask::single(2).unwrap(),
             is_sticky: true,
             is_locked: true,
@@ -291,7 +293,13 @@ mod tests {
         };
         client.set_placement(ClientPlacement::Tiling);
         client
-            .promote_to_scratchpad("term", Some(EdgeDirection::Top), 1920, 1080)
+            .promote_to_scratchpad(
+                source_monitor(),
+                "term",
+                Some(EdgeDirection::Top),
+                1920,
+                1080,
+            )
             .unwrap();
 
         assert!(client.is_scratchpad());
@@ -327,7 +335,7 @@ mod tests {
     fn hidden_scratchpad_does_not_stay_in_bar() {
         let mut client = Client::default();
         client
-            .promote_to_scratchpad("term", None, 1920, 1080)
+            .promote_to_scratchpad(source_monitor(), "term", None, 1920, 1080)
             .unwrap();
         client.is_hidden = true;
 

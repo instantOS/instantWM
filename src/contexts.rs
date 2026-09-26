@@ -137,7 +137,7 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn queue_layout_for_client(&mut self, win: WindowId) {
-        if let Some(monitor_id) = self.state.model.client(win).map(|client| client.monitor_id) {
+        if let Some(monitor_id) = self.state.model.monitor_of_client(win) {
             self.work.layout.mark_monitor(monitor_id);
         }
     }
@@ -480,12 +480,7 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        let monitor_id = self
-            .core()
-            .model()
-            .client(win)
-            .map(|client| client.monitor_id);
-        let Some(monitor_id) = monitor_id else {
+        let Some(monitor_id) = self.core().model().monitor_of_client(win) else {
             return;
         };
         self.core_mut().model_mut().raise_client_in_z_order(win);
@@ -719,10 +714,11 @@ impl<'a> WmCtx<'a> {
         // Skip if already inside the window's border-aware outer bounds.
         let in_window = c.total_rect().contains_point(ptr);
 
-        let on_bar = self.core().model().client_view(win).is_some_and(|view| {
-            view.monitor
-                .bar_contains_y(&self.core().model().clients, ptr.y)
-        });
+        let on_bar = self
+            .core()
+            .model()
+            .client_view(win)
+            .is_some_and(|view| view.monitor.bar_contains_y(ptr.y));
 
         if in_window || on_bar {
             return;

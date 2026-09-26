@@ -63,7 +63,7 @@ fn tag_window(wm: &mut Wm, win: WindowId, tag: u32) -> Response {
 }
 
 fn set_window_floating(wm: &mut Wm, win: WindowId, floating: bool) -> Response {
-    let Some(monitor_id) = wm.core.model.client(win).map(|client| client.monitor_id) else {
+    let Some(monitor_id) = wm.core.model.monitor_of_client(win) else {
         return Response::err(format!("window {} not found", win.0));
     };
     let request = if floating {

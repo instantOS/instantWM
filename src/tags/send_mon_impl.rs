@@ -147,6 +147,7 @@ fn transfer_floating_to_monitor(
 mod tests {
     use super::*;
     use crate::model::WmModel;
+    use crate::test_support::add_selected_client;
     use crate::types::{Client, ClientMode, Monitor};
 
     fn model_with_selected_client(mode: ClientMode, monitor_count: usize) -> WmModel {
@@ -168,17 +169,11 @@ mod tests {
         let win = WindowId(42);
         let mut client = Client {
             win,
-            monitor_id: selected_id,
             mode,
             ..Client::default()
         };
         client.tags = model.expect_selected_monitor().selected_tags();
-        model.insert_client(client);
-
-        if let Some(mon) = model.monitor_mut(selected_id) {
-            mon.selected = Some(win);
-            mon.clients.push(win);
-        }
+        add_selected_client(&mut model, selected_id, client);
 
         model
     }

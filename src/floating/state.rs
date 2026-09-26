@@ -182,30 +182,29 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::client::geometry::FloatingPlacementIntent;
-    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, ClientMode, ClientPlacement, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     fn wm_with_client(mode: ClientMode, geo: Rect) -> (Wm, WindowId) {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 30, 1200, 770),
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1200, 800), Rect::new(0, 30, 1200, 770))
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(91);
-        wm.core.model.insert_client(Client {
+        let mut client = Client {
             win,
-            monitor_id,
             tags: TagMask::single(1).unwrap(),
-            mode,
             geo,
             border_width: 2,
             old_border_width: 2,
             ..Client::default()
-        });
-        assert!(wm.core.model.attach_client(win));
-        wm.core.model.monitor_mut(monitor_id).unwrap().selected = Some(win);
+        };
+        client.set_mode_for_test(mode);
+        assert!(wm.core.model.readopt_client(monitor_id, client, true));
         (wm, win)
     }
 

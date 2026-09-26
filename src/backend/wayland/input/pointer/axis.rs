@@ -106,9 +106,8 @@ pub(crate) fn handle_pointer_axis(
 mod tests {
     use super::*;
     use crate::backend::wayland::commands::{PointerAxis, PointerAxisCommand};
-    use crate::types::{
-        Client, ClientMode, Gesture, Monitor, MonitorId, Point, Rect, TagMask, WindowId,
-    };
+    use crate::test_support::{add_client, push_monitor_with};
+    use crate::types::{Client, ClientMode, Gesture, MonitorId, Point, Rect, TagMask, WindowId};
 
     /// A monitor with a visible bar and two tiled clients whose titles the
     /// strip presents in order `[first, second]`.
@@ -119,12 +118,11 @@ mod tests {
         wm.core.model.tags.num_tags = 9;
         // A headless test monitor supplies its own bar height.
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            bar_height: 30,
-            bar_default_show: true,
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
+            monitor.available_rect = Rect::new(0, 0, 1200, 800);
+            monitor.bar_height = 30;
+            monitor.bar_default_show = true;
         });
         let template = wm.core.config.tag_template.clone();
         wm.core
@@ -134,19 +132,26 @@ mod tests {
             .init_tags(&template);
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(41), WindowId(42)];
-        for win in windows {
-            wm.core.model.insert_client(Client {
-                win,
+        // `add_client` focuses newest-first, so adopt in reverse to leave the
+        // focus stack, and therefore the title strip, in `[first, second]`.
+        for win in windows.into_iter().rev() {
+            add_client(
+                &mut wm.core.model,
                 monitor_id,
-                tags,
-                mode: ClientMode::tiled(),
-                geo: Rect::new(0, 30, 600, 770),
-                ..Client::default()
-            });
+                Client {
+                    win,
+                    tags,
+                    mode: ClientMode::tiled(),
+                    geo: Rect::new(0, 30, 600, 770),
+                    ..Client::default()
+                },
+            );
         }
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = windows.to_vec();
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
         (wm, monitor_id, windows[0], windows[1])
     }
 

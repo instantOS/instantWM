@@ -11,7 +11,7 @@ use x11rb::protocol::xproto::*;
 /// into a mouse drag.
 pub fn touch_begin(ctx: &mut WmCtxX11<'_>, e: &TouchBeginEvent) {
     let touched_window = WindowId::from(e.event);
-    if ctx.core.model().clients.contains_key(&touched_window)
+    if ctx.core.model().client(touched_window).is_some()
         && ctx.core.model().selected_win() != Some(touched_window)
     {
         crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(touched_window));
@@ -43,13 +43,8 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let root = Point::new(e.root_x as i32, e.root_y as i32);
     let clean_state = ModMask::new(e.state.bits()).cleaned(numlockmask);
 
-    let target_window = ctx
-        .core
-        .state
-        .model
-        .clients
-        .contains_key(&event_win)
-        .then_some(event_win);
+    let is_managed = ctx.core.model().client(event_win).is_some();
+    let target_window = is_managed.then_some(event_win);
 
     let button = MouseButton::from_x11_detail(e.detail);
 

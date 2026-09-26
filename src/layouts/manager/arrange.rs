@@ -63,7 +63,7 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
         let Some(view) = ctx.core().model().client_view(win) else {
             continue;
         };
-        if arranged_monitor.is_none_or(|monitor_id| view.client.monitor_id == monitor_id) {
+        if arranged_monitor.is_none_or(|monitor_id| view.monitor.id() == monitor_id) {
             ready.push(win);
         } else {
             deferred.insert(win);
@@ -85,11 +85,10 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let animated = globals.config.animations.enabled;
         let layout_cfg = globals.config.layout;
         let resize_hints = globals.config.window.resize_hints;
-        let clients = &mut globals.model.clients;
         let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
             return;
         };
-        monitor.compute_arrange(clients, &layout_cfg, resize_hints, animated)
+        monitor.compute_arrange(&layout_cfg, resize_hints, animated)
     };
 
     plan.apply(ctx, monitor_id);
@@ -130,12 +129,11 @@ impl ArrangePlan {
 impl Monitor {
     pub fn compute_arrange(
         &mut self,
-        clients: &mut HashMap<WindowId, Client>,
         layout_cfg: &crate::config::config_toml::LayoutConfig,
         resize_hints: bool,
         animated: bool,
     ) -> ArrangePlan {
-        let borders = compute_borders(self, clients);
+        let borders = compute_borders(self);
 
         // Border and geometry updates form one transaction. Layout against
         // the widths this pass will apply, not the previous client snapshot.
@@ -143,24 +141,20 @@ impl Monitor {
         // the other logical half of the transaction authoritative as well.
         // This avoids cloning the complete client map (including titles) on
         // every arrangement pass merely to override a few integers.
-        apply_planned_borders(clients, &borders);
+        apply_planned_borders(self, &borders);
 
         let is_overview = self.overview_state.is_some();
         let (client_moves, z_order) = if is_overview {
-            let overview = crate::overview::compute(self, clients);
+            let overview = crate::overview::compute(self);
             (overview.moves, Some(overview.z_order))
         } else {
             let moves = match self.current_layout() {
-                PresentationMode::Tiled => {
-                    compute_manual_tree(self, clients, layout_cfg, resize_hints)
-                }
+                PresentationMode::Tiled => compute_manual_tree(self, layout_cfg, resize_hints),
                 PresentationMode::Maximized => {
-                    reconcile_manual_tree(self, clients, layout_cfg, resize_hints);
-                    crate::layouts::algo::maximized(self, clients, layout_cfg, animated)
+                    reconcile_manual_tree(self, layout_cfg, resize_hints);
+                    crate::layouts::algo::maximized(self, layout_cfg, animated)
                 }
-                PresentationMode::Floating => {
-                    crate::layouts::algo::floating(self, clients, animated)
-                }
+                PresentationMode::Floating => crate::layouts::algo::floating(self, animated),
             };
             (moves, None)
         };
@@ -170,7 +164,7 @@ impl Monitor {
         let fullscreen_moves = if is_overview {
             Vec::new()
         } else {
-            compute_fullscreen_moves(self, clients)
+            compute_fullscreen_moves(self)
         };
 
         ArrangePlan {
@@ -200,11 +194,10 @@ pub(crate) struct TilingContext {
 impl TilingContext {
     pub(crate) fn for_monitor(
         monitor: &Monitor,
-        clients: &HashMap<WindowId, Client>,
         layout_cfg: &crate::config::config_toml::LayoutConfig,
         resize_hints: bool,
     ) -> Self {
-        let members = monitor.collect_tiling_tree_members(clients);
+        let members = monitor.collect_tiling_tree_members();
         let placement = LayoutPlacement::new(
             layout_cfg,
             monitor,
@@ -215,7 +208,7 @@ impl TilingContext {
         let minimums = members
             .iter()
             .filter_map(|info| {
-                let client = clients.get(&info.win)?;
+                let client = monitor.client(info.win)?;
                 let mut size = placement.minimum_slot_size(client, resize_hints);
                 let decoration = 2 * client.border_width.max(0) + placement.inner_gap();
                 size.w = size.w.max(bar_height.saturating_add(decoration));
@@ -269,7 +262,6 @@ impl TilingContext {
 
 fn reconcile_manual_tree(
     monitor: &mut Monitor,
-    clients: &HashMap<WindowId, Client>,
     layout_cfg: &crate::config::config_toml::LayoutConfig,
     resize_hints: bool,
 ) {
@@ -278,11 +270,11 @@ fn reconcile_manual_tree(
     // position survive minimization. The constraint computation below stays
     // visibility-filtered, so hidden clients never claim tiling space.
     let windows = monitor
-        .collect_tree_order_members(clients)
+        .collect_tree_order_members()
         .iter()
         .map(|client| client.win)
         .collect::<Vec<_>>();
-    let tiling = TilingContext::for_monitor(monitor, clients, layout_cfg, resize_hints);
+    let tiling = TilingContext::for_monitor(monitor, layout_cfg, resize_hints);
     monitor.per_tag_state().layout_tree.reconcile_for_layout(
         &windows,
         layout_cfg.new_window_placement,
@@ -293,11 +285,10 @@ fn reconcile_manual_tree(
 
 fn compute_manual_tree(
     monitor: &mut Monitor,
-    clients: &HashMap<WindowId, Client>,
     layout_cfg: &crate::config::config_toml::LayoutConfig,
     resize_hints: bool,
 ) -> Vec<LayoutOutput> {
-    let tiling = TilingContext::for_monitor(monitor, clients, layout_cfg, resize_hints);
+    let tiling = TilingContext::for_monitor(monitor, layout_cfg, resize_hints);
     let windows: Vec<_> = tiling.members.iter().map(|client| client.win).collect();
     let (slots, constraints_fit) = {
         let tree = &mut monitor.per_tag_state().layout_tree;
@@ -320,8 +311,8 @@ fn compute_manual_tree(
         .members
         .iter()
         .filter_map(|client| {
-            if !clients
-                .get(&client.win)
+            if !monitor
+                .client(client.win)
                 .is_some_and(|client| client.mode().is_normal_tiling())
             {
                 return None;
@@ -336,47 +327,39 @@ fn compute_manual_tree(
         .collect()
 }
 
-fn apply_planned_borders(clients: &mut HashMap<WindowId, Client>, borders: &[(WindowId, i32)]) {
+fn apply_planned_borders(monitor: &mut Monitor, borders: &[(WindowId, i32)]) {
     for &(win, border_width) in borders {
-        if let Some(client) = clients.get_mut(&win) {
+        if let Some(client) = monitor.client_mut(win) {
             client.border_width = border_width;
         }
     }
 }
 
-fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {
+fn compute_borders(monitor: &Monitor) -> Vec<(WindowId, i32)> {
     let is_tiling = monitor.current_layout().is_tiling();
     let is_maximized = monitor.current_layout().is_maximized();
-    let client_count = monitor.tiled_client_count(clients) as u32;
+    let client_count = monitor.tiled_client_count() as u32;
     let selected_tags = monitor.visible_tags();
 
     monitor
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let client = clients.get(&win)?;
-            client.is_visible(selected_tags).then(|| {
-                (
-                    win,
-                    border_width_for_layout_client(client, client_count, is_tiling, is_maximized),
-                )
-            })
+        .iter_clients()
+        .filter(|(_, client)| client.is_visible(selected_tags))
+        .map(|(win, client)| {
+            (
+                win,
+                border_width_for_layout_client(client, client_count, is_tiling, is_maximized),
+            )
         })
         .collect()
 }
 
-fn compute_fullscreen_moves(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-) -> Vec<LayoutOutput> {
+fn compute_fullscreen_moves(monitor: &Monitor) -> Vec<LayoutOutput> {
     let monitor_rect = monitor.monitor_rect;
     let selected_tags = monitor.selected_tags();
 
     monitor
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let client = clients.get(&win)?;
+        .iter_clients()
+        .filter_map(|(win, client)| {
             (client.mode().is_true_fullscreen() && client.is_visible(selected_tags)).then_some(
                 LayoutOutput {
                     win,

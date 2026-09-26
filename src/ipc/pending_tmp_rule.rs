@@ -191,17 +191,18 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Monitor, MonitorSelector, PendingTmpRule, Rule, TagMask};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{MonitorSelector, PendingTmpRule, Rule, TagMask};
     use crate::wm::Wm;
 
     /// Build a Wm with `num_tags` tags and a single monitor reporting `num=0`.
     fn wm_with(num_tags: usize) -> Wm {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = num_tags;
-        wm.core.model.monitors.push(Monitor {
-            num: 0,
-            ..Monitor::default()
-        });
+        wm.core
+            .model
+            .monitors
+            .push(MonitorBuilder::new().configure(|m| m.num = 0).build());
         wm
     }
 
@@ -283,10 +284,10 @@ mod tests {
     #[test]
     fn on_monitor_name_resolves_against_connected_monitors() {
         let mut wm = wm_with(9);
-        wm.core.model.monitors.push(Monitor {
-            name: "DP-1".to_owned(),
-            ..Monitor::default()
-        });
+        wm.core
+            .model
+            .monitors
+            .push(MonitorBuilder::new().named("DP-1").build());
         assert!(matches!(
             handle_pending_tmp_rule(
                 &mut wm,

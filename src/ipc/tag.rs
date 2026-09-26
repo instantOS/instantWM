@@ -18,7 +18,7 @@ fn list_tags(wm: &Wm) -> Response {
     let core = &wm.core;
     let monitor = core.model.expect_selected_monitor();
     let show_icons = core.config.tags.show_icons;
-    let occupied = monitor.occupied_tags(&core.model.clients);
+    let occupied = monitor.occupied_tags();
     let selected = monitor.visible_tags();
 
     let tags = monitor
@@ -44,7 +44,8 @@ mod tests {
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::config_toml::TagsConfig;
     use crate::config::resolve_config;
-    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::{Client, Rect, TagMask, WindowId};
 
     fn wm(show_icons: bool) -> Wm {
         let mut user: crate::config::config_toml::UserConfig = toml::from_str("").unwrap();
@@ -56,10 +57,11 @@ mod tests {
         };
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 800, 600),
-            ..Monitor::default()
-        });
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 800, 600))
+                .build(),
+        );
         wm.core.apply_config(config).unwrap();
         wm.core
             .model
@@ -79,19 +81,15 @@ mod tests {
     fn list_reports_names_icons_and_the_active_label() {
         let mut wm = wm(false);
         let monitor_id = wm.core.model.selected_monitor_id();
-        wm.core.model.insert_client(Client {
-            win: WindowId(1),
+        wm.core.model.add_client(
             monitor_id,
-            geo: Rect::new(0, 0, 10, 10),
-            tags: TagMask::single(1).unwrap(),
-            ..Client::default()
-        });
-        wm.core
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .clients
-            .push(WindowId(1));
+            Client {
+                win: WindowId(1),
+                geo: Rect::new(0, 0, 10, 10),
+                tags: TagMask::single(1).unwrap(),
+                ..Client::default()
+            },
+        );
 
         let tags = list(&mut wm);
         assert_eq!(tags.len(), 3);

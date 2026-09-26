@@ -57,6 +57,7 @@ mod tests {
     use super::*;
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::runtime::RuntimeConfigSection;
+    use crate::test_support::MonitorBuilder;
     use crate::types::{Monitor, Rect};
 
     fn test_wm() -> Wm {
@@ -306,13 +307,11 @@ mod tests {
 
     #[test]
     fn per_output_tag_display_overrides_apply_live() {
-        use crate::types::Monitor;
-
         let mut wm = test_wm();
-        wm.core.model.monitors.push(Monitor {
-            name: "DP-1".to_string(),
-            ..Monitor::default()
-        });
+        wm.core
+            .model
+            .monitors
+            .push(MonitorBuilder::new().named("DP-1").build());
         assert_eq!(
             crate::bar::policy::TagBarPolicy::resolve(&wm.core.config, "DP-1").tag_slots,
             crate::types::tag::DEFAULT_TAG_SLOTS

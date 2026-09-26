@@ -197,7 +197,7 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bo
         return;
     }
 
-    let Some(mid) = ctx.core().model().client(win).map(|c| c.monitor_id) else {
+    let Some(mid) = ctx.core().model().monitor_of_client(win) else {
         return;
     };
     arrange(ctx, Some(mid));
@@ -206,10 +206,9 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bo
 
 fn scratchpad_windows(model: &WmModel, visible: bool) -> Vec<WindowId> {
     model
-        .clients
-        .values()
-        .filter(|c| c.is_scratchpad() && c.is_scratchpad_visible() == visible)
-        .map(|c| c.win)
+        .clients_iter_all()
+        .filter(|(_, c)| c.is_scratchpad() && c.is_scratchpad_visible() == visible)
+        .map(|(_, c)| c.win)
         .collect()
 }
 
@@ -281,18 +280,21 @@ pub fn scratchpad_create(
     }
 
     // Resolve geometry from the target window's monitor, not whichever output
-    // happens to be selected by the invoking backend or IPC client.
-    let (mon_ww, mon_wh, regular_rect) = {
+    // happens to be selected by the invoking backend or IPC client. The same
+    // monitor is remembered as the scratchpad's restore origin, since the
+    // client itself cannot name it.
+    let (source_monitor, mon_ww, mon_wh, regular_rect) = {
         let model = ctx.core().model();
         let view = model
             .client_view(selected_window)
             .ok_or_else(|| format!("window {} has no managed monitor", selected_window.0))?;
-        let content = view.monitor.visible_content_rect(&model.clients);
+        let content = view.monitor.visible_content_rect();
         let regular_rect = direction
             .is_none()
             .then(|| default_regular_scratchpad_rect(content, view.client.border_width))
             .transpose()?;
         (
+            view.monitor.id(),
             view.monitor.work_rect().w,
             view.monitor.work_rect().h,
             regular_rect,
@@ -305,7 +307,7 @@ pub fn scratchpad_create(
         .model
         .client_mut(selected_window)
         .ok_or_else(|| format!("window {} is not managed", selected_window.0))?;
-    client.promote_to_scratchpad(name, direction, mon_ww, mon_wh)?;
+    client.promote_to_scratchpad(source_monitor, name, direction, mon_ww, mon_wh)?;
     if let Some(rect) = regular_rect {
         client.geo = rect;
         client.set_preferred_floating_size(rect.size());
@@ -338,20 +340,24 @@ pub(crate) fn scratchpad_restore_window(
     let tag_mask = ctx.core().model().tags.mask();
     let current_monitor = ctx.core().model().selected_monitor_id();
     let (name, source_monitor, original_monitor, original_tags, was_hidden) = {
-        let client = ctx
+        // `source_monitor` is the monitor currently holding the client, which
+        // is distinct from `original_monitor`: the latter is the remembered
+        // pre-scratchpad origin captured when the role was granted.
+        let view = ctx
             .core()
             .model()
-            .client(window)
+            .client_view(window)
             .ok_or_else(|| format!("window {} is not managed", window.0))?;
-        let scratchpad = client
+        let scratchpad = view
+            .client
             .scratchpad()
             .ok_or_else(|| format!("window {} is not a scratchpad", window.0))?;
         (
             scratchpad.name().to_string(),
-            client.monitor_id,
+            view.monitor.id(),
             scratchpad.original_monitor(),
             scratchpad.original_tags(),
-            client.is_hidden,
+            view.client.is_hidden,
         )
     };
 
@@ -479,8 +485,7 @@ pub fn scratchpad_resize_name(
             ));
         }
         regular_scratchpad_rect(
-            view.monitor
-                .visible_content_rect(&ctx.core().model().clients),
+            view.monitor.visible_content_rect(),
             view.client.border_width,
             width_percent,
             height_percent,
@@ -562,10 +567,7 @@ fn show_scratchpad_window_with_options(
                 .model()
                 .client(found)
                 .expect("scratchpad client must exist after window_exists check");
-            (
-                mon.visible_content_rect(&ctx.core().model().clients),
-                client.geo.size(),
-            )
+            (mon.visible_content_rect(), client.geo.size())
         };
 
         let slide = EdgeSlideRects::new(content_rect, dir, client_size);
@@ -672,8 +674,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
 /// [`finish_scratchpad_hides`].
 pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) {
     let slide = {
-        let model = ctx.core().model();
-        let Some(view) = model.client_view(found) else {
+        let Some(view) = ctx.core().model().client_view(found) else {
             return;
         };
         if !view.client.is_scratchpad_visible() {
@@ -684,7 +685,7 @@ pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) {
             .and_then(|scratchpad| scratchpad.direction())
             .map(|direction| {
                 EdgeSlideRects::new(
-                    view.monitor.visible_content_rect(&model.clients),
+                    view.monitor.visible_content_rect(),
                     direction,
                     view.client.geo.size(),
                 )
@@ -806,10 +807,9 @@ pub(crate) fn scratchpad_toggle_from_hot_corner(
 
 pub fn collect_scratchpad_info(model: &WmModel) -> Vec<ScratchpadInfo> {
     model
-        .clients
-        .values()
-        .filter_map(|c| {
-            let pos = model.monitors.position_of(c.monitor_id)?;
+        .clients_iter_all()
+        .filter_map(|(monitor_id, c)| {
+            let pos = model.monitors.position_of(monitor_id)?;
             ScratchpadInfo::from_client(c, pos)
         })
         .collect()

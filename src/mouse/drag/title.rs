@@ -244,11 +244,7 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     // on it; anything else takes the ordinary move/resize path.
     if drag.origin() == crate::core_state::ArmedDragOrigin::BarTitle
         && drag.button() == MouseButton::Left
-        && let Some(monitor_id) = ctx
-            .core()
-            .model()
-            .client(win)
-            .map(|client| client.monitor_id)
+        && let Some(monitor_id) = ctx.core().model().monitor_of_client(win)
         && title_strip_target(ctx, monitor_id, root).is_some()
         && begin_bar_reorder(ctx, win, monitor_id)
     {
@@ -266,7 +262,7 @@ fn title_strip_target(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Op
     let core = ctx.core();
     let monitor = core.model().monitor(monitor_id)?;
     let local_x = super::bar_local_x_on_monitor(monitor, root)?;
-    let order = monitor.bar_client_order(&core.model().clients);
+    let order = monitor.bar_client_order();
     // Rendering is asynchronous on Wayland. Geometry remains useful across a
     // reorder, but its captured window identities do not: using them can make
     // the next motion sample undo the preceding swap. Until the bar renders
@@ -485,36 +481,53 @@ mod tests {
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::tree::Preset;
     use crate::mouse::constants::DRAG_THRESHOLD;
+    use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::{
-        Client, ClientMode, InteractionSource, Monitor, MonitorId, MouseButton, Point, Rect,
-        SnapPosition, TagMask, WindowId,
+        Client, ClientMode, InteractionSource, MonitorId, MouseButton, Point, Rect, SnapPosition,
+        TagMask, WindowId,
     };
     use crate::wm::Wm;
+
+    /// Push the 1200x800 monitor every drag fixture sits on.
+    ///
+    /// `tag_count` must be non-zero for a fixture that calls
+    /// `set_selected_tags`: a monitor with no tag list leaves the selection
+    /// looking like an all-tags view.
+    fn push_drag_monitor(
+        wm: &mut Wm,
+        available: Rect,
+        bar_height: i32,
+        bar_shown: bool,
+        tag_count: usize,
+    ) -> MonitorId {
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1200, 800), available)
+                .bar(bar_height, bar_shown)
+                .tag_count(tag_count)
+                .build(),
+        )
+    }
 
     fn tiled_pair_fixture() -> (Wm, WindowId, Rect) {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            bar_default_show: false,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 0, false, 9);
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(21), WindowId(22)];
-        for win in windows {
-            wm.core.model.insert_client(Client {
-                win,
-                monitor_id,
-                tags,
-                mode: ClientMode::tiled(),
-                ..Client::default()
+        // `add_client` adopts newest-first, so add back-to-front to leave the
+        // focus stack in `windows` order.
+        for &win in windows.iter().rev() {
+            add_client_with(&mut wm.core.model, monitor_id, |client| {
+                client.win = win;
+                client.tags = tags;
+                client.mode = ClientMode::tiled();
             });
         }
         let bounds = {
             let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
             monitor.set_selected_tags(tags);
-            monitor.clients = windows.to_vec();
+            assert!(monitor.set_focus_order(windows.to_vec()));
             monitor.selected = Some(windows[0]);
             monitor
                 .per_tag_state()
@@ -563,28 +576,20 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            bar_height: 30,
-            bar_default_show: true,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 30, true, 9);
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(31), WindowId(32)];
-        for win in windows {
-            wm.core.model.insert_client(Client {
-                win,
-                monitor_id,
-                tags,
-                mode: ClientMode::tiled(),
-                geo: Rect::new(0, 30, 600, 770),
-                ..Client::default()
+        for &win in windows.iter().rev() {
+            add_client_with(&mut wm.core.model, monitor_id, |client| {
+                client.win = win;
+                client.tags = tags;
+                client.mode = ClientMode::tiled();
+                client.geo = Rect::new(0, 30, 600, 770);
             });
         }
         let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
         monitor.set_selected_tags(tags);
-        monitor.clients = windows.to_vec();
+        assert!(monitor.set_focus_order(windows.to_vec()));
         monitor.selected = Some(windows[0]);
         monitor.per_tag_state().presentation = presentation;
         if presentation == crate::layouts::PresentationMode::Maximized {
@@ -654,10 +659,7 @@ mod tests {
             Point::new(second_x, 10)
         ));
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
-        assert_eq!(
-            monitor.bar_client_order(&wm.core.model.clients),
-            vec![second, first]
-        );
+        assert_eq!(monitor.bar_client_order(), vec![second, first]);
         assert!(
             !wm.work.layout.is_pending(),
             "changing title order must not schedule an unrelated full layout"
@@ -670,10 +672,7 @@ mod tests {
             Point::new(second_x, 10)
         ));
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
-        assert_eq!(
-            monitor.bar_client_order(&wm.core.model.clients),
-            vec![second, first]
-        );
+        assert_eq!(monitor.bar_client_order(), vec![second, first]);
 
         // Leaving the strip converts the reorder into an ordinary move drag.
         assert!(super::process_title_reorder_motion(
@@ -717,7 +716,7 @@ mod tests {
 
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
         assert_eq!(
-            monitor.tiled_tree_order(&wm.core.model.clients),
+            monitor.tiled_tree_order(),
             vec![second, first],
             "maximized titles are stack tabs and must swap tree leaves"
         );
@@ -754,17 +753,12 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
         let work = Rect::new(0, 30, 1200, 770);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: work,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, work, 0, true, 0);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(23);
         let saved = Rect::new(250, 180, 600, 420);
         let mut client = Client {
             win,
-            monitor_id,
             tags,
             mode: ClientMode::floating(),
             geo: Rect::new(0, 30, 600, 770),
@@ -772,7 +766,7 @@ mod tests {
             ..Client::default()
         };
         client.save_floating_placement(saved, work);
-        wm.core.model.insert_client(client);
+        wm.core.model.add_client(monitor_id, client);
 
         let result = begin_move_drag(
             &mut wm.ctx(),
@@ -791,24 +785,25 @@ mod tests {
     #[test]
     fn edge_scratchpad_cannot_start_a_move_drag() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 30, 1200, 770),
-            ..Monitor::default()
-        });
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 30, 1200, 770), 0, true, 0);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(24);
         let mut client = Client {
             win,
-            monitor_id,
             mode: ClientMode::floating(),
             geo: Rect::new(0, 30, 400, 770),
             ..Client::default()
         };
         client
-            .promote_to_scratchpad("edge", Some(crate::types::EdgeDirection::Left), 1200, 800)
+            .promote_to_scratchpad(
+                monitor_id,
+                "edge",
+                Some(crate::types::EdgeDirection::Left),
+                1200,
+                800,
+            )
             .unwrap();
-        wm.core.model.insert_client(client);
+        wm.core.model.add_client(monitor_id, client);
 
         assert_eq!(
             begin_move_drag(

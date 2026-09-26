@@ -17,10 +17,11 @@ pub(crate) struct InitialPresentationIntent {
 
 /// Commit only the client-local portion of a fullscreen transition.
 ///
-/// Model transactions use this directly, and compound policy transactions may
-/// reuse it while already holding the sole mutable client borrow. Keeping the
-/// state-machine operation here prevents those transactions from duplicating
-/// fullscreen semantics or looking the client up again.
+/// Monitor-owned placement bookkeeping stays with the caller; this helper owns
+/// the mode state machine plus the border-width save/restore. It returns the
+/// mode the client held before the transition together with whether anything
+/// actually changed, so the caller classifies the outcome without re-reading
+/// the client's mode.
 fn set_client_fullscreen(client: &mut Client, fullscreen: bool) -> (ClientMode, bool) {
     let previous_mode = client.mode();
     let changed = if fullscreen {
@@ -228,23 +229,25 @@ impl WmModel {
         win: WindowId,
         fullscreen: bool,
     ) -> Option<FullscreenTransition> {
-        let clients = &mut self.clients;
-        let monitors = &self.monitors;
-        let client = clients.get_mut(&win)?;
-        let monitor = monitors.get(client.monitor_id)?;
+        let monitor_id = self.monitor_of_client(win)?;
+        let (monitor_rect, work_rect) = {
+            let monitor = self.monitors.get(monitor_id)?;
+            (monitor.monitor_rect, monitor.work_rect())
+        };
 
-        let previous_mode = client.mode();
-        if fullscreen && previous_mode.is_normal_floating() {
-            client.save_floating_placement(client.geo, monitor.work_rect());
-        }
-        let (_, changed) = set_client_fullscreen(client, fullscreen);
-        let monitor_id = client.monitor_id;
+        let (previous_mode, changed) = {
+            let client = self.client_mut(win)?;
+            if fullscreen && client.mode().is_normal_floating() {
+                client.save_floating_placement(client.geo, work_rect);
+            }
+            set_client_fullscreen(client, fullscreen)
+        };
 
         let change = if !changed {
             FullscreenChange::Unchanged
         } else if fullscreen {
             FullscreenChange::Entered {
-                monitor_rect: monitor.monitor_rect,
+                monitor_rect,
                 projection: if previous_mode.is_normal_floating() {
                     FullscreenEntryProjection::BackendOnly
                 } else {
@@ -252,38 +255,40 @@ impl WmModel {
                 },
             }
         } else {
-            FullscreenChange::Exited {
-                restore_rect: restore_rect_after_leaving(client, monitor.work_rect()),
-            }
+            let restore_rect = {
+                let client = self.client_mut(win)?;
+                restore_rect_after_leaving(client, work_rect)
+            };
+            FullscreenChange::Exited { restore_rect }
         };
         Some(FullscreenTransition { monitor_id, change })
     }
 
     //BOZO: should this take a client reference instead of a window id?
     fn set_maximized(&mut self, win: WindowId, maximized: bool) -> Option<MaximizedTransition> {
-        let clients = &mut self.clients;
-        let monitors = &self.monitors;
-        let client = clients.get_mut(&win)?;
-        let monitor = monitors.get(client.monitor_id)?;
+        let monitor_id = self.monitor_of_client(win)?;
+        let work_rect = self.monitors.get(monitor_id)?.work_rect();
 
-        let previous_mode = client.mode();
-        if maximized && previous_mode.is_normal_floating() {
-            client.save_floating_placement(client.geo, monitor.work_rect());
-        }
-        client.set_maximized_presentation(maximized);
-        let current_mode = client.mode();
-        let monitor_id = client.monitor_id;
+        let (previous_mode, current_mode) = {
+            let client = self.client_mut(win)?;
+            let previous_mode = client.mode();
+            if maximized && previous_mode.is_normal_floating() {
+                client.save_floating_placement(client.geo, work_rect);
+            }
+            client.set_maximized_presentation(maximized);
+            (previous_mode, client.mode())
+        };
 
         let change = if current_mode == previous_mode || current_mode.is_fullscreen() {
             MaximizedChange::Unchanged
         } else if current_mode.is_maximized() {
-            MaximizedChange::Entered {
-                work_rect: monitor.work_rect(),
-            }
+            MaximizedChange::Entered { work_rect }
         } else {
-            MaximizedChange::Exited {
-                restore_rect: restore_rect_after_leaving(client, monitor.work_rect()),
-            }
+            let restore_rect = {
+                let client = self.client_mut(win)?;
+                restore_rect_after_leaving(client, work_rect)
+            };
+            MaximizedChange::Exited { restore_rect }
         };
         Some(MaximizedTransition { monitor_id, change })
     }
@@ -298,7 +303,7 @@ impl WmModel {
         maximized: bool,
     ) -> Option<ClientMaximizeIntentTransition> {
         let view = self.client_view(win)?;
-        let monitor_id = view.client.monitor_id;
+        let monitor_id = view.monitor.id();
         let floating_presentation =
             view.monitor.current_layout() == crate::layouts::PresentationMode::Floating;
         let work_rect = view.monitor.work_rect();
@@ -422,11 +427,9 @@ impl WmModel {
         monitor_id: MonitorId,
     ) -> Vec<WindowId> {
         let windows = self
-            .clients
-            .values()
-            .filter(|client| client.monitor_id == monitor_id)
-            .map(|client| client.win)
-            .collect::<Vec<_>>();
+            .monitor(monitor_id)
+            .map(|monitor| monitor.clients().keys().copied().collect::<Vec<_>>())
+            .unwrap_or_default();
         let mut changed = Vec::new();
 
         for win in windows {
@@ -471,19 +474,19 @@ impl WmModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Client, Monitor};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::Client;
 
     fn model_with_client(mode: ClientMode) -> (WmModel, WindowId, MonitorId) {
         let mut model = WmModel::default();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1920, 1080), Rect::new(0, 0, 1920, 1080))
+                .build(),
+        );
         let win = WindowId(1);
         let mut client = Client {
             win,
-            monitor_id,
             border_width: 2,
             old_border_width: 2,
             geo: Rect::new(10, 20, 800, 600),
@@ -491,7 +494,7 @@ mod tests {
             ..Client::default()
         };
         client.set_mode_for_test(mode);
-        model.insert_client(client);
+        assert!(model.add_client(monitor_id, client));
         (model, win, monitor_id)
     }
 

@@ -199,7 +199,7 @@ pub fn root_bar_target_at<'core>(
 ) -> Option<RootBarTarget<'core>> {
     let rect = crate::mouse::pointer::point_rect(root);
     let monitor = core.model().monitors.monitor_intersecting_rect(rect)?;
-    if monitor.bar_contains_y(&core.model().clients, root.y) {
+    if monitor.bar_contains_y(root.y) {
         Some(RootBarTarget::OnBar {
             monitor,
             position: model::bar_position_at_x(monitor, core, monitor.local_work_point(root).x),

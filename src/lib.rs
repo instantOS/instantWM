@@ -34,6 +34,8 @@ mod runtime;
 pub mod startup;
 mod systray;
 mod tags;
+#[cfg(test)]
+mod test_support;
 mod toggles;
 pub mod types;
 mod util;

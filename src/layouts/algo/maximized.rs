@@ -5,25 +5,21 @@
 //! normal z-order projection raises the focused tiled leaf. Floating clients
 //! remain in the floating layer above the tiled stack.
 
-use std::collections::HashMap;
-
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::{LayoutOutput, PresentationMode};
-use crate::types::client::Client;
-use crate::types::{Monitor, WindowId};
+use crate::types::Monitor;
 
 pub fn maximized(
     monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
     layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     let selected_window = monitor.selected;
     let selected_tags = monitor.selected_tags();
-    let tiled_client_count = monitor.tiled_client_count(clients) as u32;
+    let tiled_client_count = monitor.tiled_client_count() as u32;
     let placement = LayoutPlacement::new(
         layout_cfg,
         monitor,
@@ -33,10 +29,8 @@ pub fn maximized(
     let work_rect = placement.work_rect();
 
     monitor
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let client = clients.get(&win)?;
+        .iter_clients()
+        .filter_map(|(win, client)| {
             if !client.is_tiled(selected_tags) {
                 return None;
             }

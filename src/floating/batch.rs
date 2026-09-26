@@ -28,7 +28,7 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
     let Some(monitor) = ctx.core().model().selected_monitor() else {
         return;
     };
-    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core().model(), monitor);
+    let (floating_wins, work_rect) = collect_distribute_targets(monitor);
 
     if floating_wins.is_empty() {
         return;
@@ -63,22 +63,22 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
 /// Collect all windows eligible for [`distribute_clients`] together with the
 /// monitor work area needed to lay them out.
 ///
+/// Only floating clients owned by `monitor` are considered; each monitor owns
+/// its own clients, so no model-wide client list is needed here.
+///
 /// Returns `(windows, work_rect)` where `work_rect` is the drawable area of
 /// the monitor after subtracting the bar (i.e. `Monitor::work_rect`).  Using
 /// `work_rect` directly means the bar offset is already baked in for both
 /// top-bar and bottom-bar configurations, and no manual `y_offset` correction
 /// is needed in the caller.
-fn collect_distribute_targets(
-    model: &crate::model::WmModel,
-    monitor: &Monitor,
-) -> (Vec<WindowId>, Rect) {
+fn collect_distribute_targets(monitor: &Monitor) -> (Vec<WindowId>, Rect) {
     let tag_set = monitor.selected_tags();
     // work_rect already accounts for bar height and position (top or bottom),
     // so it is the correct region to fill with the grid.
     let work_rect = monitor.work_rect();
 
     let mut wins = Vec::new();
-    for (c_win, c) in monitor.iter_clients(&model.clients) {
+    for (c_win, c) in monitor.iter_clients() {
         if c.mode().is_normal_floating()
             && !c.is_fixed_size
             && c.tags.intersects(tag_set)

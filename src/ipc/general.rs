@@ -37,7 +37,7 @@ pub fn get_status(wm: &Wm) -> Response {
         backend: backend.to_string(),
         running: wm.running,
         monitors: wm.core.model.monitors.len(),
-        windows: wm.core.model.clients.len(),
+        windows: wm.core.model.client_count(),
         tags: wm.core.model.tags.num_tags,
     };
 

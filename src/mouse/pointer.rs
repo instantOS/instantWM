@@ -68,7 +68,7 @@ pub fn right_sidebar_rect(monitor_rect: Rect, bar_height: i32, bottom_band: i32)
 /// Cheap sidebar-only hit test for pointer motion.
 pub fn sidebar_target_at(model: &WmModel, root: Point) -> Option<SidebarTarget> {
     let monitor = model.monitors.monitor_intersecting_rect(point_rect(root))?;
-    let bottom_band = if monitor.bottom_bar_visible(&model.clients) {
+    let bottom_band = if monitor.bottom_bar_visible() {
         monitor.bottom_bar_height
     } else {
         0
@@ -89,7 +89,7 @@ pub fn sidebar_target_at(model: &WmModel, root: Point) -> Option<SidebarTarget> 
 pub fn bottom_bar_target_at(model: &WmModel, root: Point) -> Option<BottomBarTarget> {
     let monitor = model.monitors.monitor_intersecting_rect(point_rect(root))?;
     monitor
-        .bottom_bar_contains_y(&model.clients, root.y)
+        .bottom_bar_contains_y(root.y)
         .then_some(BottomBarTarget {
             monitor_id: monitor.id(),
             gesture_threshold: (monitor.monitor_rect.w / 30).max(1),
@@ -113,9 +113,7 @@ pub fn button_region_at(
     // Scope the test to the output under the pointer. Otherwise a strip on
     // one output can swallow clicks at the same Y coordinate on another.
     if let Some(target) = target
-        && target
-            .monitor()
-            .bottom_bar_contains_y(&core.model().clients, root.y)
+        && target.monitor().bottom_bar_contains_y(root.y)
     {
         return PointerRegion::BottomBar {
             monitor_id: target.monitor().id(),
@@ -141,6 +139,7 @@ mod tests {
     };
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::model::WmModel;
+    use crate::test_support::MonitorBuilder;
     use crate::types::{Monitor, Point, Rect, SIDEBAR_WIDTH, WindowId};
 
     #[test]
@@ -228,11 +227,12 @@ mod tests {
     #[test]
     fn global_sidebar_hit_test_depends_only_on_monitor_geometry() {
         let mut model = WmModel::new();
-        model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            bar_height: 30,
-            ..Monitor::default()
-        });
+        model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(30, true)
+                .build(),
+        );
         let point = Point::new(1900, 500);
 
         let target = sidebar_target_at(&model, point).expect("sidebar hit");

@@ -334,7 +334,7 @@ mod resolution_tests {
     fn apply_config_applies_tag_and_bar_defaults() {
         use crate::backend::Backend;
         use crate::backend::wayland::WaylandBackend;
-        use crate::types::{Monitor, Rect};
+        use crate::types::Rect;
 
         let user: config_toml::UserConfig = toml::from_str(
             r#"
@@ -353,10 +353,14 @@ mod resolution_tests {
             .expect("valid config");
 
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 800, 600),
-            ..Monitor::default()
-        });
+        // Only `monitor_rect` is set: the original fixture left
+        // `available_rect` at its default, so the builder's `monitor_rect()`
+        // (which sets both) would widen the work area and change the fixture.
+        let monitor_id = wm.core.model.monitors.push(
+            crate::test_support::MonitorBuilder::new()
+                .configure(|monitor| monitor.monitor_rect = Rect::new(0, 0, 800, 600))
+                .build(),
+        );
         wm.core.apply_config(config).unwrap();
 
         // Icon display is read live from config; the tag set seeds the

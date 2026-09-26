@@ -1,5 +1,6 @@
 use super::confirmed_stale_client;
 use crate::model::WmModel;
+use crate::test_support::{add_client, push_monitor};
 use crate::types::{Client, WindowId};
 use x11rb::errors::ReplyError;
 use x11rb::protocol::ErrorKind;
@@ -22,7 +23,8 @@ fn error(kind: ErrorKind, window: u32) -> X11Error {
 
 fn model() -> WmModel {
     let mut model = WmModel::default();
-    assert!(model.insert_client(Client::new(WindowId::from(WINDOW))));
+    let monitor_id = push_monitor(&mut model);
+    add_client(&mut model, monitor_id, Client::new(WindowId::from(WINDOW)));
     model
 }
 

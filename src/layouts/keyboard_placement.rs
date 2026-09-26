@@ -239,7 +239,8 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::tree::Preset;
-    use crate::types::{Client, ClientMode, Monitor, TagMask};
+    use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
+    use crate::types::{Client, ClientMode, TagMask};
     use crate::wm::Wm;
 
     /// A selected monitor showing `clients` in a master-stack tree, with the
@@ -247,29 +248,37 @@ mod tests {
     fn tiled_wm(rect: Rect, clients: Vec<Client>) -> Wm {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: rect,
-            available_rect: rect,
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(rect, rect)
+                .tag_count(9)
+                .selected_tags(tags)
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
         let windows = clients.iter().map(|client| client.win).collect::<Vec<_>>();
-        for client in clients {
-            wm.core.model.insert_client(Client {
-                monitor_id,
+        // Adoption is newest-first, so adding back-to-front leaves the focus
+        // list in the order these fixtures were handed in. The first client
+        // is the one that ends up selected.
+        for (index, client) in clients.into_iter().enumerate().rev() {
+            let client = Client {
                 tags,
                 mode: ClientMode::tiled(),
                 ..client
-            });
+            };
+            if index == 0 {
+                add_selected_client(&mut wm.core.model, monitor_id, client);
+            } else {
+                add_client(&mut wm.core.model, monitor_id, client);
+            }
         }
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.selected = windows.first().copied();
-        monitor
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
             .per_tag_state()
             .layout_tree
             .apply_preset(Preset::MasterStack, &windows, 1);
-        monitor.clients = windows;
         wm
     }
 

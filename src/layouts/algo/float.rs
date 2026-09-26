@@ -28,12 +28,9 @@
 //!
 //! use std::collections::HashMap;
 
-use std::collections::HashMap;
-
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutOutput;
-use crate::types::client::Client;
-use crate::types::{Monitor, SnapPosition, WindowId};
+use crate::types::{Monitor, SnapPosition};
 
 // ── floating ─────────────────────────────────────────────────────────────────
 
@@ -42,20 +39,12 @@ use crate::types::{Monitor, SnapPosition, WindowId};
 /// Called by the [`Floating`](crate::layouts::PresentationMode::Floating) layout
 /// — leaves clients at their self-managed positions but still needs snap
 /// geometry enforced and the window stack sorted.
-pub fn floating(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-    _animated: bool,
-) -> Vec<LayoutOutput> {
+pub fn floating(monitor: &Monitor, _animated: bool) -> Vec<LayoutOutput> {
     let selected = monitor.selected_tags();
 
     let mut result: Vec<LayoutOutput> = Vec::new();
 
-    for &win in &monitor.clients {
-        let Some(c) = clients.get(&win) else {
-            continue;
-        };
-
+    for (win, c) in monitor.iter_clients() {
         if c.is_visible(selected)
             && c.snap_status != SnapPosition::None
             && let Some(rect) = c

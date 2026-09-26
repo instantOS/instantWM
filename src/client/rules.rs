@@ -105,21 +105,22 @@ fn apply_rules_impl(
                 .map(str::to_owned)
     {
         let role = state.model.client_view(win).map(|view| {
-            let content = view.monitor.visible_content_rect(&state.model.clients);
+            let content = view.monitor.visible_content_rect();
             (
+                view.monitor.id(),
                 content,
                 view.client.border_width,
                 view.monitor.selected.filter(|&selected| selected != win),
             )
         });
-        if let Some((content, border_width, restore_focus)) = role
+        if let Some((monitor_id, content, border_width, restore_focus)) = role
             && state.model.scratchpad_find(&name).is_none()
             && let Some(client) = state.model.client_mut(win)
         {
             // Launcher identity owns this initial role. Generic backend
             // stickiness is not an ordinary preference to restore later.
             client.is_sticky = false;
-            let _ = client.promote_to_scratchpad(&name, None, content.w, content.h);
+            let _ = client.promote_to_scratchpad(monitor_id, &name, None, content.w, content.h);
             if let Ok(rect) =
                 crate::floating::scratchpad::default_regular_scratchpad_rect(content, border_width)
             {
@@ -207,8 +208,11 @@ fn apply_property_change(
     props: &WindowProperties,
 ) -> Option<PropertyUpdateOutcome> {
     let (before, existing_context) = {
+        // The owning monitor is the model's relationship, not the client's, so
+        // it is resolved before the mutable client borrow.
+        let monitor_id = state.model.monitor_of_client(win)?;
         let client = state.model.client_mut(win)?;
-        let before = PropertyStateSnapshot::capture(client);
+        let before = PropertyStateSnapshot::capture(client, monitor_id);
         if let Some(hints) = props.size_hints {
             client.size_hints = hints;
             client.size_hints_valid = true;
@@ -216,7 +220,7 @@ fn apply_property_change(
         (
             before,
             LaunchContext {
-                monitor_id: client.monitor_id,
+                monitor_id,
                 tags: client.tags,
                 is_floating: client.placement() == ClientPlacement::Floating,
             },
@@ -233,8 +237,8 @@ fn apply_property_change(
 
     let after = state
         .model
-        .client(win)
-        .map(PropertyStateSnapshot::capture)?;
+        .client_view(win)
+        .map(|view| PropertyStateSnapshot::capture(view.client, view.monitor.id()))?;
     Some(PropertyUpdateOutcome::between(before, after))
 }
 
@@ -376,8 +380,12 @@ fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types:
         return;
     };
 
-    let reassigned = state.model.reassign_client_monitor(win, target_mid);
-    debug_assert!(reassigned, "rule target must be a valid managed monitor");
+    state.model.reassign_client_monitor(win, target_mid);
+    debug_assert_eq!(
+        state.model.monitor_of_client(win),
+        Some(target_mid),
+        "rule target must be a valid managed monitor"
+    );
 }
 
 /// Pin a floating window to an exact rectangle relative to the target
@@ -418,7 +426,7 @@ struct PropertyStateSnapshot {
 }
 
 impl PropertyStateSnapshot {
-    fn capture(c: &crate::types::Client) -> Self {
+    fn capture(c: &crate::types::Client, monitor_id: crate::types::MonitorId) -> Self {
         Self {
             rule: RuleStateSnapshot {
                 mode: c.mode(),
@@ -426,7 +434,7 @@ impl PropertyStateSnapshot {
                 is_borderless: c.is_borderless,
                 border_width: c.border_width,
                 old_border_width: c.old_border_width,
-                monitor_id: c.monitor_id,
+                monitor_id,
                 tags: c.tags,
                 geo: c.geo,
             },
@@ -461,16 +469,16 @@ impl PropertyUpdateOutcome {
 }
 
 fn rule_state_snapshot(state: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
-    let c = state.model.client(win)?;
+    let view = state.model.client_view(win)?;
     Some(RuleStateSnapshot {
-        mode: c.mode(),
-        is_sticky: c.is_sticky,
-        is_borderless: c.is_borderless,
-        border_width: c.border_width,
-        old_border_width: c.old_border_width,
-        monitor_id: c.monitor_id,
-        tags: c.tags,
-        geo: c.geo,
+        mode: view.client.mode(),
+        is_sticky: view.client.is_sticky,
+        is_borderless: view.client.is_borderless,
+        border_width: view.client.border_width,
+        old_border_width: view.client.old_border_width,
+        monitor_id: view.monitor.id(),
+        tags: view.client.tags,
+        geo: view.client.geo,
     })
 }
 
@@ -510,22 +518,26 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::{CoreState, LayoutWorkTargets};
-    use crate::types::{
-        Client, ClientMode, Monitor, MonitorId, Rect, RuleFloat, TagMask, WindowId,
+    use crate::test_support::{
+        MonitorBuilder, add_client, add_selected_client, push_monitor, push_monitor_with,
     };
+    use crate::types::{Client, ClientMode, Monitor, Rect, RuleFloat, TagMask, WindowId};
     use crate::wm::Wm;
 
     #[test]
     fn property_title_change_dirties_bar_without_queueing_layout() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(41);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            name: "before".to_string(),
-            ..Default::default()
-        });
+        add_client(
+            &mut wm.core.model,
+            monitor_id,
+            Client {
+                win,
+                name: "before".to_string(),
+                ..Default::default()
+            },
+        );
         wm.work.layout.clear();
         let bar_seq = wm.bar.update_seq();
 
@@ -546,14 +558,17 @@ mod tests {
     #[test]
     fn first_native_constraint_snapshot_queues_layout_even_when_values_are_default() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(47);
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            size_hints_valid: false,
-            ..Default::default()
-        });
+            Client {
+                win,
+                size_hints_valid: false,
+                ..Default::default()
+            },
+        );
         wm.work.layout.clear();
 
         let mut ctx = wm.ctx();
@@ -579,14 +594,8 @@ mod tests {
         use std::borrow::Cow;
 
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let old_monitor = wm.core.model.monitors.push(Monitor {
-            num: 0,
-            ..Monitor::default()
-        });
-        let new_monitor = wm.core.model.monitors.push(Monitor {
-            num: 1,
-            ..Monitor::default()
-        });
+        let old_monitor = push_monitor_with(&mut wm.core.model, |monitor| monitor.num = 0);
+        let new_monitor = push_monitor_with(&mut wm.core.model, |monitor| monitor.num = 1);
         wm.core.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("tile-me")),
             instance: None,
@@ -598,12 +607,15 @@ mod tests {
             borderless: false,
         }];
         let win = WindowId(42);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id: old_monitor,
-            mode: ClientMode::floating(),
-            ..Default::default()
-        });
+        add_client(
+            &mut wm.core.model,
+            old_monitor,
+            Client {
+                win,
+                mode: ClientMode::floating(),
+                ..Default::default()
+            },
+        );
         wm.work.layout.clear();
 
         let mut ctx = wm.ctx();
@@ -628,7 +640,7 @@ mod tests {
                 .mode()
                 .is_normal_floating()
         );
-        assert_eq!(wm.core.model.client(win).unwrap().monitor_id, new_monitor);
+        assert_eq!(wm.core.model.monitor_of_client(win), Some(new_monitor));
     }
 
     #[test]
@@ -638,16 +650,15 @@ mod tests {
 
         let mut mon = Monitor::new_with_values();
         mon.set_selected_tags(TagMask::single(1).unwrap());
-        state.model.monitors.push(mon);
+        let monitor_id = state.model.monitors.push(mon);
 
         let win = WindowId(42);
         let client = Client {
             win,
-            monitor_id: MonitorId::default(),
             tags: TagMask::single(2).unwrap(),
             ..Default::default()
         };
-        state.model.insert_client(client);
+        add_client(&mut state.model, monitor_id, client);
 
         apply_property_change(
             &mut state,
@@ -666,13 +677,14 @@ mod tests {
     #[test]
     fn property_change_preserves_manual_floating_state() {
         let mut state = CoreState::default();
+        let monitor_id = push_monitor(&mut state.model);
         let win = WindowId(42);
         let client = Client {
             win,
             mode: ClientMode::floating(),
             ..Default::default()
         };
-        state.model.insert_client(client);
+        add_client(&mut state.model, monitor_id, client);
 
         apply_property_change(
             &mut state,
@@ -690,12 +702,17 @@ mod tests {
     #[test]
     fn property_change_preserves_fullscreen_and_its_restore_mode() {
         let mut state = CoreState::default();
+        let monitor_id = push_monitor(&mut state.model);
         let win = WindowId(43);
-        state.model.insert_client(Client {
-            win,
-            mode: ClientMode::floating().as_fullscreen(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                mode: ClientMode::floating().as_fullscreen(),
+                ..Default::default()
+            },
+        );
 
         apply_property_change(
             &mut state,
@@ -725,14 +742,16 @@ mod tests {
         monitor.set_selected_tags(tags);
         let monitor_id = state.model.monitors.push(monitor);
         let win = WindowId(45);
-        state.model.insert_client(Client {
-            win,
+        add_client(
+            &mut state.model,
             monitor_id,
-            tags,
-            mode: ClientMode::tiled().as_fullscreen(),
-            ..Client::default()
-        });
-        assert!(state.model.attach_client(win));
+            Client {
+                win,
+                tags,
+                mode: ClientMode::tiled().as_fullscreen(),
+                ..Client::default()
+            },
+        );
 
         apply_property_change(
             &mut state,
@@ -744,15 +763,12 @@ mod tests {
         );
 
         let layout_cfg = state.config.layout;
-        let plan = {
-            let clients = &mut state.model.clients;
-            state
-                .model
-                .monitors
-                .get_mut(monitor_id)
-                .unwrap()
-                .compute_arrange(clients, &layout_cfg, false, false)
-        };
+        let plan = state
+            .model
+            .monitors
+            .get_mut(monitor_id)
+            .unwrap()
+            .compute_arrange(&layout_cfg, false, false);
         assert!(plan.client_moves.iter().all(|output| output.win != win));
         assert_eq!(plan.fullscreen_moves.len(), 1);
         assert_eq!(plan.fullscreen_moves[0].win, win);
@@ -765,8 +781,9 @@ mod tests {
         // consumed by a property refresh — only by the next initial rule
         // application.
         let mut state = CoreState::default();
+        let monitor_id = push_monitor(&mut state.model);
         let win = WindowId(46);
-        state.model.insert_client(Client::new(win));
+        add_client(&mut state.model, monitor_id, Client::new(win));
         let id = 0;
         state
             .behavior
@@ -806,7 +823,7 @@ mod tests {
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
-        state.model.monitors.push(Monitor::new_with_values());
+        let monitor_id = state.model.monitors.push(Monitor::new_with_values());
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("tile-when-renamed")),
             instance: None,
@@ -818,12 +835,15 @@ mod tests {
             borderless: false,
         }];
         let win = WindowId(44);
-        state.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            mode: ClientMode::floating().as_fullscreen(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                mode: ClientMode::floating().as_fullscreen(),
+                ..Default::default()
+            },
+        );
 
         apply_property_change(
             &mut state,
@@ -846,7 +866,8 @@ mod tests {
         use std::borrow::Cow;
 
         let mut state = CoreState::default();
-        state.model.monitors.push(Monitor::new_with_values()); // Add a monitor
+        // Add a monitor
+        let monitor_id = state.model.monitors.push(Monitor::new_with_values());
 
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("test")),
@@ -862,11 +883,10 @@ mod tests {
         let win = WindowId(42);
         let client = Client {
             win,
-            monitor_id: MonitorId::default(),
             mode: ClientMode::floating(),
             ..Default::default()
         };
-        state.model.insert_client(client);
+        add_client(&mut state.model, monitor_id, client);
 
         apply_property_change(
             &mut state,
@@ -891,7 +911,7 @@ mod tests {
         state.model.tags.num_tags = 1;
         let mut monitor = Monitor::new_with_values();
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        state.model.monitors.push(monitor);
+        let monitor_id = state.model.monitors.push(monitor);
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("center-me")),
             instance: None,
@@ -904,11 +924,14 @@ mod tests {
         }];
 
         let win = WindowId(43);
-        state.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                ..Default::default()
+            },
+        );
 
         let outcome = apply_initial_rules(
             &mut state,
@@ -935,26 +958,28 @@ mod tests {
         monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(selected_tags);
-        monitor.selected = Some(WindowId(44));
-        state.model.monitors.push(monitor);
-        state.model.insert_client(Client {
-            win: WindowId(44),
-            monitor_id: MonitorId::default(),
-            tags: selected_tags,
-            ..Default::default()
-        });
-        let monitor = state.model.monitor_mut(MonitorId::default()).unwrap();
-        monitor.clients.push(WindowId(44));
-        monitor.z_order.attach_top(WindowId(44));
+        let monitor_id = state.model.monitors.push(monitor);
+        add_selected_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win: WindowId(44),
+                tags: selected_tags,
+                ..Default::default()
+            },
+        );
 
         let win = WindowId(45);
-        state.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            tags: selected_tags,
-            mode: ClientMode::tiled(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                tags: selected_tags,
+                mode: ClientMode::tiled(),
+                ..Default::default()
+            },
+        );
 
         let outcome = apply_initial_rules(
             &mut state,
@@ -977,18 +1002,12 @@ mod tests {
         let scratchpad = client.scratchpad().unwrap();
         assert_eq!(scratchpad.name(), "menu");
         assert_eq!(scratchpad.original_tags(), selected_tags);
-        state
-            .model
-            .monitor_mut(MonitorId::default())
-            .unwrap()
-            .clients
-            .push(win);
         assert!(
             state
                 .model
-                .monitor(MonitorId::default())
+                .monitor(monitor_id)
                 .unwrap()
-                .collect_tiled(&state.model.clients)
+                .collect_tiled()
                 .iter()
                 .all(|client| client.win != win),
             "an inferred scratchpad must never become a layout-tree leaf"
@@ -1027,7 +1046,7 @@ mod tests {
         monitor.available_rect = monitor.monitor_rect;
         monitor.bar_height = 32;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        state.model.monitors.push(monitor);
+        let monitor_id = state.model.monitors.push(monitor);
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("fill-me")),
             instance: None,
@@ -1040,11 +1059,14 @@ mod tests {
         }];
 
         let win = WindowId(44);
-        state.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                ..Default::default()
+            },
+        );
 
         let outcome = apply_initial_rules(
             &mut state,
@@ -1076,7 +1098,7 @@ mod tests {
         monitor.bar_height = 32;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         let work_area = monitor.work_rect();
-        state.model.monitors.push(monitor);
+        let monitor_id = state.model.monitors.push(monitor);
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("pin-me")),
             instance: None,
@@ -1094,11 +1116,14 @@ mod tests {
         }];
 
         let win = WindowId(45);
-        state.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                ..Default::default()
+            },
+        );
 
         let outcome = apply_initial_rules(
             &mut state,
@@ -1129,7 +1154,7 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        state.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut state.model);
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("naked")),
             instance: None,
@@ -1142,11 +1167,14 @@ mod tests {
         }];
 
         let win = WindowId(46);
-        state.model.insert_client(Client {
-            win,
-            monitor_id: MonitorId::default(),
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            monitor_id,
+            Client {
+                win,
+                ..Default::default()
+            },
+        );
 
         let outcome = apply_initial_rules(
             &mut state,
@@ -1171,7 +1199,7 @@ mod tests {
 
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 1;
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let monitor_id = push_monitor(&mut wm.core.model);
         let default_border = wm.core.config.window.border_width_px;
         wm.core.config.bindings.rules = vec![Rule {
             class: None,
@@ -1184,13 +1212,16 @@ mod tests {
             borderless: true,
         }];
         let win = WindowId(49);
-        wm.core.model.insert_client(Client {
-            win,
+        add_client(
+            &mut wm.core.model,
             monitor_id,
-            border_width: default_border,
-            old_border_width: default_border,
-            ..Default::default()
-        });
+            Client {
+                win,
+                border_width: default_border,
+                old_border_width: default_border,
+                ..Default::default()
+            },
+        );
 
         {
             let mut ctx = wm.ctx();
@@ -1235,11 +1266,11 @@ mod tests {
 
         let mut state = CoreState::default();
         state.model.tags.num_tags = 1;
-        state.model.monitors.push(Monitor::default());
-        let side_id = state.model.monitors.push(Monitor {
-            name: "DP-1".to_owned(),
-            ..Monitor::default()
-        });
+        push_monitor(&mut state.model);
+        let side_id = state
+            .model
+            .monitors
+            .push(MonitorBuilder::new().named("DP-1").build());
         state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("side-me")),
             instance: None,
@@ -1253,11 +1284,14 @@ mod tests {
 
         let win = WindowId(48);
         let first_id = state.model.monitors.id_at_position(0).unwrap();
-        state.model.insert_client(Client {
-            win,
-            monitor_id: first_id,
-            ..Default::default()
-        });
+        add_client(
+            &mut state.model,
+            first_id,
+            Client {
+                win,
+                ..Default::default()
+            },
+        );
 
         apply_initial_rules(
             &mut state,
@@ -1269,6 +1303,6 @@ mod tests {
             None,
         );
 
-        assert_eq!(state.model.client(win).unwrap().monitor_id, side_id);
+        assert_eq!(state.model.monitor_of_client(win), Some(side_id));
     }
 }

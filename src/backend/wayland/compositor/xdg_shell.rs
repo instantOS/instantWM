@@ -708,11 +708,11 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 .surface
                 .as_ref()
                 .and_then(|surface| self.window_id_for_surface(surface))
-                .and_then(|source_win| state.model.client(source_win))
-                .map(|client| crate::client::LaunchContext {
-                    monitor_id: client.monitor_id,
-                    tags: client.tags,
-                    is_floating: client.placement() == crate::types::ClientPlacement::Floating,
+                .and_then(|source_win| state.model.client_view(source_win))
+                .map(|view| crate::client::LaunchContext {
+                    monitor_id: view.monitor.id(),
+                    tags: view.client.tags,
+                    is_floating: view.client.placement() == crate::types::ClientPlacement::Floating,
                 })
                 .unwrap_or_else(|| crate::client::current_launch_context(&state.model));
             let _ = token_data

@@ -368,12 +368,13 @@ pub fn promote_to_floating(
     // freely in that presentation.
     crate::client::fullscreen::leave_maximized(ctx, win);
 
-    let (is_floating, geo, monitor_id) = ctx
-        .core()
-        .state()
-        .model
-        .client(win)
-        .map(|c| (c.mode().is_normal_floating(), c.geo, c.monitor_id))?;
+    let (is_floating, geo, monitor_id) = ctx.core().state().model.client_view(win).map(|view| {
+        (
+            view.client.mode().is_normal_floating(),
+            view.client.geo,
+            view.monitor.id(),
+        )
+    })?;
 
     if is_floating {
         return Some((geo, false));
@@ -410,8 +411,18 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::client::geometry::FloatingPlacementIntent;
     use crate::layouts::PresentationMode;
-    use crate::types::{Client, ClientMode, ClientPlacement, Monitor, Rect, TagMask, WindowId};
+    use crate::test_support::{MonitorBuilder, add_client, add_client_with};
+    use crate::types::{Client, ClientMode, ClientPlacement, MonitorId, Rect, TagMask, WindowId};
     use crate::wm::Wm;
+
+    /// Push the 1200x800 monitor these drop fixtures sit on.
+    fn push_drop_monitor(wm: &mut Wm, available: Rect) -> MonitorId {
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 1200, 800), available)
+                .build(),
+        )
+    }
 
     #[test]
     fn edge_drop_keeps_the_pre_drag_floating_restore_rectangle() {
@@ -432,11 +443,7 @@ mod tests {
     #[test]
     fn floating_presentation_drag_does_not_change_tiled_placement() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: Rect::new(0, 0, 1200, 800),
-            ..Monitor::default()
-        });
+        let monitor_id = push_drop_monitor(&mut wm, Rect::new(0, 0, 1200, 800));
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -446,13 +453,11 @@ mod tests {
             .per_tag_state()
             .presentation = PresentationMode::Floating;
         let win = WindowId(42);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags: TagMask::single(1).unwrap(),
-            mode: ClientMode::tiled(),
-            geo: Rect::new(100, 100, 400, 300),
-            ..Client::default()
+        add_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = TagMask::single(1).unwrap();
+            client.mode = ClientMode::tiled();
+            client.geo = Rect::new(100, 100, 400, 300);
         });
 
         let result = promote_to_floating(
@@ -472,25 +477,19 @@ mod tests {
     fn dragging_client_maximized_floating_window_restores_its_float_geometry() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let work_rect = Rect::new(0, 30, 1200, 770);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1200, 800),
-            available_rect: work_rect,
-            ..Monitor::default()
-        });
+        let monitor_id = push_drop_monitor(&mut wm, work_rect);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(43);
         let saved = Rect::new(220, 170, 680, 480);
         let mut client = Client {
             win,
-            monitor_id,
             tags: TagMask::single(1).unwrap(),
             mode: ClientMode::maximized(ClientPlacement::Floating),
             geo: work_rect,
             ..Client::default()
         };
         client.save_floating_placement(saved, work_rect);
-        wm.core.model.insert_client(client);
-        assert!(wm.core.model.attach_client(win));
+        add_client(&mut wm.core.model, monitor_id, client);
 
         let result = promote_to_floating(
             &mut wm.ctx(),

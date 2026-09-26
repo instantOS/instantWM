@@ -23,10 +23,6 @@ use crate::types::Point as RootPoint;
 use crate::types::Rect;
 use crate::wm::Wm;
 
-fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
-    mon.bar_visible(&wm.core.model.clients)
-}
-
 /// Unified pointer motion event that abstracts over input source.
 #[derive(Debug, Clone, Copy)]
 pub enum MotionEvent {
@@ -179,9 +175,10 @@ mod tests {
     use crate::backend::wayland::compositor::window::hit_test::{
         pointer_hit_counters, reset_pointer_hit_counters,
     };
+    use crate::test_support::{MonitorBuilder, add_selected_client, push_monitor_with};
     use crate::types::{
-        Client, ClientMode, HoverFocusTrigger, Monitor, MouseButton, Point as RootPoint, Rect,
-        TagMask, WindowId,
+        Client, ClientMode, HoverFocusTrigger, MouseButton, Point as RootPoint, Rect, TagMask,
+        WindowId,
     };
     use crate::wm::Wm;
     use smithay::backend::input::InputTime;
@@ -328,12 +325,12 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.derived.display.width = 1920;
         wm.core.derived.display.height = 1080;
-        wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_height: 30,
-            ..Monitor::default()
-        });
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(30, true)
+                .build(),
+        );
         let pointer = state.seat.get_pointer().unwrap();
         let keyboard = state.seat.get_keyboard().unwrap();
 
@@ -364,25 +361,24 @@ mod tests {
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(1);
         let geo = Rect::new(100, 100, 600, 400);
-        let mut monitor = Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
-        };
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![win];
-        monitor.selected = Some(win);
-        let monitor_id = wm.core.model.monitors.push(monitor);
-        wm.core.model.monitors.set_selected(monitor_id);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::floating(),
-            geo,
-            ..Client::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.available_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.bar_default_show = false;
+            monitor.set_selected_tags(tags);
         });
+        wm.core.model.monitors.set_selected(monitor_id);
+        add_selected_client(
+            &mut wm.core.model,
+            monitor_id,
+            Client {
+                win,
+                tags,
+                mode: ClientMode::floating(),
+                geo,
+                ..Client::default()
+            },
+        );
         wm.core
             .interaction
             .drag
@@ -984,7 +980,7 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
             h: 1,
         })
         .map(|mon| {
-            let bar_visible = monitor_bar_visible(wm, mon);
+            let bar_visible = mon.bar_visible();
             let in_bar = bar_visible && mon.y_in_bar(root.y);
             let in_guard = bar_visible
                 && !wm.core.interaction.drag.has_capture()

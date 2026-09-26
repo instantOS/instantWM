@@ -7,7 +7,6 @@ use crate::contexts::{CoreCtx, WmCtx};
 use crate::core_state::CoreState;
 use crate::model::WmModel;
 use crate::types::*;
-use std::collections::HashMap;
 
 fn is_focusable_on_monitor(
     model: &WmModel,
@@ -16,8 +15,8 @@ fn is_focusable_on_monitor(
     win: WindowId,
 ) -> bool {
     model
-        .client(win)
-        .is_some_and(|c| c.monitor_id == sel_mon_id && c.is_visible(selected))
+        .client_view(win)
+        .is_some_and(|view| view.monitor.id() == sel_mon_id && view.client.is_visible(selected))
 }
 
 /// Resolve the focus target on the selected monitor.
@@ -40,7 +39,7 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<Window
 
         // Fallback to top of stack.
         if target.is_none() {
-            target = mon.first_visible_client(&model.clients);
+            target = mon.first_visible_client();
         }
     }
 
@@ -246,11 +245,7 @@ pub fn apply_hover_focus(
         return;
     }
     if let Some(win) = hovered_win
-        && let Some(mid) = ctx
-            .core()
-            .model()
-            .client(win)
-            .map(|client| client.monitor_id)
+        && let Some(mid) = ctx.core().model().monitor_of_client(win)
         && select_monitor(ctx, mid)
     {
         // After switching monitors, continue with the hovered window so both
@@ -343,14 +338,16 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
     true
 }
 
-//BOZO: how is this different than just selecting said client?
+/// Make the output that owns `win` the current monitor.
+///
+/// This is deliberately not the same as selecting the client. [`select_monitor`]
+/// forwards a `None` focus target, so the destination output's own previously
+/// selected window takes focus; the caller asked to *go to* the output a window
+/// lives on (workspace-switch semantics, e.g. an IPC request naming a window),
+/// not to raise that window. Use [`focus`] when the window itself should be the
+/// one focused.
 pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
-    let Some(monitor_id) = ctx
-        .core()
-        .model()
-        .client(win)
-        .map(|client| client.monitor_id)
-    else {
+    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
         return false;
     };
     select_monitor(ctx, monitor_id)
@@ -366,8 +363,8 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
         .core()
         .state()
         .model
-        .client(win)
-        .map(|client| (client.monitor_id, client.tags))
+        .client_view(win)
+        .map(|view| (view.monitor.id(), view.client.tags))
     else {
         return false;
     };
@@ -396,14 +393,13 @@ pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: 
 }
 
 fn get_directional_candidate(
-    clients: &[WindowId],
-    globals_map: &HashMap<WindowId, Client>,
+    monitor: &Monitor,
     selected_tags: TagMask,
     source_win: WindowId,
     source_center: crate::types::Point,
     direction: Direction,
 ) -> Option<WindowId> {
-    crate::types::OrderedClients::new(clients, globals_map)
+    crate::types::OrderedClients::new(monitor.focus_order(), monitor.clients())
         .filter(|(win, client)| {
             if *win == source_win || !client.is_visible(selected_tags) {
                 return false;
@@ -445,14 +441,7 @@ fn get_direction_focus_candidate(
 
     let selected = mon.visible_tags();
 
-    get_directional_candidate(
-        &mon.clients,
-        &model.clients,
-        selected,
-        source_win,
-        source_center,
-        direction,
-    )
+    get_directional_candidate(mon, selected, source_win, source_center, direction)
 }
 
 pub fn focus_last_client(ctx: &mut WmCtx) {
@@ -478,7 +467,9 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
 
     let tags = last_client.tags;
-    let last_mon_id = last_client.monitor_id;
+    let Some(last_mon_id) = ctx.core().model().monitor_of_client(last_win) else {
+        return;
+    };
 
     let sel_mon_id = ctx.core().model().selected_monitor_id();
     if !ctx.core().model().monitors.is_empty() && sel_mon_id != last_mon_id {
@@ -538,7 +529,7 @@ fn get_stack_focus_target(
         return None;
     }
     let mon = model.expect_selected_monitor();
-    let stack = mon.focus_cycle_order(&model.clients);
+    let stack = mon.focus_cycle_order();
 
     let selected_window = model
         .selected_win()
@@ -598,14 +589,7 @@ fn get_wrapping_candidate(model: &crate::model::WmModel, direction: Direction) -
 
     let selected = mon.visible_tags();
 
-    get_wrapping_window(
-        &mon.clients,
-        &model.clients,
-        selected,
-        source_win,
-        source_center,
-        direction,
-    )
+    get_wrapping_window(mon, selected, source_win, source_center, direction)
 }
 
 /// Pick the window that a wrapped step should land on.
@@ -617,14 +601,13 @@ fn get_wrapping_candidate(model: &crate::model::WmModel, direction: Direction) -
 /// the cross axis so motion stays continuous when a whole row or column of
 /// windows shares one coordinate.
 fn get_wrapping_window(
-    clients: &[WindowId],
-    globals_map: &HashMap<WindowId, Client>,
+    monitor: &Monitor,
     selected_tags: TagMask,
     source_win: WindowId,
     source_center: crate::types::Point,
     direction: Direction,
 ) -> Option<WindowId> {
-    crate::types::OrderedClients::new(clients, globals_map)
+    crate::types::OrderedClients::new(monitor.focus_order(), monitor.clients())
         .filter(|(win, client)| {
             if *win == source_win || !client.is_visible(selected_tags) {
                 return false;

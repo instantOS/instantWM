@@ -119,12 +119,11 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
         })?;
 
     let model = ctx.core().model();
+    // `client_view` fails only for a window the model does not manage. A
+    // managed client always resolves its owning monitor, so there is no
+    // separate "managed but unreachable" outcome to report.
     let Some(view) = model.client_view(state.win()) else {
-        return Some(if model.client(state.win()).is_some() {
-            DragCancelReason::WindowUnavailable
-        } else {
-            DragCancelReason::WindowDestroyed
-        });
+        return Some(DragCancelReason::WindowDestroyed);
     };
     let client = view.client;
     let monitor = view.monitor;
@@ -249,31 +248,26 @@ mod tests {
     use super::*;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
-    use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, TagMask, WindowId};
+    use crate::test_support::{MonitorBuilder, add_selected_client_with, push_monitor_with};
+    use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId};
     use crate::wm::Wm;
 
     fn floating_drag_fixture(source: InteractionSource) -> (Wm, WindowId) {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(7);
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: false,
-            ..Monitor::default()
+        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.available_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.bar_default_show = false;
+            monitor.set_selected_tags(tags);
         });
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            mode: ClientMode::floating(),
-            geo: Rect::new(100, 100, 500, 300),
-            ..Client::default()
+        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.mode = ClientMode::floating();
+            client.geo = Rect::new(100, 100, 500, 300);
         });
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![win];
-        monitor.selected = Some(win);
         wm.core
             .interaction
             .drag
@@ -414,28 +408,27 @@ mod tests {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.tags.num_tags = 9;
         let tags = TagMask::single(2).unwrap();
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            available_rect: Rect::new(0, 0, 1920, 1080),
-            bar_default_show: true,
-            show_bottom_bar: true,
-            bottom_bar_height: 30,
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(0, true)
+                .bottom_bar(30, true)
+                .tag_count(9)
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(tags);
         // Add a client so overview-style actions can activate.
         let win = WindowId(7);
-        wm.core.model.insert_client(Client {
-            win,
-            monitor_id,
-            tags,
-            geo: Rect::new(100, 100, 500, 300),
-            ..Client::default()
+        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.geo = Rect::new(100, 100, 500, 300);
         });
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
-        monitor.set_selected_tags(tags);
-        monitor.clients = vec![win];
-        monitor.selected = Some(win);
         (wm, monitor_id)
     }
 
@@ -673,7 +666,7 @@ mod tests {
     fn owner_update_consumes_and_cancels_a_window_hidden_by_a_tag_change() {
         for source in [InteractionSource::Pointer, InteractionSource::Touch(4)] {
             let (mut wm, win) = floating_drag_fixture(source);
-            let monitor_id = wm.core.model.client(win).unwrap().monitor_id;
+            let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
             wm.core
                 .model
                 .monitor_mut(monitor_id)
@@ -695,7 +688,7 @@ mod tests {
     #[test]
     fn wrong_source_does_not_reconcile_the_capture_owner() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        let monitor_id = wm.core.model.client(win).unwrap().monitor_id;
+        let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
         wm.core
             .model
             .monitor_mut(monitor_id)
@@ -722,7 +715,7 @@ mod tests {
     }
 
     #[test]
-    fn reconciliation_reports_destroyed_and_unavailable_targets() {
+    fn reconciliation_reports_destroyed_targets() {
         let (mut destroyed_wm, win) = floating_drag_fixture(InteractionSource::Pointer);
         assert!(destroyed_wm.core.model.remove_client(win).is_some());
         assert_eq!(
@@ -730,20 +723,6 @@ mod tests {
             Some(DragCancelReason::WindowDestroyed)
         );
         assert!(destroyed_wm.core.interaction.drag.capture().is_none());
-
-        let (mut unavailable_wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        let stale_monitor = unavailable_wm.core.model.monitors.allocate_id();
-        unavailable_wm
-            .core
-            .model
-            .client_mut(win)
-            .unwrap()
-            .monitor_id = stale_monitor;
-        assert_eq!(
-            reconcile_capture(&mut unavailable_wm.ctx()),
-            Some(DragCancelReason::WindowUnavailable)
-        );
-        assert!(unavailable_wm.core.interaction.drag.capture().is_none());
     }
 
     #[test]
@@ -756,7 +735,7 @@ mod tests {
         assert_eq!(reconcile_capture(&mut wm.ctx()), None);
         assert!(wm.core.interaction.drag.capture().is_some());
 
-        let monitor_id = wm.core.model.client(win).unwrap().monitor_id;
+        let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
         wm.core
             .model
             .monitor_mut(monitor_id)

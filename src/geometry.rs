@@ -212,7 +212,7 @@ fn apply_resize_policies(
     ctx.refine_size_hints(win, outcome.should_apply_client_hints, &mut adjusted);
     let changed = crate::client::geometry::size_hints_changed(ctx.core().model(), win, &adjusted);
 
-    let client_count = ctx.core().model().clients.len();
+    let client_count = ctx.core().model().client_count();
     if changed || client_count == 1 || options.bounds == BoundsPolicy::FloatingTransition {
         Some(adjusted)
     } else {
@@ -329,7 +329,8 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::model::WmModel;
-    use crate::types::{Client, Monitor};
+    use crate::test_support::MonitorBuilder;
+    use crate::types::Client;
     use crate::wm::Wm;
 
     #[test]
@@ -363,21 +364,25 @@ mod tests {
     #[test]
     fn client_geometry_uses_assigned_monitor_not_virtual_layout_extent() {
         let mut model = WmModel::new();
-        let left = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
-        model.monitors.push(Monitor {
-            monitor_rect: Rect::new(1920, 0, 2560, 1440),
-            ..Monitor::default()
-        });
+        let left = model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .build(),
+        );
+        model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(1920, 0, 2560, 1440))
+                .build(),
+        );
         let win = WindowId(11);
-        model.insert_client(Client {
-            win,
-            monitor_id: left,
-            geo: Rect::new(100, 100, 800, 600),
-            ..Client::default()
-        });
+        model.add_client(
+            left,
+            Client {
+                win,
+                geo: Rect::new(100, 100, 800, 600),
+                ..Client::default()
+            },
+        );
 
         let geometry = client_geometry(&model, win).expect("client geometry");
 
@@ -388,18 +393,21 @@ mod tests {
     #[test]
     fn client_geometry_falls_back_to_previous_valid_client_rect() {
         let mut model = WmModel::new();
-        let monitor_id = model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 1920, 1080),
-            ..Monitor::default()
-        });
+        let monitor_id = model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .build(),
+        );
         let win = WindowId(12);
-        model.insert_client(Client {
-            win,
+        model.add_client(
             monitor_id,
-            geo: Rect::default(),
-            old_geo: Rect::new(10, 20, 640, 480),
-            ..Client::default()
-        });
+            Client {
+                win,
+                geo: Rect::default(),
+                old_geo: Rect::new(10, 20, 640, 480),
+                ..Client::default()
+            },
+        );
 
         let geometry = client_geometry(&model, win).expect("client geometry");
 
@@ -407,38 +415,23 @@ mod tests {
     }
 
     #[test]
-    fn client_geometry_rejects_stale_monitor_assignment() {
-        let mut model = WmModel::new();
-        let win = WindowId(13);
-        model.insert_client(Client {
-            win,
-            monitor_id: crate::types::MonitorId::from_raw(1234),
-            geo: Rect::new(10, 20, 640, 480),
-            ..Client::default()
-        });
-
-        assert!(client_geometry(&model, win).is_none());
-    }
-
-    #[test]
     fn wayland_hinted_resize_applies_stored_protocol_maximum() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let monitor_id = wm.core.model.monitors.push(Monitor {
-            monitor_rect: Rect::new(0, 0, 500, 400),
-            available_rect: Rect::new(0, 0, 500, 400),
-            ..Monitor::default()
-        });
+        let monitor_id = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 500, 400), Rect::new(0, 0, 500, 400))
+                .build(),
+        );
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(14);
         let mut client = Client {
             win,
-            monitor_id,
             geo: Rect::new(0, 0, 50, 50),
             ..Client::default()
         };
         client.size_hints.max_width = 120;
         client.size_hints.max_height = 90;
-        wm.core.model.insert_client(client);
+        wm.core.model.add_client(monitor_id, client);
 
         wm.ctx().move_resize(
             win,

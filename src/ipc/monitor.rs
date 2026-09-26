@@ -280,6 +280,7 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::ipc_types::{MonitorCommand, Response};
+    use crate::test_support::MonitorBuilder;
     use crate::types::Monitor;
     use crate::wm::Wm;
 
@@ -306,10 +307,11 @@ mod tests {
 
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         wm.core.model.monitors.push(Monitor::default());
-        let side_id = wm.core.model.monitors.push(Monitor {
-            name: "DP-1".to_owned(),
-            ..Monitor::default()
-        });
+        let side_id = wm
+            .core
+            .model
+            .monitors
+            .push(MonitorBuilder::new().named("DP-1").build());
 
         let resp = super::handle_monitor_command(
             &mut wm,

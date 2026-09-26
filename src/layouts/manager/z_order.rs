@@ -1,6 +1,6 @@
 use crate::contexts::WmCtx;
-use crate::types::{Client, Monitor, MonitorId, WindowId};
-use std::collections::{HashMap, HashSet};
+use crate::types::{Monitor, MonitorId, WindowId};
+use std::collections::HashSet;
 
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_geometry_update(monitor_id);
@@ -13,8 +13,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let clients = &ctx.core().model().clients;
-    let Some(stack) = compute_monitor_z_order(monitor, clients) else {
+    let Some(stack) = compute_monitor_z_order(monitor) else {
         return;
     };
     ctx.window_backend().apply_z_order(&stack);
@@ -26,13 +25,13 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 /// Unknown parents still count as one relationship so a dialog does not lose
 /// its protected layer during parent teardown. Cycles are malformed protocol
 /// input; stopping at the first repeated window keeps ordering deterministic.
-fn transient_depth(win: WindowId, clients: &HashMap<WindowId, Client>) -> usize {
+fn transient_depth(win: WindowId, monitor: &Monitor) -> usize {
     let mut depth = 0;
     let mut current = win;
     let mut visited = HashSet::new();
     while visited.insert(current) {
-        let Some(parent) = clients
-            .get(&current)
+        let Some(parent) = monitor
+            .client(current)
             .and_then(|client| client.transient_for)
         else {
             break;
@@ -43,18 +42,15 @@ fn transient_depth(win: WindowId, clients: &HashMap<WindowId, Client>) -> usize 
     depth
 }
 
-pub(super) fn compute_monitor_z_order(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-) -> Option<Vec<WindowId>> {
+pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Option<Vec<WindowId>> {
     let selected_window = monitor.selected;
     let selected_tags = monitor.visible_tags();
     let bar_win = monitor.bar_win;
     let bottom_bar_win = monitor.bottom_bar_win;
     let layout = monitor.current_layout();
     let tiled_focus = monitor.most_recent_focus(selected_tags, |win| {
-        clients
-            .get(&win)
+        monitor
+            .client(win)
             .is_some_and(|c| c.mode().is_normal_tiling() && c.is_visible(selected_tags))
     });
 
@@ -62,11 +58,11 @@ pub(super) fn compute_monitor_z_order(
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
     let mut transient_stack = Vec::new();
-    for win in monitor.z_order.iter_bottom_to_top() {
-        if let Some(c) = clients.get(&win)
+    for win in monitor.z_order().iter_bottom_to_top() {
+        if let Some(c) = monitor.client(win)
             && c.is_visible(selected_tags)
         {
-            let depth = transient_depth(win, clients);
+            let depth = transient_depth(win, monitor);
             if depth > 0 {
                 transient_stack.push((depth, win));
                 continue;

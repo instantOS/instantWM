@@ -1,5 +1,29 @@
 use super::*;
 
+/// Give `monitor` ownership of `clients`, with `order` as its focus stack.
+fn adopt_clients(monitor: &mut Monitor, order: &[WindowId], clients: Vec<Client>) {
+    for client in clients {
+        monitor.adopt_client(client, false);
+    }
+    if !order.is_empty() {
+        assert!(monitor.set_focus_order(order.to_vec()));
+    }
+}
+
+#[test]
+fn focus_order_rejects_missing_duplicate_and_foreign_windows() {
+    let mut monitor = Monitor::default();
+    monitor.adopt_client(Client::new(WindowId(1)), false);
+    monitor.adopt_client(Client::new(WindowId(2)), false);
+    let original = monitor.stack.to_vec();
+
+    assert!(!monitor.set_focus_order(vec![WindowId(1)]));
+    assert!(!monitor.set_focus_order(vec![WindowId(1), WindowId(1)]));
+    assert!(!monitor.set_focus_order(vec![WindowId(1), WindowId(3)]));
+    assert_eq!(monitor.stack.as_slice(), original);
+    assert!(monitor.set_focus_order(vec![WindowId(1), WindowId(2)]));
+}
+
 #[test]
 fn focus_history_is_deduplicated_mru_and_supports_filtered_recovery() {
     let tags = TagMask::single(1).unwrap();
@@ -32,21 +56,20 @@ fn focus_history_is_deduplicated_mru_and_supports_filtered_recovery() {
 fn first_visible_client_prefers_topmost_visible_stack_entry() {
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(TagMask::single(1).unwrap());
-    monitor.z_order.attach_top(WindowId(1));
-    monitor.z_order.attach_top(WindowId(2));
-    monitor.z_order.attach_top(WindowId(3));
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let mut client = Client {
+                win,
+                ..Client::default()
+            };
+            client.set_tag_mask(TagMask::single(1).unwrap());
+            client
+        })
+        .collect();
+    adopt_clients(&mut monitor, &[], clients);
 
-    let mut clients = HashMap::new();
-    for id in [WindowId(1), WindowId(2), WindowId(3)] {
-        let mut client = Client {
-            win: id,
-            ..Client::default()
-        };
-        client.set_tag_mask(TagMask::single(1).unwrap());
-        clients.insert(id, client);
-    }
-
-    assert_eq!(monitor.first_visible_client(&clients), Some(WindowId(3)));
+    assert_eq!(monitor.first_visible_client(), Some(WindowId(3)));
 }
 
 #[test]
@@ -160,12 +183,8 @@ fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
-    let mut clients = HashMap::new();
 
-    assert_eq!(
-        monitor.visible_content_rect(&clients),
-        Rect::new(100, 80, 800, 570)
-    );
+    assert_eq!(monitor.visible_content_rect(), Rect::new(100, 80, 800, 570));
 
     let mut fullscreen = Client {
         win: WindowId(1),
@@ -173,13 +192,10 @@ fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
         ..Client::default()
     };
     fullscreen.set_tag_mask(tags);
-    monitor.clients.push(fullscreen.win);
-    clients.insert(fullscreen.win, fullscreen);
+    let win = fullscreen.win;
+    adopt_clients(&mut monitor, &[win], vec![fullscreen]);
 
-    assert_eq!(
-        monitor.visible_content_rect(&clients),
-        monitor.available_rect
-    );
+    assert_eq!(monitor.visible_content_rect(), monitor.available_rect);
 }
 
 #[test]
@@ -192,10 +208,7 @@ fn visible_content_rect_preserves_external_exclusive_area() {
         ..Monitor::default()
     };
 
-    assert_eq!(
-        monitor.visible_content_rect(&HashMap::new()),
-        monitor.available_rect
-    );
+    assert_eq!(monitor.visible_content_rect(), monitor.available_rect);
 }
 
 #[test]
@@ -235,7 +248,6 @@ fn all_tags_view_is_derived_from_selected_mask() {
 fn tiled_client_count_matches_collected_tiled_clients() {
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(TagMask::single(1).unwrap());
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
 
     let mut normal = Client {
         win: WindowId(1),
@@ -264,15 +276,14 @@ fn tiled_client_count_matches_collected_tiled_clients() {
     };
     hidden.set_tag_mask(TagMask::single(1).unwrap());
 
-    let clients = HashMap::from([
-        (WindowId(1), normal),
-        (WindowId(2), fullscreen),
-        (WindowId(3), floating),
-        (WindowId(4), hidden),
-    ]);
+    adopt_clients(
+        &mut monitor,
+        &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
+        vec![normal, fullscreen, floating, hidden],
+    );
 
-    assert_eq!(monitor.tiled_client_count(&clients), 1);
-    assert_eq!(monitor.collect_tiled(&clients).len(), 1);
+    assert_eq!(monitor.tiled_client_count(), 1);
+    assert_eq!(monitor.collect_tiled().len(), 1);
 }
 
 #[test]
@@ -280,7 +291,6 @@ fn maximized_focus_cycle_uses_tree_order_and_excludes_floating_clients() {
     let tag = TagMask::single(1).unwrap();
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(3), WindowId(1), WindowId(2)],
@@ -298,12 +308,17 @@ fn maximized_focus_cycle_uses_tree_order_and_excludes_floating_clients() {
             if win == WindowId(2) {
                 client.set_placement(crate::types::ClientPlacement::Floating);
             }
-            (win, client)
+            client
         })
-        .collect::<HashMap<_, _>>();
+        .collect();
+    adopt_clients(
+        &mut monitor,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        clients,
+    );
 
-    let cycle_order = monitor.focus_cycle_order(&clients);
-    let bar_order = monitor.bar_client_order(&clients);
+    let cycle_order = monitor.focus_cycle_order();
+    let bar_order = monitor.bar_client_order();
     assert_eq!(cycle_order, vec![WindowId(3), WindowId(1)]);
     assert_eq!(&bar_order[..cycle_order.len()], cycle_order);
 }
@@ -313,7 +328,6 @@ fn focus_cycle_skips_minimized_tree_positions() {
     let tag = TagMask::single(1).unwrap();
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(1), WindowId(2), WindowId(3)],
@@ -331,19 +345,21 @@ fn focus_cycle_skips_minimized_tree_positions() {
             if win == WindowId(2) {
                 client.is_hidden = true;
             }
-            (win, client)
+            client
         })
-        .collect::<HashMap<_, _>>();
+        .collect();
+    adopt_clients(
+        &mut monitor,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        clients,
+    );
 
     // The minimized entry keeps its title position but cannot receive focus.
     assert_eq!(
-        monitor.bar_client_order(&clients),
+        monitor.bar_client_order(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
-    assert_eq!(
-        monitor.focus_cycle_order(&clients),
-        vec![WindowId(1), WindowId(3)]
-    );
+    assert_eq!(monitor.focus_cycle_order(), vec![WindowId(1), WindowId(3)]);
 }
 
 #[test]
@@ -351,7 +367,6 @@ fn maximized_focus_cycle_falls_back_to_bar_order_when_no_tile_is_focusable() {
     let tag = TagMask::single(1).unwrap();
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(1), WindowId(2)],
@@ -372,17 +387,19 @@ fn maximized_focus_cycle_falls_back_to_bar_order_when_no_tile_is_focusable() {
                 // The only focusable client is a floating overlay.
                 _ => client.set_placement(crate::types::ClientPlacement::Floating),
             }
-            (win, client)
+            client
         })
-        .collect::<HashMap<_, _>>();
+        .collect();
+    adopt_clients(
+        &mut monitor,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        clients,
+    );
 
     // With no focusable tile the tree order would be empty, so floating
     // clients must stay cyclable.
-    assert_eq!(
-        monitor.tiled_tree_order(&clients),
-        vec![WindowId(1), WindowId(2)]
-    );
-    assert_eq!(monitor.focus_cycle_order(&clients), vec![WindowId(3)]);
+    assert_eq!(monitor.tiled_tree_order(), vec![WindowId(1), WindowId(2)]);
+    assert_eq!(monitor.focus_cycle_order(), vec![WindowId(3)]);
 }
 
 #[test]
@@ -390,7 +407,6 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
     let tag = TagMask::single(1).unwrap();
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(2), WindowId(3), WindowId(1), WindowId(4)];
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(3), WindowId(1), WindowId(2)],
@@ -409,16 +425,18 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
             if matches!(win, WindowId(2) | WindowId(4)) {
                 client.set_placement(crate::types::ClientPlacement::Floating);
             }
-            (win, client)
+            client
         })
-        .collect::<HashMap<_, _>>();
-
-    assert_eq!(
-        monitor.tiled_tree_order(&clients),
-        vec![WindowId(3), WindowId(1)]
+        .collect();
+    adopt_clients(
+        &mut monitor,
+        &[WindowId(2), WindowId(3), WindowId(1), WindowId(4)],
+        clients,
     );
+
+    assert_eq!(monitor.tiled_tree_order(), vec![WindowId(3), WindowId(1)]);
     assert_eq!(
-        monitor.bar_client_order(&clients),
+        monitor.bar_client_order(),
         vec![WindowId(3), WindowId(1), WindowId(2), WindowId(4)]
     );
 }
@@ -428,7 +446,6 @@ fn minimized_tiled_titles_keep_their_position_in_maximized_presentation() {
     let tag = TagMask::single(1).unwrap();
     let mut monitor = Monitor::default();
     monitor.set_selected_tags(tag);
-    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(1), WindowId(2), WindowId(3)],
@@ -436,31 +453,37 @@ fn minimized_tiled_titles_keep_their_position_in_maximized_presentation() {
     );
     monitor.per_tag_state().presentation = PresentationMode::Maximized;
 
-    let mut clients: HashMap<_, _> = [WindowId(1), WindowId(2), WindowId(3)]
+    let mut clients: Vec<Client> = [WindowId(1), WindowId(2), WindowId(3)]
         .into_iter()
-        .map(|win| {
-            let client = Client {
-                win,
-                tags: tag,
-                ..Client::default()
-            };
-            (win, client)
+        .map(|win| Client {
+            win,
+            tags: tag,
+            ..Client::default()
         })
         .collect();
-    clients.get_mut(&WindowId(2)).unwrap().is_hidden = true;
+    clients
+        .iter_mut()
+        .find(|client| client.win == WindowId(2))
+        .unwrap()
+        .is_hidden = true;
+    adopt_clients(
+        &mut monitor,
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        clients,
+    );
 
     // Order role: minimizing via the bar must not move the title.
     assert_eq!(
-        monitor.tiled_tree_order(&clients),
+        monitor.tiled_tree_order(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
     assert_eq!(
-        monitor.bar_client_order(&clients),
+        monitor.bar_client_order(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
     );
 
     // The maximized arrange path retains the leaf for order maintenance.
-    let order_members = monitor.collect_tree_order_members(&clients);
+    let order_members = monitor.collect_tree_order_members();
     let windows: Vec<_> = order_members.iter().map(|client| client.win).collect();
     monitor.per_tag_state().layout_tree.reconcile_for_layout(
         &windows,
@@ -476,7 +499,7 @@ fn minimized_tiled_titles_keep_their_position_in_maximized_presentation() {
 
     // Geometry role stays visibility-filtered: the minimized client claims no
     // tiling space.
-    assert_eq!(monitor.collect_tree_order_members(&clients).len(), 3);
-    assert_eq!(monitor.collect_tiling_tree_members(&clients).len(), 2);
-    assert_eq!(monitor.collect_tiled(&clients).len(), 2);
+    assert_eq!(monitor.collect_tree_order_members().len(), 3);
+    assert_eq!(monitor.collect_tiling_tree_members().len(), 2);
+    assert_eq!(monitor.collect_tiled().len(), 2);
 }
