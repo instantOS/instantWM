@@ -91,7 +91,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(screen:ClientWin, MS, button:MouseButton::Right => ButtonAction::ResizeSelectedAspect),
         btn!(CloseButton(WindowId(0)), ModMask::NONE, button:MouseButton::Left => ButtonAction::KillSelectedClient),
         btn!(CloseButton(WindowId(0)), ModMask::NONE, button:MouseButton::Right => ButtonAction::ToggleLockSelectedClient),
-        btn!(ResizeWidget(WindowId(0)), ModMask::NONE, button:MouseButton::Left => ButtonAction::named(NamedAction::DrawWindow)),
+        btn!(ResizeWidget(WindowId(0)), ModMask::NONE, button:MouseButton::Left => ButtonAction::DrawWindowOnRelease),
         btn!(ShutDown, ModMask::NONE, button:MouseButton::Left => ButtonAction::spawn(&["instantshutdown"])),
         btn!(ShutDown, ModMask::NONE, button:MouseButton::Middle => ButtonAction::spawn(&["instantlock", "-o"])),
         btn!(ShutDown, ModMask::NONE, button:MouseButton::Right => ButtonAction::spawn(defaults::LOCKSCREEN)),

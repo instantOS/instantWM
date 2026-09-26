@@ -214,6 +214,11 @@ fn execute_button_action_inner(
                 );
             }
         }
+        ButtonAction::DrawWindowOnRelease => {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
+                crate::mouse::slop::arm_region_selection_press(ctx, win, arg.btn, arg.source);
+            }
+        }
         ButtonAction::BottomBarDrag {
             left,
             right,

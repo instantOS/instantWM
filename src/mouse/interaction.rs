@@ -177,6 +177,10 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
         Some(CapturedInteraction::BottomBar(_)) => {
             crate::mouse::update_bottom_bar_gesture(ctx, event.root);
         }
+        Some(CapturedInteraction::RegionSelection(_)) => {
+            // Motion only needs to stay WM-owned until the release; the tool
+            // itself tracks the rectangle the user draws.
+        }
         None => return InteractionOutcome::Ignored,
     }
     InteractionOutcome::Captured
@@ -212,6 +216,11 @@ fn finish(
         }
         Some(CapturedInteraction::BottomBar(_)) => {
             let _ = crate::mouse::bottom_bar_gesture_finish(ctx, button, event.root, time_msec);
+        }
+        Some(CapturedInteraction::RegionSelection(_)) => {
+            // The tool starts from the shared tick, not here: the backend still
+            // owns pointer transport until this dispatch returns.
+            crate::mouse::slop::finish_region_selection_press(ctx, button);
         }
         None => return InteractionOutcome::Ignored,
     }
@@ -781,5 +790,71 @@ mod tests {
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_some()
         );
+    }
+
+    #[test]
+    fn a_press_armed_for_region_selection_owns_motion_until_its_release() {
+        let (mut wm, monitor_id) = bottom_bar_fixture();
+        let win = WindowId(7);
+        assert!(crate::mouse::slop::arm_region_selection_press(
+            &mut wm.ctx(),
+            win,
+            MouseButton::Left,
+            InteractionSource::Pointer,
+        ));
+
+        // Motion is swallowed rather than forwarded, and reconciliation leaves
+        // the press armed: the window is not being dragged.
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                update(InteractionSource::Pointer, Point::new(600, 700))
+            ),
+            InteractionOutcome::Captured
+        );
+        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert!(wm.core.interaction.drag.capture().is_some());
+
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                InteractionEvent {
+                    source: InteractionSource::Pointer,
+                    phase: InteractionPhase::End {
+                        button: MouseButton::Left,
+                        time_msec: 0,
+                    },
+                    root: Point::new(600, 700),
+                    modifiers: ModMask::NONE,
+                    sidebar_hover: None,
+                }
+            ),
+            InteractionOutcome::Captured
+        );
+        assert!(wm.core.interaction.drag.capture().is_none());
+        let _ = monitor_id;
+    }
+
+    #[test]
+    fn cancelling_a_press_never_starts_a_region_selection() {
+        let (mut wm, _) = bottom_bar_fixture();
+        let win = WindowId(7);
+        assert!(crate::mouse::slop::arm_region_selection_press(
+            &mut wm.ctx(),
+            win,
+            MouseButton::Left,
+            InteractionSource::Pointer,
+        ));
+
+        assert_eq!(
+            handle(
+                &mut wm.ctx(),
+                InteractionEvent::pointer_cancel(DragCancelReason::InputCaptureLost)
+            ),
+            InteractionOutcome::Captured
+        );
+        assert!(wm.core.interaction.drag.capture().is_none());
+        // Nothing is queued, so the next tick starts no tool.
+        crate::mouse::slop::drain_region_selection(&mut wm);
     }
 }
