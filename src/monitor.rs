@@ -167,19 +167,11 @@ impl MonitorManager {
         }
     }
 
-    pub fn find_monitor_for(
-        &self,
-        w: WindowId,
-        clients: &HashMap<WindowId, Client>,
-    ) -> Option<&Monitor> {
+    pub fn find_monitor_for(&self, w: WindowId) -> Option<&Monitor> {
         self.iter()
             .map(|(_, monitor)| monitor)
             .find(|monitor| w == monitor.bar_win || w == monitor.bottom_bar_win)
-            .or_else(|| {
-                clients
-                    .get(&w)
-                    .and_then(|client| self.get(client.monitor_id))
-            })
+            .or_else(|| self.iter_all().find(|monitor| monitor.has_client(w)))
     }
 
     /// Find the monitor with the largest intersection with `rect`.
@@ -344,12 +336,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
     crate::tags::send_to_monitor(ctx, direction);
 
     let previous_focus = ctx.core().model().selected_win();
-    if let Some(monitor_id) = ctx
-        .core()
-        .model()
-        .client(c_win)
-        .map(|client| client.monitor_id)
-    {
+    if let Some(monitor_id) = ctx.core().model().monitor_of_client(c_win) {
         ctx.core_mut().select_monitor(monitor_id);
     }
 
@@ -509,26 +496,25 @@ fn take_matching_monitor(
 /// carried in from removed monitors. This makes unplugging an output a lossless
 /// operation from the user's point of view: no window is silently retagged and
 /// every migrated window is immediately reachable.
-fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorId) {
-    let stale_wins: Vec<WindowId> = model
-        .clients
-        .values()
-        .filter(|c| !model.monitors.contains(c.monitor_id))
-        .map(|c| c.win)
-        .collect();
+fn rehome_orphaned_clients(
+    model: &mut crate::model::WmModel,
+    survivor: MonitorId,
+    orphaned: Vec<(Client, bool)>,
+) {
+    if orphaned.is_empty() {
+        return;
+    }
 
     let mut reachable_tags = model
         .monitor(survivor)
         .map(Monitor::selected_tags)
         .unwrap_or(TagMask::EMPTY);
-    for win in stale_wins {
-        if let Some(client) = model.client(win)
-            && !client.is_scratchpad()
-        {
+    for (client, was_selected) in orphaned {
+        if !client.is_scratchpad() {
             reachable_tags = reachable_tags | client.tags;
         }
-        let reassigned = model.reassign_client_monitor(win, survivor);
-        debug_assert!(reassigned, "orphaned managed client must be re-homeable");
+        let readopted = model.readopt_client(survivor, client, was_selected);
+        debug_assert!(readopted, "orphaned managed client must be re-homeable");
     }
     if let Some(monitor) = model.monitor_mut(survivor) {
         monitor.set_selected_tags(reachable_tags);
@@ -659,14 +645,26 @@ fn reconcile_monitor_model(
         }
     }
 
-    // Collect the orphaned monitors' bar windows as cleanup work for the
-    // caller. The default id is the "no bar" placeholder, not a real window.
-    let removed_bar_windows = pool
-        .into_iter()
-        .flatten()
-        .flat_map(|monitor| [monitor.bar_win, monitor.bottom_bar_win])
-        .filter(|window| *window != WindowId::default())
-        .collect();
+    // Collect the orphaned monitors' clients and bar windows as cleanup work
+    // for the caller. Clients leave with their monitor, so they are taken out
+    // here while the removed monitor is still in hand. The default id is the
+    // "no bar" placeholder, not a real window.
+    let mut removed_bar_windows = Vec::new();
+    let mut orphaned_clients = Vec::new();
+    for monitor in pool.into_iter().flatten() {
+        for bar in [monitor.bar_win, monitor.bottom_bar_win] {
+            if bar != WindowId::default() {
+                removed_bar_windows.push(bar);
+            }
+        }
+        let selected = monitor.selected;
+        orphaned_clients.extend(
+            monitor
+                .clients
+                .into_iter()
+                .map(|(win, client)| (client, Some(win) == selected)),
+        );
+    }
 
     // Restore the rebuilt list. The selection is preserved if its monitor still
     // exists; otherwise the manager falls back to the first monitor.
@@ -674,7 +672,7 @@ fn reconcile_monitor_model(
 
     // Re-home any clients whose monitor was removed onto the first survivor.
     if let Some(survivor) = model.monitors.first() {
-        rehome_orphaned_clients(model, survivor);
+        rehome_orphaned_clients(model, survivor, orphaned_clients);
     }
 
     MonitorReconciliation {

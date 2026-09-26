@@ -101,8 +101,13 @@ impl Client {
     }
 
     /// Promote an ordinary client into a named scratchpad role.
+    ///
+    /// `monitor_id` is the monitor the client is being taken from. It is
+    /// remembered rather than read from the client, because a client no longer
+    /// names its own monitor: ownership lives in the monitor that holds it.
     pub(crate) fn promote_to_scratchpad(
         &mut self,
+        monitor_id: MonitorId,
         name: &str,
         direction: Option<EdgeDirection>,
         monitor_width: i32,
@@ -123,7 +128,7 @@ impl Client {
 
         let restore = ScratchpadRestoreState {
             tags: self.tags,
-            monitor_id: self.monitor_id,
+            monitor_id,
             mode: self.mode,
             is_sticky: self.is_sticky,
             is_locked: self.is_locked,

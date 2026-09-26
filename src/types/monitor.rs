@@ -91,8 +91,12 @@ pub struct Monitor {
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
     pub tags: Vec<Tag>,
+    /// Clients this monitor owns. Ownership is what makes the client/monitor
+    /// relationship structural: a client cannot name a monitor other than the
+    /// one holding it, so no assignment can go stale.
+    pub clients: HashMap<WindowId, Client>,
     /// Client list (focus order).
-    pub clients: Vec<WindowId>,
+    pub stack: Vec<WindowId>,
     /// Currently selected client.
     pub selected: Option<WindowId>,
     /// Most-recently-used focus order per tag mask, oldest to newest.
@@ -132,7 +136,8 @@ impl Default for Monitor {
             bottom_bar_indicator_win: WindowId::default(),
             prev_tag: None,
             tags: Vec::new(),
-            clients: Vec::new(),
+            clients: HashMap::new(),
+            stack: Vec::new(),
             selected: None,
             focus_history: HashMap::new(),
             per_tag: HashMap::new(),
@@ -229,8 +234,8 @@ impl Monitor {
     }
 
     /// Check whether the bar is visible on this monitor.
-    pub fn bar_visible(&self, clients: &HashMap<WindowId, Client>) -> bool {
-        self.shows_bar() && !self.has_real_fullscreen(clients)
+    pub fn bar_visible(&self) -> bool {
+        self.shows_bar() && !self.has_real_fullscreen()
     }
 
     /// Whether this monitor draws the bottom bar. The state is global and
@@ -240,27 +245,27 @@ impl Monitor {
     }
 
     /// Check whether the bottom bar is visible on this monitor.
-    pub fn bottom_bar_visible(&self, clients: &HashMap<WindowId, Client>) -> bool {
-        self.shows_bottom_bar() && !self.has_real_fullscreen(clients)
+    pub fn bottom_bar_visible(&self) -> bool {
+        self.shows_bottom_bar() && !self.has_real_fullscreen()
     }
 
     /// Check whether the bottom bar is visible on this monitor and `root_y`
     /// falls within it.
-    pub fn bottom_bar_contains_y(&self, clients: &HashMap<WindowId, Client>, root_y: i32) -> bool {
-        self.bottom_bar_visible(clients) && self.y_in_bottom_bar(root_y)
+    pub fn bottom_bar_contains_y(&self, root_y: i32) -> bool {
+        self.bottom_bar_visible() && self.y_in_bottom_bar(root_y)
     }
 
     /// Check whether the monitor has a client in true fullscreen mode.
-    pub fn has_real_fullscreen(&self, clients: &HashMap<WindowId, Client>) -> bool {
+    pub fn has_real_fullscreen(&self) -> bool {
         let selected_tags = self.visible_tags();
-        self.iter_clients(clients).any(|(_, client)| {
+        self.iter_clients().any(|(_, client)| {
             client.mode().is_true_fullscreen() && client.is_visible(selected_tags)
         })
     }
 
     /// Check whether the bar is visible on this monitor and `root_y` falls within it.
-    pub fn bar_contains_y(&self, clients: &HashMap<WindowId, Client>, root_y: i32) -> bool {
-        self.bar_visible(clients) && self.y_in_bar(root_y)
+    pub fn bar_contains_y(&self, root_y: i32) -> bool {
+        self.bar_visible() && self.y_in_bar(root_y)
     }
 
     /// Create a new monitor with its initial tag selection.
@@ -386,17 +391,32 @@ impl Monitor {
 
     /// Iterate the monitor's client list (focus order).
     #[inline]
-    pub fn iter_clients<'a>(
-        &'a self,
-        clients: &'a HashMap<WindowId, Client>,
-    ) -> OrderedClients<'a> {
-        OrderedClients::new(&self.clients, clients)
+    pub fn iter_clients(&self) -> OrderedClients<'_> {
+        OrderedClients::new(&self.stack, &self.clients)
     }
 
     /// Iterate the monitor's persistent z-order.
     #[inline]
-    pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<WindowId, Client>) -> OrderedClients<'a> {
-        OrderedClients::new(self.z_order.as_slice(), clients)
+    pub fn iter_stack(&self) -> OrderedClients<'_> {
+        OrderedClients::new(self.z_order.as_slice(), &self.clients)
+    }
+
+    /// Return a client this monitor owns.
+    #[inline]
+    pub fn client(&self, win: WindowId) -> Option<&Client> {
+        self.clients.get(&win)
+    }
+
+    /// Return a client this monitor owns, mutably.
+    #[inline]
+    pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
+        self.clients.get_mut(&win)
+    }
+
+    /// Whether this monitor owns `win`.
+    #[inline]
+    pub fn has_client(&self, win: WindowId) -> bool {
+        self.clients.contains_key(&win)
     }
 
     /// Check if a point is within this monitor's work area.
@@ -423,10 +443,10 @@ impl Monitor {
     }
 
     /// Count the number of visible clients on this monitor.
-    pub fn client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
+    pub fn client_count(&self) -> usize {
         let selected = self.visible_tags();
         let mut count = 0;
-        for (_win, c) in self.iter_clients(clients) {
+        for (_win, c) in self.iter_clients() {
             if c.is_visible(selected) {
                 count += 1;
             }
@@ -435,10 +455,10 @@ impl Monitor {
     }
 
     /// Count the number of tiled clients on this monitor.
-    pub fn tiled_client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
+    pub fn tiled_client_count(&self) -> usize {
         let selected = self.visible_tags();
         let mut count = 0;
-        for (_win, c) in self.iter_clients(clients) {
+        for (_win, c) in self.iter_clients() {
             if c.is_tiled(selected) {
                 count += 1;
             }
@@ -449,21 +469,16 @@ impl Monitor {
     /// Collect tiled clients into lightweight info snapshots for layout use.
     ///
     /// This replaces the per-layout boilerplate of filtering + snapshotting.
-    pub fn collect_tiled(&self, clients: &HashMap<WindowId, Client>) -> Vec<TiledClientInfo> {
+    pub fn collect_tiled(&self) -> Vec<TiledClientInfo> {
         let selected_tags = self.visible_tags();
-        self.collect_client_info(clients, |client| client.is_tiled(selected_tags))
+        self.collect_client_info(|client| client.is_tiled(selected_tags))
     }
 
     /// Collect persistent tiling-tree members, including clients temporarily
     /// presented as fullscreen or maximized.
-    pub fn collect_tiling_tree_members(
-        &self,
-        clients: &HashMap<WindowId, Client>,
-    ) -> Vec<TiledClientInfo> {
+    pub fn collect_tiling_tree_members(&self) -> Vec<TiledClientInfo> {
         let selected_tags = self.visible_tags();
-        self.collect_client_info(clients, |client| {
-            client.is_tiling_tree_member(selected_tags)
-        })
+        self.collect_client_info(|client| client.is_tiling_tree_member(selected_tags))
     }
 
     /// Collect clients that hold a leaf position in the persistent tree for
@@ -472,20 +487,13 @@ impl Monitor {
     /// Unlike [`Self::collect_tiling_tree_members`], this includes hidden
     /// (minimized) tiled clients: in maximized presentation the tree is the
     /// tab/cycle order, so a minimized client must not lose its position.
-    pub fn collect_tree_order_members(
-        &self,
-        clients: &HashMap<WindowId, Client>,
-    ) -> Vec<TiledClientInfo> {
+    pub fn collect_tree_order_members(&self) -> Vec<TiledClientInfo> {
         let selected_tags = self.visible_tags();
-        self.collect_client_info(clients, |client| client.is_tree_order_member(selected_tags))
+        self.collect_client_info(|client| client.is_tree_order_member(selected_tags))
     }
 
-    fn collect_client_info(
-        &self,
-        clients: &HashMap<WindowId, Client>,
-        include: impl Fn(&Client) -> bool,
-    ) -> Vec<TiledClientInfo> {
-        self.iter_clients(clients)
+    fn collect_client_info(&self, include: impl Fn(&Client) -> bool) -> Vec<TiledClientInfo> {
+        self.iter_clients()
             .filter(|(_, client)| include(client))
             .map(|(win, client)| TiledClientInfo {
                 win,
@@ -501,7 +509,7 @@ impl Monitor {
     /// This is the order role of the tree: hidden (minimized) tiled clients
     /// keep their position so their bar title and cycle slot stay in place.
     /// Tiling geometry instead uses [`Self::collect_tiling_tree_members`].
-    pub fn tiled_tree_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
+    pub fn tiled_tree_order(&self) -> Vec<WindowId> {
         let selected = self.visible_tags();
         let mut ordered = self
             .per_tag()
@@ -509,15 +517,16 @@ impl Monitor {
             .unwrap_or_default()
             .into_iter()
             .filter(|win| {
-                clients
+                self.clients
                     .get(win)
                     .is_some_and(|client| client.is_tree_order_member(selected))
             })
             .collect::<Vec<_>>();
         let mut seen: HashSet<WindowId> = ordered.iter().copied().collect();
 
-        for &win in &self.clients {
-            if clients
+        for &win in &self.stack {
+            if self
+                .clients
                 .get(&win)
                 .is_some_and(|client| client.is_tree_order_member(selected))
                 && seen.insert(win)
@@ -533,17 +542,18 @@ impl Monitor {
     /// In maximized presentation, tiled titles are tabs for the overlapping
     /// stack and therefore use the same tree order as keyboard focus cycling.
     /// Floating overlays follow that sequence in ordinary monitor client order.
-    pub fn bar_client_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
+    pub fn bar_client_order(&self) -> Vec<WindowId> {
         let selected = self.visible_tags();
         let mut ordered = if self.is_maximized_layout() {
-            self.tiled_tree_order(clients)
+            self.tiled_tree_order()
         } else {
             Vec::new()
         };
         let mut seen: HashSet<WindowId> = ordered.iter().copied().collect();
 
-        for &win in &self.clients {
-            if clients
+        for &win in &self.stack {
+            if self
+                .clients
                 .get(&win)
                 .is_some_and(|client| client.shows_in_bar(selected))
                 && seen.insert(win)
@@ -568,7 +578,7 @@ impl Monitor {
     /// floating clients cyclable on a monitor with no focusable tile. In
     /// maximized presentation the result is therefore a prefix of
     /// [`Self::bar_client_order`].
-    pub fn focus_cycle_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
+    pub fn focus_cycle_order(&self) -> Vec<WindowId> {
         let selected = self.visible_tags();
 
         if self.is_maximized_layout() {
@@ -578,10 +588,10 @@ impl Monitor {
             // stays put. They cannot receive focus until explicitly restored,
             // so the cycle skips them.
             let tiled_cycle: Vec<WindowId> = self
-                .tiled_tree_order(clients)
+                .tiled_tree_order()
                 .into_iter()
                 .filter(|win| {
-                    clients
+                    self.clients
                         .get(win)
                         .is_some_and(|client| client.is_visible(selected))
                 })
@@ -595,10 +605,10 @@ impl Monitor {
         // cycle follows the exact title order exposed by the bar.
         // Hidden/minimized entries retain a title but cannot receive focus
         // until explicitly restored, so skip them.
-        self.bar_client_order(clients)
+        self.bar_client_order()
             .into_iter()
             .filter(|win| {
-                clients
+                self.clients
                     .get(win)
                     .is_some_and(|client| client.is_visible(selected))
             })
@@ -609,14 +619,10 @@ impl Monitor {
     ///
     /// Returns true if the position changed, false otherwise (e.g., if the client
     /// is floating, not found, or there are fewer than 2 tiled clients).
-    pub fn move_client_in_stack(
-        &mut self,
-        win: WindowId,
-        direction: StackDirection,
-        clients: &HashMap<WindowId, Client>,
-    ) -> bool {
+    pub fn move_client_in_stack(&mut self, win: WindowId, direction: StackDirection) -> bool {
         // Check if client exists and is tiled
-        let is_floating = clients
+        let is_floating = self
+            .clients
             .get(&win)
             .map(|c| c.placement() == super::ClientPlacement::Floating)
             .unwrap_or(false);
@@ -624,36 +630,36 @@ impl Monitor {
             return false;
         }
 
-        let tiled_count = self.tiled_client_count(clients);
+        let tiled_count = self.tiled_client_count();
         if tiled_count < 2 {
             return false;
         }
 
-        if let Some(pos) = self.clients.iter().position(|&w| w == win) {
+        if let Some(pos) = self.stack.iter().position(|&w| w == win) {
             match direction {
                 StackDirection::Previous => {
                     if pos > 0 {
-                        self.clients.swap(pos, pos - 1);
+                        self.stack.swap(pos, pos - 1);
                         return true;
                     } else {
                         // Wrap to end: move first element to end
-                        if self.clients.len() > 1 {
-                            let first = self.clients.remove(0);
-                            self.clients.push(first);
+                        if self.stack.len() > 1 {
+                            let first = self.stack.remove(0);
+                            self.stack.push(first);
                             return true;
                         }
                     }
                 }
                 StackDirection::Next => {
-                    if pos + 1 < self.clients.len() {
-                        self.clients.swap(pos, pos + 1);
+                    if pos + 1 < self.stack.len() {
+                        self.stack.swap(pos, pos + 1);
                         return true;
                     } else {
                         // Wrap to beginning: move last element to front
-                        if self.clients.len() > 1 {
-                            let last = self.clients.pop();
+                        if self.stack.len() > 1 {
+                            let last = self.stack.pop();
                             if let Some(last) = last {
-                                self.clients.insert(0, last);
+                                self.stack.insert(0, last);
                                 return true;
                             }
                         }
@@ -676,16 +682,16 @@ impl Monitor {
     /// bar-title drag reorders exactly the order the strip presents. Returns
     /// `false` when either window is absent or both share a position.
     pub fn swap_clients_in_stack(&mut self, first: WindowId, second: WindowId) -> bool {
-        let Some(a) = self.clients.iter().position(|&w| w == first) else {
+        let Some(a) = self.stack.iter().position(|&w| w == first) else {
             return false;
         };
-        let Some(b) = self.clients.iter().position(|&w| w == second) else {
+        let Some(b) = self.stack.iter().position(|&w| w == second) else {
             return false;
         };
         if a == b {
             return false;
         }
-        self.clients.swap(a, b);
+        self.stack.swap(a, b);
         true
     }
 
@@ -694,11 +700,14 @@ impl Monitor {
     ///
     /// `z_order` is bottom-to-top. Focus recovery walks it from the top so
     /// closing an overlapping window selects the window immediately below it.
-    pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
+    pub fn first_visible_client(&self) -> Option<WindowId> {
         let tags = self.visible_tags();
-        self.z_order
-            .iter_top_to_bottom()
-            .find_map(|w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
+        self.z_order.iter_top_to_bottom().find_map(|w| {
+            self.clients
+                .get(&w)
+                .filter(|c| c.is_visible(tags))
+                .map(|_| w)
+        })
     }
 
     /// Check if this monitor has a selected client.
@@ -712,23 +721,19 @@ impl Monitor {
     }
 
     /// Find the next tiled client on this monitor starting after `start_win`.
-    pub fn next_tiled(
-        &self,
-        clients: &HashMap<WindowId, Client>,
-        start_win: Option<WindowId>,
-    ) -> Option<WindowId> {
+    pub fn next_tiled(&self, start_win: Option<WindowId>) -> Option<WindowId> {
         let selected = self.visible_tags();
 
         let start_idx = if let Some(win) = start_win {
-            self.clients.iter().position(|&w| w == win)
+            self.stack.iter().position(|&w| w == win)
         } else {
             None
         };
 
         let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
 
-        for &win in self.clients.iter().skip(iter_start) {
-            if let Some(c) = clients.get(&win)
+        for &win in self.stack.iter().skip(iter_start) {
+            if let Some(c) = self.clients.get(&win)
                 && c.mode().is_normal_tiling()
                 && c.is_visible(selected)
             {
@@ -886,11 +891,8 @@ impl Monitor {
     /// Unlike [`Self::work_rect`], this accounts for a true-fullscreen client
     /// temporarily hiding the built-in bars. It is intended for WM-owned UI
     /// such as edge scratchpads that must avoid every visible bar.
-    pub fn visible_content_rect(&self, clients: &HashMap<WindowId, Client>) -> Rect {
-        self.rect_excluding_internal_bars(
-            self.bar_visible(clients),
-            self.bottom_bar_visible(clients),
-        )
+    pub fn visible_content_rect(&self) -> Rect {
+        self.rect_excluding_internal_bars(self.bar_visible(), self.bottom_bar_visible())
     }
 
     fn rect_excluding_internal_bars(
@@ -989,9 +991,9 @@ impl Monitor {
     /// Compute a bitmask of tags that have at least one client on this monitor.
     ///
     /// Excludes the scratchpad tag from the result.
-    pub fn occupied_tags(&self, clients: &HashMap<WindowId, Client>) -> TagMask {
+    pub fn occupied_tags(&self) -> TagMask {
         let mut occupied = TagMask::EMPTY;
-        for (_win, c) in self.iter_clients(clients) {
+        for (_win, c) in self.iter_clients() {
             occupied = occupied | c.tags;
         }
         occupied.without_scratchpad()

@@ -86,8 +86,6 @@ pub struct Client {
     /// can only change the role through explicit transitions.
     #[cfg(test)]
     pub(crate) scratchpad: Option<ScratchpadData>,
-    /// Monitor this client is on.
-    pub monitor_id: MonitorId,
     /// Managed toplevel this window is transient for, when advertised by the
     /// client protocol (`xdg_toplevel.set_parent` / `WM_TRANSIENT_FOR`).
     ///
@@ -281,7 +279,6 @@ mod tests {
     #[test]
     fn scratchpad_restore_recovers_complete_ordinary_window_state() {
         let mut client = Client {
-            monitor_id: MonitorId::default(),
             tags: TagMask::single(2).unwrap(),
             is_sticky: true,
             is_locked: true,
