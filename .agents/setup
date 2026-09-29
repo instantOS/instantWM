@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Orb setup for instantWM (https://github.com/instantOS/instantWM).
+#
+# Runs once on a fresh orb (or when the project snapshot is stale) and must
+# stay non-interactive, idempotent, and fast on a warm filesystem. Amp aborts
+# setup after 20 minutes; the warm path here should finish in well under a
+# minute.
+#
+# What a fresh Debian orb needs for this repository:
+#   - X11/Wayland/DRM dev libraries the crate links against (see
+#     scripts/ci/install-deps-ubuntu.sh, which CI uses on Ubuntu)
+#   - a rustc >= 1.85 toolchain (edition 2024); Debian bookworm ships 1.63,
+#     so we install rustup for the login user
+#   - Xvfb + X tools + a real font for the X11 integration tests
+#     (cosmic-text panics on fontless systems)
+#   - uv/uvx for `just check` / `just fmt` (Python tooling)
+
+step() {
+  echo "==> [setup $(date +%H:%M:%S)] $*"
+}
+
+step_done() {
+  echo "==> [setup $(date +%H:%M:%S)] done: $*"
+}
+
+# ---------------------------------------------------------------------------
+# System packages
+# ---------------------------------------------------------------------------
+APT_PACKAGES=(
+  # toolchain and build basics
+  build-essential
+  pkg-config
+  git
+  curl
+  ca-certificates
+  jq
+  python3
+
+  # X11 / Wayland / DRM / input dev libraries (mirror of
+  # scripts/ci/install-deps-ubuntu.sh DEV_LIBS, with Debian names)
+  libx11-dev
+  libxext-dev
+  libxrandr-dev
+  libxinerama-dev
+  libxcb1-dev
+  libxkbcommon-dev
+  libxcursor-dev
+  libxdamage-dev
+  libxfixes-dev
+  libxi-dev
+  libxres-dev
+  libxtst-dev
+  libxss-dev
+  libxvmc-dev
+  libxxf86vm-dev
+  libxcomposite-dev
+  libxrender-dev
+  libxft-dev
+  libxt-dev
+  libxmu-dev
+  libxpm-dev
+  libxaw7-dev
+  libfontconfig1-dev
+  libfreetype-dev
+  libdrm-dev
+  libgbm-dev
+  libwayland-dev
+  libinput-dev
+  libseat-dev
+  libegl-dev
+  libgl-dev
+  libevdev-dev
+  libwacom-dev
+  libdbus-1-dev
+  libliftoff-dev
+  libudev-dev
+  wayland-protocols
+
+  # X11 integration tests (tests/x11_drag.py) run on a private Xvfb and need
+  # these tools plus stdbuf (coreutils, already installed). x11-utils provides
+  # xev, xprop, xwininfo and xmessage on Debian (there is no xmessage package).
+  xvfb
+  xauth
+  xdotool
+  x11-utils
+
+  # cosmic-text (bar text rasterizer) panics with "no default font found" on
+  # fontless systems, so tests need a real font, not just the dev headers.
+  fonts-dejavu-core
+)
+
+missing=()
+for pkg in "${APT_PACKAGES[@]}"; do
+  if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q '^install ok installed'; then
+    missing+=("$pkg")
+  fi
+done
+
+if [[ ${#missing[@]} -gt 0 ]]; then
+  step "installing ${#missing[@]} missing apt package(s): ${missing[*]}"
+  export DEBIAN_FRONTEND=noninteractive
+  sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends "${missing[@]}"
+  step_done "apt packages"
+else
+  step_done "apt packages already present"
+fi
+
+# ---------------------------------------------------------------------------
+# Rust toolchain (rustup, for the login user)
+#
+# Debian bookworm's rustc (1.63) is too old for edition 2024, so we ignore the
+# distro package and install rustup. If setup ever runs as root, install into
+# the invoking user's home so that the agent and supervised services see it.
+# ---------------------------------------------------------------------------
+TOOLCHAIN_USER="${SUDO_USER:-${USER:-$(id -un)}}"
+if [[ "$(id -un)" == "root" && -n "${SUDO_USER:-}" ]]; then
+  TOOLCHAIN_HOME="$(getent passwd "$TOOLCHAIN_USER" | cut -d: -f6)"
+else
+  TOOLCHAIN_HOME="$HOME"
+fi
+TOOLCHAIN_HOME="${TOOLCHAIN_HOME:-$(getent passwd "$TOOLCHAIN_USER" | cut -d: -f6)}"
+
+if [[ -x "$TOOLCHAIN_HOME/.cargo/bin/cargo" ]]; then
+  step_done "rust toolchain already installed for $TOOLCHAIN_USER"
+else
+  step "installing rustup (stable, plus rustfmt and clippy) for $TOOLCHAIN_USER"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | env HOME="$TOOLCHAIN_HOME" sh -s -- -y \
+      --default-toolchain stable \
+      --profile minimal \
+      --component rustfmt \
+      --component clippy
+  step_done "rustup"
+fi
+
+# cargo must be on PATH for the rest of setup; the installer cannot update the
+# running process's environment.
+# shellcheck disable=SC1091
+[[ -x "$TOOLCHAIN_HOME/.cargo/bin/cargo" ]] || . "$TOOLCHAIN_HOME/.cargo/env"
+export PATH="$TOOLCHAIN_HOME/.cargo/bin:$PATH"
+
+# ---------------------------------------------------------------------------
+# Fetch crate dependencies from the lockfile
+#
+# Downloads registry crates and the pinned Smithay/calloop git dependencies so
+# the first real build does not stall on network I/O. Incremental and quick
+# when the cache is already warm. Never builds anything.
+# ---------------------------------------------------------------------------
+step "cargo fetch --locked"
+cargo fetch --locked
+step_done "cargo fetch"
+
+# ---------------------------------------------------------------------------
+# uv / uvx (Python tooling used by `just check` and `just fmt`)
+# The orb base template ships uv; only fall back to the installer if missing.
+# ---------------------------------------------------------------------------
+if ! command -v uvx >/dev/null 2>&1; then
+  step "installing uv"
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  step_done "uv"
+else
+  step_done "uv already present ($(uvx --version 2>/dev/null || echo uvx))"
+fi
+
+step_done "setup complete"

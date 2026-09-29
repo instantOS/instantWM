@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# instantWM resume script. Runs after initial activation and every time a
+# paused orb wakes; Amp only waits 10 seconds, so keep this fast and never
+# install anything here.
+#
+# Nothing in this repository needs reconnecting or re-authenticating on wake:
+# - the rustup toolchain is static in $HOME and comes back with the snapshot
+# - system packages and fonts are baked into the project snapshot
+# - there are no databases, tunnels, or user-session services to re-auth
+#
+# The build/test entry points agents need (already on PATH from setup):
+#   cargo test --locked
+#   xvfb-run -a cargo test --locked backend::x11::draw::context::text::tests -- --ignored --test-threads=1
+#   python tests/x11_drag.py
+
+exit 0
