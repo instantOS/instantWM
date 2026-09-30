@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/instantOS/instantWM/compare/v0.3.3...v0.4.0) - 2026-09-30
+
+### Added
+
+- bump to wl compositor v6
+- make focus boundary behavior configurable
+- expand ~ in include paths
+
+### Changed
+
+- monitors own their clients
+- enforce monitor-owned client collections
+
+### Fixed
+
+- treat includes as a loader directive, not a config value
+- mutex gone
+- derive rule and center geometry from the work area
+
+### Other
+
+- fix X11 resize thrashing
+- Separate X11 resize requests from Wayland commits
+- Make tag count explicit and show active tags beyond bar baseline
+- Merge origin/dev and preserve tag bar changes
+- Refactor named actions and unify config effects
+- make monitor client collections private, drop Deref wrappers
+- Merge branch 'dev' of ufr:~/stuff/instantWM into dev
+- Merge branch 'monitor-owned-clients' of ufr:~/stuff/instantWM into dev
+- fix deferred area selection
+- move CI to ubuntu 26.04
+- add Amp orb setup scripts
+- Merge branch 'main' of ufr3:~/stuff/instantWM into dev
+- Merge branch 'dev' of ufr3:~/stuff/instantWM into dev
+
 ## [0.3.3](https://github.com/instantOS/instantWM/compare/v0.3.2...v0.3.3) - 2026-09-25
 
 ### Changed
