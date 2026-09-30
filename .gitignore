@@ -17,3 +17,6 @@ sysroot
 # Stakpak session files
 .stakpak/session*
 .aider*
+
+# Amp orb portals and local runtime state
+.amp/

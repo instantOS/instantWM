@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/instantOS/instantWM/compare/v0.3.2...v0.3.3) - 2026-09-25
+
+### Changed
+
+- output management was too long and mixing concerns
+- redundant methods
+- collapse alt-tag state into config and unify toggle paths
+- share runtime-config writes between IPC and named actions
+- per-view bar visibility as a session override over config
+- less redundant ID lookups
+
+### Fixed
+
+- flipped screen recording
+- stale session variable stuff
+- create bar windows for hot plugged monitors
+- update tests for typed config and action APIs
+- migrate callers to generic pointer captures
+- refresh RandR snapshot only after successful modeset
+- finish typed action CLI cleanup and formatting
+- preserve window borders by default
+- drop dead animation suppression from toggle_bar
+- address some bozos
+
+### Other
+
+- Merge branch 'main' of https://github.com/instantOS/instantWM
+- Merge branch 'fix-x11-mon' into dev
+- Refactor display and status notifier modules
+- Refactor monitor UI metrics and clear all clippy warnings
+- dedupe rules
+- Add display mirroring across outputs
+- Add hooks for monitor hotplug events
+- Checkpoint existing agent work: typed actions and IPC
+- Checkpoint existing agent work: bar rendering pipeline
+- Checkpoint existing agent work: output request pipeline
+- Checkpoint existing agent work: layout transitions
+- Merge output pipeline refactor
+- Revert "fix(x11): preserve window borders by default"
+- Merge actions and IPC refactor
+- restore structured TOML action syntax
+- Merge dev into bar rendering continuation
+- Finish bar rendering and state cleanup
+- Merge bar rendering and interaction refactor
+- Merge dev into layout transitions continuation
+- Finish layout transition refactor integration
+- Merge layout transitions refactor
+- make runtime toggles persistent via TOML
+- make tags configurable — names, icons, and introspection
+- per-output tag display policy with a configurable cell count
+- cargo clippy
+- add BOZOs
+- more BOZOs
+- Propagate keyboard layout application failures across backends
+- Harden rectangle clipping and clarify focus APIs
+- Dedupe ctx creation
+- Extract shared bar rasterization into backend-neutral Canvas and image types
+- Unify color schemes across bar backends
+- clarify foreground/background terminology
+- Handle degenerate Wayland output sizes safely
+- Type keyboard modifiers and keysyms across backends
+- Normalize keysyms when matching X11 bindings
+- Implement focus operations directly on the Wayland backend
+- Move focus cycle ordering into Monitor
+
 ## [0.3.2](https://github.com/instantOS/instantWM/compare/v0.3.1...v0.3.2) - 2026-09-21
 
 ### Fixed
