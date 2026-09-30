@@ -168,6 +168,18 @@ impl WaylandState {
         acknowledged_configure: Option<smithay::utils::Serial>,
         client_size_is_authoritative: bool,
     ) -> bool {
+        // Animated restores update the logical floating rectangle before
+        // sending their staged resize configure. Until that configure is
+        // sent, even an acknowledgement of the latest protocol request still
+        // answers the previous (possibly tiled) geometry. Do not let ongoing
+        // client redraws overwrite the restore target or its saved placement.
+        if self
+            .window_animations
+            .get(&window)
+            .is_some_and(|animation| animation.resize_configure_is_pending())
+        {
+            return false;
+        }
         // Classify when the queued observation is consumed, not when it is
         // emitted. A newer pointer sample may have configured another size in
         // between; carrying the acknowledged serial preserves that ordering.

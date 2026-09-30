@@ -20,6 +20,50 @@ mod tests {
     use crate::wm::Wm;
 
     #[test]
+    fn floating_restore_rejects_redraws_until_staged_resize_is_sent() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let win = WindowId(92);
+        let tiled = Rect::new(0, 0, 1920, 1080);
+        let floating = Rect::new(900, 500, 640, 360);
+        let started_at = Instant::now();
+        state.window_animations.insert(
+            win,
+            WaylandWindowAnimation::new(
+                WindowAnimation {
+                    from: tiled,
+                    to: floating,
+                    started_at,
+                    duration: Duration::from_millis(100),
+                },
+                Size::from((tiled.w, tiled.h)),
+                Some((tiled.w, tiled.h)),
+                2,
+                2,
+            ),
+        );
+        // Video redraws before the resize is sent are unsolicited, or may
+        // acknowledge the last tiled configure. Neither answers the restore.
+        assert!(!state.native_commit_may_update_model(win, 1920, 1080, None, true));
+        let tiled_serial = smithay::utils::Serial::from(10);
+        state.pending_size_configure.insert(win, tiled_serial);
+        assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true,));
+        assert_eq!(state.pending_size_configure.get(&win), Some(&tiled_serial));
+
+        let tick = state.window_animations.get_mut(&win).unwrap().tick(
+            started_at + Duration::from_millis(30),
+            Size::from((1920, 1080)),
+        );
+        assert_eq!(tick.configure_size, Some(Size::from((640, 360))));
+        let restore_serial = smithay::utils::Serial::from(11);
+        state.pending_size_configure.insert(win, restore_serial);
+        assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true,));
+        // Once it answers the restore, the client remains free to constrain
+        // the suggestion (for example, to its video's aspect ratio).
+        assert!(state.native_commit_may_update_model(win, 640, 352, Some(restore_serial), true,));
+    }
+
+    #[test]
     fn repeated_move_target_keeps_the_existing_animation() {
         let (_event_loop, mut state) =
             crate::backend::wayland::compositor::new_event_loop_and_state();

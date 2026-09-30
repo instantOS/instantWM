@@ -255,6 +255,10 @@ impl WaylandWindowAnimation {
         !matches!(self.resize, ResizeConfigure::Unchanged)
     }
 
+    pub(crate) fn resize_configure_is_pending(&self) -> bool {
+        matches!(self.resize, ResizeConfigure::Pending(_))
+    }
+
     fn needs_landing(&self, committed_size: Size<i32, Logical>) -> bool {
         let target = self.target();
         (self.anchors.x == SurfaceAnchor::Far && committed_size.w != target.w)
