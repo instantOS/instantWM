@@ -605,4 +605,29 @@ mod tests {
         assert_eq!(outcome, PressOutcome::Consumed);
         assert_eq!(wm.core.interaction.drag.captured_source(), None);
     }
+
+    /// Clicking the resize widget at the right edge of the title cell must keep
+    /// owning the press: the region-selection tool it starts reads the release
+    /// of an unarmed button as a cancellation, so the release has to be
+    /// swallowed here.
+    #[test]
+    fn resize_widget_click_keeps_the_press_until_the_tool_can_start() {
+        let (mut wm, win, _) = bar_hit_wm();
+        wm.core.config.bindings.buttons = vec![Button {
+            target: ButtonTarget::Bar(BarPosition::ResizeWidget(win)),
+            mask: ModMask::NONE,
+            button: MouseButton::Left,
+            action: ButtonAction::DrawWindowOnRelease,
+        }];
+
+        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(285));
+
+        assert_eq!(
+            outcome,
+            PressOutcome::CapturedInteraction {
+                button: MouseButton::Left
+            }
+        );
+        assert!(wm.core.interaction.drag.capture().is_some());
+    }
 }

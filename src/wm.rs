@@ -91,6 +91,17 @@ impl Wm {
         (CoreCtx::new(core, work, running, bar, focus), backend)
     }
 
+    /// Which backend is driving.
+    ///
+    /// Mirrors [`WmCtx::backend_kind`] for callers that only need the kind and
+    /// must not borrow the whole context (the shared tick, for instance).
+    pub fn backend_kind(&self) -> crate::backend::BackendKind {
+        match &self.backend {
+            Backend::X11(_) => crate::backend::BackendKind::X11,
+            Backend::Wayland(_) => crate::backend::BackendKind::Wayland,
+        }
+    }
+
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let (core, backend) = self.split_core_and_backend();
         match backend {

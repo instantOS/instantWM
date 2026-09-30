@@ -103,9 +103,6 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     let geo = view.client.geo;
     let is_floating = view.client.mode().is_normal_floating();
     let work_rect = view.monitor.work_rect();
-    let mon_rect = view.monitor.monitor_rect;
-    let bar_height = view.monitor.bar_height;
-    let show_bar = view.monitor.show_bar_for_mask(view.client.tags);
     let has_tiling = view.monitor.is_tiling_layout();
 
     if has_tiling && !is_floating {
@@ -116,14 +113,14 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let y_offset = if show_bar { bar_height } else { -bar_height };
-
+    // Center on the work area, which already excludes the built-in bar, an
+    // external bar reserving the same edge, and any bottom bar.
     ctx.raise_client(win);
     ctx.move_resize(
         win,
         Rect {
-            x: mon_rect.x + (work_rect.w / 2) - (geo.w / 2),
-            y: mon_rect.y + (work_rect.h / 2) - (geo.h / 2) + y_offset,
+            x: work_rect.x + (work_rect.w / 2) - (geo.w / 2),
+            y: work_rect.y + (work_rect.h / 2) - (geo.h / 2),
             w: geo.w,
             h: geo.h,
         },
@@ -133,11 +130,13 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
 
 #[cfg(test)]
 mod tests {
-    use super::key_move;
+    use super::{center_window, key_move};
     use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::PresentationMode;
     use crate::test_support::MonitorBuilder;
-    use crate::types::{Client, ClientMode, ClientPlacement, Direction, Rect, TagMask, WindowId};
+    use crate::types::{
+        Client, ClientMode, ClientPlacement, Direction, Monitor, Rect, TagMask, WindowId,
+    };
     use crate::wm::Wm;
 
     #[test]
@@ -174,5 +173,76 @@ mod tests {
         assert!(client.mode().is_normal_floating());
         assert_eq!(client.geo, Rect::new(240, 150, 600, 450));
         assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
+    }
+
+    /// Center a floating window on a monitor built by `configure` and report
+    /// the resulting `y` against the work-area center it should have matched.
+    fn centered_y(configure: impl FnOnce(&mut Monitor)) -> (i32, i32) {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut monitor = MonitorBuilder::new()
+            .rect(Rect::new(0, 0, 1200, 800), Rect::new(0, 0, 1200, 800))
+            .bar(30, true)
+            .tag_count(2)
+            .selected_tags(TagMask::single(1).unwrap())
+            .build();
+        configure(&mut monitor);
+        let work_rect = monitor.work_rect();
+        let monitor_id = wm.core.model.monitors.push(monitor);
+        wm.core.model.monitors.set_selected(monitor_id);
+        // Backends publish the global screen rect during bootstrap; the
+        // interactive position clamp reads it, so a bare `Wm` has to as well.
+        wm.core.derived.display.width = 1200;
+        wm.core.derived.display.height = 800;
+
+        let win = WindowId(72);
+        let mut client = Client {
+            win,
+            tags: TagMask::single(1).unwrap(),
+            geo: Rect::new(100, 100, 400, 300),
+            ..Client::default()
+        };
+        client.set_placement(ClientPlacement::Floating);
+        assert!(wm.core.model.add_client(monitor_id, client));
+
+        center_window(&mut wm.ctx(), win);
+
+        let centered = wm.core.model.client(win).unwrap().geo;
+        assert_eq!(centered.w, 400);
+        assert_eq!(centered.h, 300);
+        (centered.y, work_rect.y + (work_rect.h / 2) - 150)
+    }
+
+    #[test]
+    fn center_window_centers_in_the_work_area_with_the_bar_drawn() {
+        let (centered, expected) = centered_y(|monitor| {
+            monitor.per_tag_state().show_bar = Some(true);
+        });
+
+        assert_eq!(expected, 30 + 385 - 150);
+        assert_eq!(centered, expected);
+    }
+
+    #[test]
+    fn center_window_centers_in_the_work_area_with_the_bar_hidden() {
+        // Regression: centering offset y by `bar_height` in one direction or the
+        // other based on a hand-maintained bar check, so a hidden bar pulled
+        // the window up by a full bar height instead of letting the taller work
+        // area recenter it.
+        let (centered, expected) = centered_y(|monitor| {
+            monitor.per_tag_state().show_bar = Some(false);
+        });
+
+        assert_eq!(expected, 400 - 150);
+        assert_eq!(centered, expected);
+    }
+
+    #[test]
+    fn center_window_clears_an_external_bar_reserving_the_same_edge() {
+        let (centered, expected) = centered_y(|monitor| {
+            monitor.set_available_rect(Rect::new(0, 40, 1200, 760));
+        });
+
+        assert_eq!(expected, 40 + 380 - 150);
+        assert_eq!(centered, expected);
     }
 }

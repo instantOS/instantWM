@@ -93,6 +93,13 @@ pub enum ButtonAction {
     ShowEdgeScratchpad,
     ToggleFloatingSelected,
     ResizeMouseFromCursor,
+    /// Start a region selection once the press is released.
+    ///
+    /// Distinct from `NamedAction::DrawWindow` because the region-selection
+    /// tools read the release of the click that spawned them as a
+    /// cancellation; the press has to stay WM-owned until then. See
+    /// [`crate::mouse::slop::arm_region_selection_press`].
+    DrawWindowOnRelease,
     /// Begin the bottom-bar gesture.
     ///
     /// The swipe direction is latched once the pointer travels past a

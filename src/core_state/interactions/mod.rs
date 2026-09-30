@@ -65,6 +65,8 @@ pub enum CapturedInteraction {
     SidebarVolume(SidebarVolumeDrag),
     BottomBar(BottomBarDrag),
     OverviewCard(OverviewCardDrag),
+    /// A press that will spawn a region-selection tool once released.
+    RegionSelection(DeferredRegionSelection),
 }
 
 /// A capture variant addressed by its state type, so one set of generic
@@ -114,6 +116,7 @@ capture_kinds!(
     SidebarVolume(SidebarVolumeDrag),
     BottomBar(BottomBarDrag),
     OverviewCard(OverviewCardDrag),
+    RegionSelection(DeferredRegionSelection),
 );
 
 impl CapturedInteraction {
@@ -124,6 +127,7 @@ impl CapturedInteraction {
             Self::SidebarVolume(state) => state.button,
             Self::BottomBar(state) => state.button,
             Self::OverviewCard(state) => state.button,
+            Self::RegionSelection(state) => state.button,
         }
     }
 
@@ -134,6 +138,7 @@ impl CapturedInteraction {
             Self::SidebarVolume(state) => state.source,
             Self::BottomBar(state) => state.source,
             Self::OverviewCard(state) => state.source,
+            Self::RegionSelection(state) => state.source,
         }
     }
 
@@ -163,6 +168,9 @@ impl CapturedInteraction {
             },
             Self::OverviewCard(drag) if drag.close_armed() => AltCursor::Close,
             Self::OverviewCard(_) => AltCursor::Move,
+            // The press is only transport ownership; nothing about the pending
+            // selection changes how the bar should be drawn.
+            Self::RegionSelection(_) => AltCursor::Default,
         }
     }
 }
@@ -364,6 +372,22 @@ impl PointerInteractionState {
         params: ArmedDragStart,
     ) -> Result<(), InteractionAlreadyActive> {
         self.begin(WindowDragState::Armed(ArmedWindowDrag::new(params)))
+    }
+
+    /// Own a press until its release, then start a region selection for
+    /// `window`. See [`DeferredRegionSelection`] for why the tool must not be
+    /// spawned from the press itself.
+    pub fn arm_region_selection(
+        &mut self,
+        window: WindowId,
+        button: MouseButton,
+        source: InteractionSource,
+    ) -> Result<(), InteractionAlreadyActive> {
+        self.begin(DeferredRegionSelection {
+            window,
+            button,
+            source,
+        })
     }
 
     pub(crate) fn activate_armed(

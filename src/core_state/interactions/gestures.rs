@@ -129,6 +129,24 @@ impl BottomBarDrag {
     }
 }
 
+/// A pointer press that starts a region selection on release.
+///
+/// Region-selection tools (`instantslop`, `slurp`) treat a button release that
+/// arrives while they are still idle as a cancellation, so spawning one from
+/// the press hands it the release of the very click that started it — the
+/// overlay appears and immediately disappears. Capturing the press keeps the
+/// whole sequence WM-owned (X11 takes a native grab, Wayland withholds the
+/// release from clients) and the tool is spawned from the release handler, by
+/// which point the pointer is free for the tool's own grab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeferredRegionSelection {
+    /// Window the drawn rectangle applies to, pinned at press time so a focus
+    /// change while the button is held cannot retarget it.
+    pub window: WindowId,
+    pub button: MouseButton,
+    pub source: InteractionSource,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SidebarVolumeDrag {
     pub button: MouseButton,
