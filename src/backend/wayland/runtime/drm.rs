@@ -249,10 +249,13 @@ pub fn run() -> ! {
 
     super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
+    // Share startup snapshots only between device opening and event dispatch.
+    // They are consumed on DeviceAdded, including when libinput resumes.
+    let initial_lid_states = Rc::new(std::cell::RefCell::new(HashMap::new()));
     let mut libinput_context = Libinput::new_with_udev(
         crate::backend::wayland::input::drm::LidAwareInputInterface::new(
             session.clone(),
-            Rc::clone(&state.runtime.initial_lid_states),
+            Rc::clone(&initial_lid_states),
         ),
     );
     libinput_context
@@ -265,6 +268,12 @@ pub fn run() -> ! {
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
             let layout = shared_input_dimensions.get();
+            let initial_lid_state = match &event {
+                smithay::backend::input::InputEvent::DeviceAdded { device } => {
+                    initial_lid_states.borrow_mut().remove(device.sysname())
+                }
+                _ => None,
+            };
 
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
@@ -276,7 +285,11 @@ pub fn run() -> ! {
             let outcome = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 crate::backend::wayland::input::drm::dispatch_libinput_event(
-                    event, state, wm, layout,
+                    event,
+                    state,
+                    wm,
+                    layout,
+                    initial_lid_state,
                 )
             } else {
                 crate::backend::wayland::input::drm::LibinputEventOutcome::Ignored

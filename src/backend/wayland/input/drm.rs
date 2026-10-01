@@ -89,15 +89,10 @@ impl<S: smithay::backend::session::Session> smithay::reexports::input::LibinputI
 
 /// libinput does not guarantee an initial event for every lid switch. Use the
 /// snapshot taken on open, and let subsequent libinput events advance it.
-fn initial_lid_state(
+fn resolve_initial_lid_state(
     device: &smithay::reexports::input::Device,
-    state: &mut WaylandState,
+    initial: Option<bool>,
 ) -> Option<bool> {
-    let initial = state
-        .runtime
-        .initial_lid_states
-        .borrow_mut()
-        .remove(device.sysname());
     if device.switch_has_switch(smithay::reexports::input::event::switch::Switch::Lid) != Ok(true) {
         return None;
     }
@@ -241,6 +236,7 @@ pub fn dispatch_libinput_event(
     state: &mut WaylandState,
     wm: &mut Wm,
     layout: crate::types::Rect,
+    initial_lid_state: Option<bool>,
 ) -> LibinputEventOutcome {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
@@ -252,7 +248,7 @@ pub fn dispatch_libinput_event(
         InputEvent::DeviceAdded { mut device } => {
             use smithay::reexports::input::DeviceCapability;
 
-            if let Some(closed) = initial_lid_state(&device, state) {
+            if let Some(closed) = resolve_initial_lid_state(&device, initial_lid_state) {
                 state
                     .runtime
                     .lid_switches
