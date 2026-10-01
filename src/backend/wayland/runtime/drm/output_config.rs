@@ -125,9 +125,13 @@ pub(super) fn process_output_configurations(
     >::default();
     let capabilities = output_capabilities(output_surfaces);
 
-    while let Some((id, mut pending)) = state.runtime.output_transactions.take_next_pending() {
-        pending.transaction.apply_mirrors(&state.runtime.mirror_of);
-        if let Err(error) = pending.transaction.validate(&capabilities) {
+    while let Some((id, pending)) = state.runtime.output_transactions.take_next_pending() {
+        let effective = state.effective_output_transaction(&pending.transaction, pending.policy);
+        if let Err(error) = pending
+            .transaction
+            .validate(&capabilities)
+            .and_then(|()| effective.validate(&capabilities))
+        {
             state
                 .runtime
                 .output_transactions
@@ -135,7 +139,7 @@ pub(super) fn process_output_configurations(
             continue;
         }
         if pending.kind == OutputTransactionKind::Test {
-            let snapshot = transaction_snapshot(&pending.transaction, output_surfaces);
+            let snapshot = transaction_snapshot(&effective, output_surfaces);
             state
                 .runtime
                 .output_transactions
@@ -143,8 +147,7 @@ pub(super) fn process_output_configurations(
             continue;
         }
 
-        let requested: Vec<_> = pending
-            .transaction
+        let requested: Vec<_> = effective
             .heads
             .iter()
             .map(|config| {
@@ -313,7 +316,11 @@ pub(super) fn process_output_configurations(
                 entry.configured_vrr_mode = mode;
             }
         }
-        let snapshot = transaction_snapshot(&pending.transaction, output_surfaces);
+        state
+            .runtime
+            .lid_output_policy
+            .remember_applied(&pending.transaction);
+        let snapshot = transaction_snapshot(&effective, output_surfaces);
         state
             .runtime
             .output_transactions

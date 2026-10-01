@@ -99,6 +99,7 @@ pub fn usable_connector_handles(
 
 struct DrmOutputSpec {
     connector: connector::Handle,
+    internal: bool,
     crtc: crtc::Handle,
     mode: control::Mode,
     modes: Vec<control::Mode>,
@@ -109,6 +110,7 @@ struct DrmOutputSpec {
 
 struct DrmOutputCandidate {
     connector: connector::Handle,
+    internal: bool,
     crtcs: Vec<crtc::Handle>,
     mode: control::Mode,
     modes: Vec<control::Mode>,
@@ -121,6 +123,7 @@ impl DrmOutputCandidate {
     fn assign(self, crtc: crtc::Handle) -> DrmOutputSpec {
         DrmOutputSpec {
             connector: self.connector,
+            internal: self.internal,
             crtc,
             mode: self.mode,
             modes: self.modes,
@@ -170,6 +173,12 @@ fn drm_output_candidate(
             "{}-{}",
             connector_type_name(conn_info.interface()),
             conn_info.interface_id()
+        ),
+        internal: matches!(
+            conn_info.interface(),
+            connector::Interface::EmbeddedDisplayPort
+                | connector::Interface::LVDS
+                | connector::Interface::DSI
         ),
     })
 }
@@ -284,6 +293,11 @@ fn initialize_drm_output_surface(
         spec.name.clone(),
         crate::backend::output::OutputPowerMode::On,
     );
+
+    state
+        .runtime
+        .lid_output_policy
+        .set_internal(spec.name.clone().into(), spec.internal);
 
     Some(OutputSurfaceEntry {
         crtc: spec.crtc,

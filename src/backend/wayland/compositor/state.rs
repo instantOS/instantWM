@@ -304,6 +304,10 @@ pub struct WaylandRuntimeState {
     pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
     pub output_transactions: crate::backend::output::OutputTransactionQueue,
+    pub lid_output_policy: crate::backend::output::LidOutputPolicy,
+    pub lid_policy_dirty: bool,
+    pub lid_switches: HashMap<String, bool>,
+    pub initial_lid_states: std::rc::Rc<std::cell::RefCell<HashMap<String, bool>>>,
     pub output_power: crate::backend::output::OutputPowerQueue,
     /// Authoritative physical power mode for outputs whose active backend
     /// supports DPMS. Absence means the output cannot be power-managed.
@@ -357,6 +361,10 @@ impl Default for WaylandRuntimeState {
             pending_winit_resize: None,
             winit_close_requested: false,
             output_transactions: crate::backend::output::OutputTransactionQueue::default(),
+            lid_output_policy: Default::default(),
+            lid_policy_dirty: false,
+            lid_switches: HashMap::new(),
+            initial_lid_states: Default::default(),
             output_power: crate::backend::output::OutputPowerQueue::default(),
             output_power_modes: HashMap::new(),
             configured_output_positions: HashSet::new(),
