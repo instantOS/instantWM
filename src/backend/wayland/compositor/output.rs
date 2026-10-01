@@ -159,6 +159,7 @@ impl WaylandState {
                 Some(location),
             );
             if !config.enabled {
+                close_layer_surfaces(&output);
                 self.runtime.output_power_modes.remove(&output.name());
                 let cancelled = self.output_power_state.fail_output(&output.name());
                 self.runtime.output_power.cancel(&cancelled);
@@ -305,9 +306,6 @@ impl WaylandState {
     }
 
     fn current_output_transaction(&self) -> OutputTransaction {
-        if let Some(pending) = self.runtime.output_transactions.latest_pending_apply() {
-            return pending.clone();
-        }
         let heads = self
             .output_management_state
             .outputs()
@@ -333,7 +331,61 @@ impl WaylandState {
                 }
             })
             .collect();
-        OutputTransaction { heads }
+        let mut requested = self
+            .runtime
+            .lid_output_policy
+            .requested(&OutputTransaction { heads });
+        if let Some(pending) = self.runtime.output_transactions.latest_pending_apply() {
+            // Pending requests may predate a hotplug. Keep only available heads
+            // and retain defaults for newly connected ones.
+            for head in &mut requested.heads {
+                if let Some(pending_head) = pending.heads.iter().find(|other| other.id == head.id) {
+                    *head = pending_head.clone();
+                }
+            }
+        }
+        requested
+    }
+
+    /// Project transient hardware policy without modifying requested settings.
+    pub(crate) fn effective_output_transaction(
+        &self,
+        requested: &OutputTransaction,
+        policy: bool,
+    ) -> OutputTransaction {
+        let mut effective = self.runtime.lid_output_policy.project(requested);
+        effective.apply_mirrors(&self.runtime.mirror_of);
+        if !policy {
+            return effective;
+        }
+        let enabled: std::collections::HashSet<_> = effective
+            .heads
+            .iter()
+            .filter(|head| head.enabled)
+            .map(|head| head.id.0.as_str())
+            .collect();
+        let mirrors: std::collections::HashSet<_> = self
+            .runtime
+            .mirror_of
+            .active_pairs(|name| enabled.contains(name))
+            .map(|(name, _)| name)
+            .collect();
+        let mut placements: Vec<_> = effective
+            .heads
+            .iter()
+            .filter(|head| head.enabled && !mirrors.contains(head.id.0.as_str()))
+            .map(|head| OutputPlacement {
+                id: head.id.0.clone(),
+                rect: head_rect(head),
+                source: self.output_position_source(&head.id.0),
+            })
+            .collect();
+        for (name, position) in plan_automatic_output_positions(&mut placements) {
+            if let Some(head) = effective.heads.iter_mut().find(|head| head.id.0 == name) {
+                head.position = position;
+            }
+        }
+        effective
     }
 
     fn queue_output_transaction(&mut self, transaction: OutputTransaction) {
@@ -782,6 +834,131 @@ mod tests {
             .find(|head| head.id.0 == name)
             .expect("head in transaction")
             .clone()
+    }
+
+    /// Exercise the policy/snapshot boundary without owning physical DRM.
+    fn apply_policy(state: &mut WaylandState, requested: &OutputTransaction) -> OutputTransaction {
+        let effective = state.effective_output_transaction(requested, true);
+        let snapshot = OutputSnapshot {
+            heads: effective
+                .heads
+                .iter()
+                .map(|head| crate::backend::output::OutputHeadSnapshot {
+                    configuration: head.clone(),
+                    modes: head.mode.into_iter().collect(),
+                    adaptive_sync_policy: AdaptiveSyncPolicy::Disabled,
+                    adaptive_sync_enabled: false,
+                })
+                .collect(),
+        };
+        state.runtime.lid_output_policy.remember_applied(requested);
+        state.apply_output_snapshot(&snapshot);
+        effective
+    }
+
+    #[test]
+    fn lid_closure_removes_the_panel_compacts_outputs_and_opening_restores_intent() {
+        let mut state = three_outputs();
+        state
+            .runtime
+            .lid_output_policy
+            .set_internal("eDP-1".into(), true);
+        let requested = state.current_output_transaction();
+        state.runtime.lid_output_policy.set_closed(true);
+        let effective = apply_policy(&mut state, &requested);
+        assert!(!effective.heads[0].enabled);
+        assert_eq!(effective.heads[1].position, Point::new(0, 0));
+        assert_eq!(effective.heads[2].position, Point::new(1920, 0));
+        assert_eq!(state.space.outputs().count(), 2);
+        assert!(state.space.outputs().all(|output| output.name() != "eDP-1"));
+        assert_eq!(state.current_output_transaction(), requested);
+
+        state.runtime.lid_output_policy.set_closed(false);
+        let restored = state.current_output_transaction();
+        assert_eq!(apply_policy(&mut state, &restored), requested);
+        assert_eq!(state.space.outputs().count(), 3);
+    }
+
+    #[test]
+    fn lid_policy_preserves_configured_and_client_managed_positions() {
+        let mut state = three_outputs();
+        state
+            .runtime
+            .lid_output_policy
+            .set_internal("eDP-1".into(), true);
+        state.runtime.lid_output_policy.set_closed(true);
+        state
+            .runtime
+            .configured_output_positions
+            .insert("DP-1".into());
+        state
+            .runtime
+            .output_position_sources
+            .insert("HDMI-1".into(), OutputPositionSource::ClientManaged);
+        let requested = state.current_output_transaction();
+        let effective = apply_policy(&mut state, &requested);
+        assert_eq!(effective.heads[1].position, requested.heads[1].position);
+        assert_eq!(effective.heads[2].position, requested.heads[2].position);
+    }
+
+    #[test]
+    fn external_mirror_becomes_a_desktop_when_its_internal_source_is_suppressed() {
+        let mut state = three_outputs();
+        state.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
+        state
+            .runtime
+            .lid_output_policy
+            .set_internal("eDP-1".into(), true);
+        state.runtime.lid_output_policy.set_closed(true);
+        let requested = state.current_output_transaction();
+        apply_policy(&mut state, &requested);
+        assert!(state.runtime.realized_mirrors.is_empty());
+        assert!(state.space.outputs().any(|output| output.name() == "DP-1"));
+
+        state.runtime.lid_output_policy.set_closed(false);
+        let requested = state.current_output_transaction();
+        apply_policy(&mut state, &requested);
+        assert_eq!(
+            state
+                .runtime
+                .realized_mirrors
+                .get("DP-1")
+                .map(String::as_str),
+            Some("eDP-1")
+        );
+    }
+
+    #[test]
+    fn pending_configuration_keeps_new_hotplugged_heads() {
+        let mut state = three_outputs();
+        state.queue_output_policy_projection(&Default::default());
+        state.create_output("DP-NEW", Size::new(1280, 720), None);
+        let requested = state.current_output_transaction();
+        assert_eq!(requested.heads.len(), 4);
+        assert!(requested.heads.iter().any(|head| head.id.0 == "DP-NEW"));
+    }
+
+    #[test]
+    fn monitor_configuration_can_disable_a_lid_suppressed_panel_permanently() {
+        let mut state = three_outputs();
+        state
+            .runtime
+            .lid_output_policy
+            .set_internal("eDP-1".into(), true);
+        state.runtime.lid_output_policy.set_closed(true);
+        let requested = state.current_output_transaction();
+        apply_policy(&mut state, &requested);
+        state.set_output_config(
+            "eDP-1",
+            &crate::config::config_toml::MonitorConfig {
+                enable: Some(false),
+                ..Default::default()
+            },
+        );
+        let requested = state.current_output_transaction();
+        apply_policy(&mut state, &requested);
+        state.runtime.lid_output_policy.set_closed(false);
+        assert!(!state.current_output_transaction().heads[0].enabled);
     }
 
     #[test]

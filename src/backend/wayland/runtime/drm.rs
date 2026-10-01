@@ -2,7 +2,6 @@
 
 use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
-use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
@@ -250,8 +249,15 @@ pub fn run() -> ! {
 
     super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
-    let mut libinput_context =
-        Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
+    // Share startup snapshots only between device opening and event dispatch.
+    // They are consumed on DeviceAdded, including when libinput resumes.
+    let initial_lid_states = Rc::new(std::cell::RefCell::new(HashMap::new()));
+    let mut libinput_context = Libinput::new_with_udev(
+        crate::backend::wayland::input::drm::LidAwareInputInterface::new(
+            session.clone(),
+            Rc::clone(&initial_lid_states),
+        ),
+    );
     libinput_context
         .udev_assign_seat(&seat_name)
         .expect("libinput assign seat");
@@ -262,6 +268,12 @@ pub fn run() -> ! {
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
             let layout = shared_input_dimensions.get();
+            let initial_lid_state = match &event {
+                smithay::backend::input::InputEvent::DeviceAdded { device } => {
+                    initial_lid_states.borrow_mut().remove(device.sysname())
+                }
+                _ => None,
+            };
 
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
@@ -273,7 +285,11 @@ pub fn run() -> ! {
             let outcome = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 crate::backend::wayland::input::drm::dispatch_libinput_event(
-                    event, state, wm, layout,
+                    event,
+                    state,
+                    wm,
+                    layout,
+                    initial_lid_state,
                 )
             } else {
                 crate::backend::wayland::input::drm::LibinputEventOutcome::Ignored
@@ -677,6 +693,9 @@ fn run_event_loop(
                 );
             }
             super::engine::event_loop_tick_and_request_render(wm, state, ipc_server);
+            if mem::take(&mut state.runtime.lid_policy_dirty) {
+                state.queue_output_policy_projection(&wm.core.config.monitors);
+            }
             process_output_configurations(
                 state,
                 output_surfaces,
@@ -692,6 +711,7 @@ fn run_event_loop(
                 );
                 refresh_drm_layout_state(state, output_surfaces, layout_state);
                 shared_input_dimensions.set(layout_state.layout);
+                recover_pointer_after_output_change(wm, state);
             }
             state.project_completed_output_power_requests();
             process_output_power_requests(state, output_surfaces, loop_state);
@@ -898,6 +918,10 @@ fn reconcile_drm_outputs(
         for mut entry in removed {
             let name = entry.output.name();
             log::info!("Output {name}: disconnected");
+            state
+                .runtime
+                .lid_output_policy
+                .forget(&OutputId(name.clone()));
             if let Some(id) = entry.pending_power_on.take() {
                 state.runtime.output_power.complete(
                     id,
@@ -955,7 +979,46 @@ fn reconcile_drm_outputs(
     crate::monitor::refresh_monitor_layout(&mut wm.ctx());
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
+    // Re-evaluate suppression even without a new lid event: the availability
+    // of an external display may have changed while the laptop stayed closed.
+    state.runtime.lid_policy_dirty = true;
+    recover_pointer_after_output_change(wm, state);
     true
+}
+
+/// A topology change can leave the pointer on an output that no longer exists.
+/// Recover immediately, including for explicit/client-managed layouts with gaps.
+fn recover_pointer_after_output_change(wm: &Wm, state: &mut WaylandState) {
+    if state
+        .space
+        .output_under(state.runtime.pointer_location)
+        .next()
+        .is_some()
+    {
+        return;
+    }
+    let target = wm
+        .core
+        .model
+        .selected_monitor()
+        .and_then(|monitor| {
+            state
+                .space
+                .outputs()
+                .find(|output| output.name() == monitor.name)
+        })
+        .or_else(|| state.space.outputs().next());
+    let center = target
+        .and_then(|output| state.space.output_geometry(output))
+        .map(|geometry| {
+            (
+                geometry.loc.x as f64 + geometry.size.w as f64 / 2.0,
+                geometry.loc.y as f64 + geometry.size.h as f64 / 2.0,
+            )
+        });
+    if let Some((x, y)) = center {
+        state.request_warp(x, y);
+    }
 }
 
 fn compact_drm_automatic_layout(
@@ -1248,6 +1311,53 @@ mod output_layout_tests {
 
     fn crtc(raw: u32) -> crtc::Handle {
         from_u32(raw).expect("test CRTC handles are non-zero")
+    }
+
+    #[test]
+    fn removed_output_recovers_the_pointer_even_with_a_gap_in_the_layout() {
+        use crate::backend::{Backend, wayland::WaylandBackend};
+        use crate::test_support::MonitorBuilder;
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let output = state.create_output("DP-1", Size::new(1920, 1080), None);
+        state.space.map_output(&output, (1920, 0));
+        state.runtime.pointer_location = (50.0, 50.0).into();
+        let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .named("DP-1")
+                .monitor_rect(Rect::new(1920, 0, 1920, 1080))
+                .build(),
+        );
+
+        super::recover_pointer_after_output_change(&wm, &mut state);
+        assert_eq!(state.pending_warp, Some((2880.0, 540.0).into()));
+        let pointer = state.pointer.clone();
+        let keyboard = state.keyboard.clone();
+        assert!(crate::backend::wayland::input::apply_pending_warp(
+            &mut wm, &mut state, &pointer, &keyboard
+        ));
+        assert_eq!(state.runtime.pointer_location, (2880.0, 540.0).into());
+        assert!(
+            state
+                .space
+                .output_under(state.runtime.pointer_location)
+                .next()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn output_changes_do_not_warp_a_pointer_already_on_a_remaining_display() {
+        use crate::backend::{Backend, wayland::WaylandBackend};
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let output = state.create_output("DP-1", Size::new(1920, 1080), None);
+        state.space.map_output(&output, (0, 0));
+        state.runtime.pointer_location = (50.0, 50.0).into();
+        let wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        super::recover_pointer_after_output_change(&wm, &mut state);
+        assert!(state.pending_warp.is_none());
     }
 
     #[test]

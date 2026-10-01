@@ -2,8 +2,8 @@
 
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, Device as InputDevice, Event, InputEvent, PointerAxisEvent,
-    PointerButtonEvent, PointerMotionEvent, ProximityState, TabletToolEvent,
-    TabletToolProximityEvent, TouchEvent,
+    PointerButtonEvent, PointerMotionEvent, ProximityState, Switch, SwitchState, SwitchToggleEvent,
+    TabletToolEvent, TabletToolProximityEvent, TouchEvent,
 };
 use smithay::backend::input::{
     GestureBeginEvent as GestureBeginTrait, GestureEndEvent as GestureEndTrait,
@@ -37,6 +37,81 @@ pub enum LibinputEventOutcome {
     Ignored,
     Activity,
     PointerMoved,
+}
+
+/// Capture switch state on the actual descriptor opened for libinput. This
+/// avoids a second TakeDevice request to logind and also covers session resume.
+pub struct LidAwareInputInterface<S: smithay::backend::session::Session> {
+    session: smithay::backend::libinput::LibinputSessionInterface<S>,
+    initial_states: std::rc::Rc<std::cell::RefCell<HashMap<String, bool>>>,
+}
+
+impl<S: smithay::backend::session::Session> LidAwareInputInterface<S> {
+    pub fn new(
+        session: S,
+        initial_states: std::rc::Rc<std::cell::RefCell<HashMap<String, bool>>>,
+    ) -> Self {
+        Self {
+            session: session.into(),
+            initial_states,
+        }
+    }
+}
+
+impl<S: smithay::backend::session::Session> smithay::reexports::input::LibinputInterface
+    for LidAwareInputInterface<S>
+{
+    fn open_restricted(
+        &mut self,
+        path: &std::path::Path,
+        flags: i32,
+    ) -> Result<std::os::fd::OwnedFd, i32> {
+        use smithay::reexports::rustix::ioctl::{self, Getter, opcode};
+        let fd = self.session.open_restricted(path, flags)?;
+        // SAFETY: EVIOCGSW(1) writes one initialized byte of switch bits.
+        // SW_LID is bit zero; no larger bitmap is needed for this switch.
+        let bits =
+            unsafe { ioctl::ioctl(&fd, Getter::<{ opcode::read::<u8>(b'E', 0x1b) }, u8>::new()) };
+        if let Ok(bits) = bits
+            && let Some(name) = path.file_name().and_then(|name| name.to_str())
+        {
+            self.initial_states
+                .borrow_mut()
+                .insert(name.to_owned(), bits & 1 != 0);
+        }
+        Ok(fd)
+    }
+
+    fn close_restricted(&mut self, fd: std::os::fd::OwnedFd) {
+        self.session.close_restricted(fd);
+    }
+}
+
+/// libinput does not guarantee an initial event for every lid switch. Use the
+/// snapshot taken on open, and let subsequent libinput events advance it.
+fn resolve_initial_lid_state(
+    device: &smithay::reexports::input::Device,
+    initial: Option<bool>,
+) -> Option<bool> {
+    if device.switch_has_switch(smithay::reexports::input::event::switch::Switch::Lid) != Ok(true) {
+        return None;
+    }
+    if initial.is_none() {
+        log::warn!(
+            "could not query initial state of lid switch {}",
+            device.sysname()
+        );
+    }
+    initial
+}
+
+fn update_lid_state(state: &mut WaylandState) {
+    let closed = state.runtime.lid_switches.values().any(|closed| *closed);
+    if state.runtime.lid_output_policy.set_closed(closed) {
+        log::info!("Laptop lid {}", if closed { "closed" } else { "opened" });
+        state.runtime.lid_policy_dirty = true;
+        state.request_render();
+    }
 }
 
 fn configure_device(
@@ -161,6 +236,7 @@ pub fn dispatch_libinput_event(
     state: &mut WaylandState,
     wm: &mut Wm,
     layout: crate::types::Rect,
+    initial_lid_state: Option<bool>,
 ) -> LibinputEventOutcome {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
@@ -172,6 +248,13 @@ pub fn dispatch_libinput_event(
         InputEvent::DeviceAdded { mut device } => {
             use smithay::reexports::input::DeviceCapability;
 
+            if let Some(closed) = resolve_initial_lid_state(&device, initial_lid_state) {
+                state
+                    .runtime
+                    .lid_switches
+                    .insert(device.sysname().to_owned(), closed);
+                update_lid_state(state);
+            }
             configure_device(&mut device, &wm.core.config.input);
             if device.has_capability(DeviceCapability::TabletTool) {
                 state
@@ -185,6 +268,14 @@ pub fn dispatch_libinput_event(
         InputEvent::DeviceRemoved { device } => {
             use smithay::reexports::input::DeviceCapability;
 
+            if state
+                .runtime
+                .lid_switches
+                .remove(device.sysname())
+                .is_some()
+            {
+                update_lid_state(state);
+            }
             let removed_pointer = device.has_capability(DeviceCapability::Pointer);
             let removed_touch = device.has_capability(DeviceCapability::Touch);
             let removed_tablet = device.has_capability(DeviceCapability::TabletTool);
@@ -203,6 +294,16 @@ pub fn dispatch_libinput_event(
                 if tablet_seat.count_tablets() == 0 {
                     tablet_seat.clear_tools();
                 }
+            }
+            LibinputEventOutcome::Ignored
+        }
+        InputEvent::SwitchToggle { event } => {
+            if SwitchToggleEvent::switch(&event) == Some(Switch::Lid) {
+                state.runtime.lid_switches.insert(
+                    event.device().sysname().to_owned(),
+                    event.state() == SwitchState::On,
+                );
+                update_lid_state(state);
             }
             LibinputEventOutcome::Ignored
         }
@@ -591,6 +692,24 @@ mod tests {
     use crate::config::config_toml::InputConfig;
     use smithay::input::tablet::TabletSeatTrait;
     use std::collections::HashMap;
+
+    #[test]
+    fn lid_state_aggregates_devices_and_only_reprojects_on_a_transition() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        state.runtime.lid_switches.insert("first".into(), true);
+        state.runtime.lid_switches.insert("second".into(), false);
+        super::update_lid_state(&mut state);
+        assert!(std::mem::take(&mut state.runtime.lid_policy_dirty));
+        super::update_lid_state(&mut state);
+        assert!(!state.runtime.lid_policy_dirty);
+        state.runtime.lid_switches.remove("second");
+        super::update_lid_state(&mut state);
+        assert!(!state.runtime.lid_policy_dirty);
+        state.runtime.lid_switches.remove("first");
+        super::update_lid_state(&mut state);
+        assert!(state.runtime.lid_policy_dirty);
+    }
 
     fn config(output: &str) -> InputConfig {
         InputConfig {

@@ -10,6 +10,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::types::Point;
 use crate::types::Rect;
 
+mod lid;
+pub use lid::LidOutputPolicy;
+
 /// Ownership of an output's logical position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputPositionSource {
