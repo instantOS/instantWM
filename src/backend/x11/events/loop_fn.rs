@@ -23,6 +23,26 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         EventLoop::try_new().expect("failed to create X11 calloop event loop");
     let loop_handle = event_loop.handle();
 
+    let (lid_sender, lid_source) = calloop::channel::channel();
+    loop_handle
+        .insert_source(lid_source, |event, _, wm| {
+            if let calloop::channel::Event::Msg(closed) = event
+                && let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx()
+                && ctx.x11_runtime.lid_output_policy.set_closed(closed)
+            {
+                handlers::randr_notify(&mut ctx);
+            }
+        })
+        .expect("failed to insert lid state source");
+    std::thread::Builder::new()
+        .name("x11-lid".into())
+        .spawn(move || {
+            if let Err(error) = watch_lid(lid_sender) {
+                log::warn!("X11 lid monitoring unavailable: {error}");
+            }
+        })
+        .expect("failed to start lid monitor");
+
     // ── X11 connection fd source ────────────────────────────────────────
     let x11_fd = wm
         .backend
@@ -343,4 +363,28 @@ pub(crate) fn dispatch_event_in_context(
     let _ = crate::mouse::interaction::reconcile_capture(&mut crate::contexts::WmCtx::X11(
         ctx.reborrow(),
     ));
+}
+
+/// Xorg owns the input devices; UPower supplies initial state and transitions
+/// without taking a second evdev/libinput ownership path.
+fn watch_lid(sender: calloop::channel::Sender<bool>) -> zbus::Result<()> {
+    let connection = zbus::blocking::Connection::system()?;
+    let proxy = zbus::blocking::Proxy::new(
+        &connection,
+        "org.freedesktop.UPower",
+        "/org/freedesktop/UPower",
+        "org.freedesktop.UPower",
+    )?;
+    // Subscribe before reading to avoid losing a transition at startup.
+    let changes = proxy.receive_property_changed::<bool>("LidIsClosed");
+    let initial = proxy.get_property::<bool>("LidIsClosed")?;
+    if sender.send(initial).is_err() {
+        return Ok(());
+    }
+    for change in changes {
+        if sender.send(change.get()?).is_err() {
+            break;
+        }
+    }
+    Ok(())
 }

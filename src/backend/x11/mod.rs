@@ -82,6 +82,9 @@ pub struct X11RuntimeConfig {
     /// released when their mirror declaration or source goes away; clones
     /// made by other tools are left alone.
     pub mirror_heads: HashSet<String>,
+    pub lid_output_policy: crate::backend::output::LidOutputPolicy,
+    // Native scanout settings retained only while lid policy suppresses a panel.
+    lid_restore: HashMap<String, randr::CrtcChange>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -115,6 +118,8 @@ impl Default for X11RuntimeConfig {
             pending_output_enable: HashSet::new(),
             automatic_outputs: HashSet::new(),
             mirror_heads: HashSet::new(),
+            lid_output_policy: Default::default(),
+            lid_restore: HashMap::new(),
         }
     }
 }

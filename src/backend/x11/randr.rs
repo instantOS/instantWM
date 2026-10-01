@@ -274,7 +274,8 @@ impl CrtcRequest {
 }
 
 /// One `SetCrtcConfig` request.
-struct CrtcChange {
+#[derive(Clone)]
+pub(super) struct CrtcChange {
     crtc: randr::Crtc,
     x: i16,
     y: i16,
@@ -318,6 +319,10 @@ impl<'a> RandrConfigurator<'a> {
         let Some(change) = plan_crtc_change(self.snapshot(), name, request) else {
             return;
         };
+        self.apply_change(name, change);
+    }
+
+    fn apply_change(&mut self, name: &str, change: CrtcChange) {
         if let Some((right, bottom)) = change.extent {
             self.grow_framebuffer(right, bottom);
         }
@@ -608,6 +613,8 @@ fn apply_policy(
     runtime: &mut crate::backend::x11::X11RuntimeConfig,
     policy: &MonitorPolicy,
 ) {
+    let effective = project_lid_policy(randr, runtime, policy);
+    let policy = &effective;
     apply_monitor_configs(randr, policy);
     apply_mirror_configs(
         randr,
@@ -631,6 +638,153 @@ fn apply_policy(
     randr.fit_framebuffer();
 }
 
+/// Overlay transient suppression without changing the user's monitor policy.
+fn project_lid_policy(
+    randr: &mut RandrConfigurator<'_>,
+    runtime: &mut crate::backend::x11::X11RuntimeConfig,
+    policy: &MonitorPolicy,
+) -> MonitorPolicy {
+    let suppressed = lid_suppressed_outputs(randr.snapshot(), runtime, policy);
+    let restore: Vec<_> = runtime
+        .lid_restore
+        .keys()
+        .filter(|name| !suppressed.contains(*name))
+        .cloned()
+        .collect();
+    for name in restore {
+        let change = runtime.lid_restore.get(&name).unwrap().clone();
+        if !policy.is_explicitly_disabled(&name) && !randr.snapshot().active_names().contains(&name)
+        {
+            // The old CRTC may now belong to another head after docking.
+            let snapshot = randr.snapshot();
+            if let Some(output) = snapshot.output(&name) {
+                let mut change = change;
+                let crtc = if output.info.crtc != 0 {
+                    Some(output.info.crtc)
+                } else {
+                    output
+                        .info
+                        .crtcs
+                        .iter()
+                        .copied()
+                        .find(|id| snapshot.crtcs.get(id).is_some_and(|c| c.outputs.is_empty()))
+                };
+                if let Some(crtc) = crtc {
+                    change.crtc = crtc;
+                    randr.apply_change(&name, change);
+                }
+            }
+            if !randr.snapshot().active_names().contains(&name) {
+                continue;
+            }
+        }
+        runtime.lid_restore.remove(&name);
+    }
+    let mut effective = policy.clone();
+    for name in suppressed {
+        let mut config = policy.effective(&name).cloned().unwrap_or_default();
+        config.enable = Some(false);
+        effective.configs.insert(name, config);
+    }
+    effective
+}
+
+/// Capture only active panel scanout state; repeated RandR events must never
+/// replace restoration intent with the disabled CRTC state.
+fn lid_suppressed_outputs(
+    snapshot: &RandrSnapshot,
+    runtime: &mut crate::backend::x11::X11RuntimeConfig,
+    policy: &MonitorPolicy,
+) -> HashSet<String> {
+    use crate::backend::output::{OutputHeadConfiguration, OutputTransaction, OutputTransform};
+    let connected = snapshot.connected_names();
+    runtime
+        .lid_restore
+        .retain(|name, _| connected.contains(name));
+    let heads = snapshot
+        .connected()
+        .map(|output| {
+            let internal = is_internal_connector(&output.name);
+            runtime
+                .lid_output_policy
+                .set_internal(output.name.clone().into(), internal);
+            let crtc = snapshot.crtcs.get(&output.info.crtc);
+            let mode = crtc
+                .and_then(|crtc| snapshot.mode(crtc.mode))
+                .or_else(|| output.info.modes.first().and_then(|id| snapshot.mode(*id)));
+            OutputHeadConfiguration {
+                id: output.name.clone().into(),
+                enabled: !policy.is_explicitly_disabled(&output.name)
+                    && (crtc.is_some_and(|c| c.mode != 0)
+                        || runtime.lid_restore.contains_key(&output.name)
+                        || (internal
+                            && policy
+                                .effective(&output.name)
+                                .is_some_and(|c| c.enable != Some(false)))),
+                mode: mode.map(|mode| OutputMode {
+                    width: mode.width.into(),
+                    height: mode.height.into(),
+                    refresh_millihertz: mode_refresh_millihertz(mode).unwrap_or(60_000) as i32,
+                }),
+                position: Point::default(),
+                transform: OutputTransform::Normal,
+                scale: 1.0,
+                adaptive_sync: None,
+            }
+        })
+        .collect();
+    let requested = OutputTransaction { heads };
+    let projected = runtime.lid_output_policy.project(&requested);
+    let suppressed: HashSet<String> = requested
+        .heads
+        .iter()
+        .zip(&projected.heads)
+        .filter(|(before, after)| before.enabled && !after.enabled)
+        .map(|(head, _)| head.id.0.clone())
+        .collect();
+    for name in &suppressed {
+        if runtime.lid_restore.contains_key(name) {
+            continue;
+        }
+        let Some(output) = snapshot.output(name) else {
+            continue;
+        };
+        let Some(crtc) = snapshot
+            .crtcs
+            .get(&output.info.crtc)
+            .filter(|crtc| crtc.mode != 0)
+        else {
+            continue;
+        };
+        runtime.lid_restore.insert(
+            name.clone(),
+            CrtcChange {
+                crtc: output.info.crtc,
+                x: crtc.x,
+                y: crtc.y,
+                mode: crtc.mode,
+                rotation: crtc.rotation,
+                outputs: vec![output.id],
+                extent: Some((
+                    i32::from(crtc.x) + i32::from(crtc.width),
+                    i32::from(crtc.y) + i32::from(crtc.height),
+                )),
+            },
+        );
+    }
+    suppressed
+}
+
+fn is_internal_connector(name: &str) -> bool {
+    ["eDP", "LVDS", "DSI"].iter().any(|prefix| {
+        name.strip_prefix(prefix).is_some_and(|suffix| {
+            suffix.is_empty()
+                || suffix.starts_with('-')
+                || suffix.starts_with(|c: char| c.is_ascii_digit())
+        })
+    })
+}
+
 /// Reconcile a RandR topology change: queue newly plugged connectors for
 /// automatic activation, re-apply the policy and record the resulting
 /// connector and CRTC state for the next change.
@@ -651,7 +805,7 @@ pub fn refresh_topology(
     for name in runtime
         .active_outputs
         .difference(&active_before)
-        .filter(|name| connected.contains(*name))
+        .filter(|name| connected.contains(*name) && !runtime.lid_restore.contains_key(*name))
     {
         runtime.automatic_outputs.remove(name);
     }
@@ -668,6 +822,9 @@ pub fn refresh_topology(
         policy,
     );
     runtime.pending_output_enable.extend(candidates);
+    for name in runtime.connected_outputs.difference(&connected) {
+        runtime.lid_output_policy.forget(&name.clone().into());
+    }
     runtime.connected_outputs = connected;
 
     let automatic = configure_new_outputs(&mut randr, policy, &runtime.pending_output_enable);
@@ -677,10 +834,10 @@ pub fn refresh_topology(
     let active_after = randr.snapshot().active_names();
     runtime
         .pending_output_enable
-        .retain(|name| !active_after.contains(name));
+        .retain(|name| !active_after.contains(name) && !runtime.lid_restore.contains_key(name));
     runtime
         .automatic_outputs
-        .retain(|name| active_after.contains(name));
+        .retain(|name| active_after.contains(name) || runtime.lid_restore.contains_key(name));
     runtime
         .mirror_heads
         .retain(|name| active_after.contains(name));
@@ -1041,6 +1198,168 @@ mod refresh_tests {
     use crate::output_mirror::MonitorPolicy;
     use crate::types::{MonitorPosition, Point, Rect};
     use std::collections::{HashMap, HashSet};
+
+    fn lid_snapshot(panel_active: bool, dock_active: bool) -> super::RandrSnapshot {
+        use x11rb::protocol::randr;
+        let outputs = [("eDP-1", 1, panel_active), ("DP-1", 2, dock_active)]
+            .into_iter()
+            .map(|(name, id, active)| super::RandrOutput {
+                id,
+                name: name.into(),
+                info: randr::GetOutputInfoReply {
+                    connection: randr::Connection::CONNECTED,
+                    crtc: if active { id } else { 0 },
+                    crtcs: vec![id],
+                    modes: vec![1],
+                    ..Default::default()
+                },
+            })
+            .collect();
+        let crtcs = [(1, panel_active), (2, dock_active)]
+            .into_iter()
+            .map(|(id, active)| {
+                (
+                    id,
+                    randr::GetCrtcInfoReply {
+                        x: if id == 1 { 40 } else { 1960 },
+                        y: 20,
+                        width: 1920,
+                        height: 1080,
+                        mode: if active { 1 } else { 0 },
+                        rotation: randr::Rotation::ROTATE0,
+                        outputs: if active { vec![id] } else { vec![] },
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect();
+        super::RandrSnapshot {
+            config_timestamp: 1,
+            modes: vec![test_mode(1, 1920, 1080, 148_500_000, 2200, 1125)],
+            outputs,
+            crtcs,
+        }
+    }
+
+    #[test]
+    fn lid_projection_keeps_scanout_intent_across_disabled_crtc_notifications() {
+        let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
+        runtime.lid_output_policy.set_closed(true);
+        let policy = MonitorPolicy::default();
+        assert_eq!(
+            super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy),
+            HashSet::from(["eDP-1".into()])
+        );
+        let saved = &runtime.lid_restore["eDP-1"];
+        assert_eq!((saved.x, saved.y, saved.mode), (40, 20, 1));
+        assert_eq!(
+            super::lid_suppressed_outputs(&lid_snapshot(false, true), &mut runtime, &policy),
+            HashSet::from(["eDP-1".into()])
+        );
+        assert_eq!(runtime.lid_restore["eDP-1"].mode, 1);
+        runtime.lid_output_policy.set_closed(false);
+        assert!(
+            super::lid_suppressed_outputs(&lid_snapshot(false, true), &mut runtime, &policy)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn undocking_restores_panel_and_redocking_suppresses_it_again() {
+        let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
+        runtime.lid_output_policy.set_closed(true);
+        let policy = MonitorPolicy::default();
+        super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy);
+        let mut unplugged = lid_snapshot(false, false);
+        unplugged.outputs.retain(|output| output.name == "eDP-1");
+        assert!(super::lid_suppressed_outputs(&unplugged, &mut runtime, &policy).is_empty());
+        assert!(runtime.lid_restore.contains_key("eDP-1"));
+        assert!(
+            super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy)
+                .contains("eDP-1")
+        );
+    }
+
+    #[test]
+    fn lid_never_suppresses_the_only_usable_display_or_enables_a_disabled_panel() {
+        let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
+        runtime.lid_output_policy.set_closed(true);
+        let policy = MonitorPolicy::default();
+        assert!(
+            super::lid_suppressed_outputs(&lid_snapshot(true, false), &mut runtime, &policy)
+                .is_empty()
+        );
+        assert!(
+            super::lid_suppressed_outputs(&lid_snapshot(false, true), &mut runtime, &policy)
+                .is_empty()
+        );
+        let disabled = MonitorPolicy::new(&HashMap::from([(
+            "eDP-1".into(),
+            MonitorConfig {
+                enable: Some(false),
+                ..Default::default()
+            },
+        )]));
+        assert!(
+            super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &disabled)
+                .is_empty()
+        );
+        assert!(runtime.lid_restore.is_empty());
+    }
+
+    #[test]
+    fn lid_suppression_releases_external_mirror_and_respects_disabled_external_policy() {
+        let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
+        runtime.lid_output_policy.set_closed(true);
+        let policy = mirror_configs([]);
+        let suppressed =
+            super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy);
+        let mut effective = policy.clone();
+        for name in suppressed {
+            effective.configs.insert(
+                name,
+                MonitorConfig {
+                    enable: Some(false),
+                    ..Default::default()
+                },
+            );
+        }
+        assert!(
+            super::gluable_mirrors(&effective, &HashSet::from(["DP-1".into(), "eDP-1".into()]))
+                .is_empty()
+        );
+        let policy = MonitorPolicy::new(&HashMap::from([(
+            "DP-1".into(),
+            MonitorConfig {
+                enable: Some(false),
+                ..Default::default()
+            },
+        )]));
+        assert!(
+            super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn suppressing_a_panel_on_a_shared_crtc_keeps_the_external_scanout() {
+        let mut snapshot = lid_snapshot(true, true);
+        snapshot.outputs[1].info.crtc = 1;
+        snapshot.crtcs.get_mut(&1).unwrap().outputs = vec![1, 2];
+        let change = super::plan_crtc_change(&snapshot, "eDP-1", &CrtcRequest::DISABLE).unwrap();
+        assert_eq!(change.outputs, vec![2]);
+        assert_eq!((change.x, change.y, change.mode), (40, 20, 1));
+    }
+
+    #[test]
+    fn connector_classification_accepts_xorg_names_only() {
+        for name in ["eDP", "eDP-1", "eDP1", "LVDS-1-1", "DSI-1"] {
+            assert!(super::is_internal_connector(name));
+        }
+        for name in ["DP-1", "HDMI-1", "eDPfake", "LVDSfake"] {
+            assert!(!super::is_internal_connector(name));
+        }
+    }
 
     #[test]
     fn calculates_standard_and_high_refresh_modes() {

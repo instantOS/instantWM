@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::{OutputHeadConfiguration, OutputId, OutputTransaction};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LidOutputPolicy {
     closed: bool,
     internal: HashSet<OutputId>,
