@@ -11,6 +11,12 @@ mod transition;
 pub(crate) use transition::WaylandWindowAnimation;
 
 #[cfg(test)]
+mod protocol_tests;
+
+#[cfg(test)]
+mod x11_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::backend::{Backend, wayland::WaylandBackend};
@@ -37,26 +43,47 @@ mod tests {
                     duration: Duration::from_millis(100),
                 },
                 Size::from((tiled.w, tiled.h)),
-                Some((tiled.w, tiled.h)),
+                true,
                 2,
                 2,
             ),
         );
+        state
+            .geometry_sync
+            .entry(win)
+            .or_default()
+            .schedule(floating.size());
         // Video redraws before the resize is sent are unsolicited, or may
         // acknowledge the last tiled configure. Neither answers the restore.
         assert!(!state.native_commit_may_update_model(win, 1920, 1080, None, true));
         let tiled_serial = smithay::utils::Serial::from(10);
-        state.pending_size_configure.insert(win, tiled_serial);
+        state
+            .geometry_sync
+            .entry(win)
+            .or_default()
+            .sent(tiled.size(), Some(tiled_serial));
+        state
+            .geometry_sync
+            .get_mut(&win)
+            .unwrap()
+            .schedule(floating.size());
         assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true,));
-        assert_eq!(state.pending_size_configure.get(&win), Some(&tiled_serial));
+        assert_eq!(
+            state.geometry_sync.get(&win).unwrap().scheduled_size(),
+            Some(floating.size())
+        );
 
         let tick = state.window_animations.get_mut(&win).unwrap().tick(
             started_at + Duration::from_millis(30),
             Size::from((1920, 1080)),
         );
-        assert_eq!(tick.configure_size, Some(Size::from((640, 360))));
+        assert!(tick.resize_due);
         let restore_serial = smithay::utils::Serial::from(11);
-        state.pending_size_configure.insert(win, restore_serial);
+        state
+            .geometry_sync
+            .get_mut(&win)
+            .unwrap()
+            .sent(floating.size(), Some(restore_serial));
         assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true,));
         // Once it answers the restore, the client remains free to constrain
         // the suggestion (for example, to its video's aspect ratio).
@@ -95,7 +122,7 @@ mod tests {
                     duration: Duration::from_millis(50),
                 },
                 Size::from((600, 400)),
-                None,
+                false,
                 2,
                 2,
             ),
@@ -163,6 +190,8 @@ impl WaylandState {
         self.layout_preview_animation.is_active()
     }
 
+    /// Discard presentation without dispatching geometry. Retargeting and
+    /// teardown must be able to remove obsolete frames without sending them.
     pub(crate) fn drop_window_animation(&mut self, win: WindowId) {
         self.window_animations.remove(&win);
     }
@@ -181,13 +210,6 @@ impl WaylandState {
 
     pub(crate) fn default_animation_duration(&self) -> Duration {
         self.configured_animation_duration(Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS))
-    }
-
-    fn configured_size_unchanged(&self, window_id: WindowId, target: Rect) -> bool {
-        let configured_size = (target.w.max(1), target.h.max(1));
-        self.last_configured_size
-            .get(&window_id)
-            .is_some_and(|&size| size == configured_size)
     }
 
     fn output_rects(&self) -> Vec<Rect> {
@@ -215,29 +237,62 @@ impl WaylandState {
         self.remap_element_preserving_z_order(element, target_loc, false);
     }
 
-    fn configure_window_geometry_if_needed(
+    /// Dispatch pending size intent using the caller's logical origin. Geometry
+    /// ownership is independent from the animation frame currently displayed.
+    pub(super) fn dispatch_window_resize(
         &mut self,
         window_id: WindowId,
         element: &smithay::desktop::Window,
         target: Rect,
     ) {
-        let configured = (target.w.max(1), target.h.max(1));
-        if self
-            .last_configured_size
+        let Some(size) = self
+            .geometry_sync
             .get(&window_id)
-            .is_some_and(|&size| size == configured)
-        {
+            .and_then(|sync| sync.scheduled_size())
+        else {
             return;
-        }
+        };
+        self.configure_window_geometry(
+            window_id,
+            element,
+            Rect {
+                w: size.w,
+                h: size.h,
+                ..target
+            },
+        );
+    }
 
+    /// One protocol configure path for snaps and staged resizes. Native
+    /// toplevels only need pending size dispatch; X11 also owns position-only
+    /// moves, even when no size request is scheduled.
+    fn configure_window_geometry(
+        &mut self,
+        window_id: WindowId,
+        element: &smithay::desktop::Window,
+        target: Rect,
+    ) {
+        let size = crate::types::Size::new(target.w.max(1), target.h.max(1));
         if element.toplevel().is_some() {
-            self.send_toplevel_configure(element, Some(Size::from(configured)));
+            if self
+                .geometry_sync
+                .get(&window_id)
+                .and_then(|sync| sync.scheduled_size())
+                .is_some()
+            {
+                self.send_toplevel_configure(element, Some(Size::from((size.w, size.h))));
+            }
         } else if let Some(surface) = element.x11_surface() {
-            let geometry =
-                smithay::utils::Rectangle::new((target.x, target.y).into(), configured.into());
+            let geometry = smithay::utils::Rectangle::new(
+                (target.x, target.y).into(),
+                (size.w, size.h).into(),
+            );
             let _ = surface.configure(Some(geometry));
+            self.geometry_sync
+                .entry(window_id)
+                .or_default()
+                .sent(size, None);
         }
-        self.last_configured_size.insert(window_id, configured);
     }
 
     /// Snap `element` to `target`: configure its geometry, remap without
@@ -252,7 +307,7 @@ impl WaylandState {
         target_loc: Point<i32, Logical>,
         to_border: i32,
     ) {
-        self.configure_window_geometry_if_needed(window_id, element, target);
+        self.configure_window_geometry(window_id, element, target);
         self.remap_window_immediately(window_id, element, target_loc);
         self.placed_border.insert(window_id, to_border);
     }
@@ -290,30 +345,37 @@ impl WaylandState {
             Point::from((target.x + to_border, target.y + to_border));
         let actual_loc = self.space.element_location(&element);
 
-        // Keep an in-flight animation when callers repeatedly request the
-        // same target (e.g. sync_space_from_globals during a decorative
-        // AnimateFrom slide-in, or an immediate move that preserves an
-        // animation already landing on this rect).
-        if self
-            .window_animations
-            .get(&window_id)
-            .is_some_and(|anim| anim.target() == target)
-        {
-            return;
-        }
+        let resize_scheduled = self
+            .geometry_sync
+            .entry(window_id)
+            .or_default()
+            .schedule(crate::types::Size::new(target.w.max(1), target.h.max(1)));
 
         // Geometry updates for hidden/unmapped windows must not remap them.
         // The WM layer owns visibility.
         if actual_loc.is_none() && mode != WindowMoveMode::Snap {
+            self.dispatch_window_resize(window_id, &element, target);
             self.drop_window_animation(window_id);
             return;
         }
 
+        // Keep an in-flight animation when callers repeatedly request the
+        // same target (e.g. sync_space_from_globals during a decorative
+        // AnimateFrom slide-in, or an immediate move that preserves an
+        // animation already landing on this rect).
+        if let Some(animation) = self.window_animations.get(&window_id)
+            && animation.target() == target
+        {
+            if resize_scheduled && animation.resize_dispatch_ready() {
+                self.dispatch_window_resize(window_id, &element, target);
+            }
+            return;
+        }
+
         // Skip if already at the target with unchanged size.
-        let size_unchanged = self.configured_size_unchanged(window_id, target);
         if actual_loc == Some(target_loc)
             && matches!(mode, WindowMoveMode::Retarget { .. })
-            && size_unchanged
+            && !resize_scheduled
         {
             self.drop_window_animation(window_id);
             return;
@@ -377,7 +439,7 @@ impl WaylandState {
                 duration: animation_duration,
             },
             actual_size,
-            self.last_configured_size.get(&window_id).copied(),
+            resize_scheduled,
             from_border,
             to_border,
         );
@@ -401,25 +463,26 @@ impl WaylandState {
     /// Cancel a single window's in-flight animation.
     ///
     /// If the window is currently mapped (has a location in the space), it is
-    /// snapped to the animation's target position. If not mapped, the animation
-    /// entry is simply dropped without remapping.
+    /// snapped to the animation's target position. Pending geometry is sent
+    /// even for hidden windows, without remapping them.
     pub fn cancel_window_animation(&mut self, win: WindowId) {
         let Some(anim) = self.window_animations.remove(&win) else {
             return;
         };
-        if let Some(element) = self.find_window(win).cloned()
-            && self.space.element_location(&element).is_some()
+        let Some(element) = self.find_window(win).cloned() else {
+            return;
+        };
+        if let Some(target) = self
+            .globals()
+            .and_then(|core| core.model.client(win).map(|client| client.geo))
         {
+            self.dispatch_window_resize(win, &element, target);
+        }
+        if self.space.element_location(&element).is_some() {
             let target = anim.target();
             let border_width = anim.target_border_width();
             self.request_visual_rect_render(anim.displayed_frame().with_borders(border_width));
             self.request_visible_window_render(&element);
-            if anim.requires_resize() {
-                // A cancellation before the staging point still has to
-                // deliver the final resize. A resize already sent during the
-                // animation is suppressed by the configured-size cache.
-                self.configure_window_geometry_if_needed(win, &element, target);
-            }
             let loc = Point::from((target.x + border_width, target.y + border_width));
             self.remap_element_preserving_z_order(&element, loc, false);
             self.placed_border.insert(win, border_width);
@@ -472,8 +535,6 @@ impl WaylandState {
         }
 
         if landed {
-            self.last_configured_size
-                .insert(win, (target.w.max(1), target.h.max(1)));
             self.window_animations.remove(&win);
         }
     }
@@ -520,11 +581,10 @@ impl WaylandState {
                 animation.revalidate_offscreen_resize_phase(committed_size, &output_rects);
                 let tick = animation.tick(now, committed_size);
                 let border_width = animation.displayed_border_width();
-                let configure_target = tick.configure_size.map(|_| animation.target());
                 updates.push((
                     win,
                     tick.surface_location,
-                    configure_target,
+                    tick.resize_due,
                     tick.previous_frame,
                     tick.frame,
                     border_width,
@@ -534,22 +594,18 @@ impl WaylandState {
             }
         }
 
-        for (
-            win,
-            loc,
-            configure_target,
-            previous_frame,
-            frame,
-            border_width,
-            done,
-            waiting_for_resize,
-        ) in updates
+        for (win, loc, resize_due, previous_frame, frame, border_width, done, waiting_for_resize) in
+            updates
         {
             if let Some(element) = self.find_window(win).cloned() {
                 self.request_visual_rect_render(previous_frame.with_borders(border_width));
                 self.request_visible_window_render(&element);
-                if let Some(target) = configure_target {
-                    self.configure_window_geometry_if_needed(win, &element, target);
+                if resize_due
+                    && let Some(target) = self
+                        .globals()
+                        .and_then(|core| core.model.client(win).map(|client| client.geo))
+                {
+                    self.dispatch_window_resize(win, &element, target);
                 }
                 if self.space.element_location(&element) != Some(loc) {
                     self.remap_element_preserving_z_order(&element, loc, false);

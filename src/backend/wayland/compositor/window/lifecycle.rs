@@ -19,9 +19,7 @@ impl WaylandState {
 
     /// Forget state whose lifetime is tied to a managed client surface.
     fn clear_window_protocol_state(&mut self, window: WindowId) {
-        self.last_configured_size.remove(&window);
-        self.pending_size_configure.remove(&window);
-        self.pending_authoritative_sizes.remove(&window);
+        self.geometry_sync.remove(&window);
     }
 
     pub(crate) fn setup_managed_window(&mut self, surface: ToplevelSurface) -> WindowId {
@@ -104,6 +102,7 @@ impl WaylandState {
         );
 
         self.window_index.insert(window_id, window.clone());
+        self.geometry_sync.entry(window_id).or_default();
 
         // Refresh the Window's internal geometry cache.
         window.on_commit();
@@ -171,8 +170,17 @@ impl WaylandState {
             debug!("unmap_window_from_space({window:?}): no-op, window not found");
             return;
         };
+        // Hiding removes the animation timer, not the client's protocol
+        // lifecycle. Finish its current pending intent without remapping it.
+        if let Some(target) = self
+            .globals()
+            .and_then(|core| core.model.client(window).map(|client| client.geo))
+        {
+            self.dispatch_window_resize(window, &element, target);
+        }
         let is_mapped = self.space.elements().any(|w| w == &element);
         if !is_mapped {
+            self.clear_window_presentation_state(window);
             debug!("unmap_window_from_space({window:?}): no-op, already unmapped");
             return;
         }
@@ -248,19 +256,21 @@ mod tests {
         let configured = (1280, 720);
         let serial = Serial::from(17);
 
-        state.last_configured_size.insert(win, configured);
-        state.pending_size_configure.insert(win, serial);
-        state.pending_authoritative_sizes.insert(win, configured);
+        state.geometry_sync.entry(win).or_default().sent(
+            crate::types::Size::new(configured.0, configured.1),
+            Some(serial),
+        );
+        state
+            .geometry_sync
+            .get_mut(&win)
+            .unwrap()
+            .schedule(crate::types::Size::new(640, 360));
+        let transaction = state.geometry_sync.get(&win).unwrap().clone();
         state.placed_border.insert(win, 2);
 
         state.clear_window_presentation_state(win);
 
-        assert_eq!(state.last_configured_size.get(&win), Some(&configured));
-        assert_eq!(state.pending_size_configure.get(&win), Some(&serial));
-        assert_eq!(
-            state.pending_authoritative_sizes.get(&win),
-            Some(&configured)
-        );
+        assert_eq!(state.geometry_sync.get(&win), Some(&transaction));
         assert!(!state.placed_border.contains_key(&win));
     }
 
@@ -270,14 +280,21 @@ mod tests {
             crate::backend::wayland::compositor::new_event_loop_and_state();
         let win = WindowId(42);
 
-        state.last_configured_size.insert(win, (1280, 720));
-        state.pending_size_configure.insert(win, Serial::from(17));
-        state.pending_authoritative_sizes.insert(win, (1280, 720));
-
+        state
+            .geometry_sync
+            .entry(win)
+            .or_default()
+            .sent(crate::types::Size::new(1280, 720), Some(Serial::from(17)));
         state.clear_window_protocol_state(win);
 
-        assert!(!state.last_configured_size.contains_key(&win));
-        assert!(!state.pending_size_configure.contains_key(&win));
-        assert!(!state.pending_authoritative_sizes.contains_key(&win));
+        assert!(!state.geometry_sync.contains_key(&win));
+        assert!(!state.native_commit_may_update_model(
+            win,
+            1280,
+            720,
+            Some(Serial::from(17)),
+            true,
+        ));
+        assert!(!state.geometry_sync.contains_key(&win));
     }
 }

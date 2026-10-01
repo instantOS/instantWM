@@ -62,7 +62,7 @@ pub(crate) fn apply_fullscreen_geometry(
     transition: crate::client::mode::FullscreenTransition,
 ) {
     if let Some(rect) = transition.presentation_rect() {
-        state.configure_presentation_transition(win, rect);
+        state.resize_window(win, rect);
     }
 }
 
@@ -73,7 +73,7 @@ pub(crate) fn apply_maximized_geometry(
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
     if let Some(rect) = transition.presentation_rect() {
-        state.configure_presentation_transition(win, rect);
+        state.resize_window(win, rect);
     }
 }
 

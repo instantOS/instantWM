@@ -329,11 +329,21 @@ impl WaylandState {
                 state.states.unset(ToplevelState::Maximized);
             }
         });
-        let serial = toplevel.send_pending_configure();
-        if let (Some(serial), Some(_), Some(marker)) =
+        // Explicit geometry dispatch always needs a correlation serial,
+        // even if Smithay's pending state happens to have the same size.
+        // State-only configures retain their normal de-duplication.
+        let serial = if size.is_some() {
+            Some(toplevel.send_configure())
+        } else {
+            toplevel.send_pending_configure()
+        };
+        if let (Some(serial), Some(size), Some(marker)) =
             (serial, size, window.user_data().get::<WindowIdMarker>())
         {
-            self.pending_size_configure.insert(marker.id, serial);
+            self.geometry_sync
+                .entry(marker.id)
+                .or_default()
+                .sent(crate::types::Size::new(size.w, size.h), Some(serial));
         }
         serial
     }

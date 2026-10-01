@@ -6,40 +6,35 @@ use super::*;
 use std::time::Duration;
 
 #[test]
-fn resize_schedule_emits_exactly_one_configure() {
+fn resize_timing_dispatches_scheduled_intent_exactly_once() {
+    use crate::backend::wayland::compositor::window::geometry_sync::WindowGeometrySync;
     let start = Instant::now();
+    let target = Rect::new(0, 0, 140, 60);
+    let mut sync = WindowGeometrySync::default();
     let mut animation = WaylandWindowAnimation::new(
         WindowAnimation {
             from: Rect::new(0, 0, 100, 80),
-            to: Rect::new(0, 0, 140, 60),
+            to: target,
             started_at: start,
             duration: Duration::from_millis(100),
         },
         Size::from((100, 80)),
-        None,
+        sync.schedule(target.size()),
         2,
         4,
     );
-
-    assert_eq!(
-        animation
-            .tick(start + Duration::from_millis(19), Size::from((100, 80)))
-            .configure_size,
-        None
-    );
-    assert_eq!(
-        animation
-            .tick(start + Duration::from_millis(21), Size::from((100, 80)))
-            .configure_size,
-        Some(Size::from((140, 60)))
-    );
-    assert_eq!(
-        animation
-            .tick(start + Duration::from_millis(80), Size::from((140, 60)))
-            .configure_size,
-        None
-    );
-    assert!(matches!(animation.resize, ResizeConfigure::Sent(_)));
+    let mut dispatches = 0;
+    for millis in [19, 21, 80, 100] {
+        let tick = animation.tick(start + Duration::from_millis(millis), Size::from((100, 80)));
+        if tick.resize_due
+            && let Some(size) = sync.scheduled_size()
+        {
+            assert_eq!(size, target.size());
+            sync.sent(size, Some(smithay::utils::Serial::from(1)));
+            dispatches += 1;
+        }
+        assert_eq!(dispatches, usize::from(millis >= 20));
+    }
 }
 
 #[test]
@@ -57,7 +52,7 @@ fn offscreen_shrink_configures_before_movement_is_complete() {
             duration: Duration::from_millis(100),
         },
         committed,
-        None,
+        true,
         0,
         0,
     );
@@ -78,20 +73,18 @@ fn offscreen_shrink_configures_before_movement_is_complete() {
     );
     animation.resize_timing = ResizeTiming::OffscreenShrink;
     animation.resize_configure_phase = phase;
-    assert_eq!(
-        animation
+    assert!(
+        !animation
             .tick(
                 start + Duration::from_secs_f64(0.1 * (phase - 0.01)),
                 committed,
             )
-            .configure_size,
-        None
+            .resize_due
     );
-    assert_eq!(
+    assert!(
         animation
             .tick(start + Duration::from_secs_f64(0.1 * phase), committed)
-            .configure_size,
-        Some(Size::from((500, 1000)))
+            .resize_due
     );
 }
 
@@ -110,7 +103,7 @@ fn overdue_offscreen_shrink_stages_before_landing() {
             duration: Duration::from_millis(100),
         },
         committed,
-        None,
+        true,
         0,
         0,
     );
@@ -127,12 +120,12 @@ fn overdue_offscreen_shrink_stages_before_landing() {
     .unwrap();
 
     let staged = animation.tick(start + Duration::from_millis(200), committed);
-    assert_eq!(staged.configure_size, Some(Size::from((500, 1000))));
+    assert!(staged.resize_due);
     assert!(!staged.done);
     assert_ne!(staged.frame, target);
 
     let landed = animation.tick(start + Duration::from_millis(200), committed);
-    assert_eq!(landed.configure_size, None);
+    assert!(landed.resize_due);
     assert!(landed.done);
     assert_eq!(landed.frame, target);
 }
@@ -193,7 +186,7 @@ fn offscreen_growth_is_requested_before_movement() {
             duration: Duration::from_millis(100),
         },
         committed,
-        None,
+        true,
         0,
         0,
     );
@@ -207,10 +200,7 @@ fn offscreen_growth_is_requested_before_movement() {
         &[output],
     ));
     animation.resize_configure_phase = OFFSCREEN_GROWTH_CONFIGURE_PHASE;
-    assert_eq!(
-        animation.tick(start, committed).configure_size,
-        Some(Size::from((500, 1000)))
-    );
+    assert!(animation.tick(start, committed).resize_due);
 }
 
 #[test]
@@ -286,7 +276,7 @@ fn immediate_growth_falls_back_if_it_becomes_visible_before_the_first_tick() {
             duration: Duration::from_millis(100),
         },
         committed,
-        None,
+        true,
         0,
         0,
     );
@@ -299,7 +289,7 @@ fn immediate_growth_falls_back_if_it_becomes_visible_before_the_first_tick() {
     );
 
     assert_eq!(animation.resize_configure_phase, RESIZE_CONFIGURE_PHASE);
-    assert_eq!(animation.tick(start, committed).configure_size, None);
+    assert!(!animation.tick(start, committed).resize_due);
 }
 
 #[test]
@@ -317,7 +307,7 @@ fn delayed_shrink_falls_back_after_an_unsafe_late_commit() {
             duration: Duration::from_millis(100),
         },
         initial_committed,
-        None,
+        true,
         0,
         0,
     );
@@ -327,11 +317,10 @@ fn delayed_shrink_falls_back_after_an_unsafe_late_commit() {
     animation.revalidate_offscreen_resize_phase(late_committed, &[output]);
 
     assert_eq!(animation.resize_configure_phase, RESIZE_CONFIGURE_PHASE);
-    assert_eq!(
+    assert!(
         animation
             .tick(start + Duration::from_millis(50), late_committed)
-            .configure_size,
-        Some(Size::from((500, 500)))
+            .resize_due
     );
 }
 
@@ -346,18 +335,17 @@ fn movement_only_transition_never_schedules_a_resize() {
             duration: Duration::from_millis(100),
         },
         Size::from((100, 80)),
-        None,
+        false,
         0,
         0,
     );
 
-    assert_eq!(
-        animation
+    assert!(
+        !animation
             .tick(start + Duration::from_millis(100), Size::from((100, 80)))
-            .configure_size,
-        None
+            .resize_due
     );
-    assert_eq!(animation.resize, ResizeConfigure::Unchanged);
+    assert!(!animation.requires_resize());
 }
 
 #[test]
@@ -371,7 +359,7 @@ fn resize_schedule_compares_target_with_committed_not_visual_size() {
             duration: Duration::from_millis(100),
         },
         Size::from((140, 80)),
-        None,
+        true,
         0,
         0,
     );
@@ -383,20 +371,17 @@ fn resize_schedule_compares_target_with_committed_not_visual_size() {
             duration: Duration::from_millis(100),
         },
         Size::from((140, 80)),
-        None,
+        false,
         0,
         0,
     );
 
-    assert!(matches!(needs_resize.resize, ResizeConfigure::Pending(_)));
-    assert_eq!(
-        visual_size_differs_but_client_is_ready.resize,
-        ResizeConfigure::Unchanged
-    );
+    assert!(needs_resize.requires_resize());
+    assert!(!visual_size_differs_but_client_is_ready.requires_resize());
 }
 
 #[test]
-fn resize_schedule_supersedes_a_stale_outstanding_configure() {
+fn scheduled_resize_is_dispatched_even_when_committed_size_matches_target() {
     let animation = WaylandWindowAnimation::new(
         WindowAnimation {
             from: Rect::new(0, 0, 60, 80),
@@ -405,15 +390,12 @@ fn resize_schedule_supersedes_a_stale_outstanding_configure() {
             duration: Duration::from_millis(100),
         },
         Size::from((100, 80)),
-        Some((60, 80)),
+        true,
         0,
         0,
     );
 
-    assert_eq!(
-        animation.resize,
-        ResizeConfigure::Pending(Size::from((100, 80)))
-    );
+    assert!(animation.requires_resize());
 }
 
 #[test]
@@ -427,7 +409,7 @@ fn borders_interpolate_from_the_displayed_to_the_target_width() {
             duration: Duration::from_millis(100),
         },
         Size::from((1200, 740)),
-        None,
+        true,
         0,
         2,
     );
@@ -470,7 +452,7 @@ fn centered_float_to_single_tile_anchors_near_edges_so_the_surface_moves() {
             duration: Duration::from_millis(100),
         },
         committed,
-        None,
+        true,
         2,
         0,
     );
@@ -496,7 +478,7 @@ fn right_half_to_bottom_right_quarter_follows_the_moving_top_edge() {
             duration: Duration::from_millis(100),
         },
         Size::from((500, 1000)),
-        None,
+        true,
         0,
         0,
     );
@@ -517,7 +499,7 @@ fn bottom_left_quarter_to_left_half_follows_the_moving_top_edge() {
             duration: Duration::from_millis(100),
         },
         committed,
-        None,
+        true,
         0,
         0,
     );
@@ -591,7 +573,7 @@ fn far_anchored_completion_waits_for_the_target_committed_size() {
             duration: Duration::from_millis(100),
         },
         Size::from((100, 80)),
-        None,
+        true,
         0,
         0,
     );

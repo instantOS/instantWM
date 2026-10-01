@@ -16,8 +16,8 @@ use crate::types::{Rect, WindowId};
 pub(crate) enum GeometryResponse {
     /// The observation answers the latest outstanding WM request.
     Current,
-    /// The observation answers an older request and must not supersede the
-    /// latest WM intent.
+    /// The observation precedes the latest intent (which may still await
+    /// dispatch), and must not supersede it.
     Stale,
     /// No WM geometry request is outstanding; the client/backend originated
     /// this observation.

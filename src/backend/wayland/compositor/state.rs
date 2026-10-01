@@ -210,20 +210,13 @@ pub struct WaylandState {
     /// Read-only back-reference to the main WM state for queries.
     /// Mutations must go through the command_queue.
     wm: Option<NonNull<Wm>>,
-    pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
-    /// Serial of the latest size-bearing xdg-shell configure that no client
-    /// commit has acknowledged yet. Commits acknowledging an older configure
-    /// are presentation updates only and must not feed back into logical
-    /// floating geometry. Serials, unlike sizes, cannot alias two distinct
-    /// requests.
-    pub(super) pending_size_configure: HashMap<WindowId, smithay::utils::Serial>,
+    /// Desired, dispatched, and acknowledged geometry for each client.
+    pub(super) geometry_sync:
+        HashMap<WindowId, super::window::geometry_sync::WindowGeometrySync>,
     /// The border width the window was last visually placed under. Model
     /// `border_width` flips before transitions, so animation/runtime code
     /// reads this record to start from the width the window actually showed.
     pub(super) placed_border: HashMap<WindowId, i32>,
-    /// One-shot compositor-owned sizes that must be committed before client
-    /// size feedback becomes authoritative again.
-    pub(super) pending_authoritative_sizes: HashMap<WindowId, (i32, i32)>,
     pub(super) native_size_hints: HashMap<WindowId, crate::types::SizeHints>,
     pub(super) active_resize: Option<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
@@ -618,10 +611,8 @@ impl WaylandState {
             xdisplay: None,
             next_window_id: 1,
             wm: None,
-            last_configured_size: HashMap::new(),
-            pending_size_configure: HashMap::new(),
+            geometry_sync: HashMap::new(),
             placed_border: HashMap::new(),
-            pending_authoritative_sizes: HashMap::new(),
             native_size_hints: HashMap::new(),
             active_resize: None,
             window_index: HashMap::new(),

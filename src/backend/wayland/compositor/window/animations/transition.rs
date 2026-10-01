@@ -26,13 +26,6 @@ enum ResizeTiming {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ResizeConfigure {
-    Unchanged,
-    Pending(Size<i32, Logical>),
-    Sent(Size<i32, Logical>),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SurfaceAnchor {
     Near,
     Far,
@@ -130,42 +123,13 @@ fn closest_axis_anchor(
     }
 }
 
-impl ResizeConfigure {
-    fn toward(
-        committed_size: Size<i32, Logical>,
-        last_configured_size: Option<(i32, i32)>,
-        to: Rect,
-    ) -> Self {
-        let target = (to.w.max(1), to.h.max(1));
-        let committed_matches = committed_size.w == target.0 && committed_size.h == target.1;
-        let stale_configure_outstanding = last_configured_size.is_some_and(|size| size != target);
-        if committed_matches && !stale_configure_outstanding {
-            Self::Unchanged
-        } else {
-            Self::Pending(Size::from(target))
-        }
-    }
-
-    fn advance(&mut self, progress: f64, configure_phase: f64) -> Option<Size<i32, Logical>> {
-        let Self::Pending(size) = *self else {
-            return None;
-        };
-        if progress < configure_phase {
-            return None;
-        }
-        *self = Self::Sent(size);
-        Some(size)
-    }
-}
-
 /// Wayland presentation state for one logical geometry transition.
 ///
 /// The intended frame interpolates every edge. The client surface keeps its
 /// currently committed size and follows the frame edge that travels farther
 /// on each axis. The opposite edge absorbs the single real resize while the
-/// surface is visibly moving. Only `ResizeConfigure::Pending` can
-/// emit a configure, making repeated client relayout during an animation
-/// unrepresentable.
+/// surface is visibly moving. A timing signal releases the scheduled
+/// resize; request ownership and acknowledgement live in WindowGeometrySync.
 ///
 /// The border width is part of the transition: it animates from the width the
 /// window was displayed with (`from_border`) to the width the requested
@@ -182,7 +146,10 @@ pub(crate) struct WaylandWindowAnimation {
     to_border: i32,
     committed_size_at_start: Size<i32, Logical>,
     anchors: SurfaceAnchors,
-    resize: ResizeConfigure,
+    /// Presentation needs to accommodate a differently sized client buffer.
+    resize_required: bool,
+    /// Dispatch timing only; exactly-once sending belongs to WindowGeometrySync.
+    resize_dispatch_ready: bool,
     resize_timing: ResizeTiming,
     resize_configure_phase: f64,
     shrink_stage_presented: bool,
@@ -194,7 +161,7 @@ pub(super) struct WaylandAnimationTick {
     pub(super) previous_frame: Rect,
     pub(super) frame: Rect,
     pub(super) surface_location: Point<i32, Logical>,
-    pub(super) configure_size: Option<Size<i32, Logical>>,
+    pub(super) resize_due: bool,
     pub(super) done: bool,
     pub(super) waiting_for_resize: bool,
 }
@@ -209,12 +176,13 @@ impl WaylandWindowAnimation {
     pub(super) fn new(
         frame: WindowAnimation,
         committed_size: Size<i32, Logical>,
-        last_configured_size: Option<(i32, i32)>,
+        resize_scheduled: bool,
         from_border: i32,
         to_border: i32,
     ) -> Self {
         let anchors = SurfaceAnchors::between(frame.from, frame.to, from_border, to_border);
-        let resize = ResizeConfigure::toward(committed_size, last_configured_size, frame.to);
+        let resize_required =
+            resize_scheduled || committed_size.w != frame.to.w || committed_size.h != frame.to.h;
         Self {
             displayed_frame: frame.from,
             displayed_border: from_border,
@@ -222,7 +190,8 @@ impl WaylandWindowAnimation {
             to_border,
             committed_size_at_start: committed_size,
             anchors,
-            resize,
+            resize_required,
+            resize_dispatch_ready: false,
             resize_timing: ResizeTiming::Normal,
             resize_configure_phase: RESIZE_CONFIGURE_PHASE,
             shrink_stage_presented: false,
@@ -252,11 +221,11 @@ impl WaylandWindowAnimation {
     }
 
     pub(super) fn requires_resize(&self) -> bool {
-        !matches!(self.resize, ResizeConfigure::Unchanged)
+        self.resize_required
     }
 
-    pub(crate) fn resize_configure_is_pending(&self) -> bool {
-        matches!(self.resize, ResizeConfigure::Pending(_))
+    pub(super) fn resize_dispatch_ready(&self) -> bool {
+        self.resize_dispatch_ready
     }
 
     fn needs_landing(&self, committed_size: Size<i32, Logical>) -> bool {
@@ -386,7 +355,7 @@ impl WaylandWindowAnimation {
         let mut tick = self.frame.tick(now);
         let should_present_shrink_stage = self.resize_timing == ResizeTiming::OffscreenShrink
             && !self.shrink_stage_presented
-            && matches!(self.resize, ResizeConfigure::Pending(_))
+            && self.resize_required
             && tick.progress >= self.resize_configure_phase;
         if should_present_shrink_stage {
             tick.progress = self.resize_configure_phase;
@@ -394,6 +363,8 @@ impl WaylandWindowAnimation {
             tick.done = false;
             self.shrink_stage_presented = true;
         }
+        self.resize_dispatch_ready |=
+            self.resize_required && tick.progress >= self.resize_configure_phase;
         let eased = ease_out_cubic(tick.progress);
         self.displayed_frame = tick.rect;
         self.displayed_border = interpolate_borders(self.from_border, self.to_border, eased);
@@ -409,9 +380,7 @@ impl WaylandWindowAnimation {
                 self.displayed_border,
                 self.anchors,
             ),
-            configure_size: self
-                .resize
-                .advance(tick.progress, self.resize_configure_phase),
+            resize_due: self.resize_dispatch_ready,
             done: tick.done,
             waiting_for_resize: self.waiting_for_resize,
         }
