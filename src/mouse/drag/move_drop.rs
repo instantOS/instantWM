@@ -1,4 +1,3 @@
-#![allow(clippy::too_many_arguments)]
 //! Move and drop operations for window dragging.
 //!
 //! This module contains the core logic for moving windows with the mouse,
@@ -7,27 +6,33 @@
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::core_state::CoreState;
-use crate::floating::{WindowModeRequest, change_snap, set_window_mode};
+use crate::floating::{WindowModeRequest, set_window_mode};
 use crate::layouts::PresentationMode;
 use crate::layouts::arrange;
-use crate::tags::{move_client_follow_view, shift_tag};
 use crate::types::*;
 
 use crate::mouse::constants::OVERLAY_ZONE_WIDTH;
 
-use crate::mouse::monitor::handle_client_monitor_switch;
+use crate::monitor::{TransferFocus, transfer_client};
 
 pub fn snap_window_to_monitor_edges(
     state: &CoreState,
     window: WindowId,
     content_size: Size,
     position: &mut Point,
+    root: Point,
 ) {
     let snap = state.config.window.snap_threshold;
     let Some(view) = state.model.client_view(window) else {
         return;
     };
-    let monitor = view.monitor;
+    let Some(monitor) = state
+        .model
+        .monitors
+        .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))
+    else {
+        return;
+    };
     let border_width = view.client.border_width.max(0);
     let outer_size = Size::new(
         content_size.w + border_width * 2,
@@ -48,64 +53,64 @@ pub fn snap_window_to_monitor_edges(
     }
 }
 
-/// Returns edge snap position based on cursor position.
-pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<SnapPosition> {
-    let mon = model.expect_selected_monitor();
-    let mask = mon.selected_tags();
-
-    if root.x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && root.x > mon.monitor_rect.x - 1 {
-        return Some(SnapPosition::Left);
-    }
-    if root.x > mon.monitor_rect.right() - OVERLAY_ZONE_WIDTH
-        && root.x < mon.monitor_rect.right() + 1
-    {
-        return Some(SnapPosition::Right);
-    }
-    if root.y
-        <= mon.monitor_rect.y
-            + if mon.show_bar_for_mask(mask) {
-                mon.bar_height
-            } else {
-                5
-            }
-    {
-        return Some(SnapPosition::Top);
-    }
-    None
+/// A move destination is resolved from pointer geometry, independently of focus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MoveDropTarget {
+    Bar(MonitorId),
+    Tree(MonitorId),
+    Snap(MonitorId, SnapPosition),
+    Free(MonitorId),
 }
 
-/// Project the semantic tiled-drop target into the shared preview overlay.
-/// Both the synchronous X11 drag loop and Wayland's event-driven drag path
-/// call this routine so bar and screen-edge precedence cannot diverge.
-pub fn update_tiled_drag_preview(
-    ctx: &mut WmCtx,
+impl MoveDropTarget {
+    fn monitor(self) -> MonitorId {
+        match self {
+            Self::Bar(id) | Self::Tree(id) | Self::Snap(id, _) | Self::Free(id) => id,
+        }
+    }
+}
+
+pub(crate) fn resolve_move_drop(
+    model: &crate::model::WmModel,
     win: WindowId,
     root: Point,
-    on_bar: bool,
-    edge: Option<SnapPosition>,
-) {
-    let preview = (!on_bar && edge.is_none())
-        .then(|| crate::layouts::preview_tree_at_point(ctx, win, root))
-        .flatten();
-    ctx.update_layout_preview(preview);
+) -> Option<MoveDropTarget> {
+    let mon = model
+        .monitors
+        .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))?;
+    let client = model.client(win)?;
+    if bar_monitor_at(model, root).is_some() {
+        return Some(MoveDropTarget::Bar(mon.id()));
+    }
+    if client.mode().is_normal_tiling() && mon.current_layout() == PresentationMode::Tiled {
+        return Some(MoveDropTarget::Tree(mon.id()));
+    }
+    // Tiled sources keep their placement when entering a different presentation.
+    // Floating windows retain directional edge snapping on floating outputs.
+    if mon.current_layout() == PresentationMode::Floating && client.mode().is_normal_floating() {
+        let edge = if root.x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH {
+            Some(SnapPosition::Left)
+        } else if root.x >= mon.monitor_rect.right() - OVERLAY_ZONE_WIDTH {
+            Some(SnapPosition::Right)
+        } else {
+            None
+        };
+        if let Some(edge) = edge {
+            return Some(MoveDropTarget::Snap(mon.id(), edge));
+        }
+    }
+    Some(MoveDropTarget::Free(mon.id()))
 }
 
-fn selected_bar_monitor_at(
-    model: &crate::model::WmModel,
-    root: Point,
-) -> Option<&crate::types::Monitor> {
-    let monitor = model.expect_selected_monitor();
-    let mask = monitor.selected_tags();
-    (monitor.show_bar_for_mask(mask)
+fn bar_monitor_at(model: &crate::model::WmModel, root: Point) -> Option<&crate::types::Monitor> {
+    let monitor = model
+        .monitors
+        .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))?;
+    (monitor.bar_visible()
         && monitor.y_in_bar(root.y)
         && root.x >= monitor.monitor_rect.x
         && root.x < monitor.monitor_rect.right())
     .then_some(monitor)
-}
-
-/// Returns `true` when `root` (root-space) is inside the selected monitor's bar.
-pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
-    selected_bar_monitor_at(model, root).is_some()
 }
 
 // ── move_mouse helpers ────────────────────────────────────────────────────
@@ -113,7 +118,7 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
 /// Set the drag hover and gesture highlight when the cursor enters the bar,
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
-    let bar_hit = selected_bar_monitor_at(ctx.core().model(), root).map(|monitor| {
+    let bar_hit = bar_monitor_at(ctx.core().model(), root).map(|monitor| {
         let core = ctx.core();
         let gesture =
             crate::bar::model::bar_position_at_x(monitor, core, monitor.local_work_point(root).x)
@@ -124,9 +129,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     let was_on_bar = ctx.core().bar.hover.drag_active;
 
     if let Some((monitor_id, new_gesture)) = bar_hit {
-        let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
-        if !was_on_bar || gesture_changed {
-            ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true);
+        if ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true) {
             ctx.request_bar_update();
         }
     } else if was_on_bar {
@@ -168,15 +171,22 @@ pub fn handle_bar_drop(
     let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
         return;
     };
-    if !point_is_on_bar(ctx.core().model(), root) {
+    let Some(mon) = bar_monitor_at(ctx.core().model(), root) else {
+        return;
+    };
+    let monitor_id = mon.id();
+    let position =
+        crate::bar::model::bar_position_at_x(mon, ctx.core(), mon.local_work_point(root).x);
+    let focus = if matches!(position, BarPosition::Tag(_)) {
+        TransferFocus::Preserve
+    } else {
+        TransferFocus::FollowWindow
+    };
+    if ctx.core().model().monitor_of_client(win) != Some(monitor_id)
+        && transfer_client(ctx, win, monitor_id, focus).is_none()
+    {
         return;
     }
-
-    let position = {
-        let core = ctx.core();
-        let mon = core.model().expect_selected_monitor();
-        crate::bar::model::bar_position_at_x(mon, core, mon.local_work_point(root).x)
-    };
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct the saved floating placement afterwards.
@@ -196,9 +206,6 @@ pub fn handle_bar_drop(
         // tag() calls arrange() exactly once with the window already marked
         // tiled, so the layout places it correctly in a single pass.
         //
-        // tag() uses selmon->sel internally (via set_client_tag_impl), so win
-        // must still be the selected window at this point — which it is because
-        // set_window_mode does not touch focus.
 
         // Don't tile fullscreen windows
         if !ctx
@@ -222,8 +229,7 @@ pub fn handle_bar_drop(
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
         let _ = set_window_mode(ctx, win, WindowModeRequest::Tiling);
-        let selmon_id = ctx.core().model().selected_monitor_id();
-        arrange(ctx, Some(selmon_id));
+        arrange(ctx, Some(monitor_id));
     } else {
         // Window is already tiled and not dropped on a tag — nothing to do.
         return;
@@ -238,121 +244,61 @@ pub fn handle_bar_drop(
     }
 }
 
-/// Apply post-release logic for left/right screen-edge drops.
-///
-/// In a tiling layout: navigate to the adjacent tag (or send the window there).
-/// In a floating layout: apply a directional screen-edge snap.
-///
-/// Returns `true` if the drop was fully handled (the caller should skip
-/// `handle_bar_drop` and `handle_client_monitor_switch`).
-pub fn apply_edge_drop(
-    ctx: &mut WmCtx,
-    win: WindowId,
-    edge: Option<SnapPosition>,
-    root: Point,
-) -> bool {
-    let edge = match edge {
-        Some(e) => e,
-        None => return false,
-    };
-
-    let at_left = edge == SnapPosition::Left;
-    let at_right = edge == SnapPosition::Right;
-
-    if !at_left && !at_right {
-        return false;
-    }
-
-    let is_tiling = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout();
-
-    if is_tiling {
-        let (mon_my, mon_mh) = (
-            ctx.core().model().expect_selected_monitor().monitor_rect.y,
-            ctx.core().model().expect_selected_monitor().monitor_rect.h,
-        );
-
-        // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
-        if root.y < mon_my + (2 * mon_mh) / 3 {
-            if at_left {
-                move_client_follow_view(ctx, HorizontalDirection::Left);
-            } else {
-                move_client_follow_view(ctx, HorizontalDirection::Right);
-            }
-        } else if at_left {
-            shift_tag(ctx, HorizontalDirection::Left);
-        } else {
-            shift_tag(ctx, HorizontalDirection::Right);
-        }
-
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-            finish_tiling_edge_drop(client);
-        }
-        let selmon_id = ctx.core().model().selected_monitor_id();
-        arrange(ctx, Some(selmon_id));
-    } else {
-        let dir = if at_left {
-            Direction::Left
-        } else {
-            Direction::Right
-        };
-        change_snap(ctx, win, dir);
-    }
-
-    true
-}
-
-/// Tile after an edge drop without replacing the pre-drag floating restore rectangle.
-fn finish_tiling_edge_drop(client: &mut Client) {
-    // The drag has already moved `geo` to the edge. Unlike the ordinary
-    // tiled-mode command, snapshotting it here would destroy the position
-    // restored by a later float toggle.
-    client.set_placement(ClientPlacement::Tiling);
-}
-
-/// Shared post-release drop handling for move-like drags.
-///
-/// This keeps bar-drop and edge-drop behavior identical for all move paths.
+/// Commit the same destination policy used by active motion and its preview.
 pub fn complete_move_drop(
     ctx: &mut WmCtx,
     win: WindowId,
     grab_start_rect: Rect,
-    edge_hint: Option<SnapPosition>,
-    pointer_override: Option<Point>,
+    root: Point,
+    free_geometry: Rect,
     modifiers: ModMask,
 ) {
-    let pointer = pointer_override.or_else(|| ctx.pointer_backend().pointer_location());
-    let edge =
-        edge_hint.or_else(|| pointer.and_then(|root| check_edge_snap(ctx.core().model(), root)));
-    let handled_edge = pointer
-        .map(|root| apply_edge_drop(ctx, win, edge, root))
-        .unwrap_or(false);
-    let handled_tree = if handled_edge {
-        false
-    } else {
-        pointer.is_some_and(|root| {
-            !point_is_on_bar(ctx.core().model(), root)
-                && ctx
-                    .core()
-                    .model()
-                    .client(win)
-                    .is_some_and(|client| client.mode().is_normal_tiling())
-                && crate::layouts::place_tree_at_point(ctx, win, root)
-        })
-    };
-    // Clear the speculative frame after tree placement has had a chance to
-    // commit its already-materialized preview plan.
+    let target = resolve_move_drop(ctx.core().model(), win, root);
+    if matches!(target, Some(MoveDropTarget::Tree(_))) {
+        let _ = crate::layouts::place_tree_at_point(ctx, win, root);
+    } else if matches!(target, Some(MoveDropTarget::Bar(_))) {
+        handle_bar_drop(ctx, win, grab_start_rect, Some(root), modifiers);
+    } else if let Some(target) = target {
+        let monitor_id = target.monitor();
+        // A tiled source stayed in its slot during preview. Apply its free
+        // destination geometry only on commit, keeping cancellation lossless.
+        if ctx.core().model().monitor_of_client(win) != Some(monitor_id) {
+            let _ = transfer_client(ctx, win, monitor_id, TransferFocus::FollowWindow);
+        }
+        if let Some(client) = ctx.core().model().client(win)
+            && client.mode().is_normal_tiling()
+            && ctx
+                .core()
+                .model()
+                .monitor(monitor_id)
+                .unwrap()
+                .current_layout()
+                == PresentationMode::Floating
+        {
+            ctx.set_border(win, client.old_border_width);
+        }
+        ctx.move_resize(
+            win,
+            free_geometry,
+            crate::geometry::MoveResizeOptions::hinted_immediate(false),
+        );
+        if let MoveDropTarget::Snap(_, edge) = target {
+            let work = ctx.core().model().monitor(monitor_id).unwrap().work_rect();
+            if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+                client.save_floating_placement(free_geometry, work);
+                client.snap_status = edge;
+                if let Some(rect) = edge.target_rect(client.border_width, work) {
+                    ctx.move_resize(
+                        win,
+                        rect,
+                        crate::geometry::MoveResizeOptions::hinted_immediate(false),
+                    );
+                }
+            }
+        }
+        arrange(ctx, Some(monitor_id));
+    }
     ctx.update_layout_preview(None);
-    if handled_tree {
-        return;
-    }
-    if !handled_edge {
-        handle_bar_drop(ctx, win, grab_start_rect, pointer, modifiers);
-        handle_client_monitor_switch(ctx, win);
-    }
 }
 
 /// Helper function for promoting a window to floating.
@@ -405,7 +351,6 @@ pub fn promote_to_floating(
 
 #[cfg(test)]
 mod tests {
-    use super::finish_tiling_edge_drop;
     use super::promote_to_floating;
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -422,22 +367,6 @@ mod tests {
                 .rect(Rect::new(0, 0, 1200, 800), available)
                 .build(),
         )
-    }
-
-    #[test]
-    fn edge_drop_keeps_the_pre_drag_floating_restore_rectangle() {
-        let saved = Rect::new(300, 200, 700, 500);
-        let mut client = Client {
-            geo: Rect::new(0, 200, 700, 500),
-            ..Client::default()
-        };
-        client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
-        client.set_placement(ClientPlacement::Floating);
-
-        finish_tiling_edge_drop(&mut client);
-
-        assert_eq!(client.mode(), ClientMode::tiled());
-        assert_eq!(client.saved_floating_rect(), Some(saved));
     }
 
     #[test]
@@ -502,5 +431,169 @@ mod tests {
         assert!(client.mode().is_normal_floating());
         assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
         assert_eq!(client.geo, saved);
+    }
+}
+
+#[cfg(test)]
+mod destination_tests {
+    use super::*;
+    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::test_support::{MonitorBuilder, add_selected_client_with};
+    use crate::wm::Wm;
+
+    fn fixture() -> (Wm, WindowId, MonitorId, MonitorId) {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.config.animations.enabled = false;
+        wm.core.model.tags.num_tags = 9;
+        let a = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 800, 600), Rect::new(0, 0, 800, 600))
+                .tag_count(9)
+                .selected_tags(TagMask::single(1).unwrap())
+                .build(),
+        );
+        let b = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .rect(Rect::new(800, 0, 800, 600), Rect::new(800, 0, 800, 600))
+                .bar(30, true)
+                .tag_count(9)
+                .selected_tags(TagMask::single(2).unwrap())
+                .build(),
+        );
+        wm.core.model.monitors.set_selected(a);
+        let win = WindowId(981);
+        add_selected_client_with(&mut wm.core.model, a, |c| {
+            c.win = win;
+            c.tags = TagMask::single(1).unwrap();
+            c.mode = ClientMode::tiled();
+            c.geo = Rect::new(0, 0, 800, 600);
+        });
+        for (index, tag) in wm
+            .core
+            .model
+            .monitor_mut(b)
+            .unwrap()
+            .tags
+            .iter_mut()
+            .enumerate()
+        {
+            tag.name = (index + 1).to_string();
+        }
+        crate::bar::render_hit_caches_for_test(wm.ctx().core_mut());
+        (wm, win, a, b)
+    }
+
+    #[test]
+    fn destination_bar_transfers_and_tags_captured_window_without_stealing_focus() {
+        let (mut wm, win, a, b) = fixture();
+        let other = WindowId(982);
+        add_selected_client_with(&mut wm.core.model, a, |c| {
+            c.win = other;
+            c.tags = TagMask::single(1).unwrap();
+        });
+        // Find tag 3 through the bar's real hit testing, rather than duplicating its metrics.
+        let root = (800..1600)
+            .map(|x| Point::new(x, 10))
+            .find(|point| {
+                let ctx = wm.ctx();
+                let mon = ctx.core().model().monitor(b).unwrap();
+                crate::bar::model::bar_position_at_x(
+                    mon,
+                    ctx.core(),
+                    mon.local_work_point(*point).x,
+                ) == BarPosition::Tag(2)
+            })
+            .unwrap();
+        assert_eq!(
+            resolve_move_drop(&wm.core.model, win, root),
+            Some(MoveDropTarget::Bar(b))
+        );
+        handle_bar_drop(
+            &mut wm.ctx(),
+            win,
+            Rect::new(0, 0, 800, 600),
+            Some(root),
+            ModMask::NONE,
+        );
+        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+        assert_eq!(
+            wm.core.model.client(win).unwrap().tags,
+            TagMask::single(3).unwrap()
+        );
+        assert_eq!(
+            wm.core.model.client(other).unwrap().tags,
+            TagMask::single(1).unwrap()
+        );
+        assert_eq!(wm.core.model.selected_monitor_id(), a);
+        assert_eq!(wm.core.model.selected_win(), Some(other));
+        assert_eq!(
+            wm.core.model.monitor(b).unwrap().selected_tags(),
+            TagMask::single(2).unwrap()
+        );
+    }
+
+    #[test]
+    fn alt_destination_bar_drop_follows_the_window_to_its_tag() {
+        let (mut wm, win, _, b) = fixture();
+        let root = (800..1600)
+            .map(|x| Point::new(x, 10))
+            .find(|point| {
+                let ctx = wm.ctx();
+                let mon = ctx.core().model().monitor(b).unwrap();
+                crate::bar::model::bar_position_at_x(
+                    mon,
+                    ctx.core(),
+                    mon.local_work_point(*point).x,
+                ) == BarPosition::Tag(2)
+            })
+            .unwrap();
+        handle_bar_drop(
+            &mut wm.ctx(),
+            win,
+            Rect::new(0, 0, 800, 600),
+            Some(root),
+            ModMask::from_modifier(Modifier::Alt),
+        );
+        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+        assert_eq!(wm.core.model.selected_monitor_id(), b);
+        assert_eq!(wm.core.model.selected_win(), Some(win));
+        assert_eq!(
+            wm.core.model.monitor(b).unwrap().selected_tags(),
+            TagMask::single(3).unwrap()
+        );
+    }
+
+    #[test]
+    fn floating_edge_drop_snaps_on_destination_and_preserves_restore_geometry() {
+        let (mut wm, win, _, b) = fixture();
+        wm.core
+            .model
+            .client_mut(win)
+            .unwrap()
+            .set_placement(ClientPlacement::Floating);
+        wm.core
+            .model
+            .monitor_mut(b)
+            .unwrap()
+            .per_tag_state()
+            .presentation = PresentationMode::Floating;
+        let root = Point::new(1599, 300);
+        let free = Rect::new(1300, 150, 300, 200);
+        assert_eq!(
+            resolve_move_drop(&wm.core.model, win, root),
+            Some(MoveDropTarget::Snap(b, SnapPosition::Right))
+        );
+        complete_move_drop(&mut wm.ctx(), win, free, root, free, ModMask::NONE);
+        let client = wm.core.model.client(win).unwrap();
+        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+        assert_eq!(client.snap_status, SnapPosition::Right);
+        assert_eq!(client.saved_floating_rect(), Some(free));
+        let expected = SnapPosition::Right
+            .target_rect(
+                client.border_width,
+                wm.core.model.monitor(b).unwrap().work_rect(),
+            )
+            .unwrap();
+        assert_eq!(client.geo, expected);
     }
 }

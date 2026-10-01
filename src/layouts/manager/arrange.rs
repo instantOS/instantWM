@@ -189,6 +189,7 @@ pub(crate) struct TilingContext {
     /// The monitor's own (scaled) bar height. Layout is a pure reader of bar
     /// geometry, which the monitor-sync path owns.
     bar_height: i32,
+    tiled_count: u32,
 }
 
 impl TilingContext {
@@ -197,23 +198,37 @@ impl TilingContext {
         layout_cfg: &crate::config::config_toml::LayoutConfig,
         resize_hints: bool,
     ) -> Self {
+        Self::for_drop(monitor, layout_cfg, resize_hints, None)
+    }
+
+    /// Include an incoming client when solving destination gaps and minimum sizes.
+    pub(crate) fn for_drop(
+        monitor: &Monitor,
+        layout_cfg: &crate::config::config_toml::LayoutConfig,
+        resize_hints: bool,
+        incoming: Option<&Client>,
+    ) -> Self {
         let members = monitor.collect_tiling_tree_members();
         let placement = LayoutPlacement::new(
             layout_cfg,
             monitor,
             PresentationMode::Tiled,
-            members.len() as u32,
+            (members.len() + usize::from(incoming.is_some())) as u32,
         );
         let bar_height = monitor.bar_height.max(1);
+        let tiled_count = monitor.tiled_client_count() as u32 + u32::from(incoming.is_some());
         let minimums = members
             .iter()
-            .filter_map(|info| {
-                let client = monitor.client(info.win)?;
-                let mut size = placement.minimum_slot_size(client, resize_hints);
-                let decoration = 2 * client.border_width.max(0) + placement.inner_gap();
+            .filter_map(|info| monitor.client(info.win))
+            .chain(incoming)
+            .map(|client| {
+                let border =
+                    border_width_for_layout_client(client, tiled_count, true, false).max(0);
+                let mut size = placement.minimum_slot_size(client, resize_hints, border);
+                let decoration = 2 * border + placement.inner_gap();
                 size.w = size.w.max(bar_height.saturating_add(decoration));
                 size.h = size.h.max(bar_height.saturating_add(decoration));
-                Some((client.win, size))
+                (client.win, size)
             })
             .collect();
         Self {
@@ -221,6 +236,7 @@ impl TilingContext {
             placement,
             minimums,
             bar_height,
+            tiled_count,
         }
     }
 
@@ -234,7 +250,7 @@ impl TilingContext {
 
     /// Outer rectangle `client` will occupy when assigned `slot`.
     pub(crate) fn outer_rect(&self, client: &Client, slot: Rect, resize_hints: bool) -> Rect {
-        let border = client.border_width.max(0);
+        let border = border_width_for_layout_client(client, self.tiled_count, true, false).max(0);
         let mut content = self.placement.client_rect(slot, border);
         let available = content.size();
         content.enforce_minimum(self.bar_height, self.bar_height);

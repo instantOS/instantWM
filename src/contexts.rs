@@ -432,16 +432,16 @@ impl<'a> WmCtx<'a> {
         style: crate::types::InteractionOutlineStyle,
         target: Option<WindowId>,
     ) {
-        let previous = self.core().state().interaction.layout_preview;
-        let previous_style = self.core().state().interaction.layout_preview_style;
-        if previous == rect && (rect.is_none() || previous_style == style) {
-            return;
-        }
         if rect.is_none() {
             self.core_mut()
                 .state_mut()
                 .interaction
                 .pointer_placement_cache = None;
+        }
+        let previous = self.core().state().interaction.layout_preview;
+        let previous_style = self.core().state().interaction.layout_preview_style;
+        if previous == rect && (rect.is_none() || previous_style == style) {
+            return;
         }
         // Keyboard navigation changes a discrete virtual target and benefits
         // from interpolation. Pointer previews must track motion immediately.

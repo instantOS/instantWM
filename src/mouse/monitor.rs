@@ -51,8 +51,8 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 /// Convenience wrapper that reads the client's current geometry and delegates
 /// to [`handle_monitor_switch`].
 ///
-/// Call this at the end of every drag/resize loop so that windows dragged
-/// across monitor boundaries are adopted by the correct monitor.
+/// Use this after a geometry-driven resize. Move drops resolve their destination
+/// from the pointer explicitly, including tiled moves that keep source geometry.
 ///
 /// # Parameters
 ///

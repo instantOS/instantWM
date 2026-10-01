@@ -54,6 +54,13 @@ impl TreePlacementSession {
             None => (None, 0.0),
         };
 
+        // Incoming windows insert at edges; centre drops default to the right.
+        // Only a source already in this tree can exchange slots with a target.
+        let side = if self.tree.leaves().contains(&self.source) {
+            side
+        } else {
+            Some(side.unwrap_or(Side::Right))
+        };
         let key = (target, side);
         let plans = self.plans.entry(key).or_insert_with(|| {
             let placement_target = |candidate_index| PlacementTarget {
@@ -84,12 +91,51 @@ impl TreePlacementSession {
         Some((key, index))
     }
 
+    fn empty_plan(&self, point: Point) -> Option<PlacementPlan> {
+        if !self.tree.leaves().is_empty() || !self.layout_rect.contains_point(point) {
+            return None;
+        }
+        let mut tree = self.tree.clone();
+        tree.apply_preset(Preset::MasterStack, &[self.source], 1);
+        PlacementPlan::new(
+            PlacementTarget {
+                target: self.source,
+                side: None,
+                candidate_index: 0,
+                position: point,
+            },
+            tree,
+            self.source,
+            self.layout_rect,
+            &self.minimums,
+        )
+    }
+
+    fn layout_point(&self, point: Point) -> Point {
+        Point::new(
+            point
+                .x
+                .clamp(self.layout_rect.x, self.layout_rect.right() - 1),
+            point
+                .y
+                .clamp(self.layout_rect.y, self.layout_rect.bottom() - 1),
+        )
+    }
+
     pub(crate) fn preview_point(&mut self, point: Point) -> Option<Rect> {
+        let point = self.layout_point(point);
+        if let Some(plan) = self.empty_plan(point) {
+            return Some(plan.source_slot());
+        }
         let (key, index) = self.resolve(point)?;
         Some(self.plans[&key][index].source_slot)
     }
 
     pub(crate) fn into_plan(mut self, point: Point) -> Option<PlacementPlan> {
+        let point = self.layout_point(point);
+        if let Some(plan) = self.empty_plan(point) {
+            return Some(plan);
+        }
         let (key, index) = self.resolve(point)?;
         Some(self.plans.remove(&key)?.swap_remove(index))
     }

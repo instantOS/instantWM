@@ -77,7 +77,12 @@ impl LayoutPlacement {
     /// its declared minimum. Reserving one full inner gap on each axis covers
     /// both half-gaps at an internal slot; edge slots may simply receive a
     /// little more room.
-    pub(crate) fn minimum_slot_size(self, client: &Client, respect_hints: bool) -> Size {
+    pub(crate) fn minimum_slot_size(
+        self,
+        client: &Client,
+        respect_hints: bool,
+        border_width: i32,
+    ) -> Size {
         let min_content = if respect_hints {
             Size::new(
                 client.size_hints.min_width.max(1),
@@ -86,7 +91,7 @@ impl LayoutPlacement {
         } else {
             Size::new(1, 1)
         };
-        let border = 2 * client.border_width.max(0);
+        let border = 2 * border_width.max(0);
         Size::new(
             min_content
                 .w

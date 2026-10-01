@@ -4,7 +4,9 @@ use crate::contexts::WmCtx;
 use crate::types::{TagMask, WindowId};
 
 pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
+    let Some(selmon_id) = ctx.core().model().monitor_of_client(win) else {
+        return;
+    };
     let tagmask = ctx.core().model().tags.mask();
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
@@ -35,11 +37,13 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     // Record the window as most-recently-focused on the destination tag so
     // that a subsequent view switch brings it to the front instead of falling
     // back to a stale focus-history entry.
-    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+    let mon = ctx.core_mut().model_mut().monitor_mut(selmon_id).unwrap();
     mon.record_focus(effective_mask, win);
 
     ctx.sync_client_tag_props(win);
-    crate::focus::focus(ctx, None);
+    if ctx.core().model().selected_monitor_id() == selmon_id {
+        crate::focus::focus(ctx, None);
+    }
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
@@ -81,7 +85,11 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     set_client_tag(ctx, win, mask);
-    crate::tags::view::view_tags(ctx, mask);
+    if let Some(id) = ctx.core().model().monitor_of_client(win) {
+        crate::focus::select_monitor(ctx, id);
+        crate::tags::view::view_tags(ctx, mask);
+        crate::focus::focus(ctx, Some(win));
+    }
 }
 
 pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {

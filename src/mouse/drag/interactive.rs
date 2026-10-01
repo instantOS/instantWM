@@ -218,23 +218,80 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     }
 }
 
+fn free_move_geometry(
+    ctx: &WmCtx<'_>,
+    drag: &crate::core_state::ActiveWindowDrag,
+    root: Point,
+) -> Rect {
+    let geo = drag.win_start_geo();
+    let mut moved = Rect::new(
+        geo.x + root.x - drag.start_point().x,
+        geo.y + root.y - drag.start_point().y,
+        geo.w,
+        geo.h,
+    );
+    if let Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) =
+        crate::mouse::drag::move_drop::resolve_move_drop(ctx.core().model(), drag.win(), root)
+    {
+        let mon = ctx.core().model().monitor(id).unwrap();
+        let work = mon.work_rect();
+        let border = ctx
+            .core()
+            .model()
+            .client(drag.win())
+            .unwrap()
+            .old_border_width
+            .max(0);
+        moved.w = moved.w.min((work.w - 2 * border).max(1));
+        moved.h = moved.h.min((work.h - 2 * border).max(1));
+        moved.x = moved
+            .x
+            .clamp(work.x, (work.right() - moved.w - 2 * border).max(work.x));
+        moved.y = moved
+            .y
+            .clamp(work.y, (work.bottom() - moved.h - 2 * border).max(work.y));
+    }
+    moved
+}
+
 fn apply_move_drag_motion(
     ctx: &mut WmCtx<'_>,
     drag: &crate::core_state::ActiveWindowDrag,
     root: Point,
 ) {
     let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
-    let edge = crate::mouse::drag::move_drop::check_edge_snap(ctx.core().model(), root);
-
+    let target =
+        crate::mouse::drag::move_drop::resolve_move_drop(ctx.core().model(), drag.win(), root);
     if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), drag.win())
     {
-        crate::mouse::drag::move_drop::update_tiled_drag_preview(
-            ctx,
-            drag.win(),
-            root,
-            on_bar,
-            edge,
-        );
+        let preview = match target {
+            Some(crate::mouse::drag::move_drop::MoveDropTarget::Tree(_)) => {
+                crate::layouts::preview_tree_at_point(ctx, drag.win(), root)
+            }
+            Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) => {
+                let mon = ctx.core().model().monitor(id).unwrap();
+                if mon.current_layout().is_maximized() {
+                    Some(mon.work_rect())
+                } else {
+                    let content = free_move_geometry(ctx, drag, root);
+                    let border = ctx
+                        .core()
+                        .model()
+                        .client(drag.win())
+                        .unwrap()
+                        .old_border_width
+                        .max(0);
+                    Some(Rect::new(
+                        content.x,
+                        content.y,
+                        content.w + 2 * border,
+                        content.h + 2 * border,
+                    ))
+                }
+            }
+            _ => None,
+        };
+        ctx.update_layout_preview(preview);
         return;
     }
 
@@ -245,7 +302,12 @@ fn apply_move_drag_motion(
     );
 
     if on_bar {
-        let mon = ctx.core().model().expect_selected_monitor();
+        let mon = ctx
+            .core()
+            .model()
+            .monitors
+            .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))
+            .unwrap();
         new_pos.y = mon.bar_y() + mon.bar_height;
     }
 
@@ -254,6 +316,7 @@ fn apply_move_drag_motion(
         drag.win(),
         drag.win_start_geo().size(),
         &mut new_pos,
+        root,
     );
 
     // Pointer samples already describe continuous movement. Decorative mode
@@ -331,11 +394,18 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModM
             ctx,
             drag.win(),
             drag.drop_restore_geo(),
-            crate::mouse::drag::move_drop::check_edge_snap(
+            drag.last_root_point(),
+            if crate::layouts::manager::uses_manual_tree_pointer_interaction(
                 ctx.core().model(),
-                drag.last_root_point(),
-            ),
-            Some(drag.last_root_point()),
+                drag.win(),
+            ) {
+                free_move_geometry(ctx, &drag, drag.last_root_point())
+            } else {
+                ctx.core()
+                    .model()
+                    .client(drag.win())
+                    .map_or(drag.win_start_geo(), |client| client.geo)
+            },
             modifiers,
         ),
         crate::core_state::ActiveWindowOperation::DirectResize { .. }

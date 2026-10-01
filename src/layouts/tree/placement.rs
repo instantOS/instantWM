@@ -399,13 +399,17 @@ impl LayoutTree {
         output
     }
 
-    /// `root` without `source`, provided both windows are distinct leaves.
+    /// Destination root with an existing source removed, or ready for an incoming source.
     fn without_source(&self, source: WindowId, target: WindowId) -> Option<Node> {
         let root = self.root.as_ref()?;
-        (source != target && root.contains(source) && root.contains(target)).then(|| {
-            root.clone()
-                .remove(source)
-                .expect("removing one of at least two leaves leaves a root")
+        (source != target && root.contains(target)).then(|| {
+            if root.contains(source) {
+                root.clone()
+                    .remove(source)
+                    .expect("target remains after removing source")
+            } else {
+                root.clone()
+            }
         })
     }
 

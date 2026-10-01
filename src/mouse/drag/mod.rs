@@ -84,20 +84,13 @@ pub fn drag_move_finish(
     ctx: &mut WmCtx,
     win: WindowId,
     grab_start_rect: Rect,
-    edge_hint: Option<SnapPosition>,
-    pointer_override: Option<Point>,
+    root: Point,
+    free_geometry: Rect,
     modifiers: ModMask,
 ) {
     debug_assert!(!ctx.core().interaction().drag.has_capture());
     clear_bar_hover(ctx);
-    complete_move_drop(
-        ctx,
-        win,
-        grab_start_rect,
-        edge_hint,
-        pointer_override,
-        modifiers,
-    );
+    complete_move_drop(ctx, win, grab_start_rect, root, free_geometry, modifiers);
 }
 
 /// Shared post-resize-drag teardown used by both X11 and Wayland backends.

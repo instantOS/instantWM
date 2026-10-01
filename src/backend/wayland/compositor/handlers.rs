@@ -791,7 +791,7 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
     fn foreign_toplevel_state(
         &mut self,
     ) -> &mut crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState
-    {
+{
         &mut self.foreign_toplevel_management_state
     }
 

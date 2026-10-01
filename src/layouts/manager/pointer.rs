@@ -4,7 +4,7 @@ use crate::layouts::tree::TreePlacementSession;
 use crate::types::{MonitorId, Rect, TagMask, WindowId};
 
 use super::arrange::{TilingContext, arrange};
-use super::finish_layout_change;
+use super::commands::finish_layout_change_for_monitor;
 
 /// Pointer placement state for one drag over one monitor/tag view. Every
 /// authoritative arrange drops it, so its tiling snapshot cannot go stale.
@@ -104,9 +104,8 @@ pub(crate) fn pointer_tree_gap_resize_start(
 
 /// Whether pointer movement/resizing should edit the persistent layout tree.
 ///
-/// A lone tiled client has no meaningful tree relationship to manipulate, and
-/// maximized presentation deliberately hides those relationships. Both cases
-/// therefore use the ordinary floating drag behavior.
+/// Every tiled move remains a placement gesture, including a lone source.
+/// Maximized and floating presentations retain free movement.
 pub(crate) fn uses_manual_tree_pointer_interaction(
     model: &crate::model::WmModel,
     window: WindowId,
@@ -114,7 +113,6 @@ pub(crate) fn uses_manual_tree_pointer_interaction(
     model.client_view(window).is_some_and(|view| {
         view.monitor.current_layout() == PresentationMode::Tiled
             && view.client.mode().is_normal_tiling()
-            && view.monitor.tiled_client_count() > 1
     })
 }
 
@@ -276,13 +274,21 @@ pub(crate) fn selected_tiling(ctx: &WmCtx<'_>) -> TilingContext {
     )
 }
 
-/// The pointer placement session for dragging `window` over the selected
+/// The pointer placement session for dragging `window` over the pointer's
 /// monitor, reusing the cached one while it still describes the same view.
 fn pointer_placement<'a>(
     ctx: &'a mut WmCtx<'_>,
     window: WindowId,
+    point: crate::types::Point,
 ) -> Option<&'a mut PointerPlacementPreviewCache> {
-    let monitor = ctx.core().model().expect_selected_monitor();
+    let monitor = ctx
+        .core()
+        .model()
+        .monitors
+        .monitor_intersecting_rect(Rect::new(point.x, point.y, 1, 1))?;
+    if monitor.current_layout() != PresentationMode::Tiled {
+        return None;
+    }
     let (monitor_id, tags) = (monitor.id(), monitor.selected_tags());
     let cached = ctx
         .core()
@@ -295,7 +301,15 @@ fn pointer_placement<'a>(
         });
     if !cached {
         let tree = monitor.per_tag()?.layout_tree.clone();
-        let tiling = selected_tiling(ctx);
+        let client = ctx.core().model().client(window)?;
+        let incoming =
+            (ctx.core().model().monitor_of_client(window) != Some(monitor_id)).then_some(client);
+        let tiling = TilingContext::for_drop(
+            monitor,
+            &ctx.core().config().layout,
+            ctx.core().config().window.resize_hints,
+            incoming,
+        );
         let session = TreePlacementSession::new(
             tree,
             window,
@@ -325,31 +339,44 @@ pub fn place_tree_at_point(
     window: WindowId,
     point: crate::types::Point,
 ) -> bool {
-    if !ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-        || pointer_placement(ctx, window).is_none()
-    {
+    let Some(source) = ctx.core().model().monitor_of_client(window) else {
+        return false;
+    };
+    if pointer_placement(ctx, window, point).is_none() {
         return false;
     }
-    let Some(plan) = ctx
+    let cache = ctx
         .core_mut()
         .state_mut()
         .interaction
         .pointer_placement_cache
         .take()
-        .and_then(|cache| cache.session.into_plan(point))
-    else {
+        .unwrap();
+    let Some(plan) = cache.session.into_plan(point) else {
         return false;
     };
+    let target = cache.monitor_id;
+    if source != target
+        && crate::monitor::transfer_client(
+            ctx,
+            window,
+            target,
+            crate::monitor::TransferFocus::FollowWindow,
+        )
+        .is_none()
+    {
+        return false;
+    }
     ctx.core_mut()
         .model_mut()
-        .expect_selected_monitor_mut()
+        .monitor_mut(target)
+        .unwrap()
         .per_tag_state()
         .layout_tree = plan.into_tree();
-    finish_layout_change(ctx);
+    if source != target {
+        finish_layout_change_for_monitor(ctx, source);
+    }
+    finish_layout_change_for_monitor(ctx, target);
     true
 }
 
@@ -363,17 +390,12 @@ pub fn preview_tree_at_point(
     if !ctx
         .core()
         .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-        || !ctx
-            .core()
-            .model()
-            .client(window)
-            .is_some_and(|client| client.mode().is_normal_tiling())
+        .client(window)
+        .is_some_and(|client| client.mode().is_normal_tiling())
     {
         return None;
     }
-    pointer_placement(ctx, window)?;
+    pointer_placement(ctx, window, point)?;
     let state = ctx.core_mut().state_mut();
     let cache = state.interaction.pointer_placement_cache.as_mut()?;
     let slot = cache.session.preview_point(point)?;
