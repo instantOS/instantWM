@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/instantOS/instantWM/compare/v0.4.0...v0.5.0) - 2026-10-02
+
+### Added
+
+- multi monitor tiled dragging support
+
+### Changed
+
+- keep initial lid state in DRM input setup
+
+### Fixed
+
+- mpv floating resize
+- disable internal displays when docked lid closes
+
+### Other
+
+- Unify Wayland resize intent and configure lifecycle
+- bump stuff
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+
 ## [0.4.0](https://github.com/instantOS/instantWM/compare/v0.3.3...v0.4.0) - 2026-09-30
 
 ### Added
