@@ -8,6 +8,7 @@ pub(super) fn run_item_refresh(
     watch_rx: Receiver<WatcherEvent>,
 ) {
     let mut known_ids = HashSet::new();
+    let mut icons = IconResolver::default();
     // Install D-Bus match rules before taking the initial snapshot. This
     // closes the gap where an external watcher could announce an item after
     // reconciliation but before the old watcher threads subscribed.
@@ -18,7 +19,7 @@ pub(super) fn run_item_refresh(
             None
         }
     };
-    reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+    reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids, &mut icons);
     if !evt_tx.send(SystrayEvt::Ready) {
         return;
     }
@@ -28,10 +29,10 @@ pub(super) fn run_item_refresh(
         let idle_for = fallback_deadline.saturating_duration_since(Instant::now());
         match watch_rx.recv_timeout(idle_for) {
             Ok(WatcherEvent::NewIcon(sender, path)) => {
-                refresh_signalled_icons(conn, evt_tx, &known_ids, &sender, &path);
+                refresh_signalled_icons(conn, evt_tx, &known_ids, &sender, &path, &mut icons);
             }
             Ok(WatcherEvent::Registered(id)) => {
-                handle_registered(conn, evt_tx, &mut known_ids, &id);
+                handle_registered(conn, evt_tx, &mut known_ids, &id, &mut icons);
             }
             Ok(WatcherEvent::Unregistered(id)) => {
                 handle_unregistered(evt_tx, &mut known_ids, &id);
@@ -39,9 +40,14 @@ pub(super) fn run_item_refresh(
             Ok(WatcherEvent::NameLost(name)) => {
                 handle_name_lost(mode, evt_tx, &mut known_ids, &name);
             }
+            Ok(WatcherEvent::ConfigureIcons(settings)) => {
+                icons.configure(settings);
+                reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids, &mut icons);
+            }
             Ok(WatcherEvent::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => {
-                reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+                icons.refresh_theme();
+                reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids, &mut icons);
                 fallback_deadline = Instant::now() + ICON_REFRESH_FALLBACK;
             }
         }
@@ -58,6 +64,7 @@ pub(super) fn handle_registered(
     evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
     id: &str,
+    icons: &mut IconResolver,
 ) {
     if !known_ids.insert(id.to_string()) {
         return;
@@ -66,7 +73,7 @@ pub(super) fn handle_registered(
         known_ids.remove(id);
         return;
     };
-    let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path) else {
+    let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path, icons) else {
         // Icon not available yet. Keep the registration known so NewIcon and
         // the fallback reconcile can retry it.
         return;
@@ -136,6 +143,7 @@ pub(super) fn refresh_signalled_icons(
     known_ids: &HashSet<String>,
     sender: &str,
     signal_path: &str,
+    icons: &mut IconResolver,
 ) {
     for id in known_ids {
         let Some((service, path)) = parse_sni_id(id) else {
@@ -155,7 +163,7 @@ pub(super) fn refresh_signalled_icons(
                 .and_then(|proxy| proxy.call::<_, _, String>("GetNameOwner", &(service.as_str(),)))
                 .is_ok_and(|owner| owner == sender));
         if matches_sender {
-            refresh_item_icon(conn, evt_tx, &service, &path);
+            refresh_item_icon(conn, evt_tx, &service, &path, icons);
         }
     }
 }
@@ -166,8 +174,9 @@ pub(super) fn refresh_item_icon(
     evt_tx: &SystrayEventTx,
     service: &str,
     path: &str,
+    icons: &mut IconResolver,
 ) {
-    let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, service, path) else {
+    let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, service, path, icons) else {
         return;
     };
     evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
@@ -189,13 +198,14 @@ pub(super) fn reconcile_items_for_mode(
     mode: &WatcherMode,
     evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
+    icons: &mut IconResolver,
 ) {
     match mode {
         WatcherMode::External => {
-            let _ = reconcile_items(conn, evt_tx, known_ids);
+            let _ = reconcile_items(conn, evt_tx, known_ids, icons);
         }
         WatcherMode::Embedded(state) => {
-            reconcile_items_embedded(conn, state, evt_tx, known_ids);
+            reconcile_items_embedded(conn, state, evt_tx, known_ids, icons);
         }
     }
 }
@@ -206,6 +216,7 @@ pub(super) fn reconcile_items_embedded(
     state: &Arc<Mutex<WatcherState>>,
     evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
+    icons: &mut IconResolver,
 ) {
     let registered = state.lock().unwrap().items.clone();
 
@@ -241,7 +252,7 @@ pub(super) fn reconcile_items_embedded(
         st.items.retain(|id| alive.contains(id));
     }
 
-    reconcile_ids(conn, evt_tx, known_ids, alive);
+    reconcile_ids(conn, evt_tx, known_ids, alive, icons);
 }
 
 pub(super) fn reconcile_ids(
@@ -249,12 +260,14 @@ pub(super) fn reconcile_ids(
     evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
     ids: impl IntoIterator<Item = String>,
+    icons: &mut IconResolver,
 ) {
     let mut seen = HashSet::new();
     for id in ids {
         seen.insert(id.clone());
         if let Some((service, path)) = parse_sni_id(&id)
-            && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
+            && let Some((icon_rgba, icon_size)) =
+                fetch_item_icon_on_conn(conn, &service, &path, icons)
         {
             evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
@@ -277,10 +290,11 @@ pub(super) fn reconcile_items(
     conn: &Connection,
     evt_tx: &SystrayEventTx,
     known_ids: &mut HashSet<String>,
+    icons: &mut IconResolver,
 ) -> zbus::Result<()> {
     let proxy = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
     let services: Vec<String> = proxy.get_property("RegisteredStatusNotifierItems")?;
-    reconcile_ids(conn, evt_tx, known_ids, services);
+    reconcile_ids(conn, evt_tx, known_ids, services, icons);
     Ok(())
 }
 

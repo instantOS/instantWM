@@ -34,11 +34,13 @@ const ICON_REFRESH_FALLBACK: Duration = Duration::from_secs(10);
 
 mod discovery;
 mod icon;
+mod icon_theme;
 mod menu;
 mod runtime;
 mod watcher;
 mod worker;
 use discovery::*;
+pub(crate) use icon::IconSettings;
 use icon::*;
 use menu::*;
 pub(crate) use runtime::StatusNotifierRuntime;

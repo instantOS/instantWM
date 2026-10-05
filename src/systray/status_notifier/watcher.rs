@@ -111,6 +111,7 @@ pub(super) enum WatcherMode {
 /// loop still reacts the moment a tray item is born, dies, or changes icon.
 #[derive(Debug)]
 pub(super) enum WatcherEvent {
+    ConfigureIcons(IconSettings),
     /// An item emitted `NewIcon` — (unique sender, path).
     NewIcon(String, String),
     /// An item registered with the watcher (canonical `service/path` id).
@@ -145,6 +146,10 @@ impl SignalWatcher {
         add_match(
             &dbus,
             "type='signal',interface='org.kde.StatusNotifierItem',member='NewIcon'",
+        )?;
+        add_match(
+            &dbus,
+            "type='signal',interface='org.kde.StatusNotifierItem',member='NewIconThemePath'",
         )?;
         match mode {
             WatcherMode::External => add_match(
@@ -210,7 +215,7 @@ pub(super) fn watch_signals(mut messages: MessageIterator, tx: Sender<WatcherEve
                     (!old_owner.is_empty() && new_owner.is_empty())
                         .then_some(WatcherEvent::NameLost(name))
                 }),
-            (Some(ITEM_IFACE), Some("NewIcon")) => {
+            (Some(ITEM_IFACE), Some("NewIcon" | "NewIconThemePath")) => {
                 header.sender().zip(header.path()).map(|(sender, path)| {
                     WatcherEvent::NewIcon(sender.as_str().to_string(), path.as_str().to_string())
                 })

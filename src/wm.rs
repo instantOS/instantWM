@@ -37,16 +37,40 @@ impl Wm {
         wake: Option<calloop::ping::Ping>,
     ) {
         self.bar.systray_host.start(native_menu_request, wake);
+        self.configure_tray_icons();
     }
 
     /// Drain StatusNotifier worker events. Returns `true` when tray content
     /// changed and the bar must be redrawn.
     pub fn poll_systray(&mut self) -> bool {
+        self.configure_tray_icons();
         let changed = self.bar.systray_host.poll();
         if changed {
             self.bar.mark_dirty();
         }
         changed
+    }
+
+    fn configure_tray_icons(&mut self) {
+        let config = &self.core.config.systray;
+        // Monitor bar heights already include output scaling. One source at
+        // the largest required resolution can serve every bar without upscaling.
+        let height = self
+            .core
+            .model
+            .monitors_iter_all()
+            .map(|monitor| {
+                let padding = crate::systray::visual_padding(monitor.bar_height, config.spacing);
+                (monitor.bar_height - 2 * padding).max(1) as u32
+            })
+            .max()
+            .unwrap_or(24);
+        if let Some(runtime) = self.bar.systray_host.runtime.as_mut() {
+            runtime.configure_icons(crate::systray::status_notifier::IconSettings {
+                theme: config.icon_theme.clone(),
+                height,
+            });
+        }
     }
 
     pub fn quit(&mut self) {

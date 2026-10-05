@@ -153,6 +153,7 @@ fn stopped_worker_clears_stale_state_and_schedules_bounded_restart() {
         next_menu_session_id: AtomicU64::new(1),
         native_menu_request: Some(Arc::new(Mutex::new(None))),
         wake: None,
+        icon_settings: None,
     };
     let mut tray = StatusNotifierTray {
         items: vec![StatusNotifierItem {
@@ -318,6 +319,169 @@ impl FakeItem {
     }
 }
 
+struct FakeNamedItem {
+    name: Arc<Mutex<String>>,
+    theme_path: String,
+    pixmaps: Arc<Mutex<super::IconPixmaps>>,
+}
+
+#[zbus::interface(name = "org.kde.StatusNotifierItem")]
+impl FakeNamedItem {
+    #[zbus(property)]
+    fn icon_name(&self) -> String {
+        self.name.lock().unwrap().clone()
+    }
+    #[zbus(property)]
+    fn icon_theme_path(&self) -> String {
+        self.theme_path.clone()
+    }
+    #[zbus(property)]
+    fn icon_pixmap(&self) -> Vec<(i32, i32, Vec<u8>)> {
+        self.pixmaps.lock().unwrap().clone()
+    }
+}
+
+fn named_icon_smoke(worker: &StatusNotifierWorker) {
+    let dir = tempfile::tempdir().unwrap();
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#ff0000"/></svg>"##;
+    std::fs::write(dir.path().join("first.svg"), svg).unwrap();
+    std::fs::write(
+        dir.path().join("second.svg"),
+        svg.replace("#ff0000", "#0000ff"),
+    )
+    .unwrap();
+    let name = Arc::new(Mutex::new("first".to_owned()));
+    let pixmaps = Arc::new(Mutex::new(Vec::new()));
+    let conn = zbus::blocking::connection::Builder::session()
+        .unwrap()
+        .serve_at(
+            "/StatusNotifierItem",
+            FakeNamedItem {
+                name: name.clone(),
+                theme_path: dir.path().to_str().unwrap().to_owned(),
+                pixmaps: pixmaps.clone(),
+            },
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+    let service = conn.unique_name().unwrap().to_string();
+    super::uncached_proxy(
+        &conn,
+        super::WATCHER_SERVICE,
+        super::WATCHER_PATH,
+        super::WATCHER_IFACE,
+    )
+    .unwrap()
+    .call::<_, _, ()>("RegisterStatusNotifierItem", &("/StatusNotifierItem",))
+    .unwrap();
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_size == Size::new(24,24) && item.icon_rgba[..4] == [255,0,0,255]),
+        "named SVG registration",
+    );
+    *name.lock().unwrap() = "second".to_owned();
+    let signal = || {
+        conn.emit_signal(
+            None::<&str>,
+            "/StatusNotifierItem",
+            super::ITEM_IFACE,
+            "NewIcon",
+            &(),
+        )
+        .unwrap()
+    };
+    signal();
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_rgba[..4] == [0,0,255,255]),
+        "named SVG update",
+    );
+    worker
+        .cmd_tx
+        .send(super::SystrayCmd::ConfigureIcons(super::IconSettings {
+            theme: None,
+            height: 48,
+        }))
+        .unwrap();
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_size == Size::new(48,48)),
+        "SVG resize",
+    );
+    // A valid name takes precedence even when a client also publishes a pixmap.
+    pixmaps.lock().unwrap().push((1, 1, vec![255, 0, 255, 0]));
+    signal();
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_size == Size::new(48,48)),
+        "named icon preference",
+    );
+    *name.lock().unwrap() = "unavailable".to_owned();
+    signal();
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_size == Size::new(1,1) && item.icon_rgba[..4] == [0,255,0,255]),
+        "pixmap fallback",
+    );
+    // A PNG published under an absolute temporary filename without extension.
+    let png_path = dir.path().join("systray_random");
+    {
+        let mut encoder = png::Encoder::new(std::fs::File::create(&png_path).unwrap(), 1, 1);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&[255, 128, 0, 128])
+            .unwrap();
+    }
+    *name.lock().unwrap() = png_path.to_str().unwrap().to_owned();
+    pixmaps.lock().unwrap().clear();
+    signal();
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_rgba[..4] == [255,128,0,128]),
+        "extensionless PNG",
+    );
+    // Theme changes must refresh existing named icons immediately.
+    for (theme, color) in [("TestRed", "#ff0000"), ("TestBlue", "#0000ff")] {
+        let root = dir.path().join(theme);
+        std::fs::create_dir_all(root.join("scalable")).unwrap();
+        std::fs::write(root.join("index.theme"), "[Icon Theme]\nDirectories=scalable\n[scalable]\nSize=24\nType=Scalable\nMinSize=1\nMaxSize=256\n").unwrap();
+        std::fs::write(
+            root.join("scalable/themed.svg"),
+            svg.replace("#ff0000", color),
+        )
+        .unwrap();
+    }
+    *name.lock().unwrap() = "themed".to_owned();
+    for (theme, color) in [
+        ("TestRed", [255, 0, 0, 255]),
+        ("TestBlue", [0, 0, 255, 255]),
+    ] {
+        worker
+            .cmd_tx
+            .send(super::SystrayCmd::ConfigureIcons(super::IconSettings {
+                theme: Some(theme.to_owned()),
+                height: 32,
+            }))
+            .unwrap();
+        recv_until(
+            &worker.evt_rx,
+            |evt| matches!(evt, super::SystrayEvt::ItemUpsert(item) if item.service == service && item.icon_size == Size::new(32,32) && item.icon_rgba[..4] == color),
+            "icon theme change",
+        );
+    }
+    drop(conn);
+    recv_until(
+        &worker.evt_rx,
+        |evt| matches!(evt, super::SystrayEvt::ItemRemoved(item_service, _) if item_service == &service),
+        "named item removal",
+    );
+    println!("SMOKE named icons passed");
+}
+
 struct FakeExternalWatcher {
     items: Arc<Mutex<Vec<String>>>,
 }
@@ -435,6 +599,8 @@ fn sni_smoke_child() {
         "SMOKE icon refresh after {}ms",
         icon_at.elapsed().as_millis()
     );
+
+    named_icon_smoke(&worker);
 
     // The app exits: closing its connection releases the bus name, which the
     // worker must notice via NameOwnerChanged — not via the fallback.

@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub(super) enum SystrayCmd {
+    ConfigureIcons(IconSettings),
     Activate {
         service: String,
         path: String,
@@ -168,6 +169,7 @@ pub(super) fn run_systray_thread(
                     &evt_tx,
                     &mut menu_session,
                     native_menu_request.as_ref(),
+                    &watch_tx,
                 );
                 while let Ok(cmd) = cmd_rx.try_recv() {
                     dispatch_cmd(
@@ -176,6 +178,7 @@ pub(super) fn run_systray_thread(
                         &evt_tx,
                         &mut menu_session,
                         native_menu_request.as_ref(),
+                        &watch_tx,
                     );
                 }
             }
@@ -203,8 +206,12 @@ pub(super) fn dispatch_cmd(
     evt_tx: &SystrayEventTx,
     menu_session: &mut Option<DbusMenuSession>,
     native_menu_request: Option<&NativeMenuRequestSlot>,
+    watch_tx: &Sender<WatcherEvent>,
 ) {
     match cmd {
+        SystrayCmd::ConfigureIcons(settings) => {
+            let _ = watch_tx.send(WatcherEvent::ConfigureIcons(settings));
+        }
         SystrayCmd::Activate {
             service,
             path,

@@ -141,6 +141,8 @@ pub struct SystrayConfig {
     pub spacing: i32,
     /// How the tray item context menu is presented.
     pub menu_backend: TrayMenuBackend,
+    /// Icon theme override. None follows GTK/KDE settings, then Adwaita.
+    pub icon_theme: Option<String>,
 }
 
 impl Default for SystrayConfig {
@@ -150,6 +152,7 @@ impl Default for SystrayConfig {
             pinning: 0,
             spacing: 0,
             menu_backend: TrayMenuBackend::default(),
+            icon_theme: None,
         }
     }
 }

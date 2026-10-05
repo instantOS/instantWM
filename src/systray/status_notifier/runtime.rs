@@ -7,6 +7,7 @@ pub(crate) struct StatusNotifierRuntime {
     pub(super) next_menu_session_id: AtomicU64,
     pub(super) native_menu_request: Option<NativeMenuRequestSlot>,
     pub(super) wake: Option<Ping>,
+    pub(super) icon_settings: Option<IconSettings>,
 }
 
 impl StatusNotifierRuntime {
@@ -21,6 +22,7 @@ impl StatusNotifierRuntime {
             next_menu_session_id: AtomicU64::new(1),
             native_menu_request,
             wake,
+            icon_settings: None,
         };
         match StatusNotifierWorker::spawn(runtime.native_menu_request.clone(), runtime.wake.clone())
         {
@@ -31,6 +33,20 @@ impl StatusNotifierRuntime {
             }
         }
         runtime
+    }
+
+    pub(crate) fn configure_icons(&mut self, settings: IconSettings) {
+        if self.icon_settings.as_ref() == Some(&settings) {
+            return;
+        }
+        if let Some(worker) = self.worker.as_ref()
+            && worker
+                .cmd_tx
+                .send(SystrayCmd::ConfigureIcons(settings.clone()))
+                .is_ok()
+        {
+            self.icon_settings = Some(settings);
+        }
     }
 
     pub(crate) fn poll_events(
@@ -110,6 +126,7 @@ impl StatusNotifierRuntime {
     }
 
     fn restart_worker(&mut self) {
+        self.icon_settings = None;
         match StatusNotifierWorker::spawn(self.native_menu_request.clone(), self.wake.clone()) {
             Ok(worker) => {
                 log::info!("status notifier: restarting worker");
