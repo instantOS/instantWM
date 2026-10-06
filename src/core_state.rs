@@ -887,6 +887,7 @@ impl PendingWork {
     }
 
     /// The window whose region-selection tool this tick would start.
+    #[cfg(test)]
     pub fn region_selection(&self) -> Option<WindowId> {
         self.pending_region_selection
     }

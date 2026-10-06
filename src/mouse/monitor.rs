@@ -33,11 +33,12 @@ use crate::types::*;
 /// * `c_win` - The client window to potentially move
 /// * `rect` - The window's geometry to check against monitor boundaries
 pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    let Some(target) = ctx.model().monitors.monitor_by_rect(*rect) else {
+    let core_state = &ctx.core().state;
+    let Some(target) = core_state.model.monitors.monitor_by_rect(*rect) else {
         return;
     };
 
-    let Some(current_mon) = ctx.model().monitor_of_client(c_win) else {
+    let Some(current_mon) = core_state.model.monitor_of_client(c_win) else {
         return;
     };
 
@@ -59,7 +60,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 /// * `ctx` - The mouse context containing client and monitor state
 /// * `c_win` - The client window to check and potentially move
 pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
-    let Some(c) = ctx.model().client(c_win) else {
+    let Some(c) = ctx.core().state.model.client(c_win) else {
         return;
     };
     let rect = c.geo;

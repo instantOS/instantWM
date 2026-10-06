@@ -80,7 +80,7 @@ impl InteractionOutcome {
 
 pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
     if !matches!(event.phase, InteractionPhase::Cancel { .. })
-        && ctx.interaction().drag.captured_source() != Some(event.source)
+        && ctx.core().state.interaction.drag.captured_source() != Some(event.source)
     {
         return InteractionOutcome::Ignored;
     }
@@ -103,13 +103,15 @@ pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcom
 /// input ownership is deliberately outside this function: X11 may retain a
 /// grab until physical release, while Wayland retains its protocol semantics.
 pub fn reconcile_capture(ctx: &mut WmCtx<'_>) -> Option<DragCancelReason> {
-    let reason = window_capture_invalidation(ctx)?;
+    let reason = window_capture_invalidation(&ctx.core().state)?;
     cancel_capture(ctx, reason).then_some(reason)
 }
 
-fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
-    let state = ctx
-        .interaction()
+fn window_capture_invalidation(
+    core_state: &crate::core_state::CoreState,
+) -> Option<DragCancelReason> {
+    let state = core_state
+        .interaction
         .drag
         .capture()
         .and_then(|capture| match capture {
@@ -117,7 +119,7 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
             _ => None,
         })?;
 
-    let model = ctx.model();
+    let model = &core_state.model;
     // `client_view` fails only for a window the model does not manage. A
     // managed client always resolves its owning monitor, so there is no
     // separate "managed but unreachable" outcome to report.
@@ -143,7 +145,7 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
-    match ctx.interaction().drag.capture() {
+    match ctx.core().state.interaction.drag.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::update_card_gesture(ctx, event.root);
         }
@@ -191,10 +193,11 @@ fn finish(
     button: MouseButton,
     time_msec: u32,
 ) -> InteractionOutcome {
-    if ctx.interaction().drag.captured_button() != Some(button) {
+    let core_state = &ctx.core().state;
+    if core_state.interaction.drag.captured_button() != Some(button) {
         return InteractionOutcome::Ignored;
     }
-    match ctx.interaction().drag.capture() {
+    match core_state.interaction.drag.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::finish_card_gesture(ctx, button);
         }

@@ -111,7 +111,7 @@ pub fn drag_tag_begin(
     let Some(initial_tag) = TagMask::from_index(tag_idx) else {
         return false;
     };
-    let monitor_id = ctx.model().selected_monitor_id();
+    let monitor_id = ctx.core().state.model.selected_monitor_id();
     ctx.transition_pointer_interaction(|drag| {
         drag.begin(crate::core_state::TagDragState {
             initial_tag,
@@ -133,7 +133,9 @@ pub fn drag_tag_begin(
 pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let (monitor_id, start, was_dragging, previous_modifiers) = {
         let Some(drag) = ctx
-            .interaction()
+            .core()
+            .state
+            .interaction
             .drag
             .captured::<crate::core_state::TagDragState>()
         else {
@@ -160,7 +162,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     if !was_dragging {
         // A tag can still be clicked when there is no selected window, but
         // there is no meaningful object to drag.
-        if selected_on_monitor(&ctx.model().monitors, monitor_id).is_none() {
+        if selected_on_monitor(&ctx.core().state.model.monitors, monitor_id).is_none() {
             return true;
         }
         ctx.transition_pointer_interaction(|state| {
@@ -171,7 +173,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         });
     }
 
-    let position = super::bar_position_on_monitor(ctx, monitor_id, root);
+    let position = super::bar_position_on_monitor(ctx.core(), monitor_id, root);
     let gesture = position.map_or(Gesture::None, BarPosition::to_gesture);
     let tag_idx = match position {
         Some(BarPosition::Tag(idx)) => Some(idx),
@@ -180,7 +182,9 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let cursor_on_bar = position.is_some();
     let changed = {
         let drag = ctx
-            .interaction()
+            .core()
+            .state
+            .interaction
             .drag
             .captured::<crate::core_state::TagDragState>()
             .expect("tag capture remained active");
@@ -207,7 +211,9 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 /// Finish a tag click or drag using the modifiers held at release time.
 pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: ModMask) {
     let Some(button) = ctx
-        .interaction()
+        .core()
+        .state
+        .interaction
         .drag
         .captured::<crate::core_state::TagDragState>()
         .map(|drag| drag.button)
@@ -220,12 +226,12 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: ModMask) {
         })
         .expect("matching tag capture remained active");
     let root = drag.last_motion.map_or(drag.start, |(root, _)| root);
-    let final_position = super::bar_position_on_monitor(ctx, drag.monitor_id, root);
+    let final_position = super::bar_position_on_monitor(ctx.core(), drag.monitor_id, root);
     let final_tag = final_position.and_then(|position| match position {
         BarPosition::Tag(idx) => TagMask::from_index(idx),
         _ => None,
     });
-    let selected_window = selected_on_monitor(&ctx.model().monitors, drag.monitor_id);
+    let selected_window = selected_on_monitor(&ctx.core().state.model.monitors, drag.monitor_id);
     let action = resolve_tag_release(&drag, selected_window, final_tag, modifiers);
     apply_tag_release(ctx, action);
     finish_tag_release_presentation(ctx, &drag, final_position);

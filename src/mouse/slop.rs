@@ -172,7 +172,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 pub fn draw_window(ctx: &mut WmCtx) {
     // Fail fast when nothing can receive the result; the tool itself decides
     // which monitor the rectangle lands on via its own overlays.
-    let Some(win) = ctx.model().selected_win() else {
+    let Some(win) = ctx.core().state.model.selected_win() else {
         return;
     };
     spawn_region_selection(ctx.backend_kind(), win);
@@ -196,7 +196,7 @@ pub fn arm_region_selection_press(
     button: MouseButton,
     source: InteractionSource,
 ) -> bool {
-    if ctx.model().client(window).is_none() {
+    if ctx.core().state.model.client(window).is_none() {
         return false;
     }
     ctx.transition_pointer_interaction(|drag| drag.arm_region_selection(window, button, source))
@@ -217,7 +217,7 @@ pub fn finish_region_selection_press(ctx: &mut WmCtx, button: MouseButton) -> bo
     else {
         return false;
     };
-    ctx.pending_work_mut().queue_region_selection(armed.window);
+    ctx.core_mut().work.queue_region_selection(armed.window);
     true
 }
 
@@ -459,7 +459,7 @@ pub fn drain_region_selection(ctx: &mut WmCtx<'_>) -> bool {
         let Some(rect) = outcome.rect else {
             continue;
         };
-        if !is_valid_window_size(ctx.model(), &rect, outcome.window) {
+        if !is_valid_window_size(&ctx.core().state.model, &rect, outcome.window) {
             continue;
         }
         handle_monitor_switch(ctx, outcome.window, &rect);
@@ -474,10 +474,10 @@ pub fn drain_region_selection(ctx: &mut WmCtx<'_>) -> bool {
 /// Runs from the shared tick so pointer ownership is already back with the
 /// server.
 fn start_pending_region_selection(ctx: &mut WmCtx<'_>) {
-    let Some(win) = ctx.pending_work_mut().take_region_selection() else {
+    let Some(win) = ctx.core_mut().work.take_region_selection() else {
         return;
     };
-    if ctx.model().client(win).is_none() {
+    if ctx.core().state.model.client(win).is_none() {
         log::debug!("dropping region selection for closed window {win:?}");
         return;
     }
@@ -513,7 +513,7 @@ mod tests {
         win: WindowId,
         geo: Rect,
     ) {
-        add_client_with(ctx.model_mut(), monitor_id, |client| {
+        add_client_with(&mut ctx.core_mut().state.model, monitor_id, |client| {
             client.win = win;
             client.geo = geo;
             client.mode = ClientMode::floating();

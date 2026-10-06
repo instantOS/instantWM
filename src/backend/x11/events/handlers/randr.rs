@@ -15,23 +15,24 @@ pub fn randr_screen_change_notify(ctx: &mut WmCtxX11<'_>, event: &ScreenChangeNo
 
 fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
     if let Some((width, height)) = size {
-        ctx.core.derived_mut().display.width = i32::from(width);
-        ctx.core.derived_mut().display.height = i32::from(height);
+        ctx.core.state.derived.display.width = i32::from(width);
+        ctx.core.state.derived.display.height = i32::from(height);
     }
     crate::backend::x11::randr::refresh_topology(
         ctx.x11.conn,
         ctx.x11_runtime,
-        &ctx.core.derived().monitor_policy,
+        &ctx.core.state.derived.monitor_policy,
     );
     crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx());
     if let Some(point) = ctx.x11.pointer_location() {
-        let monitors = &ctx.core.model().monitors;
+        let monitors = &ctx.core.state.model.monitors;
         if !monitors
             .iter()
             .any(|(_, monitor)| monitor.monitor_rect.contains_point(point))
             && let Some(monitor) = ctx
                 .core
-                .model()
+                .state
+                .model
                 .selected_monitor()
                 .or_else(|| monitors.iter().next().map(|(_, monitor)| monitor))
         {

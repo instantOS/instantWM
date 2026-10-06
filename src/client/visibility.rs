@@ -48,10 +48,10 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
 pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
     // The owning monitor is resolved before the mutable borrow: a client cannot
     // name a monitor other than the one holding it.
-    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
+    let Some(monitor_id) = ctx.core().state.model.monitor_of_client(win) else {
         return;
     };
-    let Some(client) = ctx.model_mut().client_mut(win) else {
+    let Some(client) = ctx.core_mut().state.model.client_mut(win) else {
         return;
     };
     if !client.is_hidden {
@@ -65,7 +65,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
-    let scratchpad_name = ctx.model().client(win).and_then(|c| {
+    let scratchpad_name = ctx.core().state.model.client(win).and_then(|c| {
         if c.is_scratchpad() {
             Some(
                 c.scratchpad()
@@ -95,16 +95,17 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// such as a scratchpad can supply the window that was focused before it was
 /// shown, preserving overlapping-layout presentation across the round trip.
 pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: Option<WindowId>) {
-    let was_selected = ctx
-        .model()
+    let core_state = &ctx.core().state;
+    let was_selected = core_state
+        .model
         .client_view(win)
         .is_some_and(|view| view.monitor.selected == Some(win));
     // Resolved before the mutable borrow: a client cannot name a monitor other
     // than the one holding it.
-    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
+    let Some(monitor_id) = core_state.model.monitor_of_client(win) else {
         return;
     };
-    let Some(client) = ctx.model_mut().client_mut(win) else {
+    let Some(client) = ctx.core_mut().state.model.client_mut(win) else {
         return;
     };
     if client.is_hidden {
@@ -113,13 +114,15 @@ pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: O
 
     ctx.conceal_client(win);
 
-    if let Some(c_mut) = ctx.model_mut().client_mut(win) {
+    if let Some(c_mut) = ctx.core_mut().state.model.client_mut(win) {
         c_mut.is_hidden = true;
     }
 
     if was_selected {
         let next = preferred_focus.or_else(|| {
-            ctx.model()
+            ctx.core()
+                .state
+                .model
                 .monitor(monitor_id)
                 .and_then(|m| m.z_order().iter_top_to_bottom().find(|&w| w != win))
         });

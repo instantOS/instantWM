@@ -14,12 +14,12 @@ use crate::ipc_types::{ConfigCommand, Response};
 
 pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Response {
     match cmd {
-        ConfigCommand::Get { key } => match runtime::get_runtime_field(ctx.state(), &key) {
+        ConfigCommand::Get { key } => match runtime::get_runtime_field(&ctx.core().state, &key) {
             Ok(value) => Response::ConfigValue(value),
             Err(error) => Response::err(error),
         },
         ConfigCommand::Set { key, value } => {
-            match runtime::set_runtime_field(ctx.state_mut(), &key, value) {
+            match runtime::set_runtime_field(&mut ctx.core_mut().state, &key, value) {
                 Ok(effect) => {
                     apply_effect(ctx, effect);
                     Response::ok()
@@ -28,7 +28,7 @@ pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Respons
             }
         }
         ConfigCommand::Toggle { key } => {
-            match runtime::toggle_runtime_field(ctx.state_mut(), &key) {
+            match runtime::toggle_runtime_field(&mut ctx.core_mut().state, &key) {
                 Ok((effect, value)) => {
                     apply_effect(ctx, effect);
                     Response::ConfigValue(value)
@@ -37,7 +37,7 @@ pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Respons
             }
         }
         ConfigCommand::List { prefix } => {
-            match runtime::list_runtime_fields(ctx.state(), prefix.as_deref()) {
+            match runtime::list_runtime_fields(&ctx.core().state, prefix.as_deref()) {
                 Ok(entries) => Response::ConfigList(entries),
                 Err(error) => Response::err(error),
             }

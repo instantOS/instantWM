@@ -12,7 +12,10 @@ pub(crate) fn apply_config_effect(
     match effect {
         ConfigEffect::None => {}
         ConfigEffect::Bar | ConfigEffect::BarVisibility => {
-            sync_bar_config_to_monitors(ctx.state_mut(), effect == ConfigEffect::BarVisibility);
+            sync_bar_config_to_monitors(
+                &mut ctx.core_mut().state,
+                effect == ConfigEffect::BarVisibility,
+            );
             ctx.reinit_bar_resources();
             ctx.request_bar_update();
             crate::layouts::manager::arrange(ctx, None);

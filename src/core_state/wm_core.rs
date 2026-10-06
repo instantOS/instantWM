@@ -1,5 +1,5 @@
 //! Owned backend-neutral policy state and pending runtime work.
-use super::{CoreState, DerivedState, EffectiveConfig, PendingWork, WmBehavior};
+use super::{CoreState, PendingWork};
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::model::WmModel;
@@ -9,6 +9,10 @@ use crate::types::{MonitorId, Rect, WindowId};
 /// of storing references to each field alongside an independently borrowed
 /// compositor. This lets native callbacks borrow their complete handler state
 /// after a model operation ends, with exclusivity enforced by Rust.
+///
+/// Data follows one path: `core.state` owns model/config/interaction and
+/// `core.work` owns pending work. Pass those components to leaf operations,
+/// rather than adding forwarding getters that hide their ownership paths.
 pub struct WmCore {
     pub(crate) state: CoreState,
     pub(crate) work: PendingWork,
@@ -67,66 +71,10 @@ impl WmCore {
             .start(self.state.config.status_command.as_deref());
     }
 
-    pub fn model(&self) -> &WmModel {
-        &self.state.model
-    }
-
-    pub fn model_mut(&mut self) -> &mut WmModel {
-        &mut self.state.model
-    }
-
     /// Return a managed client's current logical geometry.
     #[inline]
     pub fn client_geo(&self, win: WindowId) -> Option<Rect> {
-        self.model().client(win).map(|client| client.geo)
-    }
-
-    /// Access all backend-neutral state. Prefer the category-specific
-    /// accessors when an operation only needs one part of the state.
-    pub fn state(&self) -> &CoreState {
-        &self.state
-    }
-
-    pub fn state_mut(&mut self) -> &mut CoreState {
-        &mut self.state
-    }
-
-    pub fn config(&self) -> &EffectiveConfig {
-        &self.state.config
-    }
-
-    pub fn config_mut(&mut self) -> &mut EffectiveConfig {
-        &mut self.state.config
-    }
-
-    pub fn derived(&self) -> &DerivedState {
-        &self.state.derived
-    }
-
-    pub fn derived_mut(&mut self) -> &mut DerivedState {
-        &mut self.state.derived
-    }
-
-    pub fn behavior(&self) -> &WmBehavior {
-        &self.state.behavior
-    }
-
-    pub fn behavior_mut(&mut self) -> &mut WmBehavior {
-        &mut self.state.behavior
-    }
-
-    pub fn interaction(&self) -> &crate::core_state::InteractionState {
-        &self.state.interaction
-    }
-
-    pub fn interaction_mut(&mut self) -> &mut crate::core_state::InteractionState {
-        &mut self.state.interaction
-    }
-
-    pub fn pending_launches_mut(
-        &mut self,
-    ) -> &mut std::collections::VecDeque<crate::client::PendingLaunch> {
-        &mut self.state.pending_launches
+        self.state.model.client(win).map(|client| client.geo)
     }
 
     pub fn quit(&mut self) {
@@ -179,14 +127,6 @@ impl WmCore {
 
     pub fn queue_cursor_config_apply(&mut self) {
         self.work.queue_cursor_config_apply();
-    }
-
-    pub fn pending_work(&self) -> &PendingWork {
-        &self.work
-    }
-
-    pub fn pending_work_mut(&mut self) -> &mut PendingWork {
-        &mut self.work
     }
 
     /// Run a model transaction and record any resulting global-selection

@@ -13,7 +13,7 @@ fn input_config_mut(
 }
 
 pub fn handle_input_command(ctx: &mut WmCtx<'_>, cmd: InputCommand) -> Response {
-    let inputs = &mut ctx.config_mut().input;
+    let inputs = &mut ctx.core_mut().state.config.input;
     match cmd {
         InputCommand::List { identifier } => {
             let mut entries: Vec<(String, &crate::config::config_toml::InputConfig)> =
@@ -79,6 +79,6 @@ pub fn handle_input_command(ctx: &mut WmCtx<'_>, cmd: InputCommand) -> Response 
             input_config_mut(inputs, identifier).left_handed = Some(state);
         }
     }
-    ctx.pending_work_mut().queue_input_config_apply();
+    ctx.core_mut().work.queue_input_config_apply();
     Response::ok()
 }

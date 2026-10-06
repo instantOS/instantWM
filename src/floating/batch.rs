@@ -25,7 +25,7 @@ use crate::types::*;
 /// Does nothing when there are no qualifying windows.
 //BOZO: should this be in floating mod?
 pub fn distribute_clients(ctx: &mut WmCtx) {
-    let Some(monitor) = ctx.model().selected_monitor() else {
+    let Some(monitor) = ctx.core().state.model.selected_monitor() else {
         return;
     };
     let (floating_wins, work_rect) = collect_distribute_targets(monitor);

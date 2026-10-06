@@ -15,7 +15,8 @@ struct BarSurfaceTarget {
 
 pub fn update_status(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig) {
     let Some(target) = core
-        .model()
+        .state
+        .model
         .selected_monitor()
         .map(|monitor| BarSurfaceTarget {
             monitor_id: monitor.id(),
@@ -66,7 +67,8 @@ fn draw_bar(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig, target: BarSu
 
 pub fn draw_bars(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig) {
     let targets: Vec<BarSurfaceTarget> = core
-        .model()
+        .state
+        .model
         .monitors_iter()
         .map(|(monitor_id, monitor)| BarSurfaceTarget {
             monitor_id,
@@ -101,11 +103,11 @@ fn sync_monitor_bar_window(
     tray_monitor_id: Option<MonitorId>,
     tray_width: u32,
 ) {
-    let bar_height = core.config().bar_metrics().height;
+    let bar_height = core.state.config.bar_metrics().height;
     let is_tray_monitor = tray_monitor_id == Some(monitor.id());
 
     let mut w = monitor.work_rect().w as u32;
-    if core.config().systray.show && is_tray_monitor {
+    if core.state.config.systray.show && is_tray_monitor {
         w = w.saturating_sub(tray_width);
     }
 
@@ -138,17 +140,17 @@ pub fn sync_top_bar_surfaces(
     systray: &mut Option<XEmbedTray>,
 ) {
     let tray_monitor_id =
-        crate::systray::monitor(core.model(), &core.config().systray).map(Monitor::id);
-    let tray_width = if core.config().systray.show {
+        crate::systray::monitor(&core.state.model, &core.state.config.systray).map(Monitor::id);
+    let tray_width = if core.state.config.systray.show {
         crate::backend::x11::systray::get_systray_width(
-            &core.config().systray,
-            core.config().bar_metrics().height,
+            &core.state.config.systray,
+            core.state.config.bar_metrics().height,
             systray.as_ref(),
         )
     } else {
         0
     };
-    for (_, monitor) in core.model().monitors_iter() {
+    for (_, monitor) in core.state.model.monitors_iter() {
         sync_monitor_bar_window(core, x11, x11_runtime, monitor, tray_monitor_id, tray_width);
     }
     if let Some(draw) = x11_runtime.draw.as_ref() {
@@ -246,7 +248,7 @@ fn create_missing_bar_windows(
 
     // Create bar windows for each monitor that needs one.
     // We collect window IDs first, then assign them to monitors to avoid
-    // borrow conflicts between the X11 connection ref and ctx.state().
+    // borrow conflicts between the X11 connection ref and ctx.core().state.
     let mut created: Vec<(MonitorId, u32)> = Vec::new();
 
     let conn = x11.conn;
@@ -387,7 +389,7 @@ pub fn reconcile_bar_windows(
         return;
     }
 
-    create_missing_bar_windows(core.state_mut(), x11, x11_runtime, systray.as_ref());
+    create_missing_bar_windows(&mut core.state, x11, x11_runtime, systray.as_ref());
 
     sync_top_bar_surfaces(core, x11, x11_runtime, systray);
 }

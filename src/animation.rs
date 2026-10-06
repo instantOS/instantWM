@@ -138,18 +138,21 @@ impl WindowAnimation {
 /// owns presentation only: it does not initiate layout or mutate window
 /// policy. Fullscreen windows skip the decorative transition.
 pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
-    let animated = ctx.config().animations.enabled;
+    let core_state = &ctx.core().state;
+    let animated = core_state.config.animations.enabled;
 
-    let Some((target, is_tiling, is_visible)) = ctx.model().client_view(window).and_then(|view| {
-        if view.client.mode().is_fullscreen() {
-            return None;
-        }
-        Some((
-            view.client.geo,
-            view.monitor.is_tiling_layout(),
-            view.client.is_visible(view.monitor.visible_tags()),
-        ))
-    }) else {
+    let Some((target, is_tiling, is_visible)) =
+        core_state.model.client_view(window).and_then(|view| {
+            if view.client.mode().is_fullscreen() {
+                return None;
+            }
+            Some((
+                view.client.geo,
+                view.monitor.is_tiling_layout(),
+                view.client.is_visible(view.monitor.visible_tags()),
+            ))
+        })
+    else {
         return;
     };
 
@@ -224,7 +227,12 @@ mod spawn_animation_tests {
 }
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let old_selected_tags = ctx.model().expect_selected_monitor().selected_tags();
+    let old_selected_tags = ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {
         return;
     };
@@ -232,7 +240,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
     crate::layouts::arrange(ctx, Some(selmon_id));
 
     let (selected_tags, client_windows) = {
-        let Some(monitor) = ctx.model().monitor(selmon_id) else {
+        let Some(monitor) = ctx.core().state.model.monitor(selmon_id) else {
             return;
         };
         let client_windows: Vec<WindowId> = monitor.clients().keys().copied().collect();
@@ -241,7 +249,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
     let mut animation_targets = Vec::new();
     for win in client_windows {
-        let Some(client) = ctx.model().client(win).cloned() else {
+        let Some(client) = ctx.core().state.model.client(win).cloned() else {
             continue;
         };
         if !client.is_visible(selected_tags)

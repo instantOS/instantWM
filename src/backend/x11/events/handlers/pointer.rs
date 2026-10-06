@@ -11,8 +11,8 @@ use x11rb::protocol::xproto::*;
 /// into a mouse drag.
 pub fn touch_begin(ctx: &mut WmCtxX11<'_>, e: &TouchBeginEvent) {
     let touched_window = WindowId::from(e.event);
-    if ctx.core.model().client(touched_window).is_some()
-        && ctx.core.model().selected_win() != Some(touched_window)
+    if ctx.core.state.model.client(touched_window).is_some()
+        && ctx.core.state.model.selected_win() != Some(touched_window)
     {
         crate::focus::focus(&mut ctx.wm_ctx(), Some(touched_window));
     }
@@ -43,7 +43,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let root = Point::new(e.root_x as i32, e.root_y as i32);
     let clean_state = ModMask::new(e.state.bits()).cleaned(numlockmask);
 
-    let is_managed = ctx.core.model().client(event_win).is_some();
+    let is_managed = ctx.core.state.model.client(event_win).is_some();
     let target_window = is_managed.then_some(event_win);
 
     let button = MouseButton::from_x11_detail(e.detail);
@@ -142,8 +142,20 @@ pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
 
 fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<WindowId>) {
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.behavior().current_mode.tree_placement().is_none()
-        && ctx.core.config().window.focus_follows_mouse.is_enabled()
+    if ctx
+        .core
+        .state
+        .behavior
+        .current_mode
+        .tree_placement()
+        .is_none()
+        && ctx
+            .core
+            .state
+            .config
+            .window
+            .focus_follows_mouse
+            .is_enabled()
         && crate::focus::select_monitor_at_pointer(&mut ctx.wm_ctx(), root)
     {
         return;
@@ -155,7 +167,7 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
 
     // Early-out: cursor is below the bar area.
     let (monitor_id, monitor_y, bar_height) = {
-        let mon = ctx.core.model().expect_selected_monitor();
+        let mon = ctx.core.state.model.expect_selected_monitor();
         (mon.monitor_id, mon.monitor_rect.y, mon.bar_height)
     };
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
@@ -163,11 +175,11 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
     if root.y >= monitor_y + bar_height {
         // Overview owns pointer semantics wholesale; a border-zone offer
         // armed before entering it must not keep borrowing the pointer.
-        if ctx.core.model().is_overview_active() {
+        if ctx.core.state.model.is_overview_active() {
             crate::mouse::clear_hover_offer(&mut ctx.wm_ctx());
         } else {
             let sidebar_target = (!hovered.is_some())
-                .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root))
+                .then(|| crate::mouse::pointer::sidebar_target_at(&ctx.core.state.model, root))
                 .flatten();
             if crate::mouse::set_sidebar_offer(&mut ctx.wm_ctx(), sidebar_target)
                 .affects_pointer_handling()

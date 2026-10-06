@@ -30,7 +30,7 @@ use std::process::Command;
 /// [`WmCtx::apply_keyboard_layout`], which performs the backend-specific
 /// keymap install.
 fn switch_to_configured_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
-    let state = &ctx.interaction().keyboard_layout;
+    let state = &ctx.core().state.interaction.keyboard_layout;
     let layout = state
         .layout(index)
         .ok_or_else(|| format!("layout index {index} out of range"))?
@@ -53,13 +53,13 @@ fn switch_to_configured_layout(ctx: &mut WmCtx, index: usize) -> Result<(), Stri
 
     ctx.apply_keyboard_layout(&layout.name, &variant, options.as_deref(), model.as_deref())?;
 
-    ctx.interaction_mut().keyboard_layout.current = index;
+    ctx.core_mut().state.interaction.keyboard_layout.current = index;
     Ok(())
 }
 
 /// Switch to a specific keyboard layout by index (0-based).
 pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) -> bool {
-    if ctx.interaction().keyboard_layout.is_empty() {
+    if ctx.core().state.interaction.keyboard_layout.is_empty() {
         return false;
     }
     match switch_to_configured_layout(ctx, index) {
@@ -76,14 +76,19 @@ pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) -> bool {
 /// If the name matches one of the configured layouts, switch to it.
 /// Returns `true` if the layout was found and applied.
 pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
-    let index = ctx.interaction().keyboard_layout.find_layout_index(name);
+    let index = ctx
+        .core()
+        .state
+        .interaction
+        .keyboard_layout
+        .find_layout_index(name);
     index.is_some_and(|idx| set_keyboard_layout(ctx, idx))
 }
 
 /// Cycle to the next or previous keyboard layout.
 /// Returns the status string of the new layout, or an empty string if no layouts are configured.
 pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> String {
-    let state = &ctx.interaction().keyboard_layout;
+    let state = &ctx.core().state.interaction.keyboard_layout;
     if state.is_empty() {
         return String::new();
     }
@@ -97,7 +102,7 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
         current - 1
     };
     set_keyboard_layout(ctx, next);
-    ctx.interaction().keyboard_layout.status()
+    ctx.core().state.interaction.keyboard_layout.status()
 }
 
 /// Replace the configured keyboard layouts at runtime.
@@ -107,26 +112,27 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
 /// Takes `ctx` because re-applying the layout is a backend operation; it is not
 /// core-state-only and must not be narrowed to `&mut CoreState`.
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
-    ctx.state_mut()
+    ctx.core_mut()
+        .state
         .interaction
         .keyboard_layout
         .reset_layouts(layouts);
-    if !ctx.interaction().keyboard_layout.is_empty() {
+    if !ctx.core().state.interaction.keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
     }
 }
 
 pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
-    let current = ctx.interaction().keyboard_layout.current;
-    ctx.interaction_mut().keyboard_layout.swap_escape = enabled;
-    if !ctx.interaction().keyboard_layout.is_empty() {
+    let current = ctx.core().state.interaction.keyboard_layout.current;
+    ctx.core_mut().state.interaction.keyboard_layout.swap_escape = enabled;
+    if !ctx.core().state.interaction.keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, current);
     }
 }
 
 /// Apply the initially configured keyboard layout (called during startup).
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
-    if !ctx.interaction().keyboard_layout.is_empty() {
+    if !ctx.core().state.interaction.keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
     }
 }
@@ -169,7 +175,8 @@ pub fn get_all_keyboard_layouts() -> Vec<String> {
 /// the dependency.
 pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<(), String> {
     let new_index = ctx
-        .state_mut()
+        .core_mut()
+        .state
         .interaction
         .keyboard_layout
         .add_layout(layout)?;
@@ -187,7 +194,7 @@ pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<()
 ///
 /// Returns an error if the layout doesn't exist or if it's the last layout.
 pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), String> {
-    let state = &ctx.interaction().keyboard_layout;
+    let state = &ctx.core().state.interaction.keyboard_layout;
 
     // Parse the layout argument
     let index = if let Some(stripped) = layout.strip_prefix('#') {
@@ -211,12 +218,13 @@ pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), Strin
 
     let index = index.ok_or_else(|| format!("layout '{}' not found", layout))?;
 
-    ctx.state_mut()
+    ctx.core_mut()
+        .state
         .interaction
         .keyboard_layout
         .remove_layout(index)?;
 
-    let current = ctx.interaction().keyboard_layout.current;
+    let current = ctx.core().state.interaction.keyboard_layout.current;
     set_keyboard_layout(ctx, current);
     Ok(())
 }

@@ -10,13 +10,13 @@ use super::manager::{finish_layout_change, selected_tiling};
 /// Enter keyboard placement for the selected tiled window. Returns whether
 /// placement mode is active afterwards.
 pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
-    match ctx.current_mode() {
+    match &ctx.core().state.behavior.current_mode {
         ActiveWmMode::TreePlacement(_) => return true,
         ActiveWmMode::Overview => ctx.reset_mode(),
         ActiveWmMode::Default | ActiveWmMode::Named(_) => {}
     }
     let state = {
-        let model = ctx.model();
+        let model = &ctx.core().state.model;
         let monitor = model.expect_selected_monitor();
         let Some(source) = monitor.selected else {
             return false;
@@ -31,7 +31,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         let Some(tree) = monitor.per_tag().map(|state| &state.layout_tree) else {
             return false;
         };
-        let work_rect = selected_tiling(ctx).work_rect();
+        let work_rect = selected_tiling(&ctx.core().state).work_rect();
         let source_center = tree
             .bounds(work_rect)
             .get(&source)
@@ -40,7 +40,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
             source,
             monitor.id(),
             monitor.selected_tags(),
-            placement_targets(ctx, source),
+            placement_targets(&ctx.core().state, source),
             source_center,
         ) else {
             return false;
@@ -50,7 +50,8 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
     if !ctx.begin_modal_keyboard() {
         return false;
     }
-    let Some(preview) = preview_rect(ctx, state.source, state.selected_target()) else {
+    let Some(preview) = preview_rect(&ctx.core().state, state.source, state.selected_target())
+    else {
         ctx.end_modal_keyboard();
         return false;
     };
@@ -62,16 +63,20 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
     true
 }
 
-fn placement_targets(ctx: &WmCtx<'_>, source: WindowId) -> Vec<PlacementTarget> {
-    let tiling = selected_tiling(ctx);
-    ctx.model()
+fn placement_targets(
+    state: &crate::core_state::CoreState,
+    source: WindowId,
+) -> Vec<PlacementTarget> {
+    let tiling = selected_tiling(state);
+    state
+        .model
         .expect_selected_monitor()
         .per_tag()
-        .map(|state| {
-            state.layout_tree.placement_targets(
+        .map(|tag| {
+            tag.layout_tree.placement_targets(
                 source,
                 tiling.work_rect(),
-                ctx.config().layout.pointer_edge_fraction,
+                state.config.layout.pointer_edge_fraction,
                 &tiling.minimums,
             )
         })
@@ -79,9 +84,13 @@ fn placement_targets(ctx: &WmCtx<'_>, source: WindowId) -> Vec<PlacementTarget> 
 }
 
 /// Outer rectangle `source` would occupy after applying `target`.
-fn preview_rect(ctx: &WmCtx<'_>, source: WindowId, target: PlacementTarget) -> Option<Rect> {
-    let model = ctx.model();
-    let tiling = selected_tiling(ctx);
+fn preview_rect(
+    state: &crate::core_state::CoreState,
+    source: WindowId,
+    target: PlacementTarget,
+) -> Option<Rect> {
+    let model = &state.model;
+    let tiling = selected_tiling(state);
     let plan = model
         .expect_selected_monitor()
         .per_tag()?
@@ -90,15 +99,18 @@ fn preview_rect(ctx: &WmCtx<'_>, source: WindowId, target: PlacementTarget) -> O
     Some(tiling.outer_rect(
         model.client(source)?,
         plan.source_slot(),
-        ctx.config().window.resize_hints,
+        state.config.window.resize_hints,
     ))
 }
 
 fn refresh_preview(ctx: &mut WmCtx<'_>) {
     let preview = ctx
-        .current_mode()
+        .core()
+        .state
+        .behavior
+        .current_mode
         .tree_placement()
-        .and_then(|state| preview_rect(ctx, state.source, state.selected_target()));
+        .and_then(|state| preview_rect(&ctx.core().state, state.source, state.selected_target()));
     ctx.update_layout_preview(preview);
 }
 
@@ -106,13 +118,20 @@ fn refresh_preview(ctx: &mut WmCtx<'_>) {
 /// monitor/tag/tree context is no longer current.
 fn current_placement<'a>(ctx: &'a mut WmCtx<'_>) -> Option<&'a mut KeyboardTreePlacement> {
     if !ctx
-        .current_mode()
-        .tree_placement_is_current_for(ctx.model())
+        .core()
+        .state
+        .behavior
+        .current_mode
+        .tree_placement_is_current_for(&ctx.core().state.model)
     {
         ctx.reset_mode();
         return None;
     }
-    ctx.behavior_mut().current_mode.tree_placement_mut()
+    ctx.core_mut()
+        .state
+        .behavior
+        .current_mode
+        .tree_placement_mut()
 }
 
 pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
@@ -147,7 +166,7 @@ pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
 
 /// Resize the originally armed window while keeping keyboard placement active.
 pub fn resize_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
-    let config = (&ctx.config().layout).into();
+    let config = (&ctx.core().state.config.layout).into();
     edit_around_source(ctx, |tree, source| tree.resize(source, side, config))
 }
 
@@ -160,7 +179,9 @@ fn edit_around_source(
     };
     let (source, cursor) = (state.source, state.selected_target().position);
     let tree = &mut ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree;
@@ -173,15 +194,20 @@ fn edit_around_source(
 
 fn rebuild_targets(ctx: &mut WmCtx<'_>, preferred: Point) {
     let Some(source) = ctx
-        .current_mode()
+        .core()
+        .state
+        .behavior
+        .current_mode
         .tree_placement()
         .map(|state| state.source)
     else {
         return;
     };
-    let targets = placement_targets(ctx, source);
+    let targets = placement_targets(&ctx.core().state, source);
     let rebuilt = ctx
-        .behavior_mut()
+        .core_mut()
+        .state
+        .behavior
         .current_mode
         .tree_placement_mut()
         .is_some_and(|state| state.replace_targets_near(targets, preferred));
@@ -200,10 +226,15 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
     let ActiveWmMode::TreePlacement(state) = previous else {
         return false;
     };
-    if !state.is_current_for(ctx.model()) {
+    if !state.is_current_for(&ctx.core().state.model) {
         return true;
     }
-    let changed = apply && apply_target(ctx, state.source, state.selected_target());
+    let changed = apply
+        && apply_target(
+            &mut ctx.core_mut().state,
+            state.source,
+            state.selected_target(),
+        );
     crate::focus::focus(ctx, Some(state.source));
     if changed {
         finish_layout_change(ctx);
@@ -211,10 +242,14 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
     true
 }
 
-fn apply_target(ctx: &mut WmCtx<'_>, source: WindowId, target: PlacementTarget) -> bool {
-    let tiling = selected_tiling(ctx);
-    let tree = &mut ctx
-        .model_mut()
+fn apply_target(
+    state: &mut crate::core_state::CoreState,
+    source: WindowId,
+    target: PlacementTarget,
+) -> bool {
+    let tiling = selected_tiling(state);
+    let tree = &mut state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree;
@@ -329,7 +364,7 @@ mod tests {
             ],
         );
 
-        let targets = placement_targets(&wm.test_ctx(), WindowId(1));
+        let targets = placement_targets(&wm.core.state, WindowId(1));
 
         assert!(
             targets
@@ -343,8 +378,8 @@ mod tests {
     fn placement_preview_does_not_expand_beyond_an_overcommitted_slot() {
         let mut client = client_with_minimum(1, 140, 60);
         client.border_width = 0;
-        let mut wm = tiled_wm(Rect::new(0, 0, 100, 100), vec![client]);
-        let tiling = selected_tiling(&wm.test_ctx());
+        let wm = tiled_wm(Rect::new(0, 0, 100, 100), vec![client]);
+        let tiling = selected_tiling(&wm.core.state);
         let slot = Rect::new(10, 20, 10, 8);
 
         assert_eq!(

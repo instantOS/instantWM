@@ -66,7 +66,7 @@ fn plan_send_to_monitor(
 
 /// Send the selected client to the monitor in the given direction.
 pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    let Some(plan) = plan_send_to_monitor(ctx.model(), direction) else {
+    let Some(plan) = plan_send_to_monitor(&ctx.core().state.model, direction) else {
         return;
     };
 
@@ -90,8 +90,9 @@ fn transfer_floating_to_monitor(
     win: WindowId,
     target_id: crate::types::MonitorId,
 ) {
+    let core_state = &ctx.core().state;
     // Snapshot source geometry before transfer_client() transfers ownership.
-    let Some(view) = ctx.model().client_view(win) else {
+    let Some(view) = core_state.model.client_view(win) else {
         return;
     };
     let client_x = view.client.geo.x;
@@ -115,7 +116,7 @@ fn transfer_floating_to_monitor(
     };
 
     // Target monitor geometry.
-    let Some(target_monitor) = ctx.model().monitor(target_id) else {
+    let Some(target_monitor) = core_state.model.monitor(target_id) else {
         return;
     };
     let tgt_monitor_x = target_monitor.monitor_rect.x;
@@ -131,12 +132,12 @@ fn transfer_floating_to_monitor(
     }
 
     // Apply proportional position on the new monitor.
-    if let Some(rect) = ctx.model().client(win).map(|client| Rect {
+    if let Some(rect) = ctx.core().state.model.client(win).map(|client| Rect {
         x: tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32,
         y: tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32,
         ..client.geo
     }) {
-        ctx.model_mut().sync_client_geometry(win, rect);
+        ctx.core_mut().state.model.sync_client_geometry(win, rect);
     }
 
     // Raise so the window is immediately visible on the new monitor. The layout

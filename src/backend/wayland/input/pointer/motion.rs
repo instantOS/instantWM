@@ -1060,7 +1060,12 @@ fn handle_resize_drag_motion(
             )
             .captured()
         } else {
-            ctx.interaction().drag.active_interaction().is_some()
+            ctx.core()
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .is_some()
         }
     };
     if !handled {
@@ -1159,7 +1164,7 @@ fn update_pointer_focus(
         let WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        if ctx.wayland.state.wm.core.model().selected_win() != Some(lock_win) {
+        if ctx.wayland.state.wm.core.state.model.selected_win() != Some(lock_win) {
             crate::focus::focus(&mut ctx.wm_ctx(), Some(lock_win));
         }
     } else if !suppress_hover_focus {

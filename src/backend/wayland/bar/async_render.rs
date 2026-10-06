@@ -220,9 +220,9 @@ mod tests {
     /// Returns two distinct scenes.
     fn two_scenes() -> (Vec<MonitorBarSnapshot>, Vec<MonitorBarSnapshot>) {
         let mut wm = test_wm();
-        let first = snapshots(wm.core_ctx());
+        let first = snapshots(&wm.core);
         wm.core.bar.set_status_text("changed");
-        let second = snapshots(wm.core_ctx());
+        let second = snapshots(&wm.core);
         assert!(first != second);
         (first, second)
     }

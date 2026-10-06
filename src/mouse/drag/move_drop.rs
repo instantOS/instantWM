@@ -119,7 +119,7 @@ fn bar_monitor_at(model: &crate::model::WmModel, root: Point) -> Option<&crate::
 /// Set the drag hover and gesture highlight when the cursor enters the bar,
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
-    let bar_hit = bar_monitor_at(ctx.model(), root).map(|monitor| {
+    let bar_hit = bar_monitor_at(&ctx.core().state.model, root).map(|monitor| {
         let core = ctx.core();
         let gesture =
             crate::bar::model::bar_position_at_x(monitor, core, monitor.local_work_point(root).x)
@@ -172,7 +172,7 @@ pub fn handle_bar_drop(
     let Some(root) = pointer_override.or_else(|| ctx.pointer_location()) else {
         return;
     };
-    let Some(mon) = bar_monitor_at(ctx.model(), root) else {
+    let Some(mon) = bar_monitor_at(&ctx.core().state.model, root) else {
         return;
     };
     let monitor_id = mon.id();
@@ -183,7 +183,7 @@ pub fn handle_bar_drop(
     } else {
         TransferFocus::FollowWindow
     };
-    if ctx.model().monitor_of_client(win) != Some(monitor_id)
+    if ctx.core().state.model.monitor_of_client(win) != Some(monitor_id)
         && transfer_client(ctx, win, monitor_id, focus).is_none()
     {
         return;
@@ -191,7 +191,7 @@ pub fn handle_bar_drop(
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct the saved floating placement afterwards.
-    let was_floating = match ctx.model().client(win) {
+    let was_floating = match ctx.core().state.model.client(win) {
         Some(c) => c.placement() == ClientPlacement::Floating,
         None => return,
     };
@@ -210,7 +210,8 @@ pub fn handle_bar_drop(
 
         // Don't tile fullscreen windows
         if !ctx
-            .state()
+            .core()
+            .state
             .model
             .client(win)
             .is_some_and(|c| c.mode().is_true_fullscreen())
@@ -239,7 +240,7 @@ pub fn handle_bar_drop(
     //
     // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
-    if was_floating && let Some(client) = ctx.model_mut().client_mut(win) {
+    if was_floating && let Some(client) = ctx.core_mut().state.model.client_mut(win) {
         client.update_saved_floating_size(grab_start_rect.size());
     }
 }
@@ -253,7 +254,7 @@ pub fn complete_move_drop(
     free_geometry: Rect,
     modifiers: ModMask,
 ) {
-    let target = resolve_move_drop(ctx.model(), win, root);
+    let target = resolve_move_drop(&ctx.core().state.model, win, root);
     if matches!(target, Some(MoveDropTarget::Tree(_))) {
         let _ = crate::layouts::place_tree_at_point(ctx, win, root);
     } else if matches!(target, Some(MoveDropTarget::Bar(_))) {
@@ -262,12 +263,18 @@ pub fn complete_move_drop(
         let monitor_id = target.monitor();
         // A tiled source stayed in its slot during preview. Apply its free
         // destination geometry only on commit, keeping cancellation lossless.
-        if ctx.model().monitor_of_client(win) != Some(monitor_id) {
+        if ctx.core().state.model.monitor_of_client(win) != Some(monitor_id) {
             let _ = transfer_client(ctx, win, monitor_id, TransferFocus::FollowWindow);
         }
-        if let Some(client) = ctx.model().client(win)
+        if let Some(client) = ctx.core().state.model.client(win)
             && client.mode().is_normal_tiling()
-            && ctx.model().monitor(monitor_id).unwrap().current_layout()
+            && ctx
+                .core()
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .current_layout()
                 == PresentationMode::Floating
         {
             ctx.set_border(win, client.old_border_width);
@@ -278,8 +285,14 @@ pub fn complete_move_drop(
             crate::geometry::MoveResizeOptions::hinted_immediate(false),
         );
         if let MoveDropTarget::Snap(_, edge) = target {
-            let work = ctx.model().monitor(monitor_id).unwrap().work_rect();
-            if let Some(client) = ctx.model_mut().client_mut(win) {
+            let work = ctx
+                .core()
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .work_rect();
+            if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
                 client.save_floating_placement(free_geometry, work);
                 client.snap_status = edge;
                 if let Some(rect) = edge.target_rect(client.border_width, work) {
@@ -309,7 +322,7 @@ pub fn promote_to_floating(
     // freely in that presentation.
     crate::client::fullscreen::leave_maximized(ctx, win);
 
-    let (is_floating, geo, monitor_id) = ctx.model().client_view(win).map(|view| {
+    let (is_floating, geo, monitor_id) = ctx.core().state.model.client_view(win).map(|view| {
         (
             view.client.mode().is_normal_floating(),
             view.client.geo,
@@ -324,7 +337,7 @@ pub fn promote_to_floating(
     // Floating layout presentation lets tiled windows move freely without
     // changing their persistent placement mode, so returning to tiling can
     // restore the manual tree.
-    if let Some(view) = ctx.model().client_view(win)
+    if let Some(view) = ctx.core().state.model.client_view(win)
         && view.monitor.current_layout() == PresentationMode::Floating
         && view.client.mode().is_normal_tiling()
     {
@@ -494,7 +507,7 @@ mod destination_tests {
             .map(|x| Point::new(x, 10))
             .find(|point| {
                 let ctx = wm.test_ctx();
-                let mon = ctx.model().monitor(b).unwrap();
+                let mon = ctx.core().state.model.monitor(b).unwrap();
                 crate::bar::model::bar_position_at_x(
                     mon,
                     ctx.core(),
@@ -537,7 +550,7 @@ mod destination_tests {
             .map(|x| Point::new(x, 10))
             .find(|point| {
                 let ctx = wm.test_ctx();
-                let mon = ctx.model().monitor(b).unwrap();
+                let mon = ctx.core().state.model.monitor(b).unwrap();
                 crate::bar::model::bar_position_at_x(
                     mon,
                     ctx.core(),

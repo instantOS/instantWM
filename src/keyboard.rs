@@ -17,7 +17,10 @@ use crate::types::*;
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = mod_mask.cleaned(numlockmask);
-    let placement_active = matches!(ctx.current_mode(), ActiveWmMode::TreePlacement(_));
+    let placement_active = matches!(
+        &ctx.core().state.behavior.current_mode,
+        ActiveWmMode::TreePlacement(_)
+    );
     // Super may still be held after the chord that entered placement. Treat it
     // as an entry modifier, not part of commands within the mode.
     let binding_mask = if placement_active {
@@ -28,8 +31,10 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool
     let binding_keysym = keysym.for_binding();
 
     // Super + Escape always resets to default mode
-    if !matches!(ctx.current_mode(), ActiveWmMode::Default)
-        && keysym == crate::config::keysyms::XK_ESCAPE
+    if !matches!(
+        &ctx.core().state.behavior.current_mode,
+        ActiveWmMode::Default
+    ) && keysym == crate::config::keysyms::XK_ESCAPE
         && cleaned == MODKEY.cleaned(numlockmask)
     {
         ctx.reset_mode();
@@ -37,9 +42,9 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool
     }
 
     let resolved = resolve_key_action(
-        &ctx.config().bindings,
-        ctx.model().selected_win(),
-        ctx.current_mode(),
+        &ctx.core().state.config.bindings,
+        ctx.core().state.model.selected_win(),
+        &ctx.core().state.behavior.current_mode,
         binding_keysym,
         binding_mask,
         numlockmask,
@@ -151,14 +156,20 @@ fn resolve_key_action<'a>(
 /// Alt-tab style navigation: overview focus, snapping for floating layouts,
 /// otherwise the focus stack.
 pub fn alt_tab_key(ctx: &mut WmCtx, direction: VerticalDirection) {
-    if ctx.model().is_overview_active() {
+    if ctx.core().state.model.is_overview_active() {
         crate::overview::focus_direction(ctx, direction.into());
         return;
     }
 
-    if ctx.model().expect_selected_monitor().is_tiling_layout() {
+    if ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .is_tiling_layout()
+    {
         focus_stack(ctx, direction.into());
-    } else if let Some(win) = ctx.model().selected_win() {
+    } else if let Some(win) = ctx.core().state.model.selected_win() {
         change_snap(ctx, win, direction.into());
     }
 }

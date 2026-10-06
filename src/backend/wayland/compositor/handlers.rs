@@ -820,7 +820,7 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
     ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
     {
         self.native
-            .foreign_toplevel_snapshot(self.protocol_core(), window)
+            .foreign_toplevel_snapshot(&self.wm.core.state, window)
     }
 
     fn foreign_toplevel_request(

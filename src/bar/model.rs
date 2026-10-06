@@ -138,13 +138,13 @@ pub(crate) fn bar_position_at_x(monitor: &Monitor, core: &WmCore, local_x: i32) 
     let Some(hit) = core.bar.monitor_hit_cache(monitor.id()) else {
         return BarPosition::Root;
     };
-    let is_selmon = core.model().expect_selected_monitor().num == monitor.num;
-    let is_tray_monitor = crate::systray::monitor(core.model(), &core.config().systray)
+    let is_selmon = core.state.model.expect_selected_monitor().num == monitor.num;
+    let is_tray_monitor = crate::systray::monitor(&core.state.model, &core.state.config.systray)
         .is_some_and(|host| host.id() == monitor.id());
     hit_test(
         hit,
         monitor,
-        core.config().systray.show,
+        core.state.config.systray.show,
         is_selmon,
         is_tray_monitor,
         local_x,

@@ -11,8 +11,8 @@ use crate::contexts::WmCtx;
 use crate::ipc_types::Response;
 
 /// Return the name of the active theme.
-pub fn get_theme(ctx: &WmCtx<'_>) -> Response {
-    Response::Theme(ctx.config().theme.name())
+pub fn get_theme(config: &crate::core_state::EffectiveConfig) -> Response {
+    Response::Theme(config.theme.name())
 }
 
 /// List every built-in theme name.
@@ -30,9 +30,9 @@ pub fn set_theme(ctx: &mut WmCtx<'_>, theme: ColorTheme) -> Response {
     // Recompute every colour table from the theme palette and install it as
     // one unit. Per-monitor tag sets mirror the shared tag table.
     let colors = crate::config::appearance::ColorConfig::from(theme);
-    ctx.model_mut().tags.colors = colors.tag.clone();
-    ctx.config_mut().colors = colors;
-    ctx.config_mut().theme = theme;
+    ctx.core_mut().state.model.tags.colors = colors.tag.clone();
+    ctx.core_mut().state.config.colors = colors;
+    ctx.core_mut().state.config.theme = theme;
     crate::actions::apply_config_effect(ctx, ConfigEffect::Recolor);
     Response::ok()
 }
@@ -76,7 +76,7 @@ mod tests {
     fn get_theme_returns_the_active_name() {
         let mut wm = test_wm();
         wm.with_ctx(|wm| set_theme(wm, ColorTheme::Gruvbox));
-        match get_theme(&wm.test_ctx()) {
+        match get_theme(&wm.core.state.config) {
             Response::Theme(name) => assert_eq!(name, "gruvbox"),
             other => panic!("expected Theme, got {other:?}"),
         }

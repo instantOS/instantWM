@@ -4,16 +4,17 @@ use crate::keyboard_layout;
 use crate::types::StackDirection;
 
 pub fn handle_keyboard_command(ctx: &mut WmCtx<'_>, cmd: KeyboardCommand) -> Response {
+    let core_state = &ctx.core().state;
     match cmd {
         KeyboardCommand::Status => {
-            let status = ctx.interaction().keyboard_layout.status();
+            let status = core_state.interaction.keyboard_layout.status();
             Response::Message(status)
         }
         KeyboardCommand::List { all: true } => {
             Response::Message(keyboard_layout::get_all_keyboard_layouts().join("\n"))
         }
         KeyboardCommand::List { all: false } => {
-            let state = &ctx.interaction().keyboard_layout;
+            let state = &core_state.interaction.keyboard_layout;
             let layouts: Vec<KeyboardLayoutInfo> = state
                 .layouts
                 .iter()

@@ -223,7 +223,7 @@ fn handle_update_properties(
     win: crate::types::WindowId,
     properties: &crate::client::WindowProperties,
 ) {
-    let previous_focus = ctx.model().selected_win();
+    let previous_focus = ctx.core().state.model.selected_win();
     if crate::client::update_window_properties(ctx.core_mut(), win, properties) {
         crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
@@ -234,13 +234,14 @@ fn handle_update_transient_for(
     win: crate::types::WindowId,
     parent: Option<crate::types::WindowId>,
 ) {
-    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
+    let core_state = &ctx.core().state;
+    let Some(monitor_id) = core_state.model.monitor_of_client(win) else {
         return;
     };
-    let needs_float = ctx.model().client(win).is_some_and(|client| {
+    let needs_float = core_state.model.client(win).is_some_and(|client| {
         parent.is_some() && client.placement() != crate::types::ClientPlacement::Floating
     });
-    if let Some(client) = ctx.model_mut().client_mut(win) {
+    if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
         client.transient_for = parent;
     }
     if needs_float {
@@ -306,7 +307,7 @@ fn handle_committed_size_observation(
     ) {
         return;
     }
-    apply_committed_window_size(state.wm.core.model_mut(), win, w, h);
+    apply_committed_window_size(&mut state.wm.core.state.model, win, w, h);
 }
 
 fn apply_committed_window_size(
@@ -366,7 +367,9 @@ fn handle_set_minimized(ctx: &mut WmCtx, win: crate::types::WindowId, minimized:
 
 fn handle_select_tag(ctx: &mut WmCtx, monitor_name: &str, tag_index: usize) {
     let monitor_id = ctx
-        .model()
+        .core()
+        .state
+        .model
         .monitors
         .iter()
         .find(|(_, monitor)| monitor.name == monitor_name)
@@ -403,8 +406,8 @@ fn handle_map_window(
         parent,
     } = params;
 
-    let ctx = wl_state.wm.core_ctx();
-    let state = ctx.state_mut();
+    let core = &mut wl_state.wm.core;
+    let state = &mut core.state;
 
     if state.model.client(win).is_some() {
         return;
@@ -689,13 +692,15 @@ fn cancel_interactive_drag(state: &mut WaylandState, reason: crate::core_state::
 
 fn handle_activate_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
     let is_currently_visible = ctx
-        .model()
+        .core()
+        .state
+        .model
         .client_view(win)
         .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()));
 
     if is_currently_visible {
         crate::focus::activate_client(ctx, win);
-    } else if let Some(client) = ctx.model_mut().client_mut(win) {
+    } else if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
         client.is_urgent = true;
     }
 }
@@ -733,7 +738,11 @@ fn handle_update_xwayland_policy(
     win: crate::types::WindowId,
     update: crate::backend::x11::policy::XWaylandPolicyUpdate,
 ) {
-    let outcome = crate::backend::x11::policy::apply_xwayland_policy(ctx.model_mut(), win, update);
+    let outcome = crate::backend::x11::policy::apply_xwayland_policy(
+        &mut ctx.core_mut().state.model,
+        win,
+        update,
+    );
     if let Some(outcome) = outcome {
         if let Some(rect) = outcome.presentation_rect() {
             ctx.move_resize(win, rect, crate::geometry::MoveResizeOptions::immediate());
@@ -1032,7 +1041,7 @@ mod tests {
             .unwrap();
         add_client(&mut state.wm.core.state.model, monitor_id, client);
 
-        apply_committed_window_size(state.wm.core.model_mut(), win, 1920, 1080);
+        apply_committed_window_size(&mut state.wm.core.state.model, win, 1920, 1080);
 
         assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, geo);
     }

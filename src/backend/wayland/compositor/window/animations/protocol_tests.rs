@@ -827,7 +827,7 @@ fn blocked_native_commits_dispatch_after_runtime_borrows_end() {
     add_post_commit_hook::<WaylandState, _>(&surface, move |state, _, _| {
         // This represents native callbacks that synchronously read shared
         // policy, such as placing a newly committed native systray menu.
-        let _core = state.protocol_core();
+        let _core = &state.wm.core.state;
         applied_in_hook.fetch_add(1, Ordering::SeqCst);
     });
     let barrier = Barrier::new(false);

@@ -1,7 +1,6 @@
 //! Window-layout queries: list the cycle entries and report the selected
 //! monitor's full layout state.
 
-use crate::contexts::WmCtx;
 use crate::ipc_types::{LayoutInfo, LayoutStatusInfo, Response};
 use crate::layouts::{LayoutCommand, PresentationMode};
 
@@ -14,12 +13,8 @@ fn layout_info(command: LayoutCommand, is_active: bool) -> LayoutInfo {
     }
 }
 
-pub fn list_layouts(ctx: &WmCtx<'_>) -> Response {
-    let active = ctx
-        .state()
-        .model
-        .expect_selected_monitor()
-        .current_layout_command();
+pub fn list_layouts(model: &crate::model::WmModel) -> Response {
+    let active = model.expect_selected_monitor().current_layout_command();
     Response::LayoutList(
         LayoutCommand::all()
             .iter()
@@ -28,8 +23,8 @@ pub fn list_layouts(ctx: &WmCtx<'_>) -> Response {
     )
 }
 
-pub fn layout_status(ctx: &WmCtx<'_>) -> Response {
-    let monitor = ctx.model().expect_selected_monitor();
+pub fn layout_status(model: &crate::model::WmModel) -> Response {
+    let monitor = model.expect_selected_monitor();
     let presentation = match monitor.current_layout() {
         PresentationMode::Tiled => "tiled",
         PresentationMode::Floating => "floating",
@@ -83,9 +78,9 @@ mod tests {
 
     #[test]
     fn listing_marks_exactly_one_active_entry() {
-        let mut wm = wm_with_monitor();
+        let wm = wm_with_monitor();
 
-        let names: Vec<String> = match list_layouts(&wm.test_ctx()) {
+        let names: Vec<String> = match list_layouts(&wm.core.state.model) {
             Response::LayoutList(layouts) => layouts.iter().map(|l| l.name.clone()).collect(),
             other => panic!("expected a layout list, got {other:?}"),
         };
@@ -93,7 +88,7 @@ mod tests {
             names,
             ["tile", "grid", "floating", "maximized", "bottom-stack"]
         );
-        assert_eq!(active_names(list_layouts(&wm.test_ctx())), ["tile"]);
+        assert_eq!(active_names(list_layouts(&wm.core.state.model)), ["tile"]);
     }
 
     #[test]
@@ -101,7 +96,7 @@ mod tests {
         let mut wm = wm_with_monitor();
         crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
 
-        let Response::LayoutStatus(status) = layout_status(&wm.test_ctx()) else {
+        let Response::LayoutStatus(status) = layout_status(&wm.core.state.model) else {
             panic!("expected a layout status");
         };
         assert_eq!(status.layout.name, "grid");
@@ -117,8 +112,11 @@ mod tests {
         crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Maximized);
 
         // The lens is the active entry; the grid slot stays underneath.
-        assert_eq!(active_names(list_layouts(&wm.test_ctx())), ["maximized"]);
-        let Response::LayoutStatus(status) = layout_status(&wm.test_ctx()) else {
+        assert_eq!(
+            active_names(list_layouts(&wm.core.state.model)),
+            ["maximized"]
+        );
+        let Response::LayoutStatus(status) = layout_status(&wm.core.state.model) else {
             panic!("expected a layout status");
         };
         assert_eq!(status.layout.name, "maximized");

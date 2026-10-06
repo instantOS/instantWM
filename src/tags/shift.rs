@@ -9,7 +9,7 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::{HorizontalDirection, Rect, TagMask, WindowId};
 
 pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> bool {
-    let Some(win) = ctx.model().selected_win() else {
+    let Some(win) = ctx.core().state.model.selected_win() else {
         return false;
     };
     let Some(target_tags) = shift_tag(ctx, dir) else {
@@ -20,8 +20,13 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     // `shift_tag` and `view_tags` deliberately use generic focus fallback,
     // but this combined command promises to keep interacting with the window
     // it moved, provided it is actually shown there.
-    let monitor_id = ctx.model().selected_monitor_id();
-    if !ctx.model().client_is_visible_on_selected_monitor(win) {
+    let monitor_id = ctx.core().state.model.selected_monitor_id();
+    if !ctx
+        .core()
+        .state
+        .model
+        .client_is_visible_on_selected_monitor(win)
+    {
         return false;
     }
 
@@ -29,7 +34,14 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     // Cursor placement must use destination geometry, not the stale rectangle
     // from the tag we just left.
     crate::layouts::arrange(ctx, Some(monitor_id));
-    if ctx.config().window.focus_follows_mouse.is_enabled() {
+    if ctx
+        .core()
+        .state
+        .config
+        .window
+        .focus_follows_mouse
+        .is_enabled()
+    {
         ctx.warp_cursor_to_client_center(win);
     }
     true
@@ -38,8 +50,9 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
 /// Move the selected client from the single viewed tag to its neighbour.
 /// Returns the destination tag when the client moved.
 pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
+    let core_state = &ctx.core().state;
     let (win, current_tag, target_tags) = {
-        let model = ctx.model();
+        let model = &core_state.model;
         let mon = model.expect_selected_monitor();
         let current_tags = mon.selected_tags() & model.tags.mask();
         let target_tags =
@@ -47,8 +60,8 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
         (mon.selected?, current_tags.first_tag(), target_tags)
     };
 
-    if ctx.model().client(win)?.is_scratchpad() {
-        let monitor_id = ctx.model().selected_monitor_id();
+    if core_state.model.client(win)?.is_scratchpad() {
+        let monitor_id = core_state.model.selected_monitor_id();
         return crate::floating::scratchpad::scratchpad_restore_window(
             ctx,
             win,
@@ -58,20 +71,26 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
         .then_some(target_tags);
     }
 
-    ctx.model_mut().client_mut(win)?.reset_sticky(current_tag);
+    ctx.core_mut()
+        .state
+        .model
+        .client_mut(win)?
+        .reset_sticky(current_tag);
 
-    if ctx.config().animations.enabled {
+    if ctx.core().state.config.animations.enabled {
         play_slide_animation(ctx, win, dir);
     }
 
-    ctx.model_mut()
+    ctx.core_mut()
+        .state
+        .model
         .client_mut(win)?
         .update_tag_mask(|tags| match dir {
             HorizontalDirection::Left => TagMask::from_bits(tags.bits() >> 1),
             HorizontalDirection::Right => TagMask::from_bits(tags.bits() << 1),
         });
 
-    let selected_monitor_id = ctx.model().selected_monitor_id();
+    let selected_monitor_id = ctx.core().state.model.selected_monitor_id();
     crate::focus::focus(ctx, None);
     ctx.core_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
@@ -80,7 +99,13 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection) {
     ctx.raise_window_visual_only(win);
-    let mon_w = ctx.model().expect_selected_monitor().monitor_rect.w;
+    let mon_w = ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .monitor_rect
+        .w;
     let Some(geo) = ctx.core().client_geo(win) else {
         return;
     };

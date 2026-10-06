@@ -73,15 +73,15 @@ pub fn diff_topology(previous: &[MonitorSnapshot], current: &[MonitorSnapshot]) 
 /// The first topology seen (startup) is recorded without firing anything;
 /// startup work belongs in `exec`/`exec_once`.
 pub fn run_monitor_hooks(ctx: &mut WmCtx<'_>) {
-    let current = snapshot_monitors(ctx.model());
+    let current = snapshot_monitors(&ctx.core().state.model);
     if current.is_empty() {
         return;
     }
-    let previous = std::mem::replace(&mut ctx.pending_work_mut().hooked_monitors, current);
+    let previous = std::mem::replace(&mut ctx.core_mut().work.hooked_monitors, current);
     if previous.is_empty() {
         return;
     }
-    let change = diff_topology(&previous, &ctx.pending_work_mut().hooked_monitors);
+    let change = diff_topology(&previous, &ctx.core_mut().work.hooked_monitors);
     if change.changed {
         dispatch_monitor_hooks(ctx, &change);
     }
@@ -95,7 +95,8 @@ pub fn run_monitor_hooks(ctx: &mut WmCtx<'_>) {
 /// `INSTANTWM_MONITOR`.
 fn dispatch_monitor_hooks(ctx: &mut WmCtx<'_>, change: &TopologyChange) {
     let monitors = ctx
-        .pending_work_mut()
+        .core_mut()
+        .work
         .hooked_monitors
         .iter()
         .map(|m| m.name.as_str())
@@ -118,7 +119,8 @@ fn dispatch_monitor_hooks(ctx: &mut WmCtx<'_>, change: &TopologyChange) {
     for (event, monitor) in events {
         log::info!("instantwm: {} {}", event.name(), monitor.unwrap_or(""));
         let actions: Vec<_> = ctx
-            .state()
+            .core()
+            .state
             .config
             .hooks
             .iter()
@@ -136,13 +138,13 @@ fn dispatch_monitor_hooks(ctx: &mut WmCtx<'_>, change: &TopologyChange) {
         if let Some(monitor) = monitor {
             env.push(("INSTANTWM_MONITOR", monitor.to_string()));
         }
-        ctx.state_mut().hook_env = env;
+        ctx.core_mut().state.hook_env = env;
         for action in &actions {
             if let Err(error) = crate::actions::try_execute_key_action(ctx, action) {
                 log::warn!("instantwm: {} hook failed: {error}", event.name());
             }
         }
-        ctx.state_mut().hook_env.clear();
+        ctx.core_mut().state.hook_env.clear();
     }
 }
 
@@ -275,7 +277,7 @@ mod tests {
         use crate::types::MonitorId;
 
         let push = |wm: &mut WmCtx<'_>, id: u64, name: &str, x: i32| {
-            wm.model_mut().monitors.push(
+            wm.core_mut().state.model.monitors.push(
                 MonitorBuilder::new()
                     .named(name)
                     .monitor_rect(Rect::new(x, 0, 1920, 1080))

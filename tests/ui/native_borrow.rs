@@ -58,9 +58,9 @@ fn renderer_and_scene_borrows_are_disjoint(state: &mut WaylandState) {
     }
 }
 
-// Convenience APIs must preserve the same owner borrow boundaries.
-fn model_accessor_cannot_overlap_native_effects(ctx: &mut crate::contexts::WmCtx<'_>) {
-    let model = ctx.model();
+// Explicit field access must preserve the same owner borrow boundaries.
+fn model_field_cannot_overlap_native_effects(ctx: &mut crate::contexts::WmCtx<'_>) {
+    let model = &ctx.core().state.model;
     ctx.raise_client(crate::types::WindowId(1));
     model.selected_win();
 }
@@ -69,4 +69,14 @@ fn shared_conversion_cannot_overlap_typed_backend(ctx: &mut crate::contexts::WmC
     let mut shared = ctx.wm_ctx();
     ctx.core.quit();
     shared.raise_client(crate::types::WindowId(1));
+}
+
+// Pure queries can run without any compositor or backend capability.
+fn listings_only_need_policy_data(
+    model: &crate::model::WmModel,
+    config: &crate::core_state::EffectiveConfig,
+) {
+    crate::ipc::layout::list_layouts(model);
+    crate::ipc::theme::get_theme(config);
+    crate::ipc::keybinds::list_keybinds(&config.bindings);
 }

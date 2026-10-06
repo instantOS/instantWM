@@ -19,13 +19,13 @@ pub fn run_action(ctx: &mut WmCtx<'_>, name: String, args: Vec<String>) -> Respo
     }
 }
 
-pub fn update_status(ctx: &mut WmCtx<'_>, text: String) -> Response {
-    ctx.core_mut().bar.set_status_text(&text);
+pub fn update_status(bar: &mut crate::bar::BarState, text: String) -> Response {
+    bar.set_status_text(&text);
     Response::ok()
 }
 
-pub fn get_status(ctx: &WmCtx<'_>) -> Response {
-    let backend = match ctx.backend_kind() {
+pub fn get_status(core: &crate::core_state::WmCore, kind: crate::backend::BackendKind) -> Response {
+    let backend = match kind {
         crate::backend::BackendKind::X11 => "x11",
         crate::backend::BackendKind::Wayland => "wayland",
     };
@@ -35,10 +35,10 @@ pub fn get_status(ctx: &WmCtx<'_>) -> Response {
         protocol_version: crate::ipc_types::IPC_PROTOCOL_VERSION.to_string(),
         build_commit: env!("INSTANTWM_BUILD_COMMIT").to_string(),
         backend: backend.to_string(),
-        running: ctx.core().is_running(),
-        monitors: ctx.model().monitors.len(),
-        windows: ctx.model().client_count(),
-        tags: ctx.model().tags.num_tags,
+        running: core.is_running(),
+        monitors: core.state.model.monitors.len(),
+        windows: core.state.model.client_count(),
+        tags: core.state.model.tags.num_tags,
     };
 
     Response::Status(info)

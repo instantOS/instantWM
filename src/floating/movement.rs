@@ -11,7 +11,7 @@ use crate::types::*;
 /// key dispatcher continue the same movement onto an adjacent tag.
 pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
     crate::client::fullscreen::leave_maximized(ctx, win);
-    let Some(view) = ctx.model().client_view(win) else {
+    let Some(view) = ctx.core().state.model.client_view(win) else {
         return false;
     };
     let is_floating = view.client.mode().is_normal_floating();
@@ -59,7 +59,7 @@ pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     crate::client::fullscreen::leave_maximized(ctx, win);
-    let Some(view) = ctx.model().client_view(win) else {
+    let Some(view) = ctx.core().state.model.client_view(win) else {
         return;
     };
     let is_floating = view.client.mode().is_normal_floating();
@@ -94,7 +94,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     crate::client::fullscreen::leave_maximized(ctx, win);
-    let Some(view) = ctx.model().client_view(win) else {
+    let Some(view) = ctx.core().state.model.client_view(win) else {
         return;
     };
     if view.client.is_edge_scratchpad() {

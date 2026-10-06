@@ -404,7 +404,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     if wtype.contains(&atom_dialog)
-        && let Some(client) = ctx_x11.core.model_mut().client_mut(win)
+        && let Some(client) = ctx_x11.core.state.model.client_mut(win)
     {
         client.set_placement(
             if crate::backend::x11::policy::should_float_for_x11_type(Some(
@@ -424,18 +424,18 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         Err(_) => None,
     };
 
-    if let Some(client) = ctx.core.model_mut().client_mut(win) {
+    if let Some(client) = ctx.core.state.model.client_mut(win) {
         crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
     }
 }
 
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    if !ctx.core.config().window.decor_hints {
+    if !ctx.core.state.config.window.decor_hints {
         return;
     }
 
     let motif_atom = ctx.x11_runtime.motifatom;
-    let border_px = ctx.core.config().window.border_width_px;
+    let border_px = ctx.core.state.config.window.border_width_px;
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
@@ -455,7 +455,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     let Some((c_w, c_h, c_x, c_y)) = ctx
         .core
-        .state()
+        .state
         .model
         .client(win)
         .map(|c| (c.total_width(), c.total_height(), c.geo.x, c.geo.y))
@@ -470,7 +470,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         0
     };
 
-    if let Some(client) = ctx.core.model_mut().client_mut(win) {
+    if let Some(client) = ctx.core.state.model.client_mut(win) {
         client.border_width = new_bw;
         client.old_border_width = new_bw;
     }

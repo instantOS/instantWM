@@ -10,11 +10,11 @@ fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
     }
 }
 
-pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
+pub fn toggle_sticky(core: &mut crate::core_state::WmCore, win: WindowId) {
+    let Some(monitor_id) = core.state.model.monitor_of_client(win) else {
         return;
     };
-    if let Some(client) = ctx.model_mut().client_mut(win) {
+    if let Some(client) = core.state.model.client_mut(win) {
         if client.is_scratchpad() {
             return;
         }
@@ -22,11 +22,11 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     } else {
         return;
     }
-    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+    core.queue_layout_for_monitor_urgent(monitor_id);
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.model_mut().client_mut(win) {
+    if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
         client.is_locked = !client.is_locked;
     } else {
         return;
@@ -37,7 +37,8 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
 
 pub fn unhide_all(ctx: &mut WmCtx) {
     let clients_to_unhide: Vec<WindowId> = ctx
-        .state()
+        .core()
+        .state
         .model
         .clients_iter_all()
         .filter_map(|(_, client)| {
@@ -52,12 +53,15 @@ pub fn unhide_all(ctx: &mut WmCtx) {
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
     if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
-        if matches!(ctx.current_mode(), ActiveWmMode::TreePlacement(_)) {
+        if matches!(
+            &ctx.core().state.behavior.current_mode,
+            ActiveWmMode::TreePlacement(_)
+        ) {
             ctx.reset_mode();
         }
         return;
     }
-    let next_mode = toggle_mode_name(ctx.current_mode(), name);
+    let next_mode = toggle_mode_name(&ctx.core().state.behavior.current_mode, name);
     // Overview exit is handled by `exit_overview` (which updates
     // `current_mode` directly) rather than `set_current_mode` to avoid
     // calling `handle_mode_transition` a second time — the exit logic
@@ -71,11 +75,11 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
     let selmon_idx = {
-        let selected_monitor = ctx.model_mut().expect_selected_monitor_mut();
+        let selected_monitor = ctx.core_mut().state.model.expect_selected_monitor_mut();
         let current = selected_monitor.show_bar_for_mask(selected_monitor.selected_tags());
         // A per-view session override; the configured default is untouched.
         selected_monitor.per_tag_state().show_bar = Some(!current);
-        ctx.model().selected_monitor_id()
+        ctx.core().state.model.selected_monitor_id()
     };
 
     ctx.refresh_top_bars();
@@ -92,7 +96,9 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 /// force on/off).
 pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
     let changed_monitors: Vec<MonitorId> = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .monitors_iter_mut()
         .filter(|(_, monitor)| monitor.show_bottom_bar != shown)
         .map(|(monitor_id, _)| monitor_id)
@@ -101,7 +107,7 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
         return;
     }
 
-    for monitor in ctx.model_mut().monitors_iter_all_mut() {
+    for monitor in ctx.core_mut().state.model.monitors_iter_all_mut() {
         monitor.show_bottom_bar = shown;
     }
 

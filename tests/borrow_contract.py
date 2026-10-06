@@ -30,4 +30,4 @@ assert result.returncode != 0 and actual == expected, (
     + "\n".join(error["rendered"] for error in errors)
 )
 print("PASS: exclusive state access, non-reentrant effects, read/write separation, "
-      "typed backend identity, mutable shared effects, and exclusive WM/renderer dispatch, and convenience accessor/conversion borrows")
+      "typed backend identity, mutable shared effects, and exclusive WM/renderer dispatch, and model field and context conversion borrows")

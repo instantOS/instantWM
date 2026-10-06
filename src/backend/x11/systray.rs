@@ -215,7 +215,7 @@ pub(super) fn sync_xembed_tray(
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,
 ) {
-    if !core.config().systray.show {
+    if !core.state.config.systray.show {
         core.bar.runtime.external_tray_width = 0;
         if let Some(tray) = systray.as_ref() {
             let _ = x11.conn.unmap_window(Window::from(tray.win));
@@ -224,7 +224,7 @@ pub(super) fn sync_xembed_tray(
     }
 
     let (tray_right, bar_y, bar_win) = {
-        let mon = match crate::systray::monitor(core.model(), &core.config().systray) {
+        let mon = match crate::systray::monitor(&core.state.model, &core.state.config.systray) {
             Some(mon) => mon,
             None => return,
         };
@@ -239,7 +239,7 @@ pub(super) fn sync_xembed_tray(
 
     if systray.is_none() {
         let root = x11_runtime.root;
-        let bar_height = core.config().bar_metrics().height;
+        let bar_height = core.state.config.bar_metrics().height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let orientation_atom = x11_runtime.netatom.system_tray_orientation;
         let manager_atom = x11_runtime.xatom.manager;
@@ -302,7 +302,7 @@ pub(super) fn sync_xembed_tray(
         .expect("tray manager creation must initialize owned XEmbed state");
     let (systray_win, icons) = (tray.win, tray.icons.clone());
 
-    let bar_height = core.config().bar_metrics().height;
+    let bar_height = core.state.config.bar_metrics().height;
     let bg_pixel = x11_runtime.status_scheme.background.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, Size)> = icons
@@ -314,7 +314,7 @@ pub(super) fn sync_xembed_tray(
     let layout = layout_xembed_icons(
         icon_layout.iter().map(|(_, icon_size)| icon_size.w),
         bar_height,
-        core.config().systray.spacing,
+        core.state.config.systray.spacing,
     );
 
     {

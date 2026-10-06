@@ -282,28 +282,30 @@ fn handle_command(ctx: &mut WmCtx<'_>, cmd: IpcCommand) -> Response {
         crate::overview::exit_overview(ctx, exit_mode);
     }
     match cmd {
-        IpcCommand::Status => general::get_status(ctx),
+        IpcCommand::Status => general::get_status(ctx.core(), ctx.backend_kind()),
         IpcCommand::Reload => match reload_config(ctx) {
             Ok(()) => Response::ok(),
             Err(err) => Response::err(err),
         },
         IpcCommand::RunAction { name, args } => general::run_action(ctx, name, args),
-        IpcCommand::PendingTmpRule(cmd) => pending_tmp_rule::handle_pending_tmp_rule(ctx, cmd),
-        IpcCommand::UpdateStatus(text) => general::update_status(ctx, text),
+        IpcCommand::PendingTmpRule(cmd) => {
+            pending_tmp_rule::handle_pending_tmp_rule(&mut ctx.core_mut().state, cmd)
+        }
+        IpcCommand::UpdateStatus(text) => general::update_status(&mut ctx.core_mut().bar, text),
         IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(ctx, cmd),
         IpcCommand::Window(cmd) => window::handle_window_command(ctx, cmd),
         IpcCommand::Tag(cmd) => tag::handle_tag_command(ctx, cmd),
         IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(ctx, cmd),
         IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(ctx, cmd),
         IpcCommand::Input(cmd) => input::handle_input_command(ctx, cmd),
-        IpcCommand::LayoutList => layout::list_layouts(ctx),
-        IpcCommand::LayoutStatus => layout::layout_status(ctx),
-        IpcCommand::ListKeybinds => keybinds::list_keybinds(ctx),
-        IpcCommand::ListModes => mode::list_modes(ctx),
+        IpcCommand::LayoutList => layout::list_layouts(&ctx.core().state.model),
+        IpcCommand::LayoutStatus => layout::layout_status(&ctx.core().state.model),
+        IpcCommand::ListKeybinds => keybinds::list_keybinds(&ctx.core().state.config.bindings),
+        IpcCommand::ListModes => mode::list_modes(&ctx.core().state),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(ctx, path),
         IpcCommand::Config(cmd) => config::handle_config_command(ctx, cmd),
         IpcCommand::Test(cmd) => test::handle_test_command(ctx, cmd),
-        IpcCommand::GetTheme => theme::get_theme(ctx),
+        IpcCommand::GetTheme => theme::get_theme(&ctx.core().state.config),
         IpcCommand::SetTheme(theme) => theme::set_theme(ctx, theme),
         IpcCommand::ListThemes => theme::list_themes(),
     }

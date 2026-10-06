@@ -29,19 +29,11 @@ impl<B: BackendState> Wm<B> {
         wake: Option<calloop::ping::Ping>,
     ) {
         self.core.bar.systray_host.start(native_menu_request, wake);
-        self.core_ctx().configure_tray_icons();
+        self.core.configure_tray_icons();
     }
 
     pub fn quit(&mut self) {
         self.core.running = false;
-    }
-
-    /// Borrow the backend-neutral core state as a [`WmCore`].
-    ///
-    /// Use this when an operation needs only core state; [`WmCtx`] is the
-    /// entry point whenever the backend is involved too.
-    pub fn core_ctx(&mut self) -> &mut WmCore {
-        &mut self.core
     }
 
     pub(crate) fn split_core_and_backend(&mut self) -> (&mut WmCore, &mut B) {

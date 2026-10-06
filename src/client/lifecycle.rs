@@ -36,19 +36,24 @@ pub(crate) fn remove_managed_client(
         crate::mouse::drag::clear_bar_hover(ctx);
     }
 
-    let previous_focus = ctx.model().selected_win();
+    let previous_focus = ctx.core().state.model.selected_win();
     // Resolved while the client is still owned: `remove_client` hands back the
     // client but not the monitor that was holding it.
-    let monitor_id = ctx.model().monitor_of_client(win)?;
+    let monitor_id = ctx.core().state.model.monitor_of_client(win)?;
     let removed = ctx
         .core_mut()
         .mutate_selection(|model| model.remove_client(win))?;
 
-    let overview_became_empty = ctx.model().monitor(monitor_id).is_some_and(|monitor| {
-        monitor_id == ctx.model().selected_monitor_id()
-            && monitor.overview_state.is_some()
-            && !crate::overview::has_cards(monitor)
-    });
+    let overview_became_empty = ctx
+        .core()
+        .state
+        .model
+        .monitor(monitor_id)
+        .is_some_and(|monitor| {
+            monitor_id == ctx.core().state.model.selected_monitor_id()
+                && monitor.overview_state.is_some()
+                && !crate::overview::has_cards(monitor)
+        });
     if overview_became_empty {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
     }

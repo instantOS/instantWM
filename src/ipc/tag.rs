@@ -4,7 +4,7 @@ use crate::tags::{name_tag, reset_name_tag};
 
 pub fn handle_tag_command(ctx: &mut WmCtx<'_>, cmd: TagCommand) -> Response {
     match cmd {
-        TagCommand::List => return list_tags(ctx),
+        TagCommand::List => return list_tags(&ctx.core().state),
         TagCommand::Name { name } => name_tag(ctx, &name),
         TagCommand::Reset => reset_name_tag(ctx),
     }
@@ -14,8 +14,8 @@ pub fn handle_tag_command(ctx: &mut WmCtx<'_>, cmd: TagCommand) -> Response {
 /// Describe every tag of the selected monitor: configured name and icon,
 /// the label the bar currently shows, and whether the tag is occupied or
 /// selected.
-fn list_tags(ctx: &WmCtx<'_>) -> Response {
-    let core = ctx.state();
+fn list_tags(state: &crate::core_state::CoreState) -> Response {
+    let core = state;
     let monitor = core.model.expect_selected_monitor();
     let show_icons = core.config.tags.show_icons;
     let occupied = monitor.occupied_tags();

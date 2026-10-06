@@ -139,7 +139,9 @@ impl<'a> WmCtx<'a> {
         self.backend_kind().set_wallpaper(path)
     }
 
-    // Backend-agnostic core accessors - use these for common operations
+    // This is the backend-dispatch boundary, not a second API for core fields.
+    // Use core.state/core.work (with scoped local borrows) to pass narrow inputs
+    // to policy helpers. Keep contexts for operations that coordinate native effects.
 
     /// Access the shared core context immutably.
     pub fn core(&self) -> &WmCore {
@@ -157,72 +159,13 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    // Category accessors keep shared policy code independent of core storage.
-    // These references borrow the context itself: a live model borrow still
-    // prevents native effects or Smithay dispatch through the same owner.
-    pub fn model(&self) -> &crate::model::WmModel {
-        self.core().model()
-    }
-
-    pub fn model_mut(&mut self) -> &mut crate::model::WmModel {
-        self.core_mut().model_mut()
-    }
-
-    pub fn state(&self) -> &crate::core_state::CoreState {
-        self.core().state()
-    }
-
-    pub fn state_mut(&mut self) -> &mut crate::core_state::CoreState {
-        self.core_mut().state_mut()
-    }
-
-    pub fn config(&self) -> &crate::core_state::EffectiveConfig {
-        self.core().config()
-    }
-
-    pub fn config_mut(&mut self) -> &mut crate::core_state::EffectiveConfig {
-        self.core_mut().config_mut()
-    }
-
-    pub fn derived(&self) -> &crate::core_state::DerivedState {
-        self.core().derived()
-    }
-
-    pub fn derived_mut(&mut self) -> &mut crate::core_state::DerivedState {
-        self.core_mut().derived_mut()
-    }
-
-    pub fn pending_work(&self) -> &crate::core_state::PendingWork {
-        self.core().pending_work()
-    }
-
-    pub fn pending_work_mut(&mut self) -> &mut crate::core_state::PendingWork {
-        self.core_mut().pending_work_mut()
-    }
-
-    pub fn behavior(&self) -> &crate::core_state::WmBehavior {
-        self.core().behavior()
-    }
-
-    pub fn behavior_mut(&mut self) -> &mut crate::core_state::WmBehavior {
-        self.core_mut().behavior_mut()
-    }
-
-    pub fn interaction(&self) -> &crate::core_state::InteractionState {
-        self.core().interaction()
-    }
-
-    pub fn interaction_mut(&mut self) -> &mut crate::core_state::InteractionState {
-        self.core_mut().interaction_mut()
-    }
-
     /// Reconcile the backend with the presentation derived from authoritative
     /// interaction state. This is intentionally level-triggered: callers may
     /// invoke it after any possibly relevant transition without tracking the
     /// previous native state.
     pub fn sync_interaction_projection(&mut self) {
         use crate::backend::InteractionProjectionOps;
-        let desired = self.interaction().drag.projection();
+        let desired = self.core().state.interaction.drag.projection();
         match self {
             WmCtx::X11(ctx) => ctx.reconcile_interaction_projection(desired),
             WmCtx::Wayland(ctx) => ctx.reconcile_interaction_projection(desired),
@@ -240,9 +183,9 @@ impl<'a> WmCtx<'a> {
         &mut self,
         transition: impl FnOnce(&mut crate::core_state::PointerInteractionState) -> R,
     ) -> R {
-        let previous = self.interaction().drag.projection();
-        let result = transition(&mut self.state_mut().interaction.drag);
-        if self.interaction().drag.projection() != previous {
+        let previous = self.core().state.interaction.drag.projection();
+        let result = transition(&mut self.core_mut().state.interaction.drag);
+        if self.core().state.interaction.drag.projection() != previous {
             self.sync_interaction_projection();
         }
         result
@@ -346,10 +289,10 @@ impl<'a> WmCtx<'a> {
         target: Option<WindowId>,
     ) {
         if rect.is_none() {
-            self.state_mut().interaction.pointer_placement_cache = None;
+            self.core_mut().state.interaction.pointer_placement_cache = None;
         }
-        let previous = self.state().interaction.layout_preview;
-        let previous_style = self.state().interaction.layout_preview_style;
+        let previous = self.core().state.interaction.layout_preview;
+        let previous_style = self.core().state.interaction.layout_preview_style;
         if previous == rect && (rect.is_none() || previous_style == style) {
             return;
         }
@@ -357,16 +300,24 @@ impl<'a> WmCtx<'a> {
         // from interpolation. Pointer previews must track motion immediately.
         let animate = previous.is_some()
             && rect.is_some()
-            && self.config().animations.enabled
-            && self.current_mode().tree_placement().is_some();
-        self.state_mut().interaction.layout_preview = rect;
-        self.state_mut().interaction.layout_preview_style = style;
-        let duration = self
-            .config()
-            .animations
-            .scale_duration(std::time::Duration::from_millis(
-                crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
-            ));
+            && self.core().state.config.animations.enabled
+            && self
+                .core()
+                .state
+                .behavior
+                .current_mode
+                .tree_placement()
+                .is_some();
+        self.core_mut().state.interaction.layout_preview = rect;
+        self.core_mut().state.interaction.layout_preview_style = style;
+        let duration =
+            self.core()
+                .state
+                .config
+                .animations
+                .scale_duration(std::time::Duration::from_millis(
+                    crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
+                ));
         use crate::backend::LayoutInteractionOps;
         match self {
             WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, style, target, animate, duration),
@@ -389,10 +340,10 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        let Some(monitor_id) = self.model().monitor_of_client(win) else {
+        let Some(monitor_id) = self.core().state.model.monitor_of_client(win) else {
             return;
         };
-        self.model_mut().raise_client_in_z_order(win);
+        self.core_mut().state.model.raise_client_in_z_order(win);
         // Reapply the complete policy projection rather than visually raising
         // just this surface, which could place an ordinary window over a
         // protected transient dialog until the next layout pass.
@@ -419,13 +370,13 @@ impl<'a> WmCtx<'a> {
                 let WmCtx::X11(x11) = self else {
                     unreachable!()
                 };
-                x11.core.model_mut().sync_client_geometry(win, rect);
+                x11.core.state.model.sync_client_geometry(win, rect);
 
                 crate::backend::x11::focus::configure(&x11.core.state, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
-                    self.model_mut().sync_client_geometry(win, rect);
+                    self.core_mut().state.model.sync_client_geometry(win, rect);
                 }
                 self.resize_window(win, rect);
                 if apply_mode == GeometryApplyMode::VisualOnly {
@@ -441,7 +392,7 @@ impl<'a> WmCtx<'a> {
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {
         let width = width.max(0);
-        if let Some(client) = self.model_mut().client_mut(win) {
+        if let Some(client) = self.core_mut().state.model.client_mut(win) {
             client.border_width = width;
         }
         self.set_border_width(win, width);
@@ -467,7 +418,7 @@ impl<'a> WmCtx<'a> {
     pub fn sync_client_tag_props(&mut self, win: WindowId) {
         match self {
             WmCtx::X11(ctx) => crate::backend::x11::set_client_tag_prop(
-                ctx.core.state(),
+                &ctx.core.state,
                 &ctx.x11,
                 ctx.x11_runtime,
                 win,
@@ -531,9 +482,11 @@ impl<'a> WmCtx<'a> {
     /// are compositor-rendered and need no restore step.
     pub fn apply_exited_fullscreen_effects(&mut self, win: WindowId) {
         match self {
-            WmCtx::X11(ctx) => {
-                crate::backend::x11::fullscreen::restore_border(&ctx.x11, ctx.core.model(), win)
-            }
+            WmCtx::X11(ctx) => crate::backend::x11::fullscreen::restore_border(
+                &ctx.x11,
+                &ctx.core.state.model,
+                win,
+            ),
             WmCtx::Wayland(_) => {}
         }
     }
@@ -549,7 +502,8 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(ctx) => {
                 let border = ctx
                     .core
-                    .model()
+                    .state
+                    .model
                     .client(win)
                     .map(|client| client.border_width)
                     .unwrap_or(0);
@@ -606,12 +560,12 @@ impl<'a> WmCtx<'a> {
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
-            let mon = self.model().expect_selected_monitor();
+            let mon = self.core().state.model.expect_selected_monitor();
             self.warp_to_point(mon.center());
             return;
         }
 
-        let Some(c) = self.model().client(win).cloned() else {
+        let Some(c) = self.core().state.model.client(win).cloned() else {
             return;
         };
 
@@ -623,7 +577,9 @@ impl<'a> WmCtx<'a> {
         let in_window = c.total_rect().contains_point(ptr);
 
         let on_bar = self
-            .model()
+            .core()
+            .state
+            .model
             .client_view(win)
             .is_some_and(|view| view.monitor.bar_contains_y(ptr.y));
 
@@ -725,7 +681,7 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(ctx) => {
                 if apply_hints {
                     crate::backend::x11::geometry::apply_icccm_size_hints(
-                        ctx.core.model_mut(),
+                        &mut ctx.core.state.model,
                         &ctx.x11,
                         win,
                         adjusted,
@@ -733,7 +689,9 @@ impl<'a> WmCtx<'a> {
                 }
             }
             WmCtx::Wayland(ctx) => {
-                if apply_hints && let Some(client) = ctx.wayland.state.wm.core.model().client(win) {
+                if apply_hints
+                    && let Some(client) = ctx.wayland.state.wm.core.state.model.client(win)
+                {
                     let constrained = client.size_hints.constrain_size(
                         adjusted.size(),
                         client.min_aspect,
@@ -753,7 +711,7 @@ impl<'a> WmCtx<'a> {
     pub fn refresh_client_border_color(&mut self, win: WindowId, focused: bool) {
         match self {
             WmCtx::X11(ctx) => crate::backend::x11::focus::refresh_border_color(
-                ctx.core.state(),
+                &ctx.core.state,
                 &ctx.x11,
                 ctx.x11_runtime,
                 win,
@@ -770,7 +728,7 @@ impl<'a> WmCtx<'a> {
     pub fn sync_client_list(&mut self) {
         if let WmCtx::X11(ctx) = self {
             crate::backend::x11::properties::update_client_list(
-                ctx.core.state(),
+                &ctx.core.state,
                 &ctx.x11,
                 ctx.x11_runtime,
             );
@@ -792,7 +750,7 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(_) => {}
             WmCtx::Wayland(wl) => {
-                let selected_window = wl.wayland.state.wm.core.model().selected_win();
+                let selected_window = wl.wayland.state.wm.core.state.model.selected_win();
                 wl.wayland
                     .prepare_launch_environment(command, selected_window, context);
             }
@@ -822,9 +780,9 @@ impl<'a> WmCtx<'a> {
     pub fn refresh_monitor_bottom_bar(&mut self, monitor_id: MonitorId) {
         match self {
             WmCtx::X11(ctx) => {
-                if let Some(monitor) = ctx.core.model().monitor(monitor_id) {
+                if let Some(monitor) = ctx.core.state.model.monitor(monitor_id) {
                     crate::backend::x11::bar::resize_bottom_bar_win(
-                        ctx.core.state(),
+                        &ctx.core.state,
                         &ctx.x11,
                         &*ctx.x11_runtime,
                         monitor,
@@ -872,7 +830,7 @@ impl<'a> WmCtx<'a> {
     /// X11 relies on passive grabs; Wayland always sees keys first.
     pub fn refresh_key_grabs(&mut self) {
         if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
+            crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
         }
     }
 
@@ -933,14 +891,10 @@ impl<'a> WmCtx<'a> {
         if let WmCtx::X11(ctx) = self {
             crate::backend::x11::startup::init_drw_and_schemes_impl(
                 &mut *ctx.x11_runtime,
-                ctx.core.config(),
+                &ctx.core.state.config,
             );
         }
-        crate::monitor::resync_monitor_ui_metrics(self.state_mut());
-    }
-
-    pub fn current_mode(&self) -> &crate::core_state::ActiveWmMode {
-        &self.behavior().current_mode
+        crate::monitor::resync_monitor_ui_metrics(&mut self.core_mut().state);
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<crate::core_state::ActiveWmMode>) {
@@ -953,8 +907,10 @@ impl<'a> WmCtx<'a> {
         next_mode: crate::core_state::ActiveWmMode,
         overview_exit: crate::overview::ExitMode,
     ) -> crate::core_state::ActiveWmMode {
-        let previous_mode =
-            std::mem::replace(&mut self.behavior_mut().current_mode, next_mode.clone());
+        let previous_mode = std::mem::replace(
+            &mut self.core_mut().state.behavior.current_mode,
+            next_mode.clone(),
+        );
         if previous_mode == next_mode {
             return previous_mode;
         }
@@ -974,13 +930,6 @@ impl<'a> WmCtx<'a> {
 
     pub fn reset_mode(&mut self) {
         self.set_current_mode("default");
-    }
-
-    pub fn with_behavior_mut<R>(
-        &mut self,
-        f: impl FnOnce(&mut crate::core_state::WmBehavior) -> R,
-    ) -> R {
-        f(self.behavior_mut())
     }
 }
 

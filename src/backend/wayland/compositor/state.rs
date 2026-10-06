@@ -74,7 +74,6 @@ use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 use super::protocols::output_management::OutputManagementState;
 use super::protocols::output_power::OutputPowerState;
 use crate::config::config_toml::CursorConfig;
-use crate::core_state::CoreState;
 use crate::types::{Rect, WindowId};
 use crate::wm::WaylandWm as Wm;
 
@@ -740,10 +739,6 @@ impl WaylandState {
         WmCtx::Wayland(crate::contexts::WmCtxWayland {
             wayland: crate::backend::wayland::WaylandBackend::new(self),
         })
-    }
-
-    pub(super) fn protocol_core(&self) -> &CoreState {
-        &self.wm.core.state
     }
 
     /// Run after field borrows end; requiring the complete root prevents

@@ -42,7 +42,7 @@ pub fn get_state(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 
 // ---------------------------------------------------------------------------
 
 pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
-    let state = ctx.core.state();
+    let state = &ctx.core.state;
     let operations =
         visibility_transaction_order(crate::client::visibility::visibility_plan(&state.model));
     let has_tiling = state
@@ -125,7 +125,7 @@ fn visibility_transaction_order(
 // ---------------------------------------------------------------------------
 
 pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.model().client(win) {
+    let Rect { x, y, w, h } = match ctx.core.state.model.client(win) {
         Some(c) => c.geo,
         None => return,
     };

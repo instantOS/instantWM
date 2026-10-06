@@ -23,7 +23,7 @@ use crate::contexts::WmCtx;
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    let Some(win) = ctx.model().selected_win() else {
+    let Some(win) = ctx.core().state.model.selected_win() else {
         return;
     };
 

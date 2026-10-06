@@ -18,7 +18,7 @@ mod tests;
 /// before using the ordinary destroyed-client cleanup path. Connection failures
 /// and unrelated protocol errors are not evidence of destruction.
 pub fn handle_x11_error(ctx: &mut WmCtxX11<'_>, error: &X11Error) {
-    let stale = confirmed_stale_client(ctx.core.model(), error, |window| {
+    let stale = confirmed_stale_client(&ctx.core.state.model, error, |window| {
         ctx.x11
             .conn
             .get_window_attributes(window)
@@ -59,8 +59,8 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
         return;
     };
 
-    ctx.core.derived_mut().display.width = e.width as i32;
-    ctx.core.derived_mut().display.height = e.height as i32;
+    ctx.core.state.derived.display.width = e.width as i32;
+    ctx.core.state.derived.display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx());
     crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
@@ -89,7 +89,7 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             },
         );
         crate::backend::x11::systray::update_systray_icon_geom(
-            ctx.core.config().bar_metrics().height,
+            ctx.core.state.config.bar_metrics().height,
             ctx.xembed_tray.as_mut(),
             event_win,
             requested_size,
@@ -100,7 +100,7 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-    } else if ctx.core.model().client(event_win).is_some() {
+    } else if ctx.core.state.model.client(event_win).is_some() {
         crate::backend::x11::focus::configure(&ctx.core.state, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
@@ -129,7 +129,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-    } else if ctx.core.model().client(event_win).is_some() {
+    } else if ctx.core.state.model.client(event_win).is_some() {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
     };
@@ -149,7 +149,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
 }
 
 pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
-    if let Some(selected_window) = ctx.core.model().selected_win() {
+    if let Some(selected_window) = ctx.core.state.model.selected_win() {
         crate::backend::x11::focus::set_focus(
             &ctx.core.state,
             &ctx.x11,
@@ -179,7 +179,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         return;
     };
 
-    if ctx.core.model().client(event_win).is_none() {
+    if ctx.core.state.model.client(event_win).is_none() {
         let Some(initial_geometry) = query_manageable_window_geometry(&ctx.x11, event_win) else {
             return;
         };
@@ -214,7 +214,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if ctx.core.model().client(event_win).is_some() {
+    if ctx.core.state.model.client(event_win).is_some() {
         match e.atom {
             x if x == ctx.x11_runtime.wmatom.protocols => {
                 let protocols = crate::backend::x11::focus::read_wm_protocols(
@@ -229,7 +229,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                     .insert(event_win, protocols);
             }
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
-                if let Some(c) = ctx.core.model_mut().client_mut(event_win) {
+                if let Some(c) = ctx.core.state.model.client_mut(event_win) {
                     c.size_hints_valid = false;
                 }
             }
@@ -240,12 +240,17 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             x if x == u32::from(AtomEnum::WM_TRANSIENT_FOR) => {
                 let parent =
                     crate::backend::x11::lifecycle::get_transient_for_hint(&ctx.x11, event_win);
-                let monitor_id = ctx.core.model().monitor_of_client(event_win);
-                let needs_float = ctx.core.model().client(event_win).is_some_and(|client| {
-                    parent.is_some()
-                        && client.placement() != crate::types::ClientPlacement::Floating
-                });
-                if let Some(client) = ctx.core.model_mut().client_mut(event_win) {
+                let monitor_id = ctx.core.state.model.monitor_of_client(event_win);
+                let needs_float = ctx
+                    .core
+                    .state
+                    .model
+                    .client(event_win)
+                    .is_some_and(|client| {
+                        parent.is_some()
+                            && client.placement() != crate::types::ClientPlacement::Floating
+                    });
+                if let Some(client) = ctx.core.state.model.client_mut(event_win) {
                     client.transient_for = parent;
                 }
                 if needs_float {
@@ -271,7 +276,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         {
             let props =
                 crate::backend::x11::window_properties(&ctx.x11, ctx.x11_runtime, event_win);
-            let previous_focus = ctx.core.model().selected_win();
+            let previous_focus = ctx.core.state.model.selected_win();
             if crate::client::update_window_properties(ctx.core, event_win, &props) {
                 crate::focus::refresh_focus_after_selection(
                     &mut ctx.wm_ctx(),
@@ -287,7 +292,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
     if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         crate::backend::x11::systray::update_systray_icon_geom(
-            ctx.core.config().bar_metrics().height,
+            ctx.core.state.config.bar_metrics().height,
             ctx.xembed_tray.as_mut(),
             event_win,
             crate::types::Size::new(e.width as i32, e.height as i32),
@@ -312,7 +317,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-    } else if ctx.core.model().client(event_win).is_some() {
+    } else if ctx.core.state.model.client(event_win).is_some() {
         if e.response_type & 0x80 != 0 {
             crate::backend::x11::set_client_state(
                 &ctx.x11,

@@ -196,7 +196,7 @@ impl<'core> RootBarTarget<'core> {
 /// visible bar. `None` means no connected monitor contains the point.
 pub fn root_bar_target_at<'core>(core: &'core WmCore, root: Point) -> Option<RootBarTarget<'core>> {
     let rect = crate::mouse::pointer::point_rect(root);
-    let monitor = core.model().monitors.monitor_intersecting_rect(rect)?;
+    let monitor = core.state.model.monitors.monitor_intersecting_rect(rect)?;
     if monitor.bar_contains_y(root.y) {
         Some(RootBarTarget::OnBar {
             monitor,
@@ -215,7 +215,9 @@ pub fn update_hover(
 ) -> Option<BarPosition> {
     if sync_selected_monitor
         && let Some(monitor_id) = ctx
-            .model()
+            .core()
+            .state
+            .model
             .monitors
             .monitor_intersecting_rect(crate::mouse::pointer::point_rect(root))
             .map(Monitor::id)
@@ -261,12 +263,15 @@ pub fn handle_status_text_click(
     button_code: u8,
     clean_state: ModMask,
 ) {
-    if ctx.model().is_overview_active() {
+    if ctx.core().state.model.is_overview_active() {
         ctx.reset_mode();
         return;
     }
 
-    if !matches!(ctx.current_mode(), ActiveWmMode::Default) {
+    if !matches!(
+        &ctx.core().state.behavior.current_mode,
+        ActiveWmMode::Default
+    ) {
         ctx.reset_mode();
         return;
     }
@@ -276,7 +281,7 @@ pub fn handle_status_text_click(
     }
 
     let (monitor_id, bar_rect, output_origin) = {
-        let monitor = ctx.model().expect_selected_monitor();
+        let monitor = ctx.core().state.model.expect_selected_monitor();
         (
             monitor.id(),
             Rect::new(

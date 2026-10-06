@@ -43,15 +43,16 @@ fn begin_sidebar_gesture(
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
-    let Some(monitor_id) = ctx
-        .interaction()
+    let core_state = &ctx.core().state;
+    let Some(monitor_id) = core_state
+        .interaction
         .drag
         .captured::<SidebarVolumeDrag>()
         .map(|drag| drag.monitor_id)
     else {
         return;
     };
-    if ctx.model().monitor(monitor_id).is_none() {
+    if core_state.model.monitor(monitor_id).is_none() {
         ctx.transition_pointer_interaction(|drag| drag.cancel::<SidebarVolumeDrag>());
         return;
     }
@@ -133,15 +134,16 @@ pub fn bottom_bar_gesture_begin(
 const BOTTOM_BAR_HOLD_MS: u32 = 400;
 
 pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
-    let Some(monitor_id) = ctx
-        .interaction()
+    let core_state = &ctx.core().state;
+    let Some(monitor_id) = core_state
+        .interaction
         .drag
         .captured::<BottomBarDrag>()
         .map(|drag| drag.monitor_id)
     else {
         return;
     };
-    if ctx.model().monitor(monitor_id).is_none() {
+    if core_state.model.monitor(monitor_id).is_none() {
         ctx.transition_pointer_interaction(|drag| drag.cancel::<BottomBarDrag>());
         return;
     }

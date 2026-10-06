@@ -49,7 +49,7 @@ use crate::types::{Rect, WindowId};
 /// synchronously through the compositor command bridge before acknowledging
 /// client state.
 pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
-    let Some(transition) = ctx.model_mut().set_fullscreen(win, fullscreen) else {
+    let Some(transition) = ctx.core_mut().state.model.set_fullscreen(win, fullscreen) else {
         return;
     };
     let monitor_id = transition.monitor_id;
@@ -84,7 +84,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
 
 /// Interpret and project an application's maximize/restore intent.
 pub(crate) fn apply_client_maximize_intent(ctx: &mut WmCtx<'_>, win: WindowId, maximized: bool) {
-    let Some(transition) = ctx.model_mut().apply_client_maximize_intent(win, maximized) else {
+    let Some(transition) = ctx
+        .core_mut()
+        .state
+        .model
+        .apply_client_maximize_intent(win, maximized)
+    else {
         return;
     };
     apply_client_maximize_intent_transition(ctx, win, transition);
@@ -100,7 +105,7 @@ pub(crate) fn apply_client_maximize_intent(ctx: &mut WmCtx<'_>, win: WindowId, m
 /// Explicit move and placement operations use this as their single
 /// maximization exit path so client protocol state cannot be left behind.
 pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
-    let Some(left) = ctx.model_mut().leave_maximized(win) else {
+    let Some(left) = ctx.core_mut().state.model.leave_maximized(win) else {
         return false;
     };
 
@@ -115,7 +120,7 @@ pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
 }
 
 pub(crate) fn sync_client_maximized_signal(ctx: &mut WmCtx<'_>, win: WindowId) {
-    let Some(maximized) = ctx.model().client_protocol_maximized(win) else {
+    let Some(maximized) = ctx.core().state.model.client_protocol_maximized(win) else {
         return;
     };
     ctx.set_client_maximized_signal(win, maximized);
@@ -195,10 +200,11 @@ fn apply_maximized_change(
 ///   monitor immediately and drops its border. Use the regular fullscreen
 ///   toggle to leave real fullscreen again.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
-    let Some(win) = ctx.model().selected_win() else {
+    let core_state = &ctx.core().state;
+    let Some(win) = core_state.model.selected_win() else {
         return;
     };
-    let Some(view) = ctx.model().client_view(win) else {
+    let Some(view) = core_state.model.client_view(win) else {
         return;
     };
     let was_fake = view.client.mode().is_fake_fullscreen();
@@ -208,7 +214,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
     // Fake → real promotion: claim the monitor rectangle immediately so the
     // transition reads as a single step instead of waiting for the layout.
     if let Some(mon_rect) = promotion_monitor_rect {
-        let border_px = ctx.config().window.border_width_px;
+        let border_px = core_state.config.window.border_width_px;
         ctx.move_resize(
             win,
             Rect {
@@ -222,7 +228,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
         ctx.raise_window_visual_only(win);
     }
 
-    if let Some(client) = ctx.model_mut().client_mut(win) {
+    if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
         if client.mode().is_fake_fullscreen() {
             client.enter_fullscreen();
         } else {
@@ -241,7 +247,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
     // fullscreen differs only in remaining part of the layout stack.
     ctx.set_client_fullscreen_signal(win, true);
 
-    let selmon_id = ctx.model().selected_monitor_id();
+    let selmon_id = ctx.core().state.model.selected_monitor_id();
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 

@@ -93,7 +93,7 @@ fn wm_init(wm: &mut Wm) {
                 "instantwm: failed to read the X11 keyboard mapping"
             );
         }
-        crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
         crate::focus::focus(&mut ctx.wm_ctx(), None);
     }
 }

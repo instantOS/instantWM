@@ -16,61 +16,69 @@ use crate::types::tag::MAX_TAG_NAME_BYTES;
 /// All tags included in the monitor's current tagset are renamed, so the
 /// function works correctly even when multiple tags are visible at once.
 pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
-    if arg.len() > MAX_TAG_NAME_BYTES {
+    let state = &mut ctx.core_mut().state;
+    if !rename_visible_tags(&mut state.model, &state.config.tag_template, arg) {
         return;
     }
-
-    let mon = ctx.model().expect_selected_monitor();
-    let (num_tags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
-
-    if tagset == 0 {
-        return;
-    }
-
-    let configured = ctx.config().tag_template.clone();
-    let label_for = |index: usize| -> String {
-        if arg.is_empty() {
-            configured
-                .get(index)
-                .map(|tag| tag.name.clone())
-                .unwrap_or_else(|| default_tag_name(index))
-        } else {
-            arg.to_string()
-        }
-    };
-
-    // Apply the new label to every tag in the current tagset on every
-    // monitor, so secondary monitors stay in sync.
-    for mon in ctx.model_mut().monitors.iter_all_mut() {
-        for (i, tag) in mon.tags.iter_mut().take(num_tags.min(MAX_TAGS)).enumerate() {
-            if (tagset & (1 << i)) == 0 {
-                continue;
-            }
-            tag.name = label_for(i);
-        }
-    }
-
     ctx.update_ewmh_desktop_props();
     ctx.request_bar_update();
 }
 
-/// Reset every tag's name back to its configured label on all monitors.
-//BOZO: should there maybe be a Tag struct which this is a method of? Is there
-//already such a struct maybe? Same goes for many of the functions in this file
-pub fn reset_name_tag(ctx: &mut WmCtx) {
-    let configured = ctx.config().tag_template.clone();
-    let num_tags = ctx.model().tags.num_tags.min(MAX_TAGS);
-    for mon in ctx.model_mut().monitors.iter_all_mut() {
-        for (i, tag) in mon.tags.iter_mut().take(num_tags).enumerate() {
-            tag.name = configured
-                .get(i)
-                .map(|tag| tag.name.clone())
-                .unwrap_or_else(|| default_tag_name(i));
+fn rename_visible_tags(
+    model: &mut crate::model::WmModel,
+    configured: &[crate::types::Tag],
+    arg: &str,
+) -> bool {
+    if arg.len() > MAX_TAG_NAME_BYTES {
+        return false;
+    }
+    let monitor = model.expect_selected_monitor();
+    let (num_tags, tagset) = (monitor.tags.len(), monitor.selected_tags().bits());
+    if tagset == 0 {
+        return false;
+    }
+    // Update the visible tags on every monitor, keeping session overrides in sync.
+    for monitor in model.monitors.iter_all_mut() {
+        for (index, tag) in monitor
+            .tags
+            .iter_mut()
+            .take(num_tags.min(MAX_TAGS))
+            .enumerate()
+        {
+            if tagset & (1 << index) != 0 {
+                tag.name = if arg.is_empty() {
+                    configured_tag_name(configured, index)
+                } else {
+                    arg.to_string()
+                };
+            }
         }
     }
+    true
+}
 
+/// Reset every tag's name back to its configured label on all monitors.
+pub fn reset_name_tag(ctx: &mut WmCtx) {
+    let state = &mut ctx.core_mut().state;
+    reset_tag_names(&mut state.model, &state.config.tag_template);
     ctx.update_ewmh_desktop_props();
     ctx.request_bar_update();
+}
+
+fn reset_tag_names(model: &mut crate::model::WmModel, configured: &[crate::types::Tag]) {
+    let num_tags = model.tags.num_tags.min(MAX_TAGS);
+    for monitor in model.monitors.iter_all_mut() {
+        for (index, tag) in monitor.tags.iter_mut().take(num_tags).enumerate() {
+            tag.name = configured_tag_name(configured, index);
+        }
+    }
+}
+
+fn configured_tag_name(configured: &[crate::types::Tag], index: usize) -> String {
+    configured
+        .get(index)
+        .map(|tag| tag.name.clone())
+        .unwrap_or_else(|| default_tag_name(index))
 }
 
 /// Fallback label for tag index `i` (0-based) when no configured label

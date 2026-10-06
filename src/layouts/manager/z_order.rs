@@ -6,7 +6,7 @@ use std::collections::HashSet;
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_geometry_update(monitor_id);
 
-    let Some(stack) = monitor_z_order(ctx.model(), monitor_id) else {
+    let Some(stack) = monitor_z_order(&ctx.core().state.model, monitor_id) else {
         return;
     };
     ctx.apply_z_order(&stack);

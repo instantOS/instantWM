@@ -185,9 +185,10 @@ pub fn render_bar_buffers(
 /// white rectangle in the center. Input classification (`button_region_at`)
 /// routes presses to the configured `BottomBar` bindings.
 pub fn build_bottom_bar_buffers(core: &mut WmCore) -> Vec<(MemoryRenderBuffer, Point)> {
-    let background = core.config().colors.status.background;
+    let background = core.state.config.colors.status.background;
     let indicator_color = bottom_bar_indicator_color(background);
-    core.model()
+    core.state
+        .model
         .monitors_iter_all()
         .filter(|mon| mon.bottom_bar_visible())
         .filter_map(|mon| {
@@ -278,7 +279,7 @@ mod tests {
         mon.set_available_rect(crate::types::Rect::new(0, 0, 1920, 1080));
         wm.core.state.model.monitors.restore(vec![mon]);
 
-        let core = wm.core_ctx();
+        let core = &mut wm.core;
         let buffers = build_bottom_bar_buffers(core);
         assert_eq!(buffers.len(), 1, "one bottom strip buffer expected");
         let (_buffer, pos) = &buffers[0];

@@ -301,7 +301,7 @@ fn focus_from_current_selection(
     backend: &mut dyn FocusBackendOps,
     refresh: BackendRefresh,
 ) -> anyhow::Result<Option<MonitorId>> {
-    let previous = core.model().selected_win();
+    let previous = core.state.model.selected_win();
     Ok(apply_focus_transition(
         core, win, previous, backend, refresh,
     ))
@@ -381,7 +381,7 @@ fn projection_uses_focus_from_before_a_precommitted_model_change() {
     )
     .unwrap();
 
-    assert_eq!(core.model().selected_win(), Some(WindowId(1)));
+    assert_eq!(core.state.model.selected_win(), Some(WindowId(1)));
     assert_eq!(backend.previous.get(), Some(actual_previous_focus));
     assert_eq!(backend.current.get(), Some(WindowId(1)));
     assert_eq!(core.focus.take_pending_selection(), None);
@@ -482,7 +482,11 @@ fn changing_focus_does_not_change_persistent_z_order() {
     assert_eq!(backend.current.get(), Some(WindowId(1)));
 
     assert_eq!(
-        core.model().expect_selected_monitor().z_order().as_slice(),
+        core.state
+            .model
+            .expect_selected_monitor()
+            .z_order()
+            .as_slice(),
         &[WindowId(1), WindowId(2)]
     );
 }
@@ -529,14 +533,14 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
         BackendRefresh::IfNeeded,
     )
     .unwrap();
-    assert_eq!(core.model().selected_win(), Some(popup));
+    assert_eq!(core.state.model.selected_win(), Some(popup));
 
     core.mutate_selection(|model| model.remove_client(popup))
         .unwrap();
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
 
     assert_eq!(
-        core.model().selected_win(),
+        core.state.model.selected_win(),
         Some(previously_focused),
         "the tiled window visible beneath the popup should regain focus"
     );
@@ -597,14 +601,14 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
         BackendRefresh::IfNeeded,
     )
     .unwrap();
-    assert_eq!(core.model().selected_win(), Some(temporary_terminal));
+    assert_eq!(core.state.model.selected_win(), Some(temporary_terminal));
 
     core.mutate_selection(|model| model.remove_client(temporary_terminal))
         .unwrap();
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
 
     assert_eq!(
-        core.model().selected_win(),
+        core.state.model.selected_win(),
         Some(previously_focused),
         "closing a short-lived tiled window should reveal the maximized window that preceded it"
     );
@@ -669,7 +673,7 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
             .unwrap();
         focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
         assert_eq!(
-            core.model().selected_win(),
+            core.state.model.selected_win(),
             Some(expected),
             "closing {closed:?} should restore the preceding MRU client"
         );
@@ -733,7 +737,7 @@ fn native_focus_drift_reprojects_without_inventing_a_selection_change() {
     );
     assert_eq!(backend.focused.get(), 1);
     assert!(backend.clear_urgency.get());
-    assert!(!core.model().client(WindowId(1)).unwrap().is_urgent);
+    assert!(!core.state.model.client(WindowId(1)).unwrap().is_urgent);
     assert_eq!(core.focus.take_pending_selection(), None);
     assert_eq!(backend.binding_refreshes.get(), 0);
 
@@ -755,10 +759,10 @@ fn unchanged_focus_leaves_urgency_untouched_until_projection_is_required() {
     };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
-    assert!(core.model().client(WindowId(1)).unwrap().is_urgent);
+    assert!(core.state.model.client(WindowId(1)).unwrap().is_urgent);
     assert_eq!(backend.focused.get(), 0);
 
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
-    assert!(!core.model().client(WindowId(1)).unwrap().is_urgent);
+    assert!(!core.state.model.client(WindowId(1)).unwrap().is_urgent);
     assert!(backend.clear_urgency.get());
 }

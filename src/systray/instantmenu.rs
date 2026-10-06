@@ -121,7 +121,7 @@ impl Drop for InstantMenuHost {
 /// replaces, or tears down the child to match the session state. Returns
 /// `true` when bar-visible content changed.
 pub(crate) fn drive_instantmenu_menu(wm: &mut WmCore) -> bool {
-    let backend = wm.state_mut().config.systray.menu_backend;
+    let backend = wm.state.config.systray.menu_backend;
     wm.bar
         .systray_host
         .instantmenu
@@ -152,7 +152,7 @@ pub(crate) fn drive_instantmenu_menu(wm: &mut WmCore) -> bool {
         }
     }
 
-    let bar_height = wm.config().bar_metrics().height;
+    let bar_height = wm.state.config.bar_metrics().height;
     let host = &mut wm.bar.systray_host.instantmenu;
     let presentation = wm.bar.systray_host.menu.presentation();
     let wanted = if hosting { presentation.as_ref() } else { None };

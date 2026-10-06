@@ -418,7 +418,7 @@ fn calculate_scaled_geometry(
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
 pub fn scale_client(ctx: &mut WmCtx<'_>, win: WindowId, scale: i32) {
     let target = {
-        let model = ctx.model();
+        let model = &ctx.core().state.model;
         let (old_geo, border_width, monitor_rect) = if let Some(view) = model.client_view(win) {
             (
                 view.client.geo,

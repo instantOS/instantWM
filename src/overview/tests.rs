@@ -308,7 +308,7 @@ fn hovered_card_is_committed_on_overview_confirmation() {
         TagMask::all(2)
     );
     assert!(hover_window(
-        &mut wm.test_ctx(),
+        &mut wm.core,
         Some(second),
         Some(Point::new(900, 300))
     ));
@@ -451,7 +451,7 @@ fn keyboard_navigation_continues_from_the_hovered_card() {
     let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
 
     toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
-    hover_window(&mut wm.test_ctx(), Some(second), Some(Point::new(900, 300)));
+    hover_window(&mut wm.core, Some(second), Some(Point::new(900, 300)));
     assert!(focus_direction(&mut wm.test_ctx(), Direction::Left));
 
     let state = wm
@@ -475,7 +475,7 @@ fn layout_action_commits_hovered_card_before_changing_its_tag_layout() {
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
     toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
-    hover_window(&mut wm.test_ctx(), Some(second), Some(Point::new(900, 300)));
+    hover_window(&mut wm.core, Some(second), Some(Point::new(900, 300)));
     crate::actions::execute_key_action(
         &mut wm.test_ctx(),
         &crate::actions::KeyAction::named(crate::actions::NamedAction::ToggleTilingMaximized),

@@ -7,7 +7,6 @@
 //!
 //! See [`crate::client::rules`] for the matching/consumption path.
 
-use crate::contexts::WmCtx;
 use crate::ipc_types::{PendingTmpRuleCmd, PendingTmpRuleInfo, Response};
 use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
 use std::borrow::Cow;
@@ -21,7 +20,10 @@ static NEXT_PENDING_TMP_RULE_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
 
 /// Dispatch a `PendingTmpRuleCmd` IPC request.
-pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> Response {
+pub fn handle_pending_tmp_rule(
+    state: &mut crate::core_state::CoreState,
+    cmd: PendingTmpRuleCmd,
+) -> Response {
     match cmd {
         PendingTmpRuleCmd::Add {
             class,
@@ -75,7 +77,7 @@ pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> R
             // MAX_TAGS: a tag beyond num_tags is masked out to nothing at apply
             // time and the window silently lands on the monitor's current tags
             // — while the one-shot rule is still consumed.
-            let num_tags = ctx.model().tags.num_tags;
+            let num_tags = state.model.tags.num_tags;
             if let Some(n) = tag
                 && (n == 0 || n as usize > num_tags)
             {
@@ -87,7 +89,7 @@ pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> R
             // (`apply_monitor_rule` can only target existing monitors).
             if let Some(selector) = &on_monitor
                 && !matches!(selector, MonitorSelector::Any)
-                && crate::monitor::resolve_monitor_selector(ctx.model(), selector).is_none()
+                && crate::monitor::resolve_monitor_selector(&state.model, selector).is_none()
             {
                 return Response::err(format!(
                     "on-monitor {selector} does not match any connected monitor"
@@ -120,7 +122,7 @@ pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> R
                 deadline: Instant::now() + Duration::from_millis(timeout_ms),
             };
 
-            ctx.with_behavior_mut(|behavior| behavior.pending_tmp_rules.push(entry));
+            state.behavior.pending_tmp_rules.push(entry);
 
             Response::PendingTmpRuleAdded { id, timeout_ms }
         }
@@ -129,12 +131,9 @@ pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> R
             // Drop expired entries so `list` never reports already-inert rules
             // (clamped to 0ms remaining). They would otherwise linger until the
             // next window spawn sweeps them on the apply path.
-            ctx.with_behavior_mut(|behavior| {
-                behavior.pending_tmp_rules.retain(|p| p.deadline > now);
-            });
-            let entries: Vec<PendingTmpRuleInfo> = ctx
-                .behavior()
-                .pending_tmp_rules
+            let rules = &mut state.behavior.pending_tmp_rules;
+            rules.retain(|p| p.deadline > now);
+            let entries: Vec<PendingTmpRuleInfo> = rules
                 .iter()
                 .map(|p| PendingTmpRuleInfo {
                     id: p.id,
@@ -164,16 +163,13 @@ pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> R
         }
         PendingTmpRuleCmd::Cancel { id } => {
             let now = Instant::now();
-            let mut cancelled = false;
-            ctx.with_behavior_mut(|behavior| {
-                // Sweep expired entries first so cancelling an id that already
-                // expired reports "not found" rather than a spurious success.
-                behavior.pending_tmp_rules.retain(|p| p.deadline > now);
-                let before = behavior.pending_tmp_rules.len();
-                behavior.pending_tmp_rules.retain(|p| p.id != id);
-                cancelled = behavior.pending_tmp_rules.len() != before;
-            });
-            if cancelled {
+            let rules = &mut state.behavior.pending_tmp_rules;
+            // Sweep expired entries first so cancelling an id that already
+            // expired reports "not found" rather than a spurious success.
+            rules.retain(|p| p.deadline > now);
+            let before = rules.len();
+            rules.retain(|p| p.id != id);
+            if rules.len() != before {
                 Response::Message(format!("pending-tmp-rule {id} cancelled"))
             } else {
                 Response::err(format!("pending-tmp-rule {id} not found"))
@@ -222,29 +218,29 @@ mod tests {
     }
 
     /// Push an expired entry directly, bypassing Add validation.
-    fn inject_expired(ctx: &mut WmCtx<'_>, id: u64) {
-        ctx.with_behavior_mut(|b| {
-            b.pending_tmp_rules.push(PendingTmpRule {
-                id,
-                rule: Rule {
-                    class: None,
-                    instance: None,
-                    title: None,
-                    tags: TagMask::EMPTY,
-                    is_floating: None,
-                    monitor: MonitorSelector::Any,
-                    geometry: None,
-                    borderless: false,
-                },
-                deadline: Instant::now() - Duration::from_secs(1),
-            });
+    fn inject_expired(behavior: &mut crate::core_state::WmBehavior, id: u64) {
+        behavior.pending_tmp_rules.push(PendingTmpRule {
+            id,
+            rule: Rule {
+                class: None,
+                instance: None,
+                title: None,
+                tags: TagMask::EMPTY,
+                is_floating: None,
+                monitor: MonitorSelector::Any,
+                geometry: None,
+                borderless: false,
+            },
+            deadline: Instant::now() - Duration::from_secs(1),
         });
     }
 
     #[test]
     fn bare_add_without_matcher_or_effect_is_rejected() {
         let mut wm = wm_with(9);
-        let resp = wm.with_ctx(|wm| handle_pending_tmp_rule(wm, add(None, None, None)));
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(&mut wm.core_mut().state, add(None, None, None))
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -253,10 +249,15 @@ mod tests {
         let mut wm = wm_with(3);
         // 3 is the last valid tag with num_tags=3; 4 exceeds it.
         assert!(matches!(
-            wm.with_ctx(|wm| handle_pending_tmp_rule(wm, add(Some("x"), Some(3), None))),
+            wm.with_ctx(|wm| handle_pending_tmp_rule(
+                &mut wm.core_mut().state,
+                add(Some("x"), Some(3), None)
+            )),
             Response::PendingTmpRuleAdded { .. }
         ));
-        let resp = wm.with_ctx(|wm| handle_pending_tmp_rule(wm, add(Some("x"), Some(4), None)));
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(&mut wm.core_mut().state, add(Some("x"), Some(4), None))
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -265,13 +266,16 @@ mod tests {
         let mut wm = wm_with(9); // only monitor num 0 exists
         assert!(matches!(
             wm.with_ctx(|wm| handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 add(Some("x"), None, Some(MonitorSelector::Index(0)))
             )),
             Response::PendingTmpRuleAdded { .. }
         ));
         let resp = wm.with_ctx(|wm| {
-            handle_pending_tmp_rule(wm, add(Some("x"), None, Some(MonitorSelector::Index(1))))
+            handle_pending_tmp_rule(
+                &mut wm.core_mut().state,
+                add(Some("x"), None, Some(MonitorSelector::Index(1))),
+            )
         });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
@@ -286,7 +290,7 @@ mod tests {
             .push(MonitorBuilder::new().named("DP-1").build());
         assert!(matches!(
             wm.with_ctx(|wm| handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 add(
                     Some("x"),
                     None,
@@ -297,7 +301,7 @@ mod tests {
         ));
         let resp = wm.with_ctx(|wm| {
             handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 add(
                     Some("x"),
                     None,
@@ -313,7 +317,7 @@ mod tests {
         let mut wm = wm_with(9);
         let resp = wm.with_ctx(|wm| {
             handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 PendingTmpRuleCmd::Add {
                     class: Some("pin-me".to_owned()),
                     instance: None,
@@ -343,7 +347,7 @@ mod tests {
         let mut wm = wm_with(9);
         let resp = wm.with_ctx(|wm| {
             handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 PendingTmpRuleCmd::Add {
                     class: Some("pin-me".to_owned()),
                     instance: None,
@@ -370,7 +374,7 @@ mod tests {
         let mut wm = wm_with(9);
         let resp = wm.with_ctx(|wm| {
             handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 PendingTmpRuleCmd::Add {
                     class: Some("pin-me".to_owned()),
                     instance: None,
@@ -397,7 +401,7 @@ mod tests {
         let mut wm = wm_with(9);
         let resp = wm.with_ctx(|wm| {
             handle_pending_tmp_rule(
-                wm,
+                &mut wm.core_mut().state,
                 PendingTmpRuleCmd::Add {
                     class: None,
                     instance: None,
@@ -421,7 +425,10 @@ mod tests {
     fn any_monitor_without_a_matcher_or_other_effect_is_rejected() {
         let mut wm = wm_with(9);
         let resp = wm.with_ctx(|wm| {
-            handle_pending_tmp_rule(wm, add(None, None, Some(MonitorSelector::Any)))
+            handle_pending_tmp_rule(
+                &mut wm.core_mut().state,
+                add(None, None, Some(MonitorSelector::Any)),
+            )
         });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
@@ -429,22 +436,35 @@ mod tests {
     #[test]
     fn list_omits_and_drops_expired_entries() {
         let mut wm = wm_with(9);
-        wm.with_ctx(|wm| inject_expired(wm, 7));
-        let resp = wm.with_ctx(|wm| handle_pending_tmp_rule(wm, PendingTmpRuleCmd::List));
+        wm.with_ctx(|wm| inject_expired(&mut wm.core_mut().state.behavior, 7));
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(&mut wm.core_mut().state, PendingTmpRuleCmd::List)
+        });
         let Response::PendingTmpRuleList(entries) = resp else {
             panic!("unexpected response {resp:?}");
         };
         assert!(entries.is_empty());
         // The entry is actually removed, not just hidden from the listing.
-        assert!(wm.test_ctx().behavior().pending_tmp_rules.is_empty());
+        assert!(
+            wm.test_ctx()
+                .core()
+                .state
+                .behavior
+                .pending_tmp_rules
+                .is_empty()
+        );
     }
 
     #[test]
     fn cancel_of_expired_entry_reports_not_found() {
         let mut wm = wm_with(9);
-        wm.with_ctx(|wm| inject_expired(wm, 7));
-        let resp =
-            wm.with_ctx(|wm| handle_pending_tmp_rule(wm, PendingTmpRuleCmd::Cancel { id: 7 }));
+        wm.with_ctx(|wm| inject_expired(&mut wm.core_mut().state.behavior, 7));
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(
+                &mut wm.core_mut().state,
+                PendingTmpRuleCmd::Cancel { id: 7 },
+            )
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 }

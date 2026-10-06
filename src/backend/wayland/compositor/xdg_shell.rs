@@ -705,7 +705,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
     ) -> bool {
         {
-            let state = self.protocol_core();
+            let state = &self.wm.core.state;
             let context = token_data
                 .surface
                 .as_ref()
@@ -736,7 +736,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .copied();
         if let Some(win) = self.native.window_id_for_surface(&surface) {
             let is_currently_visible = {
-                let state = self.protocol_core();
+                let state = &self.wm.core.state;
                 state
                     .model
                     .client_view(win)

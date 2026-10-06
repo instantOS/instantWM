@@ -164,7 +164,7 @@ impl WlrLayerShellHandler for WaylandState {
             // whichever output happens to enumerate first (on a laptop that
             // is the built-in panel regardless of where focus is).
             .or_else(|| {
-                let selected = self.protocol_core().model.selected_monitor()?.name.clone();
+                let selected = self.wm.core.state.model.selected_monitor()?.name.clone();
                 self.native
                     .space
                     .outputs()

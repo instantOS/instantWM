@@ -197,7 +197,8 @@ pub(crate) struct MonitorBarSnapshot {
 
 /// Configured display name for a named mode, if the config carries one.
 fn mode_display(core: &WmCore, name: &str) -> Option<String> {
-    core.config()
+    core.state
+        .config
         .bindings
         .modes
         .get(name)
@@ -210,7 +211,7 @@ fn mode_display(core: &WmCore, name: &str) -> Option<String> {
 fn resolve_status(core: &WmCore) -> Option<StatusContent> {
     use crate::core_state::ActiveWmMode;
 
-    let mode = match &core.behavior().current_mode {
+    let mode = match &core.state.behavior.current_mode {
         ActiveWmMode::Default => {
             let runtime = &core.bar.runtime;
             return (!runtime.status.is_empty()).then(|| StatusContent {
@@ -240,7 +241,7 @@ fn collect_tag_cells(
     drag_active: bool,
 ) -> Vec<TagCellSnapshot> {
     let mut tags = Vec::new();
-    let config = core.config();
+    let config = &core.state.config;
     let policy = crate::bar::policy::TagBarPolicy::resolve(config, &mon.name);
     for tag in crate::tags::bar::visible_tags(
         mon,
@@ -250,7 +251,7 @@ fn collect_tag_cells(
     ) {
         let is_hover = gesture == Gesture::Tag(tag.tag_index);
         let mut scheme = tag_scheme(
-            core.model(),
+            &core.state.model,
             mon,
             tag.tag_index as u32,
             occupied_tags,
@@ -258,7 +259,7 @@ fn collect_tag_cells(
             is_hover,
         );
         if is_hover && drag_active {
-            scheme = tag_hover_fill_scheme(&core.model().tags.colors);
+            scheme = tag_hover_fill_scheme(&core.state.model.tags.colors);
         }
         tags.push(TagCellSnapshot {
             tag_index: tag.tag_index,
@@ -277,15 +278,20 @@ fn collect_title_cells(
 ) -> Vec<TitleCellSnapshot> {
     let mut titles = Vec::new();
     for win in mon.bar_client_order() {
-        let Some(c) = core.model().client(win) else {
+        let Some(c) = core.state.model.client(win) else {
             continue;
         };
         let is_hover = gesture == Gesture::WinTitle(c.win);
-        let scheme = window_scheme(core.model(), &core.config().colors.window, c, is_hover);
+        let scheme = window_scheme(
+            &core.state.model,
+            &core.state.config.colors.window,
+            c,
+            is_hover,
+        );
         let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {
             let is_fullscreen = c.mode().is_fullscreen();
             Some(close_button_scheme(
-                &core.config().colors.close_button,
+                &core.state.config.colors.close_button,
                 gesture == Gesture::CloseButton,
                 c.is_locked,
                 is_fullscreen,
@@ -333,12 +339,12 @@ pub(crate) fn build_monitor_snapshots(
     core: &WmCore,
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
-    let selected_monitor_num = core.model().expect_selected_monitor().num;
+    let selected_monitor_num = core.state.model.expect_selected_monitor().num;
     let tray_monitor_id =
-        crate::systray::monitor(core.model(), &core.config().systray).map(Monitor::id);
-    let show_systray = core.config().systray.show;
-    let systray_spacing = core.config().systray.spacing;
-    let base_fonts = core.config().fonts.clone();
+        crate::systray::monitor(&core.state.model, &core.state.config.systray).map(Monitor::id);
+    let show_systray = core.state.config.systray.show;
+    let systray_spacing = core.state.config.systray.spacing;
+    let base_fonts = core.state.config.fonts.clone();
     let bar_hover = core.bar.hover;
     let mut selected_status = resolve_status(core);
     // While the external instantMENU presents the tray menu, the bar
@@ -347,7 +353,7 @@ pub(crate) fn build_monitor_snapshots(
         .bar
         .systray_host
         .instantmenu
-        .hosting(core.config().systray.menu_backend)
+        .hosting(core.state.config.systray.menu_backend)
     {
         None
     } else {
@@ -355,7 +361,7 @@ pub(crate) fn build_monitor_snapshots(
     };
 
     let mut snapshots = Vec::new();
-    for (monitor_id, mon) in core.model().monitors_iter() {
+    for (monitor_id, mon) in core.state.model.monitors_iter() {
         if !mon.bar_visible() {
             continue;
         }
@@ -393,7 +399,7 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             0
         };
-        let status_scheme = status_scheme(&core.config().colors.status);
+        let status_scheme = status_scheme(&core.state.config.colors.status);
         let systray = tray_visible.then(|| {
             build_systray_snapshot(
                 core,
@@ -417,12 +423,12 @@ pub(crate) fn build_monitor_snapshots(
             fonts,
             is_selected_monitor,
             status_scheme,
-            status_separator_color: core.config().colors.status.separator,
-            status_hover_color: core.config().colors.status.hover,
+            status_separator_color: core.state.config.colors.status.separator,
+            status_hover_color: core.state.config.colors.status.hover,
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: if core.model().is_overview_active_on(mon) {
+            layout_symbol: if core.state.model.is_overview_active_on(mon) {
                 "OVR".to_string()
             } else {
                 mon.layout_symbol_for_mask(selected_tags).to_string()
@@ -919,7 +925,11 @@ mod tests {
         record_systray_hits(host, &mut hit);
         core.bar.replace_hit_cache(ids[0], hit);
         assert_eq!(
-            crate::bar::model::bar_position_at_x(core.model().monitor(ids[0]).unwrap(), &core, x),
+            crate::bar::model::bar_position_at_x(
+                core.state.model.monitor(ids[0]).unwrap(),
+                &core,
+                x
+            ),
             crate::types::BarPosition::SystrayItem(0)
         );
     }

@@ -92,7 +92,7 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
     let monitor_id = add_tiled_monitor(&mut wm, &[first, second], Rect::new(0, 0, 800, 600));
     super::arrange(&mut wm.test_ctx(), Some(monitor_id));
 
-    let tiling = super::selected_tiling(&wm.test_ctx());
+    let tiling = super::selected_tiling(&wm.core.state);
     let (slots, _) = tiling.slots(
         &wm.core
             .state
@@ -125,11 +125,11 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
     };
 
     assert!(
-        pointer_tree_gap_resize_start(&wm.test_ctx(), gap).is_some(),
+        pointer_tree_gap_resize_start(&wm.core.state, gap).is_some(),
         "first={first_geo:?} second={second_geo:?} gap={gap:?}"
     );
     assert!(
-        pointer_tree_gap_resize_start(&wm.test_ctx(), Point::new(10, first_geo.center().y))
+        pointer_tree_gap_resize_start(&wm.core.state, Point::new(10, first_geo.center().y))
             .is_none(),
         "the configured outer gap must retain root/desktop behavior"
     );
@@ -218,7 +218,7 @@ fn arrange_invalidates_pointer_placement_candidates() {
     apply_preset(&mut wm, monitor_id, Preset::Grid, &windows);
 
     assert!(
-        super::preview_tree_at_point(&mut wm.test_ctx(), source, Point::new(201, 150),).is_some()
+        super::preview_tree_at_point(&mut wm.core.state, source, Point::new(201, 150),).is_some()
     );
     assert!(wm.core.state.interaction.pointer_placement_cache.is_some());
 
@@ -236,7 +236,7 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
 
     let source = windows[0];
     let point = Point::new(801, 625);
-    let preview = super::preview_tree_at_point(&mut wm.test_ctx(), source, point)
+    let preview = super::preview_tree_at_point(&mut wm.core.state, source, point)
         .expect("the test point must select a normalized edge candidate");
 
     assert!(super::place_tree_at_point(
@@ -244,7 +244,7 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
         source,
         point
     ));
-    let tiling = super::selected_tiling(&wm.test_ctx());
+    let tiling = super::selected_tiling(&wm.core.state);
     let (slots, constraints_fit) = tiling.slots(
         &wm.core
             .state
@@ -1180,8 +1180,14 @@ fn restored_slot_reconciles_windows_opened_and_closed_while_inactive() {
     let tags = TagMask::single(1).unwrap();
     {
         let mut ctx = wm.test_ctx();
-        assert!(ctx.model_mut().remove_client(WindowId(4)).is_some());
-        assert!(ctx.model_mut().add_client(
+        assert!(
+            ctx.core_mut()
+                .state
+                .model
+                .remove_client(WindowId(4))
+                .is_some()
+        );
+        assert!(ctx.core_mut().state.model.add_client(
             monitor_id,
             Client {
                 win: WindowId(5),
@@ -1459,7 +1465,7 @@ fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
         assert_eq!(wm.core.state.model.client(win).unwrap().geo, original);
         assert_eq!(wm.core.state.model.selected_monitor_id(), a);
         assert_eq!(wm.core.state.model.monitor_of_client(win), Some(a));
-        let preview = super::preview_tree_at_point(&mut wm.test_ctx(), win, point).unwrap();
+        let preview = super::preview_tree_at_point(&mut wm.core.state, win, point).unwrap();
         assert!(crate::mouse::drag::active_drag_finish(
             &mut wm.test_ctx(),
             MouseButton::Left,
@@ -1527,7 +1533,7 @@ fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
     begin_tiled_move(&mut wm, win);
     let point = Point::new(-400, -300);
     crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), point);
-    assert!(super::preview_tree_at_point(&mut wm.test_ctx(), win, point).is_some());
+    assert!(super::preview_tree_at_point(&mut wm.core.state, win, point).is_some());
     crate::mouse::drag::active_drag_finish(
         &mut wm.test_ctx(),
         MouseButton::Left,
@@ -1738,7 +1744,7 @@ fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
     begin_tiled_move(&mut wm, win);
     let point = Point::new(1100, 300);
     crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), point);
-    let preview = super::preview_tree_at_point(&mut wm.test_ctx(), win, point).unwrap();
+    let preview = super::preview_tree_at_point(&mut wm.core.state, win, point).unwrap();
     crate::mouse::drag::active_drag_finish(
         &mut wm.test_ctx(),
         MouseButton::Left,

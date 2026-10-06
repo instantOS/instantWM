@@ -15,7 +15,7 @@ pub fn update_bar_hit_state(
 
 /// Close the bar-hosted DBusMenu, returning whether a menu was open.
 pub fn close_systray_menu(wm: &mut Wm) -> bool {
-    crate::systray::close_menu(wm.core_ctx())
+    crate::systray::close_menu(&mut wm.core)
 }
 
 pub fn handle_bar_scroll(

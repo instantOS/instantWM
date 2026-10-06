@@ -85,8 +85,7 @@ pub struct PendingWorkResult {
 pub fn process_pending_work(ctx: &mut WmCtx<'_>, options: TickOptions) -> PendingWorkResult {
     let mut result = PendingWorkResult::default();
 
-    if ctx.pending_work_mut().monitor_config {
-        ctx.pending_work_mut().monitor_config = false;
+    if std::mem::take(&mut ctx.core_mut().work.monitor_config) {
         crate::monitor::apply_monitor_config(ctx);
         result.monitor_config_applied = true;
     }
@@ -95,38 +94,46 @@ pub fn process_pending_work(ctx: &mut WmCtx<'_>, options: TickOptions) -> Pendin
 
     // Edge scratchpads finish their slide-out through backend animation
     // bookkeeping; complete the deferred logical hide once it drained.
-    let pending_hides = ctx.pending_work_mut().pending_scratchpad_hide_windows();
+    let pending_hides = ctx.core().work.pending_scratchpad_hide_windows();
     let finished_hides: Vec<crate::types::WindowId> = pending_hides
         .into_iter()
         .filter(|win| !ctx.window_animation_active(*win))
         .collect();
-    for win in &finished_hides {
-        ctx.pending_work_mut().cancel_pending_scratchpad_hide(*win);
+    {
+        let work = &mut ctx.core_mut().work;
+        for win in &finished_hides {
+            work.cancel_pending_scratchpad_hide(*win);
+        }
     }
     if !finished_hides.is_empty() {
         crate::floating::finish_scratchpad_hides(ctx, &finished_hides);
     }
 
-    if !ctx.pending_work_mut().layout.is_pending() {
-        return result;
-    }
-
-    if options.defer_layout_while_animations_active
-        && options.animations_active
-        && !ctx.pending_work_mut().layout.is_urgent()
-    {
-        return result;
-    }
-
-    let Some(targets) = ctx.pending_work_mut().layout.take_targets() else {
+    let Some(targets) = take_ready_layout(&mut ctx.core_mut().work.layout, options) else {
         return result;
     };
     result.layout_applied = apply_layout_targets(ctx, targets);
     result
 }
 
+/// Resolve scheduler policy without borrowing native capabilities. The borrow
+/// ends before applying layout, which can synchronously dispatch native effects.
+fn take_ready_layout(
+    layout: &mut crate::core_state::PendingLayoutWork,
+    options: TickOptions,
+) -> Option<LayoutWorkTargets> {
+    if !layout.is_pending()
+        || (options.defer_layout_while_animations_active
+            && options.animations_active
+            && !layout.is_urgent())
+    {
+        return None;
+    }
+    layout.take_targets()
+}
+
 fn apply_layout_targets(ctx: &mut WmCtx<'_>, targets: LayoutWorkTargets) -> bool {
-    if ctx.model().client_count() == 0 {
+    if ctx.core().state.model.client_count() == 0 {
         return false;
     }
 
@@ -171,7 +178,7 @@ pub fn init_keyboard_layout(ctx: &mut WmCtx<'_>) {
 /// `i3status-rs`, or the built-in default (in that order of
 /// precedence).
 pub fn spawn_status_bar<B: crate::backend::BackendState>(wm: &mut Wm<B>) {
-    crate::bar::status::sync_visibility(wm.core_ctx());
+    crate::bar::status::sync_visibility(&mut wm.core);
     wm.core
         .bar
         .status_sources

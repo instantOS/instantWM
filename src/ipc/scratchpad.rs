@@ -21,7 +21,7 @@ fn message_or_ok(message: Option<String>) -> Response {
 pub fn handle_scratchpad_command(ctx: &mut WmCtx<'_>, cmd: ScratchpadCommand) -> Response {
     match cmd {
         ScratchpadCommand::Status { name } => {
-            let mut scratchpads = collect_scratchpad_info(ctx.model());
+            let mut scratchpads = collect_scratchpad_info(&ctx.core().state.model);
             if let Some(name) = name {
                 scratchpads.retain(|sp| sp.name == name);
             }

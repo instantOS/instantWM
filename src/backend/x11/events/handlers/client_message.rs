@@ -7,7 +7,7 @@ use x11rb::protocol::xproto::*;
 
 /// Handle incoming X11 client messages.
 pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
-    let showsystray = ctx.core.config().systray.show;
+    let showsystray = ctx.core.state.config.systray.show;
     let systray_win = ctx.xembed_tray.as_ref().map(|s| s.win).unwrap_or_default();
     let net_system_tray_op = ctx.x11_runtime.netatom.system_tray_op;
     let net_wm_state = ctx.x11_runtime.netatom.wm_state;
@@ -29,7 +29,7 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     }
 
-    if ctx.core.model().client(event_win).is_none() {
+    if ctx.core.state.model.client(event_win).is_none() {
         return;
     };
 
@@ -94,7 +94,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     );
 
     crate::backend::x11::systray::update_systray_icon_geom(
-        ctx.core.config().bar_metrics().height,
+        ctx.core.state.config.bar_metrics().height,
         ctx.xembed_tray.as_mut(),
         icon_win,
         geo.size(),
@@ -187,7 +187,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
 fn handle_current_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let desktop = e.data.as_data32()[0];
     let Some((monitor_id, tag_index)) =
-        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.model(), desktop)
+        crate::backend::x11::properties::monitor_tag_for_desktop(&ctx.core.state.model, desktop)
     else {
         return;
     };
@@ -209,7 +209,8 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     if desktop == u32::MAX {
         if ctx
             .core
-            .model()
+            .state
+            .model
             .client(win)
             .is_some_and(|client| client.is_scratchpad())
         {
@@ -221,7 +222,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
             );
             return;
         }
-        if let Some(client) = ctx.core.model_mut().client_mut(win) {
+        if let Some(client) = ctx.core.state.model.client_mut(win) {
             client.is_sticky = true;
         }
         crate::backend::x11::set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
@@ -230,7 +231,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     }
 
     let Some((target_mon, tag_index)) =
-        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.model(), desktop)
+        crate::backend::x11::properties::monitor_tag_for_desktop(&ctx.core.state.model, desktop)
     else {
         return;
     };
@@ -240,7 +241,8 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
 
     if ctx
         .core
-        .model()
+        .state
+        .model
         .client(win)
         .is_some_and(|client| client.is_scratchpad())
     {
@@ -252,8 +254,8 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     }
 
-    let old_mon = ctx.core.model().monitor_of_client(win);
-    let previous_focus = ctx.core.model().selected_win();
+    let old_mon = ctx.core.state.model.monitor_of_client(win);
+    let previous_focus = ctx.core.state.model.selected_win();
     let reassigned = ctx.core.mutate_selection(|model| {
         if let Some(client) = model.client_mut(win) {
             client.is_sticky = false;
@@ -281,7 +283,8 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
 fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let is_hidden = ctx
         .core
-        .model()
+        .state
+        .model
         .client(win)
         .is_some_and(|client| client.is_hidden);
     if is_hidden {

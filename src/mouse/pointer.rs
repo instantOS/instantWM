@@ -125,7 +125,7 @@ pub fn button_region_at(
     }
 
     let monitor_id = target.map_or_else(
-        || core.model().selected_monitor_id(),
+        || core.state.model.selected_monitor_id(),
         |target| target.monitor().id(),
     );
     PointerRegion::Root { monitor_id }
@@ -187,7 +187,7 @@ mod tests {
         tall.monitor_id = wm.core.state.model.monitors.allocate_id();
         wm.core.state.model.monitors.restore(vec![short, tall]);
 
-        let core = wm.core_ctx();
+        let core = &mut wm.core;
 
         assert_eq!(
             button_region_at(core, Point::new(100, 1060), None),

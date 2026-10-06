@@ -60,7 +60,7 @@ pub fn manage(
     original_border_width: u32,
 ) {
     let transient_for = get_transient_for_hint(&ctx.x11, window);
-    let border_px = ctx.core.config().window.border_width_px;
+    let border_px = ctx.core.state.config.window.border_width_px;
     let mut client = Client::new(window);
     client.geo = initial_geometry;
     client.old_geo = initial_geometry;
@@ -69,7 +69,7 @@ pub fn manage(
     client.old_border_width = border_px;
     client.transient_for = transient_for;
     let launch_context = read_launch_context(
-        ctx.core.pending_launches_mut(),
+        &mut ctx.core.state.pending_launches,
         &ctx.x11,
         ctx.x11_runtime,
         window,
@@ -79,7 +79,7 @@ pub fn manage(
     // than stored on the client so `add_client` below can adopt the finished
     // client in one step.
     let Some(monitor_id) = crate::client::lifecycle::assign_initial_monitor_and_tags(
-        ctx.core.model(),
+        &ctx.core.state.model,
         &mut client,
         transient_for,
         launch_context,
@@ -92,7 +92,7 @@ pub fn manage(
     client.is_hidden =
         crate::backend::x11::visibility::get_state(&ctx.x11, ctx.x11_runtime.wmatom.state, window)
             == crate::backend::x11::constants::WM_STATE_ICONIC;
-    if !ctx.core.model_mut().add_client(monitor_id, client) {
+    if !ctx.core.state.model.add_client(monitor_id, client) {
         return;
     }
     let (properties, protocols) = crate::backend::x11::properties::initial_window_properties(
@@ -101,7 +101,7 @@ pub fn manage(
         window,
     );
     let rules = crate::client::apply_initial_rules(
-        ctx.core.state_mut(),
+        &mut ctx.core.state,
         window,
         &properties,
         launch_context,
@@ -114,8 +114,8 @@ pub fn manage(
         .insert(window, original_border_width);
     ctx.x11_runtime.client_protocols.insert(window, protocols);
 
-    let bar_height = ctx.core.config().bar_metrics().height;
-    let model = ctx.core.model_mut();
+    let bar_height = ctx.core.state.config.bar_metrics().height;
+    let model = &mut ctx.core.state.model;
     let view = model
         .client_view(window)
         .expect("newly managed client must have an assigned monitor");
@@ -148,27 +148,28 @@ pub fn manage(
         )),
     );
 
-    crate::backend::x11::focus::configure(ctx.core.state(), &ctx.x11, window);
+    crate::backend::x11::focus::configure(&ctx.core.state, &ctx.x11, window);
     update_window_type(ctx, window);
-    let size_hints = crate::backend::x11::update_size_hints(ctx.core.model_mut(), &ctx.x11, window);
+    let size_hints =
+        crate::backend::x11::update_size_hints(&mut ctx.core.state.model, &ctx.x11, window);
     update_wm_hints(ctx, window);
-    read_client_info(ctx.core.model_mut(), &ctx.x11, ctx.x11_runtime, window);
-    read_wm_desktop_hint(ctx.core.model_mut(), &ctx.x11, ctx.x11_runtime, window);
-    set_client_tag_prop(ctx.core.state(), &ctx.x11, ctx.x11_runtime, window);
+    read_client_info(&mut ctx.core.state.model, &ctx.x11, ctx.x11_runtime, window);
+    read_wm_desktop_hint(&mut ctx.core.state.model, &ctx.x11, ctx.x11_runtime, window);
+    set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, window);
     update_motif_hints(ctx, window);
     let position_is_explicit = rules
         .placement
         .position_is_explicit(size_hints.is_some_and(|hints| hints.position.is_some()));
-    grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, window, false);
+    grab_buttons(&ctx.core.state, &ctx.x11, ctx.x11_runtime, window, false);
 
-    if initialize_floating_state(ctx.core.model_mut(), window, transient_for.is_some()) {
+    if initialize_floating_state(&mut ctx.core.state.model, window, transient_for.is_some()) {
         if let Some(rect) = crate::client::sane_floating_spawn_rect(
-            ctx.core.model(),
+            &ctx.core.state.model,
             window,
             transient_for,
             position_is_explicit,
         ) {
-            ctx.core.model_mut().sync_client_geometry(window, rect);
+            ctx.core.state.model.sync_client_geometry(window, rect);
         }
         ctx.x11.raise_window_visual_only(window);
     }
@@ -189,7 +190,8 @@ pub fn manage(
     // different monitor from the previous session.
     let view = ctx
         .core
-        .model()
+        .state
+        .model
         .client_view(window)
         .expect("managed client must exist before arrange");
     let geo = view.client.geo;
@@ -203,7 +205,7 @@ pub fn manage(
     // Park the window offscreen so arranging never flashes it at its
     // requested position.
     let offscreen = Rect {
-        x: geo.x + 2 * ctx.derived().display.width,
+        x: geo.x + 2 * ctx.core().state.derived.display.width,
         ..geo
     };
     ctx.set_geometry_impl(window, offscreen, GeometryApplyMode::VisualOnly);

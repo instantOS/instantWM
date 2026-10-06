@@ -76,11 +76,13 @@ fn offer_tree_resize(ctx: &mut WmCtx, win: WindowId, direction: ResizeDirection)
 /// Update the passive resize offer at a pointer position without applying
 /// hover-focus policy. Returns the window owning the offered resize seam.
 pub fn update_resize_offer_at(ctx: &mut WmCtx, root: Point) -> Option<WindowId> {
-    if let Some(target) = hover_resize_target_at(ctx.model(), root) {
+    if let Some(target) = hover_resize_target_at(&ctx.core().state.model, root) {
         offer_hover_resize(ctx, target);
         return Some(target.win);
     }
-    if let Some((win, resize)) = crate::layouts::manager::pointer_tree_gap_resize_start(ctx, root) {
+    if let Some((win, resize)) =
+        crate::layouts::manager::pointer_tree_gap_resize_start(&ctx.core().state, root)
+    {
         offer_tree_resize(ctx, win, resize.direction);
         return Some(win);
     }
@@ -223,12 +225,14 @@ pub fn update_resize_offer_with_focus_at(ctx: &mut WmCtx, root: Point) -> bool {
         // Otherwise the motion handler resolves the actual window beneath the
         // pointer after the resize-offer check.
         let should_focus = ctx
-            .config()
+            .core()
+            .state
+            .config
             .window
             .focus_follows_mouse
             .allows(crate::types::HoverFocusTrigger::PointerMotion)
-            && ctx.model().selected_win() != Some(win)
-            && !has_visible_tiled_client(ctx.model());
+            && ctx.core().state.model.selected_win() != Some(win)
+            && !has_visible_tiled_client(&ctx.core().state.model);
 
         if should_focus {
             crate::focus::focus(ctx, Some(win));
@@ -268,7 +272,7 @@ pub fn set_sidebar_offer(
         return SidebarOfferUpdate::Active;
     }
 
-    if ctx.interaction().drag.hover_offer().is_sidebar() {
+    if ctx.core().state.interaction.drag.hover_offer().is_sidebar() {
         clear_hover_offer(ctx);
         return SidebarOfferUpdate::Cleared;
     }

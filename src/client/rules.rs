@@ -263,7 +263,7 @@ pub fn update_window_properties(
     win: WindowId,
     props: &WindowProperties,
 ) -> bool {
-    let previous_selection = core.model().selected_win();
+    let previous_selection = core.state.model.selected_win();
     let Some(outcome) =
         core.mutate_state_selection(|state| apply_property_change(state, win, props))
     else {
@@ -277,7 +277,7 @@ pub fn update_window_properties(
     if outcome.bar_changed {
         core.bar.mark_dirty();
     }
-    core.model().selected_win() != previous_selection
+    core.state.model.selected_win() != previous_selection
 }
 
 /// Monitor geometry available to rule application.

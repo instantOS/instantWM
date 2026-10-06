@@ -45,12 +45,12 @@ pub(crate) fn compute_axis_resize(
 }
 
 pub(crate) fn constrain_aspect_size(
-    ctx: &WmCtx<'_>,
+    model: &crate::model::WmModel,
     win: WindowId,
     raw_width: i32,
     raw_height: i32,
 ) -> (i32, i32) {
-    let Some(client) = ctx.model().client(win) else {
+    let Some(client) = model.client(win) else {
         return (raw_width.max(1), raw_height.max(1));
     };
     let mut width = raw_width.max(1);
@@ -92,21 +92,28 @@ pub fn resize_from_point(
     point: Point,
 ) {
     crate::client::fullscreen::leave_maximized(ctx, win);
-    let Some((geo, is_floating)) = ctx.model().client(win).and_then(|client| {
+    let Some((geo, is_floating)) = ctx.core().state.model.client(win).and_then(|client| {
         (!client.mode().is_true_fullscreen())
             .then_some((client.geo, client.mode().is_normal_floating()))
     }) else {
         return;
     };
 
-    if let Some(tree_resize) = crate::layouts::manager::pointer_tree_resize_start(ctx, win, point) {
+    if let Some(tree_resize) =
+        crate::layouts::manager::pointer_tree_resize_start(&ctx.core().state.model, win, point)
+    {
         let _ =
             crate::mouse::drag::tree_resize_begin(ctx, win, btn, source, point, geo, tree_resize);
         return;
     }
 
     // Promote tiled windows to floating before starting the resize.
-    let has_tiling = ctx.model().expect_selected_monitor().is_tiling_layout();
+    let has_tiling = ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .is_tiling_layout();
     if !is_floating && has_tiling {
         let Some((new_geo, _)) = promote_to_floating(
             ctx,

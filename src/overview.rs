@@ -30,7 +30,7 @@ pub(crate) enum ActionTransition {
 /// below). IPC commands that bypass the action machinery have their
 /// counterpart table in `crate::ipc::ipc_overview_exit` — keep them aligned.
 fn prepare_action(ctx: &mut WmCtx<'_>, transition: ActionTransition) {
-    if !ctx.model().is_overview_active() {
+    if !ctx.core().state.model.is_overview_active() {
         return;
     }
     match transition {
@@ -168,7 +168,7 @@ pub(crate) fn handle_mode_transition(
 /// Exit overview mode with a specific [`ExitMode`].
 ///
 pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
-    if !ctx.model().is_overview_active() {
+    if !ctx.core().state.model.is_overview_active() {
         return;
     }
     ctx.transition_current_mode(crate::core_state::ActiveWmMode::Default, mode);
@@ -186,13 +186,13 @@ pub fn begin_card_gesture(
     source: crate::types::InteractionSource,
     root: Point,
 ) -> bool {
-    if !ctx.model().is_overview_active() || button != crate::types::MouseButton::Left {
+    if !ctx.core().state.model.is_overview_active() || button != crate::types::MouseButton::Left {
         return false;
     }
-    let Some(view) = ctx.model().client_view(window) else {
+    let Some(view) = ctx.core().state.model.client_view(window) else {
         return false;
     };
-    let Some(monitor) = ctx.model().selected_monitor() else {
+    let Some(monitor) = ctx.core().state.model.selected_monitor() else {
         return false;
     };
     if view.monitor.id() != monitor.id() || !overview_eligible(view.client, monitor.visible_tags())
@@ -209,7 +209,7 @@ pub fn begin_card_gesture(
 }
 
 pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    let window = match ctx.interaction().drag.capture() {
+    let window = match ctx.core().state.interaction.drag.capture() {
         Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window,
         _ => return false,
     };
@@ -220,7 +220,7 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     if let Some(close_armed) = transition {
         let outline = close_armed
             .then_some(window)
-            .and_then(|window| ctx.model().client(window))
+            .and_then(|window| ctx.core().state.model.client(window))
             .map(|client| client.geo.with_borders(client.border_width));
         ctx.update_close_preview(close_armed.then_some(window), outline);
     }
@@ -239,7 +239,7 @@ pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::Mou
         crate::core_state::OverviewCardAction::Select(window) => {
             // Set overview's private selection without focusing the client
             // while its card geometry is still projected.
-            let _ = hover_window(ctx, Some(window), None);
+            let _ = hover_window(ctx.core_mut(), Some(window), None);
             exit_overview(ctx, ExitMode::ToSelectedWindow);
         }
         crate::core_state::OverviewCardAction::Close(window) => {
@@ -256,11 +256,11 @@ fn enter(ctx: &mut WmCtx<'_>) {
     // Overview takes over pointer semantics; a hover-resize offer armed on
     // the desktop must not keep its cursor, pointer borrow, or click claim.
     crate::mouse::clear_hover_offer(ctx);
-    let selected_monitor_id = ctx.model().selected_monitor_id();
-    let selected_window = ctx.model().selected_win();
-    let all_tags = TagMask::all(ctx.model().tags.count());
+    let selected_monitor_id = ctx.core().state.model.selected_monitor_id();
+    let selected_window = ctx.core().state.model.selected_win();
+    let all_tags = TagMask::all(ctx.core().state.model.tags.count());
     let window_order = {
-        let model = ctx.model();
+        let model = &ctx.core().state.model;
         let monitor = model.expect_selected_monitor();
         initial_window_order(monitor, all_tags)
     };
@@ -269,11 +269,17 @@ fn enter(ctx: &mut WmCtx<'_>) {
         .or_else(|| window_order.first().copied());
     let restore_geometry = window_order
         .iter()
-        .filter_map(|win| ctx.model().client(*win).map(|client| (*win, client.geo)))
+        .filter_map(|win| {
+            ctx.core()
+                .state
+                .model
+                .client(*win)
+                .map(|client| (*win, client.geo))
+        })
         .collect();
 
     {
-        let mon = ctx.model_mut().expect_selected_monitor_mut();
+        let mon = ctx.core_mut().state.model.expect_selected_monitor_mut();
         if mon.overview_state.is_some() {
             return;
         }
@@ -300,13 +306,13 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
         ctx.update_close_preview(None, None);
     }
     let state = {
-        let mon = ctx.model_mut().expect_selected_monitor_mut();
+        let mon = ctx.core_mut().state.model.expect_selected_monitor_mut();
         mon.overview_state.take()
     };
 
     let Some(state) = state else { return };
 
-    let selected_monitor_id = ctx.model().selected_monitor_id();
+    let selected_monitor_id = ctx.core().state.model.selected_monitor_id();
 
     match mode {
         ExitMode::RestorePrevious => {
@@ -320,10 +326,13 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             // disappeared before the exit transition.
             let selected_window = state
                 .active_window
-                .filter(|win| ctx.model().monitor_of_client(*win) == Some(selected_monitor_id))
-                .or_else(|| ctx.model().selected_win());
+                .filter(|win| {
+                    ctx.core().state.model.monitor_of_client(*win) == Some(selected_monitor_id)
+                })
+                .or_else(|| ctx.core().state.model.selected_win());
             let selected_tags = selected_window.and_then(|win| {
-                ctx.state()
+                ctx.core()
+                    .state
                     .model
                     .client(win)
                     .map(|c| c.tags.without_scratchpad())
@@ -331,12 +340,17 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             });
             restore_window_geometry(ctx, selected_monitor_id, &state.restore_geometry);
 
-            let restore_mask = ctx.model().expect_selected_monitor().selected_tags();
+            let restore_mask = ctx
+                .core()
+                .state
+                .model
+                .expect_selected_monitor()
+                .selected_tags();
             let target_mask = selected_tags.or(Some(restore_mask));
             if let Some(mask) = target_mask
                 && !mask.is_empty()
             {
-                let mon = ctx.model_mut().expect_selected_monitor_mut();
+                let mon = ctx.core_mut().state.model.expect_selected_monitor_mut();
                 commit_overview_tags(mon, mask);
             }
 
@@ -363,12 +377,19 @@ fn commit_overview_tags(monitor: &mut Monitor, target_mask: TagMask) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
-    if ctx.model().is_overview_active() {
+    if ctx.core().state.model.is_overview_active() {
         exit_overview(ctx, ExitMode::ToSelectedWindow);
         return;
     }
 
-    if ctx.model().expect_selected_monitor().clients().is_empty() {
+    if ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .clients()
+        .is_empty()
+    {
         return;
     }
 
@@ -376,7 +397,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
-    if !ctx.model().is_overview_active() {
+    if !ctx.core().state.model.is_overview_active() {
         return;
     }
 
@@ -395,17 +416,17 @@ pub(crate) struct OverviewLayout {
 /// consumed the hover event. The selection becomes real focus when overview is
 /// confirmed.
 pub fn hover_window(
-    ctx: &mut WmCtx<'_>,
+    core: &mut crate::core_state::WmCore,
     hovered_window: Option<WindowId>,
     pointer_position: Option<Point>,
 ) -> bool {
-    if !ctx.model().is_overview_active() {
+    if !core.state.model.is_overview_active() {
         return false;
     }
 
-    let monitor_id = ctx.model().selected_monitor_id();
+    let monitor_id = core.state.model.selected_monitor_id();
     let eligible = hovered_window.filter(|win| {
-        let model = ctx.model();
+        let model = &core.state.model;
         let monitor = model.expect_selected_monitor();
         model.client_view(*win).is_some_and(|view| {
             view.monitor.id() == monitor_id
@@ -414,7 +435,7 @@ pub fn hover_window(
     });
 
     let changed = {
-        let monitor = ctx.model_mut().expect_selected_monitor_mut();
+        let monitor = core.state.model.expect_selected_monitor_mut();
         let Some(state) = monitor.overview_state.as_mut() else {
             return false;
         };
@@ -422,7 +443,7 @@ pub fn hover_window(
     };
 
     if changed {
-        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+        core.queue_layout_for_monitor_urgent(monitor_id);
     }
     true
 }
@@ -430,19 +451,14 @@ pub fn hover_window(
 /// Keep overview emphasis aligned with an actual focus change. This is called
 /// by the single shared focus entry point, so keyboard and IPC focus changes do
 /// not need overview-specific branches at their individual call sites.
-pub(crate) fn follow_focus(ctx: &mut WmCtx<'_>) {
-    follow_focus_core(ctx.core_mut());
-}
-
-/// Core-only follow-up shared by borrowed backend transactions.
-pub(crate) fn follow_focus_core(core: &mut crate::core_state::WmCore) {
-    if !core.model().is_overview_active() {
+pub(crate) fn follow_focus(core: &mut crate::core_state::WmCore) {
+    if !core.state.model.is_overview_active() {
         return;
     }
-    let monitor_id = core.model().selected_monitor_id();
-    let selected = core.model().selected_win();
+    let monitor_id = core.state.model.selected_monitor_id();
+    let selected = core.state.model.selected_win();
     let changed = {
-        let monitor = core.model_mut().expect_selected_monitor_mut();
+        let monitor = core.state.model.expect_selected_monitor_mut();
         let Some(state) = monitor.overview_state.as_mut() else {
             return;
         };
@@ -456,7 +472,7 @@ pub(crate) fn follow_focus_core(core: &mut crate::core_state::WmCore) {
 /// Move keyboard focus through the stable two-dimensional overview grid.
 pub fn focus_direction(ctx: &mut WmCtx<'_>, direction: Direction) -> bool {
     let target = {
-        let model = ctx.model();
+        let model = &ctx.core().state.model;
         let monitor = model.expect_selected_monitor();
         let Some(state) = monitor.overview_state.as_ref() else {
             return false;
@@ -578,7 +594,7 @@ fn restore_window_geometry(
     geometry: &HashMap<WindowId, Rect>,
 ) {
     for (&win, &rect) in geometry {
-        if ctx.model().monitor_of_client(win) == Some(monitor_id) {
+        if ctx.core().state.model.monitor_of_client(win) == Some(monitor_id) {
             ctx.move_resize(win, rect, MoveResizeOptions::immediate());
         }
     }

@@ -30,7 +30,12 @@ fn move_pointer(ctx: &mut WmCtx<'_>, mut x: f64, mut y: f64, normalized: bool) -
         if !(0.0..=1.0).contains(&x) || !(0.0..=1.0).contains(&y) {
             return Response::err("normalized pointer coordinates must be between 0 and 1");
         }
-        let rect = ctx.state().model.expect_selected_monitor().monitor_rect;
+        let rect = ctx
+            .core()
+            .state
+            .model
+            .expect_selected_monitor()
+            .monitor_rect;
         x = f64::from(rect.x) + x * f64::from((rect.w - 1).max(0));
         y = f64::from(rect.y) + y * f64::from((rect.h - 1).max(0));
     }
@@ -40,7 +45,7 @@ fn move_pointer(ctx: &mut WmCtx<'_>, mut x: f64, mut y: f64, normalized: bool) -
 }
 
 fn focus_window(ctx: &mut WmCtx<'_>, win: WindowId) -> Response {
-    if ctx.model().client(win).is_none() {
+    if ctx.core().state.model.client(win).is_none() {
         return Response::err(format!("window {} not found", win.0));
     }
     crate::focus::focus(ctx, Some(win));
@@ -48,13 +53,14 @@ fn focus_window(ctx: &mut WmCtx<'_>, win: WindowId) -> Response {
 }
 
 fn tag_window(ctx: &mut WmCtx<'_>, win: WindowId, tag: u32) -> Response {
-    if ctx.model().client(win).is_none() {
+    let core_state = &ctx.core().state;
+    if core_state.model.client(win).is_none() {
         return Response::err(format!("window {} not found", win.0));
     }
     let Some(mask) = usize::try_from(tag).ok().and_then(TagMask::single) else {
         return Response::err(format!("invalid tag {tag}"));
     };
-    if !mask.intersects(ctx.model().tags.mask()) {
+    if !mask.intersects(core_state.model.tags.mask()) {
         return Response::err(format!("tag {tag} is not configured"));
     }
     crate::tags::client_tags::set_client_tag(ctx, win, mask);
@@ -62,7 +68,7 @@ fn tag_window(ctx: &mut WmCtx<'_>, win: WindowId, tag: u32) -> Response {
 }
 
 fn set_window_floating(ctx: &mut WmCtx<'_>, win: WindowId, floating: bool) -> Response {
-    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
+    let Some(monitor_id) = ctx.core().state.model.monitor_of_client(win) else {
         return Response::err(format!("window {} not found", win.0));
     };
     let request = if floating {

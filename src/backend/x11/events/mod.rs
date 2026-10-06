@@ -143,7 +143,7 @@ pub fn scan(ctx: &mut WmCtxX11<'_>) {
     };
 
     let (managed, transients) =
-        classify_windows(ctx.core.model(), &ctx.x11, ctx.x11_runtime, children);
+        classify_windows(&ctx.core.state.model, &ctx.x11, ctx.x11_runtime, children);
 
     let geometry_requests: Vec<_> = managed
         .into_iter()

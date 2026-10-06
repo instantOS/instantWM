@@ -19,8 +19,8 @@ fn tree_commands_allowed(monitor: &Monitor) -> bool {
 }
 
 //BOZO: is this confusing to understand? Should it be a method on something instead?
-fn tree_preset_changes_allowed(ctx: &WmCtx<'_>) -> bool {
-    !ctx.interaction()
+fn tree_preset_changes_allowed(interaction: &crate::core_state::InteractionState) -> bool {
+    !interaction
         .drag
         .active_interaction()
         .is_some_and(|drag| drag.operation().is_tree_resize())
@@ -47,7 +47,7 @@ pub enum MaximizedStackReorder {
 //BOZO: are layout and tree-preset used interchangeably? Should the terminology be unified? Or are they different concepts?
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
     let Some(preset) = layout.tree_preset() else {
-        let monitor = ctx.model_mut().expect_selected_monitor_mut();
+        let monitor = ctx.core_mut().state.model.expect_selected_monitor_mut();
         monitor.per_tag_state().presentation = layout.presentation();
         finish_layout_change(ctx);
         return;
@@ -57,14 +57,16 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
     // (maximized/floating) lifts the lens and shows the remembered tree.
     // Only a second press, with the layout already visible tiled, resets it.
     let reveal_only = ctx
-        .model()
+        .core()
+        .state
+        .model
         .expect_selected_monitor()
         .per_tag()
         .is_some_and(|state| {
             state.presentation != PresentationMode::Tiled && state.active_preset == preset
         });
     if reveal_only {
-        let monitor = ctx.model_mut().expect_selected_monitor_mut();
+        let monitor = ctx.core_mut().state.model.expect_selected_monitor_mut();
         monitor.per_tag_state().presentation = PresentationMode::Tiled;
         finish_layout_change(ctx);
         return;
@@ -86,12 +88,13 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
 /// the drag clobber the freshly restored slot. Keyboard placement mode is
 /// inherently safe — unbound keys cancel it before any command runs.
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
-    if !tree_preset_changes_allowed(ctx) {
+    let core_state = &ctx.core().state;
+    if !tree_preset_changes_allowed(&core_state.interaction) {
         return;
     }
 
     let (windows, master_count) = {
-        let monitor = ctx.model().expect_selected_monitor();
+        let monitor = core_state.model.expect_selected_monitor();
         let windows = monitor
             .collect_tiling_tree_members()
             .into_iter()
@@ -105,7 +108,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
         };
         (windows, requested)
     };
-    let monitor = ctx.model_mut().expect_selected_monitor_mut();
+    let monitor = ctx.core_mut().state.model.expect_selected_monitor_mut();
     let state = monitor.per_tag_state();
     state.presentation = PresentationMode::Tiled;
     state.master_count = master_count;
@@ -143,7 +146,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
 //BOZO: does this reinvent the directional candidate code? Are directional candidates even still needed?
 pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     let neighbor = {
-        let monitor = ctx.model().expect_selected_monitor();
+        let monitor = ctx.core().state.model.expect_selected_monitor();
         if !tree_commands_allowed(monitor) {
             return false;
         }
@@ -162,14 +165,17 @@ pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side
 }
 
 pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !tree_commands_allowed(ctx.model().expect_selected_monitor()) {
+    let core_state = &ctx.core().state;
+    if !tree_commands_allowed(core_state.model.expect_selected_monitor()) {
         return false;
     }
-    let Some(selected) = ctx.model().selected_win() else {
+    let Some(selected) = core_state.model.selected_win() else {
         return false;
     };
     let changed = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
@@ -193,7 +199,7 @@ pub fn reorder_maximized_stack(
     direction: StackDirection,
 ) -> MaximizedStackReorder {
     let pair = {
-        let monitor = ctx.model().expect_selected_monitor();
+        let monitor = ctx.core().state.model.expect_selected_monitor();
         if !monitor.is_maximized_layout() {
             return MaximizedStackReorder::NotApplicable;
         }
@@ -215,7 +221,9 @@ pub fn reorder_maximized_stack(
     };
 
     let changed = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
@@ -224,7 +232,7 @@ pub fn reorder_maximized_stack(
         // `tiled_tree_order` deliberately exposes newly managed tiled clients
         // before the next authoritative arrange has inserted their leaves.
         // Do not reinterpret that transient state as a movement boundary.
-        let monitor_id = ctx.model().selected_monitor_id();
+        let monitor_id = ctx.core().state.model.selected_monitor_id();
         ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
         return MaximizedStackReorder::ReconcileRequired;
     }
@@ -250,7 +258,7 @@ pub fn swap_bar_titles(
     second: WindowId,
 ) -> bool {
     let maximized_pair = {
-        let Some(model) = ctx.model().monitor(monitor_id) else {
+        let Some(model) = ctx.core().state.model.monitor(monitor_id) else {
             return false;
         };
         let order = model.bar_client_order();
@@ -265,7 +273,9 @@ pub fn swap_bar_titles(
 
     if maximized_pair {
         let changed = ctx
-            .model_mut()
+            .core_mut()
+            .state
+            .model
             .monitor_mut(monitor_id)
             .expect("validated monitor must remain present")
             .per_tag_state()
@@ -281,22 +291,27 @@ pub fn swap_bar_titles(
         return changed;
     }
 
-    ctx.model_mut()
+    ctx.core_mut()
+        .state
+        .model
         .monitor_mut(monitor_id)
         .expect("validated monitor must remain present")
         .swap_clients_in_stack(first, second)
 }
 
 pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !tree_commands_allowed(ctx.model().expect_selected_monitor()) {
+    let core_state = &ctx.core().state;
+    if !tree_commands_allowed(core_state.model.expect_selected_monitor()) {
         return false;
     }
-    let Some(selected) = ctx.model().selected_win() else {
+    let Some(selected) = core_state.model.selected_win() else {
         return false;
     };
-    let config = (&ctx.config().layout).into();
+    let config = (&core_state.config.layout).into();
     let changed = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
@@ -308,15 +323,18 @@ pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> boo
 }
 
 pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
-    if !tree_commands_allowed(ctx.model().expect_selected_monitor()) {
+    let core_state = &ctx.core().state;
+    if !tree_commands_allowed(core_state.model.expect_selected_monitor()) {
         return false;
     }
-    let Some(selected) = ctx.model().selected_win() else {
+    let Some(selected) = core_state.model.selected_win() else {
         return false;
     };
-    let config = (&ctx.config().layout).into();
+    let config = (&core_state.config.layout).into();
     let changed = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
@@ -328,8 +346,9 @@ pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
 }
 
 pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
-    let eligible = ctx.model().client_view(window).is_some_and(|view| {
-        view.monitor.id() == ctx.model().selected_monitor_id()
+    let core_state = &ctx.core().state;
+    let eligible = core_state.model.client_view(window).is_some_and(|view| {
+        view.monitor.id() == core_state.model.selected_monitor_id()
             && tree_commands_allowed(view.monitor)
             && view.client.mode().is_normal_tiling()
     });
@@ -337,9 +356,9 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
         return false;
     }
 
-    let tiling = super::pointer::selected_tiling(ctx);
-    let candidate_order = ctx
-        .model()
+    let tiling = super::pointer::selected_tiling(core_state);
+    let candidate_order = core_state
+        .model
         .expect_selected_monitor()
         .collect_tiled()
         .into_iter()
@@ -352,7 +371,9 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     ctx.flush();
 
     let target_focus = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
@@ -379,11 +400,17 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
 /// When the monitor is in floating layout presentation, this restores manual
 /// tiling instead of entering maximized mode.
 pub fn toggle_tiling_maximized(ctx: &mut WmCtx<'_>) {
-    let next = match ctx.model().expect_selected_monitor().current_layout() {
+    let next = match ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .current_layout()
+    {
         PresentationMode::Maximized | PresentationMode::Floating => PresentationMode::Tiled,
         _ => PresentationMode::Maximized,
     };
-    let monitor = ctx.model_mut().expect_selected_monitor_mut();
+    let monitor = ctx.core_mut().state.model.expect_selected_monitor_mut();
     monitor.per_tag_state().presentation = next;
     finish_layout_change(ctx);
 }
@@ -391,20 +418,26 @@ pub fn toggle_tiling_maximized(ctx: &mut WmCtx<'_>) {
 /// Toggle floating layout presentation without modifying the manual tree or
 /// per-window floating state.
 pub fn toggle_floating_presentation(ctx: &mut WmCtx<'_>) {
-    let next =
-        if ctx.model().expect_selected_monitor().current_layout() == PresentationMode::Floating {
-            PresentationMode::Tiled
-        } else {
-            PresentationMode::Floating
-        };
-    let monitor = ctx.model_mut().expect_selected_monitor_mut();
+    let next = if ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .current_layout()
+        == PresentationMode::Floating
+    {
+        PresentationMode::Tiled
+    } else {
+        PresentationMode::Floating
+    };
+    let monitor = ctx.core_mut().state.model.expect_selected_monitor_mut();
     monitor.per_tag_state().presentation = next;
     finish_layout_change(ctx);
 }
 
 pub(crate) fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let (monitor_id, is_floating) = {
-        let monitor = ctx.model().expect_selected_monitor();
+        let monitor = ctx.core().state.model.expect_selected_monitor();
         (
             monitor.id(),
             monitor.current_layout() == PresentationMode::Floating,
@@ -424,7 +457,9 @@ pub(crate) fn finish_layout_change_for_monitor(
     monitor_id: crate::types::MonitorId,
 ) {
     let is_floating = ctx
-        .model()
+        .core()
+        .state
+        .model
         .monitor(monitor_id)
         .is_some_and(|monitor| monitor.current_layout() == PresentationMode::Floating);
     finish_layout_change_with_presentation(ctx, monitor_id, is_floating);
@@ -436,7 +471,9 @@ fn finish_layout_change_with_presentation(
     is_floating: bool,
 ) {
     if !is_floating {
-        ctx.model_mut()
+        ctx.core_mut()
+            .state
+            .model
             .reconcile_client_maximization_for_tiling(monitor_id);
     }
     arrange(ctx, Some(monitor_id));
@@ -445,7 +482,9 @@ fn finish_layout_change_with_presentation(
     // when the global presentation crosses the tiled/floating boundary, even
     // if a window's geometry does not. Always project the new state.
     let windows = ctx
-        .model()
+        .core()
+        .state
+        .model
         .clients_iter_all()
         .filter(|(id, _)| *id == monitor_id)
         .map(|(_, client)| client.win)
@@ -466,7 +505,9 @@ fn finish_layout_change_with_presentation(
 /// reset its manual edits.
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     let current_layout = ctx
-        .model()
+        .core()
+        .state
+        .model
         .expect_selected_monitor()
         .current_layout_command();
     let all_layouts = LayoutCommand::all();
@@ -493,7 +534,9 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
 /// visible rather than silently rewriting a hidden tree.
 pub fn reset_active_layout(ctx: &mut WmCtx<'_>) {
     let preset = ctx
-        .model()
+        .core()
+        .state
+        .model
         .expect_selected_monitor()
         .per_tag()
         .map_or(crate::layouts::tree::Preset::MasterStack, |state| {
@@ -503,17 +546,23 @@ pub fn reset_active_layout(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
+    let core_state = &ctx.core().state;
     // Applying the new count rebuilds the master-stack preset. Reject the
     // command before touching per-tag state when that rebuild is unsafe.
-    if !tree_preset_changes_allowed(ctx) {
+    if !tree_preset_changes_allowed(&core_state.interaction) {
         return;
     }
-    let window_count = ctx.model().expect_selected_monitor().tiled_client_count();
+    let window_count = core_state
+        .model
+        .expect_selected_monitor()
+        .tiled_client_count();
     if window_count == 0 || delta == 0 {
         return;
     }
     let state = ctx
-        .model_mut()
+        .core_mut()
+        .state
+        .model
         .expect_selected_monitor_mut()
         .per_tag_state();
     let current = state.master_count.min(window_count);

@@ -127,20 +127,22 @@ pub fn ungrab(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     x11_runtime.active_pointer_grab = None;
 }
 
-fn owns_pointer_capture(ctx: &WmCtxX11<'_>, btn: MouseButton) -> bool {
-    ctx.core.interaction().drag.captured_button() == Some(btn)
-        && ctx.core.interaction().drag.captured_source()
-            == Some(crate::types::InteractionSource::Pointer)
+fn owns_pointer_capture(
+    drag: &crate::core_state::PointerInteractionState,
+    btn: MouseButton,
+) -> bool {
+    drag.captured_button() == Some(btn)
+        && drag.captured_source() == Some(crate::types::InteractionSource::Pointer)
 }
 
 /// Begin native ownership for an interaction already captured by shared state.
 /// Subsequent motion and release events are handled by
 /// [`dispatch_captured_pointer_event`] in the normal X11 event loop.
 pub fn begin_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
-    if !owns_pointer_capture(ctx, btn) {
+    if !owns_pointer_capture(&ctx.core.state.interaction.drag, btn) {
         return false;
     }
-    let cursor = ctx.core.interaction().drag.projection().cursor;
+    let cursor = ctx.core.state.interaction.drag.projection().cursor;
     if !grab_pointer(&ctx.x11, ctx.x11_runtime, cursor, btn) {
         let _ = crate::mouse::interaction::handle(
             &mut ctx.wm_ctx(),
@@ -171,7 +173,7 @@ pub fn dispatch_captured_pointer_event(
 
     match event {
         x11rb::protocol::Event::MotionNotify(motion) => {
-            if owns_pointer_capture(ctx, button) {
+            if owns_pointer_capture(&ctx.core.state.interaction.drag, button) {
                 let _ = crate::mouse::interaction::handle(
                     &mut ctx.wm_ctx(),
                     crate::mouse::interaction::InteractionEvent::pointer_update(
@@ -188,10 +190,10 @@ pub fn dispatch_captured_pointer_event(
                 return true;
             }
 
-            if owns_pointer_capture(ctx, button) {
+            if owns_pointer_capture(&ctx.core.state.interaction.drag, button) {
                 let root = Point::new(release.root_x as i32, release.root_y as i32);
                 let sidebar_hover =
-                    crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root);
+                    crate::mouse::pointer::sidebar_target_at(&ctx.core.state.model, root);
                 let _ = crate::mouse::interaction::handle(
                     &mut ctx.wm_ctx(),
                     crate::mouse::interaction::InteractionEvent::pointer_end(

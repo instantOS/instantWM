@@ -179,7 +179,7 @@ impl WaylandState {
     /// This returns the window that the WM thinks should be focused.
     /// For the actual Smithay seat focus, use `seat.get_keyboard().current_focus()`.
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.protocol_core().model.selected_win()
+        self.wm.core.state.model.selected_win()
     }
 
     /// Check whether the Smithay keyboard seat is currently focused on the

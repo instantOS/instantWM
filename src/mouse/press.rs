@@ -55,7 +55,9 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
     // 1. Monitor Selection:
     // First select the monitor containing the press coordinates.
     if let Some(monitor) = ctx
-        .model()
+        .core()
+        .state
+        .model
         .monitors
         .monitor_intersecting_rect(crate::mouse::pointer::point_rect(input.root))
     {
@@ -73,7 +75,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
     // 3. Overview Card Gesture:
     if let (crate::mouse::pointer::PointerRegion::Client(window), Some(MouseButton::Left)) =
         (region, input.button)
-        && ctx.model().is_overview_active()
+        && ctx.core().state.model.is_overview_active()
         && crate::overview::begin_card_gesture(
             ctx,
             window,
@@ -139,7 +141,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
                 // capture's completing release is only delivered when the
                 // press reports `CapturedInteraction`, so promote it here just
                 // like the BottomBar branch.
-                if ctx.interaction().drag.captured_source() == Some(input.source) {
+                if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
                     return PressOutcome::CapturedInteraction { button: btn };
                 }
             }
@@ -161,7 +163,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
                     },
                     numlockmask,
                 );
-                if ctx.interaction().drag.captured_source() == Some(input.source) {
+                if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
                     return PressOutcome::CapturedInteraction { button: btn };
                 }
             }
@@ -175,7 +177,8 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
     if matches!(region, crate::mouse::pointer::PointerRegion::Root { .. })
         && input.modifiers.is_empty()
         && let Some(btn @ MouseButton::Left) = input.button
-        && let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.model(), input.root)
+        && let Some(target) =
+            crate::mouse::pointer::sidebar_target_at(&ctx.core().state.model, input.root)
         && crate::mouse::sidebar_gesture_begin(ctx, btn, input.source, target, input.root)
     {
         return PressOutcome::CapturedInteraction { button: btn };
@@ -187,7 +190,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
         && let Some(btn) = input.button
         && crate::mouse::drag::hover_drag_begin(ctx, input.root, btn, input.source)
     {
-        if ctx.interaction().drag.captured_source() == Some(input.source) {
+        if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
             return PressOutcome::CapturedInteraction { button: btn };
         } else {
             return PressOutcome::Consumed;
@@ -205,7 +208,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
     }
 
     if let Some(win) = input.clicked_window {
-        if ctx.model().selected_win() != Some(win) {
+        if ctx.core().state.model.selected_win() != Some(win) {
             crate::focus::focus(ctx, Some(win));
         }
         if let Some(btn) = input.button {
@@ -237,7 +240,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
             },
             numlockmask,
         );
-        if ctx.interaction().drag.captured_source() == Some(input.source) {
+        if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
             return PressOutcome::CapturedInteraction { button: btn };
         }
     }
