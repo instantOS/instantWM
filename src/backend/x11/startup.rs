@@ -79,12 +79,12 @@ fn wm_init(wm: &mut Wm) {
             return;
         };
         crate::backend::x11::bar::reconcile_bar_windows(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-        crate::backend::x11::bar::update_status(&mut ctx.core, ctx.x11_runtime);
+        crate::backend::x11::bar::update_status(ctx.core, ctx.x11_runtime);
         if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
             log::warn!("initial X11 keyboard mapping read failed; retrying once");
             assert!(
@@ -102,14 +102,15 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
 
     // X11-specific runtime initialization
     wm.backend.x11_runtime.root = root;
-    wm.core.derived.display.width = screen.width_in_pixels as i32;
-    wm.core.derived.display.height = screen.height_in_pixels as i32;
+    wm.core.state.derived.display.width = screen.width_in_pixels as i32;
+    wm.core.state.derived.display.height = screen.height_in_pixels as i32;
 
     wm.core
+        .state
         .apply_config(cfg)
         .expect("startup tag state must be valid");
 
-    if !wm.core.config.monitors.is_empty() {
+    if !wm.core.state.config.monitors.is_empty() {
         let mut ctx = wm.x11_ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
     }
@@ -239,7 +240,7 @@ fn intern_atoms(
 
 pub fn init_drw_and_schemes(wm: &mut Wm) {
     let data = &mut wm.backend;
-    init_drw_and_schemes_impl(&mut data.x11_runtime, &wm.core.config);
+    init_drw_and_schemes_impl(&mut data.x11_runtime, &wm.core.state.config);
 }
 
 /// Build the draw context, cursors and colour schemes from `config`.

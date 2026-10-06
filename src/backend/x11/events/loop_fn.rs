@@ -66,7 +66,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     crate::runtime::register_ipc_source(&loop_handle, ipc_server);
 
     // ── Internal status ping source ────────────────────────────────────
-    if let Some(status_wake) = wm.bar.status_sources.take_wake_source() {
+    if let Some(status_wake) = wm.core.bar.status_sources.take_wake_source() {
         loop_handle
             .insert_source(status_wake, |_, _, _| {})
             .expect("failed to insert status ping source");
@@ -110,7 +110,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
 
             // X11 focus is projected synchronously. End the shared selection
             // transaction here so changes from separate ticks never coalesce.
-            let _ = wm.focus.take_pending_selection();
+            let _ = wm.core.focus.take_pending_selection();
 
             // ── 3. Arm animation timer if needed ────────────────────────
             let has_animations = has_x11_animations(wm);
@@ -128,7 +128,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             wm.x11_ctx().flush();
 
             // ── 5. Stop loop if WM is shutting down ─────────────────────
-            if !wm.running {
+            if !wm.core.running {
                 loop_signal.stop();
             }
         })

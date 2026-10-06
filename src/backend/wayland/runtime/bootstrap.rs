@@ -6,13 +6,13 @@ use smithay::backend::egl::EGLDisplay;
 use smithay::backend::renderer::ImportDma;
 use smithay::reexports::calloop::LoopHandle;
 
-/// D-Bus session, shared [`Wm`] owner with Wayland backend, and
+/// D-Bus session, owned [`Wm`] with Wayland backend, and
 /// [`crate::backend::wayland::bootstrap::init_globals`].
-pub(crate) fn create_wayland_wm() -> std::rc::Rc<std::cell::RefCell<Wm>> {
+pub(crate) fn create_wayland_wm() -> Wm {
     crate::backend::wayland::session::ensure_dbus_session();
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    crate::backend::wayland::bootstrap::init_globals(&mut wm.core);
-    std::rc::Rc::new(std::cell::RefCell::new(wm))
+    crate::backend::wayland::bootstrap::init_globals(&mut wm.core.state);
+    wm
 }
 
 /// Attach GLES renderer, dmabuf global, and screencopy protocol (winit and DRM).
@@ -35,15 +35,14 @@ pub fn attach_gles_renderer_and_protocols(
 /// Listening socket, XWayland spawn, and StatusNotifier systray thread — shared by both runtimes.
 pub fn setup_listen_socket(
     loop_handle: &LoopHandle<'static, WaylandState>,
-    state: &WaylandState,
-    wm: &mut Wm,
+    state: &mut WaylandState,
 ) {
     let _socket_name = crate::backend::wayland::session::setup_socket(loop_handle, state);
     crate::backend::wayland::session::spawn_xwayland(state, loop_handle);
     // The compositor claims items' native menu toplevels by PID, so it hands
     // the worker its request slot; see `WaylandState::take_expected_systray_menu_toplevel`.
     let wake = crate::runtime::make_wake_ping(loop_handle);
-    wm.start_systray(
+    state.wm.start_systray(
         Some(std::sync::Arc::clone(
             &state.native.runtime.pending_systray_menu,
         )),
@@ -59,7 +58,7 @@ pub fn autostart_ipc_status_ping(
     crate::runtime::run_startup_commands(wm);
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     crate::runtime::register_ipc_source(loop_handle, &ipc_server);
-    if let Some(status_wake) = wm.bar.status_sources.take_wake_source() {
+    if let Some(status_wake) = wm.core.bar.status_sources.take_wake_source() {
         loop_handle
             .insert_source(status_wake, |_, _, _| {})
             .expect("failed to insert status ping source");

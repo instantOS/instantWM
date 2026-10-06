@@ -11,18 +11,18 @@ fn wm_with_overview_clients(
         .filter_map(|(_, tags)| tags.first_tag())
         .max()
         .unwrap_or(1);
-    wm.core.model.tags.num_tags = num_tags;
-    let monitor_id = wm.core.model.monitors.push(
+    wm.core.state.model.tags.num_tags = num_tags;
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .rect(Rect::new(0, 0, 1200, 700), Rect::new(0, 0, 1200, 700))
             .tag_count(num_tags)
             .selected_tags(selected_tags)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
     for &(win, tags) in clients {
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -32,7 +32,7 @@ fn wm_with_overview_clients(
             },
         );
     }
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
     // Adoption prepends, so the focus stack is restored to the list order. The
     // card hand is laid out from that stack, so it is the order under test.
     assert!(monitor.set_focus_order(clients.iter().map(|(win, _)| *win).collect()));
@@ -296,11 +296,15 @@ fn hovered_card_is_committed_on_overview_confirmation() {
 
     toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag1
     );
     assert_eq!(
-        wm.core.model.expect_selected_monitor().visible_tags(),
+        wm.core.state.model.expect_selected_monitor().visible_tags(),
         TagMask::all(2)
     );
     assert!(hover_window(
@@ -310,13 +314,17 @@ fn hovered_card_is_committed_on_overview_confirmation() {
     ));
     // Hover selection is pending: the application does not receive keyboard
     // focus until the user confirms overview.
-    assert_eq!(wm.core.model.selected_win(), Some(first));
+    assert_eq!(wm.core.state.model.selected_win(), Some(first));
 
     toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
 
-    assert_eq!(wm.core.model.selected_win(), Some(second));
+    assert_eq!(wm.core.state.model.selected_win(), Some(second));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag2
     );
 }
@@ -338,25 +346,29 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
         Point::new(900, 300),
     ));
     assert_eq!(
-        wm.core.interaction.drag.captured_source(),
+        wm.core.state.interaction.drag.captured_source(),
         Some(crate::types::InteractionSource::Pointer)
     );
     // Press alone must neither leave overview nor focus the client.
-    assert!(wm.core.model.is_overview_active());
-    assert_eq!(wm.core.model.selected_win(), Some(first));
+    assert!(wm.core.state.model.is_overview_active());
+    assert_eq!(wm.core.state.model.selected_win(), Some(first));
 
     assert!(finish_card_gesture(
         &mut wm.test_ctx(),
         crate::types::MouseButton::Left,
     ));
 
-    assert!(!wm.core.model.is_overview_active());
-    assert_eq!(wm.core.model.selected_win(), Some(second));
+    assert!(!wm.core.state.model.is_overview_active());
+    assert_eq!(wm.core.state.model.selected_win(), Some(second));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag2
     );
-    assert_eq!(wm.core.interaction.drag.captured_source(), None);
+    assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
 }
 
 #[test]
@@ -383,9 +395,9 @@ fn non_upward_overview_drag_is_consumed_without_selecting() {
         crate::types::MouseButton::Left,
     ));
 
-    assert!(wm.core.model.is_overview_active());
-    assert_eq!(wm.core.model.selected_win(), Some(first));
-    assert_eq!(wm.core.interaction.drag.captured_source(), None);
+    assert!(wm.core.state.model.is_overview_active());
+    assert_eq!(wm.core.state.model.selected_win(), Some(first));
+    assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
 }
 
 #[test]
@@ -402,19 +414,19 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
         crate::types::InteractionSource::Pointer,
         Point::new(500, 400),
     ));
-    assert_eq!(wm.core.interaction.layout_preview, None);
+    assert_eq!(wm.core.state.interaction.layout_preview, None);
 
     assert!(update_card_gesture(
         &mut wm.test_ctx(),
         Point::new(510, 350)
     ));
-    let client = wm.core.model.client(win).unwrap();
+    let client = wm.core.state.model.client(win).unwrap();
     assert_eq!(
-        wm.core.interaction.layout_preview,
+        wm.core.state.interaction.layout_preview,
         Some(client.geo.with_borders(client.border_width))
     );
     assert_eq!(
-        wm.core.interaction.layout_preview_style,
+        wm.core.state.interaction.layout_preview_style,
         crate::types::InteractionOutlineStyle::Close
     );
 
@@ -422,13 +434,13 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
         &mut wm.test_ctx(),
         Point::new(500, 395)
     ));
-    assert_eq!(wm.core.interaction.layout_preview, None);
+    assert_eq!(wm.core.state.interaction.layout_preview, None);
 
     assert!(finish_card_gesture(
         &mut wm.test_ctx(),
         crate::types::MouseButton::Left,
     ));
-    assert_eq!(wm.core.interaction.layout_preview, None);
+    assert_eq!(wm.core.state.interaction.layout_preview, None);
 }
 
 #[test]
@@ -444,13 +456,14 @@ fn keyboard_navigation_continues_from_the_hovered_card() {
 
     let state = wm
         .core
+        .state
         .model
         .expect_selected_monitor()
         .overview_state
         .as_ref()
         .unwrap();
     assert_eq!(state.active_window, Some(first));
-    assert_eq!(wm.core.model.selected_win(), Some(first));
+    assert_eq!(wm.core.state.model.selected_win(), Some(first));
 }
 
 #[test]
@@ -468,7 +481,7 @@ fn layout_action_commits_hovered_card_before_changing_its_tag_layout() {
         &crate::actions::KeyAction::named(crate::actions::NamedAction::ToggleTilingMaximized),
     );
 
-    let monitor = wm.core.model.expect_selected_monitor();
+    let monitor = wm.core.state.model.expect_selected_monitor();
     assert!(monitor.overview_state.is_none());
     assert_eq!(monitor.selected_tags(), tag2);
     assert_eq!(monitor.selected, Some(second));
@@ -491,7 +504,7 @@ fn explicit_tag_navigation_cancels_the_overview_projection() {
         &crate::actions::KeyAction::ViewTag { tag_idx: 1 },
     );
 
-    let monitor = wm.core.model.expect_selected_monitor();
+    let monitor = wm.core.state.model.expect_selected_monitor();
     assert!(monitor.overview_state.is_none());
     assert_eq!(monitor.selected_tags(), tag2);
 }
@@ -504,11 +517,11 @@ fn visibility_uses_the_projection_while_workspace_state_stays_authoritative() {
 
     toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
 
-    let monitor = wm.core.model.expect_selected_monitor();
+    let monitor = wm.core.state.model.expect_selected_monitor();
     assert_eq!(monitor.selected_tags(), tag1);
     assert_eq!(monitor.visible_tags(), TagMask::all(2));
     assert!(
-        crate::client::visibility::visibility_plan(&wm.core.model)
+        crate::client::visibility::visibility_plan(&wm.core.state.model)
             .into_iter()
             .all(|entry| entry.visible)
     );
@@ -518,8 +531,8 @@ fn visibility_uses_the_projection_while_workspace_state_stays_authoritative() {
 fn changing_monitors_cancels_the_session_on_its_owner() {
     let tag1 = TagMask::single(1).unwrap();
     let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1)]);
-    let first_monitor_id = wm.core.model.selected_monitor_id();
-    let second_monitor_id = wm.core.model.monitors.push(
+    let first_monitor_id = wm.core.state.model.selected_monitor_id();
+    let second_monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .rect(Rect::new(1200, 0, 1200, 700), Rect::new(1200, 0, 1200, 700))
             .tag_count(1)
@@ -533,9 +546,10 @@ fn changing_monitors_cancels_the_session_on_its_owner() {
         second_monitor_id
     ));
 
-    assert_eq!(wm.core.model.selected_monitor_id(), second_monitor_id);
+    assert_eq!(wm.core.state.model.selected_monitor_id(), second_monitor_id);
     assert!(
         wm.core
+            .state
             .model
             .monitor(first_monitor_id)
             .unwrap()
@@ -543,7 +557,7 @@ fn changing_monitors_cancels_the_session_on_its_owner() {
             .is_none()
     );
     assert_eq!(
-        wm.core.behavior.current_mode,
+        wm.core.state.behavior.current_mode,
         crate::core_state::ActiveWmMode::Default
     );
 }
@@ -557,9 +571,9 @@ fn removing_the_last_card_leaves_overview() {
     toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert!(crate::client::lifecycle::remove_managed_client(&mut wm.test_ctx(), win).is_some());
 
-    assert!(!wm.core.model.is_overview_active());
+    assert!(!wm.core.state.model.is_overview_active());
     assert_eq!(
-        wm.core.behavior.current_mode,
+        wm.core.state.behavior.current_mode,
         crate::core_state::ActiveWmMode::Default
     );
 }
@@ -569,9 +583,9 @@ fn overview_exit_is_a_noop_for_other_modes() {
     let tags = TagMask::single(1).unwrap();
     let mut wm = wm_with_overview_clients(tags, &[(WindowId(1), tags)]);
     let resize_mode = crate::core_state::ActiveWmMode::Named("resize".to_string());
-    wm.core.behavior.current_mode = resize_mode.clone();
+    wm.core.state.behavior.current_mode = resize_mode.clone();
 
     exit_overview(&mut wm.test_ctx(), ExitMode::RestorePrevious);
 
-    assert_eq!(wm.core.behavior.current_mode, resize_mode);
+    assert_eq!(wm.core.state.behavior.current_mode, resize_mode);
 }

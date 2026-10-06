@@ -19,6 +19,7 @@ fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) ->
 fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     let Some(mon) = wm
         .core
+        .state
         .model
         .monitors_iter_all()
         .find(|m| m.name == output_name)
@@ -26,9 +27,9 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
         return false;
     };
     if matches!(
-        wm.core.behavior.current_mode,
+        wm.core.state.behavior.current_mode,
         crate::core_state::ActiveWmMode::Overview
-    ) && wm.core.model.is_overview_active_on(mon)
+    ) && wm.core.state.model.is_overview_active_on(mon)
     {
         return false;
     }
@@ -49,7 +50,7 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     first_client.mode().is_true_fullscreen()
 }
 
-fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {
+fn compute_output_vrr_target(state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {
     let output_name = entry.output.name();
 
     match entry.vrr_support {
@@ -58,7 +59,7 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
         BackendVrrSupport::Supported => {
             let hard_blocked = state.native.is_locked()
                 || state.native.has_window_animations_on_output(&entry.output)
-                || state.has_active_layout_preview_animation()
+                || state.native.has_active_layout_preview_animation()
                 || has_pending_screencopy_for_output(state, &output_name)
                 || !state
                     .native
@@ -78,18 +79,14 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
             match entry.configured_vrr_mode {
                 VrrMode::Off => false,
                 VrrMode::On => true,
-                VrrMode::Auto => auto_vrr_content_is_suitable(wm, &output_name),
+                VrrMode::Auto => auto_vrr_content_is_suitable(&state.wm, &output_name),
             }
         }
     }
 }
 
-pub(super) fn apply_output_vrr_policy(
-    wm: &Wm,
-    state: &mut WaylandState,
-    entry: &mut OutputSurfaceEntry,
-) {
-    let target = compute_output_vrr_target(wm, state, entry);
+pub(super) fn apply_output_vrr_policy(state: &mut WaylandState, entry: &mut OutputSurfaceEntry) {
+    let target = compute_output_vrr_target(state, entry);
     if entry.vrr_enabled == target {
         state
             .native

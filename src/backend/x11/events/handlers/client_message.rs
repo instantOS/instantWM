@@ -124,7 +124,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let _ = conn.flush();
 
     crate::backend::x11::bar::sync_top_bar_surfaces(
-        &mut ctx.core,
+        ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
         ctx.xembed_tray,
@@ -214,7 +214,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
             .is_some_and(|client| client.is_scratchpad())
         {
             crate::backend::x11::set_client_tag_prop(
-                ctx.core.state,
+                &ctx.core.state,
                 &ctx.x11,
                 ctx.x11_runtime,
                 win,
@@ -224,7 +224,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         if let Some(client) = ctx.core.model_mut().client_mut(win) {
             client.is_sticky = true;
         }
-        crate::backend::x11::set_client_tag_prop(ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
+        crate::backend::x11::set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
         ctx.core.queue_layout_for_all_monitors_urgent();
         return;
     }
@@ -268,7 +268,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     }
 
-    crate::backend::x11::set_client_tag_prop(ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
+    crate::backend::x11::set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
     crate::focus::refresh_focus_after_selection(
         &mut WmCtx::X11(ctx.reborrow()),
         previous_focus,

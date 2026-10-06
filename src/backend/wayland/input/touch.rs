@@ -17,7 +17,6 @@ use crate::backend::wayland::compositor::{
 };
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::{ModMask, MouseButton};
-use crate::wm::WaylandWm as Wm;
 
 /// Coordinate space used for an absolute touch device.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,7 +86,6 @@ struct TouchHit {
 /// Applying layer-shell keyboard focus is a side effect that does *not*
 /// consume the contact.
 fn claim_touch_down_for_wm(
-    wm: &mut Wm,
     state: &mut WaylandState,
     event: TouchPointEvent,
     location: Point<f64, Logical>,
@@ -103,7 +101,7 @@ fn claim_touch_down_for_wm(
         }
         return false;
     }
-    if state.is_pointer_over_overlay(location)
+    if state.native.is_pointer_over_overlay(location)
         || !can_claim_wm_gesture_slot(state.native.runtime.wm_gesture_touch_slot)
     {
         return false;
@@ -122,7 +120,7 @@ fn claim_touch_down_for_wm(
         time_msec: event.time.millis(),
     };
     let outcome = {
-        let mut ctx = wm.wayland_ctx(state);
+        let mut ctx = state.ctx();
         crate::mouse::press::dispatch_press_policy(&mut ctx, input)
     };
     match outcome {
@@ -136,7 +134,7 @@ fn claim_touch_down_for_wm(
             button,
             root,
         } => {
-            let mut ctx = wm.wayland_ctx(state);
+            let mut ctx = state.ctx();
             crate::systray::press_icon(ctx.core_mut(), index, button, root);
             state.native.runtime.wm_gesture_touch_slot = Some(event.slot);
             true
@@ -147,7 +145,6 @@ fn claim_touch_down_for_wm(
 
 /// Deliver a new touch point.
 pub fn handle_touch_down(
-    wm: &mut Wm,
     state: &mut WaylandState,
     event: TouchPointEvent,
     mapping: &TouchMappingTarget,
@@ -160,9 +157,9 @@ pub fn handle_touch_down(
     state.native.runtime.cursor_hidden_by_touch = true;
 
     let serial = SERIAL_COUNTER.next_serial();
-    let hit = focus_at(state, &wm.core, location);
+    let hit = focus_at(state, &state.wm.core.state, location);
 
-    if claim_touch_down_for_wm(wm, state, event, location, serial, &hit) {
+    if claim_touch_down_for_wm(state, event, location, serial, &hit) {
         return;
     }
 
@@ -216,7 +213,6 @@ pub fn handle_touch_down(
 
 /// Deliver movement for an existing touch point.
 pub fn handle_touch_motion(
-    wm: &mut Wm,
     state: &mut WaylandState,
     event: TouchPointEvent,
     mapping: &TouchMappingTarget,
@@ -225,12 +221,12 @@ pub fn handle_touch_motion(
         return;
     };
     if state.native.runtime.wm_gesture_touch_slot == Some(event.slot) {
-        handle_wm_gesture_touch_motion(wm, state, event.slot, root_point(location));
+        handle_wm_gesture_touch_motion(state, event.slot, root_point(location));
         return;
     }
     if state.native.runtime.pointer_touch_slot == Some(event.slot) {
         state.native.runtime.pointer_location = location;
-        let hit = focus_at(state, &wm.core, location);
+        let hit = focus_at(state, &state.wm.core.state, location);
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = state.native.pointer.clone();
         crate::backend::wayland::input::pointer::motion::dispatch_smithay_pointer_motion(
@@ -255,7 +251,7 @@ pub fn handle_touch_motion(
         );
         return;
     }
-    let hit = focus_at(state, &wm.core, location);
+    let hit = focus_at(state, &state.wm.core.state, location);
     state.native.touch.clone().motion(
         state,
         hit.focus,
@@ -268,10 +264,10 @@ pub fn handle_touch_motion(
 }
 
 /// Deliver the end of a touch point.
-pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time: InputTime) {
+pub fn handle_touch_up(state: &mut WaylandState, slot: TouchSlot, time: InputTime) {
     if state.native.runtime.wm_gesture_touch_slot == Some(slot) {
         state.native.runtime.wm_gesture_touch_slot = None;
-        finish_wm_gesture_touch(wm, state, slot, time.millis());
+        finish_wm_gesture_touch(state, slot, time.millis());
         return;
     }
     let serial = SERIAL_COUNTER.next_serial();
@@ -302,9 +298,9 @@ pub fn handle_touch_frame(state: &mut WaylandState) {
 }
 
 /// Cancel every active touch point.
-pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
+pub fn handle_touch_cancel(state: &mut WaylandState) {
     if state.native.runtime.wm_gesture_touch_slot.take().is_some() {
-        cancel_wm_gesture_touch(wm, state);
+        cancel_wm_gesture_touch(state);
     }
     state.cancel_touch_pointer_emulation(InputTime::now());
     state.native.touch.clone().cancel(state);
@@ -343,13 +339,12 @@ fn clean_modifier_state(state: &WaylandState) -> ModMask {
 }
 
 fn handle_wm_gesture_touch_motion(
-    wm: &mut Wm,
     state: &mut WaylandState,
     slot: TouchSlot,
     root: crate::types::Point,
 ) {
     let modifiers = clean_modifier_state(state);
-    let mut ctx = wm.wayland_ctx(state);
+    let mut ctx = state.ctx();
     let _ = crate::mouse::interaction::handle(
         &mut ctx,
         crate::mouse::interaction::InteractionEvent {
@@ -362,9 +357,9 @@ fn handle_wm_gesture_touch_motion(
     );
 }
 
-fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
+fn finish_wm_gesture_touch(state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
     let modifiers = clean_modifier_state(state);
-    let mut ctx = wm.wayland_ctx(state);
+    let mut ctx = state.ctx();
     let _ = crate::mouse::interaction::handle(
         &mut ctx,
         crate::mouse::interaction::InteractionEvent {
@@ -380,8 +375,8 @@ fn finish_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlo
     );
 }
 
-fn cancel_wm_gesture_touch(wm: &mut Wm, state: &mut WaylandState) {
-    let mut ctx = wm.wayland_ctx(state);
+fn cancel_wm_gesture_touch(state: &mut WaylandState) {
+    let mut ctx = state.ctx();
     let _ = crate::mouse::interaction::handle(
         &mut ctx,
         crate::mouse::interaction::InteractionEvent {
@@ -451,6 +446,7 @@ fn focus_at(
 ) -> TouchHit {
     if state.native.is_locked() {
         let focus = state
+            .native
             .lock_surface_under_pointer(location)
             .map(|(surface, origin)| (PointerFocusTarget::WlSurface(surface), origin.to_f64()));
         return TouchHit {
@@ -460,7 +456,7 @@ fn focus_at(
         };
     }
 
-    if let Some((surface, origin)) = state.layer_surface_under_pointer(location) {
+    if let Some((surface, origin)) = state.native.layer_surface_under_pointer(location) {
         return TouchHit {
             focus: Some((PointerFocusTarget::WlSurface(surface), origin.to_f64())),
             hovered_window: None,
@@ -468,7 +464,7 @@ fn focus_at(
         };
     }
 
-    let contents = state.contents_under_pointer(core_view, location);
+    let contents = state.native.contents_under_pointer(core_view, location);
     let focus = contents
         .surface
         .map(|(surface, origin)| (PointerFocusTarget::WlSurface(surface), origin.to_f64()));

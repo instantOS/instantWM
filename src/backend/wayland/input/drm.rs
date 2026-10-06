@@ -28,7 +28,6 @@ use crate::backend::wayland::input::touch::{
 };
 use crate::config::config_toml::InputConfig;
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
-use crate::wm::WaylandWm as Wm;
 use std::collections::HashMap;
 
 /// Compositor-side work caused directly by a libinput event.
@@ -239,7 +238,6 @@ pub fn reconfigure_all_devices(
 pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
-    wm: &mut Wm,
     layout: crate::types::Rect,
     initial_lid_state: Option<bool>,
 ) -> LibinputEventOutcome {
@@ -261,7 +259,7 @@ pub fn dispatch_libinput_event(
                     .insert(device.sysname().to_owned(), closed);
                 update_lid_state(state);
             }
-            configure_device(&mut device, &wm.core.config.input);
+            configure_device(&mut device, &state.wm.core.state.config.input);
             if device.has_capability(DeviceCapability::TabletTool) {
                 state.native.seat.tablet_seat().add_wp_tablet(
                     &state.native.display_handle,
@@ -297,7 +295,7 @@ pub fn dispatch_libinput_event(
                 ));
             }
             if removed_touch {
-                handle_touch_cancel(wm, state);
+                handle_touch_cancel(state);
             }
             if removed_tablet {
                 let tablet_seat = state.native.seat.tablet_seat();
@@ -320,7 +318,7 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::Keyboard { event } => {
             // Keep keyboard synchronous for now
-            handle_keyboard::<LibinputInputBackend>(wm, state, &keyboard_handle, event);
+            handle_keyboard::<LibinputInputBackend>(state, &keyboard_handle, event);
             LibinputEventOutcome::Activity
         }
         InputEvent::PointerMotion { event } => {
@@ -461,11 +459,11 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchDown { event } => {
-            let mapping = touch_mapping_for_device(&event.device(), &wm.core.config.input);
+            let mapping =
+                touch_mapping_for_device(&event.device(), &state.wm.core.state.config.input);
             let position = normalized_touch_position::<LibinputInputBackend, _>(&event);
             if let Some(position) = position {
                 handle_touch_down(
-                    wm,
                     state,
                     TouchPointEvent {
                         slot: event.slot(),
@@ -478,11 +476,11 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchMotion { event } => {
-            let mapping = touch_mapping_for_device(&event.device(), &wm.core.config.input);
+            let mapping =
+                touch_mapping_for_device(&event.device(), &state.wm.core.state.config.input);
             let position = normalized_touch_position::<LibinputInputBackend, _>(&event);
             if let Some(position) = position {
                 handle_touch_motion(
-                    wm,
                     state,
                     TouchPointEvent {
                         slot: event.slot(),
@@ -495,7 +493,7 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchUp { event } => {
-            handle_touch_up(wm, state, event.slot(), event.time());
+            handle_touch_up(state, event.slot(), event.time());
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchFrame { .. } => {
@@ -503,19 +501,19 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchCancel { .. } => {
-            handle_touch_cancel(wm, state);
+            handle_touch_cancel(state);
             LibinputEventOutcome::Activity
         }
         InputEvent::TabletToolAxis { event } => {
-            handle_tablet_tool_axis(state, &wm.core, &event, layout);
+            handle_tablet_tool_axis(state, &event, layout);
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::TabletToolProximity { event } => {
-            handle_tablet_tool_proximity(state, &wm.core, &event, layout);
+            handle_tablet_tool_proximity(state, &event, layout);
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::TabletToolTip { event } => {
-            handle_tablet_tool_tip(state, &wm.core, &event);
+            handle_tablet_tool_tip(state, &event);
             LibinputEventOutcome::Activity
         }
         InputEvent::TabletToolButton { event } => {
@@ -528,7 +526,6 @@ pub fn dispatch_libinput_event(
 
 fn handle_tablet_tool_axis(
     state: &mut WaylandState,
-    core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolAxisEvent,
     layout: crate::types::Rect,
 ) {
@@ -541,8 +538,12 @@ fn handle_tablet_tool_axis(
         pointer.set_location(pointer_location);
     }
 
-    let snapshot = state.pointer_hit_snapshot();
-    let hit = state.contents_under_pointer_in_snapshot(core_view, pointer_location, &snapshot);
+    let snapshot = state.native.pointer_hit_snapshot();
+    let hit = state.native.contents_under_pointer_in_snapshot(
+        &state.wm.core.state,
+        pointer_location,
+        &snapshot,
+    );
     let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
 
     let tool = tablet_seat.get_tool(&event.tool());
@@ -578,7 +579,6 @@ fn handle_tablet_tool_axis(
 
 fn handle_tablet_tool_proximity(
     state: &mut WaylandState,
-    core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolProximityEvent,
     layout: crate::types::Rect,
 ) {
@@ -592,8 +592,12 @@ fn handle_tablet_tool_proximity(
     }
 
     let tool_desc = event.tool();
-    let snapshot = state.pointer_hit_snapshot();
-    let hit = state.contents_under_pointer_in_snapshot(core_view, pointer_location, &snapshot);
+    let snapshot = state.native.pointer_hit_snapshot();
+    let hit = state.native.contents_under_pointer_in_snapshot(
+        &state.wm.core.state,
+        pointer_location,
+        &snapshot,
+    );
     let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
 
     let tablet = tablet_seat.get_tablet(&TabletDescriptor::from(&event.device()));
@@ -645,7 +649,6 @@ fn handle_tablet_tool_proximity(
 
 fn handle_tablet_tool_tip(
     state: &mut WaylandState,
-    core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolTipEvent,
 ) {
     let tablet_seat = state.native.seat.tablet_seat();
@@ -665,8 +668,12 @@ fn handle_tablet_tool_tip(
                 );
 
                 let loc = state.native.runtime.pointer_location;
-                let snapshot = state.pointer_hit_snapshot();
-                let hit = state.contents_under_pointer_in_snapshot(core_view, loc, &snapshot);
+                let snapshot = state.native.pointer_hit_snapshot();
+                let hit = state.native.contents_under_pointer_in_snapshot(
+                    &state.wm.core.state,
+                    loc,
+                    &snapshot,
+                );
                 if let Some(win) = hit.hovered_win {
                     state.request_window_focus(win);
                 }

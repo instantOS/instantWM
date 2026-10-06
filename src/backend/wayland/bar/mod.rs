@@ -15,7 +15,7 @@ use smithay::utils::Transform;
 use crate::bar::canvas::Canvas;
 use crate::bar::paint::{BarPainter, SchemeColor, fill_color, text_colors};
 use crate::bar::scene;
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::{ColorScheme, Point, Rect, Size};
 
 use self::buffer::{BarBuffer, RawBarBuffer};
@@ -159,7 +159,7 @@ impl BarPainter for BarRasterizer {
 }
 
 pub fn render_bar_buffers(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     renderer: &mut WaylandBarRenderer,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
     let snapshots = scene::build_monitor_snapshots(core, 0);
@@ -184,7 +184,7 @@ pub fn render_bar_buffers(
 /// The strip renders the status-bar background color plus a semi-transparent
 /// white rectangle in the center. Input classification (`button_region_at`)
 /// routes presses to the configured `BottomBar` bindings.
-pub fn build_bottom_bar_buffers(core: &mut CoreCtx) -> Vec<(MemoryRenderBuffer, Point)> {
+pub fn build_bottom_bar_buffers(core: &mut WmCore) -> Vec<(MemoryRenderBuffer, Point)> {
     let background = core.config().colors.status.background;
     let indicator_color = bottom_bar_indicator_color(background);
     core.model()
@@ -260,8 +260,8 @@ mod tests {
     fn bottom_bar_buffers_are_opaque_and_bottom_aligned() {
         let mut wm = test_wm();
 
-        let show_bar = wm.core.config.bar.show;
-        let show_bottom = wm.core.config.bar.show_bottom;
+        let show_bar = wm.core.state.config.bar.show;
+        let show_bottom = wm.core.state.config.bar.show_bottom;
         assert!(
             !show_bottom,
             "bottom bar defaults to hidden — opt in via ToggleBottomBar / config"
@@ -273,13 +273,13 @@ mod tests {
         // hidden, so the test must opt in to exercise the buffer pipeline.
         mon.show_bottom_bar = true;
         mon.bottom_bar_height = 24;
-        let id = wm.core.model.monitors.allocate_id();
+        let id = wm.core.state.model.monitors.allocate_id();
         mon.monitor_id = id;
         mon.set_available_rect(crate::types::Rect::new(0, 0, 1920, 1080));
-        wm.core.model.monitors.restore(vec![mon]);
+        wm.core.state.model.monitors.restore(vec![mon]);
 
-        let mut core = wm.core_ctx();
-        let buffers = build_bottom_bar_buffers(&mut core);
+        let core = wm.core_ctx();
+        let buffers = build_bottom_bar_buffers(core);
         assert_eq!(buffers.len(), 1, "one bottom strip buffer expected");
         let (_buffer, pos) = &buffers[0];
         assert_eq!(pos.x, 0);

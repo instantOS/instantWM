@@ -52,21 +52,21 @@ mod tests {
     fn wm_with_monitor() -> Wm {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 1200, 800))
                 .tag_count(1)
                 .selected_tags(tags)
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let mut client = Client {
             win: WindowId(1),
             tags,
             ..Client::default()
         };
         client.set_mode_for_test(ClientMode::tiled());
-        wm.core.model.readopt_client(monitor_id, client, true);
+        wm.core.state.model.readopt_client(monitor_id, client, true);
         wm
     }
 

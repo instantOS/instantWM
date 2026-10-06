@@ -1,8 +1,8 @@
 //! Window rule application and matching logic.
 
 use crate::client::LaunchContext;
-use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
+use crate::core_state::WmCore;
 use crate::types::{
     ClientMode, ClientPlacement, MonitorSelector, Rect, RuleFloat, RuleGeometry, SizeHints,
     TagMask, WindowId,
@@ -259,7 +259,7 @@ fn apply_property_change(
 /// Backends should use this entry point rather than applying rules and
 /// remembering layout/bar invalidation independently.
 pub fn update_window_properties(
-    core: &mut CoreCtx<'_>,
+    core: &mut WmCore,
     win: WindowId,
     props: &WindowProperties,
 ) -> bool {
@@ -560,10 +560,10 @@ mod tests {
     #[test]
     fn property_title_change_dirties_bar_without_queueing_layout() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = push_monitor(&mut wm.core.model);
+        let monitor_id = push_monitor(&mut wm.core.state.model);
         let win = WindowId(41);
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -571,8 +571,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        wm.work.layout.clear();
-        let bar_seq = wm.bar.update_seq();
+        wm.core.work.layout.clear();
+        let bar_seq = wm.core.bar.update_seq();
 
         let mut ctx = wm.test_ctx();
         update_window_properties(
@@ -584,17 +584,17 @@ mod tests {
             },
         );
 
-        assert!(!wm.work.layout.is_pending());
-        assert_ne!(wm.bar.update_seq(), bar_seq);
+        assert!(!wm.core.work.layout.is_pending());
+        assert_ne!(wm.core.bar.update_seq(), bar_seq);
     }
 
     #[test]
     fn first_native_constraint_snapshot_queues_layout_even_when_values_are_default() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = push_monitor(&mut wm.core.model);
+        let monitor_id = push_monitor(&mut wm.core.state.model);
         let win = WindowId(47);
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -602,7 +602,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        wm.work.layout.clear();
+        wm.core.work.layout.clear();
 
         let mut ctx = wm.test_ctx();
         update_window_properties(
@@ -615,10 +615,10 @@ mod tests {
         );
 
         assert_eq!(
-            wm.work.layout.take_targets(),
+            wm.core.work.layout.take_targets(),
             Some(LayoutWorkTargets::Monitors(vec![monitor_id]))
         );
-        assert!(wm.core.model.client(win).unwrap().size_hints_valid);
+        assert!(wm.core.state.model.client(win).unwrap().size_hints_valid);
     }
 
     #[test]
@@ -627,9 +627,9 @@ mod tests {
         use std::borrow::Cow;
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let old_monitor = push_monitor_with(&mut wm.core.model, |monitor| monitor.num = 0);
-        let new_monitor = push_monitor_with(&mut wm.core.model, |monitor| monitor.num = 1);
-        wm.core.config.bindings.rules = vec![Rule {
+        let old_monitor = push_monitor_with(&mut wm.core.state.model, |monitor| monitor.num = 0);
+        let new_monitor = push_monitor_with(&mut wm.core.state.model, |monitor| monitor.num = 1);
+        wm.core.state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("tile-me")),
             instance: None,
             title: None,
@@ -641,7 +641,7 @@ mod tests {
         }];
         let win = WindowId(42);
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             old_monitor,
             Client {
                 win,
@@ -649,7 +649,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        wm.work.layout.clear();
+        wm.core.work.layout.clear();
 
         let mut ctx = wm.test_ctx();
         update_window_properties(
@@ -662,18 +662,22 @@ mod tests {
         );
 
         assert_eq!(
-            wm.work.layout.take_targets(),
+            wm.core.work.layout.take_targets(),
             Some(LayoutWorkTargets::Monitors(vec![old_monitor, new_monitor]))
         );
         assert!(
             !wm.core
+                .state
                 .model
                 .client(win)
                 .unwrap()
                 .mode()
                 .is_normal_floating()
         );
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(new_monitor));
+        assert_eq!(
+            wm.core.state.model.monitor_of_client(win),
+            Some(new_monitor)
+        );
     }
 
     #[test]
@@ -1327,10 +1331,10 @@ mod tests {
         use std::borrow::Cow;
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 1;
-        let monitor_id = push_monitor(&mut wm.core.model);
-        let default_border = wm.core.config.window.border_width_px;
-        wm.core.config.bindings.rules = vec![Rule {
+        wm.core.state.model.tags.num_tags = 1;
+        let monitor_id = push_monitor(&mut wm.core.state.model);
+        let default_border = wm.core.state.config.window.border_width_px;
+        wm.core.state.config.bindings.rules = vec![Rule {
             class: None,
             instance: None,
             title: Some(Cow::Borrowed("borderless-now")),
@@ -1342,7 +1346,7 @@ mod tests {
         }];
         let win = WindowId(49);
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -1363,14 +1367,14 @@ mod tests {
                 },
             );
         }
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.is_borderless);
         assert_eq!(client.border_width, 0);
-        assert!(wm.work.layout.is_pending());
+        assert!(wm.core.work.layout.is_pending());
 
         // Like floating/tag effects, a one-shot rule effect becomes client
         // state rather than disappearing on unrelated metadata churn.
-        wm.work.layout.clear();
+        wm.core.work.layout.clear();
         {
             let mut ctx = wm.test_ctx();
             update_window_properties(
@@ -1382,10 +1386,10 @@ mod tests {
                 },
             );
         }
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.is_borderless);
         assert_eq!(client.old_border_width, 0);
-        assert!(!wm.work.layout.is_pending());
+        assert!(!wm.core.work.layout.is_pending());
     }
 
     #[test]

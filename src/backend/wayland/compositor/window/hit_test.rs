@@ -1,7 +1,7 @@
+use crate::backend::wayland::compositor::WaylandNativeState;
 use smithay::desktop::Window;
 use smithay::utils::{Logical, Point};
 
-use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::types::WindowId;
@@ -68,7 +68,7 @@ fn surface_hit_takes_precedence(logical_rank: Option<usize>, surface_rank: usize
     logical_rank.is_none_or(|logical_rank| surface_rank <= logical_rank)
 }
 
-impl WaylandState {
+impl WaylandNativeState {
     /// Hit-test in the same foreground order used by scene assembly:
     /// explicit overlays, native popups, layer-shell surfaces, then toplevels.
     ///
@@ -215,7 +215,7 @@ impl WaylandState {
         point: Point<f64, Logical>,
         surface_type: smithay::desktop::WindowSurfaceType,
     ) -> Option<SurfaceFocus> {
-        let loc = self.native.space.element_location(window)?;
+        let loc = self.space.element_location(window)?;
         let surface_origin = loc - window.geometry().loc;
         window
             .surface_under(point - surface_origin.to_f64(), surface_type)
@@ -242,9 +242,9 @@ impl WaylandState {
     ) -> Option<SurfaceFocus> {
         use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 
-        let outputs: Vec<_> = self.native.space.outputs().cloned().collect();
+        let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {
-            let Some(output_geo) = self.native.space.output_geometry(output) else {
+            let Some(output_geo) = self.space.output_geometry(output) else {
                 continue;
             };
             let map = layer_map_for_output(output);
@@ -265,7 +265,7 @@ impl WaylandState {
     pub(crate) fn is_pointer_over_overlay(&self, point: Point<f64, Logical>) -> bool {
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
-        for (window, typ) in self.native.windows_in_z_order() {
+        for (window, typ) in self.windows_in_z_order() {
             if typ.is_overlay() && self.overlay_rect_contains(window, root_x, root_y) {
                 return true;
             }
@@ -284,7 +284,7 @@ impl WaylandState {
         let (root_x, root_y) = (root.x, root.y);
         let globals = core_view;
 
-        for (window, typ) in self.native.windows_in_z_order() {
+        for (window, typ) in self.windows_in_z_order() {
             if typ.is_overlay() {
                 if self.overlay_rect_contains(window, root_x, root_y) {
                     // We hit an overlay window. Return its WindowId if it has a marker,
@@ -307,7 +307,7 @@ impl WaylandState {
     }
 
     fn overlay_rect_contains(&self, window: &Window, root_x: i32, root_y: i32) -> bool {
-        let Some(loc) = self.native.space.element_location(window) else {
+        let Some(loc) = self.space.element_location(window) else {
             return false;
         };
         let geo = window.geometry();
@@ -325,16 +325,16 @@ impl WaylandState {
     ) -> Option<SurfaceFocus> {
         use smithay::desktop::WindowSurfaceType;
 
-        let outputs: Vec<_> = self.native.space.outputs().cloned().collect();
+        let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {
-            let Some(output_geo) = self.native.space.output_geometry(output) else {
+            let Some(output_geo) = self.space.output_geometry(output) else {
                 continue;
             };
             if !output_geo.contains(point.to_i32_round()) {
                 continue;
             }
             let output_name = output.name();
-            if let Some(lock_surface) = self.native.lock_surfaces.get(&output_name) {
+            if let Some(lock_surface) = self.lock_surfaces.get(&output_name) {
                 let rel = point - output_geo.loc.to_f64();
                 if let Some((surface, loc)) = smithay::desktop::utils::under_from_surface_tree(
                     lock_surface.wl_surface(),

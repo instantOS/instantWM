@@ -260,9 +260,9 @@ mod tests {
     #[test]
     fn fake_fullscreen_cycle_is_shared_by_wayland() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.config.window.border_width_px = 3;
+        wm.core.state.config.window.border_width_px = 3;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(100, 50, 1200, 800), Rect::new(100, 50, 1200, 800))
                 .tag_count(1)
@@ -271,7 +271,7 @@ mod tests {
         );
 
         let win = WindowId(7);
-        assert!(wm.core.model.add_client(
+        assert!(wm.core.state.model.add_client(
             monitor_id,
             Client {
                 win,
@@ -283,24 +283,25 @@ mod tests {
             }
         ));
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected(Some(win));
 
         toggle_fake_fullscreen(&mut wm.test_ctx());
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_fake_fullscreen());
         assert_eq!(client.border_width, 3);
 
         toggle_fake_fullscreen(&mut wm.test_ctx());
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(client.border_width, 0);
         assert_eq!(client.geo, Rect::new(103, 53, 1194, 794));
 
         toggle_fake_fullscreen(&mut wm.test_ctx());
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_fake_fullscreen());
         assert_eq!(client.border_width, 3);
     }

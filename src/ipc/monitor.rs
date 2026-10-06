@@ -295,8 +295,8 @@ mod tests {
     #[test]
     fn monitor_ipc_separates_stable_id_from_spatial_position() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let first = wm.core.model.monitors.push(Monitor::default());
-        let second = wm.core.model.monitors.push(Monitor::default());
+        let first = wm.core.state.model.monitors.push(Monitor::default());
+        let second = wm.core.state.model.monitors.push(Monitor::default());
 
         let Response::MonitorList(monitors) = wm.with_ctx(list_monitors) else {
             panic!("monitor list response");
@@ -314,9 +314,10 @@ mod tests {
         use crate::types::MonitorSelector;
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.monitors.push(Monitor::default());
+        wm.core.state.model.monitors.push(Monitor::default());
         let side_id = wm
             .core
+            .state
             .model
             .monitors
             .push(MonitorBuilder::new().named("DP-1").build());
@@ -330,7 +331,7 @@ mod tests {
             )
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        assert_eq!(wm.core.model.selected_monitor_id(), side_id);
+        assert_eq!(wm.core.state.model.selected_monitor_id(), side_id);
 
         let resp = wm.with_ctx(|wm| {
             super::handle_monitor_command(
@@ -407,10 +408,10 @@ mod tests {
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
 
-        let config = wm.core.config.monitors.get("DP-1").expect("entry");
+        let config = wm.core.state.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.resolution.as_deref(), Some("2560x1440"));
         assert_eq!(config.scale, Some(2.0), "omitted field was dropped");
-        assert!(wm.work.monitor_config);
+        assert!(wm.core.work.monitor_config);
     }
 
     #[test]
@@ -420,7 +421,7 @@ mod tests {
             super::handle_monitor_command(wm, set_cmd("DP-1", None, Some(2.0), None))
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        wm.work.monitor_config = false;
+        wm.core.work.monitor_config = false;
 
         // A fresh WaylandBackend reports no outputs, so no target connects.
         let resp = wm.with_ctx(|wm| {
@@ -433,10 +434,10 @@ mod tests {
         assert!(message.contains("connected:"), "{message}");
 
         // The rejected command must not touch config or queue an apply.
-        let config = wm.core.config.monitors.get("DP-1").expect("entry");
+        let config = wm.core.state.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror, None);
         assert_eq!(config.scale, Some(2.0));
-        assert!(!wm.work.monitor_config);
+        assert!(!wm.core.work.monitor_config);
     }
 
     #[test]
@@ -444,14 +445,14 @@ mod tests {
         use crate::config::config_toml::MonitorConfig;
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.config.monitors.insert(
+        wm.core.state.config.monitors.insert(
             "DP-1".to_owned(),
             MonitorConfig {
                 mirror: Some("HDMI-1".to_owned()),
                 ..MonitorConfig::default()
             },
         );
-        wm.work.monitor_config = false;
+        wm.core.work.monitor_config = false;
 
         // The stored source is unplugged (a fresh WaylandBackend reports no
         // outputs), but this command leaves the mirror untouched: only a
@@ -461,10 +462,10 @@ mod tests {
             super::handle_monitor_command(wm, set_cmd("DP-1", None, Some(2.0), None))
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        let config = wm.core.config.monitors.get("DP-1").expect("entry");
+        let config = wm.core.state.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror.as_deref(), Some("HDMI-1"));
         assert_eq!(config.scale, Some(2.0));
-        assert!(wm.work.monitor_config);
+        assert!(wm.core.work.monitor_config);
     }
 
     #[test]
@@ -480,8 +481,8 @@ mod tests {
         // Fatal build error keyed to the edited entry, reported before the
         // connectivity check ever runs.
         assert!(message.contains("cannot mirror itself"), "{message}");
-        assert!(!wm.core.config.monitors.contains_key("DP-1"));
-        assert!(!wm.work.monitor_config);
+        assert!(!wm.core.state.config.monitors.contains_key("DP-1"));
+        assert!(!wm.core.work.monitor_config);
     }
 
     #[test]
@@ -489,7 +490,7 @@ mod tests {
         use crate::config::config_toml::MonitorConfig;
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.config.monitors.insert(
+        wm.core.state.config.monitors.insert(
             "DP-1".to_owned(),
             MonitorConfig {
                 mirror: Some("HDMI-1".to_owned()),
@@ -503,8 +504,8 @@ mod tests {
             super::handle_monitor_command(wm, set_cmd("DP-1", None, None, Some("none")))
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
-        assert!(wm.work.monitor_config);
+        assert_eq!(wm.core.state.config.monitors["DP-1"].mirror, None);
+        assert!(wm.core.work.monitor_config);
     }
 
     #[test]
@@ -557,10 +558,10 @@ mod tests {
             super::handle_monitor_command(wm, set_mirror_cmd("DP-1", None, Some(MirrorFit::Cover)))
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        let config = wm.core.config.monitors.get("DP-1").expect("entry");
+        let config = wm.core.state.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror, None);
         assert_eq!(config.mirror_fit, Some(MirrorFit::Cover));
-        assert!(wm.work.monitor_config);
+        assert!(wm.core.work.monitor_config);
     }
 
     #[test]
@@ -569,7 +570,7 @@ mod tests {
         use crate::ipc_types::MirrorFit;
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.config.monitors.insert(
+        wm.core.state.config.monitors.insert(
             "DP-1".to_owned(),
             MonitorConfig {
                 mirror: Some("HDMI-1".to_owned()),
@@ -577,7 +578,7 @@ mod tests {
                 ..MonitorConfig::default()
             },
         );
-        wm.work.monitor_config = false;
+        wm.core.work.monitor_config = false;
 
         // The clear sentinel takes the now-meaningless fit with it; this
         // keeps working while the source is unplugged (no connectivity check).
@@ -585,10 +586,10 @@ mod tests {
             super::handle_monitor_command(wm, set_mirror_cmd("DP-1", Some(""), None))
         });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        let config = wm.core.config.monitors.get("DP-1").expect("entry");
+        let config = wm.core.state.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror, None);
         assert_eq!(config.mirror_fit, None);
-        assert!(wm.work.monitor_config);
+        assert!(wm.core.work.monitor_config);
     }
 
     #[test]

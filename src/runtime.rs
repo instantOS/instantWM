@@ -178,10 +178,11 @@ pub fn init_keyboard_layout(ctx: &mut crate::contexts::WmCtx<'_>) {
 /// `i3status-rs`, or the built-in default (in that order of
 /// precedence).
 pub fn spawn_status_bar<B: crate::backend::BackendState>(wm: &mut Wm<B>) {
-    crate::bar::status::sync_visibility(&mut wm.core_ctx());
-    wm.bar
+    crate::bar::status::sync_visibility(wm.core_ctx());
+    wm.core
+        .bar
         .status_sources
-        .start(wm.core.config.status_command.as_deref());
+        .start(wm.core.state.config.status_command.as_deref());
 }
 
 /// Run autostart, user-defined `exec_once` and `exec` commands.
@@ -191,8 +192,8 @@ pub fn spawn_status_bar<B: crate::backend::BackendState>(wm: &mut Wm<B>) {
 /// [`late_init_x11`].
 pub fn run_startup_commands<B: crate::backend::BackendState>(wm: &Wm<B>) {
     crate::startup::autostart::run_autostart();
-    crate::startup::autostart::run_exec_commands(&wm.core.config.exec_once);
-    crate::startup::autostart::run_exec_commands(&wm.core.config.exec);
+    crate::startup::autostart::run_exec_commands(&wm.core.state.config.exec_once);
+    crate::startup::autostart::run_exec_commands(&wm.core.state.config.exec);
 }
 
 /// X11 late startup sequence.
@@ -347,8 +348,8 @@ mod tests {
     #[test]
     fn non_urgent_layout_can_be_deferred_for_animations() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.work.layout.clear();
-        wm.work.layout.mark_monitor(MonitorId::default());
+        wm.core.work.layout.clear();
+        wm.core.work.layout.mark_monitor(MonitorId::default());
 
         wm.with_ctx(|wm| {
             process_pending_work(
@@ -360,14 +361,17 @@ mod tests {
             )
         });
 
-        assert!(wm.work.layout.is_pending());
+        assert!(wm.core.work.layout.is_pending());
     }
 
     #[test]
     fn urgent_layout_bypasses_animation_defer() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.work.layout.clear();
-        wm.work.layout.mark_monitor_urgent(MonitorId::default());
+        wm.core.work.layout.clear();
+        wm.core
+            .work
+            .layout
+            .mark_monitor_urgent(MonitorId::default());
 
         wm.with_ctx(|wm| {
             process_pending_work(
@@ -379,7 +383,7 @@ mod tests {
             )
         });
 
-        assert!(!wm.work.layout.is_pending());
+        assert!(!wm.core.work.layout.is_pending());
     }
     /// Exercise the shared scheduler against a real X11 connection: an edge
     /// scratchpad must remain mapped until the X11 animation map drains.
@@ -413,13 +417,13 @@ mod tests {
         conn.map_window(xid).unwrap().check().unwrap();
         let mut wm = crate::wm::X11Wm::new(crate::backend::X11BackendData::new(conn, screen));
         wm.backend.x11_runtime.root = root;
-        let monitor = wm.core.model.monitors.push(
+        let monitor = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 1920, 1080))
                 .bar(0, false)
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor);
+        wm.core.state.model.monitors.set_selected(monitor);
         let win = WindowId::from(xid);
         let mut client = Client {
             win,
@@ -435,14 +439,21 @@ mod tests {
                 1080,
             )
             .unwrap();
-        wm.core.model.add_client(monitor, client);
-        wm.core.config.animations.enabled = true;
+        wm.core.state.model.add_client(monitor, client);
+        wm.core.state.config.animations.enabled = true;
         crate::floating::scratchpad::hide_scratchpad_window(&mut wm.x11_ctx(), win);
         assert!(wm.x11_ctx().window_animation_active(win));
 
         process_pending_work(&mut wm.x11_ctx(), TickOptions::default());
-        assert!(wm.work.has_pending_scratchpad_hide(win));
-        assert!(wm.core.model.client(win).unwrap().is_scratchpad_visible());
+        assert!(wm.core.work.has_pending_scratchpad_hide(win));
+        assert!(
+            wm.core
+                .state
+                .model
+                .client(win)
+                .unwrap()
+                .is_scratchpad_visible()
+        );
         assert_eq!(
             wm.backend
                 .conn
@@ -456,8 +467,15 @@ mod tests {
 
         wm.backend.x11_runtime.window_animations.remove(&win);
         process_pending_work(&mut wm.x11_ctx(), TickOptions::default());
-        assert!(!wm.work.has_pending_scratchpad_hide(win));
-        assert!(!wm.core.model.client(win).unwrap().is_scratchpad_visible());
+        assert!(!wm.core.work.has_pending_scratchpad_hide(win));
+        assert!(
+            !wm.core
+                .state
+                .model
+                .client(win)
+                .unwrap()
+                .is_scratchpad_visible()
+        );
         assert_eq!(
             wm.backend
                 .conn

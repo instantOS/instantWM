@@ -173,10 +173,9 @@ fn connect_native_window(
 fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() {
     let (mut event_loop, mut state) = crate::test_support::new_compositor();
     let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
-    let wm_handle = state.wm_handle();
-    let mut wm = wm_handle.borrow_mut();
-    wm.core.config.animations.enabled = true;
-    let monitor = wm.core.model.monitors.push(
+
+    state.wm.core.state.config.animations.enabled = true;
+    let monitor = state.wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
             .bar(0, false)
@@ -190,21 +189,21 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
         ..Client::default()
     };
     model_client.save_floating_placement(floating, tiled);
-    add_client(&mut wm.core.model, monitor, model_client);
-    state.map_window_in_space(&wm.core, win);
-    state.resize_window(&wm.core, win, tiled);
-    drop(wm);
+    add_client(&mut state.wm.core.state.model, monitor, model_client);
+    state.map_window_in_space(win);
+    state.native.resize_window(&state.wm.core.state, win, tiled);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     let tiled_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
     let tiled_configured_count = client.sizes.len();
 
     let _ = set_window_mode(
-        &mut wm.wayland_ctx(&mut state),
+        &mut state.ctx(),
         win,
         WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
     );
-    assert_eq!(wm.core.model.client(win).unwrap().geo, floating);
+    assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, floating);
     assert_eq!(
         state
             .native
@@ -214,57 +213,116 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
             .scheduled_size(),
         Some(floating.size())
     );
-    assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true));
+    assert!(!state.native.native_commit_may_update_model(
+        win,
+        1920,
+        1080,
+        Some(tiled_serial),
+        true
+    ));
     assert_eq!(
-        wm.core.model.client(win).unwrap().saved_floating_rect(),
+        state
+            .wm
+            .core
+            .state
+            .model
+            .client(win)
+            .unwrap()
+            .saved_floating_rect(),
         Some(floating)
     );
-    drop(wm);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     // Leaving tiled placement also sends the unmaximize state, carrying
     // the previous size until the animation dispatches the floating resize.
     assert_eq!(client.sizes.len(), tiled_configured_count + 1);
     assert_eq!(client.sizes.last(), Some(&(1920, 1080)));
     let unmaximize_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(unmaximize_serial), true));
+    assert!(!state.native.native_commit_may_update_model(
+        win,
+        1920,
+        1080,
+        Some(unmaximize_serial),
+        true
+    ));
     let configured_count = client.sizes.len();
 
     // An interruption delivers the scheduled resize once, through the same
     // dispatcher used by normal animation ticks and immediate resizes.
-    state.cancel_window_animation(&wm.core, win);
-    drop(wm);
+    state
+        .native
+        .cancel_window_animation(&state.wm.core.state, win);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.last(), Some(&(640, 360)));
     assert_eq!(client.sizes.len(), configured_count + 1);
     let restore_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true));
-    assert!(state.native_commit_may_update_model(win, 640, 352, Some(restore_serial), true));
+    assert!(!state.native.native_commit_may_update_model(
+        win,
+        1920,
+        1080,
+        Some(tiled_serial),
+        true
+    ));
+    assert!(
+        state
+            .native
+            .native_commit_may_update_model(win, 640, 352, Some(restore_serial), true)
+    );
     let constrained = Rect::new(floating.x, floating.y, 640, 352);
-    wm.core.model.sync_client_geometry(win, constrained);
+    state
+        .wm
+        .core
+        .state
+        .model
+        .sync_client_geometry(win, constrained);
     assert_eq!(
-        wm.core.model.client(win).unwrap().saved_floating_rect(),
+        state
+            .wm
+            .core
+            .state
+            .model
+            .client(win)
+            .unwrap()
+            .saved_floating_rect(),
         Some(constrained)
     );
-    state.resize_window(&wm.core, win, constrained);
-    state.resize_window(&wm.core, win, constrained);
-    drop(wm);
+    state
+        .native
+        .resize_window(&state.wm.core.state, win, constrained);
+    state
+        .native
+        .resize_window(&state.wm.core.state, win, constrained);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.last(), Some(&(640, 352)));
     assert_eq!(client.sizes.len(), configured_count + 2);
     let convergence_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(state.native_commit_may_update_model(win, 640, 352, Some(convergence_serial), true));
-    assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true));
+    assert!(state.native.native_commit_may_update_model(
+        win,
+        640,
+        352,
+        Some(convergence_serial),
+        true
+    ));
+    assert!(!state.native.native_commit_may_update_model(
+        win,
+        1920,
+        1080,
+        Some(tiled_serial),
+        true
+    ));
 
     // Retarget an unsent resize, then request the final size immediately while
     // preserving its spatial animation. Only the final intent may be sent.
     for size in [(480, 270), (320, 180)] {
         let target = Rect::new(floating.x, floating.y, size.0, size.1);
-        wm.core.model.sync_client_geometry(win, target);
-        state.set_window_target_rect(
-            &wm.core,
+        state.wm.core.state.model.sync_client_geometry(win, target);
+        state.native.set_window_target_rect(
+            &state.wm.core.state,
             win,
             target,
             super::WindowMoveMode::AnimateFrom {
@@ -273,9 +331,11 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
             },
         );
     }
-    let target = wm.core.model.client(win).unwrap().geo;
-    state.resize_window(&wm.core, win, target);
-    assert!(state.animation_targets_outer_rect(win, target));
+    let target = state.wm.core.state.model.client(win).unwrap().geo;
+    state
+        .native
+        .resize_window(&state.wm.core.state, win, target);
+    assert!(state.native.animation_targets_outer_rect(win, target));
     assert_eq!(
         state
             .native
@@ -285,13 +345,15 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
             .scheduled_size(),
         None
     );
-    drop(wm);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.last(), Some(&(320, 180)));
     assert_eq!(client.sizes.len(), configured_count + 3);
-    state.cancel_window_animation(&wm.core, win);
-    drop(wm);
+    state
+        .native
+        .cancel_window_animation(&state.wm.core.state, win);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert_eq!(client.sizes.len(), configured_count + 3);
 }
@@ -300,17 +362,16 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
 fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_intent() {
     let (mut event_loop, mut state) = crate::test_support::new_compositor();
     let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
-    let wm_handle = state.wm_handle();
-    let mut wm = wm_handle.borrow_mut();
-    wm.core.config.animations.enabled = true;
-    let monitor = wm.core.model.monitors.push(
+
+    state.wm.core.state.config.animations.enabled = true;
+    let monitor = state.wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
             .build(),
     );
     let initial = Rect::new(100, 100, 800, 600);
     add_client(
-        &mut wm.core.model,
+        &mut state.wm.core.state.model,
         monitor,
         Client {
             win,
@@ -319,18 +380,20 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             ..Client::default()
         },
     );
-    state.map_window_in_space(&wm.core, win);
-    state.resize_window(&wm.core, win, initial);
-    drop(wm);
+    state.map_window_in_space(win);
+    state
+        .native
+        .resize_window(&state.wm.core.state, win, initial);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     let configured_count = client.sizes.len();
     let element = state.native.find_window(win).unwrap().clone();
 
     let target = Rect::new(100, 100, 640, 480);
-    wm.core.model.sync_client_geometry(win, target);
-    state.set_window_target_rect(
-        &wm.core,
+    state.wm.core.state.model.sync_client_geometry(win, target);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
         win,
         target,
         super::WindowMoveMode::AnimateFrom {
@@ -338,10 +401,10 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             duration: Duration::from_millis(500),
         },
     );
-    assert!(state.window_has_active_animation(win));
-    state.unmap_window_from_space(&wm.core, win);
+    assert!(state.native.window_has_active_animation(win));
+    state.unmap_window_from_space(win);
     assert_eq!(state.native.space.element_location(&element), None);
-    assert!(!state.window_has_active_animation(win));
+    assert!(!state.native.window_has_active_animation(win));
     assert_eq!(
         state
             .native
@@ -351,20 +414,29 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             .scheduled_size(),
         None
     );
-    drop(wm);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.len(), configured_count + 1);
     assert_eq!(client.sizes.last(), Some(&(640, 480)));
     let serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(state.native_commit_may_update_model(win, 640, 480, Some(serial), true));
+    assert!(
+        state
+            .native
+            .native_commit_may_update_model(win, 640, 480, Some(serial), true)
+    );
 
     // An animated resize requested while already hidden has no frame timer.
     // Its protocol request must nevertheless progress immediately.
     let hidden_target = Rect::new(100, 100, 480, 360);
-    wm.core.model.sync_client_geometry(win, hidden_target);
-    state.set_window_target_rect(
-        &wm.core,
+    state
+        .wm
+        .core
+        .state
+        .model
+        .sync_client_geometry(win, hidden_target);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
         win,
         hidden_target,
         super::WindowMoveMode::Retarget {
@@ -372,7 +444,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         },
     );
     assert_eq!(state.native.space.element_location(&element), None);
-    assert!(!state.window_has_active_animation(win));
+    assert!(!state.native.window_has_active_animation(win));
     assert_eq!(
         state
             .native
@@ -382,20 +454,29 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             .scheduled_size(),
         None
     );
-    state.unmap_window_from_space(&wm.core, win);
-    drop(wm);
+    state.unmap_window_from_space(win);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.len(), configured_count + 2);
     assert_eq!(client.sizes.last(), Some(&(480, 360)));
     let serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(state.native_commit_may_update_model(win, 480, 360, Some(serial), true));
+    assert!(
+        state
+            .native
+            .native_commit_may_update_model(win, 480, 360, Some(serial), true)
+    );
 
-    state.map_window_in_space(&wm.core, win);
+    state.map_window_in_space(win);
     let obsolete = Rect::new(100, 100, 400, 300);
-    wm.core.model.sync_client_geometry(win, obsolete);
-    state.set_window_target_rect(
-        &wm.core,
+    state
+        .wm
+        .core
+        .state
+        .model
+        .sync_client_geometry(win, obsolete);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
         win,
         obsolete,
         super::WindowMoveMode::AnimateFrom {
@@ -403,15 +484,20 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             duration: Duration::from_millis(500),
         },
     );
-    state.drop_window_animation(win);
-    drop(wm);
+    state.native.drop_window_animation(win);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.len(), configured_count + 2);
     let replacement = Rect::new(100, 100, 320, 240);
-    wm.core.model.sync_client_geometry(win, replacement);
-    state.set_window_target_rect(
-        &wm.core,
+    state
+        .wm
+        .core
+        .state
+        .model
+        .sync_client_geometry(win, replacement);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
         win,
         replacement,
         super::WindowMoveMode::AnimateFrom {
@@ -419,17 +505,24 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             duration: Duration::from_millis(500),
         },
     );
-    state.cancel_window_animation(&wm.core, win);
-    drop(wm);
+    state
+        .native
+        .cancel_window_animation(&state.wm.core.state, win);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    wm = wm_handle.borrow_mut();
+
     assert_eq!(client.sizes.len(), configured_count + 3);
     assert_eq!(client.sizes.last(), Some(&(320, 240)));
 
     // End-of-surface cleanup discards pending intent without configuring it.
-    wm.core.model.sync_client_geometry(win, obsolete);
-    state.set_window_target_rect(
-        &wm.core,
+    state
+        .wm
+        .core
+        .state
+        .model
+        .sync_client_geometry(win, obsolete);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
         win,
         obsolete,
         super::WindowMoveMode::AnimateFrom {
@@ -438,24 +531,24 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         },
     );
     state.remove_window_tracking(win);
-    drop(wm);
+
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert_eq!(client.sizes.len(), configured_count + 3);
     assert!(!state.native.geometry_sync.contains_key(&win));
 }
 
-/// Shared focus projections must use the explicitly supplied core view,
-/// even when the protocol-dispatch owner is already borrowed.
+/// Shared focus commits policy and projects configure/seat state synchronously
+/// through the production compositor's sole WM owner.
 #[test]
-fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
+fn owned_focus_projects_policy_and_native_state_synchronously() {
     use crate::backend::wayland::commands::WmCommand;
     use crate::backend::wayland::runtime::dispatch::drain_command_queue;
 
     let (mut event_loop, mut state) = crate::test_support::new_compositor();
     let (conn_a, mut queue_a, mut client_a, a) = connect_native_window(&mut event_loop, &mut state);
     let (conn_b, mut queue_b, mut client_b, b) = connect_native_window(&mut event_loop, &mut state);
-    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    let monitor = wm.core.model.monitors.push(
+    state.wm = Wm::new(crate::backend::WaylandBackendData::default());
+    let monitor = state.wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
             .tag_count(1)
@@ -464,7 +557,7 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     );
     for win in [a, b] {
         add_client(
-            &mut wm.core.model,
+            &mut state.wm.core.state.model,
             monitor,
             Client {
                 win,
@@ -474,7 +567,7 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
             },
         );
     }
-    let _ = wm.core.model.set_fullscreen(b, true).unwrap();
+    let _ = state.wm.core.state.model.set_fullscreen(b, true).unwrap();
     for win in [a, b] {
         let element = state.native.find_window(win).unwrap().clone();
         state.native.space.map_element(element, (0, 0), false);
@@ -483,13 +576,11 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
 
     state.native.push_command(WmCommand::FocusWindow(b));
     {
-        let dispatch_owner = state.wm_handle();
-        let _unavailable_for_reentry = dispatch_owner.borrow_mut();
-        drain_command_queue(&mut wm, &mut state);
+        drain_command_queue(&mut state);
     }
-    assert_eq!(wm.core.model.selected_win(), Some(b));
+    assert_eq!(state.wm.core.state.model.selected_win(), Some(b));
     assert!(state.is_seat_focused_on(b));
-    assert!(!wm.core.model.client(b).unwrap().is_urgent);
+    assert!(!state.wm.core.state.model.client(b).unwrap().is_urgent);
     pump(
         &mut event_loop,
         &mut state,
@@ -506,14 +597,12 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     // while losing activation; the tiled target keeps its maximized flags.
     state.native.push_command(WmCommand::FocusWindow(a));
     {
-        let dispatch_owner = state.wm_handle();
-        let _unavailable_for_reentry = dispatch_owner.borrow_mut();
-        drain_command_queue(&mut wm, &mut state);
+        drain_command_queue(&mut state);
     }
-    assert_eq!(wm.core.model.selected_win(), Some(a));
-    assert_eq!(wm.focus.last_client, b);
+    assert_eq!(state.wm.core.state.model.selected_win(), Some(a));
+    assert_eq!(state.wm.core.focus.last_client, b);
     assert!(state.is_seat_focused_on(a));
-    assert!(!wm.core.model.client(a).unwrap().is_urgent);
+    assert!(!state.wm.core.state.model.client(a).unwrap().is_urgent);
     pump(
         &mut event_loop,
         &mut state,
@@ -555,31 +644,25 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     state.clear_seat_focus();
     state.native.push_command(WmCommand::FocusWindow(a));
     {
-        let dispatch_owner = state.wm_handle();
-        let _unavailable_for_reentry = dispatch_owner.borrow_mut();
-        drain_command_queue(&mut wm, &mut state);
+        drain_command_queue(&mut state);
     }
     assert!(state.is_seat_focused_on(a));
 
     state.native.push_command(WmCommand::RestoreFocus);
     {
-        let dispatch_owner = state.wm_handle();
-        let _unavailable_for_reentry = dispatch_owner.borrow_mut();
-        drain_command_queue(&mut wm, &mut state);
+        drain_command_queue(&mut state);
     }
-    assert_eq!(wm.core.model.selected_win(), Some(a));
+    assert_eq!(state.wm.core.state.model.selected_win(), Some(a));
     assert!(state.is_seat_focused_on(a));
 
     for win in [a, b] {
-        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        state.wm.core.state.model.client_mut(win).unwrap().is_hidden = true;
     }
     state.native.push_command(WmCommand::RestoreFocus);
     {
-        let dispatch_owner = state.wm_handle();
-        let _unavailable_for_reentry = dispatch_owner.borrow_mut();
-        drain_command_queue(&mut wm, &mut state);
+        drain_command_queue(&mut state);
     }
-    assert_eq!(wm.core.model.selected_win(), None);
+    assert_eq!(state.wm.core.state.model.selected_win(), None);
     assert!(state.native.keyboard.current_focus().is_none());
     pump(
         &mut event_loop,
@@ -603,13 +686,12 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
 fn protocol_presentation_requests_commit_before_later_native_configures() {
     let (mut event_loop, mut state) = crate::test_support::new_compositor();
     let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
-    let wm_handle = state.wm_handle();
+
     let floating = Rect::new(120, 80, 640, 360);
     let desktop = Rect::new(0, 0, 1920, 1080);
     {
-        let mut wm = wm_handle.borrow_mut();
-        wm.core.config.animations.enabled = false;
-        let monitor = wm.core.model.monitors.push(
+        state.wm.core.state.config.animations.enabled = false;
+        let monitor = state.wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(desktop)
                 .bar(0, false)
@@ -617,14 +699,17 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
                 .selected_tags(crate::types::TagMask::single(1).unwrap())
                 .build(),
         );
-        wm.core
+        state
+            .wm
+            .core
+            .state
             .model
             .monitor_mut(monitor)
             .unwrap()
             .per_tag_state()
             .presentation = crate::layouts::PresentationMode::Floating;
         add_client(
-            &mut wm.core.model,
+            &mut state.wm.core.state.model,
             monitor,
             Client {
                 win,
@@ -634,18 +719,22 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
                 ..Client::default()
             },
         );
-        state.map_window_in_space(&wm.core, win);
-        state.resize_window(&wm.core, win, floating);
-        crate::focus::focus(&mut wm.wayland_ctx(&mut state), Some(win));
+        state.map_window_in_space(win);
+        state
+            .native
+            .resize_window(&state.wm.core.state, win, floating);
+        crate::focus::focus(&mut state.ctx(), Some(win));
     }
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
 
     client.toplevel.as_ref().unwrap().set_fullscreen(None);
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     {
-        let wm = wm_handle.borrow();
         assert!(
-            wm.core
+            state
+                .wm
+                .core
+                .state
                 .model
                 .client(win)
                 .unwrap()
@@ -658,7 +747,9 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
         // Reproduce the ordering constraint that originally motivated the WM
         // back-reference: another native configure before a shared WM tick.
         let window = state.native.find_window(win).unwrap().clone();
-        state.send_toplevel_configure(&wm.core, &window, None);
+        state
+            .native
+            .send_toplevel_configure(&state.wm.core.state, &window, None);
     }
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert!(
@@ -671,10 +762,7 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
 
     client.toplevel.as_ref().unwrap().unset_fullscreen();
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    assert_eq!(
-        wm_handle.borrow().core.model.client(win).unwrap().geo,
-        floating
-    );
+    assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, floating);
     assert!(
         !client
             .states
@@ -687,9 +775,10 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
     client.toplevel.as_ref().unwrap().set_maximized();
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert!(
-        wm_handle
-            .borrow()
+        state
+            .wm
             .core
+            .state
             .model
             .client(win)
             .unwrap()
@@ -705,10 +794,7 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
     );
     client.toplevel.as_ref().unwrap().unset_maximized();
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-    assert_eq!(
-        wm_handle.borrow().core.model.client(win).unwrap().geo,
-        floating
-    );
+    assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, floating);
     assert!(
         !client
             .states
@@ -750,14 +836,16 @@ fn blocked_native_commits_dispatch_after_runtime_borrows_end() {
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert_eq!(applied.load(Ordering::SeqCst), 0);
 
-    let owner = state.wm_handle();
-    let runtime_borrow = owner.borrow_mut();
-    barrier.signal();
-    // Signaling during a runtime lease must not invoke the post-commit hook.
-    state.native.defer_commit_client(surface.client().unwrap());
-    state.native.defer_commit_client(surface.client().unwrap());
-    assert_eq!(applied.load(Ordering::SeqCst), 0);
-    drop(runtime_borrow);
+    {
+        let runtime_borrow = &mut state.wm;
+        barrier.signal();
+        // Signaling during a runtime lease must not invoke the post-commit hook.
+        state.native.defer_commit_client(surface.client().unwrap());
+        state.native.defer_commit_client(surface.client().unwrap());
+        assert_eq!(applied.load(Ordering::SeqCst), 0);
+        // Keep the model borrow live until after both native queue operations.
+        assert!(runtime_borrow.core.is_running());
+    }
     state.dispatch_pending_commits();
     assert_eq!(applied.load(Ordering::SeqCst), 1);
     state.dispatch_pending_commits();

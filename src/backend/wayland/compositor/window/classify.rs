@@ -1,7 +1,7 @@
+use crate::backend::wayland::compositor::WaylandNativeState;
 use smithay::desktop::Window;
 use smithay::utils::IsAlive;
 
-use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ impl WindowType {
     }
 }
 
-impl WaylandState {
+impl WaylandNativeState {
     /// Owned snapshot of the current input/render ordering.
     ///
     /// Pointer motion can hit-test both its old and proposed positions against
@@ -46,15 +46,14 @@ impl WaylandState {
         #[cfg(test)]
         super::hit_test::record_pointer_hit_snapshot();
 
-        self.native
-            .windows_in_z_order()
+        self.windows_in_z_order()
             .into_iter()
             .map(|(window, typ)| (window.clone(), typ))
             .collect()
     }
 }
 
-impl crate::backend::wayland::compositor::WaylandNativeState {
+impl WaylandNativeState {
     /// Classify a window's type for focus and input routing decisions.
     ///
     /// This is the single source of truth for window classification.

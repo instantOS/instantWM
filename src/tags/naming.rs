@@ -98,9 +98,10 @@ mod tests {
         };
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.monitors.push(Monitor::default());
-        wm.core.apply_config(config).unwrap();
+        wm.core.state.model.monitors.push(Monitor::default());
+        wm.core.state.apply_config(config).unwrap();
         wm.core
+            .state
             .model
             .expect_selected_monitor_mut()
             .set_selected_tags(crate::types::TagMask::single(1).unwrap());
@@ -109,6 +110,7 @@ mod tests {
 
     fn labels(wm: &Wm) -> Vec<String> {
         wm.core
+            .state
             .model
             .expect_selected_monitor()
             .tags

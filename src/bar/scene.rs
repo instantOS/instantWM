@@ -1,5 +1,5 @@
 use crate::bar::paint::{BarPainter, SchemeColor};
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Client, CloseButtonColorConfigs,
     ColorScheme, Gesture, Monitor, MonitorId, Rect, SchemeHover, SchemeTag, StatusColorConfig,
@@ -196,7 +196,7 @@ pub(crate) struct MonitorBarSnapshot {
 }
 
 /// Configured display name for a named mode, if the config carries one.
-fn mode_display(core: &CoreCtx, name: &str) -> Option<String> {
+fn mode_display(core: &WmCore, name: &str) -> Option<String> {
     core.config()
         .bindings
         .modes
@@ -207,7 +207,7 @@ fn mode_display(core: &CoreCtx, name: &str) -> Option<String> {
 
 /// The selected monitor's status: the runtime status line, or the active
 /// interactive WM mode.
-fn resolve_status(core: &CoreCtx) -> Option<StatusContent> {
+fn resolve_status(core: &WmCore) -> Option<StatusContent> {
     use crate::core_state::ActiveWmMode;
 
     let mode = match &core.behavior().current_mode {
@@ -232,7 +232,7 @@ fn resolve_status(core: &CoreCtx) -> Option<StatusContent> {
 }
 
 fn collect_tag_cells(
-    core: &CoreCtx,
+    core: &WmCore,
     mon: &Monitor,
     occupied_tags: TagMask,
     urgent_tags: TagMask,
@@ -270,7 +270,7 @@ fn collect_tag_cells(
 }
 
 fn collect_title_cells(
-    core: &CoreCtx,
+    core: &WmCore,
     mon: &Monitor,
     is_selected_monitor: bool,
     gesture: Gesture,
@@ -304,7 +304,7 @@ fn collect_title_cells(
 }
 
 fn build_systray_snapshot(
-    core: &CoreCtx,
+    core: &WmCore,
     mon: &Monitor,
     tray_menu: Option<&crate::systray::TrayMenuPresentation>,
     base_scheme: ColorScheme,
@@ -330,7 +330,7 @@ fn build_systray_snapshot(
 }
 
 pub(crate) fn build_monitor_snapshots(
-    core: &CoreCtx,
+    core: &WmCore,
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().expect_selected_monitor().num;
@@ -874,8 +874,8 @@ mod tests {
             );
         }
         state.model.set_selected_monitor(ids[1]);
-        let mut work = crate::core_state::PendingWork::default();
-        let mut running = true;
+        let work = crate::core_state::PendingWork::default();
+        let running = true;
         let mut bar = crate::bar::BarState::default();
         bar.systray_host
             .tray
@@ -889,8 +889,14 @@ mod tests {
         bar.systray_host
             .menu
             .apply(7, Some(crate::systray::MenuView::default()));
-        let mut focus = crate::client::focus::FocusState::default();
-        let core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let focus = crate::client::focus::FocusState::default();
+        let mut core = WmCore {
+            state,
+            work,
+            running,
+            bar,
+            focus,
+        };
         let snapshots = build_monitor_snapshots(&core, 60);
         let host = snapshots
             .iter()

@@ -793,6 +793,7 @@ mod tests {
         assert_eq!(model.client_count(), 2);
     }
 }
+
 #[test]
 fn selected_monitor_query_is_empty_before_output_initialization() {
     let model = WmModel::new();

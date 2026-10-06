@@ -290,7 +290,7 @@ mod tests {
     /// The tag list must be non-empty before `set_selected_tags` can select
     /// anything, so the count is seeded here rather than at each call site.
     fn push_hover_monitor(wm: &mut Wm, rect: Rect, bar_shown: bool) -> MonitorId {
-        wm.core.model.monitors.push(
+        wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(rect)
                 .bar(0, bar_shown)
@@ -311,16 +311,17 @@ mod tests {
 
         let monitor_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), false);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tags);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
 
         // Adding `bottom` first stacks `top` above it, and the focus stack is
         // pinned so the two orders disagree.
         for (win, y) in [(bottom, 100), (top, 90)] {
-            add_client_with(&mut wm.core.model, monitor_id, |client| {
+            add_client_with(&mut wm.core.state.model, monitor_id, |client| {
                 client.win = win;
                 client.tags = tags;
                 client.geo = Rect::new(100, y, 600, 400);
@@ -331,6 +332,7 @@ mod tests {
         // Focus order: `bottom` is the focused window.
         assert!(
             wm.core
+                .state
                 .model
                 .monitor_mut(monitor_id)
                 .unwrap()
@@ -338,7 +340,7 @@ mod tests {
         );
 
         // Inside both windows' top border zones (30 px band above each edge).
-        let target = hover_resize_target_at(&wm.core.model, Point::new(300, 85));
+        let target = hover_resize_target_at(&wm.core.state.model, Point::new(300, 85));
         assert_eq!(target.map(|target| target.win), Some(top));
     }
 
@@ -348,15 +350,16 @@ mod tests {
         let tags = TagMask::single(1).unwrap();
         let left_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), true);
         let right_id = push_hover_monitor(&mut wm, Rect::new(1920, 0, 1920, 1080), true);
-        wm.core.model.monitors.set_selected(left_id);
+        wm.core.state.model.monitors.set_selected(left_id);
         wm.core
+            .state
             .model
             .monitor_mut(right_id)
             .unwrap()
             .set_selected_tags(tags);
 
         let win = WindowId(3);
-        add_client_with(&mut wm.core.model, right_id, |client| {
+        add_client_with(&mut wm.core.state.model, right_id, |client| {
             client.win = win;
             client.tags = tags;
             client.geo = Rect::new(2000, 100, 600, 400);
@@ -364,9 +367,9 @@ mod tests {
             client.set_placement(crate::types::ClientPlacement::Floating);
         });
 
-        let target = hover_resize_target_at(&wm.core.model, Point::new(2200, 95));
+        let target = hover_resize_target_at(&wm.core.state.model, Point::new(2200, 95));
         assert_eq!(target.map(|target| target.win), Some(win));
-        assert_eq!(wm.core.model.selected_monitor_id(), left_id);
+        assert_eq!(wm.core.state.model.selected_monitor_id(), left_id);
     }
 
     /// Insert two floating windows with `bottom` focused but stacked beneath
@@ -378,21 +381,22 @@ mod tests {
 
         let monitor_id = push_hover_monitor(wm, Rect::new(0, 0, 1920, 1080), false);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tags);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
 
         // Adding `bottom` first stacks `top` above it in the persistent z-order.
-        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_selected_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = bottom;
             client.tags = tags;
             client.geo = bottom_geo;
             client.mode = ClientMode::floating();
             client.set_placement(crate::types::ClientPlacement::Floating);
         });
-        add_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = top;
             client.tags = tags;
             client.geo = top_geo;
@@ -402,6 +406,7 @@ mod tests {
         // Focus order: `bottom` is the focused window.
         assert!(
             wm.core
+                .state
                 .model
                 .monitor_mut(monitor_id)
                 .unwrap()
@@ -424,16 +429,16 @@ mod tests {
         // Inside the covered window's top border zone (y 100..130) but
         // strictly inside the covering window's surface.
         assert_eq!(
-            hover_resize_target_at(&wm.core.model, Point::new(300, 110)),
+            hover_resize_target_at(&wm.core.state.model, Point::new(300, 110)),
             None
         );
         assert_eq!(
-            selected_hover_resize_target_at(&wm.core.model, Point::new(300, 110)),
+            selected_hover_resize_target_at(&wm.core.state.model, Point::new(300, 110)),
             None
         );
 
         // The covering window's own border still offers when hovered directly.
-        let target = hover_resize_target_at(&wm.core.model, Point::new(300, 85));
+        let target = hover_resize_target_at(&wm.core.state.model, Point::new(300, 85));
         assert_eq!(target.map(|hit| hit.win), Some(WindowId(2)));
     }
 
@@ -451,10 +456,10 @@ mod tests {
 
         // In the covered window's left border zone, outside the cover's
         // surface (the cover's band ends at x = 700 + 30).
-        let target = hover_resize_target_at(&wm.core.model, Point::new(735, 200));
+        let target = hover_resize_target_at(&wm.core.state.model, Point::new(735, 200));
         assert_eq!(target.map(|hit| hit.win), Some(WindowId(1)));
         assert_eq!(
-            selected_hover_resize_target_at(&wm.core.model, Point::new(735, 200))
+            selected_hover_resize_target_at(&wm.core.state.model, Point::new(735, 200))
                 .map(|hit| hit.win),
             Some(WindowId(1))
         );

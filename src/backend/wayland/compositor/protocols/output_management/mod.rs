@@ -86,6 +86,7 @@ macro_rules! delegate_output_management {
         ] => $crate::backend::wayland::compositor::protocols::output_management::OutputManagementState);
     };
 }
+
 #[cfg(test)]
 mod tests {
     use super::OutputManagementOutputState;

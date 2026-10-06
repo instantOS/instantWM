@@ -11,7 +11,6 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::wm::WaylandWm as Wm;
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::utils::{Clock, Monotonic, Time};
@@ -77,7 +76,7 @@ where
                         &output,
                     );
                     crate::backend::wayland::render::frame::send_frame_callbacks(
-                        &mut state.native,
+                        &state.native,
                         &output,
                         start_time.elapsed(),
                     );
@@ -231,15 +230,17 @@ fn next_phase_delay(last: Instant, now: Instant, period: Duration) -> Duration {
 /// redraw request. DRM and winit then consume that request using their own
 /// output submission machinery.
 pub(crate) fn event_loop_tick_and_request_render(
-    wm: &mut Wm,
     state: &mut WaylandState,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) {
-    super::dispatch::drain_command_queue(wm, state);
-    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(&wm.core, state);
-    let animations_active = state.has_active_window_animations();
+    super::dispatch::drain_command_queue(state);
+    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(
+        &state.wm.core.state,
+        &mut state.native,
+    );
+    let animations_active = state.native.has_active_window_animations();
     let tick = crate::runtime::event_loop_tick_with_options(
-        &mut wm.wayland_ctx(state),
+        &mut state.ctx(),
         ipc_server,
         crate::runtime::TickOptions {
             defer_layout_while_animations_active: true,
@@ -256,7 +257,6 @@ pub(crate) fn event_loop_tick_and_request_render(
         )
     {
         crate::backend::wayland::input::pointer::motion::process_pointer_motion_command(
-            wm,
             state,
             &pointer,
             &keyboard,
@@ -267,9 +267,11 @@ pub(crate) fn event_loop_tick_and_request_render(
     }
     // Commit external protocol projections only after every shared and
     // Wayland-specific operation belonging to this tick has completed.
-    let selection_transition = wm.focus.take_pending_selection();
-    state.reconcile_foreign_toplevel_selection(&wm.core, selection_transition);
-    dismiss_invalid_native_systray_menu(wm, state);
+    let selection_transition = state.wm.core.focus.take_pending_selection();
+    state
+        .native
+        .reconcile_foreign_toplevel_selection(&state.wm.core.state, selection_transition);
+    dismiss_invalid_native_systray_menu(state);
     if tick.ipc_handled
         || tick.monitor_config_applied
         || tick.layout_applied
@@ -279,39 +281,42 @@ pub(crate) fn event_loop_tick_and_request_render(
     }
 }
 
-fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
+fn dismiss_invalid_native_systray_menu(state: &mut WaylandState) {
     let Some(active) = state.active_systray_menu().cloned() else {
         return;
     };
-    let opening_view_is_current = wm
+    let opening_view_is_current = state
+        .wm
         .core
+        .state
         .model
         .monitor(active.monitor_id)
         .is_some_and(|monitor| monitor.selected_tags() == active.opened_tags);
-    let item_still_exists = wm
+    let item_still_exists = state
+        .wm
+        .core
         .bar
         .systray_host
         .tray
         .items
         .iter()
         .any(|item| item.service == active.service && item.path == active.path);
-    if !wm.core.config.systray.show || !opening_view_is_current || !item_still_exists {
+    if !state.wm.core.state.config.systray.show || !opening_view_is_current || !item_still_exists {
         state.dismiss_native_systray_menu();
     }
 }
 
 /// Run compositor-space sync and animation progression in one place, then
 /// preserve the resulting redraw in the shared Wayland scheduler.
-pub(crate) fn process_animations_and_request_render(
-    state: &mut WaylandState,
-    core_view: &crate::core_state::CoreState,
-) {
+pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     let space_synced = if state.native.take_space_sync_pending() {
-        state.sync_space(core_view);
+        state.sync_space();
         // Output membership for foreign-toplevel clients must be computed
         // from post-arrange geometry: this is the point in the tick where
         // pending layouts have been applied and the space reconciled.
-        state.refresh_all_foreign_toplevels(core_view);
+        state
+            .native
+            .refresh_all_foreign_toplevels(&state.wm.core.state);
         true
     } else {
         false
@@ -319,12 +324,14 @@ pub(crate) fn process_animations_and_request_render(
     if state.shortcut_recovery_needs_tick() {
         state.tick_shortcut_recovery(Instant::now());
     }
-    if state.has_active_animations() {
-        state.tick_animations(core_view);
+    if state.native.has_active_animations() {
+        state.native.tick_animations(&state.wm.core.state);
         // A retarget that just settled moves windows between outputs after
         // the refresh above already ran; catch up once animations drain.
-        if !state.has_active_animations() {
-            state.refresh_all_foreign_toplevels(core_view);
+        if !state.native.has_active_animations() {
+            state
+                .native
+                .refresh_all_foreign_toplevels(&state.wm.core.state);
             // Window animations just drained, so the final geometry is now
             // authoritative. Issue the pointer-focus refresh that the
             // transition guard deferred while intermediate animation frames

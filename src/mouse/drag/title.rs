@@ -500,7 +500,7 @@ mod tests {
         bar_shown: bool,
         tag_count: usize,
     ) -> MonitorId {
-        wm.core.model.monitors.push(
+        wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 1200, 800), available)
                 .bar(bar_height, bar_shown)
@@ -513,19 +513,19 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 0, false, 9);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(21), WindowId(22)];
         // `add_client` adopts newest-first, so add back-to-front to leave the
         // focus stack in `windows` order.
         for &win in windows.iter().rev() {
-            add_client_with(&mut wm.core.model, monitor_id, |client| {
+            add_client_with(&mut wm.core.state.model, monitor_id, |client| {
                 client.win = win;
                 client.tags = tags;
                 client.mode = ClientMode::tiled();
             });
         }
         let bounds = {
-            let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+            let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
             monitor.set_selected_tags(tags);
             assert!(monitor.set_focus_order(windows.to_vec()));
             monitor.selected = Some(windows[0]);
@@ -540,7 +540,7 @@ mod tests {
                 .bounds(monitor.available_rect)
         };
         for (&win, &geo) in &bounds {
-            wm.core.model.client_mut(win).unwrap().geo = geo;
+            wm.core.state.model.client_mut(win).unwrap().geo = geo;
         }
         (wm, windows[0], bounds[&windows[0]])
     }
@@ -563,7 +563,7 @@ mod tests {
             &mut wm.test_ctx(),
             DragInput::Absolute(Point::new(press.x + 20, press.y))
         ));
-        let active = wm.core.interaction.drag.active_interaction().unwrap();
+        let active = wm.core.state.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.source(), InteractionSource::Pointer);
         assert!(active.operation().is_tree_resize());
     }
@@ -574,20 +574,20 @@ mod tests {
         presentation: crate::layouts::PresentationMode,
     ) -> (Wm, MonitorId, WindowId, WindowId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 9;
+        wm.core.state.model.tags.num_tags = 9;
         let tags = TagMask::single(1).unwrap();
         let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 30, true, 9);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(31), WindowId(32)];
         for &win in windows.iter().rev() {
-            add_client_with(&mut wm.core.model, monitor_id, |client| {
+            add_client_with(&mut wm.core.state.model, monitor_id, |client| {
                 client.win = win;
                 client.tags = tags;
                 client.mode = ClientMode::tiled();
                 client.geo = Rect::new(0, 30, 600, 770);
             });
         }
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
         monitor.set_selected_tags(tags);
         assert!(monitor.set_focus_order(windows.to_vec()));
         monitor.selected = Some(windows[0]);
@@ -645,23 +645,28 @@ mod tests {
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(
-            wm.core.interaction.drag.reordering_interaction().is_some(),
+            wm.core
+                .state
+                .interaction
+                .drag
+                .reordering_interaction()
+                .is_some(),
             "threshold crossing inside the strip must engage a reorder"
         );
-        assert!(wm.core.interaction.drag.owns_bar_hover());
+        assert!(wm.core.state.interaction.drag.owns_bar_hover());
         // Focus activation may have queued unrelated work. Isolate the swap's
         // own invalidation contract below.
-        wm.work.layout.clear();
+        wm.core.work.layout.clear();
 
         // Dragging onto the neighbour's cell swaps the bar order.
         assert!(super::process_title_reorder_motion(
             &mut wm.test_ctx(),
             Point::new(second_x, 10)
         ));
-        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
         assert_eq!(monitor.bar_client_order(), vec![second, first]);
         assert!(
-            !wm.work.layout.is_pending(),
+            !wm.core.work.layout.is_pending(),
             "changing title order must not schedule an unrelated full layout"
         );
 
@@ -671,7 +676,7 @@ mod tests {
             &mut wm.test_ctx(),
             Point::new(second_x, 10)
         ));
-        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
         assert_eq!(monitor.bar_client_order(), vec![second, first]);
 
         // Leaving the strip converts the reorder into an ordinary move drag.
@@ -679,9 +684,16 @@ mod tests {
             &mut wm.test_ctx(),
             Point::new(second_x, 200)
         ));
-        assert!(wm.core.interaction.drag.reordering_interaction().is_none());
-        assert!(!wm.core.interaction.drag.owns_bar_hover());
-        let active = wm.core.interaction.drag.active_interaction().unwrap();
+        assert!(
+            wm.core
+                .state
+                .interaction
+                .drag
+                .reordering_interaction()
+                .is_none()
+        );
+        assert!(!wm.core.state.interaction.drag.owns_bar_hover());
+        let active = wm.core.state.interaction.drag.active_interaction().unwrap();
         assert_eq!(active.win(), first);
         assert!(matches!(
             active.operation(),
@@ -714,7 +726,7 @@ mod tests {
             Point::new(second_x, 10)
         ));
 
-        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
         assert_eq!(
             monitor.tiled_tree_order(),
             vec![second, first],
@@ -742,10 +754,22 @@ mod tests {
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(
-            wm.core.interaction.drag.reordering_interaction().is_none(),
+            wm.core
+                .state
+                .interaction
+                .drag
+                .reordering_interaction()
+                .is_none(),
             "a Super+client drag must keep taking the move path"
         );
-        assert!(wm.core.interaction.drag.active_interaction().is_some());
+        assert!(
+            wm.core
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .is_some()
+        );
     }
 
     #[test]
@@ -754,7 +778,7 @@ mod tests {
         let tags = TagMask::single(1).unwrap();
         let work = Rect::new(0, 30, 1200, 770);
         let monitor_id = push_drag_monitor(&mut wm, work, 0, true, 0);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let win = WindowId(23);
         let saved = Rect::new(250, 180, 600, 420);
         let mut client = Client {
@@ -766,7 +790,7 @@ mod tests {
             ..Client::default()
         };
         client.save_floating_placement(saved, work);
-        wm.core.model.add_client(monitor_id, client);
+        wm.core.state.model.add_client(monitor_id, client);
 
         let result = begin_move_drag(
             &mut wm.test_ctx(),
@@ -777,7 +801,7 @@ mod tests {
 
         assert_eq!(result, Some((saved, Point::new(300, 220))));
         assert_eq!(
-            wm.core.model.client(win).unwrap().snap_status,
+            wm.core.state.model.client(win).unwrap().snap_status,
             SnapPosition::None
         );
     }
@@ -786,7 +810,7 @@ mod tests {
     fn edge_scratchpad_cannot_start_a_move_drag() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 30, 1200, 770), 0, true, 0);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let win = WindowId(24);
         let mut client = Client {
             win,
@@ -803,7 +827,7 @@ mod tests {
                 800,
             )
             .unwrap();
-        wm.core.model.add_client(monitor_id, client);
+        wm.core.state.model.add_client(monitor_id, client);
 
         assert_eq!(
             begin_move_drag(

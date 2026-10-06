@@ -129,17 +129,17 @@ mod tests {
     #[test]
     fn move_and_follow_keeps_the_moved_window_selected() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 3;
+        wm.core.state.model.tags.num_tags = 3;
         let tag1 = TagMask::single(1).expect("tag 1");
         let tag2 = TagMask::single(2).expect("tag 2");
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 1200, 800))
                 .tag_count(3)
                 .selected_tags(tag1)
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
 
         let moved = WindowId(1);
         let destination_peer = WindowId(2);
@@ -147,7 +147,7 @@ mod tests {
         // first to leave the stack in the `moved`-then-`destination_peer` order
         // that the explicit list used to spell out.
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win: destination_peer,
@@ -157,7 +157,7 @@ mod tests {
             },
         );
         add_selected_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win: moved,
@@ -170,24 +170,32 @@ mod tests {
         move_client_follow_view(&mut wm.test_ctx(), HorizontalDirection::Right);
 
         assert_eq!(
-            wm.core.model.expect_selected_monitor().selected_tags(),
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .selected_tags(),
             tag2
         );
-        assert_eq!(wm.core.model.selected_win(), Some(moved));
+        assert_eq!(wm.core.state.model.selected_win(), Some(moved));
         assert_eq!(
-            wm.core.model.client(moved).map(|client| client.tags),
+            wm.core.state.model.client(moved).map(|client| client.tags),
             Some(tag2)
         );
 
         let tag3 = TagMask::single(3).expect("tag 3");
         move_client_follow_view(&mut wm.test_ctx(), HorizontalDirection::Right);
         assert_eq!(
-            wm.core.model.expect_selected_monitor().selected_tags(),
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .selected_tags(),
             tag3
         );
-        assert_eq!(wm.core.model.selected_win(), Some(moved));
+        assert_eq!(wm.core.state.model.selected_win(), Some(moved));
         assert_eq!(
-            wm.core.model.client(moved).map(|client| client.tags),
+            wm.core.state.model.client(moved).map(|client| client.tags),
             Some(tag3)
         );
     }

@@ -157,12 +157,12 @@ mod tests {
     #[test]
     fn showing_a_window_does_not_change_focus() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = wm.core.state.model.monitors.push(Monitor::default());
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let focused = WindowId(1);
         let hidden = WindowId(2);
         for (win, is_hidden) in [(focused, false), (hidden, true)] {
-            assert!(wm.core.model.add_client(
+            assert!(wm.core.state.model.add_client(
                 monitor_id,
                 Client {
                     win,
@@ -172,6 +172,7 @@ mod tests {
             ));
         }
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -179,8 +180,8 @@ mod tests {
 
         show_window(&mut wm.test_ctx(), hidden);
 
-        assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
-        assert_eq!(wm.core.model.selected_win(), Some(focused));
+        assert!(!wm.core.state.model.client(hidden).unwrap().is_hidden);
+        assert_eq!(wm.core.state.model.selected_win(), Some(focused));
     }
 
     /// Build a single monitor showing `selected` tags.

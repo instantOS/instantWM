@@ -59,9 +59,9 @@ mod tests {
 
         wm.with_ctx(reload_config).unwrap();
 
-        assert!(wm.work.monitor_config);
-        assert!(wm.work.input_config);
-        assert!(wm.work.cursor_config);
+        assert!(wm.core.work.monitor_config);
+        assert!(wm.core.work.input_config);
+        assert!(wm.core.work.cursor_config);
     }
 
     #[test]
@@ -69,14 +69,15 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let id = wm
             .core
+            .state
             .model
             .monitors
             .push(crate::types::Monitor::new_with_values());
 
         wm.with_ctx(reload_config).unwrap();
 
-        let metrics = wm.core.config.bar_metrics();
-        let monitor = wm.core.model.monitor(id).unwrap();
+        let metrics = wm.core.state.config.bar_metrics();
+        let monitor = wm.core.state.model.monitor(id).unwrap();
         assert_eq!(monitor.bar_height, metrics.height);
         assert_eq!(monitor.horizontal_padding, metrics.horizontal_padding);
     }
@@ -84,27 +85,27 @@ mod tests {
     #[test]
     fn reload_does_not_replace_backend_derived_display_state() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.derived.display.width = 3440;
-        wm.core.derived.display.height = 1440;
+        wm.core.state.derived.display.width = 3440;
+        wm.core.state.derived.display.height = 1440;
 
         wm.with_ctx(reload_config).unwrap();
 
-        assert_eq!(wm.core.derived.display.width, 3440);
-        assert_eq!(wm.core.derived.display.height, 1440);
+        assert_eq!(wm.core.state.derived.display.width, 3440);
+        assert_eq!(wm.core.state.derived.display.height, 1440);
     }
 
     #[test]
     fn normalize_current_mode_resets_missing_mode_to_default() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.behavior.current_mode =
+        wm.core.state.behavior.current_mode =
             crate::core_state::ActiveWmMode::Named("resize".to_string());
 
-        let core = &mut wm.core;
+        let core = &mut wm.core.state;
         core.behavior
             .normalize_current_mode(&core.config.bindings.modes);
 
         assert_eq!(
-            wm.core.behavior.current_mode,
+            wm.core.state.behavior.current_mode,
             crate::core_state::ActiveWmMode::Default
         );
     }
@@ -112,20 +113,21 @@ mod tests {
     #[test]
     fn normalize_current_mode_preserves_existing_mode() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.behavior.current_mode =
+        wm.core.state.behavior.current_mode =
             crate::core_state::ActiveWmMode::Named("resize".to_string());
         wm.core
+            .state
             .config
             .bindings
             .modes
             .insert("resize".to_string(), ModeConfig::default());
 
-        let core = &mut wm.core;
+        let core = &mut wm.core.state;
         core.behavior
             .normalize_current_mode(&core.config.bindings.modes);
 
         assert_eq!(
-            wm.core.behavior.current_mode,
+            wm.core.state.behavior.current_mode,
             crate::core_state::ActiveWmMode::Named("resize".to_string())
         );
     }

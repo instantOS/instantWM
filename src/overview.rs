@@ -449,7 +449,7 @@ pub(crate) fn follow_focus(ctx: &mut WmCtx<'_>) {
 }
 
 /// Core-only follow-up shared by borrowed backend transactions.
-pub(crate) fn follow_focus_core(core: &mut crate::contexts::CoreCtx<'_>) {
+pub(crate) fn follow_focus_core(core: &mut crate::core_state::WmCore) {
     if !core.model().is_overview_active() {
         return;
     }

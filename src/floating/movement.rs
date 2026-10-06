@@ -142,13 +142,14 @@ mod tests {
     fn moving_literal_floating_presentation_maximize_restores_and_clears_protocol_state() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let work_rect = Rect::new(0, 30, 1200, 770);
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 1200, 800), work_rect)
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -164,14 +165,17 @@ mod tests {
         };
         client.set_mode_for_test(ClientMode::maximized(ClientPlacement::Floating));
         client.save_floating_placement(saved, work_rect);
-        assert!(wm.core.model.add_client(monitor_id, client));
+        assert!(wm.core.state.model.add_client(monitor_id, client));
 
         assert!(key_move(&mut wm.test_ctx(), win, Direction::Right));
 
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_normal_floating());
         assert_eq!(client.geo, Rect::new(240, 150, 600, 450));
-        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
+        assert_eq!(
+            wm.core.state.model.client_protocol_maximized(win),
+            Some(false)
+        );
     }
 
     /// Center a floating window on a monitor built by `configure` and report
@@ -186,12 +190,12 @@ mod tests {
             .build();
         configure(&mut monitor);
         let work_rect = monitor.work_rect();
-        let monitor_id = wm.core.model.monitors.push(monitor);
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = wm.core.state.model.monitors.push(monitor);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         // Backends publish the global screen rect during bootstrap; the
         // interactive position clamp reads it, so a bare `Wm` has to as well.
-        wm.core.derived.display.width = 1200;
-        wm.core.derived.display.height = 800;
+        wm.core.state.derived.display.width = 1200;
+        wm.core.state.derived.display.height = 800;
 
         let win = WindowId(72);
         let mut client = Client {
@@ -201,11 +205,11 @@ mod tests {
             ..Client::default()
         };
         client.set_placement(ClientPlacement::Floating);
-        assert!(wm.core.model.add_client(monitor_id, client));
+        assert!(wm.core.state.model.add_client(monitor_id, client));
 
         center_window(&mut wm.test_ctx(), win);
 
-        let centered = wm.core.model.client(win).unwrap().geo;
+        let centered = wm.core.state.model.client(win).unwrap().geo;
         assert_eq!(centered.w, 400);
         assert_eq!(centered.h, 300);
         (centered.y, work_rect.y + (work_rect.h / 2) - 150)

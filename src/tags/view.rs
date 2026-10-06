@@ -339,19 +339,23 @@ mod view_selection_tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 9;
+        wm.core.state.model.tags.num_tags = 9;
         let mut monitor = Monitor::default();
         monitor.set_selected_tags(tag1);
-        let monitor_id = wm.core.model.monitors.push(monitor);
-        wm.core.model.monitors.set_selected(monitor_id);
-        wm.bar.mark_drawn();
-        assert!(!wm.bar.needs_redraw());
+        let monitor_id = wm.core.state.model.monitors.push(monitor);
+        wm.core.state.model.monitors.set_selected(monitor_id);
+        wm.core.bar.mark_drawn();
+        assert!(!wm.core.bar.needs_redraw());
 
         view_tags(&mut wm.test_ctx(), tag2);
 
-        assert!(wm.bar.needs_redraw());
+        assert!(wm.core.bar.needs_redraw());
         assert_eq!(
-            wm.core.model.expect_selected_monitor().selected_tags(),
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .selected_tags(),
             tag2
         );
     }

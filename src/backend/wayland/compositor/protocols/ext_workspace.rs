@@ -106,10 +106,12 @@ struct WorkspaceSnapshot {
 }
 
 impl WorkspaceSnapshot {
-    fn capture(core_view: &crate::core_state::CoreState, state: &WaylandState) -> Self {
+    fn capture(
+        core_view: &crate::core_state::CoreState,
+        state: &crate::backend::wayland::compositor::WaylandNativeState,
+    ) -> Self {
         let globals = core_view;
         let monitors = state
-            .native
             .space
             .outputs()
             .cloned()
@@ -188,12 +190,15 @@ impl WorkspaceSnapshot {
     }
 }
 
-pub fn refresh(core_view: &crate::core_state::CoreState, state: &mut WaylandState) {
+pub fn refresh(
+    core_view: &crate::core_state::CoreState,
+    state: &mut crate::backend::wayland::compositor::WaylandNativeState,
+) {
     if !refresh_needed(core_view, state) {
         return;
     }
     let snapshot = WorkspaceSnapshot::capture(core_view, state);
-    let protocol = &mut state.native.ext_workspace_state;
+    let protocol = &mut state.ext_workspace_state;
     snapshot.update_cache(protocol);
     let mut changed = remove_stale_outputs(protocol, &snapshot.output_names());
     changed |= remove_stale_tags(protocol, &snapshot);
@@ -208,11 +213,13 @@ pub fn refresh(core_view: &crate::core_state::CoreState, state: &mut WaylandStat
     }
 }
 
-fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState) -> bool {
-    let protocol = &state.native.ext_workspace_state;
-    if state.native.space.outputs().count() != protocol.last_output_names.len()
+fn refresh_needed(
+    core_view: &crate::core_state::CoreState,
+    state: &crate::backend::wayland::compositor::WaylandNativeState,
+) -> bool {
+    let protocol = &state.ext_workspace_state;
+    if state.space.outputs().count() != protocol.last_output_names.len()
         || state
-            .native
             .space
             .outputs()
             .enumerate()
@@ -221,7 +228,7 @@ fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState
         return true;
     }
     let globals = core_view;
-    for output in state.native.space.outputs() {
+    for output in state.space.outputs() {
         let output_name = output.name();
         let Some(monitor) = globals
             .model
@@ -268,7 +275,6 @@ fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState
                 return false;
             };
             let Some(output) = state
-                .native
                 .space
                 .outputs()
                 .find(|output| output.name() == user_data.output_name)

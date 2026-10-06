@@ -53,20 +53,20 @@ mod tests {
             Response::Ok
         ));
 
-        assert_eq!(wm.core.config.theme, ColorTheme::Nord);
+        assert_eq!(wm.core.state.config.theme, ColorTheme::Nord);
         // Tag colours live in `model.tags.colors`…
         let nord = crate::config::appearance::ColorConfig::from(ColorTheme::Nord);
         assert_eq!(
-            wm.core.model.tags.colors.no_hover.focus.background,
+            wm.core.state.model.tags.colors.no_hover.focus.background,
             nord.tag.no_hover.focus.background
         );
         // …the rest in `config.colors`.
         assert_eq!(
-            wm.core.config.colors.border.tile_focus,
+            wm.core.state.config.colors.border.tile_focus,
             nord.border.tile_focus
         );
         assert_eq!(
-            wm.core.config.colors.status.foreground,
+            wm.core.state.config.colors.status.foreground,
             nord.status.foreground
         );
     }

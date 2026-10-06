@@ -4,7 +4,7 @@ use crate::backend::wayland::{WaylandBackend, compositor::WaylandState};
 
 fn state_cannot_outlive_exclusive_capability(state: &mut WaylandState) {
     let mut backend = WaylandBackend::new(state);
-    state.request_render();
+    state.native.request_render();
     backend.request_render();
 }
 
@@ -31,4 +31,29 @@ fn shared_context_effects_require_mutable_access(ctx: &crate::contexts::WmCtx<'_
         crate::types::WindowId(1),
         crate::types::Rect::new(0, 0, 10, 10),
     );
+}
+
+fn protocol_dispatch_cannot_overlap_model_access(state: &mut WaylandState) {
+    let wm = &mut state.wm;
+    state.dispatch_pending_commits();
+    wm.core.quit();
+}
+
+fn renderer_cannot_be_borrowed_twice(
+    graphics: &mut crate::backend::wayland::compositor::graphics::Graphics,
+) {
+    let first = &mut *graphics;
+    graphics.with_renderer(|_| ());
+    first.with_renderer(|_| ());
+}
+
+// Valid field splits must compile alongside the rejected programs.
+fn model_and_scene_borrows_are_disjoint(state: &mut WaylandState) {
+    state.native.tick_animations(&state.wm.core.state);
+}
+
+fn renderer_and_scene_borrows_are_disjoint(state: &mut WaylandState) {
+    if let Some(graphics) = state.graphics.as_mut() {
+        graphics.with_renderer(|_| state.native.space.refresh());
+    }
 }

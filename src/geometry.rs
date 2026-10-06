@@ -416,12 +416,12 @@ mod tests {
     #[test]
     fn wayland_hinted_resize_applies_stored_protocol_maximum() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 500, 400), Rect::new(0, 0, 500, 400))
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let win = WindowId(14);
         let mut client = Client {
             win,
@@ -430,7 +430,7 @@ mod tests {
         };
         client.size_hints.max_width = 120;
         client.size_hints.max_height = 90;
-        wm.core.model.add_client(monitor_id, client);
+        wm.core.state.model.add_client(monitor_id, client);
 
         wm.test_ctx().move_resize(
             win,
@@ -439,7 +439,7 @@ mod tests {
         );
 
         assert_eq!(
-            wm.core.model.client(win).unwrap().geo,
+            wm.core.state.model.client(win).unwrap().geo,
             Rect::new(0, 0, 120, 90)
         );
     }

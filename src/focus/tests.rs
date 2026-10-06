@@ -3,7 +3,7 @@ use super::{
 };
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::core_state::{CoreState, PendingWork};
 use crate::test_support::{add_client, add_selected_client, push_monitor};
 use crate::types::{Client, Monitor, MonitorId, StackDirection, TagMask, WindowId};
@@ -296,7 +296,7 @@ impl FocusBackendOps for RecordingBackend {
 /// Run a focus transition using the model's current selection as the previous
 /// backend focus, which is what [`super::focus`] does for `WmCtx` holders.
 fn focus_from_current_selection(
-    core: &mut CoreCtx<'_>,
+    core: &mut WmCore,
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
     refresh: BackendRefresh,
@@ -337,8 +337,14 @@ fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, Focus
 
 #[test]
 fn forced_refresh_reapplies_unchanged_backend_focus() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let (state, work, running, bar, focus) = core_with_selected_client();
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
 
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
@@ -355,9 +361,15 @@ fn forced_refresh_reapplies_unchanged_backend_focus() {
 
 #[test]
 fn projection_uses_focus_from_before_a_precommitted_model_change() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (state, work, running, bar, focus) = core_with_selected_client();
     let actual_previous_focus = WindowId(99);
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
 
     apply_focus_transition(
@@ -383,11 +395,11 @@ fn monitor_switch_records_the_global_window_transition() {
     let tag = TagMask::single(1).unwrap();
     let first = WindowId(1);
     let second = WindowId(2);
-    let first_monitor = wm.core.model.monitors.push(Monitor::default());
-    let second_monitor = wm.core.model.monitors.push(Monitor::default());
+    let first_monitor = wm.core.state.model.monitors.push(Monitor::default());
+    let second_monitor = wm.core.state.model.monitors.push(Monitor::default());
     for (monitor_id, win) in [(first_monitor, first), (second_monitor, second)] {
         add_selected_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -396,16 +408,17 @@ fn monitor_switch_records_the_global_window_transition() {
             },
         );
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tag);
     }
-    wm.core.model.monitors.set_selected(first_monitor);
+    wm.core.state.model.monitors.set_selected(first_monitor);
 
     assert!(super::select_monitor(&mut wm.test_ctx(), second_monitor));
     assert_eq!(
-        wm.focus.take_pending_selection(),
+        wm.core.focus.take_pending_selection(),
         Some(crate::client::focus::SelectionTransition {
             previous: Some(first),
             current: Some(second),
@@ -418,17 +431,17 @@ fn missing_monitor_is_rejected_before_selection_changes() {
     use crate::test_support::TestWm as Wm;
 
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    let selected = wm.core.model.monitors.push(Monitor::default());
+    let selected = wm.core.state.model.monitors.push(Monitor::default());
     let missing = MonitorId::from_raw(999);
 
     assert!(!super::select_monitor(&mut wm.test_ctx(), missing));
-    assert_eq!(wm.core.model.selected_monitor_id(), selected);
-    assert_eq!(wm.focus.take_pending_selection(), None);
+    assert_eq!(wm.core.state.model.selected_monitor_id(), selected);
+    assert_eq!(wm.core.focus.take_pending_selection(), None);
 }
 
 #[test]
 fn changing_focus_does_not_change_persistent_z_order() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (mut state, work, running, bar, focus) = core_with_selected_client();
     let monitor_id = state.model.selected_monitor_id();
     let tag = TagMask::single(1).unwrap();
     let upper = WindowId(2);
@@ -442,7 +455,13 @@ fn changing_focus_does_not_change_persistent_z_order() {
         },
     );
 
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(
         &mut core,
@@ -470,7 +489,7 @@ fn changing_focus_does_not_change_persistent_z_order() {
 
 #[test]
 fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (mut state, work, running, bar, focus) = core_with_selected_client();
     let monitor_id = state.model.selected_monitor_id();
     let tag = TagMask::single(1).unwrap();
     let previously_focused = WindowId(1);
@@ -495,7 +514,13 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
     monitor.selected = Some(previously_focused);
     monitor.record_focus(tag, previously_focused);
 
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(
         &mut core,
@@ -519,7 +544,7 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
 
 #[test]
 fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_focus() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (mut state, work, running, bar, focus) = core_with_selected_client();
     let monitor_id = state.model.selected_monitor_id();
     let tag = TagMask::single(1).unwrap();
     let previously_focused = WindowId(1);
@@ -547,11 +572,17 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
     );
     monitor.selected = Some(previously_focused);
 
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
 
     // Establish A as the maximized window visible immediately before the
-    // short-lived terminal takes focus.
+    // short-lived terminal takes core.focus.
     focus_from_current_selection(
         &mut core,
         Some(previously_focused),
@@ -581,7 +612,7 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
 
 #[test]
 fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (mut state, work, running, bar, focus) = core_with_selected_client();
     let monitor_id = state.model.selected_monitor_id();
     let tag = TagMask::single(1).unwrap();
     let previously_focused = WindowId(1);
@@ -604,7 +635,13 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
     monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
     monitor.selected = Some(previously_focused);
 
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(
         &mut core,
@@ -676,9 +713,15 @@ fn bounded_stack_navigation_follows_order_and_stops_at_outer_edges() {
 
 #[test]
 fn native_focus_drift_reprojects_without_inventing_a_selection_change() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (mut state, work, running, bar, focus) = core_with_selected_client();
     state.model.client_mut(WindowId(1)).unwrap().is_urgent = true;
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend {
         stale_focus: true,
         ..RecordingBackend::default()
@@ -701,9 +744,15 @@ fn native_focus_drift_reprojects_without_inventing_a_selection_change() {
 
 #[test]
 fn unchanged_focus_leaves_urgency_untouched_until_projection_is_required() {
-    let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+    let (mut state, work, running, bar, focus) = core_with_selected_client();
     state.model.client_mut(WindowId(1)).unwrap().is_urgent = true;
-    let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+    let mut core = WmCore {
+        state,
+        work,
+        running,
+        bar,
+        focus,
+    };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
     assert!(core.model().client(WindowId(1)).unwrap().is_urgent);

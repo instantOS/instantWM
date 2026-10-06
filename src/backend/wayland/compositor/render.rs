@@ -1,5 +1,6 @@
 //! Render scheduling and target invalidation for WaylandState.
 
+use crate::backend::wayland::compositor::WaylandNativeState;
 use std::collections::HashSet;
 use std::mem;
 
@@ -46,7 +47,7 @@ impl PendingRenderTargets {
     }
 }
 
-impl crate::backend::wayland::compositor::WaylandNativeState {
+impl WaylandNativeState {
     /// Redraw the outputs currently intersected by a mapped window. Unlike
     /// surface-commit scheduling, a fully offscreen lifecycle/animation update
     /// does not need a global fallback.
@@ -149,7 +150,7 @@ impl crate::backend::wayland::compositor::WaylandNativeState {
     }
 }
 
-impl crate::backend::wayland::compositor::WaylandNativeState {
+impl WaylandNativeState {
     pub fn request_render(&mut self) {
         if !self.runtime.render_targets.invalidate_all() {
             log::debug!("request_render: ping skipped, already dirty");

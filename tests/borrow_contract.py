@@ -18,7 +18,7 @@ for line in result.stdout.splitlines():
         continue
     if message.get("reason") == "compiler-message" and message["message"]["level"] == "error":
         errors.append(message["message"])
-expected = {"E0499": 2, "E0502": 1, "E0599": 1, "E0596": 1}
+expected = {"E0499": 4, "E0502": 1, "E0599": 1, "E0596": 1}
 actual = {}
 for error in errors:
     code = (error.get("code") or {}).get("code")
@@ -30,4 +30,4 @@ assert result.returncode != 0 and actual == expected, (
     + "\n".join(error["rendered"] for error in errors)
 )
 print("PASS: exclusive state access, non-reentrant effects, read/write separation, "
-      "typed backend identity, and mutable shared effects")
+      "typed backend identity, mutable shared effects, and exclusive WM/renderer dispatch")

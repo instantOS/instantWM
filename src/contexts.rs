@@ -15,255 +15,17 @@
 //! * A missing Wayland implementation is stated as a documented no-op arm,
 //!   never as a silent early return in shared code.
 use crate::backend::PointerOps;
+use crate::core_state::WmCore;
 
 use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
-use crate::bar::BarState;
-use crate::client::focus::FocusState;
-use crate::core_state::{CoreState, DerivedState, EffectiveConfig, PendingWork, WmBehavior};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
-use crate::model::WmModel;
 use crate::types::{ModMask, MonitorId, Rect, WindowId, XEmbedTray};
 use std::time::{Duration, Instant};
 
-pub struct CoreCtx<'a> {
-    pub(crate) state: &'a mut CoreState,
-    work: &'a mut PendingWork,
-    running: &'a mut bool,
-    pub bar: &'a mut BarState,
-    pub focus: &'a mut FocusState,
-}
-
-impl<'a> CoreCtx<'a> {
-    pub fn new(
-        state: &'a mut CoreState,
-        work: &'a mut PendingWork,
-        running: &'a mut bool,
-        bar: &'a mut BarState,
-        focus: &'a mut FocusState,
-    ) -> Self {
-        Self {
-            state,
-            work,
-            running,
-            bar,
-            focus,
-        }
-    }
-
-    /// Drain StatusNotifier worker events. Returns `true` when tray content
-    /// changed and the bar must be redrawn.
-    pub fn poll_systray(&mut self) -> bool {
-        self.configure_tray_icons();
-        let changed = self.bar.systray_host.poll();
-        if changed {
-            self.bar.mark_dirty();
-        }
-        changed
-    }
-
-    pub(crate) fn configure_tray_icons(&mut self) {
-        let config = &self.state.config.systray;
-        // Monitor bar heights already include output scaling. One source at
-        // the largest required resolution can serve every bar without upscaling.
-        let height = self
-            .state
-            .model
-            .monitors_iter_all()
-            .map(|monitor| {
-                let padding = crate::systray::visual_padding(monitor.bar_height, config.spacing);
-                (monitor.bar_height - 2 * padding).max(1) as u32
-            })
-            .max()
-            .unwrap_or(24);
-        if let Some(runtime) = self.bar.systray_host.runtime.as_mut() {
-            runtime.configure_icons(crate::systray::status_notifier::IconSettings {
-                theme: config.icon_theme.clone(),
-                height,
-            });
-        }
-    }
-
-    pub fn start_status_sources(&mut self) {
-        self.bar
-            .status_sources
-            .start(self.state.config.status_command.as_deref());
-    }
-
-    pub fn model(&self) -> &WmModel {
-        &self.state.model
-    }
-
-    pub fn model_mut(&mut self) -> &mut WmModel {
-        &mut self.state.model
-    }
-
-    /// Return a managed client's current logical geometry.
-    #[inline]
-    pub fn client_geo(&self, win: WindowId) -> Option<Rect> {
-        self.model().client(win).map(|client| client.geo)
-    }
-
-    /// Access all backend-neutral state. Prefer the category-specific
-    /// accessors when an operation only needs one part of the state.
-    pub fn state(&self) -> &CoreState {
-        self.state
-    }
-
-    pub fn state_mut(&mut self) -> &mut CoreState {
-        self.state
-    }
-
-    pub fn config(&self) -> &EffectiveConfig {
-        &self.state.config
-    }
-
-    pub fn config_mut(&mut self) -> &mut EffectiveConfig {
-        &mut self.state.config
-    }
-
-    pub fn derived(&self) -> &DerivedState {
-        &self.state.derived
-    }
-
-    pub fn derived_mut(&mut self) -> &mut DerivedState {
-        &mut self.state.derived
-    }
-
-    pub fn behavior(&self) -> &WmBehavior {
-        &self.state.behavior
-    }
-
-    pub fn behavior_mut(&mut self) -> &mut WmBehavior {
-        &mut self.state.behavior
-    }
-
-    pub fn interaction(&self) -> &crate::core_state::InteractionState {
-        &self.state.interaction
-    }
-
-    pub fn interaction_mut(&mut self) -> &mut crate::core_state::InteractionState {
-        &mut self.state.interaction
-    }
-
-    pub fn pending_launches_mut(
-        &mut self,
-    ) -> &mut std::collections::VecDeque<crate::client::PendingLaunch> {
-        &mut self.state.pending_launches
-    }
-
-    pub fn quit(&mut self) {
-        *self.running = false;
-    }
-
-    pub fn is_running(&self) -> bool {
-        *self.running
-    }
-
-    pub fn queue_layout_for_all_monitors(&mut self) {
-        self.work.layout.mark_all();
-    }
-
-    pub fn queue_layout_for_all_monitors_urgent(&mut self) {
-        self.work.layout.mark_all_urgent();
-    }
-
-    pub fn queue_layout_for_monitor(&mut self, monitor_id: MonitorId) {
-        self.work.layout.mark_monitor(monitor_id);
-    }
-
-    pub fn queue_layout_for_monitor_urgent(&mut self, monitor_id: MonitorId) {
-        self.work.layout.mark_monitor_urgent(monitor_id);
-    }
-
-    pub fn queue_layout_for_client(&mut self, win: WindowId) {
-        if let Some(monitor_id) = self.state.model.monitor_of_client(win) {
-            self.work.layout.mark_monitor(monitor_id);
-        }
-    }
-
-    /// Queue the first authoritative layout for a newly managed window and
-    /// its post-layout entrance transition as one lifecycle operation.
-    ///
-    /// First layout is urgent because the Wayland surface remains intentionally
-    /// unmapped until this work has assigned usable geometry.
-    pub fn queue_initial_window_layout(&mut self, win: WindowId, monitor_id: MonitorId) {
-        self.work.layout.mark_monitor_urgent(monitor_id);
-        self.work.spawn_animations.insert(win);
-    }
-
-    pub fn queue_monitor_config_apply(&mut self) {
-        self.work.queue_monitor_config_apply();
-    }
-
-    pub fn queue_input_config_apply(&mut self) {
-        self.work.queue_input_config_apply();
-    }
-
-    pub fn queue_cursor_config_apply(&mut self) {
-        self.work.queue_cursor_config_apply();
-    }
-
-    pub fn pending_work(&self) -> &PendingWork {
-        self.work
-    }
-
-    pub fn pending_work_mut(&mut self) -> &mut PendingWork {
-        self.work
-    }
-
-    /// Run a model transaction and record any resulting global-selection
-    /// transition. All production mutations that can affect selection cross
-    /// this boundary, including indirect removal/reassignment effects.
-    pub fn mutate_selection<R>(&mut self, mutation: impl FnOnce(&mut WmModel) -> R) -> R {
-        self.mutate_state_selection(|state| mutation(&mut state.model))
-    }
-
-    pub fn mutate_state_selection<R>(&mut self, mutation: impl FnOnce(&mut CoreState) -> R) -> R {
-        let previous = self.state.model.selected_win();
-        let result = mutation(self.state);
-        let current = self.state.model.selected_win();
-        self.focus.record_selection(previous, current);
-        result
-    }
-
-    pub fn select_monitor(&mut self, monitor_id: MonitorId) -> bool {
-        self.mutate_selection(|model| {
-            if !model.can_change_selected_monitor(monitor_id) {
-                return false;
-            }
-            model.set_selected_monitor(monitor_id);
-            true
-        })
-    }
-
-    pub fn select_on_monitor(&mut self, monitor_id: MonitorId, selected: Option<WindowId>) -> bool {
-        self.mutate_selection(|model| {
-            let Some(monitor) = model.monitor_mut(monitor_id) else {
-                return false;
-            };
-            if monitor.selected == selected {
-                return false;
-            }
-            monitor.set_selected(selected);
-            true
-        })
-    }
-
-    pub fn reborrow(&mut self) -> CoreCtx<'_> {
-        CoreCtx {
-            state: self.state,
-            work: self.work,
-            running: self.running,
-            bar: self.bar,
-            focus: self.focus,
-        }
-    }
-}
-
 pub struct WmCtxX11<'a> {
-    pub core: CoreCtx<'a>,
+    pub core: &'a mut WmCore,
     pub x11: X11BackendRef<'a>,
     pub x11_runtime: &'a mut X11RuntimeConfig,
     /// Owned optional tray state. Keep the outer `Option` available so the X11
@@ -274,7 +36,7 @@ pub struct WmCtxX11<'a> {
 impl<'a> WmCtxX11<'a> {
     pub fn reborrow(&mut self) -> WmCtxX11<'_> {
         WmCtxX11 {
-            core: self.core.reborrow(),
+            core: self.core,
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
             x11_runtime: self.x11_runtime,
             xembed_tray: &mut *self.xembed_tray,
@@ -287,21 +49,12 @@ impl<'a> WmCtxX11<'a> {
 }
 
 pub struct WmCtxWayland<'a> {
-    pub core: CoreCtx<'a>,
     pub wayland: crate::backend::wayland::WaylandBackend<'a>,
-    /// Bar rendering resources. Like [`WmCtxX11`]'s runtime state, this is a
-    /// backend resource rather than backend-neutral core state; carrying it
-    /// here lets bar rendering borrow core state and the renderer at once
-    /// instead of reaching around `WmCtx` for a second borrow of `Wm`.
-    pub bar_renderer: &'a mut crate::backend::wayland::bar::WaylandBarRenderer,
 }
-
-impl<'a> WmCtxWayland<'a> {
+impl WmCtxWayland<'_> {
     pub fn reborrow(&mut self) -> WmCtxWayland<'_> {
         WmCtxWayland {
-            core: self.core.reborrow(),
             wayland: self.wayland.reborrow(),
-            bar_renderer: self.bar_renderer,
         }
     }
 }
@@ -319,7 +72,7 @@ impl<'a> WmCtx<'a> {
             Self::X11(ctx) => ctx.x11_runtime.window_animations.contains_key(&window),
             Self::Wayland(ctx) => ctx
                 .wayland
-                .with_state_ref(|state| state.window_has_active_animation(window)),
+                .with_state_ref(|state| state.native.window_has_active_animation(window)),
         }
     }
 
@@ -379,18 +132,18 @@ impl<'a> WmCtx<'a> {
     // Backend-agnostic core accessors - use these for common operations
 
     /// Access the shared core context immutably.
-    pub fn core(&self) -> &CoreCtx<'_> {
+    pub fn core(&self) -> &WmCore {
         match self {
-            WmCtx::X11(ctx) => &ctx.core,
-            WmCtx::Wayland(ctx) => &ctx.core,
+            WmCtx::X11(ctx) => ctx.core,
+            WmCtx::Wayland(ctx) => &ctx.wayland.state.wm.core,
         }
     }
 
     /// Access the shared core context mutably.
-    pub fn core_mut(&mut self) -> &mut CoreCtx<'a> {
+    pub fn core_mut(&mut self) -> &mut WmCore {
         match self {
-            WmCtx::X11(ctx) => &mut ctx.core,
-            WmCtx::Wayland(ctx) => &mut ctx.core,
+            WmCtx::X11(ctx) => ctx.core,
+            WmCtx::Wayland(ctx) => &mut ctx.wayland.state.wm.core,
         }
     }
 
@@ -411,7 +164,7 @@ impl<'a> WmCtx<'a> {
     /// its derived native presentation changes.
     ///
     /// Production interaction mutations should cross this boundary instead of
-    /// mutating `PointerInteractionState` through `CoreCtx`; the closure form makes it
+    /// mutating `PointerInteractionState` through `WmCore`; the closure form makes it
     /// impossible to return successfully with an unprojected presentation
     /// change. State-only motion updates avoid redundant backend work.
     pub fn transition_pointer_interaction<R>(
@@ -603,7 +356,7 @@ impl<'a> WmCtx<'a> {
                 };
                 x11.core.model_mut().sync_client_geometry(win, rect);
 
-                crate::backend::x11::focus::configure(x11.core.state, &x11.x11, win);
+                crate::backend::x11::focus::configure(&x11.core.state, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
@@ -633,7 +386,7 @@ impl<'a> WmCtx<'a> {
     pub fn update_ewmh_desktop_props(&mut self) {
         if let WmCtx::X11(ctx) = self {
             crate::backend::x11::update_ewmh_desktop_props(
-                ctx.core.state,
+                &ctx.core.state,
                 &ctx.x11,
                 ctx.x11_runtime,
             );
@@ -673,7 +426,7 @@ impl<'a> WmCtx<'a> {
                 win,
                 fullscreen,
             ),
-            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(ctx.core.state(), win),
+            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(win),
         }
     }
 
@@ -687,7 +440,7 @@ impl<'a> WmCtx<'a> {
                 win,
                 maximized,
             ),
-            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(ctx.core.state(), win),
+            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(win),
         }
     }
 
@@ -867,10 +620,7 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(x11) => x11
                 .x11_runtime
                 .begin_window_animation(&x11.x11, win, from, to, duration),
-            WmCtx::Wayland(wl) => {
-                wl.wayland
-                    .begin_window_animation(wl.core.state(), win, from, to, duration)
-            }
+            WmCtx::Wayland(wl) => wl.wayland.begin_window_animation(win, from, to, duration),
         }
     }
 
@@ -919,7 +669,7 @@ impl<'a> WmCtx<'a> {
                 }
             }
             WmCtx::Wayland(ctx) => {
-                if apply_hints && let Some(client) = ctx.core.model().client(win) {
+                if apply_hints && let Some(client) = ctx.wayland.state.wm.core.model().client(win) {
                     let constrained = client.size_hints.constrain_size(
                         adjusted.size(),
                         client.min_aspect,
@@ -978,7 +728,7 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(_) => {}
             WmCtx::Wayland(wl) => {
-                let selected_window = wl.core.model().selected_win();
+                let selected_window = wl.wayland.state.wm.core.model().selected_win();
                 wl.wayland
                     .prepare_launch_environment(command, selected_window, context);
             }
@@ -991,14 +741,14 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(ctx) => {
                 crate::backend::x11::bar::sync_top_bar_surfaces(
-                    &mut ctx.core,
+                    ctx.core,
                     &ctx.x11,
                     ctx.x11_runtime,
                     ctx.xembed_tray,
                 );
             }
             WmCtx::Wayland(ctx) => {
-                ctx.core.bar.mark_dirty();
+                ctx.wayland.state.wm.core.bar.mark_dirty();
                 ctx.wayland.request_render();
             }
         }
@@ -1019,7 +769,7 @@ impl<'a> WmCtx<'a> {
                 ctx.core.bar.mark_dirty();
             }
             WmCtx::Wayland(ctx) => {
-                ctx.core.bar.mark_dirty();
+                ctx.wayland.state.wm.core.bar.mark_dirty();
                 ctx.wayland.request_render();
             }
         }
@@ -1048,7 +798,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
         match self {
-            WmCtx::X11(ctx) => crate::backend::x11::bar::draw_bars(&mut ctx.core, ctx.x11_runtime),
+            WmCtx::X11(ctx) => crate::backend::x11::bar::draw_bars(ctx.core, ctx.x11_runtime),
             WmCtx::Wayland(_) => {}
         }
     }
@@ -1067,7 +817,7 @@ impl<'a> WmCtx<'a> {
     pub fn refresh_bar_content(&mut self) {
         match self {
             WmCtx::X11(ctx) => crate::backend::x11::bar::reconcile_bar_windows(
-                &mut ctx.core,
+                ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
                 ctx.xembed_tray,
@@ -1079,9 +829,7 @@ impl<'a> WmCtx<'a> {
     /// Republish the parsed status line through backend-owned bar surfaces.
     pub fn refresh_status_content(&mut self) {
         match self {
-            WmCtx::X11(ctx) => {
-                crate::backend::x11::bar::update_status(&mut ctx.core, ctx.x11_runtime)
-            }
+            WmCtx::X11(ctx) => crate::backend::x11::bar::update_status(ctx.core, ctx.x11_runtime),
             WmCtx::Wayland(_) => {}
         }
     }
@@ -1096,7 +844,7 @@ impl<'a> WmCtx<'a> {
                 ctx_x11.core.bar.mark_dirty();
             }
             WmCtx::Wayland(ctx_wayland) => {
-                ctx_wayland.core.bar.mark_dirty();
+                ctx_wayland.wayland.state.wm.core.bar.mark_dirty();
                 ctx_wayland.wayland.request_render();
             }
         }
@@ -1273,16 +1021,16 @@ mod mode_transition_tests {
             0,
         )
         .expect("valid placement");
-        wm.core.behavior.current_mode = ActiveWmMode::TreePlacement(placement);
-        wm.core.interaction.layout_preview = Some(Rect::new(0, 0, 100, 100));
+        wm.core.state.behavior.current_mode = ActiveWmMode::TreePlacement(placement);
+        wm.core.state.interaction.layout_preview = Some(Rect::new(0, 0, 100, 100));
 
         wm.test_ctx()
             .set_current_mode(ActiveWmMode::Named("resize".to_string()));
 
         assert_eq!(
-            wm.core.behavior.current_mode,
+            wm.core.state.behavior.current_mode,
             ActiveWmMode::Named("resize".to_string())
         );
-        assert_eq!(wm.core.interaction.layout_preview, None);
+        assert_eq!(wm.core.state.interaction.layout_preview, None);
     }
 }

@@ -1,8 +1,9 @@
+use crate::backend::wayland::compositor::WaylandNativeState;
 use smithay::desktop::Window;
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Size};
 
-use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
+use crate::backend::wayland::compositor::WindowIdMarker;
 use crate::types::{Rect, WindowId};
 
 pub mod animations;
@@ -39,19 +40,19 @@ fn displayed_rect_from_space_geometry(
     )
 }
 
-impl WaylandState {
+impl WaylandNativeState {
     /// Check if a window exists in the index.
     pub fn window_exists(&self, window: WindowId) -> bool {
-        self.native.window_index.contains_key(&window)
+        self.window_index.contains_key(&window)
     }
 
     /// Allocate a new window ID.
     pub(crate) fn alloc_window_id(&mut self) -> WindowId {
         loop {
-            let id = self.native.next_window_id;
-            self.native.next_window_id = self.native.next_window_id.wrapping_add(1).max(1);
+            let id = self.next_window_id;
+            self.next_window_id = self.next_window_id.wrapping_add(1).max(1);
             let window_id = WindowId::from(id);
-            if !self.native.window_index.contains_key(&window_id) {
+            if !self.window_index.contains_key(&window_id) {
                 return window_id;
             }
         }
@@ -68,7 +69,7 @@ impl WaylandState {
     /// the compositor via `sync_space`.  We never read it
     /// back from the Smithay space.
     pub(crate) fn observe_native_committed_size(&mut self, window: WindowId) {
-        let Some(element) = self.native.find_window(window).cloned() else {
+        let Some(element) = self.find_window(window).cloned() else {
             return;
         };
         debug_assert!(element.x11_surface().is_none());
@@ -77,7 +78,7 @@ impl WaylandState {
         let new_h = committed.size.h.max(1);
         let acknowledged = Self::native_acknowledged_configure(&element);
 
-        self.native.push_command(
+        self.push_command(
             crate::backend::wayland::commands::WmCommand::ObserveCommittedSize {
                 win: window,
                 w: new_w,
@@ -110,7 +111,7 @@ impl WaylandState {
     ) -> bool {
         // A queued observation can outlive unmanagement. It must not create
         // protocol state for a surface whose lifecycle has already ended.
-        let Some(sync) = self.native.geometry_sync.get_mut(&window) else {
+        let Some(sync) = self.geometry_sync.get_mut(&window) else {
             return false;
         };
         let decision = sync.observe(
@@ -119,7 +120,7 @@ impl WaylandState {
             client_size_is_authoritative,
         );
         if decision.needs_dispatch {
-            self.native.request_space_sync();
+            self.request_space_sync();
         }
         decision.accept_client_size
     }
@@ -129,7 +130,7 @@ impl WaylandState {
     /// tick so that the pointer handle and the caller's `pointer_location`
     /// variable can both be updated consistently.
     pub fn request_warp(&mut self, x: f64, y: f64) {
-        self.native.pending_warp = Some(Point::from((x, y)));
+        self.pending_warp = Some(Point::from((x, y)));
     }
 
     /// Reconcile xdg-toplevel's `resizing` state with the interaction model.
@@ -140,109 +141,41 @@ impl WaylandState {
         core_view: &crate::core_state::CoreState,
         desired: Option<WindowId>,
     ) {
-        if self.native.active_resize == desired {
+        if self.active_resize == desired {
             return;
         }
 
-        let ended = std::mem::replace(&mut self.native.active_resize, desired);
+        let ended = std::mem::replace(&mut self.active_resize, desired);
         if let Some(window) = ended.filter(|window| Some(*window) != desired)
-            && let Some(element) = self.native.find_window(window).cloned()
+            && let Some(element) = self.find_window(window).cloned()
         {
             self.send_toplevel_configure(core_view, &element, None);
         }
     }
 
     pub(crate) fn is_interactive_resize(&self, window: WindowId) -> bool {
-        self.native.active_resize == Some(window)
+        self.active_resize == Some(window)
     }
 
     /// Consume and return the pending warp target, if any.
     pub fn take_pending_warp(&mut self) -> Option<Point<f64, Logical>> {
-        self.native.pending_warp.take()
+        self.pending_warp.take()
     }
 
     pub(crate) fn raise_unmanaged_x11_windows(&mut self) {
         let overlays: Vec<_> = self
-            .native
             .windows_in_z_order()
             .into_iter()
             .filter(|(_, typ)| typ.is_overlay())
             .map(|(w, _)| w.clone())
             .collect();
         for w in overlays {
-            self.native.space.raise_element(&w, false);
+            self.space.raise_element(&w, false);
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::displayed_rect_from_space_geometry;
-    use crate::types::{Size as ContentSize, WindowId};
-    use smithay::utils::{Point, Serial, Size};
-
-    #[test]
-    fn interactive_resize_reconciliation_is_idempotent() {
-        let core_view = crate::core_state::CoreState::default();
-        let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let win = WindowId(23);
-
-        state.reconcile_interactive_resize(&core_view, Some(win));
-        assert_eq!(state.native.active_resize, Some(win));
-
-        state.reconcile_interactive_resize(&core_view, Some(win));
-        assert_eq!(state.native.active_resize, Some(win));
-
-        state.reconcile_interactive_resize(&core_view, None);
-        assert_eq!(state.native.active_resize, None);
-        state.reconcile_interactive_resize(&core_view, None);
-        assert_eq!(state.native.active_resize, None);
-    }
-
-    #[test]
-    fn constrained_response_requests_dispatch_but_stale_response_does_not() {
-        let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let _ = state.native.take_space_sync_pending();
-        let win = WindowId(18);
-        state
-            .native
-            .geometry_sync
-            .entry(win)
-            .or_default()
-            .sent(ContentSize::new(1200, 900), Some(Serial::from(11)));
-        assert!(!state.native_commit_may_update_model(
-            win,
-            1920,
-            1080,
-            Some(Serial::from(10)),
-            true,
-        ));
-        assert!(!state.native.take_space_sync_pending());
-        assert!(
-            state.native_commit_may_update_model(win, 1198, 898, Some(Serial::from(11)), true,)
-        );
-        assert_eq!(
-            state
-                .native
-                .geometry_sync
-                .get(&win)
-                .unwrap()
-                .scheduled_size(),
-            Some(ContentSize::new(1198, 898))
-        );
-        assert!(state.native.take_space_sync_pending());
-    }
-
-    #[test]
-    fn displayed_geometry_converts_inner_space_location_to_core_coordinates() {
-        let displayed =
-            displayed_rect_from_space_geometry(Point::from((103, 204)), Size::from((800, 600)), 3);
-
-        assert_eq!(displayed, crate::types::Rect::new(100, 201, 800, 600));
-    }
-}
-
-impl crate::backend::wayland::compositor::WaylandNativeState {
+impl WaylandNativeState {
     /// Find a window by ID.
     pub(crate) fn find_window(&self, window: WindowId) -> Option<&Window> {
         self.window_index.get(&window)
@@ -296,5 +229,80 @@ impl crate::backend::wayland::compositor::WaylandNativeState {
                 Some((w.clone(), render_origin))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::displayed_rect_from_space_geometry;
+    use crate::types::{Size as ContentSize, WindowId};
+    use smithay::utils::{Point, Serial, Size};
+
+    #[test]
+    fn interactive_resize_reconciliation_is_idempotent() {
+        let core_view = crate::core_state::CoreState::default();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let win = WindowId(23);
+
+        state
+            .native
+            .reconcile_interactive_resize(&core_view, Some(win));
+        assert_eq!(state.native.active_resize, Some(win));
+
+        state
+            .native
+            .reconcile_interactive_resize(&core_view, Some(win));
+        assert_eq!(state.native.active_resize, Some(win));
+
+        state.native.reconcile_interactive_resize(&core_view, None);
+        assert_eq!(state.native.active_resize, None);
+        state.native.reconcile_interactive_resize(&core_view, None);
+        assert_eq!(state.native.active_resize, None);
+    }
+
+    #[test]
+    fn constrained_response_requests_dispatch_but_stale_response_does_not() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let _ = state.native.take_space_sync_pending();
+        let win = WindowId(18);
+        state
+            .native
+            .geometry_sync
+            .entry(win)
+            .or_default()
+            .sent(ContentSize::new(1200, 900), Some(Serial::from(11)));
+        assert!(!state.native.native_commit_may_update_model(
+            win,
+            1920,
+            1080,
+            Some(Serial::from(10)),
+            true,
+        ));
+        assert!(!state.native.take_space_sync_pending());
+        assert!(state.native.native_commit_may_update_model(
+            win,
+            1198,
+            898,
+            Some(Serial::from(11)),
+            true,
+        ));
+        assert_eq!(
+            state
+                .native
+                .geometry_sync
+                .get(&win)
+                .unwrap()
+                .scheduled_size(),
+            Some(ContentSize::new(1198, 898))
+        );
+        assert!(state.native.take_space_sync_pending());
+    }
+
+    #[test]
+    fn displayed_geometry_converts_inner_space_location_to_core_coordinates() {
+        let displayed =
+            displayed_rect_from_space_geometry(Point::from((103, 204)), Size::from((800, 600)), 3);
+
+        assert_eq!(displayed, crate::types::Rect::new(100, 201, 800, 600));
     }
 }

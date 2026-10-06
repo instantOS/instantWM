@@ -8,7 +8,6 @@ use crate::backend::wayland::commands::PointerAxisCommand;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::{ModMask, Point as RootPoint};
-use crate::wm::WaylandWm as Wm;
 
 use crate::backend::wayland::input::bar::{handle_bar_scroll, update_bar_hit_state};
 
@@ -36,13 +35,12 @@ pub(crate) struct PointerAxisInput {
 }
 
 pub(crate) fn handle_pointer_axis(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer: &PointerHandle<WaylandState>,
     keyboard: &KeyboardHandle<WaylandState>,
     input: PointerAxisInput,
 ) {
-    let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
+    let scroll_factor = resolve_scroll_factor(&state.wm.core.state.config.input);
 
     let root = RootPoint::from_f64_round(input.location.x, input.location.y);
 
@@ -51,16 +49,16 @@ pub(crate) fn handle_pointer_axis(
     // updates here as well: scrolling mid-drag would race the gesture's
     // highlight state exactly like the motion path does.
     let scroll_delta = input.event.vertical.v120.or(input.event.vertical.amount);
-    let bar_pos = if wm.core.interaction.drag.owns_bar_hover() {
+    let bar_pos = if state.wm.core.state.interaction.drag.owns_bar_hover() {
         None
     } else {
-        update_bar_hit_state(wm, state, root, true)
+        update_bar_hit_state(state, root, true)
     };
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0)
         && let Some(pos) = bar_pos
     {
         let clean_state = modifiers_to_x11_mask(&keyboard.modifier_state()).cleaned(ModMask::NONE);
-        handle_bar_scroll(wm, state, pos, delta, root, clean_state);
+        handle_bar_scroll(state, pos, delta, root, clean_state);
     }
 
     let mut frame =
@@ -113,28 +111,29 @@ mod tests {
     /// strip presents in order `[first, second]`.
     fn wm_with_title_strip() -> (crate::wm::WaylandWm, MonitorId, WindowId, WindowId) {
         let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 9;
+        wm.core.state.model.tags.num_tags = 9;
         // A headless test monitor supplies its own bar height.
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+        let monitor_id = push_monitor_with(&mut wm.core.state.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
             monitor.available_rect = Rect::new(0, 0, 1200, 800);
             monitor.bar_height = 30;
             monitor.bar_default_show = true;
         });
-        let template = wm.core.config.tag_template.clone();
+        let template = wm.core.state.config.tag_template.clone();
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .init_tags(&template);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let windows = [WindowId(41), WindowId(42)];
         // `add_client` focuses newest-first, so adopt in reverse to leave the
         // focus stack, and therefore the title strip, in `[first, second]`.
         for win in windows.into_iter().rev() {
             add_client(
-                &mut wm.core.model,
+                &mut wm.core.state.model,
                 monitor_id,
                 Client {
                     win,
@@ -146,6 +145,7 @@ mod tests {
             );
         }
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -185,13 +185,13 @@ mod tests {
     /// shared hit-test so the test cannot drift from the renderer's layout.
     fn tag_cell_center(wm: &mut crate::wm::WaylandWm, index: usize) -> i32 {
         let mut span: Option<(i32, i32)> = None;
-        let mut core = wm.core_ctx();
-        crate::bar::render_hit_caches_for_test(&mut core);
+        let core = wm.core_ctx();
+        crate::bar::render_hit_caches_for_test(core);
         for x in 0..1200 {
             if let Some(crate::bar::RootBarTarget::OnBar {
                 position: crate::types::BarPosition::Tag(tag),
                 ..
-            }) = crate::bar::root_bar_target_at(&core, Point::new(x, 10))
+            }) = crate::bar::root_bar_target_at(core, Point::new(x, 10))
                 && tag == index
             {
                 match span {
@@ -209,8 +209,9 @@ mod tests {
     /// (ScrollDown) / button 4 (ScrollUp).
     #[test]
     fn tag_scroll_direction_matches_x11_button_convention() {
-        let (mut wm, monitor_id, _first, _second) = wm_with_title_strip();
+        let (wm, monitor_id, _first, _second) = wm_with_title_strip();
         let (_event_loop, mut state) = crate::test_support::new_compositor();
+        state.wm = wm;
         let (Some(pointer), Some(keyboard)) = (
             state.native.seat.get_pointer(),
             state.native.seat.get_keyboard(),
@@ -219,14 +220,18 @@ mod tests {
         };
 
         // View tag 2 (1-based) so a scroll has room in both directions.
-        wm.core
+        state
+            .wm
+            .core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(TagMask::single(2).unwrap());
-        let tag_root = Point::new(tag_cell_center(&mut wm, 1), 10);
+        let tag_root = Point::new(tag_cell_center(&mut state.wm, 1), 10);
         let selected = |wm: &mut crate::wm::WaylandWm| {
             wm.core
+                .state
                 .model
                 .monitor(monitor_id)
                 .unwrap()
@@ -236,28 +241,26 @@ mod tests {
 
         // Wheel down (positive axis delta) -> ScrollDown -> tag 3.
         handle_pointer_axis(
-            &mut wm,
             &mut state,
             &pointer,
             &keyboard,
             wheel_scroll_at_with_delta(tag_root, 120.0),
         );
         assert_eq!(
-            selected(&mut wm),
+            selected(&mut state.wm),
             Some(3),
             "wheel down must view the next tag"
         );
 
         // Wheel up (negative axis delta) -> ScrollUp -> tag 2.
         handle_pointer_axis(
-            &mut wm,
             &mut state,
             &pointer,
             &keyboard,
             wheel_scroll_at_with_delta(tag_root, -120.0),
         );
         assert_eq!(
-            selected(&mut wm),
+            selected(&mut state.wm),
             Some(2),
             "wheel up must view the previous tag"
         );
@@ -267,13 +270,13 @@ mod tests {
     /// hit-test so the test cannot drift from the renderer's layout.
     fn title_cell_center(wm: &mut crate::wm::WaylandWm, win: WindowId) -> i32 {
         let mut span: Option<(i32, i32)> = None;
-        let mut core = wm.core_ctx();
-        crate::bar::render_hit_caches_for_test(&mut core);
+        let core = wm.core_ctx();
+        crate::bar::render_hit_caches_for_test(core);
         for x in 0..1200 {
             if let Some(crate::bar::RootBarTarget::OnBar {
                 position: crate::types::BarPosition::WinTitle(hit),
                 ..
-            }) = crate::bar::root_bar_target_at(&core, Point::new(x, 10))
+            }) = crate::bar::root_bar_target_at(core, Point::new(x, 10))
                 && hit == win
             {
                 match span {
@@ -291,8 +294,9 @@ mod tests {
     /// state exactly like pointer motion did before the suppression.
     #[test]
     fn scroll_during_a_captured_gesture_leaves_bar_hover_untouched() {
-        let (mut wm, monitor_id, _first, second) = wm_with_title_strip();
+        let (wm, monitor_id, _first, second) = wm_with_title_strip();
         let (_event_loop, mut state) = crate::test_support::new_compositor();
+        state.wm = wm;
         let (Some(pointer), Some(keyboard)) = (
             state.native.seat.get_pointer(),
             state.native.seat.get_keyboard(),
@@ -300,10 +304,13 @@ mod tests {
             panic!("test seat must provide pointer and keyboard handles");
         };
 
-        let scroll_root = Point::new(title_cell_center(&mut wm, second), 10);
+        let scroll_root = Point::new(title_cell_center(&mut state.wm, second), 10);
 
         // An active tag drag owns the bar hover for its whole capture.
-        wm.core
+        state
+            .wm
+            .core
+            .state
             .interaction
             .drag
             .begin(crate::core_state::TagDragState {
@@ -319,17 +326,24 @@ mod tests {
             })
             .unwrap();
         // The gesture's own highlight, as maintained by the drag path.
-        wm.bar.hover.set(monitor_id, Gesture::Tag(0), true);
+        state
+            .wm
+            .core
+            .bar
+            .hover
+            .set(monitor_id, Gesture::Tag(0), true);
 
         handle_pointer_axis(
-            &mut wm,
             &mut state,
             &pointer,
             &keyboard,
             wheel_scroll_at(scroll_root),
         );
         assert_eq!(
-            (wm.bar.hover.monitor_id, wm.bar.hover.gesture),
+            (
+                state.wm.core.bar.hover.monitor_id,
+                state.wm.core.bar.hover.gesture
+            ),
             (Some(monitor_id), Gesture::Tag(0)),
             "scroll during a hover-owning capture must not touch bar hover"
         );
@@ -337,21 +351,26 @@ mod tests {
         // Control: without the capture the same scroll runs the ordinary hover
         // update and highlights the scrolled-over title.
         assert!(
-            wm.core
+            state
+                .wm
+                .core
+                .state
                 .interaction
                 .drag
                 .finish::<crate::core_state::TagDragState>(crate::types::MouseButton::Left)
                 .is_some()
         );
         handle_pointer_axis(
-            &mut wm,
             &mut state,
             &pointer,
             &keyboard,
             wheel_scroll_at(scroll_root),
         );
         assert_eq!(
-            (wm.bar.hover.monitor_id, wm.bar.hover.gesture),
+            (
+                state.wm.core.bar.hover.monitor_id,
+                state.wm.core.bar.hover.gesture
+            ),
             (Some(monitor_id), Gesture::WinTitle(second))
         );
     }

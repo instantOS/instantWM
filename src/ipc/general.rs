@@ -92,6 +92,6 @@ mod tests {
                 Response::Ok
             ));
         }
-        assert!(wm.core.config.tags.show_icons);
+        assert!(wm.core.state.config.tags.show_icons);
     }
 }

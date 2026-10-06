@@ -247,14 +247,14 @@ mod tests {
     fn tiled_wm(rect: Rect, clients: Vec<Client>) -> Wm {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(rect, rect)
                 .tag_count(9)
                 .selected_tags(tags)
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let windows = clients.iter().map(|client| client.win).collect::<Vec<_>>();
         // Adoption is newest-first, so adding back-to-front leaves the focus
         // list in the order these fixtures were handed in. The first client
@@ -266,12 +266,13 @@ mod tests {
                 ..client
             };
             if index == 0 {
-                add_selected_client(&mut wm.core.model, monitor_id, client);
+                add_selected_client(&mut wm.core.state.model, monitor_id, client);
             } else {
-                add_client(&mut wm.core.model, monitor_id, client);
+                add_client(&mut wm.core.state.model, monitor_id, client);
             }
         }
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -301,16 +302,16 @@ mod tests {
         let source = WindowId(1);
 
         assert!(begin_tree_placement(&mut wm.test_ctx()));
-        assert_eq!(wm.core.model.selected_win(), Some(source));
+        assert_eq!(wm.core.state.model.selected_win(), Some(source));
 
         assert!(cycle_keyboard_tree_placement(&mut wm.test_ctx(), false));
-        assert_eq!(wm.core.model.selected_win(), Some(source));
+        assert_eq!(wm.core.state.model.selected_win(), Some(source));
 
         assert!(step_keyboard_tree_placement(
             &mut wm.test_ctx(),
             Side::Right
         ));
-        assert_eq!(wm.core.model.selected_win(), Some(source));
+        assert_eq!(wm.core.state.model.selected_win(), Some(source));
     }
 
     #[test]
@@ -319,10 +320,10 @@ mod tests {
 
         assert!(!begin_tree_placement(&mut wm.test_ctx()));
         assert!(matches!(
-            wm.core.behavior.current_mode,
+            wm.core.state.behavior.current_mode,
             ActiveWmMode::Default
         ));
-        assert_eq!(wm.core.interaction.layout_preview, None);
+        assert_eq!(wm.core.state.interaction.layout_preview, None);
     }
 
     #[test]
@@ -354,7 +355,7 @@ mod tests {
         let slot = Rect::new(10, 20, 10, 8);
 
         assert_eq!(
-            tiling.outer_rect(wm.core.model.client(WindowId(1)).unwrap(), slot, true),
+            tiling.outer_rect(wm.core.state.model.client(WindowId(1)).unwrap(), slot, true),
             slot
         );
     }

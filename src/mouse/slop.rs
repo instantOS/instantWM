@@ -497,14 +497,15 @@ mod tests {
     /// Build a window manager whose single output covers `rect`.
     fn wm_with_monitor(rect: Rect) -> (Wm, crate::types::MonitorId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.derived.display.width = rect.w.max(1);
-        wm.core.derived.display.height = rect.h.max(1);
+        wm.core.state.derived.display.width = rect.w.max(1);
+        wm.core.state.derived.display.height = rect.h.max(1);
         let monitor_id = wm
             .core
+            .state
             .model
             .monitors
             .push(MonitorBuilder::new().monitor_rect(rect).build());
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         (wm, monitor_id)
     }
 
@@ -524,7 +525,7 @@ mod tests {
 
     /// The window whose selection the next tick would start a tool for.
     fn pending_region_selection(wm: &Wm) -> Option<WindowId> {
-        wm.work.region_selection()
+        wm.core.work.region_selection()
     }
 
     fn is_tool_running() -> bool {
@@ -608,13 +609,13 @@ mod tests {
 
         // On the left output, well inside the layout bounds.
         assert!(is_valid_window_size(
-            &wm.core.model,
+            &wm.core.state.model,
             &Rect::new(-1900, -30, 1200, 900),
             win
         ));
         // Beyond the slop margin outside the layout origin.
         assert!(!is_valid_window_size(
-            &wm.core.model,
+            &wm.core.state.model,
             &Rect::new(-1980, -30, 1200, 900),
             win
         ));
@@ -632,6 +633,7 @@ mod tests {
             insert_floating_client(wm, monitor_id, selected, Rect::new(10, 10, 600, 400))
         });
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -658,11 +660,11 @@ mod tests {
 
         assert!(wm.with_ctx(drain_region_selection));
         assert_eq!(
-            wm.core.model.client(pinned).unwrap().geo,
+            wm.core.state.model.client(pinned).unwrap().geo,
             Rect::new(100, 100, 1200, 900)
         );
         assert_eq!(
-            wm.core.model.client(selected).unwrap().geo,
+            wm.core.state.model.client(selected).unwrap().geo,
             Rect::new(10, 10, 600, 400)
         );
     }
@@ -683,7 +685,7 @@ mod tests {
         // The press owns the pointer but no tool exists yet, so the release
         // that is about to arrive cannot be mistaken for a cancellation.
         assert_eq!(
-            wm.core.interaction.drag.captured_button(),
+            wm.core.state.interaction.drag.captured_button(),
             Some(MouseButton::Left)
         );
         assert!(!is_tool_running());
@@ -694,7 +696,7 @@ mod tests {
             MouseButton::Left
         ));
 
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
         assert_eq!(pending_region_selection(&wm), Some(win));
     }
 
@@ -733,7 +735,7 @@ mod tests {
             MouseButton::Left,
             InteractionSource::Pointer,
         ));
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
         assert_eq!(pending_region_selection(&wm), None);
     }
 
@@ -753,7 +755,7 @@ mod tests {
             MouseButton::Left
         ));
 
-        wm.core.model.remove_client(win).unwrap();
+        wm.core.state.model.remove_client(win).unwrap();
         wm.with_ctx(drain_region_selection);
 
         assert_eq!(pending_region_selection(&wm), None);

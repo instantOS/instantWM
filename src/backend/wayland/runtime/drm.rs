@@ -36,7 +36,6 @@ use crate::backend::wayland::render::drm::{
 };
 use crate::backend::wayland::render::scene::{SceneCache, build_shared_scene_elements};
 use crate::config::config_toml::CursorConfig;
-use crate::wm::WaylandWm as Wm;
 
 mod output_config;
 mod vrr;
@@ -178,10 +177,9 @@ enum DrmRuntimeEvent {
 // Hours spent on this: ~3h
 pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
-    let wm_handle = super::bootstrap::create_wayland_wm();
-    let (event_loop, mut state) =
-        crate::backend::wayland::compositor::new_event_loop_and_state(wm_handle.clone());
-    let mut wm = wm_handle.borrow_mut();
+    let wm = super::bootstrap::create_wayland_wm();
+    let (event_loop, mut state) = crate::backend::wayland::compositor::new_event_loop_and_state(wm);
+
     let loop_handle = event_loop.handle();
 
     let (mut session, notifier) = LibSeatSession::new().expect("libseat session");
@@ -190,7 +188,7 @@ pub fn run() -> ! {
 
     state.native.runtime.session = Some(session.clone());
 
-    crate::runtime::init_keyboard_layout(&mut wm.wayland_ctx(&mut state));
+    crate::runtime::init_keyboard_layout(&mut state.ctx());
 
     let (
         primary_gpu_path,
@@ -236,12 +234,12 @@ pub fn run() -> ! {
 
     {
         use crate::monitor::refresh_monitor_layout;
-        refresh_monitor_layout(&mut wm.wayland_ctx(&mut state));
+        refresh_monitor_layout(&mut state.ctx());
     }
     state
         .native
         .push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
-    crate::monitor::apply_monitor_config(&mut wm.wayland_ctx(&mut state));
+    crate::monitor::apply_monitor_config(&mut state.ctx());
 
     let mut layout_state = init_layout_state(&output_surfaces, layout);
     // Calloop dispatches sources and the loop callback sequentially on this
@@ -251,7 +249,7 @@ pub fn run() -> ! {
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
-    super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
+    super::bootstrap::setup_listen_socket(&loop_handle, &mut state);
 
     // Share startup snapshots only between device opening and event dispatch.
     // They are consumed on DeviceAdded, including when libinput resumes.
@@ -279,20 +277,16 @@ pub fn run() -> ! {
                 _ => None,
             };
 
-            // The source borrows the shared WM only for this input event;
-            // the loop body's borrow starts after calloop dispatch returns.
+            // The source has exclusive root access for this input event.
+            // Shared actions reborrow the owned core before seat callbacks.
             let old_pointer_location = crate::types::Point::new(
                 state.native.runtime.pointer_location.x as i32,
                 state.native.runtime.pointer_location.y as i32,
             );
             let outcome = {
-                let wm_handle = state.wm_handle();
-                let mut wm_borrow = wm_handle.borrow_mut();
-                let wm = &mut *wm_borrow;
                 crate::backend::wayland::input::drm::dispatch_libinput_event(
                     event,
                     state,
-                    wm,
                     layout,
                     initial_lid_state,
                 )
@@ -323,7 +317,7 @@ pub fn run() -> ! {
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
     setup_udev_hotplug_handler(&loop_handle, &seat_name, runtime_event_tx.clone());
 
-    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut wm);
+    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut state.wm);
 
     // One-shot wakeup for the initial frame. Later render failures use a
     // bounded timer instead of an immediate self-ping loop.
@@ -356,12 +350,11 @@ pub fn run() -> ! {
     let start_time = Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    crate::runtime::spawn_status_bar(&mut wm);
+    crate::runtime::spawn_status_bar(&mut state.wm);
 
     let (led_state_tx, led_state_rx) = mpsc::channel();
     state.native.runtime.led_state_tx = Some(led_state_tx);
 
-    drop(wm);
     super::bootstrap::attach_gles_renderer_and_protocols(
         &mut state,
         crate::backend::wayland::compositor::graphics::Graphics::Drm(Box::new(renderer)),
@@ -370,7 +363,6 @@ pub fn run() -> ! {
 
     run_event_loop(
         event_loop,
-        wm_handle,
         &mut state,
         &mut layout_state,
         &input_dimensions,
@@ -525,10 +517,7 @@ fn setup_session_handlers(
             SessionEvent::PauseSession => {
                 log::info!("Session paused (VT switch away) - suspending rendering");
                 {
-                    let wm_handle = state.wm_handle();
-                    let mut wm_borrow = wm_handle.borrow_mut();
-                    let wm = &mut *wm_borrow;
-                    crate::backend::wayland::input::touch::handle_touch_cancel(wm, state);
+                    crate::backend::wayland::input::touch::handle_touch_cancel(state);
                 }
                 session_libinput.suspend();
                 session_output_manager.lock().unwrap().pause();
@@ -642,7 +631,7 @@ fn resolved_cursor_icon(p: &ResolvedCursor) -> Option<CursorIcon> {
 #[allow(clippy::too_many_arguments)]
 fn run_event_loop(
     mut event_loop: EventLoop<WaylandState>,
-    wm_handle: Rc<std::cell::RefCell<Wm>>,
+
     state: &mut WaylandState,
     layout_state: &mut DrmLayoutState,
     input_dimensions: &Rc<Cell<crate::types::Rect>>,
@@ -673,19 +662,17 @@ fn run_event_loop(
                 output_surfaces,
                 &monotonic_clock,
             );
-            if topology_changed {
-                let mut wm = wm_handle.borrow_mut();
-                if reconcile_drm_outputs(
-                    &mut wm,
+            if topology_changed
+                && reconcile_drm_outputs(
                     state,
                     output_surfaces,
                     output_manager,
                     loop_state,
                     layout_state,
                     &shared_input_dimensions,
-                ) {
-                    loop_state.mark_all_dirty();
-                }
+                )
+            {
+                loop_state.mark_all_dirty();
             }
             process_frame_callback_requests(
                 state,
@@ -706,13 +693,12 @@ fn run_event_loop(
                 );
             }
             state.dispatch_pending_commits();
-            let mut wm_borrow = wm_handle.borrow_mut();
-            let wm = &mut *wm_borrow;
-            super::engine::event_loop_tick_and_request_render(wm, state, ipc_server);
+
+            super::engine::event_loop_tick_and_request_render(state, ipc_server);
             if mem::take(&mut state.native.runtime.lid_policy_dirty) {
                 state
                     .native
-                    .queue_output_policy_projection(&wm.core.config.monitors);
+                    .queue_output_policy_projection(&state.wm.core.state.config.monitors);
             }
             {
                 let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
@@ -728,13 +714,13 @@ fn run_event_loop(
             }
             let outputs_changed = state.native.project_completed_output_transactions();
             if outputs_changed {
-                crate::monitor::refresh_monitor_layout(&mut wm.wayland_ctx(state));
+                crate::monitor::refresh_monitor_layout(&mut state.ctx());
                 state.native.push_command(
                     crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones,
                 );
                 refresh_drm_layout_state(state, output_surfaces, layout_state);
                 shared_input_dimensions.set(layout_state.layout);
-                recover_pointer_after_output_change(wm, state);
+                recover_pointer_after_output_change(state);
             }
             state.native.project_completed_output_power_requests();
             process_output_power_requests(&mut state.native, output_surfaces, loop_state);
@@ -748,25 +734,25 @@ fn run_event_loop(
                     layout_state,
                 );
             }
-            super::engine::process_animations_and_request_render(state, &wm.core);
+            super::engine::process_animations_and_request_render(state);
             process_commit_redraws(state, loop_state, output_surfaces);
-            let bar_update_seq = wm.bar.update_seq();
+            let bar_update_seq = state.wm.core.bar.update_seq();
             if loop_state.last_bar_update_seq != bar_update_seq {
                 loop_state.last_bar_update_seq = bar_update_seq;
                 loop_state.mark_all_dirty();
             }
 
-            if wm.work.input_config {
-                wm.work.input_config = false;
+            if state.wm.core.work.input_config {
+                state.wm.core.work.input_config = false;
                 crate::backend::wayland::input::drm::reconfigure_all_devices(
                     &mut state.native.runtime.tracked_devices,
-                    &wm.core.config.input,
+                    &state.wm.core.state.config.input,
                 );
             }
 
-            if wm.work.cursor_config {
-                wm.work.cursor_config = false;
-                let cursor = &wm.core.config.cursor;
+            if state.wm.core.work.cursor_config {
+                state.wm.core.work.cursor_config = false;
+                let cursor = &state.wm.core.state.config.cursor;
                 cursor_manager.reload(&cursor.theme, cursor_size(cursor.size));
                 state.native.cursor_config = cursor.clone();
                 loop_state.mark_all_dirty();
@@ -807,11 +793,10 @@ fn run_event_loop(
             }
 
             if let Some(keyboard_handle) = state.native.seat.get_keyboard() {
-                process_cursor_warp(wm, state, &pointer_handle, &keyboard_handle, loop_state);
+                process_cursor_warp(state, &pointer_handle, &keyboard_handle, loop_state);
             }
 
             render_outputs(
-                wm,
                 state,
                 output_surfaces,
                 cursor_manager,
@@ -829,7 +814,6 @@ fn run_event_loop(
                 |_| false,
             );
 
-            drop(wm_borrow);
             state.dispatch_pending_commits();
 
             if state.native.display_handle.flush_clients().is_err() {
@@ -897,7 +881,6 @@ fn process_runtime_events(
 
 #[allow(clippy::too_many_arguments)]
 fn reconcile_drm_outputs(
-    wm: &mut Wm,
     state: &mut WaylandState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
@@ -1007,21 +990,21 @@ fn reconcile_drm_outputs(
     compact_drm_automatic_layout(state, output_surfaces);
     refresh_drm_layout_state(state, output_surfaces, layout_state);
     input_dimensions.set(layout_state.layout);
-    crate::monitor::refresh_monitor_layout(&mut wm.wayland_ctx(state));
+    crate::monitor::refresh_monitor_layout(&mut state.ctx());
     state
         .native
         .push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
-    crate::monitor::apply_monitor_config(&mut wm.wayland_ctx(state));
+    crate::monitor::apply_monitor_config(&mut state.ctx());
     // Re-evaluate suppression even without a new lid event: the availability
     // of an external display may have changed while the laptop stayed closed.
     state.native.runtime.lid_policy_dirty = true;
-    recover_pointer_after_output_change(wm, state);
+    recover_pointer_after_output_change(state);
     true
 }
 
 /// A topology change can leave the pointer on an output that no longer exists.
 /// Recover immediately, including for explicit/client-managed layouts with gaps.
-fn recover_pointer_after_output_change(wm: &Wm, state: &mut WaylandState) {
+fn recover_pointer_after_output_change(state: &mut WaylandState) {
     if state
         .native
         .space
@@ -1031,8 +1014,10 @@ fn recover_pointer_after_output_change(wm: &Wm, state: &mut WaylandState) {
     {
         return;
     }
-    let target = wm
+    let target = state
+        .wm
         .core
+        .state
         .model
         .selected_monitor()
         .and_then(|monitor| {
@@ -1052,7 +1037,7 @@ fn recover_pointer_after_output_change(wm: &Wm, state: &mut WaylandState) {
             )
         });
     if let Some((x, y)) = center {
-        state.request_warp(x, y);
+        state.native.request_warp(x, y);
     }
 }
 
@@ -1154,13 +1139,12 @@ fn process_frame_callback_requests(
 
 /// Apply compositor-side cursor warp.
 fn process_cursor_warp(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     loop_state: &mut DrmLoopState,
 ) {
-    if apply_pending_warp(wm, state, pointer_handle, keyboard_handle) {
+    if apply_pending_warp(state, pointer_handle, keyboard_handle) {
         loop_state.mark_all_dirty();
     }
 }
@@ -1199,7 +1183,6 @@ fn propagate_mirror_render_flags(
 /// Render all outputs that need it.
 #[allow(clippy::too_many_arguments)]
 fn render_outputs(
-    wm: &mut Wm,
     state: &mut WaylandState,
     output_surfaces: &mut [OutputSurfaceEntry],
     cursor_manager: &CursorManager,
@@ -1219,7 +1202,7 @@ fn render_outputs(
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
         let shared_scene = if needs_any_render && !state.native.is_locked() {
             Some(build_shared_scene_elements(
-                wm,
+                &mut state.wm,
                 &mut state.native,
                 &mut loop_state.scene_cache,
             ))
@@ -1239,10 +1222,10 @@ fn render_outputs(
                 loop_state.mark_dirty(entry.crtc);
                 continue;
             }
-            apply_output_vrr_policy(wm, state, entry);
+            apply_output_vrr_policy(state, entry);
             let suppress_upper_layers =
                 crate::backend::wayland::render::scene::output_has_real_fullscreen(
-                    wm,
+                    &state.wm,
                     &state.native.presented_output(&entry.output),
                 );
             let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
@@ -1348,7 +1331,6 @@ mod cursor_config_tests {
         assert_eq!(cursor_size(512), u8::MAX);
     }
 }
-
 #[cfg(test)]
 mod output_layout_tests {
     use smithay::reexports::drm::control::{crtc, from_u32};
@@ -1369,20 +1351,20 @@ mod output_layout_tests {
             .create_output("DP-1", Size::new(1920, 1080), None);
         state.native.space.map_output(&output, (1920, 0));
         state.native.runtime.pointer_location = (50.0, 50.0).into();
-        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.monitors.push(
+        state.wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
+        state.wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .named("DP-1")
                 .monitor_rect(Rect::new(1920, 0, 1920, 1080))
                 .build(),
         );
 
-        super::recover_pointer_after_output_change(&wm, &mut state);
+        super::recover_pointer_after_output_change(&mut state);
         assert_eq!(state.native.pending_warp, Some((2880.0, 540.0).into()));
         let pointer = state.native.pointer.clone();
         let keyboard = state.native.keyboard.clone();
         assert!(crate::backend::wayland::input::apply_pending_warp(
-            &mut wm, &mut state, &pointer, &keyboard
+            &mut state, &pointer, &keyboard
         ));
         assert_eq!(
             state.native.runtime.pointer_location,
@@ -1406,8 +1388,8 @@ mod output_layout_tests {
             .create_output("DP-1", Size::new(1920, 1080), None);
         state.native.space.map_output(&output, (0, 0));
         state.native.runtime.pointer_location = (50.0, 50.0).into();
-        let wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
-        super::recover_pointer_after_output_change(&wm, &mut state);
+        state.wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
+        super::recover_pointer_after_output_change(&mut state);
         assert!(state.native.pending_warp.is_none());
     }
 

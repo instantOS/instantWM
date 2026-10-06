@@ -3,6 +3,7 @@
 //! This module contains output-related methods on WaylandState,
 //! including creating outputs, listing displays, and configuring display modes.
 
+use crate::backend::wayland::compositor::WaylandNativeState;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::utils::Transform;
@@ -96,7 +97,7 @@ fn close_layer_surfaces(output: &Output) -> bool {
     !layers.is_empty()
 }
 
-impl crate::backend::wayland::compositor::WaylandNativeState {
+impl WaylandNativeState {
     pub(crate) fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
         let Some(global) = output.user_data().get::<OutputGlobal>() else {
             return;
@@ -740,6 +741,23 @@ pub struct WaylandOutputMetadata {
     pub vrr_enabled: bool,
 }
 
+impl WaylandNativeState {
+    /// The output whose region `output` presents: its source for a realized
+    /// mirror, itself otherwise.
+    pub(crate) fn presented_output(&self, output: &Output) -> Output {
+        self.runtime
+            .realized_mirrors
+            .get(&output.name())
+            .and_then(|source| {
+                self.space
+                    .outputs()
+                    .find(|candidate| candidate.name() == *source)
+            })
+            .unwrap_or(output)
+            .clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1107,22 +1125,5 @@ mod tests {
             logical_output_size(&configuration(OutputTransform::Flipped270, 1.0)),
             Size::new(1080, 1920)
         );
-    }
-}
-
-impl crate::backend::wayland::compositor::WaylandNativeState {
-    /// The output whose region `output` presents: its source for a realized
-    /// mirror, itself otherwise.
-    pub(crate) fn presented_output(&self, output: &Output) -> Output {
-        self.runtime
-            .realized_mirrors
-            .get(&output.name())
-            .and_then(|source| {
-                self.space
-                    .outputs()
-                    .find(|candidate| candidate.name() == *source)
-            })
-            .unwrap_or(output)
-            .clone()
     }
 }

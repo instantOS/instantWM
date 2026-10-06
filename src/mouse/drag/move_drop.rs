@@ -362,7 +362,7 @@ mod tests {
 
     /// Push the 1200x800 monitor these drop fixtures sit on.
     fn push_drop_monitor(wm: &mut Wm, available: Rect) -> MonitorId {
-        wm.core.model.monitors.push(
+        wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 1200, 800), available)
                 .build(),
@@ -373,8 +373,9 @@ mod tests {
     fn floating_presentation_drag_does_not_change_tiled_placement() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_drop_monitor(&mut wm, Rect::new(0, 0, 1200, 800));
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitors
             .get_mut(monitor_id)
@@ -382,7 +383,7 @@ mod tests {
             .per_tag_state()
             .presentation = PresentationMode::Floating;
         let win = WindowId(42);
-        add_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = TagMask::single(1).unwrap();
             client.mode = ClientMode::tiled();
@@ -397,7 +398,7 @@ mod tests {
 
         assert_eq!(result, Some((Rect::new(100, 100, 400, 300), false)));
         assert_eq!(
-            wm.core.model.client(win).unwrap().mode(),
+            wm.core.state.model.client(win).unwrap().mode(),
             ClientMode::tiled()
         );
     }
@@ -407,7 +408,7 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let work_rect = Rect::new(0, 30, 1200, 770);
         let monitor_id = push_drop_monitor(&mut wm, work_rect);
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let win = WindowId(43);
         let saved = Rect::new(220, 170, 680, 480);
         let mut client = Client {
@@ -418,7 +419,7 @@ mod tests {
             ..Client::default()
         };
         client.save_floating_placement(saved, work_rect);
-        add_client(&mut wm.core.model, monitor_id, client);
+        add_client(&mut wm.core.state.model, monitor_id, client);
 
         let result = promote_to_floating(
             &mut wm.test_ctx(),
@@ -427,9 +428,12 @@ mod tests {
         );
 
         assert_eq!(result, Some((saved, false)));
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_normal_floating());
-        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
+        assert_eq!(
+            wm.core.state.model.client_protocol_maximized(win),
+            Some(false)
+        );
         assert_eq!(client.geo, saved);
     }
 }
@@ -442,16 +446,16 @@ mod destination_tests {
 
     fn fixture() -> (Wm, WindowId, MonitorId, MonitorId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.config.animations.enabled = false;
-        wm.core.model.tags.num_tags = 9;
-        let a = wm.core.model.monitors.push(
+        wm.core.state.config.animations.enabled = false;
+        wm.core.state.model.tags.num_tags = 9;
+        let a = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 800, 600), Rect::new(0, 0, 800, 600))
                 .tag_count(9)
                 .selected_tags(TagMask::single(1).unwrap())
                 .build(),
         );
-        let b = wm.core.model.monitors.push(
+        let b = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(800, 0, 800, 600), Rect::new(800, 0, 800, 600))
                 .bar(30, true)
@@ -459,9 +463,9 @@ mod destination_tests {
                 .selected_tags(TagMask::single(2).unwrap())
                 .build(),
         );
-        wm.core.model.monitors.set_selected(a);
+        wm.core.state.model.monitors.set_selected(a);
         let win = WindowId(981);
-        add_selected_client_with(&mut wm.core.model, a, |c| {
+        add_selected_client_with(&mut wm.core.state.model, a, |c| {
             c.win = win;
             c.tags = TagMask::single(1).unwrap();
             c.mode = ClientMode::tiled();
@@ -469,6 +473,7 @@ mod destination_tests {
         });
         for (index, tag) in wm
             .core
+            .state
             .model
             .monitor_mut(b)
             .unwrap()
@@ -486,7 +491,7 @@ mod destination_tests {
     fn destination_bar_transfers_and_tags_captured_window_without_stealing_focus() {
         let (mut wm, win, a, b) = fixture();
         let other = WindowId(982);
-        add_selected_client_with(&mut wm.core.model, a, |c| {
+        add_selected_client_with(&mut wm.core.state.model, a, |c| {
             c.win = other;
             c.tags = TagMask::single(1).unwrap();
         });
@@ -504,7 +509,7 @@ mod destination_tests {
             })
             .unwrap();
         assert_eq!(
-            resolve_move_drop(&wm.core.model, win, root),
+            resolve_move_drop(&wm.core.state.model, win, root),
             Some(MoveDropTarget::Bar(b))
         );
         handle_bar_drop(
@@ -514,19 +519,19 @@ mod destination_tests {
             Some(root),
             ModMask::NONE,
         );
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(b));
         assert_eq!(
-            wm.core.model.client(win).unwrap().tags,
+            wm.core.state.model.client(win).unwrap().tags,
             TagMask::single(3).unwrap()
         );
         assert_eq!(
-            wm.core.model.client(other).unwrap().tags,
+            wm.core.state.model.client(other).unwrap().tags,
             TagMask::single(1).unwrap()
         );
-        assert_eq!(wm.core.model.selected_monitor_id(), a);
-        assert_eq!(wm.core.model.selected_win(), Some(other));
+        assert_eq!(wm.core.state.model.selected_monitor_id(), a);
+        assert_eq!(wm.core.state.model.selected_win(), Some(other));
         assert_eq!(
-            wm.core.model.monitor(b).unwrap().selected_tags(),
+            wm.core.state.model.monitor(b).unwrap().selected_tags(),
             TagMask::single(2).unwrap()
         );
     }
@@ -553,11 +558,11 @@ mod destination_tests {
             Some(root),
             ModMask::from_modifier(Modifier::Alt),
         );
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
-        assert_eq!(wm.core.model.selected_monitor_id(), b);
-        assert_eq!(wm.core.model.selected_win(), Some(win));
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(b));
+        assert_eq!(wm.core.state.model.selected_monitor_id(), b);
+        assert_eq!(wm.core.state.model.selected_win(), Some(win));
         assert_eq!(
-            wm.core.model.monitor(b).unwrap().selected_tags(),
+            wm.core.state.model.monitor(b).unwrap().selected_tags(),
             TagMask::single(3).unwrap()
         );
     }
@@ -566,11 +571,13 @@ mod destination_tests {
     fn floating_edge_drop_snaps_on_destination_and_preserves_restore_geometry() {
         let (mut wm, win, _, b) = fixture();
         wm.core
+            .state
             .model
             .client_mut(win)
             .unwrap()
             .set_placement(ClientPlacement::Floating);
         wm.core
+            .state
             .model
             .monitor_mut(b)
             .unwrap()
@@ -579,18 +586,18 @@ mod destination_tests {
         let root = Point::new(1599, 300);
         let free = Rect::new(1300, 150, 300, 200);
         assert_eq!(
-            resolve_move_drop(&wm.core.model, win, root),
+            resolve_move_drop(&wm.core.state.model, win, root),
             Some(MoveDropTarget::Snap(b, SnapPosition::Right))
         );
         complete_move_drop(&mut wm.test_ctx(), win, free, root, free, ModMask::NONE);
-        let client = wm.core.model.client(win).unwrap();
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+        let client = wm.core.state.model.client(win).unwrap();
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(b));
         assert_eq!(client.snap_status, SnapPosition::Right);
         assert_eq!(client.saved_floating_rect(), Some(free));
         let expected = SnapPosition::Right
             .target_rect(
                 client.border_width,
-                wm.core.model.monitor(b).unwrap().work_rect(),
+                wm.core.state.model.monitor(b).unwrap().work_rect(),
             )
             .unwrap();
         assert_eq!(client.geo, expected);

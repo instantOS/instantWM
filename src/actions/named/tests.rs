@@ -20,6 +20,7 @@ use crate::types::{
 fn set_focus_order(wm: &mut Wm, monitor_id: MonitorId, order: &[WindowId]) {
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .expect("monitor")
@@ -29,18 +30,18 @@ fn set_focus_order(wm: &mut Wm, monitor_id: MonitorId, order: &[WindowId]) {
 
 fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    wm.core.model.tags.num_tags = 3;
+    wm.core.state.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1200, 800))
             .tag_count(3)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
     for &win in windows {
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -51,7 +52,7 @@ fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
         );
     }
     set_focus_order(&mut wm, monitor_id, windows);
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag);
     monitor.selected = Some(selected);
     monitor
@@ -83,12 +84,12 @@ fn layout_command_from_name_accepts_only_canonical_names() {
 #[test]
 fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
     let mut wm = maximized_tiled_wm(&[WindowId(1)], WindowId(1));
-    assert!(wm.core.config.animations.enabled);
+    assert!(wm.core.state.config.animations.enabled);
 
     NamedAction::ConfigToggle("animations.enabled".into())
         .execute(&mut wm.test_ctx())
         .unwrap();
-    assert!(!wm.core.config.animations.enabled);
+    assert!(!wm.core.state.config.animations.enabled);
 
     let force_on = || {
         NamedAction::ConfigSet(ConfigAssignment {
@@ -97,7 +98,7 @@ fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
         })
     };
     force_on().execute(&mut wm.test_ctx()).unwrap();
-    assert!(wm.core.config.animations.enabled);
+    assert!(wm.core.state.config.animations.enabled);
 
     let force_off = || {
         NamedAction::ConfigSet(ConfigAssignment {
@@ -106,7 +107,7 @@ fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
         })
     };
     force_off().execute(&mut wm.test_ctx()).unwrap();
-    assert!(!wm.core.config.animations.enabled);
+    assert!(!wm.core.state.config.animations.enabled);
 }
 
 fn parse(name: &str, args: &[&str]) -> Result<NamedAction, String> {
@@ -178,21 +179,21 @@ fn rendered_arguments_parse_back_to_the_same_action() {
 #[test]
 fn gap_actions_move_both_gaps_and_clamp_at_zero() {
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    wm.core.config.layout.inner_gap = 4;
-    wm.core.config.layout.outer_gap = 8;
+    wm.core.state.config.layout.inner_gap = 4;
+    wm.core.state.config.layout.outer_gap = 8;
 
     NamedAction::IncGaps(Some(3))
         .execute(&mut wm.test_ctx())
         .unwrap();
-    assert_eq!(wm.core.config.layout.inner_gap, 7);
-    assert_eq!(wm.core.config.layout.outer_gap, 11);
+    assert_eq!(wm.core.state.config.layout.inner_gap, 7);
+    assert_eq!(wm.core.state.config.layout.outer_gap, 11);
 
     // The default step applies when no argument is passed.
     NamedAction::DecGaps(None)
         .execute(&mut wm.test_ctx())
         .unwrap();
-    assert_eq!(wm.core.config.layout.inner_gap, 5);
-    assert_eq!(wm.core.config.layout.outer_gap, 9);
+    assert_eq!(wm.core.state.config.layout.inner_gap, 5);
+    assert_eq!(wm.core.state.config.layout.outer_gap, 9);
 
     // Decreasing past the floor clamps instead of disabling windows into
     // negative gaps.
@@ -201,8 +202,8 @@ fn gap_actions_move_both_gaps_and_clamp_at_zero() {
             .execute(&mut wm.test_ctx())
             .unwrap();
     }
-    assert_eq!(wm.core.config.layout.inner_gap, 0);
-    assert_eq!(wm.core.config.layout.outer_gap, 0);
+    assert_eq!(wm.core.state.config.layout.inner_gap, 0);
+    assert_eq!(wm.core.state.config.layout.outer_gap, 0);
 }
 
 #[test]
@@ -216,13 +217,13 @@ fn config_actions_are_idempotent_when_set_and_alternate_when_toggled() {
     };
     set_on().execute(&mut wm.test_ctx()).unwrap();
     set_on().execute(&mut wm.test_ctx()).unwrap();
-    assert!(wm.core.config.tags.show_icons);
+    assert!(wm.core.state.config.tags.show_icons);
 
     let toggle = || NamedAction::ConfigToggle("tags.show_icons".into());
     toggle().execute(&mut wm.test_ctx()).unwrap();
-    assert!(!wm.core.config.tags.show_icons);
+    assert!(!wm.core.state.config.tags.show_icons);
     toggle().execute(&mut wm.test_ctx()).unwrap();
-    assert!(wm.core.config.tags.show_icons);
+    assert!(wm.core.state.config.tags.show_icons);
 }
 
 #[test]
@@ -241,14 +242,14 @@ fn config_actions_reject_bad_keys_and_values_without_mutating() {
         .execute(&mut wm.test_ctx())
         .is_err()
     );
-    assert!(wm.core.config.window.border_width_px > 0);
+    assert!(wm.core.state.config.window.border_width_px > 0);
 }
 
 #[test]
 fn quit_action_uses_the_normal_wm_shutdown_flag() {
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     NamedAction::Quit.execute(&mut wm.test_ctx()).unwrap();
-    assert!(!wm.running);
+    assert!(!wm.core.running);
 }
 
 #[test]
@@ -269,22 +270,22 @@ fn action_dispatch_rejects_unknown_and_interaction_owned_modes() {
 #[test]
 fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    wm.core.model.tags.num_tags = 3;
+    wm.core.state.model.tags.num_tags = 3;
     let tag1 = TagMask::single(1).unwrap();
     let tag2 = TagMask::single(2).unwrap();
-    let monitor_id = wm.core.model.monitors.push(
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1200, 800))
             .tag_count(3)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
 
     let left = WindowId(1);
     let right = WindowId(2);
     for win in [left, right] {
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -295,7 +296,7 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
         );
     }
     set_focus_order(&mut wm, monitor_id, &[left, right]);
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag1);
     monitor.selected = Some(left);
     monitor
@@ -306,9 +307,13 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
     move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     // The first press has a visual neighbour, so it only swaps the tree.
-    assert_eq!(wm.core.model.client(left).unwrap().tags, tag1);
+    assert_eq!(wm.core.state.model.client(left).unwrap().tags, tag1);
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag1
     );
 
@@ -316,12 +321,16 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
 
     // The same client is now at the right edge, so the next press carries
     // it into the adjacent tag and follows it there.
-    assert_eq!(wm.core.model.client(left).unwrap().tags, tag2);
+    assert_eq!(wm.core.state.model.client(left).unwrap().tags, tag2);
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag2
     );
-    assert_eq!(wm.core.model.selected_win(), Some(left));
+    assert_eq!(wm.core.state.model.selected_win(), Some(left));
 }
 
 #[test]
@@ -335,6 +344,7 @@ fn maximized_window_move_reorders_adjacent_titles_not_hidden_visual_neighbors() 
     // immediately before it.
     assert_eq!(
         wm.core
+            .state
             .model
             .expect_selected_monitor()
             .per_tag()
@@ -346,7 +356,7 @@ fn maximized_window_move_reorders_adjacent_titles_not_hidden_visual_neighbors() 
 
     move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
 
-    let monitor = wm.core.model.expect_selected_monitor();
+    let monitor = wm.core.state.model.expect_selected_monitor();
     assert_eq!(
         monitor.per_tag().unwrap().layout_tree.leaves(),
         vec![WindowId(1), WindowId(2), WindowId(4), WindowId(3)]
@@ -367,12 +377,16 @@ fn maximized_horizontal_move_crosses_tags_at_title_strip_boundary() {
 
     move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
-    assert_eq!(wm.core.model.client(selected).unwrap().tags, tag2);
+    assert_eq!(wm.core.state.model.client(selected).unwrap().tags, tag2);
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag2
     );
-    assert_eq!(wm.core.model.selected_win(), Some(selected));
+    assert_eq!(wm.core.state.model.selected_win(), Some(selected));
 }
 
 #[test]
@@ -385,6 +399,7 @@ fn maximized_vertical_move_stops_at_title_strip_boundary() {
     move_vertical(&mut wm.test_ctx(), VerticalDirection::Up);
     assert_eq!(
         wm.core
+            .state
             .model
             .expect_selected_monitor()
             .per_tag()
@@ -397,6 +412,7 @@ fn maximized_vertical_move_stops_at_title_strip_boundary() {
     move_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_eq!(
         wm.core
+            .state
             .model
             .expect_selected_monitor()
             .per_tag()
@@ -408,7 +424,7 @@ fn maximized_vertical_move_stops_at_title_strip_boundary() {
 
     move_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
 
-    let monitor = wm.core.model.expect_selected_monitor();
+    let monitor = wm.core.state.model.expect_selected_monitor();
     assert_eq!(monitor.per_tag().unwrap().layout_tree.leaves(), windows);
     assert_eq!(monitor.selected_tags(), tag1);
     assert_eq!(monitor.selected, Some(selected));
@@ -422,6 +438,7 @@ fn maximized_move_does_not_treat_pending_tree_reconciliation_as_a_boundary() {
     let tag1 = TagMask::single(1).unwrap();
     assert!(
         wm.core
+            .state
             .model
             .expect_selected_monitor_mut()
             .per_tag_state()
@@ -434,12 +451,16 @@ fn maximized_move_does_not_treat_pending_tree_reconciliation_as_a_boundary() {
     // must not fall through to an adjacent-tag transfer.
     move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
 
-    assert_eq!(wm.core.model.client(selected).unwrap().tags, tag1);
+    assert_eq!(wm.core.state.model.client(selected).unwrap().tags, tag1);
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag1
     );
-    assert_eq!(wm.core.model.selected_win(), Some(selected));
+    assert_eq!(wm.core.state.model.selected_win(), Some(selected));
 }
 
 #[test]
@@ -448,13 +469,13 @@ fn vertical_focus_wraps_across_the_screen_when_tiled() {
 
     // No window is below the bottom-most one, so `wrap` answers with the
     // topmost — a jump across the screen, not a walk through bar order.
-    wm.core.model.expect_selected_monitor_mut().selected = Some(bottom);
+    wm.core.state.model.expect_selected_monitor_mut().selected = Some(bottom);
     focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
-    assert_eq!(wm.core.model.selected_win(), Some(top));
+    assert_eq!(wm.core.state.model.selected_win(), Some(top));
 
     // And symmetrically off the top edge, so neither direction is special.
     focus_vertical(&mut wm.test_ctx(), VerticalDirection::Up);
-    assert_eq!(wm.core.model.selected_win(), Some(bottom));
+    assert_eq!(wm.core.state.model.selected_win(), Some(bottom));
 }
 
 #[test]
@@ -466,10 +487,10 @@ fn maximized_vertical_focus_cycles_in_bar_order() {
     let mut wm = maximized_tiled_wm(&windows, WindowId(3));
 
     focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(1)));
 
     focus_vertical(&mut wm.test_ctx(), VerticalDirection::Up);
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(3)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(3)));
 }
 
 /// Three windows stacked down the screen with real geometry, `top` focused.
@@ -480,22 +501,22 @@ fn maximized_vertical_focus_cycles_in_bar_order() {
 /// boundary.
 fn stacked_wm() -> (Wm, [WindowId; 3]) {
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    wm.core.model.tags.num_tags = 3;
+    wm.core.state.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1200, 800))
             .tag_count(3)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
 
     let [top, middle, bottom] = [WindowId(1), WindowId(2), WindowId(3)];
     // Three equal bands, so `direction_focus` has a real "below" to resolve
     // for the first two and genuinely nothing for the last.
     for (win, y) in [(top, 0), (middle, 266), (bottom, 533)] {
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -507,7 +528,7 @@ fn stacked_wm() -> (Wm, [WindowId; 3]) {
         );
     }
     set_focus_order(&mut wm, monitor_id, &[top, middle, bottom]);
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag);
     monitor.selected = Some(top);
     monitor.per_tag_state().layout_tree.apply_preset(
@@ -530,16 +551,16 @@ fn vertical_focus_ignores_the_horizontal_edge_policy() {
         HorizontalEdge::None,
     ] {
         let (mut wm, [top, _, _]) = stacked_wm();
-        wm.core.config.focus.horizontal_edge = edge;
+        wm.core.state.config.focus.horizontal_edge = edge;
 
         focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
 
         assert_ne!(
-            wm.core.model.selected_win(),
+            wm.core.state.model.selected_win(),
             Some(top),
             "{edge:?} turned the ordinary step into a boundary"
         );
-        landed.push(wm.core.model.selected_win());
+        landed.push(wm.core.state.model.selected_win());
     }
     assert!(
         landed.iter().all(|win| *win == landed[0]),
@@ -550,22 +571,22 @@ fn vertical_focus_ignores_the_horizontal_edge_policy() {
 #[test]
 fn vertical_focus_stops_at_the_boundary_when_configured() {
     let (mut wm, [top, _, bottom]) = stacked_wm();
-    wm.core.config.focus.vertical_edge = VerticalEdge::None;
+    wm.core.state.config.focus.vertical_edge = VerticalEdge::None;
 
     // The policy only governs the fallthrough, so an ordinary step between
     // two windows still moves.
     focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_ne!(
-        wm.core.model.selected_win(),
+        wm.core.state.model.selected_win(),
         Some(top),
         "vertical_edge = \"none\" must not swallow the ordinary step"
     );
 
     // Park on the bottom-most window: there is nowhere below it, so the
     // press is consumed rather than wrapping back around to the top.
-    wm.core.model.expect_selected_monitor_mut().selected = Some(bottom);
+    wm.core.state.model.expect_selected_monitor_mut().selected = Some(bottom);
     focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
-    assert_eq!(wm.core.model.selected_win(), Some(bottom));
+    assert_eq!(wm.core.state.model.selected_win(), Some(bottom));
 }
 
 #[test]
@@ -575,13 +596,17 @@ fn horizontal_focus_ignores_the_vertical_edge_policy() {
     for edge in [VerticalEdge::Wrap, VerticalEdge::None] {
         let windows = [WindowId(1), WindowId(2)];
         let mut wm = tiled_row_wm(&windows, WindowId(2));
-        wm.core.config.focus.vertical_edge = edge;
+        wm.core.state.config.focus.vertical_edge = edge;
         let tag2 = TagMask::single(2).unwrap();
 
         focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
         assert_eq!(
-            wm.core.model.expect_selected_monitor().selected_tags(),
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .selected_tags(),
             tag2,
             "{edge:?} changed horizontal navigation"
         );
@@ -592,22 +617,22 @@ fn horizontal_focus_ignores_the_vertical_edge_policy() {
 /// tags that an overflow has somewhere to go.
 fn tiled_row_wm(windows: &[WindowId], selected: WindowId) -> Wm {
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    wm.core.model.tags.num_tags = 3;
+    wm.core.state.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1200, 800))
             .tag_count(3)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
     // Real geometry laid out left to right, in slice order. Without it every
     // window would share one centre and a geometric wrap would have nothing
     // to move across.
     let width = 1200 / windows.len() as i32;
     for (index, &win) in windows.iter().enumerate() {
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -619,7 +644,7 @@ fn tiled_row_wm(windows: &[WindowId], selected: WindowId) -> Wm {
         );
     }
     set_focus_order(&mut wm, monitor_id, windows);
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag);
     monitor.selected = Some(selected);
     monitor
@@ -638,7 +663,11 @@ fn horizontal_focus_overflows_into_the_adjacent_tag_by_default() {
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag2
     );
 }
@@ -647,20 +676,24 @@ fn horizontal_focus_overflows_into_the_adjacent_tag_by_default() {
 fn horizontal_focus_wraps_to_the_far_end_of_the_same_tag() {
     let windows = [WindowId(1), WindowId(2)];
     let mut wm = tiled_row_wm(&windows, WindowId(2));
-    wm.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
+    wm.core.state.config.focus.horizontal_edge = HorizontalEdge::Wrap;
     let tag1 = TagMask::single(1).unwrap();
 
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(1)));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag1
     );
 
     // Wrapping is symmetric and does not need the tag edge to be reached.
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(2)));
 }
 
 #[test]
@@ -672,18 +705,18 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
     let (a, b, c) = (WindowId(1), WindowId(2), WindowId(3));
     let screen_order = [a, b, c];
     let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-    wm.core.model.tags.num_tags = 3;
+    wm.core.state.model.tags.num_tags = 3;
     let tag1 = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1200, 800))
             .tag_count(3)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
     for (win, x) in [(a, 0), (b, 400), (c, 800)] {
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win,
@@ -694,7 +727,7 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
             },
         );
     }
-    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
     monitor.set_selected_tags(tag1);
     // Scrambled bar order is the thing the wrap must ignore.
     assert!(monitor.set_focus_order(vec![b, a, c]));
@@ -703,18 +736,22 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
         .per_tag_state()
         .layout_tree
         .apply_preset(Preset::MasterStack, &screen_order, 1);
-    wm.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
+    wm.core.state.config.focus.horizontal_edge = HorizontalEdge::Wrap;
 
     // Off the right edge: the leftmost window is A, even though A is not the
     // head of the bar. A bar-order cycle would have landed on B.
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
-    assert_eq!(wm.core.model.selected_win(), Some(a));
+    assert_eq!(wm.core.state.model.selected_win(), Some(a));
 
     // Off the left edge: symmetrically, the rightmost window is C.
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
-    assert_eq!(wm.core.model.selected_win(), Some(c));
+    assert_eq!(wm.core.state.model.selected_win(), Some(c));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag1
     );
 }
@@ -726,25 +763,31 @@ fn horizontal_focus_wrap_does_not_change_tags() {
     // view to tag 3 and made this fail.
     let mut wm = tiled_row_wm(&[WindowId(1)], WindowId(1));
     let tag2 = TagMask::single(2).unwrap();
-    let monitor_id = wm.core.model.selected_monitor_id();
+    let monitor_id = wm.core.state.model.selected_monitor_id();
     wm.core
+        .state
         .model
         .monitor_mut(monitor_id)
         .unwrap()
         .set_selected_tags(tag2);
     wm.core
+        .state
         .model
         .client_mut(WindowId(1))
         .unwrap()
         .update_tag_mask(|tags| tags | tag2);
-    wm.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
+    wm.core.state.config.focus.horizontal_edge = HorizontalEdge::Wrap;
 
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
 
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(1)));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag2
     );
 }
@@ -752,13 +795,13 @@ fn horizontal_focus_wrap_does_not_change_tags() {
 #[test]
 fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
     let mut wm = tiled_row_wm(&[WindowId(1), WindowId(2)], WindowId(2));
-    wm.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
-    let monitor_id = wm.core.model.selected_monitor_id();
+    wm.core.state.config.focus.horizontal_edge = HorizontalEdge::Wrap;
+    let monitor_id = wm.core.state.model.selected_monitor_id();
     // Park a window on the next tag, positioned further left than anything
     // on this one. If the tag filter were dropped it would win the wrap, so
     // this pins down that the wrap is both tag-local and geometric.
     add_client(
-        &mut wm.core.model,
+        &mut wm.core.state.model,
         monitor_id,
         Client {
             win: WindowId(3),
@@ -771,6 +814,7 @@ fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
     // Keep the off-tag window after the two visible windows in focus order.
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -778,12 +822,16 @@ fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
     );
 
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(1)));
 
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(2)));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         TagMask::single(1).unwrap()
     );
 }
@@ -792,14 +840,18 @@ fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
 fn horizontal_focus_stays_put_at_the_edge_when_configured() {
     let windows = [WindowId(1), WindowId(2)];
     let mut wm = tiled_row_wm(&windows, WindowId(2));
-    wm.core.config.focus.horizontal_edge = HorizontalEdge::None;
+    wm.core.state.config.focus.horizontal_edge = HorizontalEdge::None;
     let tag1 = TagMask::single(1).unwrap();
 
     focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
-    assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
+    assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(2)));
     assert_eq!(
-        wm.core.model.expect_selected_monitor().selected_tags(),
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor()
+            .selected_tags(),
         tag1
     );
 }
@@ -815,14 +867,18 @@ fn horizontal_focus_still_moves_to_a_neighbour_before_the_edge() {
     ] {
         let windows = [WindowId(1), WindowId(2)];
         let mut wm = tiled_row_wm(&windows, WindowId(1));
-        wm.core.config.focus.horizontal_edge = edge;
+        wm.core.state.config.focus.horizontal_edge = edge;
         let tag1 = TagMask::single(1).unwrap();
 
         focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
-        assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
+        assert_eq!(wm.core.state.model.selected_win(), Some(WindowId(2)));
         assert_eq!(
-            wm.core.model.expect_selected_monitor().selected_tags(),
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .selected_tags(),
             tag1
         );
     }
@@ -835,16 +891,17 @@ fn maximized_horizontal_focus_follows_the_configured_edge_policy() {
     // Maximized presentation cycles in bar order, so the last window is the
     // boundary the policy has to resolve.
     let mut wrap = maximized_tiled_wm(&windows, WindowId(4));
-    wrap.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
+    wrap.core.state.config.focus.horizontal_edge = HorizontalEdge::Wrap;
     focus_horizontal(&mut wrap.test_ctx(), HorizontalDirection::Right);
-    assert_eq!(wrap.core.model.selected_win(), Some(WindowId(1)));
+    assert_eq!(wrap.core.state.model.selected_win(), Some(WindowId(1)));
 
     let mut overflow = maximized_tiled_wm(&windows, WindowId(4));
-    overflow.core.config.focus.horizontal_edge = HorizontalEdge::Overflow;
+    overflow.core.state.config.focus.horizontal_edge = HorizontalEdge::Overflow;
     focus_horizontal(&mut overflow.test_ctx(), HorizontalDirection::Right);
     assert_eq!(
         overflow
             .core
+            .state
             .model
             .expect_selected_monitor()
             .selected_tags(),
@@ -852,7 +909,7 @@ fn maximized_horizontal_focus_follows_the_configured_edge_policy() {
     );
 
     let mut none = maximized_tiled_wm(&windows, WindowId(4));
-    none.core.config.focus.horizontal_edge = HorizontalEdge::None;
+    none.core.state.config.focus.horizontal_edge = HorizontalEdge::None;
     focus_horizontal(&mut none.test_ctx(), HorizontalDirection::Right);
-    assert_eq!(none.core.model.selected_win(), Some(WindowId(4)));
+    assert_eq!(none.core.state.model.selected_win(), Some(WindowId(4)));
 }

@@ -78,7 +78,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             button,
             root,
         } => {
-            crate::systray::press_icon(&mut ctx.core, index, button, root);
+            crate::systray::press_icon(ctx.core, index, button, root);
             let conn = ctx.x11.conn;
             let _ = conn.allow_events(Allow::ASYNC_POINTER, CURRENT_TIME);
             let _ = conn.flush();
@@ -99,8 +99,8 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         return;
     }
     let root = Point::new(e.root_x as i32, e.root_y as i32);
-    let hovered = crate::backend::x11::mouse::managed_window(ctx.core.state, e.event)
-        .or_else(|| crate::backend::x11::mouse::managed_window(ctx.core.state, e.child));
+    let hovered = crate::backend::x11::mouse::managed_window(&ctx.core.state, e.event)
+        .or_else(|| crate::backend::x11::mouse::managed_window(&ctx.core.state, e.child));
     crate::focus::apply_hover_focus(
         &mut WmCtx::X11(ctx.reborrow()),
         hovered,
@@ -122,7 +122,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         return;
     }
 
-    let hovered = crate::backend::x11::mouse::managed_window(ctx.core.state, e.child);
+    let hovered = crate::backend::x11::mouse::managed_window(&ctx.core.state, e.child);
     physical_pointer_motion(ctx, Point::new(e.root_x as i32, e.root_y as i32), hovered);
 }
 
@@ -131,7 +131,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 /// the same coordinates consumed by the backend-neutral hover policy.
 pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
     let Some(snapshot) = crate::backend::x11::mouse::pointer_snapshot(
-        ctx.core.state,
+        &ctx.core.state,
         ctx.x11.conn,
         ctx.x11_runtime.root,
     ) else {

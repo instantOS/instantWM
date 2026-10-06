@@ -354,19 +354,19 @@ mod resolution_tests {
         // Only `monitor_rect` is set: the original fixture left
         // `available_rect` at its default, so the builder's `monitor_rect()`
         // (which sets both) would widen the work area and change the fixture.
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             crate::test_support::MonitorBuilder::new()
                 .configure(|monitor| monitor.monitor_rect = Rect::new(0, 0, 800, 600))
                 .build(),
         );
-        wm.core.apply_config(config).unwrap();
+        wm.core.state.apply_config(config).unwrap();
 
         // Icon display is read live from config; the tag set seeds the
         // model, and bar states are seeded into each monitor.
-        assert!(wm.core.config.tags.show_icons);
-        let monitor = wm.core.model.monitor(monitor_id).unwrap();
+        assert!(wm.core.state.config.tags.show_icons);
+        let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
         assert!(monitor.show_bottom_bar);
-        assert_eq!(wm.core.model.tags.num_tags, 3);
+        assert_eq!(wm.core.state.model.tags.num_tags, 3);
         assert_eq!(
             monitor
                 .tags

@@ -33,7 +33,7 @@ fn add_tiled_monitor(
     monitor_rect: Rect,
 ) -> crate::types::MonitorId {
     let tags = TagMask::single(1).unwrap();
-    let monitor_id = wm.core.model.monitors.push(
+    let monitor_id = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .rect(monitor_rect, monitor_rect)
             .bar(0, false)
@@ -41,7 +41,7 @@ fn add_tiled_monitor(
             .selected_tags(tags)
             .build(),
     );
-    wm.core.model.monitors.set_selected(monitor_id);
+    wm.core.state.model.monitors.set_selected(monitor_id);
     // Adoption pushes each window onto the front of the focus list, so adding
     // back-to-front leaves it in `windows` order — the order these fixtures
     // describe. The first window is the one that ends up selected.
@@ -53,9 +53,9 @@ fn add_tiled_monitor(
             ..Client::default()
         };
         if index == 0 {
-            add_selected_client(&mut wm.core.model, monitor_id, client);
+            add_selected_client(&mut wm.core.state.model, monitor_id, client);
         } else {
-            add_client(&mut wm.core.model, monitor_id, client);
+            add_client(&mut wm.core.state.model, monitor_id, client);
         }
     }
     monitor_id
@@ -68,6 +68,7 @@ fn apply_preset(
     windows: &[WindowId],
 ) {
     wm.core
+        .state
         .model
         .monitor_mut(monitor_id)
         .unwrap()
@@ -83,9 +84,9 @@ fn keyboard_config() -> crate::layouts::tree::CommandConfig {
 #[test]
 fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
     let mut wm = wayland_wm();
-    wm.core.config.animations.enabled = false;
-    wm.core.config.layout.inner_gap = 20;
-    wm.core.config.layout.outer_gap = 20;
+    wm.core.state.config.animations.enabled = false;
+    wm.core.state.config.layout.inner_gap = 20;
+    wm.core.state.config.layout.outer_gap = 20;
     let first = WindowId(1);
     let second = WindowId(2);
     let monitor_id = add_tiled_monitor(&mut wm, &[first, second], Rect::new(0, 0, 800, 600));
@@ -94,6 +95,7 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
     let tiling = super::selected_tiling(&wm.test_ctx());
     let (slots, _) = tiling.slots(
         &wm.core
+            .state
             .model
             .monitor(monitor_id)
             .unwrap()
@@ -140,7 +142,7 @@ fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
     let second = WindowId(2);
     let first_monitor = add_tiled_monitor(&mut wm, &[first], Rect::new(0, 0, 800, 600));
     let second_monitor = add_tiled_monitor(&mut wm, &[second], Rect::new(800, 0, 800, 600));
-    wm.work.layout.clear();
+    wm.core.work.layout.clear();
     {
         let mut ctx = wm.test_ctx();
         ctx.core_mut()
@@ -148,17 +150,22 @@ fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
         ctx.core_mut()
             .queue_initial_window_layout(second, second_monitor);
     }
-    assert!(wm.work.layout.is_urgent());
+    assert!(wm.core.work.layout.is_urgent());
 
     super::arrange(&mut wm.test_ctx(), Some(first_monitor));
 
     assert_eq!(
-        wm.work.spawn_animations.iter().copied().collect::<Vec<_>>(),
+        wm.core
+            .work
+            .spawn_animations
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
         vec![second]
     );
 
     super::arrange(&mut wm.test_ctx(), Some(second_monitor));
-    assert!(wm.work.spawn_animations.is_empty());
+    assert!(wm.core.work.spawn_animations.is_empty());
 }
 
 #[test]
@@ -167,21 +174,26 @@ fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
     let live = WindowId(1);
     let destroyed = WindowId(2);
     let unrelated_monitor = add_tiled_monitor(&mut wm, &[live], Rect::new(800, 0, 800, 600));
-    let arranged_monitor = wm.core.model.monitors.push(
+    let arranged_monitor = wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 800, 600))
             .build(),
     );
-    wm.work.spawn_animations.extend([live, destroyed]);
+    wm.core.work.spawn_animations.extend([live, destroyed]);
 
     super::arrange(&mut wm.test_ctx(), Some(arranged_monitor));
 
     assert_eq!(
-        wm.work.spawn_animations.iter().copied().collect::<Vec<_>>(),
+        wm.core
+            .work
+            .spawn_animations
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
         vec![live]
     );
     super::arrange(&mut wm.test_ctx(), Some(unrelated_monitor));
-    assert!(wm.work.spawn_animations.is_empty());
+    assert!(wm.core.work.spawn_animations.is_empty());
 }
 
 #[test]
@@ -189,12 +201,12 @@ fn disabled_animation_is_still_consumed_after_first_layout() {
     let mut wm = wayland_wm();
     let win = WindowId(1);
     let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
-    wm.core.config.animations.enabled = false;
-    wm.work.spawn_animations.insert(win);
+    wm.core.state.config.animations.enabled = false;
+    wm.core.work.spawn_animations.insert(win);
 
     super::arrange(&mut wm.test_ctx(), Some(monitor_id));
 
-    assert!(wm.work.spawn_animations.is_empty());
+    assert!(wm.core.work.spawn_animations.is_empty());
 }
 
 #[test]
@@ -208,10 +220,10 @@ fn arrange_invalidates_pointer_placement_candidates() {
     assert!(
         super::preview_tree_at_point(&mut wm.test_ctx(), source, Point::new(201, 150),).is_some()
     );
-    assert!(wm.core.interaction.pointer_placement_cache.is_some());
+    assert!(wm.core.state.interaction.pointer_placement_cache.is_some());
 
     super::arrange(&mut wm.test_ctx(), Some(monitor_id));
-    assert!(wm.core.interaction.pointer_placement_cache.is_none());
+    assert!(wm.core.state.interaction.pointer_placement_cache.is_none());
 }
 
 #[test]
@@ -235,6 +247,7 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
     let tiling = super::selected_tiling(&wm.test_ctx());
     let (slots, constraints_fit) = tiling.slots(
         &wm.core
+            .state
             .model
             .expect_selected_monitor()
             .per_tag()
@@ -242,8 +255,11 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
             .layout_tree,
     );
     assert!(constraints_fit);
-    let applied_preview =
-        tiling.outer_rect(wm.core.model.client(source).unwrap(), slots[&source], true);
+    let applied_preview = tiling.outer_rect(
+        wm.core.state.model.client(source).unwrap(),
+        slots[&source],
+        true,
+    );
     assert_eq!(
         applied_preview, preview,
         "release must apply the exact candidate displayed by pointer preview"
@@ -268,6 +284,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
     apply_preset(&mut wm, monitor_id, Preset::MasterStack, &[first, second]);
     let origin = wm
         .core
+        .state
         .model
         .monitor(monitor_id)
         .unwrap()
@@ -277,6 +294,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
         .clone();
 
     wm.core
+        .state
         .interaction
         .drag
         .begin_tree_resize(crate::core_state::TreeResizeStart {
@@ -294,6 +312,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
 
     assert_eq!(
         wm.core
+            .state
             .model
             .monitor(monitor_id)
             .unwrap()
@@ -386,12 +405,12 @@ fn pointer_tree_resize_remains_active_when_client_minimums_are_impossible() {
     let windows = [WindowId(1), WindowId(2)];
     let monitor_id = add_tiled_monitor(&mut wm, &windows, Rect::new(0, 0, 300, 100));
     for win in windows {
-        let client = wm.core.model.client_mut(win).unwrap();
+        let client = wm.core.state.model.client_mut(win).unwrap();
         client.size_hints.min_width = 200;
         client.size_hints.min_height = 50;
     }
     apply_preset(&mut wm, monitor_id, Preset::MasterStack, &windows);
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     let origin = monitor.per_tag().unwrap().layout_tree.clone();
     let before = origin.bounds(monitor.available_rect)[&windows[0]];
 
@@ -404,7 +423,7 @@ fn pointer_tree_resize_remains_active_when_client_minimums_are_impossible() {
         Point::new(before.right() + 30, before.y + before.h / 2),
     ));
 
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     let after = monitor
         .per_tag()
         .unwrap()
@@ -970,7 +989,7 @@ fn slot_tree_bounds(
     wm: &crate::test_support::TestWm,
     monitor_id: crate::types::MonitorId,
 ) -> HashMap<WindowId, Rect> {
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     monitor
         .per_tag()
         .unwrap()
@@ -982,7 +1001,12 @@ fn slot_presentation(
     wm: &crate::test_support::TestWm,
     monitor_id: crate::types::MonitorId,
 ) -> PresentationMode {
-    wm.core.model.monitor(monitor_id).unwrap().current_layout()
+    wm.core
+        .state
+        .model
+        .monitor(monitor_id)
+        .unwrap()
+        .current_layout()
 }
 
 #[test]
@@ -993,6 +1017,7 @@ fn switching_layouts_back_and_forth_restores_manual_edits() {
     crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -1019,6 +1044,7 @@ fn reactivating_the_visible_layout_resets_manual_edits() {
 
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -1039,7 +1065,7 @@ fn first_activation_applies_the_rule_to_the_current_tree() {
 
     // A manual arrangement with a non-stack leaf order.
     {
-        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
         let state = monitor.per_tag_state();
         state
             .layout_tree
@@ -1048,6 +1074,7 @@ fn first_activation_applies_the_rule_to_the_current_tree() {
     }
     let manual_order = wm
         .core
+        .state
         .model
         .monitor(monitor_id)
         .unwrap()
@@ -1058,7 +1085,7 @@ fn first_activation_applies_the_rule_to_the_current_tree() {
 
     crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
 
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     let state = monitor.per_tag().unwrap();
     assert_eq!(state.layout_tree.leaves(), manual_order);
     assert_eq!(state.active_preset, Preset::Grid);
@@ -1076,6 +1103,7 @@ fn layout_key_lifts_a_lens_without_resetting_the_slot() {
     crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -1108,6 +1136,7 @@ fn never_activated_default_tree_seeds_instead_of_being_remembered() {
 
     // The organically grown default tree is not a remembered tile slot.
     wm.core
+        .state
         .model
         .monitor_mut(monitor_id)
         .unwrap()
@@ -1119,6 +1148,7 @@ fn never_activated_default_tree_seeds_instead_of_being_remembered() {
     {
         let state = wm
             .core
+            .state
             .model
             .monitor(monitor_id)
             .unwrap()
@@ -1130,7 +1160,7 @@ fn never_activated_default_tree_seeds_instead_of_being_remembered() {
 
     // Tile's first activation seeds from the grid tree and applies its rule.
     crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Tile);
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     let state = monitor.per_tag().unwrap();
     assert_eq!(state.active_preset, Preset::MasterStack);
     assert!(state.stored_trees.contains_key(&Preset::Grid));
@@ -1171,6 +1201,7 @@ fn restored_slot_reconciles_windows_opened_and_closed_while_inactive() {
 
     let leaves = wm
         .core
+        .state
         .model
         .monitor(monitor_id)
         .unwrap()
@@ -1204,6 +1235,7 @@ fn maximized_reorder_edits_the_active_slot() {
     );
     let reordered = wm
         .core
+        .state
         .model
         .monitor(monitor_id)
         .unwrap()
@@ -1218,6 +1250,7 @@ fn maximized_reorder_edits_the_active_slot() {
     crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
     assert_eq!(
         wm.core
+            .state
             .model
             .monitor(monitor_id)
             .unwrap()
@@ -1237,6 +1270,7 @@ fn cycling_a_full_lap_restores_the_starting_layout_without_resetting_it() {
     crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -1253,6 +1287,7 @@ fn cycling_a_full_lap_restores_the_starting_layout_without_resetting_it() {
 
     let state = wm
         .core
+        .state
         .model
         .monitor(monitor_id)
         .unwrap()
@@ -1269,6 +1304,7 @@ fn cycling_visits_lenses_and_never_lands_on_the_current_state() {
 
     let active_preset = |wm: &crate::test_support::TestWm| {
         wm.core
+            .state
             .model
             .monitor(monitor_id)
             .unwrap()
@@ -1330,6 +1366,7 @@ fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
     let stock = slot_tree_bounds(&wm, monitor_id);
     assert!(
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -1352,11 +1389,12 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
     // per-output scaling applied by the monitor-sync path. On a 2x output that
     // left a 1x-tall bar alongside 2x padding and start-menu width.
     let mut wm = crate::test_support::TestWm::new(crate::backend::WaylandBackendData::default());
-    wm.core.config.animations.enabled = false;
+    wm.core.state.config.animations.enabled = false;
 
     let win = WindowId(1);
     let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 1600, 1200));
     wm.core
+        .state
         .model
         .monitor_mut(monitor_id)
         .unwrap()
@@ -1371,7 +1409,7 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
 
     super::arrange(&mut wm.test_ctx(), Some(monitor_id));
 
-    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     assert_eq!(
         monitor.bar_height, 60,
         "arrange must not clobber the scaled bar height with the unscaled global"
@@ -1382,14 +1420,15 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
 
 // Full shared drag pipeline regressions. These require no native display server.
 fn begin_tiled_move(wm: &mut crate::test_support::TestWm, win: WindowId) -> Rect {
-    if !wm.core.model.client(win).unwrap().geo.is_valid() {
+    if !wm.core.state.model.client(win).unwrap().geo.is_valid() {
         // Native clients enter the model with valid initial geometry.
-        let id = wm.core.model.monitor_of_client(win).unwrap();
-        wm.core.model.client_mut(win).unwrap().geo = Rect::new(0, 0, 100, 100);
+        let id = wm.core.state.model.monitor_of_client(win).unwrap();
+        wm.core.state.model.client_mut(win).unwrap().geo = Rect::new(0, 0, 100, 100);
         super::arrange(&mut wm.test_ctx(), Some(id));
     }
-    let geo = wm.core.model.client(win).unwrap().geo;
+    let geo = wm.core.state.model.client(win).unwrap().geo;
     wm.core
+        .state
         .interaction
         .drag
         .begin_move(
@@ -1407,34 +1446,34 @@ fn begin_tiled_move(wm: &mut crate::test_support::TestWm, win: WindowId) -> Rect
 fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
     for point in [Point::new(810, 300), Point::new(1100, 300)] {
         let mut wm = wayland_wm();
-        wm.core.config.animations.enabled = false;
-        wm.core.config.layout.smart_gaps = true;
-        wm.core.config.layout.outer_gap = 20;
+        wm.core.state.config.animations.enabled = false;
+        wm.core.state.config.layout.smart_gaps = true;
+        wm.core.state.config.layout.outer_gap = 20;
         let win = WindowId(901);
         let a = add_tiled_monitor(&mut wm, &[win, WindowId(902)], Rect::new(0, 0, 800, 600));
         apply_preset(&mut wm, a, Preset::MasterStack, &[win, WindowId(902)]);
         let b = add_tiled_monitor(&mut wm, &[WindowId(903)], Rect::new(800, 0, 800, 600));
         apply_preset(&mut wm, b, Preset::MasterStack, &[WindowId(903)]);
-        wm.core.model.monitors.set_selected(a);
+        wm.core.state.model.monitors.set_selected(a);
         super::arrange(&mut wm.test_ctx(), None);
         let original = begin_tiled_move(&mut wm, win);
         assert!(crate::mouse::drag::apply_active_drag_motion(
             &mut wm.test_ctx(),
             point
         ));
-        assert_eq!(wm.core.model.client(win).unwrap().geo, original);
-        assert_eq!(wm.core.model.selected_monitor_id(), a);
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(a));
+        assert_eq!(wm.core.state.model.client(win).unwrap().geo, original);
+        assert_eq!(wm.core.state.model.selected_monitor_id(), a);
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(a));
         let preview = super::preview_tree_at_point(&mut wm.test_ctx(), win, point).unwrap();
         assert!(crate::mouse::drag::active_drag_finish(
             &mut wm.test_ctx(),
             MouseButton::Left,
             crate::types::ModMask::NONE
         ));
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
-        assert_eq!(wm.core.model.selected_monitor_id(), b);
-        assert_eq!(wm.core.model.selected_win(), Some(win));
-        let client = wm.core.model.client(win).unwrap();
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(b));
+        assert_eq!(wm.core.state.model.selected_monitor_id(), b);
+        assert_eq!(wm.core.state.model.selected_win(), Some(win));
+        let client = wm.core.state.model.client(win).unwrap();
         let actual = Rect::new(
             client.geo.x,
             client.geo.y,
@@ -1445,6 +1484,7 @@ fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
         assert_eq!(client.mode(), ClientMode::tiled());
         assert_eq!(
             wm.core
+                .state
                 .model
                 .monitor(a)
                 .unwrap()
@@ -1456,6 +1496,7 @@ fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
         );
         assert!(
             wm.core
+                .state
                 .model
                 .monitor(b)
                 .unwrap()
@@ -1471,20 +1512,21 @@ fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
 #[test]
 fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
     let mut wm = wayland_wm();
-    wm.core.config.animations.enabled = false;
+    wm.core.state.config.animations.enabled = false;
     let win = WindowId(911);
     let a = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
     apply_preset(&mut wm, a, Preset::MasterStack, &[win]);
     let b = add_tiled_monitor(&mut wm, &[], Rect::new(-800, -600, 800, 600));
     wm.core
+        .state
         .model
         .monitor_mut(b)
         .unwrap()
         .set_selected_tags(TagMask::single(2).unwrap());
-    wm.core.model.monitors.set_selected(a);
+    wm.core.state.model.monitors.set_selected(a);
     super::arrange(&mut wm.test_ctx(), None);
     assert!(super::uses_manual_tree_pointer_interaction(
-        &wm.core.model,
+        &wm.core.state.model,
         win
     ));
     begin_tiled_move(&mut wm, win);
@@ -1496,13 +1538,14 @@ fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
         MouseButton::Left,
         crate::types::ModMask::NONE,
     );
-    assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+    assert_eq!(wm.core.state.model.monitor_of_client(win), Some(b));
     assert_eq!(
-        wm.core.model.client(win).unwrap().tags,
+        wm.core.state.model.client(win).unwrap().tags,
         TagMask::single(2).unwrap()
     );
     assert!(
         wm.core
+            .state
             .model
             .monitor(a)
             .unwrap()
@@ -1514,6 +1557,7 @@ fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
     );
     assert_eq!(
         wm.core
+            .state
             .model
             .monitor(b)
             .unwrap()
@@ -1533,7 +1577,7 @@ fn cross_monitor_preview_cancellation_preserves_both_trees() {
     apply_preset(&mut wm, a, Preset::MasterStack, &[win, WindowId(922)]);
     let b = add_tiled_monitor(&mut wm, &[WindowId(923)], Rect::new(800, 0, 800, 600));
     apply_preset(&mut wm, b, Preset::MasterStack, &[WindowId(923)]);
-    wm.core.model.monitors.set_selected(a);
+    wm.core.state.model.monitors.set_selected(a);
     super::arrange(&mut wm.test_ctx(), None);
     let original = begin_tiled_move(&mut wm, win);
     crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), Point::new(1100, 300));
@@ -1543,10 +1587,11 @@ fn cross_monitor_preview_cancellation_preserves_both_trees() {
             crate::core_state::DragCancelReason::InputCaptureLost,
         ),
     );
-    assert_eq!(wm.core.model.client(win).unwrap().geo, original);
-    assert_eq!(wm.core.model.monitor_of_client(win), Some(a));
+    assert_eq!(wm.core.state.model.client(win).unwrap().geo, original);
+    assert_eq!(wm.core.state.model.monitor_of_client(win), Some(a));
     assert_eq!(
         wm.core
+            .state
             .model
             .monitor(a)
             .unwrap()
@@ -1559,6 +1604,7 @@ fn cross_monitor_preview_cancellation_preserves_both_trees() {
     );
     assert_eq!(
         wm.core
+            .state
             .model
             .monitor(b)
             .unwrap()
@@ -1568,43 +1614,49 @@ fn cross_monitor_preview_cancellation_preserves_both_trees() {
             .leaves(),
         vec![WindowId(923)]
     );
-    assert!(wm.core.interaction.pointer_placement_cache.is_none());
+    assert!(wm.core.state.interaction.pointer_placement_cache.is_none());
 }
 
 #[test]
 fn tiled_drag_into_floating_or_maximized_output_keeps_tiled_membership() {
     for presentation in [PresentationMode::Floating, PresentationMode::Maximized] {
         let mut wm = wayland_wm();
-        wm.core.config.animations.enabled = false;
+        wm.core.state.config.animations.enabled = false;
         let win = WindowId(931);
         let a = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
         apply_preset(&mut wm, a, Preset::MasterStack, &[win]);
         let b = add_tiled_monitor(&mut wm, &[], Rect::new(800, 0, 800, 600));
         wm.core
+            .state
             .model
             .monitor_mut(b)
             .unwrap()
             .per_tag_state()
             .presentation = presentation;
-        wm.core.model.client_mut(win).unwrap().old_border_width = 4;
-        wm.core.model.monitors.set_selected(a);
+        wm.core
+            .state
+            .model
+            .client_mut(win)
+            .unwrap()
+            .old_border_width = 4;
+        wm.core.state.model.monitors.set_selected(a);
         super::arrange(&mut wm.test_ctx(), None);
         let original = begin_tiled_move(&mut wm, win);
         let point = Point::new(1200, 300);
         crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), point);
-        assert_eq!(wm.core.model.client(win).unwrap().geo, original);
-        let preview = wm.core.interaction.layout_preview.unwrap();
+        assert_eq!(wm.core.state.model.client(win).unwrap().geo, original);
+        let preview = wm.core.state.interaction.layout_preview.unwrap();
         crate::mouse::drag::active_drag_finish(
             &mut wm.test_ctx(),
             MouseButton::Left,
             crate::types::ModMask::NONE,
         );
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(b));
         assert_eq!(
-            wm.core.model.client(win).unwrap().placement(),
+            wm.core.state.model.client(win).unwrap().placement(),
             ClientPlacement::Tiling
         );
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.geo.x >= 800);
         assert_eq!(
             Rect::new(
@@ -1616,6 +1668,7 @@ fn tiled_drag_into_floating_or_maximized_output_keeps_tiled_membership() {
             preview
         );
         wm.core
+            .state
             .model
             .monitor_mut(b)
             .unwrap()
@@ -1624,6 +1677,7 @@ fn tiled_drag_into_floating_or_maximized_output_keeps_tiled_membership() {
         super::arrange(&mut wm.test_ctx(), Some(b));
         assert_eq!(
             wm.core
+                .state
                 .model
                 .monitor(b)
                 .unwrap()
@@ -1643,22 +1697,22 @@ fn drag_target_ignores_selection_and_never_hits_outputs_through_voids() {
     let win = WindowId(941);
     let a = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
     let b = add_tiled_monitor(&mut wm, &[], Rect::new(0, 800, 800, 600));
-    wm.core.model.monitors.set_selected(a);
+    wm.core.state.model.monitors.set_selected(a);
     assert_eq!(
-        resolve_move_drop(&wm.core.model, win, Point::new(799, 900)),
+        resolve_move_drop(&wm.core.state.model, win, Point::new(799, 900)),
         Some(MoveDropTarget::Tree(b))
     );
     assert_eq!(
-        resolve_move_drop(&wm.core.model, win, Point::new(799, 700)),
+        resolve_move_drop(&wm.core.state.model, win, Point::new(799, 700)),
         None
     );
     assert_eq!(
-        resolve_move_drop(&wm.core.model, win, Point::new(1200, -100)),
+        resolve_move_drop(&wm.core.state.model, win, Point::new(1200, -100)),
         None
     );
-    wm.core.model.monitors.set_selected(b);
+    wm.core.state.model.monitors.set_selected(b);
     assert_eq!(
-        resolve_move_drop(&wm.core.model, win, Point::new(799, 300)),
+        resolve_move_drop(&wm.core.state.model, win, Point::new(799, 300)),
         Some(MoveDropTarget::Tree(a))
     );
 }
@@ -1666,10 +1720,10 @@ fn drag_target_ignores_selection_and_never_hits_outputs_through_voids() {
 #[test]
 fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
     let mut wm = wayland_wm();
-    wm.core.config.animations.enabled = false;
-    wm.core.config.window.resize_hints = true;
-    wm.core.config.layout.smart_gaps = true;
-    wm.core.config.layout.outer_gap = 20;
+    wm.core.state.config.animations.enabled = false;
+    wm.core.state.config.window.resize_hints = true;
+    wm.core.state.config.layout.smart_gaps = true;
+    wm.core.state.config.layout.outer_gap = 20;
     let win = WindowId(951);
     let a = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
     apply_preset(&mut wm, a, Preset::MasterStack, &[win]);
@@ -1677,15 +1731,15 @@ fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
     let b = add_tiled_monitor(&mut wm, &[other], Rect::new(800, 0, 800, 600));
     apply_preset(&mut wm, b, Preset::MasterStack, &[other]);
     for window in [win, other] {
-        let client = wm.core.model.client_mut(window).unwrap();
+        let client = wm.core.state.model.client_mut(window).unwrap();
         client.geo = Rect::new(0, 0, 100, 100);
         client.old_border_width = 4;
         client.size_hints.min_width = 250;
         client.size_hints.min_height = 200;
     }
-    wm.core.model.monitors.set_selected(a);
+    wm.core.state.model.monitors.set_selected(a);
     super::arrange(&mut wm.test_ctx(), None);
-    assert_eq!(wm.core.model.client(win).unwrap().border_width, 0);
+    assert_eq!(wm.core.state.model.client(win).unwrap().border_width, 0);
     begin_tiled_move(&mut wm, win);
     let point = Point::new(1100, 300);
     crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), point);
@@ -1695,7 +1749,7 @@ fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
         MouseButton::Left,
         crate::types::ModMask::NONE,
     );
-    let client = wm.core.model.client(win).unwrap();
+    let client = wm.core.state.model.client(win).unwrap();
     assert_eq!(client.border_width, 4);
     assert_eq!(
         Rect::new(

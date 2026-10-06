@@ -7,8 +7,9 @@ pub(crate) mod scene;
 pub mod status;
 pub(crate) mod text;
 
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::core_state::ActiveWmMode;
+use crate::core_state::WmCore;
 use crate::types::*;
 use std::collections::HashMap;
 
@@ -193,10 +194,7 @@ impl<'core> RootBarTarget<'core> {
 
 /// Resolve the monitor under `root` and classify whether the point is on its
 /// visible bar. `None` means no connected monitor contains the point.
-pub fn root_bar_target_at<'core>(
-    core: &'core CoreCtx<'_>,
-    root: Point,
-) -> Option<RootBarTarget<'core>> {
+pub fn root_bar_target_at<'core>(core: &'core WmCore, root: Point) -> Option<RootBarTarget<'core>> {
     let rect = crate::mouse::pointer::point_rect(root);
     let monitor = core.model().monitors.monitor_intersecting_rect(rect)?;
     if monitor.bar_contains_y(root.y) {
@@ -316,7 +314,7 @@ pub fn handle_status_text_click(
 /// Record hit geometry as if every bar had been rendered, using a fixed-width
 /// font.
 #[cfg(test)]
-pub(crate) fn render_hit_caches_for_test(core: &mut CoreCtx) {
+pub(crate) fn render_hit_caches_for_test(core: &mut WmCore) {
     struct FixedWidthPainter;
 
     impl paint::BarPainter for FixedWidthPainter {

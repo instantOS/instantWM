@@ -29,22 +29,20 @@ fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
         if !monitors
             .iter()
             .any(|(_, monitor)| monitor.monitor_rect.contains_point(point))
-        {
-            if let Some(monitor) = ctx
+            && let Some(monitor) = ctx
                 .core
                 .model()
                 .selected_monitor()
                 .or_else(|| monitors.iter().next().map(|(_, monitor)| monitor))
-            {
-                let rect = monitor.monitor_rect;
-                ctx.x11.warp_pointer(
-                    f64::from(rect.x + rect.w / 2),
-                    f64::from(rect.y + rect.h / 2),
-                );
-            }
+        {
+            let rect = monitor.monitor_rect;
+            ctx.x11.warp_pointer(
+                f64::from(rect.x + rect.w / 2),
+                f64::from(rect.y + rect.h / 2),
+            );
         }
     }
-    crate::backend::x11::update_ewmh_desktop_props(ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
     ctx.core.queue_layout_for_all_monitors_urgent();
 }

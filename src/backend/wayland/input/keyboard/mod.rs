@@ -12,7 +12,6 @@ use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::Keysym;
-use crate::wm::WaylandWm as Wm;
 
 use smithay::utils::SERIAL_COUNTER;
 
@@ -121,7 +120,6 @@ pub fn vt_switch_target(
 
 /// Handle keyboard events.
 pub fn handle_keyboard<B: InputBackend>(
-    wm: &mut Wm,
     state: &mut WaylandState,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     event: impl KeyboardKeyEvent<B>,
@@ -217,7 +215,8 @@ pub fn handle_keyboard<B: InputBackend>(
 
             if raw_keysym == crate::config::keysyms::XK_ESCAPE {
                 let closed_native = data.dismiss_native_systray_menu();
-                let closed_hosted = crate::backend::wayland::input::bar::close_systray_menu(wm);
+                let closed_hosted =
+                    crate::backend::wayland::input::bar::close_systray_menu(&mut data.wm);
                 if closed_hosted {
                     data.native.request_bar_redraw();
                 }
@@ -231,7 +230,7 @@ pub fn handle_keyboard<B: InputBackend>(
             }
             if suppression.is_none() {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
-                let ctx = wm.wayland_ctx(data);
+                let ctx = data.ctx();
                 let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
                 };

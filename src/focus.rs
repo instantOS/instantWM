@@ -1,10 +1,11 @@
 //! Focus management using explicit WM context.
 //!
-//! This module provides window focus functionality via `CoreCtx`, avoiding
+//! This module provides window focus functionality via `WmCore`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::core_state::CoreState;
+use crate::core_state::WmCore;
 use crate::model::WmModel;
 use crate::types::*;
 
@@ -106,7 +107,7 @@ pub(crate) enum BackendRefresh {
 /// and syncs projected z-order; callers that need the previous backend focus to
 /// be re-derived from scratch use [`refresh_focus`] instead.
 pub(crate) fn apply_focus_transition<B: FocusBackendOps + ?Sized>(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     win: Option<WindowId>,
     previous_focus: Option<WindowId>,
     backend: &mut B,
@@ -133,7 +134,7 @@ pub(crate) fn apply_focus_transition<B: FocusBackendOps + ?Sized>(
 
 /// Commit shared policy without calling the backend or retaining model borrows.
 fn commit_focus_transition(
-    core: &mut CoreCtx<'_>,
+    core: &mut WmCore,
     target: Option<WindowId>,
     previous_focus: Option<WindowId>,
     needs_refocus: bool,
@@ -224,17 +225,29 @@ fn focus_impl(
                 x11: &x11_ctx.x11,
                 x11_runtime: &*x11_ctx.x11_runtime,
             };
-            apply_focus_transition(
-                &mut x11_ctx.core,
-                win,
-                previous_focus,
-                &mut backend,
-                refresh,
-            )
+            apply_focus_transition(x11_ctx.core, win, previous_focus, &mut backend, refresh)
         }
-        Wayland(wayland_ctx) => wayland_ctx.wayland.with_state(|state| {
-            apply_focus_transition(&mut wayland_ctx.core, win, previous_focus, state, refresh)
-        }),
+        Wayland(wayland_ctx) => {
+            let state = &mut *wayland_ctx.wayland.state;
+            if state.wm.core.model().monitors.is_empty() {
+                return;
+            }
+            let target = resolve_focus_target(state.wm.core.model(), win);
+            let needs_refocus = target.is_some_and(|win| !state.is_seat_focused_on(win));
+            let effects = commit_focus_transition(
+                &mut state.wm.core,
+                target,
+                previous_focus,
+                needs_refocus,
+                refresh,
+            );
+            // Wayland has no passive key grabs to refresh. The model borrow
+            // ends before seat callbacks inspect the compositor root.
+            if let Some(projection) = effects.projection {
+                state.project_focus(projection);
+            }
+            effects.z_order_monitor
+        }
     };
     if let Some(monitor_id) = z_order_monitor {
         crate::layouts::sync_monitor_z_order(ctx, monitor_id);

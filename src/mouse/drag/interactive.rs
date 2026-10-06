@@ -467,20 +467,21 @@ mod tests {
         .check()
         .unwrap();
         let mut wm = crate::wm::X11Wm::new(crate::backend::X11BackendData::new(conn, screen));
-        wm.core.config.animations.enabled = true;
-        wm.core.derived.display.width = 1920;
-        wm.core.derived.display.height = 1080;
+        wm.core.state.config.animations.enabled = true;
+        wm.core.state.derived.display.width = 1920;
+        wm.core.state.derived.display.height = 1080;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_drag_monitor(&mut wm.core.model, false);
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = push_drag_monitor(&mut wm.core.state.model, false);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tags);
         let win = WindowId::from(xid);
         let original = Rect::new(100, 100, 500, 300);
-        add_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = tags;
             client.mode = ClientMode::floating();
@@ -489,6 +490,7 @@ mod tests {
             client.border_width = 0;
         });
         wm.core
+            .state
             .interaction
             .drag
             .begin_move(
@@ -503,14 +505,15 @@ mod tests {
             &mut wm.x11_ctx(),
             Point::new(350, 300)
         ));
-        let moved = wm.core.model.client(win).unwrap().geo;
+        let moved = wm.core.state.model.client(win).unwrap().geo;
         assert_eq!(moved, Rect::new(300, 250, 500, 300));
         assert!(wm.backend.x11_runtime.window_animations.is_empty());
         let actual = wm.backend.conn.get_geometry(xid).unwrap().reply().unwrap();
         assert_eq!((actual.x, actual.y), (300, 250));
 
-        wm.core.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.drag.cancel_capture().unwrap();
         wm.core
+            .state
             .interaction
             .drag
             .begin_resize(
@@ -530,7 +533,7 @@ mod tests {
         let actual = wm.backend.conn.get_geometry(xid).unwrap().reply().unwrap();
         assert_eq!(actual.width, 700);
 
-        wm.core.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.drag.cancel_capture().unwrap();
         wm.x11_ctx().move_resize(
             win,
             original,
@@ -547,16 +550,17 @@ mod tests {
     fn end_edge_resize_accounts_for_the_modelled_border() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_drag_monitor(&mut wm.core.model, true);
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = push_drag_monitor(&mut wm.core.state.model, true);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tags);
         let win = WindowId(17);
         let geometry = Rect::new(100, 100, 500, 300);
-        add_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = tags;
             client.mode = ClientMode::floating();
@@ -564,6 +568,7 @@ mod tests {
             client.border_width = 5;
         });
         wm.core
+            .state
             .interaction
             .drag
             .begin_resize(
@@ -580,7 +585,7 @@ mod tests {
             &mut wm.test_ctx(),
             Point::new(710, 250)
         ));
-        assert_eq!(wm.core.model.client(win).unwrap().geo.w, 601);
+        assert_eq!(wm.core.state.model.client(win).unwrap().geo.w, 601);
     }
 
     #[test]
@@ -588,6 +593,7 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let win = WindowId(99);
         wm.core
+            .state
             .interaction
             .drag
             .begin_tree_resize(crate::core_state::TreeResizeStart {
@@ -611,21 +617,23 @@ mod tests {
     fn mid_drag_tag_switch_cancels_instead_of_steering_a_hidden_window() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_drag_monitor(&mut wm.core.model, true);
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = push_drag_monitor(&mut wm.core.state.model, true);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tags);
         let win = WindowId(17);
-        add_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = tags;
             client.mode = ClientMode::floating();
             client.geo = Rect::new(100, 100, 500, 300);
         });
         wm.core
+            .state
             .interaction
             .drag
             .begin_move(
@@ -640,6 +648,7 @@ mod tests {
         // A mid-drag keybind views another tag: the window stays managed but
         // is no longer on the monitor's selected tags.
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -658,7 +667,7 @@ mod tests {
             ),
             crate::mouse::interaction::InteractionOutcome::Captured
         );
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
         assert_eq!(
             crate::mouse::interaction::handle(
                 &mut wm.test_ctx(),
@@ -670,6 +679,6 @@ mod tests {
             crate::mouse::interaction::InteractionOutcome::Ignored
         );
         // The window itself stays managed.
-        assert!(wm.core.model.client(win).is_some());
+        assert!(wm.core.state.model.client(win).is_some());
     }
 }

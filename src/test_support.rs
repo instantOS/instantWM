@@ -184,20 +184,18 @@ pub fn add_selected_client_with(
 /// Its context is built through the production entry point; no fixture fields
 /// or alternate dispatch code are compiled into the window manager.
 pub struct TestWm {
-    wm: crate::wm::WaylandWm,
     native: crate::backend::wayland::compositor::WaylandState,
 }
 
 impl TestWm {
     pub fn new(backend: crate::backend::WaylandBackendData) -> Self {
-        Self {
-            wm: crate::wm::WaylandWm::new(backend),
-            native: crate::test_support::new_compositor().1,
-        }
+        let mut native = crate::test_support::new_compositor().1;
+        native.wm.backend = backend;
+        Self { native }
     }
 
     pub fn test_ctx(&mut self) -> crate::contexts::WmCtx<'_> {
-        self.wm.wayland_ctx(&mut self.native)
+        self.native.ctx()
     }
 
     pub fn with_ctx<T>(&mut self, f: impl FnOnce(&mut crate::contexts::WmCtx<'_>) -> T) -> T {
@@ -209,12 +207,12 @@ impl TestWm {
 impl std::ops::Deref for TestWm {
     type Target = crate::wm::WaylandWm;
     fn deref(&self) -> &Self::Target {
-        &self.wm
+        &self.native.wm
     }
 }
 impl std::ops::DerefMut for TestWm {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.wm
+        &mut self.native.wm
     }
 }
 
@@ -223,9 +221,7 @@ pub fn new_compositor() -> (
     calloop::EventLoop<'static, crate::backend::wayland::compositor::WaylandState>,
     crate::backend::wayland::compositor::WaylandState,
 ) {
-    crate::backend::wayland::compositor::new_event_loop_and_state(std::rc::Rc::new(
-        std::cell::RefCell::new(crate::wm::WaylandWm::new(
-            crate::backend::WaylandBackendData::default(),
-        )),
+    crate::backend::wayland::compositor::new_event_loop_and_state(crate::wm::WaylandWm::new(
+        crate::backend::WaylandBackendData::default(),
     ))
 }

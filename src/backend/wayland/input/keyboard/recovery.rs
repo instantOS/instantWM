@@ -4,6 +4,7 @@
 //! compositor safety invariant with fixed semantics, available only while an
 //! application is suppressing compositor shortcuts.
 
+use crate::backend::wayland::compositor::WaylandNativeState;
 use std::time::{Duration, Instant};
 
 use smithay::input::keyboard::Keycode;
@@ -52,7 +53,7 @@ impl ShortcutRecoveryState {
         self.armed.is_some()
     }
 
-    fn needs_tick(&self) -> bool {
+    pub(crate) fn needs_tick(&self) -> bool {
         self.armed.is_some() || self.confirmation.is_some()
     }
 
@@ -279,7 +280,7 @@ impl WaylandState {
     }
 
     fn shortcut_recovery_output(&self, surface: &WlSurface) -> Option<Output> {
-        if let Some(window_id) = self.window_id_for_surface(surface)
+        if let Some(window_id) = self.native.window_id_for_surface(surface)
             && let Some(window) = self.native.find_window(window_id)
         {
             let outputs = self.native.outputs_for_window_geometry(window);
@@ -311,6 +312,14 @@ impl WaylandState {
     }
 }
 
+impl WaylandNativeState {
+    pub(crate) fn shortcut_recovery_progress(&self, output: &Output) -> Option<f64> {
+        self.runtime
+            .shortcut_recovery
+            .progress_for_output(&output.name(), Instant::now())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,13 +336,5 @@ mod tests {
             normalized_progress(now, now + Duration::from_secs(3)),
             Some(1.0)
         );
-    }
-}
-
-impl crate::backend::wayland::compositor::WaylandNativeState {
-    pub(crate) fn shortcut_recovery_progress(&self, output: &Output) -> Option<f64> {
-        self.runtime
-            .shortcut_recovery
-            .progress_for_output(&output.name(), Instant::now())
     }
 }

@@ -208,11 +208,12 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         for (event, monitor, mode) in hooks {
             wm.core
+                .state
                 .config
                 .bindings
                 .modes
                 .insert(mode.to_string(), crate::config::ModeConfig::default());
-            wm.core.config.hooks.push(Hook {
+            wm.core.state.config.hooks.push(Hook {
                 event,
                 monitor: monitor.map(str::to_string),
                 action: KeyAction::Named(NamedAction::SetMode(mode.to_string())),
@@ -222,7 +223,7 @@ mod tests {
     }
 
     fn current_mode(wm: &Wm) -> &ActiveWmMode {
-        &wm.core.behavior.current_mode
+        &wm.core.state.behavior.current_mode
     }
 
     #[test]
@@ -233,7 +234,7 @@ mod tests {
             (HookEvent::MonitorConnected, Some("HDMI-A-1"), "wrong"),
             (HookEvent::MonitorDisconnected, None, "wrong"),
         ]);
-        wm.work.hooked_monitors = vec![monitor("eDP-1", 0), monitor("DP-1", 1920)];
+        wm.core.work.hooked_monitors = vec![monitor("eDP-1", 0), monitor("DP-1", 1920)];
 
         wm.with_ctx(|wm| {
             dispatch_monitor_hooks(
@@ -251,7 +252,7 @@ mod tests {
             current_mode(&wm),
             &ActiveWmMode::Named("changed".to_string())
         );
-        assert!(wm.core.hook_env.is_empty());
+        assert!(wm.core.state.hook_env.is_empty());
 
         let mut wm = wm_with_mode_hooks(vec![
             (HookEvent::MonitorConnected, Some("DP-1"), "docked"),
@@ -293,13 +294,13 @@ mod tests {
             );
         };
         let mut wm = wm_with_mode_hooks(vec![(HookEvent::MonitorsChanged, None, "changed")]);
-        wm.core.model.monitors = MonitorManager::new();
+        wm.core.state.model.monitors = MonitorManager::new();
         wm.with_ctx(|wm| push(wm, 0, "eDP-1", 0));
         let initial = current_mode(&wm).clone();
 
         wm.with_ctx(run_monitor_hooks);
         assert_eq!(current_mode(&wm), &initial, "startup must not fire");
-        assert_eq!(wm.work.hooked_monitors.len(), 1);
+        assert_eq!(wm.core.work.hooked_monitors.len(), 1);
 
         wm.with_ctx(|wm| push(wm, 1, "DP-1", 1920));
         wm.with_ctx(run_monitor_hooks);
@@ -308,7 +309,7 @@ mod tests {
             &ActiveWmMode::Named("changed".to_string())
         );
 
-        wm.core.behavior.current_mode = initial.clone();
+        wm.core.state.behavior.current_mode = initial.clone();
         wm.with_ctx(run_monitor_hooks);
         assert_eq!(
             current_mode(&wm),
@@ -324,7 +325,7 @@ mod tests {
 
         wm.with_ctx(run_monitor_hooks);
 
-        assert!(wm.work.hooked_monitors.is_empty());
+        assert!(wm.core.work.hooked_monitors.is_empty());
         assert_eq!(current_mode(&wm), &before);
     }
 }

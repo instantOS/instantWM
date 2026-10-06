@@ -9,10 +9,12 @@ mod hot_corner;
 mod interactions;
 mod keyboard_state;
 mod mode;
+mod wm_core;
 pub use hot_corner::*;
 pub use interactions::*;
 pub use keyboard_state::*;
 pub use mode::*;
+pub use wm_core::WmCore;
 
 // ---------------------------------------------------------------------------
 // Effective configuration
@@ -396,7 +398,7 @@ pub struct InteractionState {
 ///
 /// The authoritative client/monitor/tag graph lives in `model`; configuration
 /// and transient interaction state are deliberately kept alongside it rather
-/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
+/// than inside it. Keeping these categories in one aggregate gives `WmCore`
 /// a single borrow boundary without mixing backend resources into core state.
 #[derive(Default)]
 pub struct CoreState {
@@ -906,10 +908,15 @@ mod tag_count_reload_tests {
     #[test]
     fn reducing_tag_count_rejects_a_window_on_a_removed_tag_without_mutation() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.apply_config(config_with_count(5)).unwrap();
-        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        wm.core.state.apply_config(config_with_count(5)).unwrap();
+        let id = wm
+            .core
+            .state
+            .model
+            .monitors
+            .push(Monitor::new_with_values());
         let win = WindowId(42);
-        wm.core.model.add_client(
+        wm.core.state.model.add_client(
             id,
             Client {
                 win,
@@ -918,11 +925,15 @@ mod tag_count_reload_tests {
             },
         );
 
-        let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
+        let error = wm
+            .core
+            .state
+            .apply_config(config_with_count(4))
+            .unwrap_err();
         assert!(error.contains("window 42"), "{error}");
-        assert_eq!(wm.core.model.tags.num_tags, 5);
+        assert_eq!(wm.core.state.model.tags.num_tags, 5);
         assert_eq!(
-            wm.core.model.client(win).unwrap().tags,
+            wm.core.state.model.client(win).unwrap().tags,
             TagMask::single(5).unwrap()
         );
     }
@@ -930,8 +941,13 @@ mod tag_count_reload_tests {
     #[test]
     fn reducing_tag_count_rejects_a_scratchpad_with_a_removed_restore_tag() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.apply_config(config_with_count(5)).unwrap();
-        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        wm.core.state.apply_config(config_with_count(5)).unwrap();
+        let id = wm
+            .core
+            .state
+            .model
+            .monitors
+            .push(Monitor::new_with_values());
         let win = WindowId(43);
         let mut client = Client {
             win,
@@ -941,12 +957,16 @@ mod tag_count_reload_tests {
         client
             .promote_to_scratchpad(id, "test", None, 800, 600)
             .unwrap();
-        wm.core.model.add_client(id, client);
+        wm.core.state.model.add_client(id, client);
 
-        let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
+        let error = wm
+            .core
+            .state
+            .apply_config(config_with_count(4))
+            .unwrap_err();
         assert!(error.contains("window 43"), "{error}");
-        assert_eq!(wm.core.model.tags.num_tags, 5);
-        let scratchpad = wm.core.model.client(win).unwrap();
+        assert_eq!(wm.core.state.model.tags.num_tags, 5);
+        let scratchpad = wm.core.state.model.client(win).unwrap();
         assert_eq!(scratchpad.tags, TagMask::SCRATCHPAD);
         assert_eq!(
             scratchpad.scratchpad().unwrap().original_tags(),
@@ -957,8 +977,13 @@ mod tag_count_reload_tests {
     #[test]
     fn reducing_tag_count_keeps_a_scratchpad_with_valid_restore_tags() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.apply_config(config_with_count(5)).unwrap();
-        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        wm.core.state.apply_config(config_with_count(5)).unwrap();
+        let id = wm
+            .core
+            .state
+            .model
+            .monitors
+            .push(Monitor::new_with_values());
         let win = WindowId(44);
         let mut client = Client {
             win,
@@ -968,10 +993,10 @@ mod tag_count_reload_tests {
         client
             .promote_to_scratchpad(id, "test", None, 800, 600)
             .unwrap();
-        wm.core.model.add_client(id, client);
+        wm.core.state.model.add_client(id, client);
 
-        wm.core.apply_config(config_with_count(4)).unwrap();
-        let scratchpad = wm.core.model.client(win).unwrap();
+        wm.core.state.apply_config(config_with_count(4)).unwrap();
+        let scratchpad = wm.core.state.model.client(win).unwrap();
         assert_eq!(scratchpad.tags, TagMask::SCRATCHPAD);
         assert_eq!(
             scratchpad.scratchpad().unwrap().original_tags(),
@@ -982,33 +1007,48 @@ mod tag_count_reload_tests {
     #[test]
     fn reducing_tag_count_rejects_an_active_removed_view() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.apply_config(config_with_count(5)).unwrap();
-        let id = wm.core.model.monitors.push(Monitor::new_with_values());
+        wm.core.state.apply_config(config_with_count(5)).unwrap();
+        let id = wm
+            .core
+            .state
+            .model
+            .monitors
+            .push(Monitor::new_with_values());
         wm.core
+            .state
             .model
             .monitor_mut(id)
             .unwrap()
             .set_selected_tags(TagMask::single(5).unwrap());
 
-        let error = wm.core.apply_config(config_with_count(4)).unwrap_err();
+        let error = wm
+            .core
+            .state
+            .apply_config(config_with_count(4))
+            .unwrap_err();
         assert!(error.contains("selected"), "{error}");
-        assert_eq!(wm.core.model.tags.num_tags, 5);
+        assert_eq!(wm.core.state.model.tags.num_tags, 5);
     }
 
     #[test]
     fn reducing_tag_count_prunes_inactive_view_history() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.apply_config(config_with_count(5)).unwrap();
-        let id = wm.core.model.monitors.push(Monitor::new_with_values());
-        let monitor = wm.core.model.monitor_mut(id).unwrap();
+        wm.core.state.apply_config(config_with_count(5)).unwrap();
+        let id = wm
+            .core
+            .state
+            .model
+            .monitors
+            .push(Monitor::new_with_values());
+        let monitor = wm.core.state.model.monitor_mut(id).unwrap();
         monitor.tag_set[1] = TagMask::single(5).unwrap();
         monitor.prev_tag = Some(5);
         monitor
             .per_tag
             .insert(TagMask::single(5).unwrap(), Default::default());
 
-        wm.core.apply_config(config_with_count(4)).unwrap();
-        let monitor = wm.core.model.monitor(id).unwrap();
+        wm.core.state.apply_config(config_with_count(4)).unwrap();
+        let monitor = wm.core.state.model.monitor(id).unwrap();
         assert_eq!(monitor.tag_set[1], TagMask::single(1).unwrap());
         assert_eq!(monitor.prev_tag, None);
         assert!(!monitor.per_tag.contains_key(&TagMask::single(5).unwrap()));

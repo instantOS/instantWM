@@ -196,8 +196,9 @@ mod tests {
     /// Build a Wm with `num_tags` tags and a single monitor reporting `num=0`.
     fn wm_with(num_tags: usize) -> Wm {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = num_tags;
+        wm.core.state.model.tags.num_tags = num_tags;
         wm.core
+            .state
             .model
             .monitors
             .push(MonitorBuilder::new().configure(|m| m.num = 0).build());
@@ -282,6 +283,7 @@ mod tests {
     fn on_monitor_name_resolves_against_connected_monitors() {
         let mut wm = wm_with(9);
         wm.core
+            .state
             .model
             .monitors
             .push(MonitorBuilder::new().named("DP-1").build());

@@ -1,7 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::set_client_state;
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::*;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -210,7 +210,7 @@ pub fn update_systray_icon_state(
 /// The top-bar owner calls this as one part of its complete native-surface
 /// transaction; protocol event handlers must not call it independently.
 pub(super) fn sync_xembed_tray(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,

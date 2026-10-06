@@ -115,9 +115,12 @@ impl smithay::reexports::wayland_server::backend::ClientData for WaylandClientSt
 /// of every `delegate_*!` macro.  It also bridges into instantWM's
 /// `CoreState` for shared WM state (tags, clients, config, etc.).
 pub struct WaylandState {
-    pub(crate) native: WaylandNativeState,
+    pub native: WaylandNativeState,
     pub(crate) graphics: Option<super::graphics::Graphics>,
-    wm: std::rc::Rc<std::cell::RefCell<Wm>>,
+    /// Sole policy owner. A context borrows the root and reborrows this field
+    /// only while computing policy. Smithay seat callbacks require the root,
+    /// so contexts must not retain an independent core borrow across effects.
+    pub(crate) wm: Wm,
 }
 
 /// Protocol and scene data, separate from the graphics owner so frames borrow
@@ -479,10 +482,10 @@ impl WaylandState {
     pub fn new(
         display: Display<WaylandState>,
         handle: &LoopHandle<'static, WaylandState>,
-        wm: std::rc::Rc<std::cell::RefCell<Wm>>,
+        wm: Wm,
     ) -> Self {
         let dh = display.handle();
-        let cursor_config = wm.borrow().core.config.cursor.clone();
+        let cursor_config = wm.core.state.config.cursor.clone();
 
         // Insert the Wayland display as a calloop source so that protocol
         // messages from connected clients are dispatched on each loop tick.
@@ -701,11 +704,13 @@ impl WaylandState {
         });
     }
 
-    /// Attach shared graphics ownership. Protocol dispatch and rendering are
-    /// separate calloop phases; the handle enforces that the renderer cannot
-    /// be borrowed by both. Nested graphics retains ownership of its renderer.
+    /// Transfer graphics ownership to the compositor. Frames borrow graphics
+    /// alongside native scene data as disjoint fields; protocol handlers borrow
+    /// the root. Rust prevents a handler from running during a frame borrow.
     #[allow(unexpected_cfgs)]
-    pub(crate) fn attach_graphics(&mut self, mut graphics: super::graphics::Graphics) {
+    pub(crate) fn attach_graphics(&mut self, graphics: super::graphics::Graphics) {
+        #[cfg(feature = "use_system_lib")]
+        let mut graphics = graphics;
         #[cfg(feature = "use_system_lib")]
         graphics.with_renderer(|renderer| {
             use smithay::backend::renderer::ImportEgl;
@@ -726,29 +731,20 @@ impl WaylandState {
             .map(|graphics| graphics.with_renderer(f))
     }
 
-    /// Smithay handlers receive only `&mut WaylandState`. Keep the shared WM
-    /// owner present from construction so synchronous configure transactions
-    /// cannot depend on optional attachment. Shared native operations receive
-    /// explicit core views and never reacquire the protocol-dispatch owner.
-    ///
-    /// Putting Wm directly in this struct does not by itself solve borrowing:
-    /// WmCtx borrows core state while native seat operations need the complete
-    /// `&mut WaylandState` for Smithay's callbacks. One route to sole ownership
-    /// is for shared actions to return native effects, then apply those after
-    /// ending the core borrow. This can be done locally without a Smithay fork.
-    /// Do not reintroduce a raw back-reference
-    /// or silently queue configure-critical model transitions to a later tick.
-    pub(crate) fn wm_handle(&self) -> std::rc::Rc<std::cell::RefCell<Wm>> {
-        self.wm.clone()
+    pub(crate) fn ctx(&mut self) -> crate::contexts::WmCtx<'_> {
+        crate::contexts::WmCtx::Wayland(crate::contexts::WmCtxWayland {
+            wayland: crate::backend::wayland::WaylandBackend::new(self),
+        })
     }
 
-    pub(super) fn protocol_core(&self) -> std::cell::Ref<'_, CoreState> {
-        std::cell::Ref::map(self.wm.borrow(), |wm| &wm.core)
+    pub(super) fn protocol_core(&self) -> &CoreState {
+        &self.wm.core.state
     }
 
-    /// Run at dispatch boundaries, before borrowing runtime resources or after
-    /// dropping them. Drains in the same event-loop iteration, never on a timer
-    /// or an extra WM tick. Commit handlers may register new barriers safely.
+    /// Run after field borrows end; requiring the complete root prevents
+    /// dispatch during a model or graphics borrow. Drains in the same loop
+    /// iteration, without a timer or extra WM tick. Commit handlers may
+    /// register new barriers safely.
     pub(crate) fn dispatch_pending_commits(&mut self) {
         use smithay::wayland::compositor::CompositorHandler;
         while !self.native.pending_commit_clients.is_empty() {
@@ -765,7 +761,7 @@ impl WaylandState {
     }
 
     /// Project the shared model into the Smithay space.
-    pub fn sync_space(&mut self, core_view: &crate::core_state::CoreState) {
+    pub fn sync_space(&mut self) {
         let dead_windows: Vec<WindowId> = self
             .native
             .window_index
@@ -804,7 +800,7 @@ impl WaylandState {
             self.restore_focus_after_overlay();
         }
 
-        let state = core_view;
+        let state = &self.wm.core.state;
         let updates: Vec<(WindowId, Rect)> = self
             .native
             .space
@@ -819,16 +815,16 @@ impl WaylandState {
             // Space sync reconciles compositor state from authoritative WM
             // geometry; use a fixed policy to avoid interactive-motion
             // heuristics changing this reconciliation path.
-            self.set_window_target_rect(
-                core_view,
+            self.native.set_window_target_rect(
+                &self.wm.core.state,
                 window_id,
                 geo,
                 super::window::animations::WindowMoveMode::Retarget {
-                    duration: self.default_animation_duration(core_view),
+                    duration: self.native.default_animation_duration(&self.wm.core.state),
                 },
             );
         }
-        self.raise_unmanaged_x11_windows();
+        self.native.raise_unmanaged_x11_windows();
     }
 
     /// Set the keyboard layout.
@@ -882,57 +878,11 @@ impl WaylandState {
     }
 }
 
-#[cfg(test)]
-mod native_menu_tests {
-    use std::time::Instant;
-
-    use crate::systray::status_notifier::NativeMenuRequest;
-    use crate::types::Point;
-
-    #[test]
-    fn compositor_owns_wm_lifetime_and_rejects_conflicting_protocol_borrows() {
-        let (_event_loop, state) = crate::test_support::new_compositor();
-        let owner = state.wm_handle();
-        let weak = std::rc::Rc::downgrade(&owner);
-        {
-            let _runtime_borrow = owner.borrow_mut();
-            assert!(
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let _conflicting = state.protocol_core();
-                }))
-                .is_err()
-            );
-        }
-        drop(owner);
-        assert_eq!(state.protocol_core().model.client_count(), 0);
-        assert!(weak.upgrade().is_some());
-        drop(state);
-        assert!(weak.upgrade().is_none());
-    }
-
-    #[test]
-    fn pending_native_menu_identity_is_available_until_dismissal() {
-        let (_event_loop, mut state) = crate::test_support::new_compositor();
-        *state.native.runtime.pending_systray_menu.lock().unwrap() = Some(NativeMenuRequest {
-            created: Instant::now(),
-            anchor: Point::new(10, 20),
-            service: "org.example.Tray".into(),
-            path: "/org/example/Tray".into(),
-            owner_pid: Some(42),
-        });
-
-        assert!(state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
-        assert!(!state.native_systray_menu_matches("org.example.Other", "/org/example/Tray"));
-        assert!(state.dismiss_native_systray_menu());
-        assert!(!state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
-    }
-}
-
-impl crate::backend::wayland::compositor::WaylandNativeState {
+impl WaylandNativeState {
     /// Barrier signaling may happen during a frame or shared WM work. Smithay's
     /// blocker_cleared synchronously invokes CompositorHandler::commit, which
     /// can consult the model (native menu placement) or graphics. Keep that
-    /// callback outside all WM/graphics leases instead of relying on each
+    /// callback outside all WM/graphics borrows instead of relying on each
     /// caller to know which protocol handlers are reentrant.
     pub(crate) fn defer_commit_client(
         &mut self,
@@ -955,5 +905,30 @@ impl crate::backend::wayland::compositor::WaylandNativeState {
 impl WaylandNativeState {
     pub fn push_command(&self, command: super::super::commands::WmCommand) {
         self.command_queue.borrow_mut().push(command);
+    }
+}
+
+#[cfg(test)]
+mod native_menu_tests {
+    use std::time::Instant;
+
+    use crate::systray::status_notifier::NativeMenuRequest;
+    use crate::types::Point;
+
+    #[test]
+    fn pending_native_menu_identity_is_available_until_dismissal() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        *state.native.runtime.pending_systray_menu.lock().unwrap() = Some(NativeMenuRequest {
+            created: Instant::now(),
+            anchor: Point::new(10, 20),
+            service: "org.example.Tray".into(),
+            path: "/org/example/Tray".into(),
+            owner_pid: Some(42),
+        });
+
+        assert!(state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
+        assert!(!state.native_systray_menu_matches("org.example.Other", "/org/example/Tray"));
+        assert!(state.dismiss_native_systray_menu());
+        assert!(!state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
     }
 }

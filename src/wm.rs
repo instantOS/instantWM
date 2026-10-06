@@ -1,26 +1,18 @@
 use crate::backend::{BackendState, WaylandBackendData, X11BackendData};
-use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
-use crate::core_state::{CoreState, PendingWork};
+use crate::contexts::{WmCtx, WmCtxX11};
+use crate::core_state::WmCore;
 use crate::systray::NativeMenuRequestSlot;
 
 pub struct Wm<B: BackendState> {
-    pub core: CoreState,
-    pub work: PendingWork,
+    pub core: WmCore,
     pub backend: B,
-    pub running: bool,
-    pub bar: crate::bar::BarState,
-    pub focus: crate::client::focus::FocusState,
 }
 
 impl<B: BackendState> Wm<B> {
     pub fn new(backend: B) -> Self {
         Self {
-            core: CoreState::default(),
-            work: PendingWork::default(),
+            core: WmCore::default(),
             backend,
-            running: true,
-            bar: crate::bar::BarState::default(),
-            focus: crate::client::focus::FocusState::default(),
         }
     }
 
@@ -36,39 +28,24 @@ impl<B: BackendState> Wm<B> {
         native_menu_request: Option<NativeMenuRequestSlot>,
         wake: Option<calloop::ping::Ping>,
     ) {
-        self.bar.systray_host.start(native_menu_request, wake);
+        self.core.bar.systray_host.start(native_menu_request, wake);
         self.core_ctx().configure_tray_icons();
     }
 
     pub fn quit(&mut self) {
-        self.running = false;
+        self.core.running = false;
     }
 
-    /// Borrow the backend-neutral core state as a [`CoreCtx`].
+    /// Borrow the backend-neutral core state as a [`WmCore`].
     ///
     /// Use this when an operation needs only core state; [`WmCtx`] is the
     /// entry point whenever the backend is involved too.
-    pub fn core_ctx(&mut self) -> CoreCtx<'_> {
-        self.split_core_and_backend().0
+    pub fn core_ctx(&mut self) -> &mut WmCore {
+        &mut self.core
     }
 
-    /// Split `Wm` into its two disjoint halves: the backend-neutral core
-    /// state and the owned backend.
-    ///
-    /// This is the one place that names the fields making up a [`CoreCtx`];
-    /// [`Wm::core_ctx`] and backend context construction are built on it, so adding a
-    /// field touches a single spot.
-    pub(crate) fn split_core_and_backend(&mut self) -> (CoreCtx<'_>, &mut B) {
-        let Self {
-            core,
-            work,
-            running,
-            bar,
-            focus,
-            backend,
-            ..
-        } = self;
-        (CoreCtx::new(core, work, running, bar, focus), backend)
+    pub(crate) fn split_core_and_backend(&mut self) -> (&mut WmCore, &mut B) {
+        (&mut self.core, &mut self.backend)
     }
 
     /// Which backend is driving.
@@ -91,19 +68,6 @@ impl X11Wm {
             x11: crate::backend::x11::X11BackendRef::new(&data.conn, data.screen_num),
             x11_runtime: &mut data.x11_runtime,
             xembed_tray: &mut data.xembed_tray,
-        })
-    }
-}
-impl WaylandWm {
-    pub fn wayland_ctx<'a>(
-        &'a mut self,
-        state: &'a mut crate::backend::wayland::compositor::WaylandState,
-    ) -> WmCtx<'a> {
-        let (core, data) = self.split_core_and_backend();
-        WmCtx::Wayland(WmCtxWayland {
-            core,
-            wayland: crate::backend::wayland::WaylandBackend::new(state),
-            bar_renderer: &mut data.bar_renderer,
         })
     }
 }

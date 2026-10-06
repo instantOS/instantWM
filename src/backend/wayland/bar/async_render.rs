@@ -2,7 +2,7 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use crate::bar::MonitorHitCache;
 use crate::bar::scene::{self, MonitorBarSnapshot};
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::MonitorId;
 
 use super::buffer::RawBarBuffer;
@@ -142,7 +142,7 @@ impl Drop for AsyncBarRenderRuntime {
 }
 
 pub(super) fn poll_result(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     renderer: &mut WaylandBarRenderer,
     current: &[MonitorBarSnapshot],
 ) {
@@ -203,7 +203,7 @@ mod tests {
         }
     }
 
-    fn snapshots(core: &CoreCtx) -> Vec<MonitorBarSnapshot> {
+    fn snapshots(core: &WmCore) -> Vec<MonitorBarSnapshot> {
         scene::build_monitor_snapshots(core, 0)
     }
 
@@ -212,17 +212,17 @@ mod tests {
         let mut monitor = crate::types::Monitor::new_with_values();
         monitor.set_available_rect(crate::types::Rect::new(0, 0, 800, 600));
         monitor.bar_height = 24;
-        let id = wm.core.model.monitors.push(monitor);
-        wm.core.model.monitors.set_selected(id);
+        let id = wm.core.state.model.monitors.push(monitor);
+        wm.core.state.model.monitors.set_selected(id);
         wm
     }
 
     /// Returns two distinct scenes.
     fn two_scenes() -> (Vec<MonitorBarSnapshot>, Vec<MonitorBarSnapshot>) {
         let mut wm = test_wm();
-        let first = snapshots(&wm.core_ctx());
-        wm.bar.set_status_text("changed");
-        let second = snapshots(&wm.core_ctx());
+        let first = snapshots(wm.core_ctx());
+        wm.core.bar.set_status_text("changed");
+        let second = snapshots(wm.core_ctx());
         assert!(first != second);
         (first, second)
     }

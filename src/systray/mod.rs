@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::{MouseButton, Point, Rect, Size};
 
 pub(crate) mod instantmenu;
@@ -22,7 +22,7 @@ const MIN_MENU_CELL_WIDTH: i32 = 24;
 /// Session-side StatusNotifier integration owned by the bar subsystem.
 ///
 /// Groups the worker handle with the model the bar renders and hit-tests so
-/// every backend reaches tray state through [`crate::contexts::CoreCtx`] and
+/// every backend reaches tray state through [`crate::core_state::WmCore`] and
 /// none of it lives in backend-specific storage.
 #[derive(Default)]
 pub(crate) struct SystrayHost {
@@ -62,7 +62,7 @@ impl SystrayHost {
 ///
 /// Shared by both backends: any click outside the tray must dismiss an open
 /// menu before the press reaches its regular binding.
-pub(crate) fn close_menu(core: &mut CoreCtx) -> bool {
+pub(crate) fn close_menu(core: &mut WmCore) -> bool {
     let Some(session_id) = core.bar.systray_host.menu.close() else {
         return false;
     };
@@ -78,7 +78,7 @@ pub(crate) fn close_menu(core: &mut CoreCtx) -> bool {
 /// Returns `false` when there is no open menu or the entry is not activatable;
 /// the caller then treats the position as consumed-but-inert (parity with the
 /// original Wayland-only implementation).
-pub(crate) fn activate_menu_entry(core: &mut CoreCtx, idx: usize) -> bool {
+pub(crate) fn activate_menu_entry(core: &mut WmCore, idx: usize) -> bool {
     let Some(presentation) = core.bar.systray_host.menu.presentation() else {
         return false;
     };
@@ -118,7 +118,7 @@ pub(crate) fn monitor<'a>(
 /// Left activates, middle secondary-activates, right opens the context menu
 /// (hosted DBusMenu when available). Marks the bar dirty when a hosted menu
 /// session starts.
-pub(crate) fn press_icon(core: &mut CoreCtx, idx: usize, button: MouseButton, root: Point) {
+pub(crate) fn press_icon(core: &mut WmCore, idx: usize, button: MouseButton, root: Point) {
     let Some(item) = core.bar.systray_host.tray.items.get(idx) else {
         return;
     };

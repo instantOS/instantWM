@@ -165,9 +165,7 @@ impl CompositorHandler for WaylandState {
                     .and_then(|credentials| u32::try_from(credentials.pid).ok());
                 let systray_menu = self.take_expected_systray_menu_toplevel(client_pid);
                 if let Some(request) = systray_menu {
-                    let wm_handle = self.wm_handle();
-                    let wm_view = wm_handle.borrow();
-                    match self.setup_native_systray_menu(&wm_view.core, toplevel, request) {
+                    match self.setup_native_systray_menu(toplevel, request) {
                         Ok(_) => {
                             service_surface_commit(self, commit_kind, None, None);
                             return;
@@ -178,10 +176,10 @@ impl CompositorHandler for WaylandState {
 
                 let parent = toplevel
                     .parent()
-                    .and_then(|parent| self.window_id_for_surface(&parent));
+                    .and_then(|parent| self.native.window_id_for_surface(&parent));
                 let window_id = self.setup_managed_window(toplevel);
 
-                let properties = self.window_properties(window_id);
+                let properties = self.native.window_properties(window_id);
                 let initial_geo = self.native.find_window(window_id).map(|w| {
                     let g = w.geometry();
                     crate::types::Rect::new(g.loc.x, g.loc.y, g.size.w, g.size.h)
@@ -226,6 +224,7 @@ impl CompositorHandler for WaylandState {
         // Window cache and settle configure bookkeeping so the retained buffer
         // is immediately presentable when its tag becomes visible again.
         let committed_window = self
+            .native
             .window_id_for_surface(&root)
             .and_then(|id| self.native.window_index.get(&id))
             .cloned();
@@ -262,19 +261,20 @@ impl CompositorHandler for WaylandState {
                 .filter(|marker| !marker.is_overlay)
                 .map(|marker| marker.id)
             {
-                self.reconcile_completed_window_animation(id, window.geometry().size);
+                self.native
+                    .reconcile_completed_window_animation(id, window.geometry().size);
                 // X11 configures are owned by the WM. A surface commit can
                 // contain a buffer for an earlier interactive resize; only
                 // an explicit X11 configure request may change model size.
                 if window.x11_surface().is_none() {
-                    self.observe_native_committed_size(id);
+                    self.native.observe_native_committed_size(id);
                 }
                 // xdg min/max sizes are double-buffered surface state and do
                 // not have a dedicated XdgShellHandler callback. Refresh the
                 // core snapshot on root commits; unchanged properties are
                 // deduplicated by the shared update path.
-                if window.x11_surface().is_none() && self.native_size_hints_changed(id) {
-                    let properties = self.window_properties(id);
+                if window.x11_surface().is_none() && self.native.native_size_hints_changed(id) {
+                    let properties = self.native.window_properties(id);
                     self.native.push_command(
                         crate::backend::wayland::commands::WmCommand::UpdateProperties {
                             win: id,
@@ -480,7 +480,7 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
-        if let Some(win) = self.window_id_for_surface(surface)
+        if let Some(win) = self.native.window_id_for_surface(surface)
             && let Some(window) = self.native.window_index.get(&win)
         {
             return Some(KeyboardFocusTarget::Window(window.clone()));
@@ -819,7 +819,8 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
         window: crate::types::WindowId,
     ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
     {
-        self.foreign_toplevel_snapshot(&self.protocol_core(), window)
+        self.native
+            .foreign_toplevel_snapshot(self.protocol_core(), window)
     }
 
     fn foreign_toplevel_request(

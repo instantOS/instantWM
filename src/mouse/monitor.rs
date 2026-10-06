@@ -79,32 +79,34 @@ mod tests {
     fn drop_uses_the_clients_assignment_not_the_selected_monitor() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let source = wm.core.model.monitors.push(
+        let source = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 1000, 800))
                 .tag_count(4)
                 .build(),
         );
-        let target = wm.core.model.monitors.push(
+        let target = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(1000, 0, 1000, 800))
                 .tag_count(4)
                 .build(),
         );
         wm.core
+            .state
             .model
             .monitor_mut(source)
             .unwrap()
             .set_selected_tags(tags);
         wm.core
+            .state
             .model
             .monitor_mut(target)
             .unwrap()
             .set_selected_tags(tags);
-        wm.core.model.set_selected_monitor(target);
+        wm.core.state.model.set_selected_monitor(target);
 
         let win = WindowId(41);
-        add_client_with(&mut wm.core.model, source, |client| {
+        add_client_with(&mut wm.core.state.model, source, |client| {
             client.win = win;
             client.tags = tags;
             client.geo = Rect::new(100, 100, 400, 300);
@@ -112,8 +114,8 @@ mod tests {
 
         handle_monitor_switch(&mut wm.test_ctx(), win, &Rect::new(1200, 100, 400, 300));
 
-        assert_eq!(wm.core.model.monitor_of_client(win), Some(target));
-        assert!(!wm.core.model.monitor(source).unwrap().has_client(win));
-        assert!(wm.core.model.monitor(target).unwrap().has_client(win));
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(target));
+        assert!(!wm.core.state.model.monitor(source).unwrap().has_client(win));
+        assert!(wm.core.state.model.monitor(target).unwrap().has_client(win));
     }
 }

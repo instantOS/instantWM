@@ -6,6 +6,7 @@ use crate::wm::WaylandWm as Wm;
 /// Get the active drag window (if any).
 pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
     wm.core
+        .state
         .interaction
         .drag
         .active_interaction()
@@ -26,18 +27,18 @@ mod tests {
     fn twenty_window_drag_fixture() -> (Wm, WindowId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+        let monitor_id = push_monitor_with(&mut wm.core.state.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
             monitor.available_rect = Rect::new(0, 0, 1920, 1080);
             monitor.bar_default_show = false;
         });
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let windows = (1..=20).map(WindowId).collect::<Vec<_>>();
         // `add_client` focuses newest-first, so adopt in reverse to keep the
         // focus stack (and therefore the drag hit order) oldest-first.
         for &win in windows.iter().rev() {
             add_client(
-                &mut wm.core.model,
+                &mut wm.core.state.model,
                 monitor_id,
                 Client {
                     win,
@@ -49,7 +50,7 @@ mod tests {
         }
 
         let bounds = {
-            let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+            let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
             monitor.set_selected_tags(tags);
             monitor.selected = Some(windows[0]);
             monitor
@@ -63,12 +64,13 @@ mod tests {
                 .bounds(monitor.available_rect)
         };
         for (&win, &geo) in &bounds {
-            wm.core.model.client_mut(win).unwrap().geo = geo;
+            wm.core.state.model.client_mut(win).unwrap().geo = geo;
         }
 
         let source = windows[0];
         let source_geo = bounds[&source];
         wm.core
+            .state
             .interaction
             .drag
             .begin_move(
@@ -107,7 +109,7 @@ mod tests {
             let last = (batch_start + batch_size).min(SAMPLE_COUNT) - 1;
             if clear_cache_each_sample {
                 for index in batch_start..=last {
-                    wm.core.interaction.pointer_placement_cache = None;
+                    wm.core.state.interaction.pointer_placement_cache = None;
                     process_drag_sample(wm, sample_point(index));
                     updates += 1;
                 }
@@ -128,8 +130,8 @@ mod tests {
         let coalesced_update_count = run_samples(&mut coalesced, false, HIGH_RATE_BATCH_SIZE);
 
         assert_eq!(
-            every_sample.core.interaction.layout_preview,
-            coalesced.core.interaction.layout_preview
+            every_sample.core.state.interaction.layout_preview,
+            coalesced.core.state.interaction.layout_preview
         );
         assert_eq!(every_update_count, SAMPLE_COUNT);
         assert_eq!(
@@ -160,7 +162,7 @@ mod tests {
             (
                 started.elapsed(),
                 updates,
-                wm.core.interaction.layout_preview,
+                wm.core.state.interaction.layout_preview,
             )
         }
 

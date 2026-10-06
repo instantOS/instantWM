@@ -119,7 +119,7 @@ fn sync_surface_metadata(
     state
         .native
         .push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
-    state.update_foreign_toplevel(win);
+    state.native.update_foreign_toplevel(win);
 }
 
 fn apply_surface_policy(
@@ -210,20 +210,19 @@ impl XwmHandler for WaylandState {
 
         let parent = window
             .is_transient_for()
-            .and_then(|w| self.window_id_for_x11_window(w));
+            .and_then(|w| self.native.window_id_for_x11_window(w));
 
-        if let Some(win) = self.window_id_for_x11_surface(&window) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             sync_surface_metadata(self, win, &window);
             apply_surface_policy(self, win, &window);
-            let wm_handle = self.wm_handle();
-            let wm_view = wm_handle.borrow();
-            self.map_window_in_space(&wm_view.core, win);
+            let _wm_view = &self.wm;
+            self.map_window_in_space(win);
             self.request_window_focus(win);
             return;
         }
 
         let element = smithay::desktop::Window::new_x11_window(window.clone());
-        let win = self.alloc_window_id();
+        let win = self.native.alloc_window_id();
         let is_overlay = is_unmanaged_x11_overlay(&window);
         // This is a write, not a lazy cache: `element` was constructed on the line
         // above, so an already-present marker would mean the window carries an id
@@ -244,7 +243,7 @@ impl XwmHandler for WaylandState {
             .map_element(element.clone(), geo.loc, false);
         self.native.window_index.insert(win, element);
 
-        let properties = self.window_properties(win);
+        let properties = self.native.window_properties(win);
         let initial_geo = Some(crate::types::Rect {
             x: geo.loc.x,
             y: geo.loc.y,
@@ -270,7 +269,7 @@ impl XwmHandler for WaylandState {
                 },
             ));
 
-        self.create_foreign_toplevel(win);
+        self.native.create_foreign_toplevel(win);
         self.request_window_focus(win);
     }
 
@@ -304,7 +303,7 @@ impl XwmHandler for WaylandState {
             self.clear_seat_focus();
         }
 
-        if let Some(win) = self.window_id_for_x11_surface(&window) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             // A managed X11 window unmapping itself is a withdrawal from WM
             // management, not one of instantWM's visibility-only Space
             // unmaps. Remove backend tracking now and let the normal
@@ -344,7 +343,7 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
     ) {
         let window_id = window.window_id();
-        let is_overlay = self.window_id_for_x11_surface(&window).is_none();
+        let is_overlay = self.native.window_id_for_x11_surface(&window).is_none();
         let was_focused = self.is_x11_surface_focused(window_id);
 
         // Clear seat focus from the dying surface *before* cleanup.
@@ -352,7 +351,7 @@ impl XwmHandler for WaylandState {
             self.clear_seat_focus();
         }
 
-        if let Some(win) = self.window_id_for_x11_surface(&window) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             self.remove_window_tracking(win);
             self.native
                 .push_command(super::super::commands::WmCommand::UnmanageWindow(win));
@@ -401,7 +400,7 @@ impl XwmHandler for WaylandState {
         if let Some(h) = h {
             geo.size.h = h as i32;
         }
-        if let Some(win) = self.window_id_for_x11_surface(&window) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             self.native
                 .push_command(super::super::commands::WmCommand::RequestX11WindowSize {
                     win,
@@ -422,7 +421,7 @@ impl XwmHandler for WaylandState {
     ) {
         // A managed window's ConfigureNotify can answer an older WM request.
         // Its placement and logical size remain owned by the WM model.
-        if self.window_id_for_x11_surface(&window).is_some() {
+        if self.native.window_id_for_x11_surface(&window).is_some() {
             return;
         }
 
@@ -453,7 +452,7 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
         property: WmWindowProperty,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
 
@@ -493,7 +492,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let _ = window.set_maximized(true);
@@ -509,7 +508,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let _ = window.set_maximized(false);
@@ -525,7 +524,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let _ = window.set_fullscreen(true);
@@ -541,7 +540,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let _ = window.set_fullscreen(false);
@@ -557,7 +556,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let _ = window.set_hidden(true);
@@ -573,7 +572,7 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let _ = window.set_hidden(false);
@@ -591,7 +590,7 @@ impl XwmHandler for WaylandState {
         _button: u32,
         resize_edge: smithay::xwayland::xwm::ResizeEdge,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         let dir = xwayland_resize_edge_to_direction(resize_edge);
@@ -604,7 +603,7 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
         _button: u32,
     ) {
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.native.window_id_for_x11_surface(&window) else {
             return;
         };
         begin_app_move_drag(self, win);
@@ -617,7 +616,7 @@ impl XwmHandler for WaylandState {
         _serial: u32,
         _parent: Option<smithay::xwayland::X11Surface>,
     ) {
-        if let Some(win) = self.window_id_for_x11_surface(&window) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             self.request_window_focus(win);
         }
     }

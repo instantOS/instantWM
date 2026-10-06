@@ -79,16 +79,15 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
     );
     let element = Window::new_x11_window(surface);
     let (_event_loop, mut state) = crate::test_support::new_compositor();
-    let wm_handle = state.wm_handle();
-    let mut wm = wm_handle.borrow_mut();
-    let monitor = wm.core.model.monitors.push(
+
+    let monitor = state.wm.core.state.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
             .build(),
     );
     let win = WindowId(91);
     add_client(
-        &mut wm.core.model,
+        &mut state.wm.core.state.model,
         monitor,
         Client {
             win,
@@ -98,7 +97,9 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
         },
     );
     state.native.window_index.insert(win, element);
-    state.resize_window(&wm.core, win, initial);
+    state
+        .native
+        .resize_window(&state.wm.core.state, win, initial);
     assert_eq!(
         state
             .native
@@ -112,7 +113,7 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
     // Deliberately leave model geometry at the old origin: the protocol
     // dispatcher must use its supplied rectangle, not re-read the model.
     let moved = Rect::new(400, 250, initial.w, initial.h);
-    state.resize_window(&wm.core, win, moved);
+    state.native.resize_window(&state.wm.core.state, win, moved);
     assert_eq!(
         state
             .native

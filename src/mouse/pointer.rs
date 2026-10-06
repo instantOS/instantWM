@@ -4,7 +4,7 @@
 //! button classification is allowed to touch bar hit caches because clicks are
 //! rare compared with motion events.
 
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::model::WmModel;
 use crate::types::{
     BarPosition, BottomBarTarget, EdgeDirection, MonitorId, Point, Rect, SidebarTarget, WindowId,
@@ -98,7 +98,7 @@ pub fn bottom_bar_target_at(model: &WmModel, root: Point) -> Option<BottomBarTar
 
 /// Full click classification shared by X11 and Wayland button handlers.
 pub fn button_region_at(
-    core: &CoreCtx<'_>,
+    core: &WmCore,
     root: Point,
     clicked_win: Option<WindowId>,
 ) -> PointerRegion {
@@ -176,7 +176,7 @@ mod tests {
         short.bottom_bar_height = 30;
         short.monitor_rect = Rect::new(0, 0, 1920, 1080);
         short.set_available_rect(short.monitor_rect);
-        let short_id = wm.core.model.monitors.allocate_id();
+        let short_id = wm.core.state.model.monitors.allocate_id();
         short.monitor_id = short_id;
 
         let mut tall = Monitor::new_with_values();
@@ -184,19 +184,19 @@ mod tests {
         tall.bottom_bar_height = 30;
         tall.monitor_rect = Rect::new(1920, 0, 1920, 1200);
         tall.set_available_rect(tall.monitor_rect);
-        tall.monitor_id = wm.core.model.monitors.allocate_id();
-        wm.core.model.monitors.restore(vec![short, tall]);
+        tall.monitor_id = wm.core.state.model.monitors.allocate_id();
+        wm.core.state.model.monitors.restore(vec![short, tall]);
 
         let core = wm.core_ctx();
 
         assert_eq!(
-            button_region_at(&core, Point::new(100, 1060), None),
+            button_region_at(core, Point::new(100, 1060), None),
             PointerRegion::BottomBar {
                 monitor_id: short_id
             }
         );
         assert_eq!(
-            button_region_at(&core, Point::new(2000, 1060), Some(WindowId::from(99_u32)),),
+            button_region_at(core, Point::new(2000, 1060), Some(WindowId::from(99_u32)),),
             PointerRegion::Client(WindowId::from(99_u32))
         );
     }

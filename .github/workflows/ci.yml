@@ -41,6 +41,8 @@ jobs:
         run: cargo fmt -- --check
       - name: Run clippy lints
         run: cargo clippy --all-targets --all-features
+      - name: Check compile-time ownership contracts
+        run: python tests/borrow_contract.py
       - name: Run unit tests
         run: cargo test --locked --verbose
       - name: Build debug binary

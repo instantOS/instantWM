@@ -80,7 +80,7 @@ use crate::backend::wayland::compositor::WaylandState;
 /// `tests/borrow_contract.py` checks these contracts against the actual API,
 /// including rejected external state access and rejected reentrant effects.
 pub struct WaylandBackend<'a> {
-    state: &'a mut WaylandState,
+    pub(crate) state: &'a mut WaylandState,
 }
 
 impl<'a> WaylandBackend<'a> {
@@ -97,11 +97,11 @@ impl<'a> WaylandBackend<'a> {
     }
 
     pub fn window_title(&self, window: WindowId) -> Option<String> {
-        self.with_state_ref(|state: &WaylandState| state.window_title(window))
+        self.with_state_ref(|state: &WaylandState| state.native.window_title(window))
     }
 
     pub fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        self.with_state_ref(|state: &WaylandState| state.window_protocol(window))
+        self.with_state_ref(|state: &WaylandState| state.native.window_protocol(window))
     }
 
     pub fn xdisplay(&self) -> Option<u32> {
@@ -117,7 +117,7 @@ impl<'a> WaylandBackend<'a> {
 
     pub fn warp_pointer(&mut self, x: f64, y: f64) {
         self.with_state(|state: &mut WaylandState| {
-            state.request_warp(x, y);
+            state.native.request_warp(x, y);
         });
     }
 
@@ -204,12 +204,12 @@ impl<'a> WaylandBackend<'a> {
         f(self.state)
     }
 
-    pub(crate) fn sync_window_presentation(
-        &mut self,
-        core_view: &crate::core_state::CoreState,
-        window: WindowId,
-    ) {
-        self.with_state(|state| state.sync_window_presentation(core_view, window));
+    pub(crate) fn sync_window_presentation(&mut self, window: WindowId) {
+        self.with_state(|state| {
+            state
+                .native
+                .sync_window_presentation(&state.wm.core.state, window)
+        });
     }
 
     pub(crate) fn take_current_window_animation_rect(
@@ -217,27 +217,26 @@ impl<'a> WaylandBackend<'a> {
         win: WindowId,
         now: std::time::Instant,
     ) -> Option<Rect> {
-        self.with_state(|state| state.take_current_window_animation_rect(win, now))
+        self.with_state(|state| state.native.take_current_window_animation_rect(win, now))
     }
 
     pub(crate) fn cancel_window_animation(&mut self, win: WindowId) {
-        self.with_state(|state| state.drop_window_animation(win));
+        self.with_state(|state| state.native.drop_window_animation(win));
     }
 
     pub(crate) fn window_animation_targets(&self, win: WindowId, target: Rect) -> bool {
-        self.with_state_ref(|state| state.animation_targets_outer_rect(win, target))
+        self.with_state_ref(|state| state.native.animation_targets_outer_rect(win, target))
     }
 
     pub(crate) fn begin_window_animation(
         &mut self,
-        core_view: &crate::core_state::CoreState,
         win: WindowId,
         from: Rect,
         to: Rect,
         duration: std::time::Duration,
     ) {
         self.with_state(|state| {
-            state.set_window_target_rect(core_view,
+            state.native.set_window_target_rect(&state.wm.core.state,
                 win,
                 to,
                 crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateFrom {
@@ -289,7 +288,9 @@ impl<'a> WaylandBackend<'a> {
 impl WindowOps for crate::contexts::WmCtxWayland<'_> {
     fn resize_window(&mut self, window: WindowId, rect: Rect) {
         self.wayland.with_state(|state: &mut WaylandState| {
-            state.resize_window(self.core.state(), window, rect)
+            state
+                .native
+                .resize_window(&state.wm.core.state, window, rect)
         });
     }
 
@@ -299,29 +300,27 @@ impl WindowOps for crate::contexts::WmCtxWayland<'_> {
 
     fn raise_window_visual_only(&mut self, window: WindowId) {
         self.wayland
-            .with_state(|state: &mut WaylandState| state.raise_window_visual_only(window));
+            .with_state(|state: &mut WaylandState| state.native.raise_window_visual_only(window));
     }
 
     fn apply_z_order(&mut self, windows: &[WindowId]) {
         self.wayland
-            .with_state(|state: &mut WaylandState| state.apply_z_order(windows));
+            .with_state(|state: &mut WaylandState| state.native.apply_z_order(windows));
     }
 
     fn map_window(&mut self, window: WindowId) {
-        self.wayland.with_state(|state: &mut WaylandState| {
-            state.map_window_in_space(self.core.state(), window)
-        });
+        self.wayland
+            .with_state(|state: &mut WaylandState| state.map_window_in_space(window));
     }
 
     fn unmap_window(&mut self, window: WindowId) {
-        self.wayland.with_state(|state: &mut WaylandState| {
-            state.unmap_window_from_space(self.core.state(), window)
-        });
+        self.wayland
+            .with_state(|state: &mut WaylandState| state.unmap_window_from_space(window));
     }
 
     fn window_exists(&self, window: WindowId) -> bool {
         self.wayland
-            .with_state_ref(|state: &WaylandState| state.window_exists(window))
+            .with_state_ref(|state: &WaylandState| state.native.window_exists(window))
     }
 
     fn flush(&mut self) {
@@ -379,7 +378,9 @@ impl crate::backend::InteractionProjectionOps for crate::contexts::WmCtxWayland<
         self.wayland
             .set_cursor_icon_override(wayland_cursor_icon(desired.cursor));
         self.wayland.with_state(|state| {
-            state.reconcile_interactive_resize(self.core.state(), desired.active_resize_window)
+            state
+                .native
+                .reconcile_interactive_resize(&state.wm.core.state, desired.active_resize_window)
         });
     }
 }
@@ -497,7 +498,9 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
         duration: std::time::Duration,
     ) {
         self.wayland.with_state(|state| {
-            state.set_layout_preview_target(rect, style, target, animate, duration)
+            state
+                .native
+                .set_layout_preview_target(rect, style, target, animate, duration)
         });
     }
 }
@@ -598,8 +601,8 @@ mod tests {
     #[test]
     fn window_protocol_trait_dispatch_delegates_to_inherent_query() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
-        let ctx = wm.wayland_ctx(&mut state);
+        state.wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
+        let ctx = state.ctx();
         let ops: &dyn crate::backend::WindowOps = &ctx;
 
         assert_eq!(ops.window_protocol(WindowId(1)), WindowProtocol::Unknown);

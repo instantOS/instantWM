@@ -63,7 +63,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.derived_mut().display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
-    crate::backend::x11::update_ewmh_desktop_props(ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
     ctx.core.queue_layout_for_all_monitors_urgent();
 }
@@ -95,13 +95,13 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             requested_size,
         );
         crate::backend::x11::bar::sync_top_bar_surfaces(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
     } else if ctx.core.model().client(event_win).is_some() {
-        crate::backend::x11::focus::configure(ctx.core.state, &ctx.x11, event_win);
+        crate::backend::x11::focus::configure(&ctx.core.state, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -124,7 +124,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         // geometry so the destroyed icon no longer reserves a cell.
         crate::backend::x11::systray::remove_systray_icon(ctx.xembed_tray.as_mut(), event_win);
         crate::backend::x11::bar::sync_top_bar_surfaces(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
@@ -151,7 +151,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
 pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
     if let Some(selected_window) = ctx.core.model().selected_win() {
         crate::backend::x11::focus::set_focus(
-            ctx.core.state,
+            &ctx.core.state,
             &ctx.x11,
             ctx.x11_runtime,
             selected_window,
@@ -164,14 +164,14 @@ pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
         log::warn!("X11 keyboard mapping refresh failed; preserving existing passive grabs");
         return;
     }
-    crate::backend::x11::keyboard::grab_keys(ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
     if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         crate::backend::x11::bar::sync_top_bar_surfaces(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
@@ -206,7 +206,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             );
         }
         crate::backend::x11::bar::sync_top_bar_surfaces(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
@@ -272,7 +272,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             let props =
                 crate::backend::x11::window_properties(&ctx.x11, ctx.x11_runtime, event_win);
             let previous_focus = ctx.core.model().selected_win();
-            if crate::client::update_window_properties(&mut ctx.core, event_win, &props) {
+            if crate::client::update_window_properties(ctx.core, event_win, &props) {
                 crate::focus::refresh_focus_after_selection(
                     &mut WmCtx::X11(ctx.reborrow()),
                     previous_focus,
@@ -293,7 +293,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
             crate::types::Size::new(e.width as i32, e.height as i32),
         );
         crate::backend::x11::bar::sync_top_bar_surfaces(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,
@@ -307,7 +307,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
         // XEmbed icons remain owned by the tray while unmapped. Recompute the
         // paired tray/bar geometry; mapped state comes from _XEMBED_INFO.
         crate::backend::x11::bar::sync_top_bar_surfaces(
-            &mut ctx.core,
+            ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.xembed_tray,

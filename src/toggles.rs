@@ -125,9 +125,15 @@ mod tests {
     /// A WM with one output whose configured bar visibility is `show`.
     fn wm_with_bar(show: bool) -> Wm {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = wm.core.model.monitors.push(Monitor::new_with_values());
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = wm
+            .core
+            .state
+            .model
+            .monitors
+            .push(Monitor::new_with_values());
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -136,7 +142,7 @@ mod tests {
     }
 
     fn bar_visible(wm: &Wm) -> bool {
-        wm.core.model.expect_selected_monitor().shows_bar()
+        wm.core.state.model.expect_selected_monitor().shows_bar()
     }
 
     #[test]
@@ -146,7 +152,13 @@ mod tests {
         super::toggle_bar(&mut wm.test_ctx());
         assert!(!bar_visible(&wm));
         // The configured default is untouched; only the view overrides it.
-        assert!(wm.core.model.expect_selected_monitor().bar_default_show);
+        assert!(
+            wm.core
+                .state
+                .model
+                .expect_selected_monitor()
+                .bar_default_show
+        );
 
         super::toggle_bar(&mut wm.test_ctx());
         assert!(bar_visible(&wm));
@@ -156,6 +168,7 @@ mod tests {
     fn a_bar_override_applies_only_to_the_view_it_was_set_on() {
         let mut wm = wm_with_bar(true);
         wm.core
+            .state
             .model
             .expect_selected_monitor_mut()
             .set_selected_tags(TagMask::single(1).unwrap());
@@ -165,6 +178,7 @@ mod tests {
 
         // Switching to another view falls back to the configured value.
         wm.core
+            .state
             .model
             .expect_selected_monitor_mut()
             .set_selected_tags(TagMask::single(2).unwrap());
@@ -172,6 +186,7 @@ mod tests {
 
         // …and coming back restores the override.
         wm.core
+            .state
             .model
             .expect_selected_monitor_mut()
             .set_selected_tags(TagMask::single(1).unwrap());
@@ -185,11 +200,12 @@ mod tests {
         assert!(!bar_visible(&wm));
 
         // A reload is "restore every configured value", overrides included.
-        let config = wm.core.config.clone();
-        wm.core.apply_config(config).unwrap();
+        let config = wm.core.state.config.clone();
+        wm.core.state.apply_config(config).unwrap();
         assert!(bar_visible(&wm));
         assert!(
             wm.core
+                .state
                 .model
                 .expect_selected_monitor()
                 .per_tag()
@@ -215,8 +231,8 @@ mod tests {
     #[test]
     fn unhide_all_reveals_hidden_windows_without_moving_focus() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        wm.core.model.monitors.set_selected(monitor_id);
+        let monitor_id = wm.core.state.model.monitors.push(Monitor::default());
+        wm.core.state.model.monitors.set_selected(monitor_id);
 
         let focused = WindowId(1);
         let hidden = WindowId(2);
@@ -226,7 +242,7 @@ mod tests {
         // explicit list used to give.
         for (win, is_hidden) in [(also_hidden, true), (hidden, true)] {
             add_client(
-                &mut wm.core.model,
+                &mut wm.core.state.model,
                 monitor_id,
                 Client {
                     win,
@@ -236,7 +252,7 @@ mod tests {
             );
         }
         add_selected_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win: focused,
@@ -246,9 +262,9 @@ mod tests {
 
         unhide_all(&mut wm.test_ctx());
 
-        assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
-        assert!(!wm.core.model.client(also_hidden).unwrap().is_hidden);
-        assert_eq!(wm.core.model.selected_win(), Some(focused));
+        assert!(!wm.core.state.model.client(hidden).unwrap().is_hidden);
+        assert!(!wm.core.state.model.client(also_hidden).unwrap().is_hidden);
+        assert_eq!(wm.core.state.model.selected_win(), Some(focused));
     }
 
     #[test]
@@ -259,19 +275,19 @@ mod tests {
         // bar and switching tags resurrected it.
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
-        let first = wm.core.model.monitors.push(Monitor::default());
-        let second = wm.core.model.monitors.push(Monitor::default());
-        for monitor in wm.core.model.monitors_iter_all_mut() {
+        let first = wm.core.state.model.monitors.push(Monitor::default());
+        let second = wm.core.state.model.monitors.push(Monitor::default());
+        for monitor in wm.core.state.model.monitors_iter_all_mut() {
             monitor.show_bottom_bar = true;
         }
-        wm.core.model.set_selected_monitor(second);
+        wm.core.state.model.set_selected_monitor(second);
 
         let tag_a = TagMask::single(1).unwrap();
         let tag_b = TagMask::single(2).unwrap();
         // Seed per-tag state on two different tags of both monitors so a
         // per-tag-scoped implementation would leave stale entries behind.
         for id in [first, second] {
-            let monitor = wm.core.model.monitor_mut(id).unwrap();
+            let monitor = wm.core.state.model.monitor_mut(id).unwrap();
             monitor.set_selected_tags_with_history(tag_a);
             monitor.per_tag_state();
             monitor.set_selected_tags_with_history(tag_b);
@@ -286,13 +302,13 @@ mod tests {
         let all_hidden = |wm: &Wm| {
             [first, second]
                 .iter()
-                .all(|id| !wm.core.model.monitor(*id).unwrap().shows_bottom_bar())
+                .all(|id| !wm.core.state.model.monitor(*id).unwrap().shows_bottom_bar())
         };
         assert!(all_hidden(&wm));
 
         // Switching tags must not resurrect the bar.
         for id in [first, second] {
-            let monitor = wm.core.model.monitor_mut(id).unwrap();
+            let monitor = wm.core.state.model.monitor_mut(id).unwrap();
             monitor.set_selected_tags_with_history(tag_b);
             assert!(!monitor.shows_bottom_bar());
         }
@@ -301,9 +317,13 @@ mod tests {
         // Toggling back on re-enables it everywhere again.
         set_bottom_bar_shown(&mut wm.test_ctx(), true);
         assert!(
-            [first, second]
-                .iter()
-                .all(|id| wm.core.model.monitor(*id).unwrap().shows_bottom_bar())
+            [first, second].iter().all(|id| wm
+                .core
+                .state
+                .model
+                .monitor(*id)
+                .unwrap()
+                .shows_bottom_bar())
         );
     }
 }

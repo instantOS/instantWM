@@ -4,22 +4,20 @@ use crate::types::*;
 use crate::wm::WaylandWm as Wm;
 
 pub fn update_bar_hit_state(
-    wm: &mut Wm,
     state: &mut WaylandState,
     root: Point,
     reset_start_menu: bool,
 ) -> Option<BarPosition> {
-    let mut ctx = wm.wayland_ctx(state);
+    let mut ctx = state.ctx();
     crate::bar::update_hover(&mut ctx, root, reset_start_menu, true)
 }
 
 /// Close the bar-hosted DBusMenu, returning whether a menu was open.
 pub fn close_systray_menu(wm: &mut Wm) -> bool {
-    crate::systray::close_menu(&mut wm.core_ctx())
+    crate::systray::close_menu(wm.core_ctx())
 }
 
 pub fn handle_bar_scroll(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pos: BarPosition,
     delta: f64,
@@ -34,7 +32,7 @@ pub fn handle_bar_scroll(
     } else {
         MouseButton::ScrollDown
     };
-    let mut ctx = wm.wayland_ctx(state);
+    let mut ctx = state.ctx();
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };

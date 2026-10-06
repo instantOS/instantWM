@@ -1,3 +1,4 @@
+use crate::backend::wayland::compositor::WaylandNativeState;
 use std::os::unix::io::OwnedFd;
 
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
@@ -136,14 +137,14 @@ impl WaylandState {
     }
 
     fn on_surface_metadata_changed(&mut self, surface: ToplevelSurface) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
+        let Some(win) = self.native.window_id_for_toplevel(&surface) else {
             return;
         };
-        let properties = self.window_properties(win);
+        let properties = self.native.window_properties(win);
         self.native
             .push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
-        self.apply_floating_policy(&surface);
-        self.update_foreign_toplevel(win);
+        self.native.apply_floating_policy(&surface);
+        self.native.update_foreign_toplevel(win);
     }
 
     /// Commit native XDG state before acknowledging it to the client.
@@ -160,13 +161,11 @@ impl WaylandState {
         // Protocol dispatch and the runtime body borrow the WM in separate
         // calloop phases. Commit only shared policy while this borrow is held;
         // project native geometry afterward using an explicit read-only view.
-        let wm_handle = self.wm_handle();
-        let mut wm_borrow = wm_handle.borrow_mut();
-        let wm = &mut *wm_borrow;
+        let wm = &mut self.wm;
         crate::backend::wayland::commands::apply_fullscreen_request(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.bar,
+            &mut wm.core.state,
+            &mut wm.core.work,
+            &mut wm.core.bar,
             win,
             fullscreen,
         )
@@ -178,52 +177,14 @@ impl WaylandState {
         maximized: bool,
     ) -> Option<crate::client::mode::ClientMaximizeIntentTransition> {
         // Same borrow boundary as commit_native_fullscreen_request.
-        let wm_handle = self.wm_handle();
-        let mut wm_borrow = wm_handle.borrow_mut();
-        let wm = &mut *wm_borrow;
+        let wm = &mut self.wm;
         crate::backend::wayland::commands::apply_maximized_request(
-            &mut wm.core,
-            &mut wm.work,
-            &mut wm.bar,
+            &mut wm.core.state,
+            &mut wm.core.work,
+            &mut wm.core.bar,
             win,
             maximized,
         )
-    }
-
-    pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
-        xdg_toplevel_policy_wants_floating(
-            surface.parent().is_some(),
-            self.xdg_toplevel_has_fixed_size_constraints(surface),
-        )
-    }
-
-    pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
-        &self,
-        surface: &ToplevelSurface,
-    ) -> bool {
-        compositor::with_states(surface.wl_surface(), |states| {
-            let mut guard = states.cached_state.get::<SurfaceCachedState>();
-            let current = *guard.current();
-            let min = current.min_size;
-            let max = current.max_size;
-
-            crate::types::constraints_prefer_floating(min.w, min.h, max.w, max.h)
-        })
-    }
-
-    pub(crate) fn apply_floating_policy(&mut self, surface: &ToplevelSurface) {
-        let has_parent = surface.parent().is_some();
-        let wants_floating = self.xdg_toplevel_wants_floating(surface);
-        let Some(win) = self.window_id_for_toplevel(surface) else {
-            return;
-        };
-
-        if wants_floating {
-            self.raise_window_visual_only(win);
-            if has_parent {
-                self.native.request_space_sync();
-            }
-        }
     }
 }
 
@@ -281,7 +242,7 @@ impl XdgForeignHandler for WaylandState {
 
 impl XdgDialogHandler for WaylandState {
     fn dialog_hint_changed(&mut self, toplevel: ToplevelSurface, _hint: ToplevelDialogHint) {
-        self.apply_floating_policy(&toplevel);
+        self.native.apply_floating_policy(&toplevel);
     }
 }
 
@@ -442,17 +403,17 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn parent_changed(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
+        if let Some(win) = self.native.window_id_for_toplevel(&surface) {
             let parent = surface
                 .parent()
-                .and_then(|parent| self.window_id_for_surface(&parent));
+                .and_then(|parent| self.native.window_id_for_surface(&parent));
             self.native
                 .push_command(super::super::commands::WmCommand::UpdateTransientFor {
                     win,
                     parent,
                 });
         }
-        self.apply_floating_policy(&surface);
+        self.native.apply_floating_policy(&surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -477,7 +438,7 @@ impl XdgShellHandler for WaylandState {
             return;
         }
 
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
+        let Some(win) = self.native.window_id_for_toplevel(&surface) else {
             return;
         };
         let is_overlay = self
@@ -588,7 +549,7 @@ impl XdgShellHandler for WaylandState {
         _seat: wl_seat::WlSeat,
         _serial: smithay::utils::Serial,
     ) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
+        let Some(win) = self.native.window_id_for_toplevel(&surface) else {
             return;
         };
         super::xwayland::begin_app_move_drag(self, win);
@@ -601,7 +562,7 @@ impl XdgShellHandler for WaylandState {
         _serial: smithay::utils::Serial,
         edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
+        let Some(win) = self.native.window_id_for_toplevel(&surface) else {
             return;
         };
         let Some(dir) = super::xwayland::xdg_resize_edge_to_direction(edges) else {
@@ -618,18 +579,18 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        if let Some(win) = self.window_id_for_toplevel(&surface)
+        if let Some(win) = self.native.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_fullscreen_request(win, true)
         {
-            let wm_handle = self.wm_handle();
-            let wm_view = wm_handle.borrow();
+            let wm_view = &self.wm;
             crate::backend::wayland::commands::apply_fullscreen_geometry(
-                &wm_view.core,
-                self,
+                &wm_view.core.state,
+                &mut self.native,
                 win,
                 transition,
             );
-            self.sync_window_presentation(&wm_view.core, win);
+            self.native
+                .sync_window_presentation(&wm_view.core.state, win);
             self.native.request_space_sync();
             self.native.request_render();
         } else {
@@ -638,18 +599,18 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface)
+        if let Some(win) = self.native.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_fullscreen_request(win, false)
         {
-            let wm_handle = self.wm_handle();
-            let wm_view = wm_handle.borrow();
+            let wm_view = &self.wm;
             crate::backend::wayland::commands::apply_fullscreen_geometry(
-                &wm_view.core,
-                self,
+                &wm_view.core.state,
+                &mut self.native,
                 win,
                 transition,
             );
-            self.sync_window_presentation(&wm_view.core, win);
+            self.native
+                .sync_window_presentation(&wm_view.core.state, win);
             self.native.request_space_sync();
             self.native.request_render();
         } else {
@@ -658,21 +619,21 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface)
+        if let Some(win) = self.native.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_maximized_request(win, true)
         {
-            let wm_handle = self.wm_handle();
-            let wm_view = wm_handle.borrow();
+            let wm_view = &self.wm;
             crate::backend::wayland::commands::apply_maximized_geometry(
-                &wm_view.core,
-                self,
+                &wm_view.core.state,
+                &mut self.native,
                 win,
                 transition,
             );
             if transition.entered_floating_presentation() {
-                self.raise_window_visual_only(win);
+                self.native.raise_window_visual_only(win);
             }
-            self.sync_window_presentation(&wm_view.core, win);
+            self.native
+                .sync_window_presentation(&wm_view.core.state, win);
             self.native.request_space_sync();
             self.native.request_render();
         } else {
@@ -681,21 +642,21 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface)
+        if let Some(win) = self.native.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_maximized_request(win, false)
         {
-            let wm_handle = self.wm_handle();
-            let wm_view = wm_handle.borrow();
+            let wm_view = &self.wm;
             crate::backend::wayland::commands::apply_maximized_geometry(
-                &wm_view.core,
-                self,
+                &wm_view.core.state,
+                &mut self.native,
                 win,
                 transition,
             );
             if transition.entered_floating_presentation() {
-                self.raise_window_visual_only(win);
+                self.native.raise_window_visual_only(win);
             }
-            self.sync_window_presentation(&wm_view.core, win);
+            self.native
+                .sync_window_presentation(&wm_view.core.state, win);
             self.native.request_space_sync();
             self.native.request_render();
         } else {
@@ -748,7 +709,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             let context = token_data
                 .surface
                 .as_ref()
-                .and_then(|surface| self.window_id_for_surface(surface))
+                .and_then(|surface| self.native.window_id_for_surface(surface))
                 .and_then(|source_win| state.model.client_view(source_win))
                 .map(|view| crate::client::LaunchContext {
                     monitor_id: view.monitor.id(),
@@ -773,7 +734,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .user_data
             .get::<crate::client::LaunchContext>()
             .copied();
-        if let Some(win) = self.window_id_for_surface(&surface) {
+        if let Some(win) = self.native.window_id_for_surface(&surface) {
             let is_currently_visible = {
                 let state = self.protocol_core();
                 state
@@ -811,6 +772,42 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 "xdg_activation: missing launch context for pending surface (app_id: {:?})",
                 token_data.app_id
             );
+        }
+    }
+}
+
+impl WaylandNativeState {
+    pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
+        &self,
+        surface: &ToplevelSurface,
+    ) -> bool {
+        compositor::with_states(surface.wl_surface(), |states| {
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let current = *guard.current();
+            let min = current.min_size;
+            let max = current.max_size;
+
+            crate::types::constraints_prefer_floating(min.w, min.h, max.w, max.h)
+        })
+    }
+    pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
+        xdg_toplevel_policy_wants_floating(
+            surface.parent().is_some(),
+            self.xdg_toplevel_has_fixed_size_constraints(surface),
+        )
+    }
+    pub(crate) fn apply_floating_policy(&mut self, surface: &ToplevelSurface) {
+        let has_parent = surface.parent().is_some();
+        let wants_floating = self.xdg_toplevel_wants_floating(surface);
+        let Some(win) = self.window_id_for_toplevel(surface) else {
+            return;
+        };
+
+        if wants_floating {
+            self.raise_window_visual_only(win);
+            if has_parent {
+                self.request_space_sync();
+            }
         }
     }
 }

@@ -26,7 +26,7 @@ use crate::wm::WaylandWm as Wm;
 
 /// Build the `MemoryRenderBufferRenderElement` list for the status bar.
 ///
-/// Returns an empty `Vec` when `wm.core.config.showbar` is `false`.
+/// Returns an empty `Vec` when `wm.core.state.config.showbar` is `false`.
 ///
 /// The caller is responsible for adding the returned elements to its own
 /// custom-element list under the appropriate backend-specific wrapper variant
@@ -35,10 +35,11 @@ pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandNativeState,
 ) -> Vec<(MemoryRenderBuffer, crate::types::Point)> {
-    let show_top = wm.core.config.bar.show;
-    let show_bottom = wm.core.config.bar.show_bottom
+    let show_top = wm.core.state.config.bar.show;
+    let show_bottom = wm.core.state.config.bar.show_bottom
         || wm
             .core
+            .state
             .model
             .monitors_iter()
             .any(|(_, m)| m.shows_bottom_bar());
@@ -47,17 +48,15 @@ pub fn build_bar_buffers(
     }
 
     let render_ping = state.runtime.render_ping.clone();
-    let (mut core, data) = wm.split_core_and_backend();
+    let (core, data) = wm.split_core_and_backend();
     let mut buffers = if show_top {
         data.bar_renderer.set_render_ping(render_ping);
-        crate::backend::wayland::bar::render_bar_buffers(&mut core, &mut data.bar_renderer)
+        crate::backend::wayland::bar::render_bar_buffers(core, &mut data.bar_renderer)
     } else {
         Vec::new()
     };
     if show_bottom {
-        buffers.extend(crate::backend::wayland::bar::build_bottom_bar_buffers(
-            &mut core,
-        ));
+        buffers.extend(crate::backend::wayland::bar::build_bottom_bar_buffers(core));
     }
 
     buffers
@@ -87,16 +86,17 @@ pub fn build_shared_scene_elements(
     cache: &mut SceneCache,
 ) -> Rc<SharedSceneElements> {
     let layout_preview_color = match state.layout_preview_style() {
-        crate::types::InteractionOutlineStyle::Layout => wm.core.config.colors.border.snap,
+        crate::types::InteractionOutlineStyle::Layout => wm.core.state.config.colors.border.snap,
         crate::types::InteractionOutlineStyle::Close => {
-            wm.core.config.colors.close_button.gesture_color()
+            wm.core.state.config.colors.close_button.gesture_color()
         }
     };
-    let bar_seq = wm.bar.update_seq();
+    let bar_seq = wm.core.bar.update_seq();
     let border_scene =
-        crate::backend::wayland::render::borders::BorderScene::capture(&wm.core.model, state);
-    let borders_hash = border_scene.cache_key(&wm.core.config.colors.border, layout_preview_color);
-    let bar_dirty = wm.bar.needs_redraw();
+        crate::backend::wayland::render::borders::BorderScene::capture(&wm.core.state.model, state);
+    let borders_hash =
+        border_scene.cache_key(&wm.core.state.config.colors.border, layout_preview_color);
+    let bar_dirty = wm.core.bar.needs_redraw();
 
     if !bar_dirty
         && let Some((cached_bar, cached_borders, ref elements)) = cache.entry
@@ -113,7 +113,7 @@ pub fn build_shared_scene_elements(
         .filter(|(cached_bar, _, _)| *cached_bar == bar_seq && !bar_dirty)
         .map(|(_, _, elements)| elements.bar_buffers.clone());
     let bar_buffers = cached_bar_buffers.unwrap_or_else(|| Rc::new(build_bar_buffers(wm, state)));
-    let borders = border_scene.render(&wm.core.config.colors.border, layout_preview_color);
+    let borders = border_scene.render(&wm.core.state.config.colors.border, layout_preview_color);
 
     let elements = Rc::new(SharedSceneElements {
         bar_buffers,
@@ -121,7 +121,7 @@ pub fn build_shared_scene_elements(
         layout_preview_color,
     });
 
-    if !wm.bar.needs_redraw() {
+    if !wm.core.bar.needs_redraw() {
         cache.entry = Some((bar_seq, borders_hash, elements.clone()));
     }
     elements
@@ -402,6 +402,7 @@ pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
     let output_name = output.name();
     let Some(monitor) = wm
         .core
+        .state
         .model
         .monitors
         .iter_all()

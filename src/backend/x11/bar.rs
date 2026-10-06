@@ -1,6 +1,6 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::{Monitor, MonitorId, Rect, WindowId, XEmbedTray};
 use std::collections::HashMap;
 use x11rb::connection::Connection;
@@ -13,7 +13,7 @@ struct BarSurfaceTarget {
     window_id: WindowId,
 }
 
-pub fn update_status(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
+pub fn update_status(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig) {
     let Some(target) = core
         .model()
         .selected_monitor()
@@ -28,7 +28,7 @@ pub fn update_status(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
 }
 
 fn paint_bar_snapshot(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     x11_runtime: &mut X11RuntimeConfig,
     target: BarSurfaceTarget,
     snapshot: &crate::bar::scene::MonitorBarSnapshot,
@@ -49,7 +49,7 @@ fn paint_bar_snapshot(
     painter.map(target.window_id, Rect::new(0, 0, work_rect_w, bar_height));
 }
 
-fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, target: BarSurfaceTarget) {
+fn draw_bar(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig, target: BarSurfaceTarget) {
     if target.window_id == WindowId::default() {
         return;
     }
@@ -64,7 +64,7 @@ fn draw_bar(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig, target: BarS
     paint_bar_snapshot(core, x11_runtime, target, snapshot);
 }
 
-pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
+pub fn draw_bars(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig) {
     let targets: Vec<BarSurfaceTarget> = core
         .model()
         .monitors_iter()
@@ -94,7 +94,7 @@ pub fn draw_bars(core: &mut CoreCtx, x11_runtime: &mut X11RuntimeConfig) {
 }
 
 fn sync_monitor_bar_window(
-    core: &CoreCtx,
+    core: &WmCore,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     monitor: &Monitor,
@@ -132,7 +132,7 @@ fn sync_monitor_bar_window(
 /// tray width from the previously selected monitor when the tray follows
 /// selection.
 pub fn sync_top_bar_surfaces(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,
@@ -378,7 +378,7 @@ fn create_missing_bar_windows(
 /// the DrawContext and atoms exist. Bar windows and the XEmbed tray need both,
 /// so that early call is a no-op and startup reconciles again once ready.
 pub fn reconcile_bar_windows(
-    core: &mut CoreCtx,
+    core: &mut WmCore,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,

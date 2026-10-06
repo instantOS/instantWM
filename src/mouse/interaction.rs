@@ -264,19 +264,20 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(7);
-        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+        let monitor_id = push_monitor_with(&mut wm.core.state.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
             monitor.available_rect = Rect::new(0, 0, 1920, 1080);
             monitor.bar_default_show = false;
             monitor.set_selected_tags(tags);
         });
-        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_selected_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = tags;
             client.mode = ClientMode::floating();
             client.geo = Rect::new(100, 100, 500, 300);
         });
         wm.core
+            .state
             .interaction
             .drag
             .begin_move(
@@ -302,6 +303,7 @@ mod tests {
 
     fn arm_title_drag(wm: &mut Wm, win: WindowId, was_hidden: bool) {
         wm.core
+            .state
             .interaction
             .drag
             .arm_title_drag(crate::core_state::ArmedDragStart {
@@ -325,8 +327,8 @@ mod tests {
             assert!(
                 crate::client::lifecycle::remove_managed_client(&mut wm.test_ctx(), win).is_some()
             );
-            assert!(wm.core.interaction.drag.capture().is_none());
-            assert!(wm.core.model.client(win).is_none());
+            assert!(wm.core.state.interaction.drag.capture().is_none());
+            assert!(wm.core.state.model.client(win).is_none());
             for phase in [
                 InteractionPhase::Update,
                 InteractionPhase::End {
@@ -373,12 +375,13 @@ mod tests {
         );
 
         assert_eq!(
-            pointer_wm.core.model.client(win).unwrap().geo,
-            touch_wm.core.model.client(win).unwrap().geo
+            pointer_wm.core.state.model.client(win).unwrap().geo,
+            touch_wm.core.state.model.client(win).unwrap().geo
         );
         assert_eq!(
             pointer_wm
                 .core
+                .state
                 .interaction
                 .drag
                 .active_interaction()
@@ -386,6 +389,7 @@ mod tests {
                 .last_root_point(),
             touch_wm
                 .core
+                .state
                 .interaction
                 .drag
                 .active_interaction()
@@ -416,9 +420,9 @@ mod tests {
 
     fn bottom_bar_fixture() -> (Wm, MonitorId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 9;
+        wm.core.state.model.tags.num_tags = 9;
         let tags = TagMask::single(2).unwrap();
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 1920, 1080))
                 .bar(0, true)
@@ -426,15 +430,16 @@ mod tests {
                 .tag_count(9)
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
             .set_selected_tags(tags);
         // Add a client so overview-style actions can activate.
         let win = WindowId(7);
-        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_selected_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = tags;
             client.geo = Rect::new(100, 100, 500, 300);
@@ -460,7 +465,7 @@ mod tests {
                 crate::actions::NamedAction::CancelOverview,
             )),
         };
-        let target = crate::mouse::pointer::bottom_bar_target_at(&wm.core.model, root)
+        let target = crate::mouse::pointer::bottom_bar_target_at(&wm.core.state.model, root)
             .expect("fixture point must be on the bottom bar");
         assert_eq!(target.monitor_id, monitor_id);
         assert!(crate::mouse::drag::bottom_bar_gesture_begin(
@@ -497,6 +502,7 @@ mod tests {
         );
         assert!(
             wm.core
+                .state
                 .interaction
                 .drag
                 .captured::<crate::core_state::BottomBarDrag>()
@@ -509,7 +515,7 @@ mod tests {
         let (mut wm, monitor_id) = bottom_bar_fixture();
         let begin_root = Point::new(100, 1060);
         assert_eq!(
-            crate::mouse::pointer::bottom_bar_target_at(&wm.core.model, begin_root)
+            crate::mouse::pointer::bottom_bar_target_at(&wm.core.state.model, begin_root)
                 .map(|target| target.monitor_id),
             Some(monitor_id)
         );
@@ -534,14 +540,24 @@ mod tests {
             InteractionOutcome::Captured
         );
         assert_eq!(
-            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            wm.core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags(),
             TagMask::single(2).unwrap()
         );
 
         // Release fires the right (next-tag) action exactly once: tag 2 -> 3.
         end_bottom_bar_drag(&mut wm, Point::new(1500, 1060));
         assert_eq!(
-            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            wm.core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags(),
             TagMask::single(3).unwrap()
         );
 
@@ -556,7 +572,12 @@ mod tests {
         );
         end_bottom_bar_drag(&mut wm, Point::new(36, 1060));
         assert_eq!(
-            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            wm.core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags(),
             TagMask::single(2).unwrap()
         );
 
@@ -564,7 +585,12 @@ mod tests {
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         end_bottom_bar_drag(&mut wm, begin_root);
         assert_eq!(
-            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            wm.core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags(),
             TagMask::single(2).unwrap()
         );
     }
@@ -580,6 +606,7 @@ mod tests {
         end_bottom_bar_drag_at(&mut wm, begin_root, 0);
         assert!(
             wm.core
+                .state
                 .interaction
                 .drag
                 .captured::<crate::core_state::BottomBarDrag>()
@@ -591,6 +618,7 @@ mod tests {
         end_bottom_bar_drag_at(&mut wm, begin_root, 500);
         assert!(
             wm.core
+                .state
                 .interaction
                 .drag
                 .captured::<crate::core_state::BottomBarDrag>()
@@ -599,7 +627,13 @@ mod tests {
 
         // A swipe still takes precedence over click/hold regardless of duration:
         // even after holding 600ms, the latched direction wins.
-        let tags_before = wm.core.model.monitor(monitor_id).unwrap().selected_tags();
+        let tags_before = wm
+            .core
+            .state
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .selected_tags();
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         assert_eq!(
             handle(
@@ -611,7 +645,12 @@ mod tests {
         end_bottom_bar_drag_at(&mut wm, Point::new(164, 1060), 600);
         // The right-swipe action (ScrollRight) advanced exactly one tag.
         assert_ne!(
-            wm.core.model.monitor(monitor_id).unwrap().selected_tags(),
+            wm.core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags(),
             tags_before
         );
     }
@@ -632,17 +671,17 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(!wm.core.model.is_overview_active());
+        assert!(!wm.core.state.model.is_overview_active());
 
         // Release fires the up (overview) action exactly once.
         end_bottom_bar_drag(&mut wm, Point::new(100, 500));
-        assert!(wm.core.model.is_overview_active());
+        assert!(wm.core.state.model.is_overview_active());
     }
 
     #[test]
     fn another_input_source_cannot_move_or_release_a_captured_interaction() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        let original = wm.core.model.client(win).unwrap().geo;
+        let original = wm.core.state.model.client(win).unwrap().geo;
 
         assert_eq!(
             handle(
@@ -651,7 +690,7 @@ mod tests {
             ),
             InteractionOutcome::Ignored
         );
-        assert_eq!(wm.core.model.client(win).unwrap().geo, original);
+        assert_eq!(wm.core.state.model.client(win).unwrap().geo, original);
 
         assert_eq!(
             handle(
@@ -669,15 +708,23 @@ mod tests {
             ),
             InteractionOutcome::Ignored
         );
-        assert!(wm.core.interaction.drag.active_interaction().is_some());
+        assert!(
+            wm.core
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .is_some()
+        );
     }
 
     #[test]
     fn owner_update_consumes_and_cancels_a_window_hidden_by_a_tag_change() {
         for source in [InteractionSource::Pointer, InteractionSource::Touch(4)] {
             let (mut wm, win) = floating_drag_fixture(source);
-            let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
+            let monitor_id = wm.core.state.model.monitor_of_client(win).unwrap();
             wm.core
+                .state
                 .model
                 .monitor_mut(monitor_id)
                 .unwrap()
@@ -687,9 +734,9 @@ mod tests {
                 handle(&mut wm.test_ctx(), update(source, Point::new(350, 275))),
                 InteractionOutcome::Captured
             );
-            assert!(wm.core.interaction.drag.capture().is_none());
+            assert!(wm.core.state.interaction.drag.capture().is_none());
             assert_eq!(
-                wm.core.model.client(win).unwrap().geo,
+                wm.core.state.model.client(win).unwrap().geo,
                 Rect::new(100, 100, 500, 300)
             );
         }
@@ -698,8 +745,9 @@ mod tests {
     #[test]
     fn wrong_source_does_not_reconcile_the_capture_owner() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
+        let monitor_id = wm.core.state.model.monitor_of_client(win).unwrap();
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -712,7 +760,7 @@ mod tests {
             ),
             InteractionOutcome::Ignored
         );
-        assert!(wm.core.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.drag.capture().is_some());
 
         assert_eq!(
             handle(
@@ -721,32 +769,33 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
     }
 
     #[test]
     fn reconciliation_reports_destroyed_targets() {
         let (mut destroyed_wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        assert!(destroyed_wm.core.model.remove_client(win).is_some());
+        assert!(destroyed_wm.core.state.model.remove_client(win).is_some());
         assert_eq!(
             reconcile_capture(&mut destroyed_wm.test_ctx()),
             Some(DragCancelReason::WindowDestroyed)
         );
-        assert!(destroyed_wm.core.interaction.drag.capture().is_none());
+        assert!(destroyed_wm.core.state.interaction.drag.capture().is_none());
     }
 
     #[test]
     fn an_armed_hidden_title_remains_valid_only_on_its_original_workspace() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        wm.core.interaction.drag.cancel_capture().unwrap();
-        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        wm.core.state.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.model.client_mut(win).unwrap().is_hidden = true;
         arm_title_drag(&mut wm, win, true);
 
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
-        assert!(wm.core.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.drag.capture().is_some());
 
-        let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
+        let monitor_id = wm.core.state.model.monitor_of_client(win).unwrap();
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -755,22 +804,22 @@ mod tests {
             reconcile_capture(&mut wm.test_ctx()),
             Some(DragCancelReason::WindowHidden)
         );
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
     }
 
     #[test]
     fn an_armed_visible_title_cancels_when_explicitly_hidden() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        wm.core.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.drag.cancel_capture().unwrap();
         arm_title_drag(&mut wm, win, false);
 
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
-        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+        wm.core.state.model.client_mut(win).unwrap().is_hidden = true;
         assert_eq!(
             reconcile_capture(&mut wm.test_ctx()),
             Some(DragCancelReason::WindowHidden)
         );
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
     }
 
     #[test]
@@ -778,6 +827,7 @@ mod tests {
         let (mut wm, monitor_id) = bottom_bar_fixture();
         begin_bottom_bar_drag(&mut wm, monitor_id, Point::new(100, 1060));
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -786,6 +836,7 @@ mod tests {
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
         assert!(
             wm.core
+                .state
                 .interaction
                 .drag
                 .captured::<crate::core_state::BottomBarDrag>()
@@ -814,7 +865,7 @@ mod tests {
             InteractionOutcome::Captured
         );
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
-        assert!(wm.core.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.drag.capture().is_some());
 
         assert_eq!(
             handle(
@@ -832,7 +883,7 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
     }
 
     #[test]
@@ -853,7 +904,7 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(wm.core.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.drag.capture().is_none());
         // Nothing is queued, so the next tick starts no tool.
         wm.with_ctx(crate::mouse::slop::drain_region_selection);
     }

@@ -122,12 +122,13 @@ mod tests {
     #[test]
     fn assigning_a_tag_explicitly_restores_a_scratchpad() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 9;
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.tags.num_tags = 9;
+        let monitor_id = wm.core.state.model.monitors.push(Monitor::default());
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let original_tags = TagMask::single(1).unwrap();
         let target_tags = TagMask::single(3).unwrap();
         wm.core
+            .state
             .model
             .monitor_mut(monitor_id)
             .unwrap()
@@ -143,11 +144,11 @@ mod tests {
         client
             .promote_to_scratchpad(monitor_id, "term", None, 1920, 1080)
             .unwrap();
-        add_selected_client(&mut wm.core.model, monitor_id, client);
+        add_selected_client(&mut wm.core.state.model, monitor_id, client);
 
         set_client_tag(&mut wm.test_ctx(), win, target_tags);
 
-        let restored = wm.core.model.client(win).unwrap();
+        let restored = wm.core.state.model.client(win).unwrap();
         assert!(!restored.is_scratchpad());
         assert_eq!(restored.tags, target_tags);
         assert!(!restored.is_sticky);
@@ -160,13 +161,13 @@ mod tests {
         let tag2 = TagMask::single(2).unwrap();
 
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 9;
-        let monitor_id = wm.core.model.monitors.push(Monitor::default());
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.tags.num_tags = 9;
+        let monitor_id = wm.core.state.model.monitors.push(Monitor::default());
+        wm.core.state.model.monitors.set_selected(monitor_id);
 
         // --- Tag 2: maximized, with two existing windows B and C. ---
         {
-            let mon = wm.core.model.monitor_mut(monitor_id).unwrap();
+            let mon = wm.core.state.model.monitor_mut(monitor_id).unwrap();
             mon.set_selected_tags(tag2);
             mon.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
         }
@@ -174,7 +175,7 @@ mod tests {
         let win_c = WindowId(3);
         for win in [win_b, win_c] {
             add_client(
-                &mut wm.core.model,
+                &mut wm.core.state.model,
                 monitor_id,
                 Client {
                     win,
@@ -186,16 +187,16 @@ mod tests {
         // Populate focus history for tag 2 by viewing it and focusing B.
         crate::tags::view::view_tags(&mut wm.test_ctx(), tag2);
         crate::focus::focus(&mut wm.test_ctx(), Some(win_b));
-        assert_eq!(wm.core.model.selected_win(), Some(win_b));
+        assert_eq!(wm.core.state.model.selected_win(), Some(win_b));
 
         // --- Tag 1: one window A, which we will move. ---
         {
-            let mon = wm.core.model.monitor_mut(monitor_id).unwrap();
+            let mon = wm.core.state.model.monitor_mut(monitor_id).unwrap();
             mon.set_selected_tags(tag1);
         }
         let win_a = WindowId(1);
         add_client(
-            &mut wm.core.model,
+            &mut wm.core.state.model,
             monitor_id,
             Client {
                 win: win_a,
@@ -205,7 +206,7 @@ mod tests {
         );
         crate::tags::view::view_tags(&mut wm.test_ctx(), tag1);
         crate::focus::focus(&mut wm.test_ctx(), Some(win_a));
-        assert_eq!(wm.core.model.selected_win(), Some(win_a));
+        assert_eq!(wm.core.state.model.selected_win(), Some(win_a));
 
         // --- Move A to tag 2, then immediately switch to tag 2. ---
         crate::tags::client_tags::set_client_tag(&mut wm.test_ctx(), win_a, tag2);
@@ -213,7 +214,7 @@ mod tests {
 
         // EXPECTED: A should be on top because the user just moved it there.
         assert_eq!(
-            wm.core.model.selected_win(),
+            wm.core.state.model.selected_win(),
             Some(win_a),
             "the moved window should be focused after switching to the target tag"
         );

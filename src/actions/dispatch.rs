@@ -263,6 +263,7 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         for name in ["first", "second", "final"] {
             wm.core
+                .state
                 .config
                 .bindings
                 .modes
@@ -277,7 +278,7 @@ mod tests {
         execute_key_action(&mut wm.test_ctx(), &action);
 
         assert_eq!(
-            wm.core.behavior.current_mode,
+            wm.core.state.behavior.current_mode,
             ActiveWmMode::Named("final".to_string())
         );
     }

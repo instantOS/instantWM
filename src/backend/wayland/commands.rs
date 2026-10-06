@@ -58,7 +58,7 @@ pub(crate) fn apply_maximized_request(
 /// the model had already returned to floating mode.
 pub(crate) fn apply_fullscreen_geometry(
     core_view: &crate::core_state::CoreState,
-    state: &mut crate::backend::wayland::compositor::WaylandState,
+    state: &mut crate::backend::wayland::compositor::WaylandNativeState,
     win: WindowId,
     transition: crate::client::mode::FullscreenTransition,
 ) {
@@ -70,7 +70,7 @@ pub(crate) fn apply_fullscreen_geometry(
 /// Project geometry carried by a synchronous maximize transition.
 pub(crate) fn apply_maximized_geometry(
     core_view: &crate::core_state::CoreState,
-    state: &mut crate::backend::wayland::compositor::WaylandState,
+    state: &mut crate::backend::wayland::compositor::WaylandNativeState,
     win: WindowId,
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {

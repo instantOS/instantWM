@@ -14,7 +14,6 @@ use smithay::{
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
 use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 use crate::types::Rect;
-use crate::wm::WaylandWm as Wm;
 use std::collections::HashMap;
 
 mod keyboard;
@@ -122,10 +121,10 @@ pub fn collect_available_rects(state: &WaylandState) -> HashMap<String, Rect> {
 ///
 /// Returns `true` if any monitor's `available_rect` changed (caller should
 /// re-arrange and redraw).
-pub fn apply_available_rects(wm: &mut Wm, state: &WaylandState) -> bool {
+pub fn apply_available_rects(state: &mut WaylandState) -> bool {
     let rects = collect_available_rects(state);
     let mut any_changed = false;
-    for mon in wm.core.model.monitors_iter_all_mut() {
+    for mon in state.wm.core.state.model.monitors_iter_all_mut() {
         let Some(&new_rect) = rects.get(&mon.name) else {
             // No matching output (e.g. monitor was just removed or named
             // differently). Leave it alone; the next monitor refresh will

@@ -1,5 +1,5 @@
 use crate::bar::{MonitorHitCache, TrayMenuHit};
-use crate::contexts::CoreCtx;
+use crate::core_state::WmCore;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -134,7 +134,7 @@ pub(crate) fn hit_test(
 ///
 /// Uses the hit geometry recorded by the last render; a bar that was never
 /// rendered has no interactive regions yet.
-pub(crate) fn bar_position_at_x(monitor: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
+pub(crate) fn bar_position_at_x(monitor: &Monitor, core: &WmCore, local_x: i32) -> BarPosition {
     let Some(hit) = core.bar.monitor_hit_cache(monitor.id()) else {
         return BarPosition::Root;
     };

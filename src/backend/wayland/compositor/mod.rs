@@ -52,7 +52,7 @@ use smithay::delegate_dispatch2;
 /// Construct the calloop event loop and Smithay compositor state shared by
 /// production runtimes and compositor tests.
 pub(crate) fn new_event_loop_and_state(
-    wm: std::rc::Rc<std::cell::RefCell<crate::wm::WaylandWm>>,
+    wm: crate::wm::WaylandWm,
 ) -> (
     smithay::reexports::calloop::EventLoop<'static, WaylandState>,
     WaylandState,
@@ -70,4 +70,4 @@ pub(crate) fn new_event_loop_and_state(
 
 delegate_dispatch2!(WaylandState);
 
-pub(crate) use state::WaylandNativeState;
+pub use state::WaylandNativeState;

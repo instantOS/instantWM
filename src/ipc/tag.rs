@@ -56,13 +56,14 @@ mod tests {
         };
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.monitors.push(
+        wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 800, 600))
                 .build(),
         );
-        wm.core.apply_config(config).unwrap();
+        wm.core.state.apply_config(config).unwrap();
         wm.core
+            .state
             .model
             .expect_selected_monitor_mut()
             .set_selected_tags(TagMask::single(2).unwrap());
@@ -79,8 +80,8 @@ mod tests {
     #[test]
     fn list_reports_names_icons_and_the_active_label() {
         let mut wm = wm(false);
-        let monitor_id = wm.core.model.selected_monitor_id();
-        wm.core.model.add_client(
+        let monitor_id = wm.core.state.model.selected_monitor_id();
+        wm.core.state.model.add_client(
             monitor_id,
             Client {
                 win: WindowId(1),
@@ -105,7 +106,7 @@ mod tests {
         assert!(!tags[1].occupied);
 
         // Icon mode on: the icon wins where one exists, names elsewhere.
-        wm.core.config.tags.show_icons = true;
+        wm.core.state.config.tags.show_icons = true;
         let tags = wm.with_ctx(list);
         assert_eq!(tags[0].label, "W");
         assert_eq!(tags[1].label, "mail");

@@ -13,7 +13,7 @@ impl WaylandState {
     /// Protocol/configure state deliberately survives this operation because
     /// tag visibility is independent from the lifetime of the client surface.
     fn clear_window_presentation_state(&mut self, window: WindowId) {
-        self.drop_window_animation(window);
+        self.native.drop_window_animation(window);
         self.native.placed_border.remove(&window);
     }
 
@@ -24,17 +24,23 @@ impl WaylandState {
 
     pub(crate) fn setup_managed_window(&mut self, surface: ToplevelSurface) -> WindowId {
         let window_id = self.register_toplevel(surface, false);
-        self.create_foreign_toplevel(window_id);
+        self.native.create_foreign_toplevel(window_id);
         window_id
     }
 
     pub(crate) fn setup_native_systray_menu(
         &mut self,
-        core_view: &crate::core_state::CoreState,
         surface: ToplevelSurface,
         request: crate::systray::status_notifier::NativeMenuRequest,
     ) -> Result<WindowId, Box<ToplevelSurface>> {
-        let Some(monitor) = core_view.model.monitors.monitor_at_pointer(request.anchor) else {
+        let Some(monitor) = self
+            .wm
+            .core
+            .state
+            .model
+            .monitors
+            .monitor_at_pointer(request.anchor)
+        else {
             return Err(Box::new(surface));
         };
         let (monitor_id, opened_tags, work_rect) =
@@ -89,7 +95,7 @@ impl WaylandState {
     /// placeholder geometry into that transition.
     fn register_toplevel(&mut self, surface: ToplevelSurface, is_overlay: bool) -> WindowId {
         let window = Window::new_wayland_window(surface);
-        let window_id = self.alloc_window_id();
+        let window_id = self.native.alloc_window_id();
         // This is a write, not a lazy cache: `window` was constructed on the line
         // above, so an already-present marker would mean the window carries an id
         // that disagrees with the `window_index` key inserted below.
@@ -117,11 +123,7 @@ impl WaylandState {
     ///
     /// This is compositor-space visibility only; it does not begin a new
     /// Wayland or XWayland protocol lifecycle.
-    pub fn map_window_in_space(
-        &mut self,
-        core_view: &crate::core_state::CoreState,
-        window: WindowId,
-    ) {
+    pub fn map_window_in_space(&mut self, window: WindowId) {
         // Get the location from the space if the element is already mapped,
         // otherwise use the client's stored geometry to avoid animating from (0,0)
         let is_already_mapped = self
@@ -140,7 +142,7 @@ impl WaylandState {
             let is_mapped = self.native.space.elements().any(|w| w == &element);
             if !is_mapped {
                 let Some((loc, border_width)): Option<(Point<i32, Logical>, i32)> =
-                    core_view.model.client(window).map(|c| {
+                    self.wm.core.state.model.client(window).map(|c| {
                         (
                             Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)),
                             c.border_width,
@@ -150,7 +152,7 @@ impl WaylandState {
                     return;
                 };
                 self.native.placed_border.insert(window, border_width);
-                self.drop_window_animation(window);
+                self.native.drop_window_animation(window);
                 self.native.space.map_element(element.clone(), loc, false);
                 self.native.request_visible_window_render(&element);
 
@@ -158,7 +160,7 @@ impl WaylandState {
                 // focus path before arrange/show_hide ran), re-apply keyboard
                 // focus now that the window is actually in the space and
                 // reachable by focus_window.
-                if core_view.model.selected_win() == Some(window) {
+                if self.wm.core.state.model.selected_win() == Some(window) {
                     self.focus_window(window, None);
                 }
             }
@@ -171,19 +173,23 @@ impl WaylandState {
     /// unmanage the underlying Wayland/XWayland surface. Clears Smithay seat
     /// focus if this window holds it, but does **not** touch `mon.sel`. The WM
     /// layer will reconcile focus after the show/hide pass.
-    pub fn unmap_window_from_space(
-        &mut self,
-        core_view: &crate::core_state::CoreState,
-        window: WindowId,
-    ) {
+    pub fn unmap_window_from_space(&mut self, window: WindowId) {
         let Some(element) = self.native.window_index.get(&window).cloned() else {
             debug!("unmap_window_from_space({window:?}): no-op, window not found");
             return;
         };
         // Hiding removes the animation timer, not the client's protocol
         // lifecycle. Finish its current pending intent without remapping it.
-        if let Some(target) = core_view.model.client(window).map(|client| client.geo) {
-            self.dispatch_window_resize(core_view, window, &element, target);
+        if let Some(target) = self
+            .wm
+            .core
+            .state
+            .model
+            .client(window)
+            .map(|client| client.geo)
+        {
+            self.native
+                .dispatch_window_resize(&self.wm.core.state, window, &element, target);
         }
         let is_mapped = self.native.space.elements().any(|w| w == &element);
         if !is_mapped {
@@ -232,7 +238,7 @@ impl WaylandState {
         self.clear_window_presentation_state(window);
         self.clear_window_protocol_state(window);
         self.clear_seat_focus_if_focused(window);
-        self.close_foreign_toplevel(window);
+        self.native.close_foreign_toplevel(window);
         self.native
             .push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
     }
@@ -300,7 +306,7 @@ mod tests {
         state.clear_window_protocol_state(win);
 
         assert!(!state.native.geometry_sync.contains_key(&win));
-        assert!(!state.native_commit_may_update_model(
+        assert!(!state.native.native_commit_may_update_model(
             win,
             1280,
             720,

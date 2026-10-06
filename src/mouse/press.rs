@@ -266,17 +266,17 @@ mod tests {
 
     fn setup_wm() -> (Wm, WindowId, MonitorId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        wm.core.model.tags.num_tags = 4;
+        wm.core.state.model.tags.num_tags = 4;
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(10);
-        let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
+        let monitor_id = push_monitor_with(&mut wm.core.state.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
             monitor.available_rect = Rect::new(0, 0, 1920, 1080);
             monitor.bar_default_show = false;
             monitor.set_selected_tags(tags);
         });
-        wm.core.model.monitors.set_selected(monitor_id);
-        add_selected_client_with(&mut wm.core.model, monitor_id, |client| {
+        wm.core.state.model.monitors.set_selected(monitor_id);
+        add_selected_client_with(&mut wm.core.state.model, monitor_id, |client| {
             client.win = win;
             client.tags = tags;
             client.mode = ClientMode::floating();
@@ -300,14 +300,14 @@ mod tests {
 
         let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(outcome, PressOutcome::ReplayToClient { window: Some(win) });
-        assert_eq!(wm.core.model.selected_win(), Some(win));
+        assert_eq!(wm.core.state.model.selected_win(), Some(win));
     }
 
     #[test]
     fn empty_root_click_is_consumed() {
         let (mut wm, win, _) = setup_wm();
         crate::focus::focus(&mut wm.test_ctx(), Some(win));
-        assert_eq!(wm.core.model.selected_win(), Some(win));
+        assert_eq!(wm.core.state.model.selected_win(), Some(win));
 
         let input = PressInput {
             root: Point::new(800, 800),
@@ -327,7 +327,7 @@ mod tests {
     fn overview_active_client_click_captures_interaction() {
         let (mut wm, win, _) = setup_wm();
         crate::overview::toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
-        assert!(wm.core.model.is_overview_active());
+        assert!(wm.core.state.model.is_overview_active());
 
         let input = PressInput {
             root: Point::new(150, 150),
@@ -352,7 +352,7 @@ mod tests {
     fn overview_active_root_click_exits_overview_and_consumes() {
         let (mut wm, _, _) = setup_wm();
         crate::overview::toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
-        assert!(wm.core.model.is_overview_active());
+        assert!(wm.core.state.model.is_overview_active());
 
         let input = PressInput {
             root: Point::new(800, 800),
@@ -366,7 +366,7 @@ mod tests {
 
         let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(outcome, PressOutcome::Consumed);
-        assert!(!wm.core.model.is_overview_active());
+        assert!(!wm.core.state.model.is_overview_active());
     }
 
     fn overview_binding() -> Button {
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn duplicate_pointer_chords_execute_only_the_first_binding() {
         let (mut wm, _, _) = setup_wm();
-        wm.core.config.bindings.buttons = vec![overview_binding(), overview_binding()];
+        wm.core.state.config.bindings.buttons = vec![overview_binding(), overview_binding()];
 
         let outcome = dispatch_press_policy(
             &mut wm.test_ctx(),
@@ -397,13 +397,13 @@ mod tests {
         );
 
         assert_eq!(outcome, PressOutcome::Consumed);
-        assert!(wm.core.model.is_overview_active());
+        assert!(wm.core.state.model.is_overview_active());
     }
 
     #[test]
     fn touch_does_not_execute_root_mouse_bindings() {
         let (mut wm, _, _) = setup_wm();
-        wm.core.config.bindings.buttons = vec![overview_binding()];
+        wm.core.state.config.bindings.buttons = vec![overview_binding()];
 
         let outcome = dispatch_press_policy(
             &mut wm.test_ctx(),
@@ -419,13 +419,13 @@ mod tests {
         );
 
         assert_eq!(outcome, PressOutcome::Consumed);
-        assert!(!wm.core.model.is_overview_active());
+        assert!(!wm.core.state.model.is_overview_active());
     }
 
     #[test]
     fn touch_on_a_floating_border_does_not_start_pointer_resize() {
         let (mut wm, win, _) = setup_wm();
-        wm.core.config.bindings.buttons.clear();
+        wm.core.state.config.bindings.buttons.clear();
         let border = Point::new(100, 150);
 
         let outcome = dispatch_press_policy(
@@ -442,10 +442,10 @@ mod tests {
         );
 
         assert_eq!(outcome, PressOutcome::ReplayToClient { window: Some(win) });
-        assert_eq!(wm.core.interaction.drag.captured_source(), None);
+        assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
 
         let (mut pointer_wm, pointer_win, _) = setup_wm();
-        pointer_wm.core.config.bindings.buttons.clear();
+        pointer_wm.core.state.config.bindings.buttons.clear();
         let pointer_outcome = dispatch_press_policy(
             &mut pointer_wm.test_ctx(),
             PressInput {
@@ -469,7 +469,7 @@ mod tests {
     #[test]
     fn middle_click_close_clears_the_hover_offer_first() {
         let (mut wm, win, _) = setup_wm();
-        wm.core.config.bindings.buttons.clear();
+        wm.core.state.config.bindings.buttons.clear();
         let border = Point::new(100, 150);
         assert_eq!(
             crate::mouse::update_resize_offer_at(&mut wm.test_ctx(), border),
@@ -491,7 +491,7 @@ mod tests {
 
         assert_eq!(outcome, PressOutcome::Consumed);
         assert_eq!(
-            wm.core.interaction.drag.hover_offer(),
+            wm.core.state.interaction.drag.hover_offer(),
             crate::core_state::HoverOffer::None
         );
     }
@@ -502,14 +502,14 @@ mod tests {
     fn bar_hit_wm() -> (Wm, WindowId, MonitorId) {
         let (mut wm, win, monitor_id) = setup_wm();
         {
-            let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+            let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
             monitor.bar_default_show = true;
             // Direct field write rather than `set_ui_metrics`: this fixture
             // only cares about the top bar's height, and going through the
             // metrics setter would also recompute the bottom gesture strip.
             monitor.bar_height = 30;
         }
-        wm.bar.replace_hit_cache(
+        wm.core.bar.replace_hit_cache(
             monitor_id,
             crate::bar::MonitorHitCache {
                 tag_ranges: vec![crate::bar::TagHitRange {
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn tag_click_binding_arms_capture_and_reports_captured_interaction() {
         let (mut wm, _, _) = bar_hit_wm();
-        wm.core.config.bindings.buttons = vec![Button {
+        wm.core.state.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::Tag(0)),
             mask: ModMask::NONE,
             button: MouseButton::Left,
@@ -560,7 +560,7 @@ mod tests {
             }
         );
         assert_eq!(
-            wm.core.interaction.drag.captured_button(),
+            wm.core.state.interaction.drag.captured_button(),
             Some(MouseButton::Left)
         );
     }
@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn title_click_binding_arms_capture_and_reports_captured_interaction() {
         let (mut wm, win, _) = bar_hit_wm();
-        wm.core.config.bindings.buttons = vec![Button {
+        wm.core.state.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::WinTitle(win)),
             mask: ModMask::NONE,
             button: MouseButton::Left,
@@ -584,7 +584,7 @@ mod tests {
             }
         );
         assert_eq!(
-            wm.core.interaction.drag.captured_button(),
+            wm.core.state.interaction.drag.captured_button(),
             Some(MouseButton::Left)
         );
     }
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn press_only_bar_binding_still_reports_consumed() {
         let (mut wm, win, _) = bar_hit_wm();
-        wm.core.config.bindings.buttons = vec![Button {
+        wm.core.state.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::WinTitle(win)),
             mask: ModMask::NONE,
             button: MouseButton::Left,
@@ -602,7 +602,7 @@ mod tests {
         let outcome = dispatch_press_policy(&mut wm.test_ctx(), left_click_at(250));
 
         assert_eq!(outcome, PressOutcome::Consumed);
-        assert_eq!(wm.core.interaction.drag.captured_source(), None);
+        assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
     }
 
     /// Clicking the resize widget at the right edge of the title cell must keep
@@ -612,7 +612,7 @@ mod tests {
     #[test]
     fn resize_widget_click_keeps_the_press_until_the_tool_can_start() {
         let (mut wm, win, _) = bar_hit_wm();
-        wm.core.config.bindings.buttons = vec![Button {
+        wm.core.state.config.bindings.buttons = vec![Button {
             target: ButtonTarget::Bar(BarPosition::ResizeWidget(win)),
             mask: ModMask::NONE,
             button: MouseButton::Left,
@@ -627,6 +627,6 @@ mod tests {
                 button: MouseButton::Left
             }
         );
-        assert!(wm.core.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.drag.capture().is_some());
     }
 }

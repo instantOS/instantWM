@@ -187,12 +187,12 @@ mod tests {
 
     fn wm_with_client(mode: ClientMode, geo: Rect) -> (Wm, WindowId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let monitor_id = wm.core.model.monitors.push(
+        let monitor_id = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 1200, 800), Rect::new(0, 30, 1200, 770))
                 .build(),
         );
-        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.state.model.monitors.set_selected(monitor_id);
         let win = WindowId(91);
         let mut client = Client {
             win,
@@ -203,7 +203,7 @@ mod tests {
             ..Client::default()
         };
         client.set_mode_for_test(mode);
-        assert!(wm.core.model.readopt_client(monitor_id, client, true));
+        assert!(wm.core.state.model.readopt_client(monitor_id, client, true));
         (wm, win)
     }
 
@@ -224,7 +224,7 @@ mod tests {
                 restored_geometry: expected
             }
         );
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert_eq!(client.mode(), ClientMode::floating());
         assert_eq!(client.geo, expected);
         assert_eq!(client.saved_floating_rect(), Some(expected));
@@ -236,20 +236,35 @@ mod tests {
         let (mut wm, win) = wm_with_client(ClientMode::floating(), floating);
 
         toggle_floating(&mut wm.test_ctx());
-        assert!(wm.core.model.client(win).unwrap().mode().is_normal_tiling());
-        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(true));
+        assert!(
+            wm.core
+                .state
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_normal_tiling()
+        );
+        assert_eq!(
+            wm.core.state.model.client_protocol_maximized(win),
+            Some(true)
+        );
 
         toggle_floating(&mut wm.test_ctx());
         assert!(
             wm.core
+                .state
                 .model
                 .client(win)
                 .unwrap()
                 .mode()
                 .is_normal_floating()
         );
-        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(false));
-        assert_eq!(wm.core.model.client(win).unwrap().geo, floating);
+        assert_eq!(
+            wm.core.state.model.client_protocol_maximized(win),
+            Some(false)
+        );
+        assert_eq!(wm.core.state.model.client(win).unwrap().geo, floating);
     }
 
     #[test]
@@ -257,7 +272,7 @@ mod tests {
         let maximized = Rect::new(0, 30, 1200, 770);
         let (mut wm, win) =
             wm_with_client(ClientMode::maximized(ClientPlacement::Tiling), maximized);
-        wm.core.model.client_mut(win).unwrap().border_width = 0;
+        wm.core.state.model.client_mut(win).unwrap().border_width = 0;
 
         let change = set_window_placement_from_policy(
             &mut wm.test_ctx(),
@@ -265,7 +280,7 @@ mod tests {
             WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
         );
 
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(matches!(change, WindowModeChange::ChangedToFloating { .. }));
         assert_eq!(
             client.mode(),
@@ -283,6 +298,7 @@ mod tests {
             wm_with_client(ClientMode::maximized(ClientPlacement::Floating), maximized);
         let saved = Rect::new(200, 160, 700, 500);
         wm.core
+            .state
             .model
             .client_mut(win)
             .unwrap()
@@ -292,7 +308,7 @@ mod tests {
             set_window_placement_from_policy(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
 
         assert_eq!(change, WindowModeChange::ChangedToTiling);
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert_eq!(
             client.mode(),
             ClientMode::maximized(ClientPlacement::Tiling)
@@ -308,6 +324,7 @@ mod tests {
             wm_with_client(ClientMode::maximized(ClientPlacement::Floating), maximized);
         let saved = Rect::new(200, 160, 700, 500);
         wm.core
+            .state
             .model
             .client_mut(win)
             .unwrap()
@@ -315,7 +332,7 @@ mod tests {
 
         toggle_floating(&mut wm.test_ctx());
 
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert_eq!(client.mode(), ClientMode::tiled());
         assert_eq!(client.saved_floating_rect(), Some(saved));
     }
@@ -326,6 +343,7 @@ mod tests {
         let (mut wm, win) =
             wm_with_client(ClientMode::maximized(ClientPlacement::Floating), maximized);
         wm.core
+            .state
             .model
             .client_mut(win)
             .unwrap()
@@ -334,8 +352,11 @@ mod tests {
         let change = set_window_mode(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
 
         assert_eq!(change, WindowModeChange::ChangedToTiling);
-        let client = wm.core.model.client(win).unwrap();
+        let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_normal_tiling());
-        assert_eq!(wm.core.model.client_protocol_maximized(win), Some(true));
+        assert_eq!(
+            wm.core.state.model.client_protocol_maximized(win),
+            Some(true)
+        );
     }
 }

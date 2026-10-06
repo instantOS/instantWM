@@ -19,7 +19,6 @@ pub(crate) struct PointerButtonInput {
 }
 
 pub(crate) fn handle_pointer_button(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer: &PointerHandle<WaylandState>,
     keyboard: &KeyboardHandle<WaylandState>,
@@ -46,8 +45,8 @@ pub(crate) fn handle_pointer_button(
     }
 
     let handled = match button.state {
-        ButtonState::Pressed => handle_button_press(wm, state, pointer, keyboard, button),
-        ButtonState::Released => handle_button_release(wm, state, pointer, keyboard, button),
+        ButtonState::Pressed => handle_button_press(state, pointer, keyboard, button),
+        ButtonState::Released => handle_button_release(state, pointer, keyboard, button),
     };
     if handled {
         return;
@@ -92,7 +91,6 @@ fn clean_modifier_state(keyboard_handle: &KeyboardHandle<WaylandState>) -> ModMa
 }
 
 fn handle_button_press(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
@@ -103,8 +101,9 @@ fn handle_button_press(
     // overlay layer and may intentionally cover the built-in bar.  Classifying
     // the bar/sidebar first would make the WM consume the press even though
     // pointer motion had already focused the layer surface.
-    if let Some((layer_surface, location)) =
-        state.layer_surface_under_pointer(button.pointer_location)
+    if let Some((layer_surface, location)) = state
+        .native
+        .layer_surface_under_pointer(button.pointer_location)
     {
         state.dismiss_native_systray_menu();
         focus_layer_button_target(state, pointer_handle, button, layer_surface, location);
@@ -112,8 +111,13 @@ fn handle_button_press(
         return false;
     }
 
-    let clicked_win = state.logical_window_under_pointer(&wm.core, button.pointer_location);
-    if state.is_pointer_over_overlay(button.pointer_location) {
+    let clicked_win = state
+        .native
+        .logical_window_under_pointer(&state.wm.core.state, button.pointer_location);
+    if state
+        .native
+        .is_pointer_over_overlay(button.pointer_location)
+    {
         if !state
             .active_systray_menu()
             .is_some_and(|active| Some(active.win) == clicked_win)
@@ -136,7 +140,7 @@ fn handle_button_press(
     };
 
     let outcome = {
-        let mut ctx = wm.wayland_ctx(state);
+        let mut ctx = state.ctx();
         crate::mouse::press::dispatch_press_policy(&mut ctx, input)
     };
 
@@ -145,7 +149,9 @@ fn handle_button_press(
             index,
             button: MouseButton::Right,
             ..
-        } => wm
+        } => state
+            .wm
+            .core
             .bar
             .systray_host
             .tray
@@ -171,7 +177,7 @@ fn handle_button_press(
             root,
         } => {
             if !toggled_native_menu {
-                let mut ctx = wm.wayland_ctx(state);
+                let mut ctx = state.ctx();
                 crate::systray::press_icon(ctx.core_mut(), index, button, root);
             }
             pointer_handle.frame(state);
@@ -179,14 +185,14 @@ fn handle_button_press(
         }
         crate::mouse::press::PressOutcome::ReplayToClient { .. } => {
             forward_button(state, pointer_handle, button);
-            close_bar_systray_menu(wm, state);
+            close_bar_systray_menu(state);
             false
         }
     }
 }
 
-fn close_bar_systray_menu(wm: &mut Wm, state: &mut WaylandState) {
-    if crate::backend::wayland::input::bar::close_systray_menu(wm) {
+fn close_bar_systray_menu(state: &mut WaylandState) {
+    if crate::backend::wayland::input::bar::close_systray_menu(&mut state.wm) {
         state.native.request_bar_redraw();
     }
 }
@@ -222,28 +228,33 @@ fn focus_layer_button_target(
 }
 
 fn handle_button_release(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     button: ButtonPress,
 ) -> bool {
-    let was_captured = is_wm_drag_release(wm, button.wm_button);
+    let was_captured = is_wm_drag_release(&state.wm, button.wm_button);
     if !was_captured {
         forward_button(state, pointer_handle, button);
     }
     if let Some(btn) = button.wm_button {
         let occupied = state
+            .native
             .layer_surface_under_pointer(button.pointer_location)
             .is_some()
-            || state.is_pointer_over_overlay(button.pointer_location)
             || state
-                .logical_window_under_pointer(&wm.core, button.pointer_location)
+                .native
+                .is_pointer_over_overlay(button.pointer_location)
+            || state
+                .native
+                .logical_window_under_pointer(&state.wm.core.state, button.pointer_location)
                 .is_some();
         let hover_target = (!occupied)
-            .then(|| crate::mouse::pointer::sidebar_target_at(&wm.core.model, button.root))
+            .then(|| {
+                crate::mouse::pointer::sidebar_target_at(&state.wm.core.state.model, button.root)
+            })
             .flatten();
-        let mut ctx = wm.wayland_ctx(state);
+        let mut ctx = state.ctx();
         let outcome = crate::mouse::interaction::handle(
             &mut ctx,
             crate::mouse::interaction::InteractionEvent::pointer_end(
@@ -263,6 +274,7 @@ fn handle_button_release(
 }
 
 fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
-    wm.core.interaction.drag.captured_source() == Some(crate::types::InteractionSource::Pointer)
-        && wm.core.interaction.drag.captured_button() == released_btn
+    wm.core.state.interaction.drag.captured_source()
+        == Some(crate::types::InteractionSource::Pointer)
+        && wm.core.state.interaction.drag.captured_button() == released_btn
 }

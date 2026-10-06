@@ -171,7 +171,8 @@ impl WaylandState {
             return;
         };
         if element.set_activated(activated) {
-            self.send_toplevel_configure_with_presentation(&element, None, presentation);
+            self.native
+                .send_toplevel_configure_with_presentation(&element, None, presentation);
         }
     }
 
@@ -252,32 +253,26 @@ fn presentation(model: &crate::model::WmModel, window: WindowId) -> Option<(bool
     })
 }
 
-/// Project shared focus policy through an ordinary exclusive compositor borrow.
-/// This path neither mutates core state nor reacquires the shared WM owner.
-impl crate::focus::FocusBackendOps for WaylandState {
-    fn project_focus(
-        &mut self,
-        core: &crate::core_state::CoreState,
-        projection: crate::focus::FocusProjection,
-    ) {
+impl WaylandState {
+    pub(crate) fn project_focus(&mut self, projection: crate::focus::FocusProjection) {
+        let previous_flags = projection
+            .previous
+            .and_then(|win| presentation(&self.wm.core.state.model, win));
+        let current_flags = projection
+            .current
+            .and_then(|win| presentation(&self.wm.core.state.model, win));
+        // Presentation flags are owned values: no model borrow crosses a
+        // seat callback, which requires the complete compositor root.
         if projection.previous != projection.current
             && let Some(previous) = projection.previous
         {
-            self.set_window_activated(previous, false, presentation(&core.model, previous));
+            self.set_window_activated(previous, false, previous_flags);
         }
         if let Some(current) = projection.current {
-            self.focus_window(current, presentation(&core.model, current));
+            self.focus_window(current, current_flags);
         } else {
             self.clear_seat_focus();
         }
-    }
-
-    fn on_desktop_binding_state_changed(&mut self, _core: &crate::core_state::CoreState) {
-        // Smithay intercepts keys; Wayland has no X11-style passive grabs.
-    }
-
-    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
-        target.is_some_and(|win| !self.is_seat_focused_on(win))
     }
 }
 
