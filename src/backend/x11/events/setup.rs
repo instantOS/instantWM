@@ -38,7 +38,6 @@ pub fn setup_root(wm: &mut Wm) {
         netatom.system_tray,
         netatom.system_tray_op,
         netatom.system_tray_orientation,
-        netatom.system_tray_orientation_horz,
         netatom.wm_name,
         netatom.wm_state,
         netatom.wm_check,

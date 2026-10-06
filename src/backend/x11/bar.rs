@@ -138,8 +138,7 @@ pub fn sync_top_bar_surfaces(
     systray: &mut Option<XEmbedTray>,
 ) {
     let tray_monitor_id =
-        crate::backend::x11::systray::systray_monitor(core.model(), &core.config().systray)
-            .map(Monitor::id);
+        crate::systray::monitor(core.model(), &core.config().systray).map(Monitor::id);
     let tray_width = if core.config().systray.show {
         crate::backend::x11::systray::get_systray_width(
             &core.config().systray,

@@ -28,8 +28,6 @@ pub struct NetAtoms {
     pub system_tray_op: u32,
     /// _NET_SYSTEM_TRAY_ORIENTATION atom.
     pub system_tray_orientation: u32,
-    /// _NET_SYSTEM_TRAY_ORIENTATION_HORZ atom.
-    pub system_tray_orientation_horz: u32,
     /// _NET_WM_NAME atom.
     pub wm_name: u32,
     /// _NET_WM_STATE atom.

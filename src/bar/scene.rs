@@ -334,6 +334,8 @@ pub(crate) fn build_monitor_snapshots(
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().expect_selected_monitor().num;
+    let tray_monitor_id =
+        crate::systray::monitor(core.model(), &core.config().systray).map(Monitor::id);
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
     let base_fonts = core.config().fonts.clone();
@@ -341,7 +343,7 @@ pub(crate) fn build_monitor_snapshots(
     let mut selected_status = resolve_status(core);
     // While the external instantMENU presents the tray menu, the bar
     // neither reserves width for it nor renders the overlay.
-    let mut selected_tray_menu = if core
+    let mut tray_menu_presentation = if core
         .bar
         .systray_host
         .instantmenu
@@ -375,8 +377,9 @@ pub(crate) fn build_monitor_snapshots(
         let selected_tags = mon.visible_tags();
         let titles = collect_title_cells(core, mon, is_selected_monitor, gesture);
 
-        let tray_menu = if is_selected_monitor {
-            selected_tray_menu.take()
+        let is_tray_monitor = tray_monitor_id == Some(monitor_id);
+        let tray_menu = if is_tray_monitor {
+            tray_menu_presentation.take()
         } else {
             None
         };
@@ -384,7 +387,7 @@ pub(crate) fn build_monitor_snapshots(
         // The tray snapshot and the right-edge width reserved for external
         // tray content must agree: hit testing and XEmbed placement rely on
         // both describing the same strip.
-        let tray_visible = show_systray && is_selected_monitor;
+        let tray_visible = show_systray && is_tray_monitor;
         let external_tray_width = if tray_visible {
             external_right_width.max(0)
         } else {
@@ -748,16 +751,12 @@ pub(crate) fn render_monitor_snapshot(
     painter: &mut dyn BarPainter,
 ) -> crate::bar::MonitorHitCache {
     let bar_height = snapshot.rect.h;
-    let systray_width = if snapshot.is_selected_monitor {
-        snapshot
-            .systray
-            .as_ref()
-            .map(|s| s.layout.total_width)
-            .unwrap_or(0)
-            + snapshot.external_right_width
-    } else {
-        0
-    };
+    let systray_width = snapshot
+        .systray
+        .as_ref()
+        .map(|s| s.layout.total_width)
+        .unwrap_or(0)
+        + snapshot.external_right_width;
 
     let mut hit = crate::bar::MonitorHitCache::default();
 
@@ -855,6 +854,69 @@ mod tests {
         StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowFocus, WindowId,
         WindowRole,
     };
+
+    #[test]
+    fn pinned_tray_scene_and_hits_stay_on_the_host_monitor() {
+        let mut state = crate::core_state::CoreState::default();
+        state.config.systray.pinning = 1;
+        state.config.systray.menu_backend = crate::core_state::TrayMenuBackend::StatusBar;
+        let mut ids = Vec::new();
+        for num in 0..2 {
+            ids.push(
+                state.model.monitors.push(
+                    crate::test_support::MonitorBuilder::new()
+                        .monitor_rect(Rect::new(num * 800, 0, 800, 600))
+                        .bar(30, true)
+                        .tag_count(9)
+                        .configure(|monitor| monitor.num = num)
+                        .build(),
+                ),
+            );
+        }
+        state.model.set_selected_monitor(ids[1]);
+        let mut work = crate::core_state::PendingWork::default();
+        let mut running = true;
+        let mut bar = crate::bar::BarState::default();
+        bar.systray_host
+            .tray
+            .items
+            .push(crate::systray::StatusNotifierItem {
+                icon_size: crate::types::Size::new(16, 16),
+                icon_rgba: std::sync::Arc::from(vec![255; 16 * 16 * 4]),
+                ..Default::default()
+            });
+        bar.systray_host.menu.begin(7);
+        bar.systray_host
+            .menu
+            .apply(7, Some(crate::systray::MenuView::default()));
+        let mut focus = crate::client::focus::FocusState::default();
+        let core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let snapshots = build_monitor_snapshots(&core, 60);
+        let host = snapshots
+            .iter()
+            .find(|snapshot| snapshot.monitor_id == ids[0])
+            .unwrap();
+        let other = snapshots
+            .iter()
+            .find(|snapshot| snapshot.monitor_id == ids[1])
+            .unwrap();
+        assert!(!host.is_selected_monitor);
+        assert!(host.tray_menu.is_some());
+        assert_eq!(host.external_right_width, 60);
+        assert!(other.systray.is_none());
+        assert!(other.tray_menu.is_none());
+        assert_eq!(other.external_right_width, 0);
+        let icon = &host.systray.as_ref().unwrap().layout.cells[0];
+        assert!(icon.icon.right() <= 800 - 60);
+        let x = icon.icon.x;
+        let mut hit = crate::bar::MonitorHitCache::default();
+        record_systray_hits(host, &mut hit);
+        core.bar.replace_hit_cache(ids[0], hit);
+        assert_eq!(
+            crate::bar::model::bar_position_at_x(core.model().monitor(ids[0]).unwrap(), &core, x),
+            crate::types::BarPosition::SystrayItem(0)
+        );
+    }
 
     fn marker(value: f32) -> ColorScheme {
         let color = Rgba::new(value, value, value, 1.0);

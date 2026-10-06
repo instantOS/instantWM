@@ -137,6 +137,7 @@ impl TrayMenuBackend {
 #[serde(default)]
 pub struct SystrayConfig {
     pub show: bool,
+    /// Tray monitor position (1-based); zero follows the selected monitor.
     pub pinning: usize,
     pub spacing: i32,
     /// How the tray item context menu is presented.

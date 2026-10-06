@@ -59,9 +59,10 @@ pub(crate) fn hit_test(
     monitor: &Monitor,
     systray_show: bool,
     is_selected_monitor: bool,
+    is_tray_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
-    if is_selected_monitor
+    if is_tray_monitor
         && let Some(TrayMenuHit { start, end, slots }) = &hit.tray_menu
         && local_x >= *start
         && local_x < *end
@@ -78,7 +79,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if systray_show && is_selected_monitor {
+    if systray_show && is_tray_monitor {
         for slot in &hit.systray_slots {
             if local_x >= slot.start && local_x < slot.end {
                 return BarPosition::SystrayItem(slot.idx);
@@ -138,7 +139,16 @@ pub(crate) fn bar_position_at_x(monitor: &Monitor, core: &CoreCtx, local_x: i32)
         return BarPosition::Root;
     };
     let is_selmon = core.model().expect_selected_monitor().num == monitor.num;
-    hit_test(hit, monitor, core.config().systray.show, is_selmon, local_x)
+    let is_tray_monitor = crate::systray::monitor(core.model(), &core.config().systray)
+        .is_some_and(|host| host.id() == monitor.id());
+    hit_test(
+        hit,
+        monitor,
+        core.config().systray.show,
+        is_selmon,
+        is_tray_monitor,
+        local_x,
+    )
 }
 
 /// Return the title-cell index at `local_x`, independent of the window
@@ -177,16 +187,16 @@ mod tests {
         };
 
         assert_eq!(
-            hit_test(&hit, &monitor, true, true, 45),
+            hit_test(&hit, &monitor, true, true, true, 45),
             BarPosition::SystrayMenuItem(2)
         );
         assert_eq!(
-            hit_test(&hit, &monitor, true, true, 55),
+            hit_test(&hit, &monitor, true, true, true, 55),
             BarPosition::Root,
             "gaps in the overlay must not activate the tray icon or status below it"
         );
         assert_eq!(
-            hit_test(&hit, &monitor, false, true, 45),
+            hit_test(&hit, &monitor, false, true, true, 45),
             BarPosition::SystrayMenuItem(2),
             "an already-open overlay remains authoritative while configuration changes"
         );

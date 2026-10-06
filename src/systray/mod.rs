@@ -95,6 +95,24 @@ pub(crate) fn activate_menu_entry(core: &mut CoreCtx, idx: usize) -> bool {
     true
 }
 
+/// The monitor hosting the tray: the selected one, or the 1-based pinned
+/// position (the first monitor when fewer are connected).
+pub(crate) fn monitor<'a>(
+    model: &'a crate::model::WmModel,
+    config: &crate::core_state::SystrayConfig,
+) -> Option<&'a crate::types::Monitor> {
+    if let Some(position) = config.pinning.checked_sub(1) {
+        model
+            .monitors
+            .iter()
+            .nth(position)
+            .map(|(_, monitor)| monitor)
+            .or_else(|| model.monitors.iter().next().map(|(_, monitor)| monitor))
+    } else {
+        model.selected_monitor()
+    }
+}
+
 /// Forward a pointer press on tray icon `idx` to its StatusNotifierItem.
 ///
 /// Left activates, middle secondary-activates, right opens the context menu
@@ -486,6 +504,24 @@ pub(crate) fn fit_icon_size(source_size: Size, target_height: i32, scale: IconSc
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tray_monitor_resolution_preserves_selected_and_pinned_fallbacks() {
+        let mut model = crate::model::WmModel::new();
+        let first = model.monitors.push(crate::types::Monitor::default());
+        let second = model.monitors.push(crate::types::Monitor::default());
+        let third = model.monitors.push(crate::types::Monitor::default());
+        model.set_selected_monitor(third);
+
+        let mut config = crate::core_state::SystrayConfig::default();
+        assert_eq!(monitor(&model, &config).map(|m| m.id()), Some(third));
+
+        config.pinning = 2;
+        assert_eq!(monitor(&model, &config).map(|m| m.id()), Some(second));
+
+        config.pinning = usize::MAX;
+        assert_eq!(monitor(&model, &config).map(|m| m.id()), Some(first));
+    }
+
     use std::sync::Arc;
 
     use super::*;

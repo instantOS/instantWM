@@ -18,7 +18,7 @@ pub struct BarRuntime {
     pub(crate) status: status::StatusBlocks,
     /// Whether the active i3bar protocol stream advertised click events.
     pub status_click_events: bool,
-    /// Width reserved at the right edge of the selected monitor's bar for
+    /// Width reserved at the right edge of the tray monitor's bar for
     /// content rendered outside the scene (legacy XEmbed icon windows).
     pub external_tray_width: i32,
 }

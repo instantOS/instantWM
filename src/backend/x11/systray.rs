@@ -9,6 +9,8 @@ use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
+const SYSTEM_TRAY_ORIENTATION_HORIZONTAL: u32 = 0;
+
 const XEMBED_MAPPED: u32 = 1 << 0;
 const XEMBED_WINDOW_ACTIVATE: u32 = 1;
 const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
@@ -222,7 +224,7 @@ pub(super) fn sync_xembed_tray(
     }
 
     let (tray_right, bar_y, bar_win) = {
-        let mon = match systray_monitor(core.model(), &core.config().systray) {
+        let mon = match crate::systray::monitor(core.model(), &core.config().systray) {
             Some(mon) => mon,
             None => return,
         };
@@ -239,7 +241,7 @@ pub(super) fn sync_xembed_tray(
         let root = x11_runtime.root;
         let bar_height = core.config().bar_metrics().height;
         let net_system_tray = x11_runtime.netatom.system_tray;
-        let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
+        let orientation_atom = x11_runtime.netatom.system_tray_orientation;
         let manager_atom = x11_runtime.xatom.manager;
         let bg_pixel = x11_runtime.status_scheme.background.color.pixel as u32;
 
@@ -271,9 +273,9 @@ pub(super) fn sync_xembed_tray(
         let _ = conn.change_property32(
             PropMode::REPLACE,
             systray_win,
-            net_system_tray,
+            orientation_atom,
             AtomEnum::CARDINAL,
-            &[net_system_tray_horz],
+            &[SYSTEM_TRAY_ORIENTATION_HORIZONTAL],
         );
         let _ = conn.map_window(systray_win);
         let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
@@ -366,24 +368,6 @@ pub fn is_systray_icon(systray: Option<&XEmbedTray>, win: WindowId) -> bool {
     systray.is_some_and(|tray| tray.icon(win).is_some())
 }
 
-/// The monitor hosting the tray: the selected one, or the 1-based pinned
-/// position (the first monitor when fewer are connected).
-pub fn systray_monitor<'a>(
-    model: &'a crate::model::WmModel,
-    config: &crate::core_state::SystrayConfig,
-) -> Option<&'a crate::types::Monitor> {
-    if let Some(position) = config.pinning.checked_sub(1) {
-        model
-            .monitors
-            .iter()
-            .nth(position)
-            .map(|(_, monitor)| monitor)
-            .or_else(|| model.monitors.iter().next().map(|(_, monitor)| monitor))
-    } else {
-        model.selected_monitor()
-    }
-}
-
 fn read_xembed_info(x11: &X11BackendRef, win: WindowId, atom: u32) -> Option<XEmbedInfo> {
     let conn = x11.conn;
     let x11_win: Window = win.into();
@@ -406,33 +390,6 @@ pub(crate) fn xembed_wants_mapped(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn tray_monitor_resolution_preserves_selected_and_pinned_fallbacks() {
-        let mut model = crate::model::WmModel::new();
-        let first = model.monitors.push(crate::types::Monitor::default());
-        let second = model.monitors.push(crate::types::Monitor::default());
-        let third = model.monitors.push(crate::types::Monitor::default());
-        model.set_selected_monitor(third);
-
-        let mut config = crate::core_state::SystrayConfig::default();
-        assert_eq!(
-            systray_monitor(&model, &config).map(|m| m.id()),
-            Some(third)
-        );
-
-        config.pinning = 2;
-        assert_eq!(
-            systray_monitor(&model, &config).map(|m| m.id()),
-            Some(second)
-        );
-
-        config.pinning = usize::MAX;
-        assert_eq!(
-            systray_monitor(&model, &config).map(|m| m.id()),
-            Some(first)
-        );
-    }
 
     #[test]
     fn xembed_layout_uses_contiguous_full_hitbox_cells() {
