@@ -1,6 +1,6 @@
 use crate::backend::x11::events::query_manageable_window_geometry;
 use crate::backend::x11::lifecycle::unmanage;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
@@ -62,9 +62,9 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.derived_mut().display.width = e.width as i32;
     ctx.core.derived_mut().display.height = e.height as i32;
 
-    crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
+    crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx());
     crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
-    crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
+    crate::focus::focus(&mut ctx.wm_ctx(), None);
     ctx.core.queue_layout_for_all_monitors_urgent();
 }
 
@@ -250,7 +250,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 }
                 if needs_float {
                     let _ = crate::floating::set_window_placement_from_policy(
-                        &mut WmCtx::X11(ctx.reborrow()),
+                        &mut ctx.wm_ctx(),
                         event_win,
                         crate::floating::WindowModeRequest::Floating(
                             crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
@@ -258,7 +258,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                     );
                 }
                 if let Some(monitor_id) = monitor_id {
-                    crate::layouts::arrange(&mut WmCtx::X11(ctx.reborrow()), Some(monitor_id));
+                    crate::layouts::arrange(&mut ctx.wm_ctx(), Some(monitor_id));
                 }
             }
             _ => {}
@@ -274,7 +274,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             let previous_focus = ctx.core.model().selected_win();
             if crate::client::update_window_properties(ctx.core, event_win, &props) {
                 crate::focus::refresh_focus_after_selection(
-                    &mut WmCtx::X11(ctx.reborrow()),
+                    &mut ctx.wm_ctx(),
                     previous_focus,
                     None,
                 );

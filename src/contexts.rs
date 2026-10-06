@@ -34,6 +34,11 @@ pub struct WmCtxX11<'a> {
 }
 
 impl<'a> WmCtxX11<'a> {
+    /// Borrow the shared policy API without losing this handler's typed backend.
+    pub fn wm_ctx(&mut self) -> WmCtx<'_> {
+        WmCtx::X11(self.reborrow())
+    }
+
     pub fn reborrow(&mut self) -> WmCtxX11<'_> {
         WmCtxX11 {
             core: self.core,
@@ -52,6 +57,11 @@ pub struct WmCtxWayland<'a> {
     pub wayland: crate::backend::wayland::WaylandBackend<'a>,
 }
 impl WmCtxWayland<'_> {
+    /// Borrow the shared policy API; native operations retain exclusive root access.
+    pub fn wm_ctx(&mut self) -> WmCtx<'_> {
+        WmCtx::Wayland(self.reborrow())
+    }
+
     pub fn reborrow(&mut self) -> WmCtxWayland<'_> {
         WmCtxWayland {
             wayland: self.wayland.reborrow(),
@@ -147,13 +157,72 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    // Category accessors keep shared policy code independent of core storage.
+    // These references borrow the context itself: a live model borrow still
+    // prevents native effects or Smithay dispatch through the same owner.
+    pub fn model(&self) -> &crate::model::WmModel {
+        self.core().model()
+    }
+
+    pub fn model_mut(&mut self) -> &mut crate::model::WmModel {
+        self.core_mut().model_mut()
+    }
+
+    pub fn state(&self) -> &crate::core_state::CoreState {
+        self.core().state()
+    }
+
+    pub fn state_mut(&mut self) -> &mut crate::core_state::CoreState {
+        self.core_mut().state_mut()
+    }
+
+    pub fn config(&self) -> &crate::core_state::EffectiveConfig {
+        self.core().config()
+    }
+
+    pub fn config_mut(&mut self) -> &mut crate::core_state::EffectiveConfig {
+        self.core_mut().config_mut()
+    }
+
+    pub fn derived(&self) -> &crate::core_state::DerivedState {
+        self.core().derived()
+    }
+
+    pub fn derived_mut(&mut self) -> &mut crate::core_state::DerivedState {
+        self.core_mut().derived_mut()
+    }
+
+    pub fn pending_work(&self) -> &crate::core_state::PendingWork {
+        self.core().pending_work()
+    }
+
+    pub fn pending_work_mut(&mut self) -> &mut crate::core_state::PendingWork {
+        self.core_mut().pending_work_mut()
+    }
+
+    pub fn behavior(&self) -> &crate::core_state::WmBehavior {
+        self.core().behavior()
+    }
+
+    pub fn behavior_mut(&mut self) -> &mut crate::core_state::WmBehavior {
+        self.core_mut().behavior_mut()
+    }
+
+    pub fn interaction(&self) -> &crate::core_state::InteractionState {
+        self.core().interaction()
+    }
+
+    pub fn interaction_mut(&mut self) -> &mut crate::core_state::InteractionState {
+        self.core_mut().interaction_mut()
+    }
+
     /// Reconcile the backend with the presentation derived from authoritative
     /// interaction state. This is intentionally level-triggered: callers may
     /// invoke it after any possibly relevant transition without tracking the
     /// previous native state.
     pub fn sync_interaction_projection(&mut self) {
         use crate::backend::InteractionProjectionOps;
-        let desired = self.core().interaction().drag.projection();
+        let desired = self.interaction().drag.projection();
         match self {
             WmCtx::X11(ctx) => ctx.reconcile_interaction_projection(desired),
             WmCtx::Wayland(ctx) => ctx.reconcile_interaction_projection(desired),
@@ -171,9 +240,9 @@ impl<'a> WmCtx<'a> {
         &mut self,
         transition: impl FnOnce(&mut crate::core_state::PointerInteractionState) -> R,
     ) -> R {
-        let previous = self.core().interaction().drag.projection();
-        let result = transition(&mut self.core_mut().state_mut().interaction.drag);
-        if self.core().interaction().drag.projection() != previous {
+        let previous = self.interaction().drag.projection();
+        let result = transition(&mut self.state_mut().interaction.drag);
+        if self.interaction().drag.projection() != previous {
             self.sync_interaction_projection();
         }
         result
@@ -277,13 +346,10 @@ impl<'a> WmCtx<'a> {
         target: Option<WindowId>,
     ) {
         if rect.is_none() {
-            self.core_mut()
-                .state_mut()
-                .interaction
-                .pointer_placement_cache = None;
+            self.state_mut().interaction.pointer_placement_cache = None;
         }
-        let previous = self.core().state().interaction.layout_preview;
-        let previous_style = self.core().state().interaction.layout_preview_style;
+        let previous = self.state().interaction.layout_preview;
+        let previous_style = self.state().interaction.layout_preview_style;
         if previous == rect && (rect.is_none() || previous_style == style) {
             return;
         }
@@ -291,17 +357,16 @@ impl<'a> WmCtx<'a> {
         // from interpolation. Pointer previews must track motion immediately.
         let animate = previous.is_some()
             && rect.is_some()
-            && self.core().config().animations.enabled
+            && self.config().animations.enabled
             && self.current_mode().tree_placement().is_some();
-        self.core_mut().state_mut().interaction.layout_preview = rect;
-        self.core_mut().state_mut().interaction.layout_preview_style = style;
-        let duration =
-            self.core()
-                .config()
-                .animations
-                .scale_duration(std::time::Duration::from_millis(
-                    crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
-                ));
+        self.state_mut().interaction.layout_preview = rect;
+        self.state_mut().interaction.layout_preview_style = style;
+        let duration = self
+            .config()
+            .animations
+            .scale_duration(std::time::Duration::from_millis(
+                crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
+            ));
         use crate::backend::LayoutInteractionOps;
         match self {
             WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, style, target, animate, duration),
@@ -324,10 +389,10 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        let Some(monitor_id) = self.core().model().monitor_of_client(win) else {
+        let Some(monitor_id) = self.model().monitor_of_client(win) else {
             return;
         };
-        self.core_mut().model_mut().raise_client_in_z_order(win);
+        self.model_mut().raise_client_in_z_order(win);
         // Reapply the complete policy projection rather than visually raising
         // just this surface, which could place an ordinary window over a
         // protected transient dialog until the next layout pass.
@@ -360,7 +425,7 @@ impl<'a> WmCtx<'a> {
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
-                    self.core_mut().model_mut().sync_client_geometry(win, rect);
+                    self.model_mut().sync_client_geometry(win, rect);
                 }
                 self.resize_window(win, rect);
                 if apply_mode == GeometryApplyMode::VisualOnly {
@@ -376,7 +441,7 @@ impl<'a> WmCtx<'a> {
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {
         let width = width.max(0);
-        if let Some(client) = self.core_mut().model_mut().client_mut(win) {
+        if let Some(client) = self.model_mut().client_mut(win) {
             client.border_width = width;
         }
         self.set_border_width(win, width);
@@ -541,12 +606,12 @@ impl<'a> WmCtx<'a> {
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
-            let mon = self.core().model().expect_selected_monitor();
+            let mon = self.model().expect_selected_monitor();
             self.warp_to_point(mon.center());
             return;
         }
 
-        let Some(c) = self.core().model().client(win).cloned() else {
+        let Some(c) = self.model().client(win).cloned() else {
             return;
         };
 
@@ -558,7 +623,6 @@ impl<'a> WmCtx<'a> {
         let in_window = c.total_rect().contains_point(ptr);
 
         let on_bar = self
-            .core()
             .model()
             .client_view(win)
             .is_some_and(|view| view.monitor.bar_contains_y(ptr.y));
@@ -782,7 +846,7 @@ impl<'a> WmCtx<'a> {
     pub fn destroy_monitor_bar_window(&mut self, bar_win: WindowId) {
         match self {
             WmCtx::X11(ctx) => {
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                let mut wm_ctx = ctx.wm_ctx();
                 crate::backend::x11::monitor_helpers::destroy_monitor_bar(&mut wm_ctx, bar_win);
             }
             WmCtx::Wayland(_) => {}
@@ -872,11 +936,11 @@ impl<'a> WmCtx<'a> {
                 ctx.core.config(),
             );
         }
-        crate::monitor::resync_monitor_ui_metrics(self.core_mut().state_mut());
+        crate::monitor::resync_monitor_ui_metrics(self.state_mut());
     }
 
     pub fn current_mode(&self) -> &crate::core_state::ActiveWmMode {
-        &self.core().behavior().current_mode
+        &self.behavior().current_mode
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<crate::core_state::ActiveWmMode>) {
@@ -889,10 +953,8 @@ impl<'a> WmCtx<'a> {
         next_mode: crate::core_state::ActiveWmMode,
         overview_exit: crate::overview::ExitMode,
     ) -> crate::core_state::ActiveWmMode {
-        let previous_mode = std::mem::replace(
-            &mut self.core_mut().behavior_mut().current_mode,
-            next_mode.clone(),
-        );
+        let previous_mode =
+            std::mem::replace(&mut self.behavior_mut().current_mode, next_mode.clone());
         if previous_mode == next_mode {
             return previous_mode;
         }
@@ -918,7 +980,7 @@ impl<'a> WmCtx<'a> {
         &mut self,
         f: impl FnOnce(&mut crate::core_state::WmBehavior) -> R,
     ) -> R {
-        f(self.core_mut().behavior_mut())
+        f(self.behavior_mut())
     }
 }
 

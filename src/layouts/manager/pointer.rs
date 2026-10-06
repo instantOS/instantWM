@@ -29,10 +29,10 @@ pub(crate) fn pointer_tree_resize_start(
     window: WindowId,
     point: crate::types::Point,
 ) -> Option<PointerTreeResizeStart> {
-    if !uses_manual_tree_pointer_interaction(ctx.core().model(), window) {
+    if !uses_manual_tree_pointer_interaction(ctx.model(), window) {
         return None;
     }
-    let view = ctx.core().model().client_view(window)?;
+    let view = ctx.model().client_view(window)?;
     let tree = &view.monitor.per_tag()?.layout_tree;
     let left = tree.can_resize_side(window, crate::layouts::tree::Side::Left);
     let right = tree.can_resize_side(window, crate::layouts::tree::Side::Right);
@@ -61,7 +61,7 @@ pub(crate) fn pointer_tree_gap_resize_start(
     ctx: &WmCtx<'_>,
     point: crate::types::Point,
 ) -> Option<(WindowId, PointerTreeResizeStart)> {
-    let model = ctx.core().model();
+    let model = ctx.model();
     let monitor = model
         .monitors
         .monitor_intersecting_rect(crate::mouse::pointer::point_rect(point))?;
@@ -78,8 +78,8 @@ pub(crate) fn pointer_tree_gap_resize_start(
 
     let tiling = TilingContext::for_monitor(
         monitor,
-        &ctx.core().config().layout,
-        ctx.core().config().window.resize_hints,
+        &ctx.config().layout,
+        ctx.config().window.resize_hints,
     );
     if tiling.members.len() <= 1
         || tiling.placement.inner_gap() <= 0
@@ -224,7 +224,7 @@ pub(crate) fn update_pointer_tree_resize(
         );
         (tiling.work_rect(), view.monitor.id())
     };
-    let minimum_weight = ctx.core().config().layout.minimum_weight;
+    let minimum_weight = ctx.config().layout.minimum_weight;
     let mut candidate = origin.clone();
     let (left, right, top, bottom) = direction.affected_edges();
     if left || right {
@@ -247,19 +247,18 @@ pub(crate) fn update_pointer_tree_resize(
             minimum_weight,
         );
     }
-    ctx.core_mut()
-        .model_mut()
+    ctx.model_mut()
         .monitor_mut(monitor_id)
         .expect("client view guaranteed its monitor exists")
         .per_tag_state()
         .layout_tree = candidate;
-    let animated = ctx.core().config().animations.enabled;
+    let animated = ctx.config().animations.enabled;
     if animated {
-        ctx.core_mut().config_mut().animations.enabled = false;
+        ctx.config_mut().animations.enabled = false;
     }
     arrange(ctx, Some(monitor_id));
     if animated {
-        ctx.core_mut().config_mut().animations.enabled = true;
+        ctx.config_mut().animations.enabled = true;
     }
     true
 }
@@ -282,7 +281,6 @@ fn pointer_placement<'a>(
     point: crate::types::Point,
 ) -> Option<&'a mut PointerPlacementPreviewCache> {
     let monitor = ctx
-        .core()
         .model()
         .monitors
         .monitor_intersecting_rect(Rect::new(point.x, point.y, 1, 1))?;
@@ -291,7 +289,6 @@ fn pointer_placement<'a>(
     }
     let (monitor_id, tags) = (monitor.id(), monitor.selected_tags());
     let cached = ctx
-        .core()
         .state()
         .interaction
         .pointer_placement_cache
@@ -301,37 +298,30 @@ fn pointer_placement<'a>(
         });
     if !cached {
         let tree = monitor.per_tag()?.layout_tree.clone();
-        let client = ctx.core().model().client(window)?;
+        let client = ctx.model().client(window)?;
         let incoming =
-            (ctx.core().model().monitor_of_client(window) != Some(monitor_id)).then_some(client);
+            (ctx.model().monitor_of_client(window) != Some(monitor_id)).then_some(client);
         let tiling = TilingContext::for_drop(
             monitor,
-            &ctx.core().config().layout,
-            ctx.core().config().window.resize_hints,
+            &ctx.config().layout,
+            ctx.config().window.resize_hints,
             incoming,
         );
         let session = TreePlacementSession::new(
             tree,
             window,
             tiling.work_rect(),
-            ctx.core().config().layout.pointer_edge_fraction,
+            ctx.config().layout.pointer_edge_fraction,
             tiling.minimums.clone(),
         );
-        ctx.core_mut()
-            .state_mut()
-            .interaction
-            .pointer_placement_cache = Some(PointerPlacementPreviewCache {
+        ctx.state_mut().interaction.pointer_placement_cache = Some(PointerPlacementPreviewCache {
             monitor_id,
             tags,
             tiling,
             session,
         });
     }
-    ctx.core_mut()
-        .state_mut()
-        .interaction
-        .pointer_placement_cache
-        .as_mut()
+    ctx.state_mut().interaction.pointer_placement_cache.as_mut()
 }
 
 pub fn place_tree_at_point(
@@ -339,14 +329,13 @@ pub fn place_tree_at_point(
     window: WindowId,
     point: crate::types::Point,
 ) -> bool {
-    let Some(source) = ctx.core().model().monitor_of_client(window) else {
+    let Some(source) = ctx.model().monitor_of_client(window) else {
         return false;
     };
     if pointer_placement(ctx, window, point).is_none() {
         return false;
     }
     let cache = ctx
-        .core_mut()
         .state_mut()
         .interaction
         .pointer_placement_cache
@@ -367,8 +356,7 @@ pub fn place_tree_at_point(
     {
         return false;
     }
-    ctx.core_mut()
-        .model_mut()
+    ctx.model_mut()
         .monitor_mut(target)
         .unwrap()
         .per_tag_state()
@@ -388,7 +376,6 @@ pub fn preview_tree_at_point(
     point: crate::types::Point,
 ) -> Option<Rect> {
     if !ctx
-        .core()
         .model()
         .client(window)
         .is_some_and(|client| client.mode().is_normal_tiling())
@@ -396,7 +383,7 @@ pub fn preview_tree_at_point(
         return None;
     }
     pointer_placement(ctx, window, point)?;
-    let state = ctx.core_mut().state_mut();
+    let state = ctx.state_mut();
     let cache = state.interaction.pointer_placement_cache.as_mut()?;
     let slot = cache.session.preview_point(point)?;
     let client = state.model.client(window)?;

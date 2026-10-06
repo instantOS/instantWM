@@ -475,7 +475,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         client.old_border_width = new_bw;
     }
 
-    let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
+    let mut tmp_ctx = ctx.wm_ctx();
     tmp_ctx.move_resize(
         win,
         Rect {

@@ -1,4 +1,5 @@
 use crate::backend::wayland::compositor::WaylandState;
+use crate::contexts::WmCtx;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::WaylandWm as Wm;
@@ -33,7 +34,7 @@ pub fn handle_bar_scroll(
         MouseButton::ScrollDown
     };
     let mut ctx = state.ctx();
-    let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
+    let WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
     run_bar_bindings(
@@ -54,7 +55,7 @@ fn run_bar_bindings(
     root: Point,
     clean_state: ModMask,
 ) {
-    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+    let mut wm_ctx = ctx.wm_ctx();
     crate::mouse::bindings::dispatch_button_binding(
         &mut wm_ctx,
         crate::mouse::bindings::ButtonBindingEvent {

@@ -2,6 +2,7 @@
 
 pub(crate) mod recovery;
 
+use crate::contexts::WmCtx;
 use smithay::backend::input::{InputBackend, KeyboardKeyEvent};
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
 use smithay::wayland::input_method::InputMethodSeat;
@@ -231,10 +232,10 @@ pub fn handle_keyboard<B: InputBackend>(
             if suppression.is_none() {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let ctx = data.ctx();
-                let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
+                let WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
                 };
-                let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
+                let mut wm_ctx = WmCtx::Wayland(ctx);
                 if crate::keyboard::handle_keysym(&mut wm_ctx, raw_keysym, mod_mask) {
                     data.native
                         .runtime

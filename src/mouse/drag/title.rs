@@ -47,7 +47,7 @@ pub fn title_drag_begin(
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
-        let is_true_fullscreen = match ctx.core().model().client(win) {
+        let is_true_fullscreen = match ctx.model().client(win) {
             Some(c) => c.mode().is_true_fullscreen(),
             None => return false,
         };
@@ -57,13 +57,12 @@ pub fn title_drag_begin(
         crate::focus::focus(ctx, Some(win));
     }
 
-    let sel = ctx.core().model().selected_win();
-    let drop_restore_geo = match ctx.core().model().client(win) {
+    let sel = ctx.model().selected_win();
+    let drop_restore_geo = match ctx.model().client(win) {
         Some(c) => c.saved_floating_rect().unwrap_or(c.geo),
         None => return false,
     };
     let was_hidden = ctx
-        .core()
         .model()
         .client(win)
         .is_some_and(|client| client.is_hidden);
@@ -103,7 +102,7 @@ fn begin_move_drag(
     input: DragInput,
     start_point: Point,
 ) -> Option<(Rect, Point)> {
-    let client = ctx.core().model().client(win)?;
+    let client = ctx.model().client(win)?;
     if client.is_edge_scratchpad() {
         return None;
     }
@@ -112,7 +111,7 @@ fn begin_move_drag(
     }
 
     let position = input.position();
-    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), win) {
+    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.model(), win) {
         let geo = ctx.core().client_geo(win)?;
         Some((geo, start_point))
     } else {
@@ -132,7 +131,7 @@ fn begin_move_drag(
 /// Handle the transition from an armed click to an active shared drag.
 fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     let (win, btn, source, start_point, suppress_click_action) = {
-        let Some(drag) = ctx.core().interaction().drag.armed_interaction() else {
+        let Some(drag) = ctx.interaction().drag.armed_interaction() else {
             return false;
         };
         (
@@ -146,7 +145,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     let is_right_click = btn == MouseButton::Right;
 
     if is_right_click {
-        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), win) {
+        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.model(), win) {
             // Bar-title resizing retains its established bottom-right handle;
             // Super+right-drag uses the pointer's quadrant instead.
             let point = if suppress_click_action {
@@ -221,7 +220,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
 /// the window anchor and never warps or consults the compositor pointer.
 pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     let root = input.position();
-    let Some(armed) = ctx.core().interaction().drag.armed_interaction() else {
+    let Some(armed) = ctx.interaction().drag.armed_interaction() else {
         return false;
     };
 
@@ -245,7 +244,7 @@ pub fn process_title_drag_motion(ctx: &mut WmCtx, input: DragInput) -> bool {
     // on it; anything else takes the ordinary move/resize path.
     if drag.origin() == crate::core_state::ArmedDragOrigin::BarTitle
         && drag.button() == MouseButton::Left
-        && let Some(monitor_id) = ctx.core().model().monitor_of_client(win)
+        && let Some(monitor_id) = ctx.model().monitor_of_client(win)
         && title_strip_target(ctx, monitor_id, root).is_some()
         && begin_bar_reorder(ctx, win, monitor_id)
     {
@@ -305,7 +304,7 @@ fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> b
 /// Returns `true` when a reorder is in progress; the caller should consider
 /// the interaction consumed.
 pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
-    let Some((drag, reorder)) = ctx.core().interaction().drag.reordering_interaction() else {
+    let Some((drag, reorder)) = ctx.interaction().drag.reordering_interaction() else {
         return false;
     };
     let win = drag.win();
@@ -369,7 +368,7 @@ fn convert_reorder_to_move(
 /// Order changes were already committed by the motion handler. No click action
 /// fires: the drag threshold was crossed.
 pub fn title_reorder_finish(ctx: &mut WmCtx) {
-    let Some((drag, reorder)) = ctx.core().interaction().drag.reordering_interaction() else {
+    let Some((drag, reorder)) = ctx.interaction().drag.reordering_interaction() else {
         return;
     };
     let root = drag.last_root_point();

@@ -1,6 +1,7 @@
 //! Translation of queued Wayland protocol and input commands into WM operations.
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::contexts::WmCtx;
 use smithay::wayland::seat::WaylandFocus;
 
 pub(crate) fn drain_command_queue(state: &mut WaylandState) {
@@ -14,6 +15,8 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
     let mut commands = commands.into_iter().peekable();
     let mut pointer_hit_cache = None;
 
+    // Borrow shared policy per command, then release it before native follow-up.
+    // A batch-wide context would hide the boundary needed for root callbacks.
     while let Some(command) = commands.next() {
         let next_is_pointer_motion = matches!(commands.peek(), Some(WmCommand::PointerMotion(_)));
         if !matches!(&command, WmCommand::PointerMotion(_)) {
@@ -21,17 +24,17 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
         }
         match command {
             WmCommand::FocusWindow(win) => {
-                handle_focus_window(state, Some(win));
+                handle_focus_window(&mut state.ctx(), Some(win));
             }
-            WmCommand::RaiseWindow(win) => handle_raise_window(state, win),
+            WmCommand::RaiseWindow(win) => handle_raise_window(&mut state.ctx(), win),
             WmCommand::MapWindow(params) => handle_map_window(state, params),
             WmCommand::UnmapWindow(_) => {}
-            WmCommand::UnmanageWindow(win) => handle_unmanage_window(state, win),
+            WmCommand::UnmanageWindow(win) => handle_unmanage_window(&mut state.ctx(), win),
             WmCommand::ActivateWindow(win) => {
                 // Selection refresh is handled by the post-command diff
                 // below; activating an invisible window only marks it
                 // urgent, which is not part of the advertised snapshot.
-                handle_activate_window(state, win);
+                handle_activate_window(&mut state.ctx(), win);
             }
             WmCommand::PointerMotion(motion) => {
                 if let (Some(pointer), Some(keyboard)) = (
@@ -100,19 +103,19 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
             WmCommand::BeginResize { win, dir } => handle_begin_resize(state, win, dir),
             WmCommand::CancelInteractiveDrag(reason) => cancel_interactive_drag(state, reason),
             WmCommand::UpdateProperties { win, properties } => {
-                handle_update_properties(state, win, &properties);
+                handle_update_properties(&mut state.ctx(), win, &properties);
                 state
                     .native
                     .refresh_foreign_toplevel(&state.wm.core.state, win);
             }
             WmCommand::UpdateTransientFor { win, parent } => {
-                handle_update_transient_for(state, win, parent);
+                handle_update_transient_for(&mut state.ctx(), win, parent);
                 state
                     .native
                     .refresh_foreign_toplevel(&state.wm.core.state, win);
             }
             WmCommand::UpdateXWaylandPolicy { win, update } => {
-                handle_update_xwayland_policy(state, win, update);
+                handle_update_xwayland_policy(&mut state.ctx(), win, update);
             }
             WmCommand::RequestX11WindowSize { win, w, h } => {
                 handle_x11_window_size_request(state, win, w, h);
@@ -138,7 +141,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                     .refresh_foreign_toplevel(&state.wm.core.state, win);
             }
             WmCommand::SetMinimized { win, minimized } => {
-                handle_set_minimized(state, win, minimized);
+                handle_set_minimized(&mut state.ctx(), win, minimized);
                 state
                     .native
                     .refresh_foreign_toplevel(&state.wm.core.state, win);
@@ -169,7 +172,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                 state.wm.core.bar.mark_dirty();
             }
             WmCommand::RestoreFocus => {
-                handle_focus_window(state, None);
+                handle_focus_window(&mut state.ctx(), None);
             }
             WmCommand::SyncLayerExclusiveZones => {
                 if crate::backend::wayland::compositor::layer_shell::apply_available_rects(state) {
@@ -182,7 +185,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                 monitor_name,
                 tag_index,
             } => {
-                handle_select_tag(state, &monitor_name, tag_index);
+                handle_select_tag(&mut state.ctx(), &monitor_name, tag_index);
             }
         }
     }
@@ -192,12 +195,11 @@ fn should_update_active_drag(active: bool, next_is_pointer_motion: bool) -> bool
     !active || !next_is_pointer_motion
 }
 
-fn handle_focus_window(state: &mut WaylandState, win: Option<crate::types::WindowId>) {
-    crate::focus::focus(&mut state.ctx(), win);
+fn handle_focus_window(ctx: &mut WmCtx, win: Option<crate::types::WindowId>) {
+    crate::focus::focus(ctx, win);
 }
 
-fn handle_raise_window(state: &mut WaylandState, win: crate::types::WindowId) {
-    let mut ctx = state.ctx();
+fn handle_raise_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
     ctx.raise_client(win);
 }
 
@@ -217,35 +219,33 @@ fn handle_begin_move(state: &mut WaylandState, win: crate::types::WindowId) {
 }
 
 fn handle_update_properties(
-    state: &mut WaylandState,
+    ctx: &mut WmCtx,
     win: crate::types::WindowId,
     properties: &crate::client::WindowProperties,
 ) {
-    let mut ctx = state.ctx();
-    let previous_focus = ctx.core().model().selected_win();
+    let previous_focus = ctx.model().selected_win();
     if crate::client::update_window_properties(ctx.core_mut(), win, properties) {
-        crate::focus::refresh_focus_after_selection(&mut ctx, previous_focus, None);
+        crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
 }
 
 fn handle_update_transient_for(
-    state: &mut WaylandState,
+    ctx: &mut WmCtx,
     win: crate::types::WindowId,
     parent: Option<crate::types::WindowId>,
 ) {
-    let mut ctx = state.ctx();
-    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
+    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
         return;
     };
-    let needs_float = ctx.core().model().client(win).is_some_and(|client| {
+    let needs_float = ctx.model().client(win).is_some_and(|client| {
         parent.is_some() && client.placement() != crate::types::ClientPlacement::Floating
     });
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+    if let Some(client) = ctx.model_mut().client_mut(win) {
         client.transient_for = parent;
     }
     if needs_float {
         let _ = crate::floating::set_window_placement_from_policy(
-            &mut ctx,
+            ctx,
             win,
             crate::floating::WindowModeRequest::Floating(
                 crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
@@ -253,7 +253,7 @@ fn handle_update_transient_for(
         );
     }
     ctx.core_mut().queue_layout_for_monitor(monitor_id);
-    crate::layouts::sync_monitor_z_order(&mut ctx, monitor_id);
+    crate::layouts::sync_monitor_z_order(ctx, monitor_id);
 }
 
 fn handle_x11_window_size_request(
@@ -306,18 +306,16 @@ fn handle_committed_size_observation(
     ) {
         return;
     }
-    apply_committed_window_size(state, win, w, h);
+    apply_committed_window_size(state.wm.core.model_mut(), win, w, h);
 }
 
 fn apply_committed_window_size(
-    state: &mut WaylandState,
+    model: &mut crate::model::WmModel,
     win: crate::types::WindowId,
     w: i32,
     h: i32,
 ) {
-    let mut ctx = state.ctx();
-    let state = ctx.core_mut().state_mut();
-    if let Some(client) = state.model.client(win)
+    if let Some(client) = model.client(win)
         // Tiled, maximized, fullscreen, and scratchpad geometry is owned by the
         // WM. In particular, a native Wayland client may commit a stale startup
         // buffer after layout selected its final size; copying that size back
@@ -331,7 +329,7 @@ fn apply_committed_window_size(
             w,
             h,
         };
-        state.model.sync_client_geometry(win, rect);
+        model.sync_client_geometry(win, rect);
     }
 }
 
@@ -358,19 +356,16 @@ fn handle_set_fullscreen(state: &mut WaylandState, win: crate::types::WindowId, 
     state.native.request_render();
 }
 
-fn handle_set_minimized(state: &mut WaylandState, win: crate::types::WindowId, minimized: bool) {
-    let mut ctx = state.ctx();
+fn handle_set_minimized(ctx: &mut WmCtx, win: crate::types::WindowId, minimized: bool) {
     if minimized {
-        crate::client::hide(&mut ctx, win);
+        crate::client::hide(ctx, win);
     } else {
-        crate::client::show_window(&mut ctx, win);
+        crate::client::show_window(ctx, win);
     }
 }
 
-fn handle_select_tag(state: &mut WaylandState, monitor_name: &str, tag_index: usize) {
-    let mut ctx = state.ctx();
+fn handle_select_tag(ctx: &mut WmCtx, monitor_name: &str, tag_index: usize) {
     let monitor_id = ctx
-        .core()
         .model()
         .monitors
         .iter()
@@ -380,13 +375,13 @@ fn handle_select_tag(state: &mut WaylandState, monitor_name: &str, tag_index: us
         return;
     };
 
-    crate::overview::exit_overview(&mut ctx, crate::overview::ExitMode::RestorePrevious);
-    crate::focus::select_monitor(&mut ctx, monitor_id);
+    crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
+    crate::focus::select_monitor(ctx, monitor_id);
 
     // ext-workspace-v1 uses zero-based indices; TagMask performs the conversion
     // to its one-based external tag numbering.
     if let Some(mask) = crate::types::TagMask::from_index(tag_index) {
-        crate::tags::view::view_tags(&mut ctx, mask);
+        crate::tags::view::view_tags(ctx, mask);
     }
 }
 
@@ -680,8 +675,8 @@ fn finalize_wayland_client(
     })
 }
 
-fn handle_unmanage_window(state: &mut WaylandState, win: crate::types::WindowId) {
-    crate::client::lifecycle::remove_managed_client(&mut state.ctx(), win);
+fn handle_unmanage_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
+    crate::client::lifecycle::remove_managed_client(ctx, win);
 }
 
 fn cancel_interactive_drag(state: &mut WaylandState, reason: crate::core_state::DragCancelReason) {
@@ -692,17 +687,15 @@ fn cancel_interactive_drag(state: &mut WaylandState, reason: crate::core_state::
     );
 }
 
-fn handle_activate_window(state: &mut WaylandState, win: crate::types::WindowId) {
-    let mut ctx = state.ctx();
+fn handle_activate_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
     let is_currently_visible = ctx
-        .core()
         .model()
         .client_view(win)
         .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()));
 
     if is_currently_visible {
-        crate::focus::activate_client(&mut ctx, win);
-    } else if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        crate::focus::activate_client(ctx, win);
+    } else if let Some(client) = ctx.model_mut().client_mut(win) {
         client.is_urgent = true;
     }
 }
@@ -736,13 +729,11 @@ fn handle_begin_resize(
 }
 
 fn handle_update_xwayland_policy(
-    state: &mut WaylandState,
+    ctx: &mut WmCtx,
     win: crate::types::WindowId,
     update: crate::backend::x11::policy::XWaylandPolicyUpdate,
 ) {
-    let mut ctx = state.ctx();
-    let outcome =
-        crate::backend::x11::policy::apply_xwayland_policy(ctx.core_mut().model_mut(), win, update);
+    let outcome = crate::backend::x11::policy::apply_xwayland_policy(ctx.model_mut(), win, update);
     if let Some(outcome) = outcome {
         if let Some(rect) = outcome.presentation_rect() {
             ctx.move_resize(win, rect, crate::geometry::MoveResizeOptions::immediate());
@@ -750,7 +741,7 @@ fn handle_update_xwayland_policy(
         if outcome.should_raise() {
             ctx.raise_client(win);
         }
-        crate::client::fullscreen::sync_client_maximized_signal(&mut ctx, win);
+        crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
         if outcome.layout_changed() {
             ctx.core_mut()
                 .queue_layout_for_monitor(outcome.monitor_id());
@@ -901,7 +892,7 @@ mod tests {
             .unwrap()
             .set_selected(Some(focused));
 
-        handle_set_minimized(&mut state, minimized, false);
+        handle_set_minimized(&mut state.ctx(), minimized, false);
 
         assert!(
             !state
@@ -1006,7 +997,7 @@ mod tests {
             is_hidden: false,
             is_above: true,
         };
-        handle_update_xwayland_policy(&mut state, win, update());
+        handle_update_xwayland_policy(&mut state.ctx(), win, update());
 
         let client = state.wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
@@ -1018,7 +1009,7 @@ mod tests {
 
         state.wm.core.work.layout.clear();
         let bar_seq = state.wm.core.bar.update_seq();
-        handle_update_xwayland_policy(&mut state, win, update());
+        handle_update_xwayland_policy(&mut state.ctx(), win, update());
         assert!(!state.wm.core.work.layout.is_pending());
         assert_eq!(state.wm.core.bar.update_seq(), bar_seq);
     }
@@ -1041,7 +1032,7 @@ mod tests {
             .unwrap();
         add_client(&mut state.wm.core.state.model, monitor_id, client);
 
-        apply_committed_window_size(&mut state, win, 1920, 1080);
+        apply_committed_window_size(state.wm.core.model_mut(), win, 1920, 1080);
 
         assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, geo);
     }

@@ -80,7 +80,7 @@ impl InteractionOutcome {
 
 pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
     if !matches!(event.phase, InteractionPhase::Cancel { .. })
-        && ctx.core().interaction().drag.captured_source() != Some(event.source)
+        && ctx.interaction().drag.captured_source() != Some(event.source)
     {
         return InteractionOutcome::Ignored;
     }
@@ -109,7 +109,6 @@ pub fn reconcile_capture(ctx: &mut WmCtx<'_>) -> Option<DragCancelReason> {
 
 fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
     let state = ctx
-        .core()
         .interaction()
         .drag
         .capture()
@@ -118,7 +117,7 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
             _ => None,
         })?;
 
-    let model = ctx.core().model();
+    let model = ctx.model();
     // `client_view` fails only for a window the model does not manage. A
     // managed client always resolves its owning monitor, so there is no
     // separate "managed but unreachable" outcome to report.
@@ -144,7 +143,7 @@ fn window_capture_invalidation(ctx: &WmCtx<'_>) -> Option<DragCancelReason> {
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
-    match ctx.core().interaction().drag.capture() {
+    match ctx.interaction().drag.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::update_card_gesture(ctx, event.root);
         }
@@ -192,10 +191,10 @@ fn finish(
     button: MouseButton,
     time_msec: u32,
 ) -> InteractionOutcome {
-    if ctx.core().interaction().drag.captured_button() != Some(button) {
+    if ctx.interaction().drag.captured_button() != Some(button) {
         return InteractionOutcome::Ignored;
     }
-    match ctx.core().interaction().drag.capture() {
+    match ctx.interaction().drag.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::finish_card_gesture(ctx, button);
         }

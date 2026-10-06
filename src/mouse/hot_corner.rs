@@ -47,18 +47,17 @@ fn corner_at(
 ///
 /// Returns `true` only for the motion sample that toggled the edge scratchpad.
 pub fn update_overlay_hot_corner(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    if ctx.core().interaction().drag.has_capture() {
+    if ctx.interaction().drag.has_capture() {
         // Active drags own pointer motion. Rearming here ensures releasing a
         // drag outside the corner cannot leave an old latch behind.
-        ctx.core_mut()
-            .state_mut()
+        ctx.state_mut()
             .interaction
             .hot_corner
             .update(None, false, false);
         return false;
     }
 
-    let corner = corner_at(&ctx.core().model().monitors, root);
+    let corner = corner_at(&ctx.model().monitors, root);
     let (monitor_id, inside_activation, inside_keep) = match corner {
         Some((monitor_id, zones)) => (
             Some(monitor_id),
@@ -67,11 +66,11 @@ pub fn update_overlay_hot_corner(ctx: &mut WmCtx<'_>, root: Point) -> bool {
         ),
         None => (None, false, false),
     };
-    let triggered = ctx.core_mut().state_mut().interaction.hot_corner.update(
-        monitor_id,
-        inside_activation,
-        inside_keep,
-    );
+    let triggered =
+        ctx.state_mut()
+            .interaction
+            .hot_corner
+            .update(monitor_id, inside_activation, inside_keep);
 
     let Some(monitor_id) = triggered else {
         return false;

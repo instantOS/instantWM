@@ -1,7 +1,8 @@
+use crate::contexts::WmCtx;
 use crate::ipc_types::{Response, TagCommand, TagInfo};
 use crate::tags::{name_tag, reset_name_tag};
 
-pub fn handle_tag_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: TagCommand) -> Response {
+pub fn handle_tag_command(ctx: &mut WmCtx<'_>, cmd: TagCommand) -> Response {
     match cmd {
         TagCommand::List => return list_tags(ctx),
         TagCommand::Name { name } => name_tag(ctx, &name),
@@ -13,8 +14,8 @@ pub fn handle_tag_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: TagCommand)
 /// Describe every tag of the selected monitor: configured name and icon,
 /// the label the bar currently shows, and whether the tag is occupied or
 /// selected.
-fn list_tags(ctx: &crate::contexts::WmCtx<'_>) -> Response {
-    let core = ctx.core().state();
+fn list_tags(ctx: &WmCtx<'_>) -> Response {
+    let core = ctx.state();
     let monitor = core.model.expect_selected_monitor();
     let show_icons = core.config.tags.show_icons;
     let occupied = monitor.occupied_tags();
@@ -70,7 +71,7 @@ mod tests {
         wm
     }
 
-    fn list(ctx: &mut crate::contexts::WmCtx<'_>) -> Vec<TagInfo> {
+    fn list(ctx: &mut WmCtx<'_>) -> Vec<TagInfo> {
         match handle_tag_command(ctx, TagCommand::List) {
             Response::TagList(tags) => tags,
             other => panic!("expected TagList, got {other:?}"),

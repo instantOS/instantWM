@@ -1,26 +1,23 @@
 use crate::config;
+use crate::contexts::WmCtx;
 
-pub fn reload_config(ctx: &mut crate::contexts::WmCtx<'_>) -> Result<(), String> {
+pub fn reload_config(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let cfg = config::load_config(ctx.backend_kind())?;
-    let previous_status_command = ctx.core().config().status_command.clone();
+    let previous_status_command = ctx.config().status_command.clone();
 
-    ctx.core_mut().state_mut().apply_config(cfg)?;
+    ctx.state_mut().apply_config(cfg)?;
     {
-        let core = ctx.core_mut().state_mut();
+        let core = ctx.state_mut();
         core.behavior
             .normalize_current_mode(&core.config.bindings.modes);
     }
-    ctx.core_mut()
-        .pending_work_mut()
-        .queue_monitor_config_apply();
-    ctx.core_mut().pending_work_mut().queue_input_config_apply();
-    ctx.core_mut()
-        .pending_work_mut()
-        .queue_cursor_config_apply();
+    ctx.pending_work_mut().queue_monitor_config_apply();
+    ctx.pending_work_mut().queue_input_config_apply();
+    ctx.pending_work_mut().queue_cursor_config_apply();
     ctx.core_mut().bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(ctx);
-    if previous_status_command != ctx.core().config().status_command {
+    if previous_status_command != ctx.config().status_command {
         ctx.core_mut().start_status_sources();
     }
 
@@ -41,7 +38,7 @@ pub fn reload_config(ctx: &mut crate::contexts::WmCtx<'_>) -> Result<(), String>
     }
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
-    crate::startup::autostart::run_exec_commands(&ctx.core().config().exec);
+    crate::startup::autostart::run_exec_commands(&ctx.config().exec);
 
     Ok(())
 }

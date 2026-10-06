@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use std::collections::{HashMap, HashSet};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
@@ -125,6 +126,10 @@ pub struct WaylandState {
 
 /// Protocol and scene data, separate from the graphics owner so frames borrow
 /// their renderer and scene exclusively as disjoint fields.
+/// Model-dependent native methods take an explicit `&CoreState` so callers can
+/// borrow the model and scene independently. Do not replace those parameters
+/// with a WM back-reference or `RefCell`: Smithay callbacks need the complete
+/// root, and must remain statically excluded while these field borrows live.
 pub struct WaylandNativeState {
     // -- Wayland infrastructure --
     pub display_handle: DisplayHandle,
@@ -731,8 +736,8 @@ impl WaylandState {
             .map(|graphics| graphics.with_renderer(f))
     }
 
-    pub(crate) fn ctx(&mut self) -> crate::contexts::WmCtx<'_> {
-        crate::contexts::WmCtx::Wayland(crate::contexts::WmCtxWayland {
+    pub(crate) fn ctx(&mut self) -> WmCtx<'_> {
+        WmCtx::Wayland(crate::contexts::WmCtxWayland {
             wayland: crate::backend::wayland::WaylandBackend::new(self),
         })
     }

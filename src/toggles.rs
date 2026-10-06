@@ -11,10 +11,10 @@ fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let Some(monitor_id) = ctx.core().model().monitor_of_client(win) else {
+    let Some(monitor_id) = ctx.model().monitor_of_client(win) else {
         return;
     };
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+    if let Some(client) = ctx.model_mut().client_mut(win) {
         if client.is_scratchpad() {
             return;
         }
@@ -26,7 +26,7 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+    if let Some(client) = ctx.model_mut().client_mut(win) {
         client.is_locked = !client.is_locked;
     } else {
         return;
@@ -35,9 +35,8 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     ctx.request_bar_update();
 }
 
-pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
+pub fn unhide_all(ctx: &mut WmCtx) {
     let clients_to_unhide: Vec<WindowId> = ctx
-        .core()
         .state()
         .model
         .clients_iter_all()
@@ -72,11 +71,11 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
     let selmon_idx = {
-        let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+        let selected_monitor = ctx.model_mut().expect_selected_monitor_mut();
         let current = selected_monitor.show_bar_for_mask(selected_monitor.selected_tags());
         // A per-view session override; the configured default is untouched.
         selected_monitor.per_tag_state().show_bar = Some(!current);
-        ctx.core().model().selected_monitor_id()
+        ctx.model().selected_monitor_id()
     };
 
     ctx.refresh_top_bars();
@@ -93,7 +92,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 /// force on/off).
 pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
     let changed_monitors: Vec<MonitorId> = ctx
-        .core_mut()
         .model_mut()
         .monitors_iter_mut()
         .filter(|(_, monitor)| monitor.show_bottom_bar != shown)
@@ -103,7 +101,7 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
         return;
     }
 
-    for monitor in ctx.core_mut().model_mut().monitors_iter_all_mut() {
+    for monitor in ctx.model_mut().monitors_iter_all_mut() {
         monitor.show_bottom_bar = shown;
     }
 

@@ -172,7 +172,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 pub fn draw_window(ctx: &mut WmCtx) {
     // Fail fast when nothing can receive the result; the tool itself decides
     // which monitor the rectangle lands on via its own overlays.
-    let Some(win) = ctx.core().model().selected_win() else {
+    let Some(win) = ctx.model().selected_win() else {
         return;
     };
     spawn_region_selection(ctx.backend_kind(), win);
@@ -196,7 +196,7 @@ pub fn arm_region_selection_press(
     button: MouseButton,
     source: InteractionSource,
 ) -> bool {
-    if ctx.core().model().client(window).is_none() {
+    if ctx.model().client(window).is_none() {
         return false;
     }
     ctx.transition_pointer_interaction(|drag| drag.arm_region_selection(window, button, source))
@@ -217,9 +217,7 @@ pub fn finish_region_selection_press(ctx: &mut WmCtx, button: MouseButton) -> bo
     else {
         return false;
     };
-    ctx.core_mut()
-        .pending_work_mut()
-        .queue_region_selection(armed.window);
+    ctx.pending_work_mut().queue_region_selection(armed.window);
     true
 }
 
@@ -448,7 +446,7 @@ fn watch_region_selection(slot: &Mutex<ActiveSelection>, generation: u64) -> Opt
 ///
 /// Returns `true` when at least one selection was applied this call. Starting a
 /// tool is not a state change, so it is not reported.
-pub fn drain_region_selection(ctx: &mut crate::contexts::WmCtx<'_>) -> bool {
+pub fn drain_region_selection(ctx: &mut WmCtx<'_>) -> bool {
     start_pending_region_selection(ctx);
 
     let runtime = region_selection_runtime();
@@ -461,7 +459,7 @@ pub fn drain_region_selection(ctx: &mut crate::contexts::WmCtx<'_>) -> bool {
         let Some(rect) = outcome.rect else {
             continue;
         };
-        if !is_valid_window_size(ctx.core().model(), &rect, outcome.window) {
+        if !is_valid_window_size(ctx.model(), &rect, outcome.window) {
             continue;
         }
         handle_monitor_switch(ctx, outcome.window, &rect);
@@ -475,11 +473,11 @@ pub fn drain_region_selection(ctx: &mut crate::contexts::WmCtx<'_>) -> bool {
 ///
 /// Runs from the shared tick so pointer ownership is already back with the
 /// server.
-fn start_pending_region_selection(ctx: &mut crate::contexts::WmCtx<'_>) {
-    let Some(win) = ctx.core_mut().pending_work_mut().take_region_selection() else {
+fn start_pending_region_selection(ctx: &mut WmCtx<'_>) {
+    let Some(win) = ctx.pending_work_mut().take_region_selection() else {
         return;
     };
-    if ctx.core().model().client(win).is_none() {
+    if ctx.model().client(win).is_none() {
         log::debug!("dropping region selection for closed window {win:?}");
         return;
     }
@@ -510,12 +508,12 @@ mod tests {
     }
 
     fn insert_floating_client(
-        ctx: &mut crate::contexts::WmCtx<'_>,
+        ctx: &mut WmCtx<'_>,
         monitor_id: crate::types::MonitorId,
         win: WindowId,
         geo: Rect,
     ) {
-        add_client_with(ctx.core_mut().model_mut(), monitor_id, |client| {
+        add_client_with(ctx.model_mut(), monitor_id, |client| {
             client.win = win;
             client.geo = geo;
             client.mode = ClientMode::floating();

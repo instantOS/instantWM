@@ -1,8 +1,9 @@
 //! Shared event-loop tick helpers used by both X11 and Wayland backends.
 //!
-//! Shared operations receive [`crate::contexts::WmCtx`], whose capabilities are
+//! Shared operations receive [`WmCtx`], whose capabilities are
 //! borrowed from the running backend. Policy remains backend-independent.
 
+use crate::contexts::WmCtx;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -46,7 +47,7 @@ pub struct TickResult {
 /// 5. layout work
 /// 6. dirty-bar redraw (backend-routed)
 pub fn event_loop_tick_with_options(
-    ctx: &mut crate::contexts::WmCtx<'_>,
+    ctx: &mut WmCtx<'_>,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     options: TickOptions,
 ) -> TickResult {
@@ -81,14 +82,11 @@ pub struct PendingWorkResult {
 }
 
 /// Apply all pending work in deterministic order.
-pub fn process_pending_work(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    options: TickOptions,
-) -> PendingWorkResult {
+pub fn process_pending_work(ctx: &mut WmCtx<'_>, options: TickOptions) -> PendingWorkResult {
     let mut result = PendingWorkResult::default();
 
-    if ctx.core_mut().pending_work_mut().monitor_config {
-        ctx.core_mut().pending_work_mut().monitor_config = false;
+    if ctx.pending_work_mut().monitor_config {
+        ctx.pending_work_mut().monitor_config = false;
         crate::monitor::apply_monitor_config(ctx);
         result.monitor_config_applied = true;
     }
@@ -97,43 +95,38 @@ pub fn process_pending_work(
 
     // Edge scratchpads finish their slide-out through backend animation
     // bookkeeping; complete the deferred logical hide once it drained.
-    let pending_hides = ctx
-        .core_mut()
-        .pending_work_mut()
-        .pending_scratchpad_hide_windows();
+    let pending_hides = ctx.pending_work_mut().pending_scratchpad_hide_windows();
     let finished_hides: Vec<crate::types::WindowId> = pending_hides
         .into_iter()
         .filter(|win| !ctx.window_animation_active(*win))
         .collect();
     for win in &finished_hides {
-        ctx.core_mut()
-            .pending_work_mut()
-            .cancel_pending_scratchpad_hide(*win);
+        ctx.pending_work_mut().cancel_pending_scratchpad_hide(*win);
     }
     if !finished_hides.is_empty() {
         crate::floating::finish_scratchpad_hides(ctx, &finished_hides);
     }
 
-    if !ctx.core_mut().pending_work_mut().layout.is_pending() {
+    if !ctx.pending_work_mut().layout.is_pending() {
         return result;
     }
 
     if options.defer_layout_while_animations_active
         && options.animations_active
-        && !ctx.core_mut().pending_work_mut().layout.is_urgent()
+        && !ctx.pending_work_mut().layout.is_urgent()
     {
         return result;
     }
 
-    let Some(targets) = ctx.core_mut().pending_work_mut().layout.take_targets() else {
+    let Some(targets) = ctx.pending_work_mut().layout.take_targets() else {
         return result;
     };
     result.layout_applied = apply_layout_targets(ctx, targets);
     result
 }
 
-fn apply_layout_targets(ctx: &mut crate::contexts::WmCtx<'_>, targets: LayoutWorkTargets) -> bool {
-    if ctx.core().model().client_count() == 0 {
+fn apply_layout_targets(ctx: &mut WmCtx<'_>, targets: LayoutWorkTargets) -> bool {
+    if ctx.model().client_count() == 0 {
         return false;
     }
 
@@ -159,7 +152,7 @@ fn apply_layout_targets(ctx: &mut crate::contexts::WmCtx<'_>, targets: LayoutWor
 /// Returns `true` when at least one command was handled.
 pub fn process_ipc_commands(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
-    ctx: &mut crate::contexts::WmCtx<'_>,
+    ctx: &mut WmCtx<'_>,
 ) -> bool {
     let Some(server) = ipc_server.as_mut() else {
         return false;
@@ -170,7 +163,7 @@ pub fn process_ipc_commands(
 // ── Startup helpers ─────────────────────────────────────────────────────
 
 /// Initialise the keyboard layout from the WM configuration.
-pub fn init_keyboard_layout(ctx: &mut crate::contexts::WmCtx<'_>) {
+pub fn init_keyboard_layout(ctx: &mut WmCtx<'_>) {
     crate::keyboard_layout::init_keyboard_layout(ctx);
 }
 

@@ -1,17 +1,14 @@
+use crate::contexts::WmCtx;
 use crate::ipc_types::Response;
 
-pub fn set_wallpaper(ctx: &mut crate::contexts::WmCtx<'_>, path: String) -> Response {
+pub fn set_wallpaper(ctx: &mut WmCtx<'_>, path: String) -> Response {
     match ctx.set_wallpaper(&path) {
         Ok(()) => Response::Message(format!("Wallpaper set to {}", path)),
         Err(e) => Response::err(format!("Failed to set wallpaper: {}", e)),
     }
 }
 
-pub fn run_action(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    name: String,
-    args: Vec<String>,
-) -> Response {
+pub fn run_action(ctx: &mut WmCtx<'_>, name: String, args: Vec<String>) -> Response {
     let action = match crate::actions::NamedAction::parse(&name, &args) {
         Ok(action) => crate::actions::KeyAction::Named(action),
         Err(error) => return Response::err(error),
@@ -22,12 +19,12 @@ pub fn run_action(
     }
 }
 
-pub fn update_status(ctx: &mut crate::contexts::WmCtx<'_>, text: String) -> Response {
+pub fn update_status(ctx: &mut WmCtx<'_>, text: String) -> Response {
     ctx.core_mut().bar.set_status_text(&text);
     Response::ok()
 }
 
-pub fn get_status(ctx: &crate::contexts::WmCtx<'_>) -> Response {
+pub fn get_status(ctx: &WmCtx<'_>) -> Response {
     let backend = match ctx.backend_kind() {
         crate::backend::BackendKind::X11 => "x11",
         crate::backend::BackendKind::Wayland => "wayland",
@@ -39,9 +36,9 @@ pub fn get_status(ctx: &crate::contexts::WmCtx<'_>) -> Response {
         build_commit: env!("INSTANTWM_BUILD_COMMIT").to_string(),
         backend: backend.to_string(),
         running: ctx.core().is_running(),
-        monitors: ctx.core().model().monitors.len(),
-        windows: ctx.core().model().client_count(),
-        tags: ctx.core().model().tags.num_tags,
+        monitors: ctx.model().monitors.len(),
+        windows: ctx.model().client_count(),
+        tags: ctx.model().tags.num_tags,
     };
 
     Response::Status(info)

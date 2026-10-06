@@ -10,15 +10,12 @@ use std::collections::{BTreeSet, HashMap};
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     // Any authoritative arrange may reconcile the tree, constraints, gaps, or
     // monitor geometry. Pointer placement rebuilds lazily on the next sample.
-    ctx.core_mut()
-        .state_mut()
-        .interaction
-        .pointer_placement_cache = None;
+    ctx.state_mut().interaction.pointer_placement_cache = None;
 
     if ctx.current_mode().tree_placement().is_some()
         && !ctx
             .current_mode()
-            .tree_placement_is_current_for(ctx.core().model())
+            .tree_placement_is_current_for(ctx.model())
     {
         ctx.reset_mode();
     }
@@ -28,13 +25,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
         arrange_monitor(ctx, id);
         super::z_order::sync_monitor_z_order(ctx, id);
     } else {
-        let monitor_ids: Vec<MonitorId> = ctx
-            .core()
-            .model()
-            .monitors
-            .iter()
-            .map(|(id, _)| id)
-            .collect();
+        let monitor_ids: Vec<MonitorId> = ctx.model().monitors.iter().map(|(id, _)| id).collect();
         for id in monitor_ids {
             arrange_monitor(ctx, id);
             super::z_order::sync_monitor_z_order(ctx, id);
@@ -53,7 +44,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<MonitorId>) {
     // Drain before running presentation effects so callbacks cannot observe a
     // half-consumed queue. Unrelated monitors are restored before any effect.
-    let pending = std::mem::take(&mut ctx.core_mut().pending_work_mut().spawn_animations);
+    let pending = std::mem::take(&mut ctx.pending_work_mut().spawn_animations);
     if pending.is_empty() {
         return;
     }
@@ -61,7 +52,7 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
     let mut ready = Vec::new();
     let mut deferred = BTreeSet::new();
     for win in pending {
-        let Some(view) = ctx.core().model().client_view(win) else {
+        let Some(view) = ctx.model().client_view(win) else {
             continue;
         };
         if arranged_monitor.is_none_or(|monitor_id| view.monitor.id() == monitor_id) {
@@ -70,10 +61,7 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
             deferred.insert(win);
         }
     }
-    ctx.core_mut()
-        .pending_work_mut()
-        .spawn_animations
-        .extend(deferred);
+    ctx.pending_work_mut().spawn_animations.extend(deferred);
 
     for win in ready {
         crate::animation::run_spawn_animation(ctx, win);
@@ -82,7 +70,7 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let plan = {
-        let globals = ctx.core_mut().state_mut();
+        let globals = ctx.state_mut();
         let animated = globals.config.animations.enabled;
         let layout_cfg = globals.config.layout;
         let resize_hints = globals.config.window.resize_hints;
@@ -103,7 +91,6 @@ impl ArrangePlan {
         }
 
         if let Some(selected) = ctx
-            .core()
             .model()
             .monitor(monitor_id)
             .filter(|monitor| monitor.current_layout().is_maximized())

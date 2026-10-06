@@ -5,6 +5,7 @@
 //! architecture and making animations non-blocking.
 
 use crate::backend::WindowOps;
+use crate::contexts::WmCtx;
 
 use std::os::unix::io::AsRawFd;
 
@@ -29,7 +30,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     loop_handle
         .insert_source(lid_source, |event, _, wm| {
             if let calloop::channel::Event::Msg(closed) = event
-                && let crate::contexts::WmCtx::X11(mut ctx) = wm.x11_ctx()
+                && let WmCtx::X11(mut ctx) = wm.x11_ctx()
                 && ctx.x11_runtime.lid_output_policy.set_closed(closed)
             {
                 handlers::randr_notify(&mut ctx);
@@ -234,7 +235,7 @@ fn event_requires_current_pointer_state(event: &x11rb::protocol::Event) -> bool 
 
 fn dispatch_raw_motion(wm: &mut Wm) {
     let ctx = wm.x11_ctx();
-    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+    let WmCtx::X11(mut ctx) = ctx else {
         return;
     };
     handlers::raw_motion_notify(&mut ctx);
@@ -306,18 +307,18 @@ fn tick_x11_animations(wm: &mut Wm) {
     }
 
     let ctx = wm.x11_ctx();
-    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+    let WmCtx::X11(mut ctx) = ctx else {
         return;
     };
     for (win, rect) in finished_targets {
-        let mut wmctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+        let mut wmctx = ctx.wm_ctx();
         wmctx.set_geometry_impl(win, rect, GeometryApplyMode::Logical);
     }
 }
 
 pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
     let ctx = wm.x11_ctx();
-    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+    let WmCtx::X11(mut ctx) = ctx else {
         return;
     };
 
@@ -362,9 +363,7 @@ pub(crate) fn dispatch_event_in_context(
         x11rb::protocol::Event::LeaveNotify(e) => handlers::leave_notify(ctx, e),
         _ => {}
     };
-    let _ = crate::mouse::interaction::reconcile_capture(&mut crate::contexts::WmCtx::X11(
-        ctx.reborrow(),
-    ));
+    let _ = crate::mouse::interaction::reconcile_capture(&mut ctx.wm_ctx());
 }
 
 /// Xorg owns the input devices; UPower supplies initial state and transitions

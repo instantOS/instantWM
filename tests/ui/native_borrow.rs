@@ -57,3 +57,16 @@ fn renderer_and_scene_borrows_are_disjoint(state: &mut WaylandState) {
         graphics.with_renderer(|_| state.native.space.refresh());
     }
 }
+
+// Convenience APIs must preserve the same owner borrow boundaries.
+fn model_accessor_cannot_overlap_native_effects(ctx: &mut crate::contexts::WmCtx<'_>) {
+    let model = ctx.model();
+    ctx.raise_client(crate::types::WindowId(1));
+    model.selected_win();
+}
+
+fn shared_conversion_cannot_overlap_typed_backend(ctx: &mut crate::contexts::WmCtxX11<'_>) {
+    let mut shared = ctx.wm_ctx();
+    ctx.core.quit();
+    shared.raise_client(crate::types::WindowId(1));
+}

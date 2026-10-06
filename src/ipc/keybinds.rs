@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use crate::ipc_types::{KeybindInfo, Response};
 use crate::types::{Key, KeybindOrigin};
 
@@ -9,8 +10,8 @@ const RESET_MODE_ACTION: &str = "reset_mode";
 /// List every active keybinding: global, desktop (no client focused), and
 /// per-mode. Bindings are rendered readably and each entry is tagged with its
 /// origin (compiled default vs. user config).
-pub fn list_keybinds(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
-    Response::KeybindList(keybind_entries(&ctx.core().config().bindings))
+pub fn list_keybinds(ctx: &mut WmCtx<'_>) -> Response {
+    Response::KeybindList(keybind_entries(&ctx.config().bindings))
 }
 
 fn keybind_entries(bindings: &crate::core_state::BindingConfig) -> Vec<KeybindInfo> {

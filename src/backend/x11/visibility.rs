@@ -4,7 +4,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::backend::x11::properties::set_client_state;
 use crate::constants::animation::DECORATIVE_SHOW_ANIMATION_MILLIS;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -84,7 +84,7 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
                 || mode.is_fake_fullscreen()
                 || (mode.is_normal_tiling() && !has_tiling);
             if should_position {
-                let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
+                let mut tmp_ctx = ctx.wm_ctx();
                 tmp_ctx.move_resize(
                     win,
                     Rect { x, y, w, h },
@@ -142,7 +142,7 @@ pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     );
     let _ = ctx.x11.conn.flush();
 
-    WmCtx::X11(ctx.reborrow()).move_resize(
+    ctx.wm_ctx().move_resize(
         win,
         Rect { x, y, w, h },
         MoveResizeOptions::animate_from(Rect { x, y: -50, w, h }, DECORATIVE_SHOW_ANIMATION_MILLIS),

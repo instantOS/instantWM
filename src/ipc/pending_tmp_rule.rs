@@ -7,6 +7,7 @@
 //!
 //! See [`crate::client::rules`] for the matching/consumption path.
 
+use crate::contexts::WmCtx;
 use crate::ipc_types::{PendingTmpRuleCmd, PendingTmpRuleInfo, Response};
 use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
 use std::borrow::Cow;
@@ -20,10 +21,7 @@ static NEXT_PENDING_TMP_RULE_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
 
 /// Dispatch a `PendingTmpRuleCmd` IPC request.
-pub fn handle_pending_tmp_rule(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    cmd: PendingTmpRuleCmd,
-) -> Response {
+pub fn handle_pending_tmp_rule(ctx: &mut WmCtx<'_>, cmd: PendingTmpRuleCmd) -> Response {
     match cmd {
         PendingTmpRuleCmd::Add {
             class,
@@ -77,7 +75,7 @@ pub fn handle_pending_tmp_rule(
             // MAX_TAGS: a tag beyond num_tags is masked out to nothing at apply
             // time and the window silently lands on the monitor's current tags
             // — while the one-shot rule is still consumed.
-            let num_tags = ctx.core().model().tags.num_tags;
+            let num_tags = ctx.model().tags.num_tags;
             if let Some(n) = tag
                 && (n == 0 || n as usize > num_tags)
             {
@@ -89,7 +87,7 @@ pub fn handle_pending_tmp_rule(
             // (`apply_monitor_rule` can only target existing monitors).
             if let Some(selector) = &on_monitor
                 && !matches!(selector, MonitorSelector::Any)
-                && crate::monitor::resolve_monitor_selector(ctx.core().model(), selector).is_none()
+                && crate::monitor::resolve_monitor_selector(ctx.model(), selector).is_none()
             {
                 return Response::err(format!(
                     "on-monitor {selector} does not match any connected monitor"
@@ -135,7 +133,6 @@ pub fn handle_pending_tmp_rule(
                 behavior.pending_tmp_rules.retain(|p| p.deadline > now);
             });
             let entries: Vec<PendingTmpRuleInfo> = ctx
-                .core()
                 .behavior()
                 .pending_tmp_rules
                 .iter()
@@ -225,7 +222,7 @@ mod tests {
     }
 
     /// Push an expired entry directly, bypassing Add validation.
-    fn inject_expired(ctx: &mut crate::contexts::WmCtx<'_>, id: u64) {
+    fn inject_expired(ctx: &mut WmCtx<'_>, id: u64) {
         ctx.with_behavior_mut(|b| {
             b.pending_tmp_rules.push(PendingTmpRule {
                 id,
@@ -439,7 +436,7 @@ mod tests {
         };
         assert!(entries.is_empty());
         // The entry is actually removed, not just hidden from the listing.
-        assert!(wm.test_ctx().core().behavior().pending_tmp_rules.is_empty());
+        assert!(wm.test_ctx().behavior().pending_tmp_rules.is_empty());
     }
 
     #[test]

@@ -9,7 +9,7 @@
 //! leaking to a client.
 
 use crate::backend::x11::{PointerGrabKind, X11BackendRef, X11RuntimeConfig};
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::types::{AltCursor, ModMask, MouseButton, Point};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -143,7 +143,7 @@ pub fn begin_wm_interaction(ctx: &mut WmCtxX11<'_>, btn: MouseButton) -> bool {
     let cursor = ctx.core.interaction().drag.projection().cursor;
     if !grab_pointer(&ctx.x11, ctx.x11_runtime, cursor, btn) {
         let _ = crate::mouse::interaction::handle(
-            &mut WmCtx::X11(ctx.reborrow()),
+            &mut ctx.wm_ctx(),
             crate::mouse::interaction::InteractionEvent::pointer_cancel(
                 crate::core_state::DragCancelReason::InputCaptureLost,
             ),
@@ -173,7 +173,7 @@ pub fn dispatch_captured_pointer_event(
         x11rb::protocol::Event::MotionNotify(motion) => {
             if owns_pointer_capture(ctx, button) {
                 let _ = crate::mouse::interaction::handle(
-                    &mut WmCtx::X11(ctx.reborrow()),
+                    &mut ctx.wm_ctx(),
                     crate::mouse::interaction::InteractionEvent::pointer_update(
                         Point::new(motion.root_x as i32, motion.root_y as i32),
                         ModMask::new(u16::from(motion.state)),
@@ -193,7 +193,7 @@ pub fn dispatch_captured_pointer_event(
                 let sidebar_hover =
                     crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root);
                 let _ = crate::mouse::interaction::handle(
-                    &mut WmCtx::X11(ctx.reborrow()),
+                    &mut ctx.wm_ctx(),
                     crate::mouse::interaction::InteractionEvent::pointer_end(
                         root,
                         button,

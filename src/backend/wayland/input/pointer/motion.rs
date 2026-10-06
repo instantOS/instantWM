@@ -922,7 +922,7 @@ fn dispatch_pointer_motion(
                     .is_some()
                 || state.native.is_pointer_over_overlay(pointer_location));
         let ctx = state.ctx();
-        if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+        if let WmCtx::Wayland(mut ctx) = ctx {
             // Layer/overlay hit testing is substantially richer than the
             // monitor-rectangle sidebar test. Only pay for it inside the edge
             // strip; ordinary pointer motion must not gain another scene walk.
@@ -932,7 +932,7 @@ fn dispatch_pointer_motion(
                 sidebar_target
             };
             matches!(
-                set_sidebar_offer(&mut WmCtx::Wayland(ctx.reborrow()), target),
+                set_sidebar_offer(&mut ctx.wm_ctx(), target),
                 crate::mouse::SidebarOfferUpdate::Active
             )
         } else {
@@ -1060,7 +1060,7 @@ fn handle_resize_drag_motion(
             )
             .captured()
         } else {
-            ctx.core().interaction().drag.active_interaction().is_some()
+            ctx.interaction().drag.active_interaction().is_some()
         }
     };
     if !handled {
@@ -1095,10 +1095,10 @@ fn handle_bar_motion(
     let is_drag = state.wm.core.state.interaction.drag.has_capture();
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = state.ctx();
-        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        let WmCtx::Wayland(mut ctx) = ctx else {
             return true;
         };
-        clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
+        clear_hover_offer(&mut ctx.wm_ctx());
         let focus = pointer_focus
             .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
         let serial = SERIAL_COUNTER.next_serial();
@@ -1132,12 +1132,12 @@ fn update_hover_resize_state(state: &mut WaylandState, root: RootPoint, drag_act
     }
 
     let ctx = state.ctx();
-    let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+    let WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
 
     // Offer resize at visible floating borders and adjustable tiled gaps.
-    crate::mouse::update_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root).is_some()
+    crate::mouse::update_resize_offer_at(&mut ctx.wm_ctx(), root).is_some()
 }
 
 /// Update pointer focus based on drag state.
@@ -1156,21 +1156,18 @@ fn update_pointer_focus(
     }
     if let Some(lock_win) = active_drag_window {
         let ctx = state.ctx();
-        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        let WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
         if ctx.wayland.state.wm.core.model().selected_win() != Some(lock_win) {
-            crate::focus::focus(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                Some(lock_win),
-            );
+            crate::focus::focus(&mut ctx.wm_ctx(), Some(lock_win));
         }
     } else if !suppress_hover_focus {
         let ctx = state.ctx();
-        let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
+        let WmCtx::Wayland(ctx) = ctx else {
             return;
         };
-        let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
+        let mut wm_ctx = WmCtx::Wayland(ctx);
         crate::focus::apply_hover_focus(&mut wm_ctx, hovered_win, false, Some(root), trigger);
     }
 }

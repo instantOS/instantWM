@@ -107,13 +107,7 @@ pub fn hover_drag_begin(
     btn: MouseButton,
     source: InteractionSource,
 ) -> bool {
-    if let Some((win, _)) = ctx
-        .core()
-        .interaction()
-        .drag
-        .hover_offer()
-        .tree_resize_target()
-    {
+    if let Some((win, _)) = ctx.interaction().drag.hover_offer().tree_resize_target() {
         if btn != MouseButton::Left && btn != MouseButton::Right {
             return false;
         }
@@ -121,14 +115,13 @@ pub fn hover_drag_begin(
         else {
             return false;
         };
-        let Some(geometry) = ctx.core().model().client(win).map(|client| client.geo) else {
+        let Some(geometry) = ctx.model().client(win).map(|client| client.geo) else {
             return false;
         };
         return tree_resize_begin(ctx, win, btn, source, position, geometry, resize);
     }
 
-    let Some(target) =
-        crate::mouse::hover::selected_hover_resize_target_at(ctx.core().model(), position)
+    let Some(target) = crate::mouse::hover::selected_hover_resize_target_at(ctx.model(), position)
     else {
         return false;
     };
@@ -191,7 +184,7 @@ pub fn hover_drag_begin(
 /// not consumed); `true` when the sample was applied to the ongoing move,
 /// resize, or tree-resize.
 pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    let Some(drag) = ctx.core().interaction().drag.active_interaction().cloned() else {
+    let Some(drag) = ctx.interaction().drag.active_interaction().cloned() else {
         return false;
     };
     ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));
@@ -231,12 +224,11 @@ fn free_move_geometry(
         geo.h,
     );
     if let Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) =
-        crate::mouse::drag::move_drop::resolve_move_drop(ctx.core().model(), drag.win(), root)
+        crate::mouse::drag::move_drop::resolve_move_drop(ctx.model(), drag.win(), root)
     {
-        let mon = ctx.core().model().monitor(id).unwrap();
+        let mon = ctx.model().monitor(id).unwrap();
         let work = mon.work_rect();
         let border = ctx
-            .core()
             .model()
             .client(drag.win())
             .unwrap()
@@ -260,22 +252,19 @@ fn apply_move_drag_motion(
     root: Point,
 ) {
     let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
-    let target =
-        crate::mouse::drag::move_drop::resolve_move_drop(ctx.core().model(), drag.win(), root);
-    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.core().model(), drag.win())
-    {
+    let target = crate::mouse::drag::move_drop::resolve_move_drop(ctx.model(), drag.win(), root);
+    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx.model(), drag.win()) {
         let preview = match target {
             Some(crate::mouse::drag::move_drop::MoveDropTarget::Tree(_)) => {
                 crate::layouts::preview_tree_at_point(ctx, drag.win(), root)
             }
             Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) => {
-                let mon = ctx.core().model().monitor(id).unwrap();
+                let mon = ctx.model().monitor(id).unwrap();
                 if mon.current_layout().is_maximized() {
                     Some(mon.work_rect())
                 } else {
                     let content = free_move_geometry(ctx, drag, root);
                     let border = ctx
-                        .core()
                         .model()
                         .client(drag.win())
                         .unwrap()
@@ -303,7 +292,6 @@ fn apply_move_drag_motion(
 
     if on_bar {
         let mon = ctx
-            .core()
             .model()
             .monitors
             .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))
@@ -312,7 +300,7 @@ fn apply_move_drag_motion(
     }
 
     crate::mouse::drag::snap_window_to_monitor_edges(
-        ctx.core().state(),
+        ctx.state(),
         drag.win(),
         drag.win_start_geo().size(),
         &mut new_pos,
@@ -342,7 +330,6 @@ fn apply_resize_drag_motion(
     // Core geometry uses an outer origin and content size on both backends.
     // Account for the modelled border so an end edge remains under the input.
     let border_width = ctx
-        .core()
         .model()
         .client(drag.win())
         .map_or(0, |client| client.border_width.max(0));
@@ -396,13 +383,12 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModM
             drag.drop_restore_geo(),
             drag.last_root_point(),
             if crate::layouts::manager::uses_manual_tree_pointer_interaction(
-                ctx.core().model(),
+                ctx.model(),
                 drag.win(),
             ) {
                 free_move_geometry(ctx, &drag, drag.last_root_point())
             } else {
-                ctx.core()
-                    .model()
+                ctx.model()
                     .client(drag.win())
                     .map_or(drag.win_start_geo(), |client| client.geo)
             },

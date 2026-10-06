@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use crate::floating::scratchpad::{
     collect_scratchpad_info, scratchpad_create, scratchpad_hide_all, scratchpad_hide_name,
     scratchpad_resize_name, scratchpad_restore, scratchpad_show_all, scratchpad_show_name,
@@ -17,13 +18,10 @@ fn message_or_ok(message: Option<String>) -> Response {
     message.map_or(Response::Ok, Response::Message)
 }
 
-pub fn handle_scratchpad_command(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    cmd: ScratchpadCommand,
-) -> Response {
+pub fn handle_scratchpad_command(ctx: &mut WmCtx<'_>, cmd: ScratchpadCommand) -> Response {
     match cmd {
         ScratchpadCommand::Status { name } => {
-            let mut scratchpads = collect_scratchpad_info(ctx.core().model());
+            let mut scratchpads = collect_scratchpad_info(ctx.model());
             if let Some(name) = name {
                 scratchpads.retain(|sp| sp.name == name);
             }

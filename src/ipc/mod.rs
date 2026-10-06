@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use crate::ipc_types::{IpcCommand, IpcRequest, Response};
 use crate::reload::reload_config;
 use std::env;
@@ -97,7 +98,7 @@ impl IpcServer {
 
     /// Process all pending IPC connections and data. Returns `true` when at least one
     /// command was handled (callers can use this to decide whether to re-render).
-    pub fn process_pending(&mut self, ctx: &mut crate::contexts::WmCtx<'_>) -> bool {
+    pub fn process_pending(&mut self, ctx: &mut WmCtx<'_>) -> bool {
         let now = Instant::now();
         prune_idle_clients(&mut self.clients, now);
 
@@ -147,11 +148,7 @@ impl IpcServer {
         handled
     }
 
-    fn process_client_request(
-        &self,
-        mut client: PendingClient,
-        ctx: &mut crate::contexts::WmCtx<'_>,
-    ) -> bool {
+    fn process_client_request(&self, mut client: PendingClient, ctx: &mut WmCtx<'_>) -> bool {
         if client.buffer.is_empty() {
             let _ = send_response(&mut client.stream, &Response::err("empty request"));
             return false;
@@ -280,7 +277,7 @@ fn write_all_nonblocking(stream: &mut UnixStream, mut data: &[u8]) -> io::Result
     Ok(())
 }
 
-fn handle_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: IpcCommand) -> Response {
+fn handle_command(ctx: &mut WmCtx<'_>, cmd: IpcCommand) -> Response {
     if let Some(exit_mode) = ipc_overview_exit(&cmd) {
         crate::overview::exit_overview(ctx, exit_mode);
     }

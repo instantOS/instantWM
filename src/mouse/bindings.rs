@@ -38,7 +38,6 @@ pub(crate) fn dispatch_button_binding(
     // click to dodge that is what this replaces; only the winning action is
     // cloned.
     let matched = ctx
-        .core()
         .config()
         .bindings
         .buttons

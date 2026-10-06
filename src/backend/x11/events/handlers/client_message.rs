@@ -1,6 +1,6 @@
 use crate::backend::x11::events::setup::SYSTEM_TRAY_REQUEST_DOCK;
 use crate::backend::x11::systray::XEmbedMessage;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::types::{Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -168,7 +168,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
             .unwrap_or(false);
         if let Some(maximized) = requested(current) {
             crate::client::fullscreen::apply_client_maximize_intent(
-                &mut WmCtx::X11(ctx.reborrow()),
+                &mut ctx.wm_ctx(),
                 win,
                 maximized,
             );
@@ -179,7 +179,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
         let mode = ctx.core.state.model.client(win).map(|client| client.mode());
         let current = mode.is_some_and(|mode| mode.is_fullscreen());
         if let Some(fullscreen) = requested(current) {
-            crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, fullscreen);
+            crate::client::set_fullscreen(&mut ctx.wm_ctx(), win, fullscreen);
         }
     }
 }
@@ -196,11 +196,11 @@ fn handle_current_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     };
 
     crate::overview::exit_overview(
-        &mut WmCtx::X11(ctx.reborrow()),
+        &mut ctx.wm_ctx(),
         crate::overview::ExitMode::RestorePrevious,
     );
-    crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
-    crate::tags::view::view_tags(&mut WmCtx::X11(ctx.reborrow()), mask);
+    crate::focus::select_monitor(&mut ctx.wm_ctx(), monitor_id);
+    crate::tags::view::view_tags(&mut ctx.wm_ctx(), mask);
 }
 
 fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
@@ -245,7 +245,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         .is_some_and(|client| client.is_scratchpad())
     {
         let _ = crate::floating::scratchpad::scratchpad_restore_window(
-            &mut WmCtx::X11(ctx.reborrow()),
+            &mut ctx.wm_ctx(),
             win,
             Some((target_mon, target_tags)),
         );
@@ -269,11 +269,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     }
 
     crate::backend::x11::set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
-    crate::focus::refresh_focus_after_selection(
-        &mut WmCtx::X11(ctx.reborrow()),
-        previous_focus,
-        None,
-    );
+    crate::focus::refresh_focus_after_selection(&mut ctx.wm_ctx(), previous_focus, None);
 
     if old_mon == Some(target_mon) {
         ctx.core.queue_layout_for_monitor_urgent(target_mon);
@@ -289,8 +285,8 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         .client(win)
         .is_some_and(|client| client.is_hidden);
     if is_hidden {
-        crate::client::show_window(&mut WmCtx::X11(ctx.reborrow()), win);
+        crate::client::show_window(&mut ctx.wm_ctx(), win);
     };
 
-    let _ = crate::focus::activate_client(&mut WmCtx::X11(ctx.reborrow()), win);
+    let _ = crate::focus::activate_client(&mut ctx.wm_ctx(), win);
 }

@@ -39,7 +39,7 @@ use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_motif_hints,
     update_window_type, update_wm_hints,
 };
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::focus::focus;
 use crate::geometry::GeometryApplyMode;
 use crate::layouts::arrange;
@@ -175,10 +175,7 @@ pub fn manage(
 
     // Adoption happened in `add_client`; the remaining steps only refine the
     // client now that its monitor owns it.
-    crate::client::fullscreen::sync_client_maximized_signal(
-        &mut WmCtx::X11(ctx.reborrow()),
-        window,
-    );
+    crate::client::fullscreen::sync_client_maximized_signal(&mut ctx.wm_ctx(), window);
 
     let _ = ctx.x11.conn.change_property32(
         PropMode::APPEND,
@@ -202,11 +199,11 @@ pub fn manage(
         set_client_state(&ctx.x11, ctx.x11_runtime, window, WM_STATE_NORMAL);
     }
 
-    let mut ctx = WmCtx::X11(ctx.reborrow());
+    let mut ctx = ctx.wm_ctx();
     // Park the window offscreen so arranging never flashes it at its
     // requested position.
     let offscreen = Rect {
-        x: geo.x + 2 * ctx.core().derived().display.width,
+        x: geo.x + 2 * ctx.derived().display.width,
         ..geo
     };
     ctx.set_geometry_impl(window, offscreen, GeometryApplyMode::VisualOnly);
@@ -333,7 +330,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
         }
     }
 
-    let mut tmp = WmCtx::X11(ctx.reborrow());
+    let mut tmp = ctx.wm_ctx();
     crate::client::lifecycle::remove_managed_client(&mut tmp, window);
 }
 

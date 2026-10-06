@@ -1,21 +1,19 @@
+use crate::contexts::WmCtx;
 use crate::ipc_types::{KeyboardCommand, KeyboardLayoutInfo, Response};
 use crate::keyboard_layout;
 use crate::types::StackDirection;
 
-pub fn handle_keyboard_command(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    cmd: KeyboardCommand,
-) -> Response {
+pub fn handle_keyboard_command(ctx: &mut WmCtx<'_>, cmd: KeyboardCommand) -> Response {
     match cmd {
         KeyboardCommand::Status => {
-            let status = ctx.core().interaction().keyboard_layout.status();
+            let status = ctx.interaction().keyboard_layout.status();
             Response::Message(status)
         }
         KeyboardCommand::List { all: true } => {
             Response::Message(keyboard_layout::get_all_keyboard_layouts().join("\n"))
         }
         KeyboardCommand::List { all: false } => {
-            let state = &ctx.core().interaction().keyboard_layout;
+            let state = &ctx.interaction().keyboard_layout;
             let layouts: Vec<KeyboardLayoutInfo> = state
                 .layouts
                 .iter()

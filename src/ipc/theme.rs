@@ -7,11 +7,12 @@
 
 use crate::config::config_toml::ColorTheme;
 use crate::config::runtime::ConfigEffect;
+use crate::contexts::WmCtx;
 use crate::ipc_types::Response;
 
 /// Return the name of the active theme.
-pub fn get_theme(ctx: &crate::contexts::WmCtx<'_>) -> Response {
-    Response::Theme(ctx.core().config().theme.name())
+pub fn get_theme(ctx: &WmCtx<'_>) -> Response {
+    Response::Theme(ctx.config().theme.name())
 }
 
 /// List every built-in theme name.
@@ -25,13 +26,13 @@ pub fn list_themes() -> Response {
 }
 
 /// Switch to a built-in theme, recolouring the running WM.
-pub fn set_theme(ctx: &mut crate::contexts::WmCtx<'_>, theme: ColorTheme) -> Response {
+pub fn set_theme(ctx: &mut WmCtx<'_>, theme: ColorTheme) -> Response {
     // Recompute every colour table from the theme palette and install it as
     // one unit. Per-monitor tag sets mirror the shared tag table.
     let colors = crate::config::appearance::ColorConfig::from(theme);
-    ctx.core_mut().model_mut().tags.colors = colors.tag.clone();
-    ctx.core_mut().config_mut().colors = colors;
-    ctx.core_mut().config_mut().theme = theme;
+    ctx.model_mut().tags.colors = colors.tag.clone();
+    ctx.config_mut().colors = colors;
+    ctx.config_mut().theme = theme;
     crate::actions::apply_config_effect(ctx, ConfigEffect::Recolor);
     Response::ok()
 }

@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use crate::wm::X11Wm as Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::randr::{ConnectionExt as RandrConnectionExt, NotifyMask};
@@ -151,8 +152,8 @@ pub fn setup_root(wm: &mut Wm) {
     crate::monitor::refresh_monitor_layout(&mut ctx);
     ctx.update_ewmh_desktop_props();
 
-    if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::contexts::WmCtx::X11(x11_ctx.reborrow()).sync_interaction_projection();
+    if let WmCtx::X11(mut x11_ctx) = ctx {
+        WmCtx::X11(x11_ctx.reborrow()).sync_interaction_projection();
     }
 }
 

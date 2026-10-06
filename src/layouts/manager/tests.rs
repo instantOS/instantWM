@@ -1180,13 +1180,8 @@ fn restored_slot_reconciles_windows_opened_and_closed_while_inactive() {
     let tags = TagMask::single(1).unwrap();
     {
         let mut ctx = wm.test_ctx();
-        assert!(
-            ctx.core_mut()
-                .model_mut()
-                .remove_client(WindowId(4))
-                .is_some()
-        );
-        assert!(ctx.core_mut().model_mut().add_client(
+        assert!(ctx.model_mut().remove_client(WindowId(4)).is_some());
+        assert!(ctx.model_mut().add_client(
             monitor_id,
             Client {
                 win: WindowId(5),

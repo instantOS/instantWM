@@ -4,17 +4,16 @@ use crate::contexts::WmCtx;
 use crate::types::{TagMask, WindowId};
 
 pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let Some(selmon_id) = ctx.core().model().monitor_of_client(win) else {
+    let Some(selmon_id) = ctx.model().monitor_of_client(win) else {
         return;
     };
-    let tagmask = ctx.core().model().tags.mask();
+    let tagmask = ctx.model().tags.mask();
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
     if ctx
-        .core()
         .model()
         .client(win)
         .is_some_and(|client| client.is_scratchpad())
@@ -27,7 +26,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         return;
     }
 
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+    if let Some(client) = ctx.model_mut().client_mut(win) {
         client.is_sticky = false;
         client.set_tag_mask(effective_mask);
     } else {
@@ -37,35 +36,31 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     // Record the window as most-recently-focused on the destination tag so
     // that a subsequent view switch brings it to the front instead of falling
     // back to a stale focus-history entry.
-    let mon = ctx.core_mut().model_mut().monitor_mut(selmon_id).unwrap();
+    let mon = ctx.model_mut().monitor_mut(selmon_id).unwrap();
     mon.record_focus(effective_mask, win);
 
     ctx.sync_client_tag_props(win);
-    if ctx.core().model().selected_monitor_id() == selmon_id {
+    if ctx.model().selected_monitor_id() == selmon_id {
         crate::focus::focus(ctx, None);
     }
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
-    let tagmask = ctx.core().model().tags.mask();
+    let selmon_id = ctx.model_mut().selected_monitor_id();
+    let tagmask = ctx.model().tags.mask();
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
-    let current_tag = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .current_tag_number();
+    let current_tag = ctx.model().expect_selected_monitor().current_tag_number();
     let Some(current_tag) = current_tag else {
         return;
     };
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
 
-    let m = ctx.core().model().expect_selected_monitor();
+    let m = ctx.model().expect_selected_monitor();
     let clients_on_tag: Vec<_> = m
         .iter_clients()
         .filter(|(_, c)| c.tags.intersects(current_tag_mask))
@@ -73,7 +68,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         .collect();
 
     for win in clients_on_tag {
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        if let Some(client) = ctx.model_mut().client_mut(win) {
             client.is_sticky = false;
             client.set_tag_mask(effective_mask);
         }
@@ -85,7 +80,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     set_client_tag(ctx, win, mask);
-    if let Some(id) = ctx.core().model().monitor_of_client(win) {
+    if let Some(id) = ctx.model().monitor_of_client(win) {
         crate::focus::select_monitor(ctx, id);
         crate::tags::view::view_tags(ctx, mask);
         crate::focus::focus(ctx, Some(win));
@@ -93,9 +88,8 @@ pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
 }
 
 pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let tagmask = ctx.core().model().tags.mask();
+    let tagmask = ctx.model().tags.mask();
     let current_tags = ctx
-        .core()
         .state()
         .model
         .client(win)

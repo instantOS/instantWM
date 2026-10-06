@@ -202,17 +202,17 @@ fn apply_resize_policies(
     let mut adjusted = target;
     let interact = options.bounds == BoundsPolicy::Interactive;
     let outcome = crate::client::geometry::apply_size_hints(
-        ctx.core().model(),
-        ctx.core().config(),
-        ctx.core().derived(),
+        ctx.model(),
+        ctx.config(),
+        ctx.derived(),
         win,
         &mut adjusted,
         interact,
     );
     ctx.refine_size_hints(win, outcome.should_apply_client_hints, &mut adjusted);
-    let changed = crate::client::geometry::size_hints_changed(ctx.core().model(), win, &adjusted);
+    let changed = crate::client::geometry::size_hints_changed(ctx.model(), win, &adjusted);
 
-    let client_count = ctx.core().model().client_count();
+    let client_count = ctx.model().client_count();
     if changed || client_count == 1 || options.bounds == BoundsPolicy::FloatingTransition {
         Some(adjusted)
     } else {
@@ -237,7 +237,7 @@ pub(crate) fn move_resize(
         return;
     }
 
-    let Some(client_geometry) = client_geometry(ctx.core().model(), win) else {
+    let Some(client_geometry) = client_geometry(ctx.model(), win) else {
         return;
     };
     let final_rect = target.clamped_size_to(
@@ -281,7 +281,6 @@ pub(crate) fn move_resize(
 
             if from == final_rect {
                 if ctx
-                    .core()
                     .model()
                     .client(win)
                     .is_some_and(|client| client.geo != final_rect)
@@ -291,7 +290,7 @@ pub(crate) fn move_resize(
                 return;
             }
 
-            let animated = ctx.core().config().animations.enabled;
+            let animated = ctx.config().animations.enabled;
 
             if !animated || options.duration.is_zero() {
                 ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
@@ -308,16 +307,10 @@ pub(crate) fn move_resize(
             }
 
             if options.mode == MoveResizeMode::AnimateTo {
-                ctx.core_mut()
-                    .model_mut()
-                    .sync_client_geometry(win, final_rect);
+                ctx.model_mut().sync_client_geometry(win, final_rect);
             }
 
-            let duration = ctx
-                .core()
-                .config()
-                .animations
-                .scale_duration(options.duration);
+            let duration = ctx.config().animations.scale_duration(options.duration);
             ctx.begin_window_animation(win, from, final_rect, duration);
         }
     }

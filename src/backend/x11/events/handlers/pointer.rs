@@ -1,4 +1,4 @@
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::types::{BarPosition, Gesture, ModMask, MouseButton, Point, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -14,7 +14,7 @@ pub fn touch_begin(ctx: &mut WmCtxX11<'_>, e: &TouchBeginEvent) {
     if ctx.core.model().client(touched_window).is_some()
         && ctx.core.model().selected_win() != Some(touched_window)
     {
-        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(touched_window));
+        crate::focus::focus(&mut ctx.wm_ctx(), Some(touched_window));
     }
 
     let _ = ctx.x11.conn.xinput_xi_allow_events(
@@ -59,7 +59,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     };
 
     let outcome = {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        let mut wm_ctx = ctx.wm_ctx();
         crate::mouse::press::dispatch_press_policy(&mut wm_ctx, input)
     };
 
@@ -102,7 +102,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let hovered = crate::backend::x11::mouse::managed_window(&ctx.core.state, e.event)
         .or_else(|| crate::backend::x11::mouse::managed_window(&ctx.core.state, e.child));
     crate::focus::apply_hover_focus(
-        &mut WmCtx::X11(ctx.reborrow()),
+        &mut ctx.wm_ctx(),
         hovered,
         entering_root,
         Some(root),
@@ -111,7 +111,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
-    crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
+    crate::bar::clear_hover(&mut ctx.wm_ctx());
 }
 
 /// Core-motion fallback for X servers without XI2 raw motion support.
@@ -144,12 +144,12 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
     // Handle focus-follows-mouse monitor switching
     if ctx.core.behavior().current_mode.tree_placement().is_none()
         && ctx.core.config().window.focus_follows_mouse.is_enabled()
-        && crate::focus::select_monitor_at_pointer(&mut WmCtx::X11(ctx.reborrow()), root)
+        && crate::focus::select_monitor_at_pointer(&mut ctx.wm_ctx(), root)
     {
         return;
     }
 
-    if crate::mouse::update_overlay_hot_corner(&mut WmCtx::X11(ctx.reborrow()), root) {
+    if crate::mouse::update_overlay_hot_corner(&mut ctx.wm_ctx(), root) {
         return;
     }
 
@@ -164,26 +164,23 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
         // Overview owns pointer semantics wholesale; a border-zone offer
         // armed before entering it must not keep borrowing the pointer.
         if ctx.core.model().is_overview_active() {
-            crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
+            crate::mouse::clear_hover_offer(&mut ctx.wm_ctx());
         } else {
             let sidebar_target = (!hovered.is_some())
                 .then(|| crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root))
                 .flatten();
-            if crate::mouse::set_sidebar_offer(&mut WmCtx::X11(ctx.reborrow()), sidebar_target)
+            if crate::mouse::set_sidebar_offer(&mut ctx.wm_ctx(), sidebar_target)
                 .affects_pointer_handling()
             {
                 return;
             }
-            if crate::mouse::update_resize_offer_with_focus_at(
-                &mut WmCtx::X11(ctx.reborrow()),
-                root,
-            ) {
+            if crate::mouse::update_resize_offer_with_focus_at(&mut ctx.wm_ctx(), root) {
                 return;
             }
         }
-        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
+        crate::bar::clear_hover(&mut ctx.wm_ctx());
         crate::focus::apply_hover_focus(
-            &mut WmCtx::X11(ctx.reborrow()),
+            &mut ctx.wm_ctx(),
             hovered,
             false,
             Some(root),
@@ -194,9 +191,9 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
 
     // The bar owns the pointer for its whole band; release any offer that is
     // still armed from the desktop area below it (Wayland parity).
-    crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
-    let pos = crate::bar::update_hover(&mut WmCtx::X11(ctx.reborrow()), root, false, false);
+    crate::mouse::clear_hover_offer(&mut ctx.wm_ctx());
+    let pos = crate::bar::update_hover(&mut ctx.wm_ctx(), root, false, false);
     if matches!(pos, Some(BarPosition::Root) | None) && current_gesture != Gesture::None {
-        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
+        crate::bar::clear_hover(&mut ctx.wm_ctx());
     }
 }

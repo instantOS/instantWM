@@ -16,7 +16,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         ActiveWmMode::Default | ActiveWmMode::Named(_) => {}
     }
     let state = {
-        let model = ctx.core().model();
+        let model = ctx.model();
         let monitor = model.expect_selected_monitor();
         let Some(source) = monitor.selected else {
             return false;
@@ -64,15 +64,14 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
 
 fn placement_targets(ctx: &WmCtx<'_>, source: WindowId) -> Vec<PlacementTarget> {
     let tiling = selected_tiling(ctx);
-    ctx.core()
-        .model()
+    ctx.model()
         .expect_selected_monitor()
         .per_tag()
         .map(|state| {
             state.layout_tree.placement_targets(
                 source,
                 tiling.work_rect(),
-                ctx.core().config().layout.pointer_edge_fraction,
+                ctx.config().layout.pointer_edge_fraction,
                 &tiling.minimums,
             )
         })
@@ -81,7 +80,7 @@ fn placement_targets(ctx: &WmCtx<'_>, source: WindowId) -> Vec<PlacementTarget> 
 
 /// Outer rectangle `source` would occupy after applying `target`.
 fn preview_rect(ctx: &WmCtx<'_>, source: WindowId, target: PlacementTarget) -> Option<Rect> {
-    let model = ctx.core().model();
+    let model = ctx.model();
     let tiling = selected_tiling(ctx);
     let plan = model
         .expect_selected_monitor()
@@ -91,7 +90,7 @@ fn preview_rect(ctx: &WmCtx<'_>, source: WindowId, target: PlacementTarget) -> O
     Some(tiling.outer_rect(
         model.client(source)?,
         plan.source_slot(),
-        ctx.core().config().window.resize_hints,
+        ctx.config().window.resize_hints,
     ))
 }
 
@@ -108,15 +107,12 @@ fn refresh_preview(ctx: &mut WmCtx<'_>) {
 fn current_placement<'a>(ctx: &'a mut WmCtx<'_>) -> Option<&'a mut KeyboardTreePlacement> {
     if !ctx
         .current_mode()
-        .tree_placement_is_current_for(ctx.core().model())
+        .tree_placement_is_current_for(ctx.model())
     {
         ctx.reset_mode();
         return None;
     }
-    ctx.core_mut()
-        .behavior_mut()
-        .current_mode
-        .tree_placement_mut()
+    ctx.behavior_mut().current_mode.tree_placement_mut()
 }
 
 pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
@@ -151,7 +147,7 @@ pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
 
 /// Resize the originally armed window while keeping keyboard placement active.
 pub fn resize_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
-    let config = (&ctx.core().config().layout).into();
+    let config = (&ctx.config().layout).into();
     edit_around_source(ctx, |tree, source| tree.resize(source, side, config))
 }
 
@@ -164,7 +160,6 @@ fn edit_around_source(
     };
     let (source, cursor) = (state.source, state.selected_target().position);
     let tree = &mut ctx
-        .core_mut()
         .model_mut()
         .expect_selected_monitor_mut()
         .per_tag_state()
@@ -186,7 +181,6 @@ fn rebuild_targets(ctx: &mut WmCtx<'_>, preferred: Point) {
     };
     let targets = placement_targets(ctx, source);
     let rebuilt = ctx
-        .core_mut()
         .behavior_mut()
         .current_mode
         .tree_placement_mut()
@@ -206,7 +200,7 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
     let ActiveWmMode::TreePlacement(state) = previous else {
         return false;
     };
-    if !state.is_current_for(ctx.core().model()) {
+    if !state.is_current_for(ctx.model()) {
         return true;
     }
     let changed = apply && apply_target(ctx, state.source, state.selected_target());
@@ -220,7 +214,6 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
 fn apply_target(ctx: &mut WmCtx<'_>, source: WindowId, target: PlacementTarget) -> bool {
     let tiling = selected_tiling(ctx);
     let tree = &mut ctx
-        .core_mut()
         .model_mut()
         .expect_selected_monitor_mut()
         .per_tag_state()

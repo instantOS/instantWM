@@ -249,8 +249,8 @@ pub fn transfer_client(
     target_mon: MonitorId,
     focus_policy: TransferFocus,
 ) -> Option<crate::model::ClientTransferOutcome> {
-    let selected_monitor_before = ctx.core().model().selected_monitor_id();
-    let focused_before = ctx.core().model().selected_win();
+    let selected_monitor_before = ctx.model().selected_monitor_id();
+    let focused_before = ctx.model().selected_win();
     let outcome = ctx
         .core_mut()
         .mutate_selection(|model| model.move_client_to_monitor(win, target_mon));
@@ -295,7 +295,7 @@ pub fn transfer_client(
 
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     let target = {
-        let mgr = &ctx.core().model().monitors;
+        let mgr = &ctx.model().monitors;
         if mgr.len() <= 1 {
             return;
         }
@@ -330,15 +330,15 @@ pub fn resolve_monitor_selector(
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
-    let c_win = match ctx.core().model().selected_win() {
+    let c_win = match ctx.model().selected_win() {
         Some(w) => w,
         None => return,
     };
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    let previous_focus = ctx.core().model().selected_win();
-    if let Some(monitor_id) = ctx.core().model().monitor_of_client(c_win) {
+    let previous_focus = ctx.model().selected_win();
+    if let Some(monitor_id) = ctx.model().monitor_of_client(c_win) {
         ctx.core_mut().select_monitor(monitor_id);
     }
 
@@ -351,9 +351,9 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 /// Sanitize the `[monitors]` config into the effective policy, project it
 /// onto the backend and store it for every later reader.
 pub fn apply_monitor_config(ctx: &mut WmCtx) {
-    let policy = crate::output_mirror::MonitorPolicy::new(&ctx.core().config().monitors);
+    let policy = crate::output_mirror::MonitorPolicy::new(&ctx.config().monitors);
     ctx.apply_monitor_configs(&policy);
-    ctx.core_mut().derived_mut().monitor_policy = policy;
+    ctx.derived_mut().monitor_policy = policy;
     // Per-output tag slots are resolved at bar render time.
     ctx.request_bar_update();
     refresh_monitor_layout(ctx);
@@ -378,8 +378,8 @@ pub(crate) fn logical_outputs(
 pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     let outputs = logical_outputs(
         ctx.output_backend().get_outputs(),
-        &ctx.core().derived().monitor_policy.mirrors,
-        ctx.core().model(),
+        &ctx.derived().monitor_policy.mirrors,
+        ctx.model(),
     );
     sync_monitors_from_outputs(ctx, outputs)
 }
@@ -453,7 +453,7 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     ctx.core_mut().bar.mark_dirty();
     let target_monitor_id = ctx
         .pointer_location()
-        .and_then(|ptr| ctx.core().model().monitors.monitor_at_pointer(ptr))
+        .and_then(|ptr| ctx.model().monitors.monitor_at_pointer(ptr))
         .map(Monitor::id);
     if let Some(id) = target_monitor_id {
         ctx.core_mut().select_monitor(id);
@@ -550,23 +550,23 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     if outputs.is_empty() {
         return false;
     }
-    let previous_focus = ctx.core().model().selected_win();
+    let previous_focus = ctx.model().selected_win();
 
-    let template = ctx.core().config().tag_template.clone();
-    let show_bottom_bar = ctx.core().config().bar.show_bottom;
+    let template = ctx.config().tag_template.clone();
+    let show_bottom_bar = ctx.config().bar.show_bottom;
 
     let layout_size = output_layout_extent(&outputs);
-    let mut changed = sync_runtime_screen_size(ctx.core_mut().derived_mut(), layout_size);
+    let mut changed = sync_runtime_screen_size(ctx.derived_mut(), layout_size);
 
     // Pre-compute per-output UI metrics and tag-display policies while we
     // hold an immutable config borrow.
     let metrics: Vec<MonitorUiMetrics> = outputs
         .iter()
-        .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), o.scale))
+        .map(|o| scaled_monitor_ui_metrics(ctx.config(), o.scale))
         .collect();
     let policies: Vec<TagBarPolicy> = outputs
         .iter()
-        .map(|o| TagBarPolicy::resolve(ctx.core().config(), &o.name))
+        .map(|o| TagBarPolicy::resolve(ctx.config(), &o.name))
         .collect();
 
     let reconciliation = ctx.core_mut().mutate_selection(|model| {
@@ -598,7 +598,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         ctx.refresh_bar_content();
     }
 
-    if ctx.core().model().selected_win() != previous_focus {
+    if ctx.model().selected_win() != previous_focus {
         refresh_focus_after_selection(ctx, previous_focus, None);
     }
     changed

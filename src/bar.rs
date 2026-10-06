@@ -215,7 +215,6 @@ pub fn update_hover(
 ) -> Option<BarPosition> {
     if sync_selected_monitor
         && let Some(monitor_id) = ctx
-            .core()
             .model()
             .monitors
             .monitor_intersecting_rect(crate::mouse::pointer::point_rect(root))
@@ -262,7 +261,7 @@ pub fn handle_status_text_click(
     button_code: u8,
     clean_state: ModMask,
 ) {
-    if ctx.core().model().is_overview_active() {
+    if ctx.model().is_overview_active() {
         ctx.reset_mode();
         return;
     }
@@ -277,7 +276,7 @@ pub fn handle_status_text_click(
     }
 
     let (monitor_id, bar_rect, output_origin) = {
-        let monitor = ctx.core().model().expect_selected_monitor();
+        let monitor = ctx.model().expect_selected_monitor();
         (
             monitor.id(),
             Rect::new(

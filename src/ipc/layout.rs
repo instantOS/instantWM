@@ -1,6 +1,7 @@
 //! Window-layout queries: list the cycle entries and report the selected
 //! monitor's full layout state.
 
+use crate::contexts::WmCtx;
 use crate::ipc_types::{LayoutInfo, LayoutStatusInfo, Response};
 use crate::layouts::{LayoutCommand, PresentationMode};
 
@@ -13,9 +14,8 @@ fn layout_info(command: LayoutCommand, is_active: bool) -> LayoutInfo {
     }
 }
 
-pub fn list_layouts(ctx: &crate::contexts::WmCtx<'_>) -> Response {
+pub fn list_layouts(ctx: &WmCtx<'_>) -> Response {
     let active = ctx
-        .core()
         .state()
         .model
         .expect_selected_monitor()
@@ -28,8 +28,8 @@ pub fn list_layouts(ctx: &crate::contexts::WmCtx<'_>) -> Response {
     )
 }
 
-pub fn layout_status(ctx: &crate::contexts::WmCtx<'_>) -> Response {
-    let monitor = ctx.core().model().expect_selected_monitor();
+pub fn layout_status(ctx: &WmCtx<'_>) -> Response {
+    let monitor = ctx.model().expect_selected_monitor();
     let presentation = match monitor.current_layout() {
         PresentationMode::Tiled => "tiled",
         PresentationMode::Floating => "floating",

@@ -2,7 +2,7 @@
 
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::keysyms::XK_NUM_LOCK;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
 use crate::types::{Key, Keysym, ModMask, Modifier};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -338,7 +338,7 @@ pub fn key_press(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
     let keysym = ctx.x11_runtime.keyboard_mapping.keysym(keycode, 0);
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    let mut wm_ctx = ctx.wm_ctx();
     // The event's state is already an X11 `ModMask`, so it needs no conversion.
     let _ = crate::keyboard::handle_keysym(&mut wm_ctx, keysym, ModMask::new(state.bits()));
 }

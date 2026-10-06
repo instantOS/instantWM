@@ -2,7 +2,7 @@
 //!
 //! # Responsibilities
 //!
-//! * [`WmCtx::move_resize`](crate::contexts::WmCtx::move_resize) – high-level geometry API.
+//! * [`WmCtx::move_resize`](WmCtx::move_resize) – high-level geometry API.
 //! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM size hints.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
 //!
@@ -12,6 +12,7 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
+use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::model::WmModel;
 use crate::types::{Client, Monitor, Point, Rect, Size, WindowId};
@@ -415,9 +416,9 @@ fn calculate_scaled_geometry(
 /// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
-pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
+pub fn scale_client(ctx: &mut WmCtx<'_>, win: WindowId, scale: i32) {
     let target = {
-        let model = ctx.core().model();
+        let model = ctx.model();
         let (old_geo, border_width, monitor_rect) = if let Some(view) = model.client_view(win) {
             (
                 view.client.geo,

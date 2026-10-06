@@ -1,13 +1,11 @@
 use crate::config::config_toml::MonitorConfig;
+use crate::contexts::WmCtx;
 use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, resolve_monitor_selector};
 use crate::output_mirror::{MirrorConfigError, MirrorMap};
 use crate::types::{MonitorDirection, MonitorSelector};
 use std::collections::HashMap;
-pub fn handle_monitor_command(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    cmd: MonitorCommand,
-) -> Response {
+pub fn handle_monitor_command(ctx: &mut WmCtx<'_>, cmd: MonitorCommand) -> Response {
     match cmd {
         MonitorCommand::List => list_monitors(ctx),
         MonitorCommand::Switch { monitor } => switch_monitor(ctx, monitor),
@@ -28,20 +26,19 @@ pub fn handle_monitor_command(
     }
 }
 
-fn list_monitors(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
+fn list_monitors(ctx: &mut WmCtx<'_>) -> Response {
     let outputs = ctx.get_outputs();
-    let selected_id = ctx.core().model().selected_monitor_id();
-    let mirror_map = &ctx.core().state().derived.monitor_policy.mirrors;
+    let selected_id = ctx.model().selected_monitor_id();
+    let mirror_map = &ctx.state().derived.monitor_policy.mirrors;
     // The same discovery the monitor layout uses, so each monitor finds its
     // own output (with the heads presenting it) by name.
     let output_info: HashMap<_, _> =
-        crate::monitor::logical_outputs(outputs, mirror_map, ctx.core().model())
+        crate::monitor::logical_outputs(outputs, mirror_map, ctx.model())
             .into_iter()
             .map(|output| (output.name.clone(), output))
             .collect();
 
     let monitors: Vec<crate::ipc_types::MonitorInfo> = ctx
-        .core()
         .state()
         .model
         .monitors_iter()
@@ -77,13 +74,13 @@ fn list_monitors(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
     Response::MonitorList(monitors)
 }
 
-fn switch_monitor(ctx: &mut crate::contexts::WmCtx<'_>, selector: MonitorSelector) -> Response {
+fn switch_monitor(ctx: &mut WmCtx<'_>, selector: MonitorSelector) -> Response {
     if matches!(selector, MonitorSelector::Any) {
         return Response::err(
             "monitor switch needs a concrete monitor: name, position, \"focused\" or \"primary\"",
         );
     }
-    match resolve_monitor_selector(ctx.core().model(), &selector) {
+    match resolve_monitor_selector(ctx.model(), &selector) {
         Some(target) => {
             let changed = crate::focus::select_monitor(ctx, target);
             if changed {
@@ -97,11 +94,7 @@ fn switch_monitor(ctx: &mut crate::contexts::WmCtx<'_>, selector: MonitorSelecto
     }
 }
 
-fn step_monitor(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    direction: MonitorDirection,
-    count: u32,
-) -> Response {
+fn step_monitor(ctx: &mut WmCtx<'_>, direction: MonitorDirection, count: u32) -> Response {
     for _ in 0..count.max(1) {
         focus_monitor(ctx, direction);
     }
@@ -172,19 +165,9 @@ fn merge_monitor_config(existing: Option<&MonitorConfig>, patch: MonitorConfig) 
 /// is stored and no apply is queued until both checks pass; fatal findings
 /// about *other* entries are left to degrade at apply time, where
 /// sanitization logs them.
-fn set_monitor_config(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    identifier: String,
-    patch: MonitorConfig,
-) -> Response {
+fn set_monitor_config(ctx: &mut WmCtx<'_>, identifier: String, patch: MonitorConfig) -> Response {
     let resolved_id = if identifier == "focused" {
-        let name = ctx
-            .core()
-            .state()
-            .model
-            .expect_selected_monitor()
-            .name
-            .clone();
+        let name = ctx.state().model.expect_selected_monitor().name.clone();
         if name.is_empty() {
             "*".to_string()
         } else {
@@ -197,9 +180,9 @@ fn set_monitor_config(
     // The merge consumes the patch; remember whether it declares a mirror,
     // since only that case is connectivity-checked below.
     let declared_mirror = patch.mirror.clone();
-    let candidate = merge_monitor_config(ctx.core().config().monitors.get(&resolved_id), patch);
+    let candidate = merge_monitor_config(ctx.config().monitors.get(&resolved_id), patch);
 
-    let mut prospective = ctx.core().config().monitors.clone();
+    let mut prospective = ctx.config().monitors.clone();
     prospective.insert(resolved_id.clone(), candidate.clone());
     if let Err(error) = candidate.validated(&resolved_id) {
         return Response::err(error);
@@ -227,35 +210,25 @@ fn set_monitor_config(
         }
     }
 
-    ctx.core_mut()
-        .state_mut()
+    ctx.state_mut()
         .config
         .monitors
         .insert(resolved_id, candidate);
-    ctx.core_mut()
-        .pending_work_mut()
-        .queue_monitor_config_apply();
+    ctx.pending_work_mut().queue_monitor_config_apply();
     Response::ok()
 }
 
-fn list_modes(ctx: &mut crate::contexts::WmCtx<'_>, identifier: String) -> Response {
+fn list_modes(ctx: &mut WmCtx<'_>, identifier: String) -> Response {
     let display_names: Vec<String> = match identifier.as_str() {
         "focused" => {
-            let name = ctx
-                .core()
-                .state()
-                .model
-                .expect_selected_monitor()
-                .name
-                .clone();
+            let name = ctx.state().model.expect_selected_monitor().name.clone();
             if name.is_empty() {
                 // List all displays
                 if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
                     ctx.connected_output_names()
                 } else {
                     // For X11, get names from monitor list
-                    ctx.core()
-                        .state()
+                    ctx.state()
                         .model
                         .monitors_iter()
                         .map(|(_, m)| m.name.clone())

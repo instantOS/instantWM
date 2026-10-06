@@ -1,4 +1,5 @@
 use crate::config::config_toml::InputConfig;
+use crate::contexts::WmCtx;
 use crate::ipc_types::{InputCommand, Response};
 use std::collections::HashMap;
 
@@ -11,8 +12,8 @@ fn input_config_mut(
         .or_default()
 }
 
-pub fn handle_input_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: InputCommand) -> Response {
-    let inputs = &mut ctx.core_mut().config_mut().input;
+pub fn handle_input_command(ctx: &mut WmCtx<'_>, cmd: InputCommand) -> Response {
+    let inputs = &mut ctx.config_mut().input;
     match cmd {
         InputCommand::List { identifier } => {
             let mut entries: Vec<(String, &crate::config::config_toml::InputConfig)> =
@@ -78,6 +79,6 @@ pub fn handle_input_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: InputComm
             input_config_mut(inputs, identifier).left_handed = Some(state);
         }
     }
-    ctx.core_mut().pending_work_mut().queue_input_config_apply();
+    ctx.pending_work_mut().queue_input_config_apply();
     Response::ok()
 }

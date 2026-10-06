@@ -37,8 +37,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool
     }
 
     let resolved = resolve_key_action(
-        &ctx.core().config().bindings,
-        ctx.core().model().selected_win(),
+        &ctx.config().bindings,
+        ctx.model().selected_win(),
         ctx.current_mode(),
         binding_keysym,
         binding_mask,
@@ -151,19 +151,14 @@ fn resolve_key_action<'a>(
 /// Alt-tab style navigation: overview focus, snapping for floating layouts,
 /// otherwise the focus stack.
 pub fn alt_tab_key(ctx: &mut WmCtx, direction: VerticalDirection) {
-    if ctx.core().model().is_overview_active() {
+    if ctx.model().is_overview_active() {
         crate::overview::focus_direction(ctx, direction.into());
         return;
     }
 
-    if ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-    {
+    if ctx.model().expect_selected_monitor().is_tiling_layout() {
         focus_stack(ctx, direction.into());
-    } else if let Some(win) = ctx.core().model().selected_win() {
+    } else if let Some(win) = ctx.model().selected_win() {
         change_snap(ctx, win, direction.into());
     }
 }

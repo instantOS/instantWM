@@ -76,7 +76,7 @@ fn offer_tree_resize(ctx: &mut WmCtx, win: WindowId, direction: ResizeDirection)
 /// Update the passive resize offer at a pointer position without applying
 /// hover-focus policy. Returns the window owning the offered resize seam.
 pub fn update_resize_offer_at(ctx: &mut WmCtx, root: Point) -> Option<WindowId> {
-    if let Some(target) = hover_resize_target_at(ctx.core().model(), root) {
+    if let Some(target) = hover_resize_target_at(ctx.model(), root) {
         offer_hover_resize(ctx, target);
         return Some(target.win);
     }
@@ -89,7 +89,7 @@ pub fn update_resize_offer_at(ctx: &mut WmCtx, root: Point) -> Option<WindowId> 
 }
 
 /// Clear any active hover offer and reconcile the resulting presentation.
-pub fn clear_hover_offer(ctx: &mut crate::contexts::WmCtx) {
+pub fn clear_hover_offer(ctx: &mut WmCtx) {
     // Reconciliation is intentionally unconditional so native state can heal
     // even after a redundant logical clear.
     let changed = ctx.transition_pointer_interaction(|drag| drag.clear_hover_offer());
@@ -223,13 +223,12 @@ pub fn update_resize_offer_with_focus_at(ctx: &mut WmCtx, root: Point) -> bool {
         // Otherwise the motion handler resolves the actual window beneath the
         // pointer after the resize-offer check.
         let should_focus = ctx
-            .core()
             .config()
             .window
             .focus_follows_mouse
             .allows(crate::types::HoverFocusTrigger::PointerMotion)
-            && ctx.core().model().selected_win() != Some(win)
-            && !has_visible_tiled_client(ctx.core().model());
+            && ctx.model().selected_win() != Some(win)
+            && !has_visible_tiled_client(ctx.model());
 
         if should_focus {
             crate::focus::focus(ctx, Some(win));
@@ -269,7 +268,7 @@ pub fn set_sidebar_offer(
         return SidebarOfferUpdate::Active;
     }
 
-    if ctx.core().interaction().drag.hover_offer().is_sidebar() {
+    if ctx.interaction().drag.hover_offer().is_sidebar() {
         clear_hover_offer(ctx);
         return SidebarOfferUpdate::Cleared;
     }

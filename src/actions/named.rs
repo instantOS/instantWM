@@ -210,7 +210,7 @@ define_named_actions!(
         name: "scratchpad_toggle",
         doc: "toggle scratchpad, creating it from current window if it doesn't exist",
         run: |ctx| {
-            if ctx.core().model().scratchpad_find(DEFAULT_SCRATCHPAD_NAME).is_some() {
+            if ctx.model().scratchpad_find(DEFAULT_SCRATCHPAD_NAME).is_some() {
                 scratchpad_toggle(ctx, Some(DEFAULT_SCRATCHPAD_NAME));
             } else {
                 let _ = scratchpad_create(ctx, DEFAULT_SCRATCHPAD_NAME, None, None, ScratchpadInitialStatus::Shown);
@@ -220,15 +220,15 @@ define_named_actions!(
     ScratchpadRestore => { name: "scratchpad_restore", doc: "restore the focused scratchpad as an ordinary window", run: |ctx| { let _ = scratchpad_restore(ctx, None, None); } },
     ToggleBar => { name: "toggle_bar", overview: Preserve, doc: "toggle status bar", run: |ctx| { toggle_bar(ctx); } },
     ToggleBottomBar(Option<ToggleAction>) => { name: "toggle_bottom_bar", overview: Preserve, doc: "toggle or set bottom bar visibility", run: |ctx, action| {
-        let mut shown = ctx.core().model().expect_selected_monitor().shows_bottom_bar();
+        let mut shown = ctx.model().expect_selected_monitor().shows_bottom_bar();
         action.unwrap_or_default().apply(&mut shown);
         crate::toggles::set_bottom_bar_shown(ctx, shown);
     } },
     ToggleFloating => { name: "toggle_floating", doc: "toggle focused window between tiled and floating", run: |ctx| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", doc: "toggle sticky (visible on all tags)", run: |ctx| { with_selected_win(ctx, toggle_sticky); } },
-    ConfigSet(ConfigAssignment) => { name: "config_set", overview: Preserve, doc: "set a runtime config value (e.g. config_set layout.inner_gap 12)", run: |ctx, assignment| { let effect = crate::config::runtime::set_runtime_field(ctx.core_mut().state_mut(), &assignment.key, assignment.value.clone())?; apply_config_effect(ctx, effect); } },
-    ConfigToggle(String) => { name: "config_toggle", overview: Preserve, doc: "flip a boolean runtime config value (e.g. config_toggle window.decor_hints)", run: |ctx, key| { let (effect, _) = crate::config::runtime::toggle_runtime_field(ctx.core_mut().state_mut(), key)?; apply_config_effect(ctx, effect); } },
-    ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; toggle_mode(ctx, mode); } },
+    ConfigSet(ConfigAssignment) => { name: "config_set", overview: Preserve, doc: "set a runtime config value (e.g. config_set layout.inner_gap 12)", run: |ctx, assignment| { let effect = crate::config::runtime::set_runtime_field(ctx.state_mut(), &assignment.key, assignment.value.clone())?; apply_config_effect(ctx, effect); } },
+    ConfigToggle(String) => { name: "config_toggle", overview: Preserve, doc: "flip a boolean runtime config value (e.g. config_toggle window.decor_hints)", run: |ctx, key| { let (effect, _) = crate::config::runtime::toggle_runtime_field(ctx.state_mut(), key)?; apply_config_effect(ctx, effect); } },
+    ModeToggle(String) => { name: "mode_toggle", doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, mode| { validate_mode_name(&ctx.config().bindings.modes, mode)?; toggle_mode(ctx, mode); } },
     UnhideAll => { name: "unhide_all", doc: "show all hidden windows", run: |ctx| { unhide_all(ctx); } },
     Hide => { name: "hide", doc: "minimize focused window or hide the visible scratchpad", run: |ctx| { with_selected_win(ctx, crate::client::hide_for_user); } },
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", doc: "toggle fake fullscreen", run: |ctx| { toggle_fake_fullscreen(ctx); } },
@@ -254,14 +254,14 @@ define_named_actions!(
     NextKeyboardLayout => { name: "next_keyboard_layout", overview: Preserve, doc: "cycle to next keyboard layout", run: |ctx| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Next); } },
     PrevKeyboardLayout => { name: "prev_keyboard_layout", overview: Preserve, doc: "cycle to previous keyboard layout", run: |ctx| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
     KeyboardLayout(String) => { name: "keyboard_layout", overview: Preserve, doc: "set keyboard layout, e.g. us(intl)", run: |ctx, layout| { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, layout); } },
-    SetMode(String) => { name: "set_mode", doc: "set WM mode (sway-like modes)", run: |ctx, mode| { validate_mode_name(&ctx.core().config().bindings.modes, mode)?; ctx.set_current_mode(mode.clone()); } },
+    SetMode(String) => { name: "set_mode", doc: "set WM mode (sway-like modes)", run: |ctx, mode| { validate_mode_name(&ctx.config().bindings.modes, mode)?; ctx.set_current_mode(mode.clone()); } },
     Spawn(Vec<String>) => { name: "spawn", overview: Preserve, doc: "spawn a command without shell expansion", run: |ctx, argv| { spawn(ctx, argv)?; } },
     SetLayout(LayoutCommand) => { name: "set_layout", doc: "set layout", run: |ctx, layout| { set_layout(ctx, *layout); } },
     ResetLayout => { name: "reset_layout", doc: "reset the active layout to stock geometry", run: |ctx| { reset_active_layout(ctx); } },
     FocusStack(StackDirection) => { name: "focus_stack", overview: Preserve, doc: "focus stack direction", run: |ctx, direction| { focus_stack(ctx, *direction); } },
     ViewTag(u32) => { name: "view_tag", overview: Cancel, doc: "view a tag by its 1-based number", run: |ctx, number| {
         let number = *number as usize;
-        if number == 0 || number > ctx.core().model().tags.num_tags {
+        if number == 0 || number > ctx.model().tags.num_tags {
             return Err(format!("tag number {number} is out of range"));
         }
         let mask = TagMask::from_index(number - 1).ok_or_else(|| format!("tag number {number} is out of range"))?;

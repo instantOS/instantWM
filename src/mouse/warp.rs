@@ -10,7 +10,7 @@
 //! | [`warp_to_resize_corner`]          | Warp to the edge/corner for a resize direction         |
 //! | [`warp_pointer_to_monitor`]        | Carry the pointer along on monitor-switch focus        |
 //!
-//! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
+//! [`WmCtx::warp_cursor_to_client`]: WmCtx::warp_cursor_to_client
 use crate::backend::PointerOps;
 
 use crate::contexts::WmCtx;
@@ -43,7 +43,7 @@ pub fn clamp_into(point: Point, geo: Rect) -> Point {
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.
 pub fn warp_to_focus(ctx: &mut WmCtx) {
-    if let Some(win) = ctx.core().model().selected_win() {
+    if let Some(win) = ctx.model().selected_win() {
         ctx.warp_cursor_to_client(win);
     }
 }
@@ -73,7 +73,6 @@ pub fn warp_target_for_monitor(
 /// warping there would fight the user's hand.
 pub fn warp_pointer_to_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
     let Some((monitor_rect, center)) = ctx
-        .core()
         .model()
         .monitor(monitor_id)
         .map(|monitor| (monitor.monitor_rect, monitor.center()))
@@ -104,7 +103,7 @@ pub fn warp_to_resize_corner(
     win: WindowId,
     direction: ResizeDirection,
 ) -> Option<Point> {
-    let c = ctx.core().model().client(win)?;
+    let c = ctx.model().client(win)?;
     let offset = direction.warp_offset(c.geo.size(), c.border_width);
     let target = Point::new(c.geo.x + offset.x, c.geo.y + offset.y);
     ctx.warp_to_point(target);

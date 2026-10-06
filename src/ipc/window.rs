@@ -1,10 +1,11 @@
+use crate::contexts::WmCtx;
 use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::mouse::slop::is_valid_window_size;
 use crate::types::{Client, MonitorId, MonitorSelector, Rect, WindowId};
 
-pub fn handle_window_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: WindowCommand) -> Response {
+pub fn handle_window_command(ctx: &mut WmCtx<'_>, cmd: WindowCommand) -> Response {
     match cmd {
         WindowCommand::List { window_id } => list_windows(ctx, window_id.map(WindowId::from)),
         WindowCommand::Info { window_id } => window_info(ctx, window_id.map(WindowId::from)),
@@ -26,29 +27,28 @@ pub fn handle_window_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: WindowCo
     }
 }
 
-fn list_windows(ctx: &crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
+fn list_windows(ctx: &WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id;
     // Every client is owned by exactly one monitor, so carry the owning
     // monitor's ID alongside the client to resolve its spatial position.
     let mut wins: Vec<(MonitorId, &Client)> = if let Some(win) = target {
-        ctx.core()
-            .state()
+        ctx.state()
             .model
             .monitor_of_client(win)
-            .zip(ctx.core().model().client(win))
+            .zip(ctx.model().client(win))
             .into_iter()
             .collect()
     } else {
-        ctx.core().model().clients_iter_all().collect()
+        ctx.model().clients_iter_all().collect()
     };
     wins.sort_by_key(|(_, c)| c.win.0);
 
-    let tag_mask = ctx.core().model().tags.mask();
-    let selected = ctx.core().model().selected_win();
+    let tag_mask = ctx.model().tags.mask();
+    let selected = ctx.model().selected_win();
     let windows: Vec<WindowInfo> = wins
         .iter()
         .filter_map(|(monitor_id, c)| {
-            let mon_pos = ctx.core().model().monitors.position_of(*monitor_id)?;
+            let mon_pos = ctx.model().monitors.position_of(*monitor_id)?;
             Some(WindowInfo::from_client(
                 c,
                 tag_mask,
@@ -62,8 +62,8 @@ fn list_windows(ctx: &crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId>) -
     Response::WindowList(windows)
 }
 
-fn close_window(ctx: &mut crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| ctx.core().model().selected_win());
+fn close_window(ctx: &mut WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
+    let target = parsed_id.or_else(|| ctx.model().selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
@@ -71,8 +71,8 @@ fn close_window(ctx: &mut crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId
     Response::ok()
 }
 
-fn focus_window(ctx: &mut crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| ctx.core().model().selected_win());
+fn focus_window(ctx: &mut WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
+    let target = parsed_id.or_else(|| ctx.model().selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
@@ -80,7 +80,6 @@ fn focus_window(ctx: &mut crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId
     // Mirror the X11 _NET_ACTIVE_WINDOW handler: an explicit activation
     // request also restores hidden (minimized) windows before focusing.
     if ctx
-        .core()
         .state()
         .model
         .client(win)
@@ -96,23 +95,17 @@ fn focus_window(ctx: &mut crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId
     }
 }
 
-fn window_info(ctx: &crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| ctx.core().model().selected_win());
+fn window_info(ctx: &WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
+    let target = parsed_id.or_else(|| ctx.model().selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
-    let Some(view) = ctx.core().model().client_view(win) else {
+    let Some(view) = ctx.model().client_view(win) else {
         return Response::err("window or assigned monitor not found");
     };
 
-    let tag_mask = ctx.core().model().tags.mask();
-    let Some(mon_pos) = ctx
-        .core()
-        .state()
-        .model
-        .monitors
-        .position_of(view.monitor.id())
-    else {
+    let tag_mask = ctx.model().tags.mask();
+    let Some(mon_pos) = ctx.state().model.monitors.position_of(view.monitor.id()) else {
         return Response::err("assigned monitor has no display position");
     };
     let c = view.client;
@@ -121,22 +114,22 @@ fn window_info(ctx: &crate::contexts::WmCtx<'_>, parsed_id: Option<WindowId>) ->
         tag_mask,
         ctx.window_protocol(c.win),
         mon_pos,
-        ctx.core().model().selected_win() == Some(win),
+        ctx.model().selected_win() == Some(win),
     ))
 }
 
 fn resize_window(
-    ctx: &mut crate::contexts::WmCtx<'_>,
+    ctx: &mut WmCtx<'_>,
     parsed_id: Option<WindowId>,
     monitor: Option<MonitorSelector>,
     requested_rect: Rect,
 ) -> Response {
-    let target = parsed_id.or_else(|| ctx.core().model().selected_win());
+    let target = parsed_id.or_else(|| ctx.model().selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
 
-    let (current_monitor_id, is_floating) = match ctx.core().model().client_view(win) {
+    let (current_monitor_id, is_floating) = match ctx.model().client_view(win) {
         Some(view) => (
             view.monitor.id(),
             view.client.placement() == crate::types::ClientPlacement::Floating,
@@ -149,7 +142,6 @@ fn resize_window(
         Err(msg) => return Response::err(msg),
     };
     let Some(target_monitor_rect) = ctx
-        .core()
         .state()
         .model
         .monitor(target_monitor_id)
@@ -165,7 +157,7 @@ fn resize_window(
         h: requested_rect.h,
     };
 
-    if !is_valid_window_size(ctx.core().model(), &rect, win) {
+    if !is_valid_window_size(ctx.model(), &rect, win) {
         return Response::err("invalid target geometry");
     }
     crate::client::fullscreen::leave_maximized(ctx, win);
@@ -194,7 +186,7 @@ fn resize_window(
 }
 
 fn resolve_resize_monitor(
-    ctx: &crate::contexts::WmCtx<'_>,
+    ctx: &WmCtx<'_>,
     current_monitor_id: crate::types::MonitorId,
     monitor: Option<&MonitorSelector>,
 ) -> Result<crate::types::MonitorId, String> {
@@ -204,7 +196,7 @@ fn resolve_resize_monitor(
             "window resize needs a concrete monitor: name, position, \"focused\" or \"primary\""
                 .to_owned(),
         ),
-        Some(selector) => crate::monitor::resolve_monitor_selector(ctx.core().model(), selector)
+        Some(selector) => crate::monitor::resolve_monitor_selector(ctx.model(), selector)
             .ok_or_else(|| format!("monitor '{selector}' does not match any connected monitor")),
     }
 }

@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use std::collections::HashMap;
 use std::process::exit;
 
@@ -42,7 +43,7 @@ pub fn run() {
     crate::backend::x11::events::setup(&mut wm);
     {
         let ctx = wm.x11_ctx();
-        if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
+        if let WmCtx::X11(mut x11_ctx) = ctx {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
     }
@@ -75,7 +76,7 @@ fn wm_init(wm: &mut Wm) {
     // After atoms + drw exist, we can verify tag naming and create bars.
     crate::runtime::init_keyboard_layout(&mut wm.x11_ctx());
     {
-        let crate::contexts::WmCtx::X11(mut ctx) = wm.x11_ctx() else {
+        let WmCtx::X11(mut ctx) = wm.x11_ctx() else {
             return;
         };
         crate::backend::x11::bar::reconcile_bar_windows(
@@ -93,7 +94,7 @@ fn wm_init(wm: &mut Wm) {
             );
         }
         crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
-        crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
+        crate::focus::focus(&mut ctx.wm_ctx(), None);
     }
 }
 
@@ -247,7 +248,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 ///
 /// Takes only the X11 runtime and the effective config so both the startup
 /// path ([`init_drw_and_schemes`]) and
-/// [`crate::contexts::WmCtx::reinit_bar_resources`] share it.
+/// [`WmCtx::reinit_bar_resources`] share it.
 pub fn init_drw_and_schemes_impl(
     x11_runtime: &mut X11RuntimeConfig,
     config: &crate::core_state::EffectiveConfig,

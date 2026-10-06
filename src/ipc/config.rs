@@ -3,22 +3,23 @@
 //! Thin transport shim: the reflection-by-name reads/writes and their
 //! validation live in [`crate::config::runtime`], shared with the
 //! `config_set`/`config_toggle` named actions, and this module only applies
-//! the returned [`ConfigEffect`] with a borrowed [`crate::contexts::WmCtx`].
+//! the returned [`ConfigEffect`] with a borrowed [`WmCtx`].
 //!
 //! **Persistence:** edits made through this command live in the running
 //! WM only — `reload` reloads from disk and discards them.
 
 use crate::config::runtime::{self, ConfigEffect};
+use crate::contexts::WmCtx;
 use crate::ipc_types::{ConfigCommand, Response};
 
-pub fn handle_config_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: ConfigCommand) -> Response {
+pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Response {
     match cmd {
-        ConfigCommand::Get { key } => match runtime::get_runtime_field(ctx.core().state(), &key) {
+        ConfigCommand::Get { key } => match runtime::get_runtime_field(ctx.state(), &key) {
             Ok(value) => Response::ConfigValue(value),
             Err(error) => Response::err(error),
         },
         ConfigCommand::Set { key, value } => {
-            match runtime::set_runtime_field(ctx.core_mut().state_mut(), &key, value) {
+            match runtime::set_runtime_field(ctx.state_mut(), &key, value) {
                 Ok(effect) => {
                     apply_effect(ctx, effect);
                     Response::ok()
@@ -27,7 +28,7 @@ pub fn handle_config_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: ConfigCo
             }
         }
         ConfigCommand::Toggle { key } => {
-            match runtime::toggle_runtime_field(ctx.core_mut().state_mut(), &key) {
+            match runtime::toggle_runtime_field(ctx.state_mut(), &key) {
                 Ok((effect, value)) => {
                     apply_effect(ctx, effect);
                     Response::ConfigValue(value)
@@ -36,7 +37,7 @@ pub fn handle_config_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: ConfigCo
             }
         }
         ConfigCommand::List { prefix } => {
-            match runtime::list_runtime_fields(ctx.core().state(), prefix.as_deref()) {
+            match runtime::list_runtime_fields(ctx.state(), prefix.as_deref()) {
                 Ok(entries) => Response::ConfigList(entries),
                 Err(error) => Response::err(error),
             }
@@ -49,7 +50,7 @@ pub fn handle_config_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: ConfigCo
 /// A `WmCtx` is borrowed purely to run [`crate::actions::apply_config_effect`],
 /// the single applier shared with the `config_set`/`config_toggle` actions, so
 /// IPC edits and keybind edits cannot drift.
-fn apply_effect(ctx: &mut crate::contexts::WmCtx<'_>, effect: ConfigEffect) {
+fn apply_effect(ctx: &mut WmCtx<'_>, effect: ConfigEffect) {
     crate::actions::apply_config_effect(ctx, effect);
 }
 
@@ -65,10 +66,10 @@ mod tests {
         Wm::new(crate::backend::WaylandBackendData::default())
     }
 
-    fn do_get(ctx: &mut crate::contexts::WmCtx<'_>, key: &str) -> Response {
+    fn do_get(ctx: &mut WmCtx<'_>, key: &str) -> Response {
         handle_config_command(ctx, ConfigCommand::Get { key: key.into() })
     }
-    fn do_set(ctx: &mut crate::contexts::WmCtx<'_>, key: &str, value: &str) -> Response {
+    fn do_set(ctx: &mut WmCtx<'_>, key: &str, value: &str) -> Response {
         handle_config_command(
             ctx,
             ConfigCommand::Set {
@@ -77,16 +78,13 @@ mod tests {
             },
         )
     }
-    fn do_toggle(ctx: &mut crate::contexts::WmCtx<'_>, key: &str) -> Response {
+    fn do_toggle(ctx: &mut WmCtx<'_>, key: &str) -> Response {
         handle_config_command(ctx, ConfigCommand::Toggle { key: key.into() })
     }
-    fn do_list(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
+    fn do_list(ctx: &mut WmCtx<'_>) -> Response {
         handle_config_command(ctx, ConfigCommand::List { prefix: None })
     }
-    fn list_keys(
-        ctx: &mut crate::contexts::WmCtx<'_>,
-        prefix: &str,
-    ) -> Result<Vec<String>, String> {
+    fn list_keys(ctx: &mut WmCtx<'_>, prefix: &str) -> Result<Vec<String>, String> {
         match handle_config_command(
             ctx,
             ConfigCommand::List {

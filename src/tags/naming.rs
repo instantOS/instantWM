@@ -20,14 +20,14 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
 
-    let mon = ctx.core().model().expect_selected_monitor();
+    let mon = ctx.model().expect_selected_monitor();
     let (num_tags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
 
     if tagset == 0 {
         return;
     }
 
-    let configured = ctx.core().config().tag_template.clone();
+    let configured = ctx.config().tag_template.clone();
     let label_for = |index: usize| -> String {
         if arg.is_empty() {
             configured
@@ -41,7 +41,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 
     // Apply the new label to every tag in the current tagset on every
     // monitor, so secondary monitors stay in sync.
-    for mon in ctx.core_mut().model_mut().monitors.iter_all_mut() {
+    for mon in ctx.model_mut().monitors.iter_all_mut() {
         for (i, tag) in mon.tags.iter_mut().take(num_tags.min(MAX_TAGS)).enumerate() {
             if (tagset & (1 << i)) == 0 {
                 continue;
@@ -58,9 +58,9 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 //BOZO: should there maybe be a Tag struct which this is a method of? Is there
 //already such a struct maybe? Same goes for many of the functions in this file
 pub fn reset_name_tag(ctx: &mut WmCtx) {
-    let configured = ctx.core().config().tag_template.clone();
-    let num_tags = ctx.core().model().tags.num_tags.min(MAX_TAGS);
-    for mon in ctx.core_mut().model_mut().monitors.iter_all_mut() {
+    let configured = ctx.config().tag_template.clone();
+    let num_tags = ctx.model().tags.num_tags.min(MAX_TAGS);
+    for mon in ctx.model_mut().monitors.iter_all_mut() {
         for (i, tag) in mon.tags.iter_mut().take(num_tags).enumerate() {
             tag.name = configured
                 .get(i)

@@ -56,17 +56,13 @@ pub(super) fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirecti
     // The overview is its own grid projection with a self-contained
     // directional model, so `focus.horizontal_edge` deliberately does not
     // apply inside it.
-    if ctx.core().model().is_overview_active() {
+    if ctx.model().is_overview_active() {
         crate::overview::focus_direction(ctx, direction.into());
         return;
     }
 
-    let edge = ctx.core().config().focus.horizontal_edge;
-    let maximized = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_maximized_layout();
+    let edge = ctx.config().focus.horizontal_edge;
+    let maximized = ctx.model().expect_selected_monitor().is_maximized_layout();
 
     if maximized {
         // Maximized windows all occupy the same region, so there is no
@@ -117,17 +113,13 @@ fn horizontal_edge_action(
 pub(super) fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
     // Same deliberate bypass as `focus_horizontal`: the overview owns its own
     // directional model, so neither edge policy applies inside it.
-    if ctx.core().model().is_overview_active() {
+    if ctx.model().is_overview_active() {
         crate::overview::focus_direction(ctx, direction.into());
         return;
     }
 
-    let edge = ctx.core().config().focus.vertical_edge;
-    let maximized = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_maximized_layout();
+    let edge = ctx.config().focus.vertical_edge;
+    let maximized = ctx.model().expect_selected_monitor().is_maximized_layout();
 
     if maximized {
         // Maximized windows overlap, so the tree and geometry have nothing to
@@ -182,7 +174,7 @@ pub(super) fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirectio
     if swap_tree_neighbor(ctx, direction.into()) {
         return;
     }
-    let Some(win) = ctx.core().model().selected_win() else {
+    let Some(win) = ctx.model().selected_win() else {
         return;
     };
     if !key_move(ctx, win, direction.into()) {
@@ -199,7 +191,7 @@ pub(super) fn move_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
     }
 
     if !swap_tree_neighbor(ctx, direction.into())
-        && let Some(win) = ctx.core().model().selected_win()
+        && let Some(win) = ctx.model().selected_win()
     {
         key_move(ctx, win, direction.into());
     }
@@ -211,7 +203,7 @@ pub(super) fn key_resize_or_tree(
     direction: crate::types::Direction,
 ) {
     if !resize_tree(ctx, side)
-        && let Some(win) = ctx.core().model().selected_win()
+        && let Some(win) = ctx.model().selected_win()
     {
         key_resize(ctx, win, direction);
     }
@@ -228,7 +220,7 @@ pub(super) const DEFAULT_GAP_STEP: i32 = 2;
 /// clamp at zero: placement treats zero gaps as disabled, so decreasing at
 /// the floor simply keeps gapless tiling instead of inverting windows.
 pub(super) fn adjust_gaps(ctx: &mut WmCtx<'_>, delta: i32) {
-    let layout = &mut ctx.core_mut().config_mut().layout;
+    let layout = &mut ctx.config_mut().layout;
     layout.inner_gap = layout.inner_gap.saturating_add(delta).max(0);
     layout.outer_gap = layout.outer_gap.saturating_add(delta).max(0);
     crate::layouts::manager::arrange(ctx, None);
@@ -238,17 +230,13 @@ pub(super) fn with_selected_win(
     ctx: &mut WmCtx<'_>,
     f: impl FnOnce(&mut WmCtx<'_>, crate::types::WindowId),
 ) {
-    if let Some(win) = ctx.core().model().selected_win() {
+    if let Some(win) = ctx.model().selected_win() {
         f(ctx, win);
     }
 }
 
 pub(super) fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
-    if let Some(win) = ctx
-        .core()
-        .model()
-        .scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME)
-    {
+    if let Some(win) = ctx.model().scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME) {
         set_scratchpad_direction(ctx, win, dir);
     }
 }

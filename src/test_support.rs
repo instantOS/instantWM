@@ -9,6 +9,7 @@
 //! Ownership collapsed that sequence into one operation, so these helpers are
 //! thin wrappers that exist purely to keep test setup to a single call.
 
+use crate::contexts::WmCtx;
 use crate::model::WmModel;
 use crate::types::{Client, Monitor, MonitorId, Rect, Tag, TagMask, WindowId};
 
@@ -194,11 +195,11 @@ impl TestWm {
         Self { native }
     }
 
-    pub fn test_ctx(&mut self) -> crate::contexts::WmCtx<'_> {
+    pub fn test_ctx(&mut self) -> WmCtx<'_> {
         self.native.ctx()
     }
 
-    pub fn with_ctx<T>(&mut self, f: impl FnOnce(&mut crate::contexts::WmCtx<'_>) -> T) -> T {
+    pub fn with_ctx<T>(&mut self, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
         f(&mut self.test_ctx())
     }
 }

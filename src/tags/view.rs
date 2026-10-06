@@ -45,7 +45,7 @@ pub(crate) fn commit_view_selection(
 }
 
 pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
-    let model = ctx.core().model();
+    let model = ctx.model();
     let monitor = model.expect_selected_monitor();
     let mask = selection.to_mask(
         monitor.selected_tags(),
@@ -57,13 +57,13 @@ pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
 
 /// View tags using type-safe mask.
 pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
-    let tagmask = ctx.core().model().tags.mask();
+    let tagmask = ctx.model().tags.mask();
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
-    let state = ctx.core_mut().state_mut();
+    let state = ctx.state_mut();
     let Some(selmon_id) = commit_view_selection(&mut state.model.monitors, effective_mask) else {
         return;
     };
@@ -72,13 +72,13 @@ pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
-    let tagmask = ctx.core().model().tags.mask();
-    let new_mask = ctx.core().model().expect_selected_monitor().selected_tags() ^ (mask & tagmask);
+    let tagmask = ctx.model().tags.mask();
+    let new_mask = ctx.model().expect_selected_monitor().selected_tags() ^ (mask & tagmask);
     if new_mask.is_empty() {
         return;
     }
 
-    let state = ctx.core_mut().state_mut();
+    let state = ctx.state_mut();
     let Some(selmon_id) = commit_view_selection(&mut state.model.monitors, new_mask) else {
         return;
     };
@@ -104,13 +104,13 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
         None => return,
     };
 
-    let valid_mask = ctx.core().model().tags.mask();
+    let valid_mask = ctx.model().tags.mask();
     let clicked_mask = clicked_mask & valid_mask;
     if clicked_mask.is_empty() {
         return;
     }
 
-    let current = ctx.core().model().expect_selected_monitor().selected_tags();
+    let current = ctx.model().expect_selected_monitor().selected_tags();
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -123,8 +123,8 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 }
 
 pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
-    let mon = ctx.core().model().expect_selected_monitor();
-    let (tagset, numtags) = (mon.selected_tags(), ctx.core().model().tags.count());
+    let mon = ctx.model().expect_selected_monitor();
+    let (tagset, numtags) = (mon.selected_tags(), ctx.model().tags.count());
 
     let mut next_mask = tagset;
     let mut found = false;
@@ -136,7 +136,6 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
         };
 
         found = ctx
-            .core()
             .model()
             .expect_selected_monitor()
             .iter_clients()
@@ -158,7 +157,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
 }
 
 pub fn last_view(ctx: &mut WmCtx) {
-    let mon = ctx.core().model().expect_selected_monitor();
+    let mon = ctx.model().expect_selected_monitor();
     let (current_tag, prev_tag) = (mon.current_tag_number(), mon.prev_tag);
 
     if current_tag == prev_tag {
@@ -172,20 +171,16 @@ pub fn last_view(ctx: &mut WmCtx) {
 }
 
 pub fn win_view(ctx: &mut WmCtx) {
-    let Some(win) = ctx.core().model().selected_win() else {
+    let Some(win) = ctx.model().selected_win() else {
         return;
     };
 
-    let Some(tag_mask) = ctx.core().model().client(win).map(|client| client.tags) else {
+    let Some(tag_mask) = ctx.model().client(win).map(|client| client.tags) else {
         return;
     };
 
     if tag_mask.is_scratchpad_only() {
-        let current_tag = ctx
-            .core()
-            .model()
-            .expect_selected_monitor()
-            .current_tag_number();
+        let current_tag = ctx.model().expect_selected_monitor().current_tag_number();
         if let Some(mask) = current_tag.and_then(TagMask::single) {
             view_tags(ctx, mask);
         }
@@ -197,10 +192,10 @@ pub fn win_view(ctx: &mut WmCtx) {
 }
 
 pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.core().model().selected_monitor_id();
-    let tagmask = ctx.core().model().tags.mask();
+    let selmon_id = ctx.model().selected_monitor_id();
+    let tagmask = ctx.model().tags.mask();
     let newtag = mask & tagmask;
-    let mon = ctx.core().model().expect_selected_monitor();
+    let mon = ctx.model().expect_selected_monitor();
     let (current_tag, current_tagset) = (mon.current_tag_number(), mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
@@ -208,7 +203,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let target_idx = newtag.first_tag().unwrap_or(0);
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
-        let m = ctx.core().model().expect_selected_monitor();
+        let m = ctx.model().expect_selected_monitor();
         for (win, c) in m.iter_clients() {
             let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
@@ -218,7 +213,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
         result
     };
     for win in clients_to_swap {
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        if let Some(client) = ctx.model_mut().client_mut(win) {
             let ctags = client.tags;
             let new_tags = ctags ^ current_tagset ^ newtag;
             client.set_tag_mask(if new_tags.is_empty() {
@@ -228,7 +223,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
             });
         }
     }
-    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+    let mon = ctx.model_mut().expect_selected_monitor_mut();
     mon.set_selected_tags(newtag);
     if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
@@ -237,12 +232,11 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
-    let selmon_id = ctx.core().model().selected_monitor_id();
-    let selected_window = ctx.core().model().selected_win();
+    let selmon_id = ctx.model().selected_monitor_id();
+    let selected_window = ctx.model().selected_win();
     let Some(win) = selected_window else { return };
 
     let Some(target_mask) = ctx
-        .core()
         .model()
         .expect_selected_monitor()
         .prev_tag
@@ -413,10 +407,10 @@ mod view_selection_tests {
 
 /// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
-    let tagset = ctx.core().model().expect_selected_monitor().selected_tags();
+    let tagset = ctx.model().expect_selected_monitor().selected_tags();
 
-    let new_mask = adjacent_scroll_mask(tagset, dir, ctx.core().model().tags.count())?;
-    let state = ctx.core_mut().state_mut();
+    let new_mask = adjacent_scroll_mask(tagset, dir, ctx.model().tags.count())?;
+    let state = ctx.state_mut();
     let selmon_id = commit_view_selection(&mut state.model.monitors, new_mask)?;
     ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);

@@ -2,6 +2,7 @@
 //!
 //! Backend-specific manage/unmanage logic lives under backend modules.
 
+use crate::contexts::WmCtx;
 use crate::model::WmModel;
 use crate::types::{Client, ClientPlacement, MonitorId, TagMask, WindowId};
 use std::collections::VecDeque;
@@ -16,7 +17,7 @@ const MAX_PENDING_LAUNCHES: usize = 128;
 /// Normal destruction and defensive stale-window recovery deliberately converge
 /// here so focus, layout, bars, and EWMH state cannot drift between backends.
 pub(crate) fn remove_managed_client(
-    ctx: &mut crate::contexts::WmCtx<'_>,
+    ctx: &mut WmCtx<'_>,
     win: WindowId,
 ) -> Option<crate::types::Client> {
     // Cancel before removing the client so both backends reconcile the native
@@ -35,23 +36,19 @@ pub(crate) fn remove_managed_client(
         crate::mouse::drag::clear_bar_hover(ctx);
     }
 
-    let previous_focus = ctx.core().model().selected_win();
+    let previous_focus = ctx.model().selected_win();
     // Resolved while the client is still owned: `remove_client` hands back the
     // client but not the monitor that was holding it.
-    let monitor_id = ctx.core().model().monitor_of_client(win)?;
+    let monitor_id = ctx.model().monitor_of_client(win)?;
     let removed = ctx
         .core_mut()
         .mutate_selection(|model| model.remove_client(win))?;
 
-    let overview_became_empty = ctx
-        .core()
-        .model()
-        .monitor(monitor_id)
-        .is_some_and(|monitor| {
-            monitor_id == ctx.core().model().selected_monitor_id()
-                && monitor.overview_state.is_some()
-                && !crate::overview::has_cards(monitor)
-        });
+    let overview_became_empty = ctx.model().monitor(monitor_id).is_some_and(|monitor| {
+        monitor_id == ctx.model().selected_monitor_id()
+            && monitor.overview_state.is_some()
+            && !crate::overview::has_cards(monitor)
+    });
     if overview_became_empty {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
     }
