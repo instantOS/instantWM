@@ -26,6 +26,7 @@
 //! backends.
 
 use crate::backend::WindowOps;
+use crate::layouts::ArrangeAnimation;
 
 use crate::client::mode::{
     ClientMaximizeIntentOutcome, FullscreenChange, FullscreenEntryProjection, MaximizedChange,
@@ -77,7 +78,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             if let Some(rect) = restore_rect {
                 ctx.move_resize(win, rect, MoveResizeOptions::immediate());
             }
-            arrange(ctx, Some(monitor_id));
+            arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
         }
     }
 }
@@ -147,7 +148,7 @@ fn apply_client_maximize_intent_transition(
                     ctx.move_resize(win, rect, MoveResizeOptions::for_floating_transition());
                 }
             }
-            arrange(ctx, Some(monitor_id));
+            arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
         }
         ClientMaximizeIntentOutcome::Rejected => {}
     }
@@ -170,13 +171,13 @@ fn apply_maximized_change(
     match change {
         MaximizedChange::Entered { work_rect } => {
             ctx.move_resize(win, work_rect, MoveResizeOptions::immediate());
-            arrange(ctx, Some(monitor_id));
+            arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
         }
         MaximizedChange::Exited { restore_rect } => {
             if let Some(rect) = restore_rect {
                 ctx.move_resize(win, rect, MoveResizeOptions::immediate());
             }
-            arrange(ctx, Some(monitor_id));
+            arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
         }
         MaximizedChange::Unchanged => {}
     }

@@ -1,3 +1,4 @@
+use crate::layouts::ArrangeAnimation;
 use std::collections::HashMap;
 
 use crate::config::ModeConfig;
@@ -233,7 +234,7 @@ pub(super) fn adjust_gaps(ctx: &mut WmCtx<'_>, delta: i32) {
     let layout = &mut ctx.core_mut().state.config.layout;
     layout.inner_gap = layout.inner_gap.saturating_add(delta).max(0);
     layout.outer_gap = layout.outer_gap.saturating_add(delta).max(0);
-    crate::layouts::manager::arrange(ctx, None);
+    crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
 }
 
 pub(super) fn with_selected_win(

@@ -5,7 +5,7 @@ mod commands;
 mod pointer;
 mod z_order;
 
-pub use arrange::{arrange, arrange_monitor};
+pub use arrange::{ArrangeAnimation, arrange};
 pub(crate) use commands::finish_layout_change;
 #[cfg(test)]
 use commands::shifted_master_count;

@@ -3,6 +3,7 @@
 //! This module contains the core logic for moving windows with the mouse,
 //! including bar hover handling, edge snapping, and drop completion.
 use crate::backend::PointerOps;
+use crate::layouts::ArrangeAnimation;
 
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
@@ -199,12 +200,12 @@ pub fn handle_bar_drop(
     if let BarPosition::Tag(tag_idx) = position {
         // Tile first (no arrange), then tag.
         //
-        // Old order: tag() → arrange() [window still floating, layout skips
-        // it] → set_window_mode() → arrange() again.  That's two arrange passes.
+        // Old order: tag() → arrange(, ArrangeAnimation::Configured) [window still floating, layout skips
+        // it] → set_window_mode() → arrange(, ArrangeAnimation::Configured) again.  That's two arrange passes.
         //
         // New order: set_window_mode saves the floating placement from the
-        // current floating geometry *before* tag() calls arrange().  Then
-        // tag() calls arrange() exactly once with the window already marked
+        // current floating geometry *before* tag() calls arrange(, ArrangeAnimation::Configured).  Then
+        // tag() calls arrange(, ArrangeAnimation::Configured) exactly once with the window already marked
         // tiled, so the layout places it correctly in a single pass.
         //
 
@@ -230,7 +231,7 @@ pub fn handle_bar_drop(
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
         let _ = set_window_mode(ctx, win, WindowModeRequest::Tiling);
-        arrange(ctx, Some(monitor_id));
+        arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     } else {
         // Window is already tiled and not dropped on a tag — nothing to do.
         return;
@@ -304,7 +305,7 @@ pub fn complete_move_drop(
                 }
             }
         }
-        arrange(ctx, Some(monitor_id));
+        arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     }
     ctx.update_layout_preview(None);
 }
@@ -353,7 +354,7 @@ pub fn promote_to_floating(
             unreachable!("requesting floating mode produced a tiling transition")
         }
     };
-    arrange(ctx, Some(monitor_id));
+    arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     Some((restored_geometry, true))
 }
 

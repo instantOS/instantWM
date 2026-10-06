@@ -3,6 +3,7 @@ use super::{
     shifted_master_count,
 };
 use crate::config::config_toml::LayoutConfig;
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
 use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
@@ -90,7 +91,11 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
     let first = WindowId(1);
     let second = WindowId(2);
     let monitor_id = add_tiled_monitor(&mut wm, &[first, second], Rect::new(0, 0, 800, 600));
-    super::arrange(&mut wm.test_ctx(), Some(monitor_id));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Configured,
+    );
 
     let tiling = super::selected_tiling(&wm.core.state);
     let (slots, _) = tiling.slots(
@@ -152,7 +157,11 @@ fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
     }
     assert!(wm.core.work.layout.is_urgent());
 
-    super::arrange(&mut wm.test_ctx(), Some(first_monitor));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(first_monitor),
+        ArrangeAnimation::Configured,
+    );
 
     assert_eq!(
         wm.core
@@ -164,7 +173,11 @@ fn monitor_arrange_consumes_only_its_pending_spawn_animations() {
         vec![second]
     );
 
-    super::arrange(&mut wm.test_ctx(), Some(second_monitor));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(second_monitor),
+        ArrangeAnimation::Configured,
+    );
     assert!(wm.core.work.spawn_animations.is_empty());
 }
 
@@ -181,7 +194,11 @@ fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
     );
     wm.core.work.spawn_animations.extend([live, destroyed]);
 
-    super::arrange(&mut wm.test_ctx(), Some(arranged_monitor));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(arranged_monitor),
+        ArrangeAnimation::Configured,
+    );
 
     assert_eq!(
         wm.core
@@ -192,7 +209,11 @@ fn spawn_flush_discards_destroyed_windows_without_consuming_other_monitors() {
             .collect::<Vec<_>>(),
         vec![live]
     );
-    super::arrange(&mut wm.test_ctx(), Some(unrelated_monitor));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(unrelated_monitor),
+        ArrangeAnimation::Configured,
+    );
     assert!(wm.core.work.spawn_animations.is_empty());
 }
 
@@ -204,7 +225,11 @@ fn disabled_animation_is_still_consumed_after_first_layout() {
     wm.core.state.config.animations.enabled = false;
     wm.core.work.spawn_animations.insert(win);
 
-    super::arrange(&mut wm.test_ctx(), Some(monitor_id));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Configured,
+    );
 
     assert!(wm.core.work.spawn_animations.is_empty());
 }
@@ -222,7 +247,11 @@ fn arrange_invalidates_pointer_placement_candidates() {
     );
     assert!(wm.core.state.interaction.pointer_placement_cache.is_some());
 
-    super::arrange(&mut wm.test_ctx(), Some(monitor_id));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Configured,
+    );
     assert!(wm.core.state.interaction.pointer_placement_cache.is_none());
 }
 
@@ -232,7 +261,11 @@ fn pointer_preview_and_release_share_the_normalized_candidate() {
     let windows = (1..=20).map(WindowId).collect::<Vec<_>>();
     let monitor_id = add_tiled_monitor(&mut wm, &windows, Rect::new(0, 0, 2000, 1000));
     apply_preset(&mut wm, monitor_id, Preset::Grid, &windows);
-    super::arrange(&mut wm.test_ctx(), Some(monitor_id));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Configured,
+    );
 
     let source = windows[0];
     let point = Point::new(801, 625);
@@ -1408,7 +1441,11 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
             },
         );
 
-    super::arrange(&mut wm.test_ctx(), Some(monitor_id));
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Configured,
+    );
 
     let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     assert_eq!(
@@ -1425,7 +1462,7 @@ fn begin_tiled_move(wm: &mut crate::test_support::TestWm, win: WindowId) -> Rect
         // Native clients enter the model with valid initial geometry.
         let id = wm.core.state.model.monitor_of_client(win).unwrap();
         wm.core.state.model.client_mut(win).unwrap().geo = Rect::new(0, 0, 100, 100);
-        super::arrange(&mut wm.test_ctx(), Some(id));
+        super::arrange(&mut wm.test_ctx(), Some(id), ArrangeAnimation::Configured);
     }
     let geo = wm.core.state.model.client(win).unwrap().geo;
     wm.core
@@ -1456,7 +1493,7 @@ fn tiled_drag_transfers_and_inserts_without_changing_focus_during_preview() {
         let b = add_tiled_monitor(&mut wm, &[WindowId(903)], Rect::new(800, 0, 800, 600));
         apply_preset(&mut wm, b, Preset::MasterStack, &[WindowId(903)]);
         wm.core.state.model.monitors.set_selected(a);
-        super::arrange(&mut wm.test_ctx(), None);
+        super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
         let original = begin_tiled_move(&mut wm, win);
         assert!(crate::mouse::drag::apply_active_drag_motion(
             &mut wm.test_ctx(),
@@ -1525,7 +1562,7 @@ fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
         .unwrap()
         .set_selected_tags(TagMask::single(2).unwrap());
     wm.core.state.model.monitors.set_selected(a);
-    super::arrange(&mut wm.test_ctx(), None);
+    super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
     assert!(super::uses_manual_tree_pointer_interaction(
         &wm.core.state.model,
         win
@@ -1579,7 +1616,7 @@ fn cross_monitor_preview_cancellation_preserves_both_trees() {
     let b = add_tiled_monitor(&mut wm, &[WindowId(923)], Rect::new(800, 0, 800, 600));
     apply_preset(&mut wm, b, Preset::MasterStack, &[WindowId(923)]);
     wm.core.state.model.monitors.set_selected(a);
-    super::arrange(&mut wm.test_ctx(), None);
+    super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
     let original = begin_tiled_move(&mut wm, win);
     crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), Point::new(1100, 300));
     crate::mouse::interaction::handle(
@@ -1641,7 +1678,7 @@ fn tiled_drag_into_floating_or_maximized_output_keeps_tiled_membership() {
             .unwrap()
             .old_border_width = 4;
         wm.core.state.model.monitors.set_selected(a);
-        super::arrange(&mut wm.test_ctx(), None);
+        super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
         let original = begin_tiled_move(&mut wm, win);
         let point = Point::new(1200, 300);
         crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), point);
@@ -1675,7 +1712,7 @@ fn tiled_drag_into_floating_or_maximized_output_keeps_tiled_membership() {
             .unwrap()
             .per_tag_state()
             .presentation = PresentationMode::Tiled;
-        super::arrange(&mut wm.test_ctx(), Some(b));
+        super::arrange(&mut wm.test_ctx(), Some(b), ArrangeAnimation::Configured);
         assert_eq!(
             wm.core
                 .state
@@ -1739,7 +1776,7 @@ fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
         client.size_hints.min_height = 200;
     }
     wm.core.state.model.monitors.set_selected(a);
-    super::arrange(&mut wm.test_ctx(), None);
+    super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
     assert_eq!(wm.core.state.model.client(win).unwrap().border_width, 0);
     begin_tiled_move(&mut wm, win);
     let point = Point::new(1100, 300);
@@ -1763,4 +1800,64 @@ fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
     );
     assert!(client.geo.w >= 250);
     assert!(client.geo.h >= 200);
+}
+
+#[test]
+fn immediate_layout_plans_suppress_every_presentation_transition() {
+    use crate::geometry::MoveResizeMode;
+    let windows = [WindowId(1), WindowId(2)];
+    for presentation in [
+        PresentationMode::Tiled,
+        PresentationMode::Floating,
+        PresentationMode::Maximized,
+    ] {
+        let mut monitor = monitor_with_order(&windows, windows[0]);
+        monitor.monitor_rect = Rect::new(0, 0, 800, 600);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.per_tag_state().presentation = presentation;
+        if presentation == PresentationMode::Floating {
+            monitor.client_mut(windows[0]).unwrap().snap_status = crate::types::SnapPosition::Left;
+        }
+        let plan = monitor.compute_arrange(&LayoutConfig::default(), true, false);
+        assert!(!plan.client_moves.is_empty());
+        assert!(
+            plan.client_moves
+                .iter()
+                .all(|output| output.options.mode == MoveResizeMode::Immediate)
+        );
+    }
+    let mut monitor = monitor_with_order(&windows, windows[0]);
+    monitor.monitor_rect = Rect::new(0, 0, 800, 600);
+    monitor.available_rect = monitor.monitor_rect;
+    monitor.overview_state = Some(crate::overview::OverviewState::new(
+        TagMask::single(1).unwrap(),
+        windows.to_vec(),
+        HashMap::new(),
+        Some(windows[0]),
+    ));
+    let plan = monitor.compute_arrange(&LayoutConfig::default(), true, false);
+    assert!(!plan.client_moves.is_empty());
+    assert!(
+        plan.client_moves
+            .iter()
+            .all(|output| output.options.mode == MoveResizeMode::Immediate)
+    );
+}
+
+#[test]
+fn immediate_arrange_drains_spawn_work_without_changing_animation_configuration() {
+    let mut wm = wayland_wm();
+    let win = WindowId(1);
+    let monitor_id = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
+    wm.core.state.config.animations.enabled = true;
+    let configured = wm.core.state.config.animations;
+    wm.core.queue_initial_window_layout(win, monitor_id);
+    super::arrange(
+        &mut wm.test_ctx(),
+        Some(monitor_id),
+        ArrangeAnimation::Immediate,
+    );
+    assert_eq!(wm.core.state.config.animations, configured);
+    assert!(wm.core.work.spawn_animations.is_empty());
+    assert!(!wm.test_ctx().window_animation_active(win));
 }

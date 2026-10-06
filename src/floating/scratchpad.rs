@@ -3,6 +3,7 @@ use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::ipc_types::ScratchpadInitialStatus;
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::arrange;
 use crate::model::WmModel;
 use crate::types::input::EdgeDirection;
@@ -201,7 +202,7 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bo
     let Some(mid) = ctx.core().state.model.monitor_of_client(win) else {
         return;
     };
-    arrange(ctx, Some(mid));
+    arrange(ctx, Some(mid), ArrangeAnimation::Configured);
     crate::layouts::sync_monitor_z_order(ctx, mid);
 }
 
@@ -412,9 +413,9 @@ pub(crate) fn scratchpad_restore_window(
     } else if ctx.core().state.model.selected_win() != previous_focus {
         crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
-    arrange(ctx, Some(source_monitor));
+    arrange(ctx, Some(source_monitor), ArrangeAnimation::Configured);
     if target_monitor != source_monitor {
-        arrange(ctx, Some(target_monitor));
+        arrange(ctx, Some(target_monitor), ArrangeAnimation::Configured);
     }
 
     ctx.sync_client_tag_props(window);

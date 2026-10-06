@@ -1,5 +1,6 @@
 use crate::backend::WindowOps;
 use crate::contexts::WmCtx;
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::{LayoutCommand, PresentationMode};
 use crate::types::{Monitor, StackDirection, WindowId};
 
@@ -476,7 +477,7 @@ fn finish_layout_change_with_presentation(
             .model
             .reconcile_client_maximization_for_tiling(monitor_id);
     }
-    arrange(ctx, Some(monitor_id));
+    arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
 
     // The meaning exposed through the application maximize button changes
     // when the global presentation crosses the tiled/floating boundary, even

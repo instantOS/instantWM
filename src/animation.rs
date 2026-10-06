@@ -2,6 +2,7 @@ use crate::backend::WindowOps;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::ArrangeAnimation;
 use crate::types::*;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -137,9 +138,8 @@ impl WindowAnimation {
 /// The caller must run the window's authoritative arrange first. This helper
 /// owns presentation only: it does not initiate layout or mutate window
 /// policy. Fullscreen windows skip the decorative transition.
-pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
+pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId, animated: bool) {
     let core_state = &ctx.core().state;
-    let animated = core_state.config.animations.enabled;
 
     let Some((target, is_tiling, is_visible)) =
         core_state.model.client_view(window).and_then(|view| {
@@ -237,7 +237,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
         return;
     };
 
-    crate::layouts::arrange(ctx, Some(selmon_id));
+    crate::layouts::arrange(ctx, Some(selmon_id), ArrangeAnimation::Configured);
 
     let (selected_tags, client_windows) = {
         let Some(monitor) = ctx.core().state.model.monitor(selmon_id) else {

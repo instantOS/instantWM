@@ -288,42 +288,31 @@ impl<'a> WmCtx<'a> {
         style: crate::types::InteractionOutlineStyle,
         target: Option<WindowId>,
     ) {
-        if rect.is_none() {
-            self.core_mut().state.interaction.pointer_placement_cache = None;
-        }
-        let previous = self.core().state.interaction.layout_preview;
-        let previous_style = self.core().state.interaction.layout_preview_style;
-        if previous == rect && (rect.is_none() || previous_style == style) {
+        let state = &mut self.core_mut().state;
+        let Some(projection) = state.interaction.update_outline(
+            &state.config.animations,
+            &state.behavior.current_mode,
+            rect,
+            style,
+        ) else {
             return;
-        }
-        // Keyboard navigation changes a discrete virtual target and benefits
-        // from interpolation. Pointer previews must track motion immediately.
-        let animate = previous.is_some()
-            && rect.is_some()
-            && self.core().state.config.animations.enabled
-            && self
-                .core()
-                .state
-                .behavior
-                .current_mode
-                .tree_placement()
-                .is_some();
-        self.core_mut().state.interaction.layout_preview = rect;
-        self.core_mut().state.interaction.layout_preview_style = style;
-        let duration =
-            self.core()
-                .state
-                .config
-                .animations
-                .scale_duration(std::time::Duration::from_millis(
-                    crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
-                ));
+        };
         use crate::backend::LayoutInteractionOps;
         match self {
-            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, style, target, animate, duration),
-            WmCtx::Wayland(ctx) => {
-                ctx.layout_preview_changed(rect, style, target, animate, duration)
-            }
+            WmCtx::X11(ctx) => ctx.layout_preview_changed(
+                projection.rect,
+                projection.style,
+                target,
+                projection.animate,
+                projection.duration,
+            ),
+            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(
+                projection.rect,
+                projection.style,
+                target,
+                projection.animate,
+                projection.duration,
+            ),
         }
     }
 

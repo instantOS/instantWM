@@ -1,5 +1,6 @@
 use crate::contexts::WmCtx;
 use crate::ipc_types::{Response, WindowCommand, WindowInfo};
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::arrange;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::mouse::slop::is_valid_window_size;
@@ -172,7 +173,7 @@ fn resize_window(
                 crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
             ),
         );
-        arrange(ctx, Some(current_monitor_id));
+        arrange(ctx, Some(current_monitor_id), ArrangeAnimation::Configured);
     }
 
     // A geometry command must not steal keyboard focus or switch the

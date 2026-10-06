@@ -1,4 +1,5 @@
 use crate::contexts::WmCtx;
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::TreePlacementSession;
 use crate::types::{MonitorId, Rect, TagMask, WindowId};
@@ -254,14 +255,7 @@ pub(crate) fn update_pointer_tree_resize(
         .expect("client view guaranteed its monitor exists")
         .per_tag_state()
         .layout_tree = candidate;
-    let animated = ctx.core().state.config.animations.enabled;
-    if animated {
-        ctx.core_mut().state.config.animations.enabled = false;
-    }
-    arrange(ctx, Some(monitor_id));
-    if animated {
-        ctx.core_mut().state.config.animations.enabled = true;
-    }
+    arrange(ctx, Some(monitor_id), ArrangeAnimation::Immediate);
     true
 }
 
@@ -394,4 +388,50 @@ pub fn preview_tree_at_point(
             .tiling
             .outer_rect(client, slot, state.config.window.resize_hints),
     )
+}
+
+#[cfg(test)]
+mod outline_cache_tests {
+    use super::*;
+    use crate::core_state::ActiveWmMode;
+    use crate::layouts::tree::LayoutTree;
+    use crate::types::InteractionOutlineStyle;
+
+    #[test]
+    fn clearing_an_already_hidden_outline_discards_stale_placement() {
+        let mut core = crate::core_state::CoreState::default();
+        let monitor_id = core.model.monitors.push(
+            crate::test_support::MonitorBuilder::new()
+                .rect(Rect::new(0, 0, 800, 600), Rect::new(0, 0, 800, 600))
+                .tag_count(1)
+                .selected_tags(TagMask::single(1).unwrap())
+                .build(),
+        );
+        let tiling = crate::layouts::manager::selected_tiling(&core);
+        let session = TreePlacementSession::new(
+            LayoutTree::default(),
+            WindowId(1),
+            tiling.work_rect(),
+            0.34,
+            tiling.minimums.clone(),
+        );
+        core.interaction.pointer_placement_cache =
+            Some(crate::layouts::manager::PointerPlacementPreviewCache {
+                monitor_id,
+                tags: TagMask::single(1).unwrap(),
+                tiling,
+                session,
+            });
+        assert!(
+            core.interaction
+                .update_outline(
+                    &core.config.animations,
+                    &ActiveWmMode::Default,
+                    None,
+                    InteractionOutlineStyle::Layout
+                )
+                .is_none()
+        );
+        assert!(core.interaction.pointer_placement_cache.is_none());
+    }
 }

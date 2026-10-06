@@ -1,6 +1,7 @@
 //! Moving clients between tags.
 
 use crate::backend::WindowOps;
+use crate::layouts::ArrangeAnimation;
 
 use crate::contexts::WmCtx;
 
@@ -33,7 +34,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     crate::focus::focus(ctx, Some(win));
     // Cursor placement must use destination geometry, not the stale rectangle
     // from the tag we just left.
-    crate::layouts::arrange(ctx, Some(monitor_id));
+    crate::layouts::arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     if ctx
         .core()
         .state

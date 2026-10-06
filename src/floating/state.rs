@@ -3,6 +3,7 @@
 use crate::client::geometry::{FloatingPlacementIntent, resolve_floating_transition};
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::arrange;
 use crate::types::*;
 
@@ -174,7 +175,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let _ = set_window_mode(ctx, win, request);
 
     let selmon_id = ctx.core().state.model.selected_monitor_id();
-    arrange(ctx, Some(selmon_id));
+    arrange(ctx, Some(selmon_id), ArrangeAnimation::Configured);
 }
 
 #[cfg(test)]

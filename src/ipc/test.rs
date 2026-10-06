@@ -2,6 +2,7 @@
 
 use crate::contexts::WmCtx;
 use crate::ipc_types::{Response, TestCommand};
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::arrange;
 use crate::types::{TagMask, WindowId};
 
@@ -79,6 +80,6 @@ fn set_window_floating(ctx: &mut WmCtx<'_>, win: WindowId, floating: bool) -> Re
         crate::floating::WindowModeRequest::Tiling
     };
     let _ = crate::floating::set_window_mode(ctx, win, request);
-    arrange(ctx, Some(monitor_id));
+    arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     Response::ok()
 }

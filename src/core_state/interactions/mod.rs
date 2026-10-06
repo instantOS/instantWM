@@ -8,6 +8,7 @@ use super::*;
 
 mod gestures;
 mod hover;
+mod outline;
 mod window;
 
 pub use gestures::*;

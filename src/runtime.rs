@@ -4,6 +4,7 @@
 //! borrowed from the running backend. Policy remains backend-independent.
 
 use crate::contexts::WmCtx;
+use crate::layouts::ArrangeAnimation;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -139,7 +140,7 @@ fn apply_layout_targets(ctx: &mut WmCtx<'_>, targets: LayoutWorkTargets) -> bool
 
     match targets {
         LayoutWorkTargets::AllMonitors => {
-            crate::layouts::arrange(ctx, None);
+            crate::layouts::arrange(ctx, None, ArrangeAnimation::Configured);
             true
         }
         LayoutWorkTargets::Monitors(monitors) => {
@@ -147,7 +148,7 @@ fn apply_layout_targets(ctx: &mut WmCtx<'_>, targets: LayoutWorkTargets) -> bool
                 return false;
             }
             for monitor_id in monitors {
-                crate::layouts::arrange(ctx, Some(monitor_id));
+                crate::layouts::arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
             }
             true
         }

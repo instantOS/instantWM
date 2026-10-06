@@ -7,7 +7,16 @@ use crate::layouts::{ArrangePlan, LayoutOutput, PresentationMode};
 use crate::types::{Client, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
 use std::collections::{BTreeSet, HashMap};
 
-pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
+/// Animation policy for this layout transaction, never a temporary config edit.
+#[derive(Clone, Copy, Debug)]
+pub enum ArrangeAnimation {
+    Configured,
+    Immediate,
+}
+
+pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: ArrangeAnimation) {
+    let animated = matches!(animation, ArrangeAnimation::Configured)
+        && ctx.core().state.config.animations.enabled;
     // Any authoritative arrange may reconcile the tree, constraints, gaps, or
     // monitor geometry. Pointer placement rebuilds lazily on the next sample.
     ctx.core_mut().state.interaction.pointer_placement_cache = None;
@@ -31,7 +40,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 
     ctx.apply_visibility_plan();
     if let Some(id) = monitor_id {
-        arrange_monitor(ctx, id);
+        arrange_monitor(ctx, id, animated);
         super::z_order::sync_monitor_z_order(ctx, id);
     } else {
         let monitor_ids: Vec<MonitorId> = ctx
@@ -43,12 +52,12 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
             .map(|(id, _)| id)
             .collect();
         for id in monitor_ids {
-            arrange_monitor(ctx, id);
+            arrange_monitor(ctx, id, animated);
             super::z_order::sync_monitor_z_order(ctx, id);
         }
     }
 
-    flush_pending_spawn_animations(ctx, monitor_id);
+    flush_pending_spawn_animations(ctx, monitor_id, animated);
 
     ctx.request_space_sync();
     ctx.flush();
@@ -57,7 +66,11 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 /// Start pending spawn transitions whose assigned monitors were arranged by
 /// this pass. Windows on other monitors remain queued until their own layout
 /// runs; stale window IDs are discarded.
-fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<MonitorId>) {
+fn flush_pending_spawn_animations(
+    ctx: &mut WmCtx<'_>,
+    arranged_monitor: Option<MonitorId>,
+    animated: bool,
+) {
     // Drain before running presentation effects so callbacks cannot observe a
     // half-consumed queue. Unrelated monitors are restored before any effect.
     let pending = std::mem::take(&mut ctx.core_mut().work.spawn_animations);
@@ -80,14 +93,13 @@ fn flush_pending_spawn_animations(ctx: &mut WmCtx<'_>, arranged_monitor: Option<
     ctx.core_mut().work.spawn_animations.extend(deferred);
 
     for win in ready {
-        crate::animation::run_spawn_animation(ctx, win);
+        crate::animation::run_spawn_animation(ctx, win, animated);
     }
 }
 
-pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId, animated: bool) {
     let plan = {
         let globals = &mut ctx.core_mut().state;
-        let animated = globals.config.animations.enabled;
         let layout_cfg = globals.config.layout;
         let resize_hints = globals.config.window.resize_hints;
         let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
@@ -150,7 +162,7 @@ impl Monitor {
         apply_planned_borders(self, &borders);
 
         let is_overview = self.overview_state.is_some();
-        let (client_moves, z_order) = if is_overview {
+        let (mut client_moves, z_order) = if is_overview {
             let overview = crate::overview::compute(self);
             (overview.moves, Some(overview.z_order))
         } else {
@@ -172,6 +184,14 @@ impl Monitor {
         } else {
             compute_fullscreen_moves(self)
         };
+
+        // Explicit immediate passes must also cover manual-tree and overview
+        // plans, whose geometry calculators normally return animated moves.
+        if !animated {
+            for output in &mut client_moves {
+                output.options.mode = crate::geometry::MoveResizeMode::Immediate;
+            }
+        }
 
         ArrangePlan {
             borders,

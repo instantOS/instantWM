@@ -3,6 +3,7 @@
 //! Backend-specific manage/unmanage logic lives under backend modules.
 
 use crate::contexts::WmCtx;
+use crate::layouts::ArrangeAnimation;
 use crate::model::WmModel;
 use crate::types::{Client, ClientPlacement, MonitorId, TagMask, WindowId};
 use std::collections::VecDeque;
@@ -59,7 +60,7 @@ pub(crate) fn remove_managed_client(
     }
 
     crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
-    crate::layouts::arrange(ctx, Some(monitor_id));
+    crate::layouts::arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     ctx.request_bar_update();
     ctx.sync_client_list();
     Some(removed)

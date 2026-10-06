@@ -589,3 +589,28 @@ fn overview_exit_is_a_noop_for_other_modes() {
 
     assert_eq!(wm.core.state.behavior.current_mode, resize_mode);
 }
+
+#[test]
+fn overview_preparation_filters_hidden_clients_without_changing_selection() {
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut wm = wm_with_overview_clients(
+        TagMask::single(1).unwrap(),
+        &[
+            (first, TagMask::single(1).unwrap()),
+            (second, TagMask::single(2).unwrap()),
+        ],
+    );
+    wm.core.state.model.client_mut(first).unwrap().is_hidden = true;
+    let model = &wm.core.state.model;
+    let selected = model.selected_win();
+    let prepared = prepare_overview(model).unwrap();
+    assert_eq!(prepared.window_order, vec![second]);
+    assert_eq!(prepared.active_window, Some(second));
+    assert_eq!(
+        prepared.restore_geometry[&second],
+        model.client(second).unwrap().geo
+    );
+    assert_eq!(model.selected_win(), selected);
+    assert!(model.expect_selected_monitor().overview_state.is_none());
+}

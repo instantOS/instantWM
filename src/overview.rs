@@ -256,44 +256,40 @@ fn enter(ctx: &mut WmCtx<'_>) {
     // Overview takes over pointer semantics; a hover-resize offer armed on
     // the desktop must not keep its cursor, pointer borrow, or click claim.
     crate::mouse::clear_hover_offer(ctx);
-    let selected_monitor_id = ctx.core().state.model.selected_monitor_id();
-    let selected_window = ctx.core().state.model.selected_win();
-    let all_tags = TagMask::all(ctx.core().state.model.tags.count());
-    let window_order = {
-        let model = &ctx.core().state.model;
-        let monitor = model.expect_selected_monitor();
-        initial_window_order(monitor, all_tags)
+    let model = &mut ctx.core_mut().state.model;
+    let selected_monitor_id = model.selected_monitor_id();
+    let Some(overview) = prepare_overview(model) else {
+        return;
     };
-    let active_window = selected_window
+    let active_window = overview.active_window;
+    model.expect_selected_monitor_mut().overview_state = Some(overview);
+    crate::focus::focus(ctx, active_window);
+    ctx.core_mut()
+        .queue_layout_for_monitor_urgent(selected_monitor_id);
+}
+
+/// Prepare overview presentation without native focus or scheduling access.
+fn prepare_overview(model: &crate::model::WmModel) -> Option<OverviewState> {
+    let monitor = model.expect_selected_monitor();
+    if monitor.overview_state.is_some() {
+        return None;
+    }
+    let all_tags = TagMask::all(model.tags.count());
+    let window_order = initial_window_order(monitor, all_tags);
+    let active_window = model
+        .selected_win()
         .filter(|win| window_order.contains(win))
         .or_else(|| window_order.first().copied());
     let restore_geometry = window_order
         .iter()
-        .filter_map(|win| {
-            ctx.core()
-                .state
-                .model
-                .client(*win)
-                .map(|client| (*win, client.geo))
-        })
+        .filter_map(|win| model.client(*win).map(|client| (*win, client.geo)))
         .collect();
-
-    {
-        let mon = ctx.core_mut().state.model.expect_selected_monitor_mut();
-        if mon.overview_state.is_some() {
-            return;
-        }
-        mon.overview_state = Some(OverviewState::new(
-            all_tags,
-            window_order,
-            restore_geometry,
-            active_window,
-        ));
-    }
-
-    crate::focus::focus(ctx, active_window);
-    ctx.core_mut()
-        .queue_layout_for_monitor_urgent(selected_monitor_id);
+    Some(OverviewState::new(
+        all_tags,
+        window_order,
+        restore_geometry,
+        active_window,
+    ))
 }
 
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {

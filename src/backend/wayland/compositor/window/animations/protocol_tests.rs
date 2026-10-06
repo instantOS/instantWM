@@ -851,3 +851,48 @@ fn blocked_native_commits_dispatch_after_runtime_borrows_end() {
     state.dispatch_pending_commits();
     assert_eq!(applied.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn immediate_layout_suppresses_native_spawn_without_disabling_configured_animations() {
+    use crate::layouts::ArrangeAnimation;
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
+    state.wm.core.state.config.animations.enabled = true;
+    let monitor = state.wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1920, 1080))
+            .bar(0, false)
+            .tag_count(1)
+            .selected_tags(crate::types::TagMask::single(1).unwrap())
+            .build(),
+    );
+    add_client(
+        &mut state.wm.core.state.model,
+        monitor,
+        Client {
+            win,
+            geo: Rect::new(100, 100, 300, 200),
+            tags: crate::types::TagMask::single(1).unwrap(),
+            ..Client::default()
+        },
+    );
+    state.wm.core.queue_initial_window_layout(win, monitor);
+    crate::layouts::arrange(&mut state.ctx(), Some(monitor), ArrangeAnimation::Immediate);
+    assert!(state.wm.core.state.config.animations.enabled);
+    assert!(state.wm.core.work.spawn_animations.is_empty());
+    assert!(!state.ctx().window_animation_active(win));
+    let target = state.wm.core.state.model.client(win).unwrap().geo;
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+    assert_eq!(client.sizes.last().copied(), Some((target.w, target.h)));
+
+    // The immediate override belongs to one transaction. A subsequent normal
+    // spawn still uses the enabled user setting and starts its native slide.
+    state.wm.core.queue_initial_window_layout(win, monitor);
+    crate::layouts::arrange(
+        &mut state.ctx(),
+        Some(monitor),
+        ArrangeAnimation::Configured,
+    );
+    assert!(state.wm.core.state.config.animations.enabled);
+    assert!(state.ctx().window_animation_active(win));
+}

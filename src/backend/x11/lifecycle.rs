@@ -42,6 +42,7 @@ use crate::backend::x11::{
 use crate::contexts::WmCtxX11;
 use crate::focus::focus;
 use crate::geometry::GeometryApplyMode;
+use crate::layouts::ArrangeAnimation;
 use crate::layouts::arrange;
 use crate::types::{Client, ClientPlacement, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
@@ -209,7 +210,7 @@ pub fn manage(
         ..geo
     };
     ctx.set_geometry_impl(window, offscreen, GeometryApplyMode::VisualOnly);
-    arrange(&mut ctx, Some(monitor_id));
+    arrange(&mut ctx, Some(monitor_id), ArrangeAnimation::Configured);
     if !initially_hidden {
         ctx.map_window(window);
     }
@@ -219,7 +220,8 @@ pub fn manage(
     // persistent z-order are updated together. Hidden windows are rejected by
     // focus target resolution and fall back to the previous visible target.
     focus(&mut ctx, Some(window));
-    crate::animation::run_spawn_animation(&mut ctx, window);
+    let animated = ctx.core().state.config.animations.enabled;
+    crate::animation::run_spawn_animation(&mut ctx, window, animated);
 }
 
 fn read_launch_context(

@@ -1,6 +1,7 @@
 use crate::backend::x11::events::query_manageable_window_geometry;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::WmCtxX11;
+use crate::layouts::ArrangeAnimation;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
@@ -263,7 +264,11 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                     );
                 }
                 if let Some(monitor_id) = monitor_id {
-                    crate::layouts::arrange(&mut ctx.wm_ctx(), Some(monitor_id));
+                    crate::layouts::arrange(
+                        &mut ctx.wm_ctx(),
+                        Some(monitor_id),
+                        ArrangeAnimation::Configured,
+                    );
                 }
             }
             _ => {}

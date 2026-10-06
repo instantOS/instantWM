@@ -1,4 +1,5 @@
 use crate::contexts::WmCtx;
+use crate::layouts::ArrangeAnimation;
 
 /// Apply the follow-up work a runtime-config edit requires.
 ///
@@ -18,16 +19,16 @@ pub(crate) fn apply_config_effect(
             );
             ctx.reinit_bar_resources();
             ctx.request_bar_update();
-            crate::layouts::manager::arrange(ctx, None);
+            crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
         }
         ConfigEffect::Rearrange => {
             ctx.request_bar_update();
-            crate::layouts::manager::arrange(ctx, None);
+            crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
         }
         ConfigEffect::Recolor => {
             ctx.reinit_bar_resources();
             ctx.request_bar_update();
-            crate::layouts::manager::arrange(ctx, None);
+            crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
         }
         // `request_bar_update` is the backend-agnostic "mark dirty".
         ConfigEffect::BarUpdate => ctx.request_bar_update(),
