@@ -13,7 +13,7 @@ impl WaylandState {
     /// For XWayland (X11) surfaces the title comes from the X11 property;
     /// for native Wayland toplevels it comes from `xdg_toplevel::set_title`.
     pub fn window_title(&self, window: WindowId) -> Option<String> {
-        let element = self.window_index.get(&window)?;
+        let element = self.native.window_index.get(&window)?;
 
         if let Some(x11) = element.x11_surface() {
             return Some(x11.title());
@@ -33,7 +33,7 @@ impl WaylandState {
 
     /// Get the app_id (desktop file ID) of a window.
     pub fn window_app_id(&self, window: WindowId) -> Option<String> {
-        let element = self.window_index.get(&window)?;
+        let element = self.native.window_index.get(&window)?;
 
         if let Some(x11) = element.x11_surface() {
             let wm_class = x11.class();
@@ -54,7 +54,7 @@ impl WaylandState {
 
     /// Return the protocol/surface family that owns this window.
     pub(crate) fn window_protocol(&self, window: WindowId) -> crate::backend::WindowProtocol {
-        let Some(element) = self.window_index.get(&window) else {
+        let Some(element) = self.native.window_index.get(&window) else {
             return crate::backend::WindowProtocol::Unknown;
         };
 
@@ -72,14 +72,15 @@ impl WaylandState {
         let title = self.window_title(window).unwrap_or_default();
         let app_id = self.window_app_id(window).unwrap_or_default();
         let handle = self
+            .native
             .foreign_toplevel_list_state
             .new_toplevel::<Self>(title, app_id);
-        self.foreign_toplevel_handles.insert(window, handle);
+        self.native.foreign_toplevel_handles.insert(window, handle);
     }
 
     /// Update the foreign toplevel handle for a window (title/app_id changed).
     pub fn update_foreign_toplevel(&mut self, window: WindowId) {
-        let Some(handle) = self.foreign_toplevel_handles.get(&window) else {
+        let Some(handle) = self.native.foreign_toplevel_handles.get(&window) else {
             return;
         };
         if let Some(title) = self.window_title(window) {
@@ -93,10 +94,13 @@ impl WaylandState {
 
     /// Close the foreign toplevel handle for a window.
     pub(crate) fn close_foreign_toplevel(&mut self, window: WindowId) {
-        if let Some(handle) = self.foreign_toplevel_handles.remove(&window) {
-            self.foreign_toplevel_list_state.remove_toplevel(&handle);
+        if let Some(handle) = self.native.foreign_toplevel_handles.remove(&window) {
+            self.native
+                .foreign_toplevel_list_state
+                .remove_toplevel(&handle);
         }
-        self.foreign_toplevel_management_state
+        self.native
+            .foreign_toplevel_management_state
             .remove_toplevel::<Self>(window);
     }
 
@@ -122,8 +126,9 @@ impl WaylandState {
             fullscreen: client.mode().is_true_fullscreen(),
             parent: client.transient_for,
             outputs: self
+                .native
                 .find_window(window)
-                .map(|element| self.outputs_for_window_geometry(element))
+                .map(|element| self.native.outputs_for_window_geometry(element))
                 .unwrap_or_default(),
         })
     }
@@ -136,18 +141,24 @@ impl WaylandState {
         core_view: &crate::core_state::CoreState,
         window: WindowId,
     ) {
-        if !self.foreign_toplevel_handles.contains_key(&window) {
+        if !self.native.foreign_toplevel_handles.contains_key(&window) {
             return;
         }
         if let Some(snapshot) = self.foreign_toplevel_snapshot(core_view, window) {
-            self.foreign_toplevel_management_state
+            self.native
+                .foreign_toplevel_management_state
                 .sync_toplevel::<Self>(window, &snapshot);
         }
     }
 
     /// Refresh every managed window's advertised presentation.
     pub fn refresh_all_foreign_toplevels(&mut self, core_view: &crate::core_state::CoreState) {
-        let windows: Vec<WindowId> = self.foreign_toplevel_handles.keys().copied().collect();
+        let windows: Vec<WindowId> = self
+            .native
+            .foreign_toplevel_handles
+            .keys()
+            .copied()
+            .collect();
         for window in windows {
             self.refresh_foreign_toplevel(core_view, window);
         }
@@ -166,6 +177,7 @@ impl WaylandState {
             "core selection changed outside the focus transaction boundary"
         );
         let advertised = self
+            .native
             .foreign_toplevel_management_state
             .advertised_selection();
         if selected == advertised {
@@ -188,7 +200,8 @@ impl WaylandState {
         if let Some(selected) = selected {
             self.refresh_foreign_toplevel(core_view, selected);
         }
-        self.foreign_toplevel_management_state
+        self.native
+            .foreign_toplevel_management_state
             .set_advertised_selection(selected);
     }
 
@@ -203,7 +216,7 @@ impl WaylandState {
     }
 
     fn native_size_hints(&self, window: WindowId) -> Option<crate::types::SizeHints> {
-        let element = self.window_index.get(&window)?;
+        let element = self.native.window_index.get(&window)?;
         if element.x11_surface().is_some() {
             return None;
         }
@@ -226,13 +239,14 @@ impl WaylandState {
         let Some(current) = self.native_size_hints(window) else {
             return false;
         };
-        self.native_size_hints.insert(window, current) != Some(current)
+        self.native.native_size_hints.insert(window, current) != Some(current)
     }
 
     /// Get the window ID for a toplevel surface.
     pub(crate) fn window_id_for_toplevel(&self, surface: &ToplevelSurface) -> Option<WindowId> {
         let wl_surface = surface.wl_surface();
-        self.window_index
+        self.native
+            .window_index
             .values()
             .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
@@ -243,14 +257,16 @@ impl WaylandState {
         &self,
         surface: &smithay::xwayland::X11Surface,
     ) -> Option<WindowId> {
-        self.window_index
+        self.native
+            .window_index
             .values()
             .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
     pub(crate) fn window_id_for_x11_window(&self, window: u32) -> Option<WindowId> {
-        self.window_index
+        self.native
+            .window_index
             .values()
             .find(|w| w.x11_surface().is_some_and(|x11| x11.window_id() == window))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
@@ -261,7 +277,7 @@ impl WaylandState {
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<WindowId> {
-        self.window_index.iter().find_map(|(win, window)| {
+        self.native.window_index.iter().find_map(|(win, window)| {
             if window.wl_surface().as_deref() == Some(surface) {
                 return Some(*win);
             }
@@ -323,7 +339,7 @@ impl WaylandState {
         let is_resizing = window
             .user_data()
             .get::<WindowIdMarker>()
-            .is_some_and(|marker| self.active_resize == Some(marker.id));
+            .is_some_and(|marker| self.native.active_resize == Some(marker.id));
         let is_fullscreen = presentation.is_some_and(|state| state.0);
         let is_maximized = presentation.is_some_and(|state| state.1);
         toplevel.with_pending_state(|state| {
@@ -357,7 +373,8 @@ impl WaylandState {
         if let (Some(serial), Some(size), Some(marker)) =
             (serial, size, window.user_data().get::<WindowIdMarker>())
         {
-            self.geometry_sync
+            self.native
+                .geometry_sync
                 .entry(marker.id)
                 .or_default()
                 .sent(crate::types::Size::new(size.w, size.h), Some(serial));
@@ -375,7 +392,7 @@ impl WaylandState {
         core_view: &crate::core_state::CoreState,
         win: WindowId,
     ) {
-        let Some(window) = self.find_window(win).cloned() else {
+        let Some(window) = self.native.find_window(win).cloned() else {
             return;
         };
         let Some((mode, maximized)) = core_view.model.client(win).map(|client| {
@@ -434,6 +451,7 @@ mod tests {
         state.reconcile_foreign_toplevel_selection(&wm.core, None);
         assert_eq!(
             state
+                .native
                 .foreign_toplevel_management_state
                 .advertised_selection(),
             Some(first)
@@ -454,6 +472,7 @@ mod tests {
         state.reconcile_foreign_toplevel_selection(&wm.core, Some(transition));
         assert_eq!(
             state
+                .native
                 .foreign_toplevel_management_state
                 .advertised_selection(),
             Some(second)

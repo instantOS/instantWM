@@ -9,8 +9,6 @@ use smithay::utils::Logical;
 
 use crate::types::Rect;
 
-use super::state::WaylandState;
-
 /// Outputs invalidated by compositor-side work since the last render tick.
 ///
 /// The shared WM continues to identify monitors with its own IDs. This
@@ -48,54 +46,7 @@ impl PendingRenderTargets {
     }
 }
 
-impl WaylandState {
-    pub fn request_render(&mut self) {
-        if !self.runtime.render_targets.invalidate_all() {
-            log::debug!("request_render: ping skipped, already dirty");
-            return;
-        }
-        self.ping_render_loop();
-    }
-
-    /// Request a redraw for exactly one Smithay output.
-    #[inline]
-    pub fn request_output_render(&mut self, output: &Output) {
-        self.request_output_name_render(output.name());
-    }
-
-    pub(super) fn output_can_render(&self, output: &Output) -> bool {
-        self.space.outputs().any(|active| active == output)
-    }
-
-    /// Drop capture work that can never complete once an output is disabled
-    /// or removed. Keeping it would make every later render scan stale work.
-    pub fn fail_pending_captures_for_output(&mut self, output: &Output) {
-        super::screencopy::fail_pending_screencopies_for_output(
-            &mut self.runtime.pending_screencopies,
-            output,
-        );
-        super::image_capture::fail_pending_image_captures_for_output(
-            &mut self.runtime.pending_image_captures,
-            output,
-        );
-    }
-
-    /// Request redraws for the outputs Smithay currently associates with a
-    /// mapped window.
-    ///
-    /// Do not use `Space::outputs_for_element` here. Its output membership is
-    /// refreshed later in the event-loop tick, while surface commits (notably
-    /// short-lived Xwayland override-redirect windows) need to schedule their
-    /// redraw immediately.
-    pub fn request_window_render(&mut self, window: &Window) {
-        let outputs = self.outputs_for_window_geometry(window);
-        if outputs.is_empty() {
-            self.request_render();
-            return;
-        }
-        self.request_outputs_render(outputs);
-    }
-
+impl crate::backend::wayland::compositor::WaylandNativeState {
     /// Redraw the outputs currently intersected by a mapped window. Unlike
     /// surface-commit scheduling, a fully offscreen lifecycle/animation update
     /// does not need a global fallback.
@@ -125,31 +76,6 @@ impl WaylandState {
         self.request_outputs_render(outputs);
     }
 
-    fn request_outputs_render(&mut self, outputs: Vec<Output>) {
-        for output in outputs {
-            self.request_output_render(&output);
-        }
-    }
-
-    pub(crate) fn outputs_for_window_geometry(&self, window: &Window) -> Vec<Output> {
-        let window_rect = self.space.element_location(window).map(|location| {
-            let mut rect = window.bbox_with_popups();
-            rect.loc += location - window.geometry().loc;
-            rect
-        });
-        self.space
-            .outputs()
-            .filter(|output| {
-                window_rect.is_some_and(|rect| {
-                    self.space
-                        .output_geometry(output)
-                        .is_some_and(|output_rect| output_rect.overlaps(rect))
-                })
-            })
-            .cloned()
-            .collect()
-    }
-
     pub fn has_window_animations_on_output(&self, output: &Output) -> bool {
         let output_rect = self.space.output_geometry(output);
         self.window_animations.iter().any(|(window_id, animation)| {
@@ -173,20 +99,6 @@ impl WaylandState {
             });
             surface_overlaps || frame_overlaps
         })
-    }
-
-    #[inline]
-    pub(crate) fn request_output_name_render(&mut self, output_name: String) {
-        if self.runtime.render_targets.invalidate_output(output_name) {
-            self.ping_render_loop();
-        }
-    }
-
-    #[inline]
-    fn ping_render_loop(&self) {
-        if let Some(render_ping) = &self.runtime.render_ping {
-            render_ping.ping();
-        }
     }
 
     #[inline]
@@ -235,12 +147,90 @@ impl WaylandState {
         self.push_command(super::super::commands::WmCommand::RequestBarRedraw);
         self.request_render();
     }
+}
 
+impl crate::backend::wayland::compositor::WaylandNativeState {
+    pub fn request_render(&mut self) {
+        if !self.runtime.render_targets.invalidate_all() {
+            log::debug!("request_render: ping skipped, already dirty");
+            return;
+        }
+        self.ping_render_loop();
+    }
+    /// Request a redraw for exactly one Smithay output.
+    #[inline]
+    pub fn request_output_render(&mut self, output: &Output) {
+        self.request_output_name_render(output.name());
+    }
+    pub(super) fn output_can_render(&self, output: &Output) -> bool {
+        self.space.outputs().any(|active| active == output)
+    }
+    /// Drop capture work that can never complete once an output is disabled
+    /// or removed. Keeping it would make every later render scan stale work.
+    pub fn fail_pending_captures_for_output(&mut self, output: &Output) {
+        super::screencopy::fail_pending_screencopies_for_output(
+            &mut self.runtime.pending_screencopies,
+            output,
+        );
+        super::image_capture::fail_pending_image_captures_for_output(
+            &mut self.runtime.pending_image_captures,
+            output,
+        );
+    }
+    /// Request redraws for the outputs Smithay currently associates with a
+    /// mapped window.
+    ///
+    /// Do not use `Space::outputs_for_element` here. Its output membership is
+    /// refreshed later in the event-loop tick, while surface commits (notably
+    /// short-lived Xwayland override-redirect windows) need to schedule their
+    /// redraw immediately.
+    pub fn request_window_render(&mut self, window: &Window) {
+        let outputs = self.outputs_for_window_geometry(window);
+        if outputs.is_empty() {
+            self.request_render();
+            return;
+        }
+        self.request_outputs_render(outputs);
+    }
+    fn request_outputs_render(&mut self, outputs: Vec<Output>) {
+        for output in outputs {
+            self.request_output_render(&output);
+        }
+    }
+    pub(crate) fn outputs_for_window_geometry(&self, window: &Window) -> Vec<Output> {
+        let window_rect = self.space.element_location(window).map(|location| {
+            let mut rect = window.bbox_with_popups();
+            rect.loc += location - window.geometry().loc;
+            rect
+        });
+        self.space
+            .outputs()
+            .filter(|output| {
+                window_rect.is_some_and(|rect| {
+                    self.space
+                        .output_geometry(output)
+                        .is_some_and(|output_rect| output_rect.overlaps(rect))
+                })
+            })
+            .cloned()
+            .collect()
+    }
+    #[inline]
+    pub(crate) fn request_output_name_render(&mut self, output_name: String) {
+        if self.runtime.render_targets.invalidate_output(output_name) {
+            self.ping_render_loop();
+        }
+    }
+    #[inline]
+    fn ping_render_loop(&self) {
+        if let Some(render_ping) = &self.runtime.render_ping {
+            render_ping.ping();
+        }
+    }
     #[inline]
     pub fn take_render_targets(&mut self) -> PendingRenderTargets {
         mem::take(&mut self.runtime.render_targets)
     }
-
     #[inline]
     pub fn take_frame_callback_targets(&mut self) -> PendingRenderTargets {
         mem::take(&mut self.runtime.frame_callback_targets)
@@ -254,8 +244,8 @@ mod render_target_tests {
     #[test]
     fn presentation_constraints_are_compositor_managed() {
         let (_event_loop, state) = crate::test_support::new_compositor();
-        assert!(state.fifo_manager_state.is_managed());
-        assert!(state.commit_timing_manager_state.is_managed());
+        assert!(state.native.fifo_manager_state.is_managed());
+        assert!(state.native.commit_timing_manager_state.is_managed());
     }
 
     #[test]

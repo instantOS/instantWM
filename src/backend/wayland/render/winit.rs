@@ -7,7 +7,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::output::Output;
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::frame::{send_frame_callbacks, update_primary_scanout_output};
 use crate::backend::wayland::render::scene::{
@@ -27,7 +27,7 @@ render_elements! {
 /// Render a frame using the winit backend.
 pub fn render_frame(
     wm: &mut Wm,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,

@@ -27,7 +27,7 @@ pub(super) fn handle_layer_commit(
 ) -> Option<Output> {
     let mut layer_surface = None;
     let mut layer_output = None;
-    for output in state.space.outputs() {
+    for output in state.native.space.outputs() {
         let mut map = layer_map_for_output(output);
         if let Some(layer) = map
             .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
@@ -59,15 +59,19 @@ pub(super) fn handle_layer_commit(
         );
         // Exclusive zones may have changed on commit, so re-derive each
         // monitor's `available_rect`.
-        state.push_command(WmCommand::SyncLayerExclusiveZones);
+        state
+            .native
+            .push_command(WmCommand::SyncLayerExclusiveZones);
         // A surface that appears under a stationary cursor must still receive
         // pointer focus: launchers map their input surface from a keybind, so
         // no motion event will refresh focus for them otherwise.
-        state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
-            time: smithay::backend::input::InputTime::now(),
-        }));
+        state
+            .native
+            .push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
+                time: smithay::backend::input::InputTime::now(),
+            }));
         if let Some(output) = layer_output.as_ref() {
-            state.request_output_render(output);
+            state.native.request_output_render(output);
         }
     }
     layer_output
@@ -78,7 +82,7 @@ pub(super) fn layer_output_for_surface(
     state: &WaylandState,
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
 ) -> Option<Output> {
-    state.space.outputs().find_map(|output| {
+    state.native.space.outputs().find_map(|output| {
         let map = layer_map_for_output(output);
         map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
             .is_some()
@@ -95,8 +99,9 @@ pub(super) fn layer_output_for_surface(
 /// match `Monitor::monitor_rect`.
 pub fn collect_available_rects(state: &WaylandState) -> HashMap<String, Rect> {
     let mut out = HashMap::new();
-    for output in state.space.outputs() {
+    for output in state.native.space.outputs() {
         let output_loc = state
+            .native
             .space
             .output_geometry(output)
             .map(|geo| geo.loc)
@@ -138,7 +143,7 @@ pub fn apply_available_rects(wm: &mut Wm, state: &WaylandState) -> bool {
 
 impl WlrLayerShellHandler for WaylandState {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
-        &mut self.wlr_layer_shell_state
+        &mut self.native.wlr_layer_shell_state
     }
 
     fn new_layer_surface(
@@ -154,19 +159,20 @@ impl WlrLayerShellHandler for WaylandState {
             .and_then(Output::from_resource)
             // A client may still hold the `wl_output` of a head that has
             // since become a mirror; its region belongs to the source.
-            .map(|output| self.presented_output(&output))
+            .map(|output| self.native.presented_output(&output))
             // An output-less layer surface follows the selected monitor:
             // launchers that defer the choice expect the focused output, not
             // whichever output happens to enumerate first (on a laptop that
             // is the built-in panel regardless of where focus is).
             .or_else(|| {
                 let selected = self.protocol_core().model.selected_monitor()?.name.clone();
-                self.space
+                self.native
+                    .space
                     .outputs()
                     .find(|output| output.name() == selected)
                     .cloned()
             })
-            .or_else(|| self.space.outputs().next().cloned());
+            .or_else(|| self.native.space.outputs().next().cloned());
         let Some(target_output) = target_output else {
             return;
         };
@@ -174,8 +180,8 @@ impl WlrLayerShellHandler for WaylandState {
         let _ = map.map_layer(&layer_surface);
         map.arrange();
         drop(map);
-        self.push_command(WmCommand::SyncLayerExclusiveZones);
-        self.request_output_render(&target_output);
+        self.native.push_command(WmCommand::SyncLayerExclusiveZones);
+        self.native.request_output_render(&target_output);
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -183,6 +189,7 @@ impl WlrLayerShellHandler for WaylandState {
 
         // Check if the keyboard is focused on this layer surface before we destroy it
         let keyboard_focused_on_layer = self
+            .native
             .seat
             .get_keyboard()
             .and_then(|k| k.current_focus())
@@ -195,7 +202,7 @@ impl WlrLayerShellHandler for WaylandState {
             });
 
         let mut affected_outputs = Vec::new();
-        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
+        for output in self.native.space.outputs().cloned().collect::<Vec<_>>() {
             let mut map = layer_map_for_output(&output);
             let layers: Vec<_> = map
                 .layers()
@@ -223,12 +230,13 @@ impl WlrLayerShellHandler for WaylandState {
             self.restore_focus_after_overlay();
         }
         // Reclaim the space that this layer surface had exclusively reserved.
-        self.push_command(WmCommand::SyncLayerExclusiveZones);
-        self.push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
-            time: smithay::backend::input::InputTime::now(),
-        }));
+        self.native.push_command(WmCommand::SyncLayerExclusiveZones);
+        self.native
+            .push_command(WmCommand::PointerMotion(PointerMotionCommand::Refresh {
+                time: smithay::backend::input::InputTime::now(),
+            }));
         for output in affected_outputs {
-            self.request_output_render(&output);
+            self.native.request_output_render(&output);
         }
     }
 }

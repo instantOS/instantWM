@@ -39,7 +39,7 @@ use super::{
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
-        &mut self.compositor_state
+        &mut self.native.compositor_state
     }
 
     fn client_compositor_state<'a>(
@@ -60,8 +60,8 @@ impl CompositorHandler for WaylandState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         smithay::wayland::compositor::add_destruction_hook::<Self, _>(surface, |state, surface| {
-            state.fifo_constraint_surfaces.remove(surface);
-            state.commit_timing_surfaces.remove(surface);
+            state.native.fifo_constraint_surfaces.remove(surface);
+            state.native.commit_timing_surfaces.remove(surface);
         });
         smithay::wayland::compositor::add_pre_commit_hook::<Self, _>(
             surface,
@@ -84,10 +84,13 @@ impl CompositorHandler for WaylandState {
                         (sets_fifo_barrier, has_commit_timestamp)
                     });
                 if sets_fifo_barrier {
-                    state.fifo_constraint_surfaces.insert(surface.clone());
+                    state
+                        .native
+                        .fifo_constraint_surfaces
+                        .insert(surface.clone());
                 }
                 if has_commit_timestamp {
-                    state.commit_timing_surfaces.insert(surface.clone());
+                    state.native.commit_timing_surfaces.insert(surface.clone());
                 }
 
                 let mut acquire_point = None;
@@ -119,10 +122,13 @@ impl CompositorHandler for WaylandState {
                     && let Ok((blocker, source)) = acquire_point.generate_blocker()
                     && let Some(client) = surface.client()
                 {
-                    let res = state.loop_handle.insert_source(source, move |_, _, data| {
-                        data.defer_commit_client(client.clone());
-                        Ok(())
-                    });
+                    let res = state
+                        .native
+                        .loop_handle
+                        .insert_source(source, move |_, _, data| {
+                            data.native.defer_commit_client(client.clone());
+                            Ok(())
+                        });
                     if res.is_ok() {
                         smithay::wayland::compositor::add_blocker(surface, blocker);
                     }
@@ -141,7 +147,7 @@ impl CompositorHandler for WaylandState {
         // Check if this commit is from a pending toplevel that has finally
         // produced a buffer.  If so, promote it to a managed window.
         if let Some(pos) =
-            self.runtime.pending_toplevels.iter().position(
+            self.native.runtime.pending_toplevels.iter().position(
                 |t: &smithay::wayland::shell::xdg::ToplevelSurface| t.wl_surface() == surface,
             )
         {
@@ -151,11 +157,11 @@ impl CompositorHandler for WaylandState {
                 })
                 .unwrap_or(false);
             if has_buffer {
-                let mut toplevel = self.runtime.pending_toplevels.swap_remove(pos);
+                let mut toplevel = self.native.runtime.pending_toplevels.swap_remove(pos);
                 let client_pid = toplevel
                     .wl_surface()
                     .client()
-                    .and_then(|client| client.get_credentials(&self.display_handle).ok())
+                    .and_then(|client| client.get_credentials(&self.native.display_handle).ok())
                     .and_then(|credentials| u32::try_from(credentials.pid).ok());
                 let systray_menu = self.take_expected_systray_menu_toplevel(client_pid);
                 if let Some(request) = systray_menu {
@@ -176,30 +182,31 @@ impl CompositorHandler for WaylandState {
                 let window_id = self.setup_managed_window(toplevel);
 
                 let properties = self.window_properties(window_id);
-                let initial_geo = self.find_window(window_id).map(|w| {
+                let initial_geo = self.native.find_window(window_id).map(|w| {
                     let g = w.geometry();
                     crate::types::Rect::new(g.loc.x, g.loc.y, g.size.w, g.size.h)
                 });
 
-                self.push_command(crate::backend::wayland::commands::WmCommand::MapWindow(
-                    crate::backend::wayland::commands::MapWindowParams {
-                        win: window_id,
-                        properties,
-                        initial_geo,
-                        initial_position_is_explicit: false,
-                        launch_pid: client_pid,
-                        launch_startup_id: None,
-                        x11_hints: None,
-                        x11_size_hints: None,
-                        parent,
-                    },
-                ));
+                self.native
+                    .push_command(crate::backend::wayland::commands::WmCommand::MapWindow(
+                        crate::backend::wayland::commands::MapWindowParams {
+                            win: window_id,
+                            properties,
+                            initial_geo,
+                            initial_position_is_explicit: false,
+                            launch_pid: client_pid,
+                            launch_startup_id: None,
+                            x11_hints: None,
+                            x11_size_hints: None,
+                            parent,
+                        },
+                    ));
             }
         }
 
-        self.popups.commit(surface);
+        self.native.popups.commit(surface);
 
-        if let Some(popup) = self.popups.find_popup(surface)
+        if let Some(popup) = self.native.popups.find_popup(surface)
             && let PopupKind::Xdg(ref popup_surface) = popup
             && !popup_surface.is_initial_configure_sent()
         {
@@ -220,7 +227,7 @@ impl CompositorHandler for WaylandState {
         // is immediately presentable when its tag becomes visible again.
         let committed_window = self
             .window_id_for_surface(&root)
-            .and_then(|id| self.window_index.get(&id))
+            .and_then(|id| self.native.window_index.get(&id))
             .cloned();
         let committed_layer_output = super::layer_shell::layer_output_for_surface(self, &root);
 
@@ -268,7 +275,7 @@ impl CompositorHandler for WaylandState {
                 // deduplicated by the shared update path.
                 if window.x11_surface().is_none() && self.native_size_hints_changed(id) {
                     let properties = self.window_properties(id);
-                    self.push_command(
+                    self.native.push_command(
                         crate::backend::wayland::commands::WmCommand::UpdateProperties {
                             win: id,
                             properties,
@@ -345,13 +352,13 @@ fn service_surface_commit(
                 // Hidden managed windows still commit protocol state, but have
                 // no pixels to invalidate. Mapping them later requests the
                 // first visible render explicitly.
-                if state.space.element_location(window).is_some() {
-                    state.request_window_render(window);
+                if state.native.space.element_location(window).is_some() {
+                    state.native.request_window_render(window);
                 }
             }
             None => match layer_output {
-                Some(output) => state.request_output_render(output),
-                None => state.request_render(),
+                Some(output) => state.native.request_output_render(output),
+                None => state.native.request_render(),
             },
         },
         SurfaceCommitService::FrameCallbacks => match window {
@@ -359,13 +366,13 @@ fn service_surface_commit(
                 // A hidden surface is not being presented and must not be
                 // frame-driven. Its callbacks become eligible as soon as the
                 // remap render is submitted.
-                if state.space.element_location(window).is_some() {
-                    state.request_window_frame_callbacks(window);
+                if state.native.space.element_location(window).is_some() {
+                    state.native.request_window_frame_callbacks(window);
                 }
             }
             None => match layer_output {
-                Some(output) => state.request_output_frame_callbacks(output),
-                None => state.request_frame_callbacks(),
+                Some(output) => state.native.request_output_frame_callbacks(output),
+                None => state.native.request_frame_callbacks(),
             },
         },
         SurfaceCommitService::None => {}
@@ -374,7 +381,7 @@ fn service_surface_commit(
 
 impl ShmHandler for WaylandState {
     fn shm_state(&self) -> &smithay::wayland::shm::ShmState {
-        &self.shm_state
+        &self.native.shm_state
     }
 }
 
@@ -406,7 +413,7 @@ impl FractionalScaleHandler for WaylandState {
 
 impl DmabufHandler for WaylandState {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
-        &mut self.dmabuf_state
+        &mut self.native.dmabuf_state
     }
 
     fn dmabuf_imported(
@@ -416,7 +423,7 @@ impl DmabufHandler for WaylandState {
         notifier: ImportNotifier,
     ) {
         // Tag the dmabuf with the render node so clients know which device to use.
-        if let Some(node) = self.render_node {
+        if let Some(node) = self.native.render_node {
             dmabuf.set_node(node);
         }
 
@@ -438,7 +445,7 @@ impl smithay::wayland::foreign_toplevel_list::ForeignToplevelListHandler for Way
     fn foreign_toplevel_list_state(
         &mut self,
     ) -> &mut smithay::wayland::foreign_toplevel_list::ForeignToplevelListState {
-        &mut self.foreign_toplevel_list_state
+        &mut self.native.foreign_toplevel_list_state
     }
 }
 
@@ -446,7 +453,7 @@ impl XWaylandShellHandler for WaylandState {
     fn xwayland_shell_state(
         &mut self,
     ) -> &mut smithay::wayland::xwayland_shell::XWaylandShellState {
-        &mut self.xwayland_shell_state
+        &mut self.native.xwayland_shell_state
     }
 }
 
@@ -457,7 +464,7 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         seat: smithay::input::Seat<Self>,
         grab: smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrab<Self>,
     ) {
-        if self.is_locked() {
+        if self.native.is_locked() {
             return;
         }
         if self.shortcut_recovery_bypasses(&surface) {
@@ -474,7 +481,7 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
         if let Some(win) = self.window_id_for_surface(surface)
-            && let Some(window) = self.window_index.get(&win)
+            && let Some(window) = self.native.window_index.get(&win)
         {
             return Some(KeyboardFocusTarget::Window(window.clone()));
         }
@@ -488,7 +495,7 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
 
 impl KeyboardShortcutsInhibitHandler for WaylandState {
     fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
-        &mut self.keyboard_shortcuts_inhibit_state
+        &mut self.native.keyboard_shortcuts_inhibit_state
     }
 
     fn new_inhibitor(&mut self, inhibitor: KeyboardShortcutsInhibitor) {
@@ -505,7 +512,7 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         &mut self,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        self.idle_inhibiting_surfaces.insert(surface);
+        self.native.idle_inhibiting_surfaces.insert(surface);
         log::debug!("idle inhibited for surface");
     }
 
@@ -513,7 +520,7 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         &mut self,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        self.idle_inhibiting_surfaces.remove(&surface);
+        self.native.idle_inhibiting_surfaces.remove(&surface);
         log::debug!("idle uninhibited for surface");
     }
 }
@@ -522,7 +529,7 @@ impl smithay::wayland::idle_notify::IdleNotifierHandler for WaylandState {
     fn idle_notifier_state(
         &mut self,
     ) -> &mut smithay::wayland::idle_notify::IdleNotifierState<Self> {
-        &mut self.idle_notify_manager_state
+        &mut self.native.idle_notify_manager_state
     }
 }
 
@@ -544,13 +551,17 @@ impl WaylandState {
         use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
 
         let requested_root = Self::root_surface_for(surface);
-        self.space.elements().find_map(|window| {
+        self.native.space.elements().find_map(|window| {
             let window_root = window.wl_surface()?;
             if window_root.as_ref() != &requested_root {
                 return None;
             }
 
-            let loc = self.space.element_location(window).unwrap_or_default();
+            let loc = self
+                .native
+                .space
+                .element_location(window)
+                .unwrap_or_default();
             let surface_origin = loc - window.geometry().loc;
             let found = std::cell::RefCell::new(None);
             smithay::wayland::compositor::with_surface_tree_downward(
@@ -593,7 +604,7 @@ impl PointerConstraintsHandler for WaylandState {
             .current_focus()
             .and_then(|focus| focus.wl_surface().map(|surface| surface.into_owned()));
         let surface_origin = self.pointer_constraint_surface_origin(surface);
-        let pointer_location = self.runtime.pointer_location;
+        let pointer_location = self.native.runtime.pointer_location;
         with_pointer_constraint(surface, pointer, |constraint| {
             let Some(constraint) = constraint else {
                 return;
@@ -624,7 +635,7 @@ impl PointerConstraintsHandler for WaylandState {
             return;
         }
 
-        self.cursor_position_hint = Some((surface.clone(), location));
+        self.native.cursor_position_hint = Some((surface.clone(), location));
     }
 
     fn remove_constraint(
@@ -637,18 +648,18 @@ impl PointerConstraintsHandler for WaylandState {
             reason,
             ConstraintRemove::Destroyed(PointerConstraint::Locked(_))
         ) {
-            self.cursor_position_hint = None;
+            self.native.cursor_position_hint = None;
             return;
         }
-        if let Some((hint_surface, hint_location)) = self.cursor_position_hint.take() {
+        if let Some((hint_surface, hint_location)) = self.native.cursor_position_hint.take() {
             if &hint_surface == surface {
                 if let Some(origin) = self.pointer_constraint_surface_origin(&hint_surface) {
                     let target = origin + hint_location;
                     pointer.set_location(target);
-                    self.runtime.pointer_location = target;
+                    self.native.runtime.pointer_location = target;
                 }
             } else {
-                self.cursor_position_hint = Some((hint_surface, hint_location));
+                self.native.cursor_position_hint = Some((hint_surface, hint_location));
             }
         }
     }
@@ -664,9 +675,9 @@ impl PointerWarpHandler for WaylandState {
     ) {
         if let Some(origin) = self.pointer_constraint_surface_origin(&surface) {
             let target = origin + pos;
-            if let Some(pointer) = self.seat.get_pointer() {
+            if let Some(pointer) = self.native.seat.get_pointer() {
                 pointer.set_location(target);
-                self.runtime.pointer_location = target;
+                self.native.runtime.pointer_location = target;
             }
         }
     }
@@ -674,13 +685,13 @@ impl PointerWarpHandler for WaylandState {
 
 impl DrmSyncobjHandler for WaylandState {
     fn drm_syncobj_state(&mut self) -> Option<&mut smithay::wayland::drm_syncobj::DrmSyncobjState> {
-        self.drm_syncobj_state.as_mut()
+        self.native.drm_syncobj_state.as_mut()
     }
 }
 
 impl InputMethodHandler for WaylandState {
     fn new_popup(&mut self, surface: PopupSurface) {
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+        if let Err(err) = self.native.popups.track_popup(PopupKind::from(surface)) {
             log::warn!("Failed to track input method popup: {err}");
         }
     }
@@ -698,7 +709,8 @@ impl InputMethodHandler for WaylandState {
         &self,
         parent: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> smithay::utils::Rectangle<i32, smithay::utils::Logical> {
-        self.space
+        self.native
+            .space
             .elements()
             .find_map(|window| {
                 (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry())
@@ -713,7 +725,7 @@ impl InputMethodHandler for WaylandState {
 
 impl OutputManagementHandler for WaylandState {
     fn output_management_state(&mut self) -> &mut OutputManagementState {
-        &mut self.output_management_state
+        &mut self.native.output_management_state
     }
 
     fn submit_output_transaction(
@@ -723,12 +735,14 @@ impl OutputManagementHandler for WaylandState {
         configuration: smithay::reexports::wayland_protocols_wlr::output_management::v1::server::zwlr_output_configuration_v1::ZwlrOutputConfigurationV1,
     ) {
         let id = self
+            .native
             .runtime
             .output_transactions
             .submit_client(kind, transaction);
-        self.output_management_state
+        self.native
+            .output_management_state
             .track_transaction(id, configuration);
-        self.request_render();
+        self.native.request_render();
     }
 }
 
@@ -751,14 +765,18 @@ impl crate::backend::wayland::compositor::protocols::output_power::OutputPowerHa
     fn output_power_state(
         &mut self,
     ) -> &mut crate::backend::wayland::compositor::protocols::output_power::OutputPowerState {
-        &mut self.output_power_state
+        &mut self.native.output_power_state
     }
 
     fn output_power_mode(
         &self,
         output: &smithay::output::Output,
     ) -> Option<crate::backend::output::OutputPowerMode> {
-        self.runtime.output_power_modes.get(&output.name()).copied()
+        self.native
+            .runtime
+            .output_power_modes
+            .get(&output.name())
+            .copied()
     }
 
     fn submit_output_power_request(
@@ -767,15 +785,16 @@ impl crate::backend::wayland::compositor::protocols::output_power::OutputPowerHa
         mode: crate::backend::output::OutputPowerMode,
     ) -> crate::backend::output::RequestId {
         let id = self
+            .native
             .runtime
             .output_power
             .submit(crate::backend::output::OutputPowerRequest { output, mode });
-        self.request_render();
+        self.native.request_render();
         id
     }
 
     fn cancel_output_power_requests(&mut self, requests: &[crate::backend::output::RequestId]) {
-        self.runtime.output_power.cancel(requests);
+        self.native.runtime.output_power.cancel(requests);
     }
 }
 
@@ -792,7 +811,7 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
         &mut self,
     ) -> &mut crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelManagementState
 {
-        &mut self.foreign_toplevel_management_state
+        &mut self.native.foreign_toplevel_management_state
     }
 
     fn foreign_toplevel_snapshot(
@@ -827,7 +846,7 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
                 fullscreen,
             },
         };
-        self.push_command(command);
+        self.native.push_command(command);
     }
 }
 
@@ -865,14 +884,14 @@ mod tests {
     #[test]
     fn remove_constraint_applies_matching_cursor_position_hint() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let pointer = state.seat.get_pointer().unwrap();
+        let pointer = state.native.seat.get_pointer().unwrap();
 
-        state.runtime.pointer_location = Point::from((500.0, 500.0));
+        state.native.runtime.pointer_location = Point::from((500.0, 500.0));
         pointer.set_location(Point::from((500.0, 500.0)));
 
         let dummy_surface =
             smithay::reexports::wayland_server::protocol::wl_surface::WlSurface::from_id(
-                &state.display_handle.clone(),
+                &state.native.display_handle.clone(),
                 smithay::reexports::wayland_server::backend::ObjectId::null(),
             )
             .unwrap();
@@ -885,7 +904,10 @@ mod tests {
             ConstraintRemove::PointerLeave(None),
         );
 
-        assert_eq!(state.runtime.pointer_location, Point::from((500.0, 500.0)));
+        assert_eq!(
+            state.native.runtime.pointer_location,
+            Point::from((500.0, 500.0))
+        );
         assert_eq!(pointer.current_location(), Point::from((500.0, 500.0)));
     }
 }

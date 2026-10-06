@@ -79,7 +79,8 @@ impl WaylandState {
     /// Register the `zwlr_screencopy_manager_v1` global so that clients can
     /// bind it.
     pub fn init_screencopy_manager(&self) {
-        self.display_handle
+        self.native
+            .display_handle
             .create_global::<WaylandState, ZwlrScreencopyManagerV1, ()>(SCREENCOPY_VERSION, ());
     }
 
@@ -183,6 +184,7 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
                 };
 
                 let logical_size = state
+                    .native
                     .space
                     .output_geometry(&output)
                     .map(|geo| geo.size)
@@ -322,24 +324,28 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             return;
         }
 
-        if !state.output_can_render(output) {
+        if !state.native.output_can_render(output) {
             frame.failed();
             return;
         }
 
-        state.runtime.pending_screencopies.push(PendingScreencopy {
-            output: output.clone(),
-            buffer_region: *buffer_region,
-            overlay_cursor: *overlay_cursor,
-            frame: frame.clone(),
-            buffer,
-            with_damage,
-        });
+        state
+            .native
+            .runtime
+            .pending_screencopies
+            .push(PendingScreencopy {
+                output: output.clone(),
+                buffer_region: *buffer_region,
+                overlay_cursor: *overlay_cursor,
+                frame: frame.clone(),
+                buffer,
+                with_damage,
+            });
 
         // Schedule only the captured output. Legacy wlr-screencopy frames are
         // one-shot objects, so this implementation conservatively reports the
         // copied region as damaged for `copy_with_damage` requests.
-        state.request_output_render(output);
+        state.native.request_output_render(output);
     }
 
     fn destroyed(
@@ -349,6 +355,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
         _data: &ScreencopyFrameState,
     ) {
         state
+            .native
             .runtime
             .pending_screencopies
             .retain(|pending| &pending.frame != frame);

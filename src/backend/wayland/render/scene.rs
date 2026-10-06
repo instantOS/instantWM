@@ -17,7 +17,7 @@ use smithay::output::Output;
 use smithay::utils::{Physical, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::wm::WaylandWm as Wm;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ use crate::wm::WaylandWm as Wm;
 /// (e.g. `DrmExtras::Memory` or `WaylandExtras::Memory`).
 pub fn build_bar_buffers(
     wm: &mut Wm,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
 ) -> Vec<(MemoryRenderBuffer, crate::types::Point)> {
     let show_top = wm.core.config.bar.show;
     let show_bottom = wm.core.config.bar.show_bottom
@@ -47,21 +47,16 @@ pub fn build_bar_buffers(
     }
 
     let render_ping = state.runtime.render_ping.clone();
-    let mut ctx = wm.wayland_ctx(state);
-    let crate::contexts::WmCtx::Wayland(wayland) = &mut ctx else {
-        return Vec::new();
-    };
-
+    let (mut core, data) = wm.split_core_and_backend();
     let mut buffers = if show_top {
-        wayland.bar_renderer.set_render_ping(render_ping);
-        crate::backend::wayland::bar::render_bar_buffers(&mut wayland.core, wayland.bar_renderer)
+        data.bar_renderer.set_render_ping(render_ping);
+        crate::backend::wayland::bar::render_bar_buffers(&mut core, &mut data.bar_renderer)
     } else {
         Vec::new()
     };
-
     if show_bottom {
         buffers.extend(crate::backend::wayland::bar::build_bottom_bar_buffers(
-            &mut wayland.core,
+            &mut core,
         ));
     }
 
@@ -88,7 +83,7 @@ pub struct SceneCache {
 /// Capture shared scene pieces that do not depend on the target output.
 pub fn build_shared_scene_elements(
     wm: &mut Wm,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     cache: &mut SceneCache,
 ) -> Rc<SharedSceneElements> {
     let layout_preview_color = match state.layout_preview_style() {
@@ -143,7 +138,7 @@ pub struct CommonSceneElements {
 /// Build the shared set of scene extras used by both startup renderers.
 pub fn build_common_scene_elements(
     wm: &mut Wm,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     cache: &mut SceneCache,
     renderer: &mut GlesRenderer,
     output: &Output,
@@ -154,7 +149,7 @@ pub fn build_common_scene_elements(
 
 /// Build the full scene for one output from reusable shared pieces.
 pub fn build_common_scene_elements_from_shared(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     renderer: &mut GlesRenderer,
     output: &Output,
     shared: &SharedSceneElements,
@@ -293,7 +288,7 @@ fn project_solids_to_output(
 }
 
 fn build_shortcut_recovery_indicator(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     output: &Output,
 ) -> Vec<SolidColorRenderElement> {
     const LOGICAL_HEIGHT: f64 = 6.0;
@@ -343,7 +338,7 @@ fn build_shortcut_recovery_indicator(
 /// above ordinary toplevels, independently of its parent's persistent stack
 /// position. Duplicate popup elements are removed from the Space bucket later.
 fn append_native_popup_elements(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     renderer: &mut GlesRenderer,
     output: &Output,
     output_scale: f64,

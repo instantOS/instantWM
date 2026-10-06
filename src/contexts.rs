@@ -351,7 +351,7 @@ impl<'a> WmCtx<'a> {
             Self::Wayland(ctx) => {
                 let mode_strings = ctx
                     .wayland
-                    .with_state_ref(|state| state.list_display_modes(display_name));
+                    .with_state_ref(|state| state.native.list_display_modes(display_name));
                 mode_strings.iter().filter_map(|s| s.parse().ok()).collect()
             }
             Self::X11(ctx) => {

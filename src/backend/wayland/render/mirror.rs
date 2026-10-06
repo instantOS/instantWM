@@ -14,7 +14,7 @@ use smithay::backend::renderer::element::utils::{
 use smithay::output::Output;
 use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Size};
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::config::config_toml::MirrorFit;
 
 pub type MirroredElement<E> = RelocateRenderElement<RescaleRenderElement<CropRenderElement<E>>>;
@@ -105,7 +105,7 @@ pub fn transformed_mode_size(output: &Output) -> Option<Size<i32, Physical>> {
 
 /// The source output and projection for a realized mirror head.
 pub fn mirror_projection(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     mirror: &Output,
 ) -> Option<(Output, MirrorProjection)> {
     let name = mirror.name();
@@ -127,7 +127,7 @@ pub fn mirror_projection(
 /// Map a physical point on a realized mirror head (transformed orientation)
 /// to the logical point of the source content it shows.
 pub fn mirror_point_to_logical(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     mirror: &Output,
     point: Point<f64, Physical>,
 ) -> Option<Point<f64, Logical>> {

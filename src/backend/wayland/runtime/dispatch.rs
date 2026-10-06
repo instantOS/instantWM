@@ -11,7 +11,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
         PointerButtonInput, handle_pointer_button,
     };
 
-    let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
+    let commands = std::mem::take(&mut *state.native.command_queue.borrow_mut());
     let mut commands = commands.into_iter().peekable();
     let mut pointer_hit_cache = None;
 
@@ -35,9 +35,10 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 handle_activate_window(wm, state, win);
             }
             WmCommand::PointerMotion(motion) => {
-                if let (Some(pointer), Some(keyboard)) =
-                    (state.seat.get_pointer(), state.seat.get_keyboard())
-                {
+                if let (Some(pointer), Some(keyboard)) = (
+                    state.native.seat.get_pointer(),
+                    state.native.seat.get_keyboard(),
+                ) {
                     let update_active_drag = should_update_active_drag(
                         wm.core.interaction.drag.active_interaction().is_some(),
                         next_is_pointer_motion,
@@ -56,10 +57,11 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 }
             }
             WmCommand::PointerButton(event) => {
-                if let (Some(pointer), Some(keyboard)) =
-                    (state.seat.get_pointer(), state.seat.get_keyboard())
-                {
-                    let loc = state.runtime.pointer_location;
+                if let (Some(pointer), Some(keyboard)) = (
+                    state.native.seat.get_pointer(),
+                    state.native.seat.get_keyboard(),
+                ) {
+                    let loc = state.native.runtime.pointer_location;
                     handle_pointer_button(
                         wm,
                         state,
@@ -73,10 +75,11 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 }
             }
             WmCommand::PointerAxis(event) => {
-                if let (Some(pointer), Some(keyboard)) =
-                    (state.seat.get_pointer(), state.seat.get_keyboard())
-                {
-                    let loc = state.runtime.pointer_location;
+                if let (Some(pointer), Some(keyboard)) = (
+                    state.native.seat.get_pointer(),
+                    state.native.seat.get_keyboard(),
+                ) {
+                    let loc = state.native.runtime.pointer_location;
                     handle_pointer_axis(
                         wm,
                         state,
@@ -148,7 +151,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 // the space synced (see
                 // `engine::process_animations_and_request_render`); doing it
                 // here would advertise pre-arrange geometry.
-                state.request_space_sync();
+                state.native.request_space_sync();
             }
             WmCommand::RequestBarRedraw => {
                 wm.bar.mark_dirty();
@@ -162,7 +165,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 ) {
                     wm.work.layout.mark_all_urgent();
                     wm.bar.mark_dirty();
-                    state.request_render();
+                    state.native.request_render();
                 }
             }
             WmCommand::SelectTag {
@@ -189,7 +192,7 @@ fn handle_raise_window(wm: &mut Wm, state: &mut WaylandState, win: crate::types:
 }
 
 fn handle_begin_move(wm: &mut Wm, state: &mut WaylandState, win: crate::types::WindowId) {
-    let point = state.runtime.pointer_location;
+    let point = state.native.runtime.pointer_location;
     let mut ctx = wm.wayland_ctx(state);
     let root = crate::types::Point::from_f64_round(point.x, point.y);
     crate::mouse::drag::title::title_drag_begin(
@@ -340,8 +343,8 @@ fn handle_set_fullscreen(
     };
     crate::backend::wayland::commands::apply_fullscreen_geometry(&wm.core, state, win, transition);
     state.sync_window_presentation(&wm.core, win);
-    state.request_space_sync();
-    state.request_render();
+    state.native.request_space_sync();
+    state.native.request_render();
 }
 
 fn handle_set_minimized(
@@ -407,7 +410,7 @@ fn handle_map_window(
         return;
     }
 
-    let element = wl_state.find_window(win).cloned();
+    let element = wl_state.native.find_window(win).cloned();
     let launch_context = take_wayland_launch_context(
         state,
         element.as_ref(),
@@ -455,7 +458,7 @@ fn handle_map_window(
     }
     wl_state.sync_window_presentation(&wm.core, win);
     wl_state.refresh_foreign_toplevel(&wm.core, win);
-    wl_state.request_space_sync();
+    wl_state.native.request_space_sync();
 }
 
 fn apply_initial_surface_presentation(
@@ -701,7 +704,7 @@ fn handle_begin_resize(
     win: crate::types::WindowId,
     dir: crate::types::ResizeDirection,
 ) {
-    let point = state.runtime.pointer_location;
+    let point = state.native.runtime.pointer_location;
     let mut ctx = wm.wayland_ctx(state);
     crate::client::fullscreen::leave_maximized(&mut ctx, win);
     let start = crate::types::Point::from_f64_round(point.x, point.y);
@@ -771,8 +774,8 @@ fn handle_set_maximized(
         state.raise_window_visual_only(win);
     }
     state.sync_window_presentation(&wm.core, win);
-    state.request_space_sync();
-    state.request_render();
+    state.native.request_space_sync();
+    state.native.request_render();
 }
 #[cfg(test)]
 mod tests {
@@ -814,7 +817,7 @@ mod tests {
             },
         );
 
-        state.push_command(WmCommand::RequestX11WindowSize {
+        state.native.push_command(WmCommand::RequestX11WindowSize {
             win,
             w: 900,
             h: 700,
@@ -824,7 +827,7 @@ mod tests {
         assert_eq!(wm.core.model.client(win).unwrap().geo, initial);
 
         state.reconcile_interactive_resize(&wm.core, None);
-        state.push_command(WmCommand::RequestX11WindowSize {
+        state.native.push_command(WmCommand::RequestX11WindowSize {
             win,
             w: 900,
             h: 700,
@@ -840,7 +843,7 @@ mod tests {
             .client_mut(win)
             .unwrap()
             .set_placement(ClientPlacement::Tiling);
-        state.push_command(WmCommand::RequestX11WindowSize {
+        state.native.push_command(WmCommand::RequestX11WindowSize {
             win,
             w: 1000,
             h: 800,

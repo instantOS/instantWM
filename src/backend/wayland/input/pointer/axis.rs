@@ -211,8 +211,10 @@ mod tests {
     fn tag_scroll_direction_matches_x11_button_convention() {
         let (mut wm, monitor_id, _first, _second) = wm_with_title_strip();
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let (Some(pointer), Some(keyboard)) = (state.seat.get_pointer(), state.seat.get_keyboard())
-        else {
+        let (Some(pointer), Some(keyboard)) = (
+            state.native.seat.get_pointer(),
+            state.native.seat.get_keyboard(),
+        ) else {
             panic!("test seat must provide pointer and keyboard handles");
         };
 
@@ -291,8 +293,10 @@ mod tests {
     fn scroll_during_a_captured_gesture_leaves_bar_hover_untouched() {
         let (mut wm, monitor_id, _first, second) = wm_with_title_strip();
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let (Some(pointer), Some(keyboard)) = (state.seat.get_pointer(), state.seat.get_keyboard())
-        else {
+        let (Some(pointer), Some(keyboard)) = (
+            state.native.seat.get_pointer(),
+            state.native.seat.get_keyboard(),
+        ) else {
             panic!("test seat must provide pointer and keyboard handles");
         };
 

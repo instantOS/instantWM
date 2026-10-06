@@ -25,17 +25,19 @@ impl WaylandState {
     /// Every keyboard focus change goes through
     /// [`WaylandState::set_keyboard_focus`], which consults this while locked.
     pub(crate) fn locked_keyboard_focus(&self) -> Option<KeyboardFocusTarget> {
-        if !self.is_locked() {
+        if !self.native.is_locked() {
             return None;
         }
         // Any live lock surface is a valid keyboard target: the seat has one
         // keyboard regardless of output count. Old surfaces are cleared on
         // unlock and when a replacement lock client takes over.
         let current = self
+            .native
             .seat
             .get_keyboard()
             .and_then(|keyboard| keyboard.current_focus());
-        self.lock_surfaces
+        self.native
+            .lock_surfaces
             .values()
             .filter(|surface| surface.alive())
             .find(|surface| {
@@ -44,20 +46,25 @@ impl WaylandState {
                         surface.wl_surface().clone(),
                     ))
             })
-            .or_else(|| self.lock_surfaces.values().find(|surface| surface.alive()))
+            .or_else(|| {
+                self.native
+                    .lock_surfaces
+                    .values()
+                    .find(|surface| surface.alive())
+            })
             .map(|surface| KeyboardFocusTarget::WlSurface(surface.wl_surface().clone()))
     }
 }
 
 impl SessionLockHandler for WaylandState {
     fn lock_state(&mut self) -> &mut SessionLockManagerState {
-        &mut self.session_lock_manager_state
+        &mut self.native.session_lock_manager_state
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
         log::info!("session lock requested");
 
-        if let SessionLockState::Locked(ref lock) = self.lock_state
+        if let SessionLockState::Locked(ref lock) = self.native.lock_state
             && lock.is_alive()
         {
             log::info!("refusing lock: already locked with an active client");
@@ -67,18 +74,18 @@ impl SessionLockHandler for WaylandState {
         // A touch sequence keeps the surface selected by its initial down
         // event. Cancel it before exposing lock surfaces so a pre-lock client
         // can never retain touch focus while the session is locked.
-        self.touch.clone().cancel(self);
+        self.native.touch.clone().cancel(self);
         self.cancel_touch_pointer_emulation(smithay::backend::input::InputTime::now());
-        self.runtime.wm_gesture_touch_slot = None;
+        self.native.runtime.wm_gesture_touch_slot = None;
 
         let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();
         // A replacement lock client must not inherit the previous client's
         // surfaces or any keyboard focus/grab from the unlocked session.
-        self.lock_surfaces.clear();
-        self.lock_state = SessionLockState::Locked(lock);
+        self.native.lock_surfaces.clear();
+        self.native.lock_state = SessionLockState::Locked(lock);
         self.set_keyboard_focus(None, SERIAL_COUNTER.next_serial());
-        self.push_command(
+        self.native.push_command(
             crate::backend::wayland::commands::WmCommand::CancelInteractiveDrag(
                 crate::core_state::DragCancelReason::SessionLocked,
             ),
@@ -90,10 +97,10 @@ impl SessionLockHandler for WaylandState {
         log::info!("session unlocked");
         // Do not let a sequence focused on the lock client survive after its
         // surfaces are removed.
-        self.touch.clone().cancel(self);
+        self.native.touch.clone().cancel(self);
         self.cancel_touch_pointer_emulation(smithay::backend::input::InputTime::now());
-        self.lock_state = SessionLockState::Unlocked;
-        self.lock_surfaces.clear();
+        self.native.lock_state = SessionLockState::Unlocked;
+        self.native.lock_surfaces.clear();
         self.clear_seat_focus();
         self.restore_focus_after_overlay();
     }
@@ -129,15 +136,19 @@ impl SessionLockHandler for WaylandState {
             surface.wl_surface(),
             move |state, destroyed| {
                 let is_current = state
+                    .native
                     .lock_surfaces
                     .get(&removed_output_name)
                     .is_some_and(|lock_surface| lock_surface.wl_surface() == destroyed);
                 if !is_current {
                     return;
                 }
-                state.lock_surfaces.remove(&removed_output_name);
-                state.request_output_name_render(removed_output_name.clone());
+                state.native.lock_surfaces.remove(&removed_output_name);
+                state
+                    .native
+                    .request_output_name_render(removed_output_name.clone());
                 let focused = state
+                    .native
                     .seat
                     .get_keyboard()
                     .and_then(|keyboard| keyboard.current_focus())
@@ -147,7 +158,7 @@ impl SessionLockHandler for WaylandState {
                 }
             },
         );
-        self.lock_surfaces.insert(output_name, surface);
+        self.native.lock_surfaces.insert(output_name, surface);
         // The first surface receives focus; later outputs keep the current
         // lock surface focused until it disappears.
         self.set_keyboard_focus(None, SERIAL_COUNTER.next_serial());
@@ -238,7 +249,11 @@ mod session_lock_focus_tests {
         event_loop
             .dispatch(Some(Duration::from_millis(250)), state)
             .expect("event loop dispatch");
-        state.display_handle.flush_clients().expect("flush clients");
+        state
+            .native
+            .display_handle
+            .flush_clients()
+            .expect("flush clients");
         while client.sync_count < next_sync {
             queue
                 .blocking_dispatch(client)
@@ -256,7 +271,7 @@ mod session_lock_focus_tests {
     }
 
     fn seat_focus(state: &WaylandState) -> Option<KeyboardFocusTarget> {
-        state.seat.get_keyboard().unwrap().current_focus()
+        state.native.seat.get_keyboard().unwrap().current_focus()
     }
 
     fn connect_client(
@@ -270,7 +285,7 @@ mod session_lock_focus_tests {
         ServerClient,
     ) {
         let (client_socket, server_socket) = UnixStream::pair().unwrap();
-        let mut dh = state.display_handle.clone();
+        let mut dh = state.native.display_handle.clone();
         let server_client = dh
             .insert_client(server_socket, Arc::new(WaylandClientState::default()))
             .expect("insert test client");
@@ -319,7 +334,7 @@ mod session_lock_focus_tests {
     }
 
     fn install_sticky_grab(state: &mut WaylandState, target: KeyboardFocusTarget) {
-        let keyboard = state.seat.get_keyboard().unwrap();
+        let keyboard = state.native.seat.get_keyboard().unwrap();
         keyboard.set_grab(
             state,
             StickyGrab {
@@ -335,11 +350,13 @@ mod session_lock_focus_tests {
     #[test]
     fn lock_focus_survives_grabs_and_output_surface_changes() {
         let (mut event_loop, mut state) = crate::test_support::new_compositor();
-        state.create_output("lock-test", Size::new(800, 600), None);
+        state
+            .native
+            .create_output("lock-test", Size::new(800, 600), None);
 
         let (conn, mut queue, mut client, registry, server_client) =
             connect_client(&mut event_loop, &mut state);
-        let dh = state.display_handle.clone();
+        let dh = state.native.display_handle.clone();
         let qh = queue.handle();
 
         let compositor: wl_compositor::WlCompositor =
@@ -368,8 +385,8 @@ mod session_lock_focus_tests {
             registry.bind(global(&client, "ext_session_lock_manager_v1"), 1, &qh, ());
         let lock = manager.lock(&qh, ());
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-        assert!(state.is_locked());
-        assert!(!state.seat.get_keyboard().unwrap().is_grabbed());
+        assert!(state.native.is_locked());
+        assert!(!state.native.seat.get_keyboard().unwrap().is_grabbed());
         assert_eq!(
             seat_focus(&state),
             None,
@@ -387,6 +404,7 @@ mod session_lock_focus_tests {
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
         let expected = KeyboardFocusTarget::WlSurface(
             state
+                .native
                 .lock_surfaces
                 .get("lock-test")
                 .expect("lock surface registered")
@@ -398,12 +416,14 @@ mod session_lock_focus_tests {
         // compositor focus request can hand input to a regular client.
         install_sticky_grab(&mut state, regular_target.clone());
         state.set_keyboard_focus(Some(regular_target), SERIAL_COUNTER.next_serial());
-        assert!(!state.seat.get_keyboard().unwrap().is_grabbed());
+        assert!(!state.native.seat.get_keyboard().unwrap().is_grabbed());
         assert_eq!(seat_focus(&state), Some(expected.clone()));
 
         // A new output's lock surface must not move the sole seat keyboard
         // away from the first lock surface.
-        state.create_output("lock-test-two", Size::new(640, 480), None);
+        state
+            .native
+            .create_output("lock-test-two", Size::new(640, 480), None);
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
         let second_output_name = client
             .globals
@@ -419,6 +439,7 @@ mod session_lock_focus_tests {
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
         let second_target = KeyboardFocusTarget::WlSurface(
             state
+                .native
                 .lock_surfaces
                 .get("lock-test-two")
                 .expect("second lock surface registered")
@@ -438,7 +459,9 @@ mod session_lock_focus_tests {
     #[test]
     fn disconnected_lock_client_stays_locked_until_a_new_client_takes_over() {
         let (mut event_loop, mut state) = crate::test_support::new_compositor();
-        state.create_output("lock-test", Size::new(800, 600), None);
+        state
+            .native
+            .create_output("lock-test", Size::new(800, 600), None);
 
         {
             let (conn, mut queue, mut client, registry, _) =
@@ -454,7 +477,7 @@ mod session_lock_focus_tests {
             let wl_surface = compositor.create_surface(&qh, ());
             let _lock_surface = lock.get_lock_surface(&wl_surface, &output, &qh, ());
             pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-            assert!(state.is_locked());
+            assert!(state.native.is_locked());
             assert!(seat_focus(&state).is_some());
         }
 
@@ -463,8 +486,8 @@ mod session_lock_focus_tests {
         event_loop
             .dispatch(Some(Duration::from_millis(250)), &mut state)
             .expect("process client disconnect");
-        assert!(state.is_locked());
-        assert!(state.lock_surfaces.is_empty());
+        assert!(state.native.is_locked());
+        assert!(state.native.lock_surfaces.is_empty());
         assert_eq!(seat_focus(&state), None);
 
         let (conn, mut queue, mut client, registry, _) =
@@ -477,13 +500,14 @@ mod session_lock_focus_tests {
         let output: wl_output::WlOutput = registry.bind(global(&client, "wl_output"), 1, &qh, ());
         let lock = manager.lock(&qh, ());
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-        assert!(state.is_locked());
+        assert!(state.native.is_locked());
         assert_eq!(seat_focus(&state), None);
 
         let wl_surface = compositor.create_surface(&qh, ());
         let _lock_surface = lock.get_lock_surface(&wl_surface, &output, &qh, ());
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
         let replacement = state
+            .native
             .lock_surfaces
             .get("lock-test")
             .expect("replacement lock surface registered")
@@ -496,8 +520,8 @@ mod session_lock_focus_tests {
 
         lock.unlock_and_destroy();
         pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
-        assert!(!state.is_locked());
-        assert!(state.lock_surfaces.is_empty());
+        assert!(!state.native.is_locked());
+        assert!(state.native.lock_surfaces.is_empty());
         assert_eq!(seat_focus(&state), None);
     }
 }

@@ -69,3 +69,5 @@ pub(crate) fn new_event_loop_and_state(
 // ---------------------------------------------------------------------------
 
 delegate_dispatch2!(WaylandState);
+
+pub(crate) use state::WaylandNativeState;

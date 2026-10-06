@@ -97,10 +97,15 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
             ..Client::default()
         },
     );
-    state.window_index.insert(win, element);
+    state.native.window_index.insert(win, element);
     state.resize_window(&wm.core, win, initial);
     assert_eq!(
-        state.geometry_sync.get(&win).unwrap().scheduled_size(),
+        state
+            .native
+            .geometry_sync
+            .get(&win)
+            .unwrap()
+            .scheduled_size(),
         None
     );
 
@@ -109,7 +114,12 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
     let moved = Rect::new(400, 250, initial.w, initial.h);
     state.resize_window(&wm.core, win, moved);
     assert_eq!(
-        state.geometry_sync.get(&win).unwrap().scheduled_size(),
+        state
+            .native
+            .geometry_sync
+            .get(&win)
+            .unwrap()
+            .scheduled_size(),
         None
     );
     let actual = conn.get_geometry(xwindow).unwrap().reply().unwrap();

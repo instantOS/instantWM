@@ -82,7 +82,7 @@ impl WaylandState {
         if !LayerKeyboardPolicy::for_root_surface(&root).allows(request) {
             return false;
         }
-        if self.seat.get_keyboard().is_none() {
+        if self.native.seat.get_keyboard().is_none() {
             return false;
         }
         // Session-lock aware: while locked this re-anchors to the lock
@@ -93,7 +93,8 @@ impl WaylandState {
 
     /// Whether an upper exclusive layer currently owns the seat keyboard.
     pub(crate) fn exclusive_layer_has_keyboard_focus(&self) -> bool {
-        self.seat
+        self.native
+            .seat
             .get_keyboard()
             .and_then(|keyboard| keyboard.current_focus())
             .is_some_and(|focus| {
@@ -127,6 +128,7 @@ impl WaylandState {
 
     fn has_mapped_layer_keyboard_focus(&self) -> bool {
         let Some(KeyboardFocusTarget::WlSurface(surface)) = self
+            .native
             .seat
             .get_keyboard()
             .and_then(|keyboard| keyboard.current_focus())
@@ -138,7 +140,7 @@ impl WaylandState {
     }
 
     fn topmost_exclusive_layer_surface(&self) -> Option<WlSurface> {
-        let outputs: Vec<_> = self.space.outputs().cloned().collect();
+        let outputs: Vec<_> = self.native.space.outputs().cloned().collect();
         outputs.iter().rev().find_map(|output| {
             let map = layer_map_for_output(output);
             map.layers_on(Layer::Overlay)
@@ -153,7 +155,7 @@ impl WaylandState {
     }
 
     fn layer_root_surface(&self, surface: &WlSurface) -> Option<WlSurface> {
-        self.space.outputs().find_map(|output| {
+        self.native.space.outputs().find_map(|output| {
             layer_map_for_output(output)
                 .layer_for_surface(surface, WindowSurfaceType::ALL)
                 .map(|layer| layer.wl_surface().clone())

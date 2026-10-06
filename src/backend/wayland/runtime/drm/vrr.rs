@@ -9,6 +9,7 @@ use crate::wm::WaylandWm as Wm;
 
 fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {
     state
+        .native
         .runtime
         .pending_screencopies
         .iter()
@@ -55,17 +56,20 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
         BackendVrrSupport::Unsupported => false,
         BackendVrrSupport::RequiresModeset => matches!(entry.configured_vrr_mode, VrrMode::On),
         BackendVrrSupport::Supported => {
-            let hard_blocked = state.is_locked()
-                || state.has_window_animations_on_output(&entry.output)
+            let hard_blocked = state.native.is_locked()
+                || state.native.has_window_animations_on_output(&entry.output)
                 || state.has_active_layout_preview_animation()
                 || has_pending_screencopy_for_output(state, &output_name)
-                || !state.overlay_windows_for_render(&entry.output).is_empty()
+                || !state
+                    .native
+                    .overlay_windows_for_render(&entry.output)
+                    .is_empty()
                 || !matches!(
-                    state.cursor_image_status,
+                    state.native.cursor_image_status,
                     smithay::input::pointer::CursorImageStatus::Named(_)
                         | smithay::input::pointer::CursorImageStatus::Hidden
                 )
-                || state.runtime.dnd_icon.is_some();
+                || state.native.runtime.dnd_icon.is_some();
 
             if hard_blocked {
                 return false;
@@ -87,7 +91,9 @@ pub(super) fn apply_output_vrr_policy(
 ) {
     let target = compute_output_vrr_target(wm, state, entry);
     if entry.vrr_enabled == target {
-        state.set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
+        state
+            .native
+            .set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
         return;
     }
 
@@ -99,7 +105,9 @@ pub(super) fn apply_output_vrr_policy(
     {
         Ok(()) => {
             entry.vrr_enabled = target;
-            state.set_output_vrr_enabled(&entry.output.name(), target);
+            state
+                .native
+                .set_output_vrr_enabled(&entry.output.name(), target);
             log::info!(
                 "Output {}: VRR {} (mode: {:?}, support: {:?})",
                 entry.output.name(),
@@ -109,7 +117,9 @@ pub(super) fn apply_output_vrr_policy(
             );
         }
         Err(err) => {
-            state.set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
+            state
+                .native
+                .set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
             log::warn!(
                 "Output {}: failed to set VRR {}: {:?}",
                 entry.output.name(),

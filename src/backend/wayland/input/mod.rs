@@ -111,12 +111,14 @@ pub fn handle_resize(
     );
     output.set_preferred(mode);
     let output_loc = state
+        .native
         .space
         .output_geometry(output)
         .map(|geo| geo.loc)
         .unwrap_or_default();
-    state.space.map_output(output, output_loc);
+    state.native.space.map_output(output, output_loc);
     state
+        .native
         .output_management_state
         .update_heads::<crate::backend::wayland::compositor::WaylandState>(std::iter::once(output));
     layer_map_for_output(output).arrange();
@@ -128,5 +130,5 @@ pub fn handle_resize(
     // its full output rect, so re-apply the layer-shell exclusive zones.
     let _ = crate::backend::wayland::compositor::layer_shell::apply_available_rects(wm, state);
     wm.work.layout.mark_all_urgent();
-    state.request_space_sync();
+    state.native.request_space_sync();
 }

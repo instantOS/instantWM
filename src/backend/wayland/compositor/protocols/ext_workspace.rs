@@ -109,6 +109,7 @@ impl WorkspaceSnapshot {
     fn capture(core_view: &crate::core_state::CoreState, state: &WaylandState) -> Self {
         let globals = core_view;
         let monitors = state
+            .native
             .space
             .outputs()
             .cloned()
@@ -192,7 +193,7 @@ pub fn refresh(core_view: &crate::core_state::CoreState, state: &mut WaylandStat
         return;
     }
     let snapshot = WorkspaceSnapshot::capture(core_view, state);
-    let protocol = &mut state.ext_workspace_state;
+    let protocol = &mut state.native.ext_workspace_state;
     snapshot.update_cache(protocol);
     let mut changed = remove_stale_outputs(protocol, &snapshot.output_names());
     changed |= remove_stale_tags(protocol, &snapshot);
@@ -208,9 +209,10 @@ pub fn refresh(core_view: &crate::core_state::CoreState, state: &mut WaylandStat
 }
 
 fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState) -> bool {
-    let protocol = &state.ext_workspace_state;
-    if state.space.outputs().count() != protocol.last_output_names.len()
+    let protocol = &state.native.ext_workspace_state;
+    if state.native.space.outputs().count() != protocol.last_output_names.len()
         || state
+            .native
             .space
             .outputs()
             .enumerate()
@@ -219,7 +221,7 @@ fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState
         return true;
     }
     let globals = core_view;
-    for output in state.space.outputs() {
+    for output in state.native.space.outputs() {
         let output_name = output.name();
         let Some(monitor) = globals
             .model
@@ -266,6 +268,7 @@ fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState
                 return false;
             };
             let Some(output) = state
+                .native
                 .space
                 .outputs()
                 .find(|output| output.name() == user_data.output_name)
@@ -645,7 +648,7 @@ impl GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceGlobalData, WaylandState>
     ) {
         let manager = data_init.init(resource, ());
 
-        let manager_state = &mut state.ext_workspace_state;
+        let manager_state = &mut state.native.ext_workspace_state;
 
         let mut new_workspaces: HashMap<_, Vec<_>> = HashMap::new();
         for ((ws_output, ws_idx), ws_data) in &mut manager_state.workspaces {
@@ -661,6 +664,7 @@ impl GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceGlobalData, WaylandState>
 
         for (output_name, group_data) in &mut manager_state.workspace_groups {
             let output = state
+                .native
                 .space
                 .outputs()
                 .find(|o| o.name() == *output_name)
@@ -692,13 +696,13 @@ impl Dispatch<ExtWorkspaceManagerV1, (), WaylandState> for WaylandState {
     ) {
         match request {
             ext_workspace_manager_v1::Request::Commit => {
-                let manager_state = &mut state.ext_workspace_state;
+                let manager_state = &mut state.native.ext_workspace_state;
                 if let Some(actions) = manager_state.instances.get_mut(resource) {
                     let actions = mem::take(actions);
                     for action in actions {
                         match action {
                             Action::Activate(output_name, tag_index) => {
-                                state.push_command(
+                                state.native.push_command(
                                     crate::backend::wayland::commands::WmCommand::SelectTag {
                                         monitor_name: output_name,
                                         tag_index,
@@ -711,7 +715,7 @@ impl Dispatch<ExtWorkspaceManagerV1, (), WaylandState> for WaylandState {
             }
             ext_workspace_manager_v1::Request::Stop => {
                 resource.finished();
-                let manager_state = &mut state.ext_workspace_state;
+                let manager_state = &mut state.native.ext_workspace_state;
                 manager_state.instances.retain(|x, _| x != resource);
                 for group_data in manager_state.workspace_groups.values_mut() {
                     group_data.instances.retain(|instance| {
@@ -742,7 +746,7 @@ impl Dispatch<ExtWorkspaceManagerV1, (), WaylandState> for WaylandState {
         resource: &ExtWorkspaceManagerV1,
         _data: &(),
     ) {
-        let manager_state = &mut state.ext_workspace_state;
+        let manager_state = &mut state.native.ext_workspace_state;
         manager_state.instances.retain(|x, _| x != resource);
     }
 }
@@ -757,7 +761,7 @@ impl Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceUserData, WaylandState> for Wayl
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, WaylandState>,
     ) {
-        let manager_state = &mut state.ext_workspace_state;
+        let manager_state = &mut state.native.ext_workspace_state;
 
         if let ext_workspace_handle_v1::Request::Activate = request
             && let Some(actions) = manager_state.instances.get_mut(&data.manager)
@@ -772,7 +776,7 @@ impl Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceUserData, WaylandState> for Wayl
         resource: &ExtWorkspaceHandleV1,
         data: &ExtWorkspaceUserData,
     ) {
-        let manager_state = &mut state.ext_workspace_state;
+        let manager_state = &mut state.native.ext_workspace_state;
         if let Some(ws_data) = manager_state
             .workspaces
             .get_mut(&(data.output_name.clone(), data.tag_index))
@@ -801,7 +805,7 @@ impl Dispatch<ExtWorkspaceGroupHandleV1, ExtWorkspaceGroupUserData, WaylandState
         resource: &ExtWorkspaceGroupHandleV1,
         data: &ExtWorkspaceGroupUserData,
     ) {
-        let manager_state = &mut state.ext_workspace_state;
+        let manager_state = &mut state.native.ext_workspace_state;
         if let Some(group_data) = manager_state.workspace_groups.get_mut(&data.output_name) {
             group_data.instances.retain(|instance| instance != resource);
         }

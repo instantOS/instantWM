@@ -17,13 +17,13 @@ use smithay::wayland::commit_timing::{CommitTimerBarrierStateUserData, Timestamp
 use smithay::wayland::fifo::FifoBarrierCachedState;
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::WaylandNativeState;
 
 /// Release commits whose requested not-before timestamp is compatible with
 /// the predicted presentation time, returning the earliest deadline still
 /// blocked on this output.
 pub fn service_commit_timing(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output: &Output,
     presentation_target: smithay::utils::Time<smithay::utils::Monotonic>,
 ) -> Option<Timestamp> {
@@ -69,7 +69,7 @@ pub fn service_commit_timing(
 }
 
 fn constraint_matches_output(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     surface: &WlSurface,
     states: &smithay::wayland::compositor::SurfaceData,
     output: &Output,
@@ -88,7 +88,7 @@ fn constraint_matches_output(
 /// Keep the surface registered after signaling: a queued commit can install
 /// another barrier when `blocker_cleared` applies it. Its pre-commit hook has
 /// already run, so removing the surface here would lose that new barrier.
-pub fn release_fifo_barriers(state: &mut WaylandState, output: &Output) {
+pub fn release_fifo_barriers(state: &mut WaylandNativeState, output: &Output) {
     let mut clients: Vec<Client> = Vec::new();
     for surface in &state.fifo_constraint_surfaces {
         let barrier = smithay::wayland::compositor::with_states(surface, |states| {
@@ -135,7 +135,7 @@ fn remember_client(clients: &mut Vec<Client>, client: Client) {
 /// selection is done from current geometry rather than `Space`'s cached output
 /// membership: commits can arrive before the next `Space::refresh`, especially
 /// for short-lived Xwayland override-redirect windows.
-pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
+pub fn send_frame_callbacks(state: &WaylandNativeState, output: &Output, elapsed: Duration) {
     let throttle = output.current_mode().and_then(|mode| {
         let refresh = u64::try_from(mode.refresh).ok()?;
         (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
@@ -174,7 +174,7 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
 }
 
 fn send_auxiliary_surface_frame_callbacks(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     output: &Output,
     elapsed: Duration,
     throttle: Option<Duration>,
@@ -197,7 +197,7 @@ fn send_auxiliary_surface_frame_callbacks(
 /// frame callbacks are throttled as if every surface were off-screen, which can
 /// stall clients that rely on `wl_surface.frame`.
 pub fn update_primary_scanout_output(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     output: &Output,
     render_states: &RenderElementStates,
 ) {
@@ -257,7 +257,7 @@ pub fn update_primary_scanout_output(
 }
 
 fn update_auxiliary_surface_primary_scanout(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     output: &Output,
     render_states: &RenderElementStates,
 ) {
@@ -279,7 +279,7 @@ fn update_auxiliary_surface_primary_scanout(
 /// Visit compositor-rendered surfaces which are not part of a window or layer
 /// tree. They still need the same frame and scanout servicing as ordinary
 /// visible content or clients can stall while updating them.
-fn for_each_auxiliary_surface(state: &WaylandState, mut visit: impl FnMut(&WlSurface)) {
+fn for_each_auxiliary_surface(state: &WaylandNativeState, mut visit: impl FnMut(&WlSurface)) {
     if let CursorImageStatus::Surface(surface) = &state.cursor_image_status {
         visit(surface);
     }
@@ -309,7 +309,7 @@ fn update_preferred_fractional_scale(
 /// Test current compositor geometry instead of Smithay's lazily refreshed
 /// element/output membership cache.
 pub(crate) fn window_overlaps_output(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     window: &smithay::desktop::Window,
     output: &Output,
 ) -> bool {

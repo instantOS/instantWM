@@ -105,12 +105,12 @@ impl<'a> WaylandBackend<'a> {
     }
 
     pub fn xdisplay(&self) -> Option<u32> {
-        self.with_state_ref(|state: &WaylandState| state.xdisplay)
+        self.with_state_ref(|state: &WaylandState| state.native.xdisplay)
     }
 
     pub fn pointer_location(&self) -> Option<Point> {
         Some(self.with_state_ref(|state: &WaylandState| {
-            let loc = state.pointer.current_location();
+            let loc = state.native.pointer.current_location();
             Point::from_f64_round(loc.x, loc.y)
         }))
     }
@@ -122,20 +122,20 @@ impl<'a> WaylandBackend<'a> {
     }
 
     pub fn request_space_sync(&mut self) {
-        self.with_state(|state: &mut WaylandState| state.request_space_sync());
+        self.with_state(|state: &mut WaylandState| state.native.request_space_sync());
     }
 
     pub fn request_render(&mut self) {
-        self.with_state(|state: &mut WaylandState| state.request_render());
+        self.with_state(|state: &mut WaylandState| state.native.request_render());
     }
 
     pub fn set_cursor_icon_override(&mut self, icon: Option<smithay::input::pointer::CursorIcon>) {
         self.with_state(|state: &mut WaylandState| {
-            if state.cursor_icon_override == icon {
+            if state.native.cursor_icon_override == icon {
                 return;
             }
-            state.cursor_icon_override = icon;
-            state.request_render();
+            state.native.cursor_icon_override = icon;
+            state.native.request_render();
         });
     }
 
@@ -156,6 +156,7 @@ impl<'a> WaylandBackend<'a> {
     pub fn get_input_devices(&self) -> Vec<String> {
         self.with_state_ref(|state: &WaylandState| {
             state
+                .native
                 .runtime
                 .tracked_devices
                 .iter()
@@ -258,6 +259,7 @@ impl<'a> WaylandBackend<'a> {
         let token = self.with_state(|state| {
             let source_surface = selected_window.and_then(|win| {
                 state
+                    .native
                     .find_window(win)
                     .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()))
             });
@@ -269,6 +271,7 @@ impl<'a> WaylandBackend<'a> {
                 .user_data
                 .insert_if_missing_threadsafe(|| context);
             let (token, _) = state
+                .native
                 .xdg_activation_state
                 .create_external_token(Some(token_data));
             token.as_str().to_owned()
@@ -392,26 +395,28 @@ impl WaylandBackend<'_> {
     pub fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy) {
         self.with_state(|state: &mut WaylandState| {
             let output_names: Vec<_> = state
+                .native
                 .output_management_state
                 .outputs()
                 .iter()
                 .map(|output| output.name())
                 .collect();
-            state.runtime.mirror_of = policy.mirrors.clone();
-            state.runtime.configured_output_positions.clear();
+            state.native.runtime.mirror_of = policy.mirrors.clone();
+            state.native.runtime.configured_output_positions.clear();
             for name in &output_names {
                 let Some(config) = policy.effective(name) else {
                     continue;
                 };
                 if config.position.is_some() {
                     state
+                        .native
                         .runtime
                         .configured_output_positions
                         .insert(name.clone());
                 }
-                state.set_output_config(name, config);
+                state.native.set_output_config(name, config);
             }
-            state.queue_output_policy_projection(&policy.configs);
+            state.native.queue_output_policy_projection(&policy.configs);
         });
     }
 }
@@ -426,6 +431,7 @@ impl OutputOps for WaylandBackend<'_> {
     fn connected_output_names(&self) -> Vec<String> {
         self.with_state_ref(|state| {
             state
+                .native
                 .output_management_state
                 .outputs()
                 .iter()
@@ -437,13 +443,15 @@ impl OutputOps for WaylandBackend<'_> {
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
         self.with_state_ref(|state: &WaylandState| {
             state
+                .native
                 .space
                 .outputs()
                 .map(|o| {
                     let name = o.name();
-                    let geom = state.space.output_geometry(o).unwrap_or_default();
-                    let metadata = state.output_vrr_metadata(&name);
+                    let geom = state.native.space.output_geometry(o).unwrap_or_default();
+                    let metadata = state.native.output_vrr_metadata(&name);
                     let mut mirrors: Vec<String> = state
+                        .native
                         .runtime
                         .realized_mirrors
                         .iter()
@@ -506,8 +514,12 @@ mod tests {
         use crate::config::config_toml::MonitorConfig;
 
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        state.create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
-        state.create_output("DP-1", crate::types::Size::new(1920, 1080), None);
+        state
+            .native
+            .create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
+        state
+            .native
+            .create_output("DP-1", crate::types::Size::new(1920, 1080), None);
         let mut backend = WaylandBackend::new(&mut state);
 
         let configs = [
@@ -532,23 +544,44 @@ mod tests {
         backend.apply_monitor_configs(&crate::output_mirror::MonitorPolicy::new(&configs));
 
         backend.with_state(|state| {
-            assert_eq!(state.runtime.mirror_of.source_of("DP-1"), Some("eDP-1"));
+            assert_eq!(
+                state.native.runtime.mirror_of.source_of("DP-1"),
+                Some("eDP-1")
+            );
             // A mirror owns no desktop region, so it is not a placement
             // anchor; automatic placement simply skips it.
-            assert!(state.runtime.configured_output_positions.contains("eDP-1"));
-            assert!(!state.runtime.configured_output_positions.contains("DP-1"));
-            assert!(state.runtime.projected_mirrors.contains("DP-1"));
+            assert!(
+                state
+                    .native
+                    .runtime
+                    .configured_output_positions
+                    .contains("eDP-1")
+            );
+            assert!(
+                !state
+                    .native
+                    .runtime
+                    .configured_output_positions
+                    .contains("DP-1")
+            );
+            assert!(state.native.runtime.projected_mirrors.contains("DP-1"));
             // Roles change only once the pinning transaction applies.
-            assert!(state.runtime.realized_mirrors.is_empty());
+            assert!(state.native.runtime.realized_mirrors.is_empty());
         });
     }
 
     #[test]
     fn discovery_reports_realized_mirrors_under_their_source() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        state.create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
-        state.create_output("DP-1", crate::types::Size::new(1920, 1080), None);
-        state.set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
+        state
+            .native
+            .create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
+        state
+            .native
+            .create_output("DP-1", crate::types::Size::new(1920, 1080), None);
+        state
+            .native
+            .set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
         let backend = WaylandBackend::new(&mut state);
 
         let outputs = backend.get_outputs();

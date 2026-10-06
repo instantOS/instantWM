@@ -7,7 +7,7 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::desktop::PopupManager;
 
-use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
+use crate::backend::wayland::compositor::{WaylandNativeState, WindowIdMarker};
 use crate::model::WmModel;
 use crate::types::{BorderColorConfig, Rect, WindowId};
 
@@ -71,7 +71,7 @@ pub struct BorderScene {
 }
 
 impl BorderScene {
-    pub fn capture(model: &WmModel, state: &WaylandState) -> Self {
+    pub fn capture(model: &WmModel, state: &WaylandNativeState) -> Self {
         Self {
             windows: collect_window_info(model, state),
             popup_occluders: build_popup_occluders(state),
@@ -141,7 +141,7 @@ impl BorderScene {
 
 /// Collect window policy from the model and displayed geometry from the
 /// compositor. Never substitute `client.geo` here: it is the logical target.
-fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorderInfo> {
+fn collect_window_info(model: &WmModel, state: &WaylandNativeState) -> Vec<WindowBorderInfo> {
     let mut windows = Vec::new();
 
     for window in state.space.elements() {
@@ -250,7 +250,7 @@ fn apply_occluders(
 /// below the WM's border bucket. Without explicit occlusion, borders would
 /// paint over popups that extend past their parent window. We treat every
 /// popup as an occluder for every border so popups appear on top.
-fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
+fn build_popup_occluders(state: &WaylandNativeState) -> Vec<Rect> {
     let mut occluders = Vec::new();
     for window in state.space.elements() {
         let Some(toplevel) = window.toplevel() else {

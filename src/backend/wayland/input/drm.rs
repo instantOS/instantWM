@@ -106,11 +106,16 @@ fn resolve_initial_lid_state(
 }
 
 fn update_lid_state(state: &mut WaylandState) {
-    let closed = state.runtime.lid_switches.values().any(|closed| *closed);
-    if state.runtime.lid_output_policy.set_closed(closed) {
+    let closed = state
+        .native
+        .runtime
+        .lid_switches
+        .values()
+        .any(|closed| *closed);
+    if state.native.runtime.lid_output_policy.set_closed(closed) {
         log::info!("Laptop lid {}", if closed { "closed" } else { "opened" });
-        state.runtime.lid_policy_dirty = true;
-        state.request_render();
+        state.native.runtime.lid_policy_dirty = true;
+        state.native.request_render();
     }
 }
 
@@ -238,8 +243,8 @@ pub fn dispatch_libinput_event(
     layout: crate::types::Rect,
     initial_lid_state: Option<bool>,
 ) -> LibinputEventOutcome {
-    let keyboard_handle = state.keyboard.clone();
-    let pointer_handle = state.pointer.clone();
+    let keyboard_handle = state.native.keyboard.clone();
+    let pointer_handle = state.native.pointer.clone();
     use crate::backend::wayland::commands::{
         PointerAxis, PointerAxisCommand, PointerButtonCommand, PointerMotionCommand, WmCommand,
     };
@@ -250,6 +255,7 @@ pub fn dispatch_libinput_event(
 
             if let Some(closed) = resolve_initial_lid_state(&device, initial_lid_state) {
                 state
+                    .native
                     .runtime
                     .lid_switches
                     .insert(device.sysname().to_owned(), closed);
@@ -257,18 +263,19 @@ pub fn dispatch_libinput_event(
             }
             configure_device(&mut device, &wm.core.config.input);
             if device.has_capability(DeviceCapability::TabletTool) {
-                state
-                    .seat
-                    .tablet_seat()
-                    .add_wp_tablet(&state.display_handle, &TabletDescriptor::from(&device));
+                state.native.seat.tablet_seat().add_wp_tablet(
+                    &state.native.display_handle,
+                    &TabletDescriptor::from(&device),
+                );
             }
-            state.runtime.tracked_devices.push(device);
+            state.native.runtime.tracked_devices.push(device);
             LibinputEventOutcome::Ignored
         }
         InputEvent::DeviceRemoved { device } => {
             use smithay::reexports::input::DeviceCapability;
 
             if state
+                .native
                 .runtime
                 .lid_switches
                 .remove(device.sysname())
@@ -279,9 +286,13 @@ pub fn dispatch_libinput_event(
             let removed_pointer = device.has_capability(DeviceCapability::Pointer);
             let removed_touch = device.has_capability(DeviceCapability::Touch);
             let removed_tablet = device.has_capability(DeviceCapability::TabletTool);
-            state.runtime.tracked_devices.retain(|d| d != &device);
+            state
+                .native
+                .runtime
+                .tracked_devices
+                .retain(|d| d != &device);
             if removed_pointer {
-                state.push_command(WmCommand::CancelInteractiveDrag(
+                state.native.push_command(WmCommand::CancelInteractiveDrag(
                     crate::core_state::DragCancelReason::InputDeviceRemoved,
                 ));
             }
@@ -289,7 +300,7 @@ pub fn dispatch_libinput_event(
                 handle_touch_cancel(wm, state);
             }
             if removed_tablet {
-                let tablet_seat = state.seat.tablet_seat();
+                let tablet_seat = state.native.seat.tablet_seat();
                 tablet_seat.remove_tablet(&TabletDescriptor::from(&device));
                 if tablet_seat.count_tablets() == 0 {
                     tablet_seat.clear_tools();
@@ -299,7 +310,7 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::SwitchToggle { event } => {
             if SwitchToggleEvent::switch(&event) == Some(Switch::Lid) {
-                state.runtime.lid_switches.insert(
+                state.native.runtime.lid_switches.insert(
                     event.device().sysname().to_owned(),
                     event.state() == SwitchState::On,
                 );
@@ -313,13 +324,15 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::PointerMotion { event } => {
-            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
-                dx: event.delta_x(),
-                dy: event.delta_y(),
-                dx_unaccel: event.delta_x_unaccel(),
-                dy_unaccel: event.delta_y_unaccel(),
-                time: event.time(),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
+                    dx: event.delta_x(),
+                    dy: event.delta_y(),
+                    dx_unaccel: event.delta_x_unaccel(),
+                    dy_unaccel: event.delta_y_unaccel(),
+                    time: event.time(),
+                }));
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::PointerMotionAbsolute { event } => {
@@ -328,37 +341,43 @@ pub fn dispatch_libinput_event(
             // misplaced every absolute device on negative-origin layouts.
             let x = layout.x as f64 + event.x_transformed(layout.w.max(1));
             let y = layout.y as f64 + event.y_transformed(layout.h.max(1));
-            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
-                x,
-                y,
-                time: event.time(),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
+                    x,
+                    y,
+                    time: event.time(),
+                }));
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::PointerButton { event } => {
-            state.push_command(WmCommand::PointerButton(PointerButtonCommand {
-                code: event.button_code(),
-                state: event.state(),
-                time: event.time(),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerButton(PointerButtonCommand {
+                    code: event.button_code(),
+                    state: event.state(),
+                    time: event.time(),
+                }));
             LibinputEventOutcome::Activity
         }
         InputEvent::PointerAxis { event } => {
             let time = event.time();
-            state.push_command(WmCommand::PointerAxis(PointerAxisCommand {
-                source: event.source(),
-                horizontal: PointerAxis {
-                    amount: event.amount(Axis::Horizontal),
-                    v120: event.amount_v120(Axis::Horizontal),
-                    relative_direction: event.relative_direction(Axis::Horizontal),
-                },
-                vertical: PointerAxis {
-                    amount: event.amount(Axis::Vertical),
-                    v120: event.amount_v120(Axis::Vertical),
-                    relative_direction: event.relative_direction(Axis::Vertical),
-                },
-                time,
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerAxis(PointerAxisCommand {
+                    source: event.source(),
+                    horizontal: PointerAxis {
+                        amount: event.amount(Axis::Horizontal),
+                        v120: event.amount_v120(Axis::Horizontal),
+                        relative_direction: event.relative_direction(Axis::Horizontal),
+                    },
+                    vertical: PointerAxis {
+                        amount: event.amount(Axis::Vertical),
+                        v120: event.amount_v120(Axis::Vertical),
+                        relative_direction: event.relative_direction(Axis::Vertical),
+                    },
+                    time,
+                }));
             LibinputEventOutcome::Activity
         }
         InputEvent::GesturePinchBegin { event } => {
@@ -513,12 +532,12 @@ fn handle_tablet_tool_axis(
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolAxisEvent,
     layout: crate::types::Rect,
 ) {
-    let tablet_seat = state.seat.tablet_seat();
+    let tablet_seat = state.native.seat.tablet_seat();
     let x = layout.x as f64 + event.x_transformed(layout.w.max(1));
     let y = layout.y as f64 + event.y_transformed(layout.h.max(1));
     let pointer_location = smithay::utils::Point::from((x, y));
-    state.runtime.pointer_location = pointer_location;
-    if let Some(pointer) = state.seat.get_pointer() {
+    state.native.runtime.pointer_location = pointer_location;
+    if let Some(pointer) = state.native.seat.get_pointer() {
         pointer.set_location(pointer_location);
     }
 
@@ -563,12 +582,12 @@ fn handle_tablet_tool_proximity(
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolProximityEvent,
     layout: crate::types::Rect,
 ) {
-    let tablet_seat = state.seat.tablet_seat();
+    let tablet_seat = state.native.seat.tablet_seat();
     let x = layout.x as f64 + event.x_transformed(layout.w.max(1));
     let y = layout.y as f64 + event.y_transformed(layout.h.max(1));
     let pointer_location = smithay::utils::Point::from((x, y));
-    state.runtime.pointer_location = pointer_location;
-    if let Some(pointer) = state.seat.get_pointer() {
+    state.native.runtime.pointer_location = pointer_location;
+    if let Some(pointer) = state.native.seat.get_pointer() {
         pointer.set_location(pointer_location);
     }
 
@@ -578,7 +597,7 @@ fn handle_tablet_tool_proximity(
     let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
 
     let tablet = tablet_seat.get_tablet(&TabletDescriptor::from(&event.device()));
-    let dh = state.display_handle.clone();
+    let dh = state.native.display_handle.clone();
     let tool = tablet_seat
         .get_tool(&tool_desc)
         .unwrap_or_else(|| tablet_seat.add_wp_tool(state, &dh, &tool_desc));
@@ -629,7 +648,7 @@ fn handle_tablet_tool_tip(
     core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolTipEvent,
 ) {
-    let tablet_seat = state.seat.tablet_seat();
+    let tablet_seat = state.native.seat.tablet_seat();
     let tool = tablet_seat.get_tool(&event.tool());
 
     if let Some(tool) = tool {
@@ -645,7 +664,7 @@ fn handle_tablet_tool_tip(
                     },
                 );
 
-                let loc = state.runtime.pointer_location;
+                let loc = state.native.runtime.pointer_location;
                 let snapshot = state.pointer_hit_snapshot();
                 let hit = state.contents_under_pointer_in_snapshot(core_view, loc, &snapshot);
                 if let Some(win) = hit.hovered_win {
@@ -671,7 +690,7 @@ fn handle_tablet_tool_button(
     state: &mut WaylandState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolButtonEvent,
 ) {
-    let tablet_seat = state.seat.tablet_seat();
+    let tablet_seat = state.native.seat.tablet_seat();
     let tool = tablet_seat.get_tool(&event.tool());
 
     if let Some(tool) = tool {
@@ -699,18 +718,26 @@ mod tests {
     #[test]
     fn lid_state_aggregates_devices_and_only_reprojects_on_a_transition() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        state.runtime.lid_switches.insert("first".into(), true);
-        state.runtime.lid_switches.insert("second".into(), false);
+        state
+            .native
+            .runtime
+            .lid_switches
+            .insert("first".into(), true);
+        state
+            .native
+            .runtime
+            .lid_switches
+            .insert("second".into(), false);
         super::update_lid_state(&mut state);
-        assert!(std::mem::take(&mut state.runtime.lid_policy_dirty));
+        assert!(std::mem::take(&mut state.native.runtime.lid_policy_dirty));
         super::update_lid_state(&mut state);
-        assert!(!state.runtime.lid_policy_dirty);
-        state.runtime.lid_switches.remove("second");
+        assert!(!state.native.runtime.lid_policy_dirty);
+        state.native.runtime.lid_switches.remove("second");
         super::update_lid_state(&mut state);
-        assert!(!state.runtime.lid_policy_dirty);
-        state.runtime.lid_switches.remove("first");
+        assert!(!state.native.runtime.lid_policy_dirty);
+        state.native.runtime.lid_switches.remove("first");
         super::update_lid_state(&mut state);
-        assert!(state.runtime.lid_policy_dirty);
+        assert!(state.native.runtime.lid_policy_dirty);
     }
 
     fn config(output: &str) -> InputConfig {
@@ -761,7 +788,7 @@ mod tests {
     #[test]
     fn tablet_seat_initializes_and_counts_tablets() {
         let (_event_loop, state) = crate::test_support::new_compositor();
-        let tablet_seat = state.seat.tablet_seat();
+        let tablet_seat = state.native.seat.tablet_seat();
         assert_eq!(tablet_seat.count_tablets(), 0);
     }
 }

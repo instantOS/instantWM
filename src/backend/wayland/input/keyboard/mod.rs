@@ -75,6 +75,7 @@ fn shortcut_suppression(
         .and_then(WaylandFocus::wl_surface)
         .and_then(|surface| {
             state
+                .native
                 .seat
                 .keyboard_shortcuts_inhibitor_for_surface(surface.as_ref())
         })
@@ -88,9 +89,9 @@ fn shortcut_suppression(
             .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts)
     });
     select_shortcut_suppression(ShortcutContext {
-        session_locked: state.is_locked(),
+        session_locked: state.native.is_locked(),
         keyboard_grabbed: keyboard.is_grabbed(),
-        input_method_grabbed: state.seat.input_method().keyboard_grabbed(),
+        input_method_grabbed: state.native.seat.input_method().keyboard_grabbed(),
         focused_surface_inhibited,
         exclusive_layer,
     })
@@ -128,7 +129,7 @@ pub fn handle_keyboard<B: InputBackend>(
     let serial = SERIAL_COUNTER.next_serial();
     // Protocols can install keyboard grabs without a compositor focus
     // request. Reassert the lock policy before any key can reach such a grab.
-    if state.is_locked() {
+    if state.native.is_locked() {
         state.set_keyboard_focus(None, serial);
     }
     let suppression = shortcut_suppression(state, keyboard_handle);
@@ -150,13 +151,21 @@ pub fn handle_keyboard<B: InputBackend>(
         |data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
                 if data.release_shortcut_recovery_key(key_code) {
-                    data.runtime.intercepted_key_releases.remove(&key_code);
+                    data.native
+                        .runtime
+                        .intercepted_key_releases
+                        .remove(&key_code);
                     return FilterResult::Intercept(());
                 }
                 if data.shortcut_recovery_is_armed() && (!modifiers.logo || !modifiers.shift) {
                     data.cancel_shortcut_recovery();
                 }
-                if data.runtime.intercepted_key_releases.remove(&key_code) {
+                if data
+                    .native
+                    .runtime
+                    .intercepted_key_releases
+                    .remove(&key_code)
+                {
                     return FilterResult::Intercept(());
                 }
                 return FilterResult::Forward;
@@ -187,7 +196,10 @@ pub fn handle_keyboard<B: InputBackend>(
                     .and_then(|focus| focus.wl_surface().map(|surface| surface.into_owned()))
             {
                 data.arm_shortcut_recovery(key_code, surface);
-                data.runtime.intercepted_key_releases.insert(key_code);
+                data.native
+                    .runtime
+                    .intercepted_key_releases
+                    .insert(key_code);
                 return FilterResult::Intercept(());
             }
 
@@ -196,7 +208,10 @@ pub fn handle_keyboard<B: InputBackend>(
             if let Some(vt) = vt_switch_target(raw_keysym, modifiers)
                 && data.switch_vt(vt)
             {
-                data.runtime.intercepted_key_releases.insert(key_code);
+                data.native
+                    .runtime
+                    .intercepted_key_releases
+                    .insert(key_code);
                 return FilterResult::Intercept(());
             }
 
@@ -204,10 +219,13 @@ pub fn handle_keyboard<B: InputBackend>(
                 let closed_native = data.dismiss_native_systray_menu();
                 let closed_hosted = crate::backend::wayland::input::bar::close_systray_menu(wm);
                 if closed_hosted {
-                    data.request_bar_redraw();
+                    data.native.request_bar_redraw();
                 }
                 if closed_native || closed_hosted {
-                    data.runtime.intercepted_key_releases.insert(key_code);
+                    data.native
+                        .runtime
+                        .intercepted_key_releases
+                        .insert(key_code);
                     return FilterResult::Intercept(());
                 }
             }
@@ -219,7 +237,10 @@ pub fn handle_keyboard<B: InputBackend>(
                 };
                 let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
                 if crate::keyboard::handle_keysym(&mut wm_ctx, raw_keysym, mod_mask) {
-                    data.runtime.intercepted_key_releases.insert(key_code);
+                    data.native
+                        .runtime
+                        .intercepted_key_releases
+                        .insert(key_code);
                     return FilterResult::Intercept(());
                 }
             }

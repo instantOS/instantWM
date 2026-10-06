@@ -214,6 +214,7 @@ pub fn setup_socket(
     loop_handle
         .insert_source(listening_socket, |client, _, data| {
             let _ = data
+                .native
                 .display_handle
                 .insert_client(client, Arc::new(WaylandClientState::default()));
         })
@@ -238,7 +239,7 @@ pub fn setup_socket(
 /// (pure Wayland clients still work).
 pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, WaylandState>) {
     match XWayland::spawn(
-        &state.display_handle,
+        &state.native.display_handle,
         None,
         std::iter::empty::<(String, String)>(),
         std::iter::empty::<String>(),
@@ -257,16 +258,16 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                     x11_socket,
                     display_number,
                 } => {
-                    data.xdisplay = Some(display_number);
+                    data.native.xdisplay = Some(display_number);
                     unsafe { env::set_var("DISPLAY", format!(":{display_number}")) };
                     import_env_into_dbus_activation();
                     match X11Wm::start_wm(
                         handle_for_wm.clone(),
-                        &data.display_handle,
+                        &data.native.display_handle,
                         x11_socket,
                         client.clone(),
                     ) {
-                        Ok(wm) => data.xwm = Some(wm),
+                        Ok(wm) => data.native.xwm = Some(wm),
                         Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
                     }
                 }

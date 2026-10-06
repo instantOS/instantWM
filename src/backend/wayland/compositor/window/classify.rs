@@ -37,6 +37,24 @@ impl WindowType {
 }
 
 impl WaylandState {
+    /// Owned snapshot of the current input/render ordering.
+    ///
+    /// Pointer motion can hit-test both its old and proposed positions against
+    /// one snapshot without retaining an immutable borrow of `WaylandState`
+    /// across Smithay pointer dispatch.
+    pub(crate) fn pointer_hit_snapshot(&self) -> Vec<(Window, WindowType)> {
+        #[cfg(test)]
+        super::hit_test::record_pointer_hit_snapshot();
+
+        self.native
+            .windows_in_z_order()
+            .into_iter()
+            .map(|(window, typ)| (window.clone(), typ))
+            .collect()
+    }
+}
+
+impl crate::backend::wayland::compositor::WaylandNativeState {
     /// Classify a window's type for focus and input routing decisions.
     ///
     /// This is the single source of truth for window classification.
@@ -85,7 +103,6 @@ impl WaylandState {
 
         WindowType::Normal
     }
-
     /// Iterator over windows in z-order (top-to-bottom), along with their type.
     ///
     /// This follows the render-order defined in `assemble_scene_elements!`:
@@ -101,20 +118,5 @@ impl WaylandState {
 
         windows.sort_by_key(|(_, typ)| if typ.is_overlay() { 0 } else { 1 });
         windows
-    }
-
-    /// Owned snapshot of the current input/render ordering.
-    ///
-    /// Pointer motion can hit-test both its old and proposed positions against
-    /// one snapshot without retaining an immutable borrow of `WaylandState`
-    /// across Smithay pointer dispatch.
-    pub(crate) fn pointer_hit_snapshot(&self) -> Vec<(Window, WindowType)> {
-        #[cfg(test)]
-        super::hit_test::record_pointer_hit_snapshot();
-
-        self.windows_in_z_order()
-            .into_iter()
-            .map(|(window, typ)| (window.clone(), typ))
-            .collect()
     }
 }

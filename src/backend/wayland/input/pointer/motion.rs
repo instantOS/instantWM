@@ -92,9 +92,10 @@ impl MotionEvent {
 /// Returns `None` when no output is mapped (tests, early startup).
 fn layout_bounds_from_space(state: &WaylandState) -> Option<Rectangle<i32, Logical>> {
     state
+        .native
         .space
         .outputs()
-        .filter_map(|output| state.space.output_geometry(output))
+        .filter_map(|output| state.native.space.output_geometry(output))
         .reduce(|acc, geo| acc.merge(geo))
 }
 
@@ -113,24 +114,24 @@ fn constrain_relative_to_space(
     fallback_w: i32,
     fallback_h: i32,
 ) -> Point<f64, Logical> {
-    if state.space.outputs().next().is_none() {
+    if state.native.space.outputs().next().is_none() {
         let max_x = fallback_w.saturating_sub(1).max(0) as f64;
         let max_y = fallback_h.saturating_sub(1).max(0) as f64;
         return Point::from((raw.x.clamp(0.0, max_x), raw.y.clamp(0.0, max_y)));
     }
-    if state.space.output_under(raw).next().is_some() {
+    if state.native.space.output_under(raw).next().is_some() {
         return raw;
     }
-    if let Some(source) = state.space.output_under(current).next()
-        && let Some(geom) = state.space.output_geometry(source)
+    if let Some(source) = state.native.space.output_under(current).next()
+        && let Some(geom) = state.native.space.output_geometry(source)
     {
         let geo = geom.to_f64();
         let x = raw.x.clamp(geo.loc.x, geo.loc.x + geo.size.w - 1.0);
         let y = raw.y.clamp(geo.loc.y, geo.loc.y + geo.size.h - 1.0);
         return Point::from((x, y));
     }
-    if let Some(first) = state.space.outputs().next()
-        && let Some(geom) = state.space.output_geometry(first)
+    if let Some(first) = state.native.space.outputs().next()
+        && let Some(geom) = state.native.space.output_geometry(first)
     {
         let geo = geom.to_f64();
         return Point::from((geo.loc.x + geo.size.w / 2.0, geo.loc.y + geo.size.h / 2.0));
@@ -252,7 +253,7 @@ mod tests {
         use crate::test_support::new_compositor;
 
         fn null_surface(state: &WaylandState) -> WlSurface {
-            WlSurface::from_id(&state.display_handle.clone(), ObjectId::null()).unwrap()
+            WlSurface::from_id(&state.native.display_handle.clone(), ObjectId::null()).unwrap()
         }
 
         #[test]
@@ -261,7 +262,7 @@ mod tests {
             let surface = null_surface(&state);
 
             // Smithay's focus-churn auto-reset landed during the dispatch…
-            state.cursor_image_status = CursorImageStatus::default_named();
+            state.native.cursor_image_status = CursorImageStatus::default_named();
 
             // …but the pointer stayed over a client surface, so the client's
             // hidden cursor must be restored.
@@ -274,18 +275,18 @@ mod tests {
                 )),
             );
 
-            assert_eq!(state.cursor_image_status, CursorImageStatus::Hidden);
+            assert_eq!(state.native.cursor_image_status, CursorImageStatus::Hidden);
         }
 
         #[test]
         fn the_desktop_default_stands_when_the_pointer_reaches_the_root() {
             let (_event_loop, mut state) = new_compositor();
-            state.cursor_image_status = CursorImageStatus::default_named();
+            state.native.cursor_image_status = CursorImageStatus::default_named();
 
             restore_client_cursor_image(&mut state, CursorImageStatus::Hidden, None);
 
             assert_eq!(
-                state.cursor_image_status,
+                state.native.cursor_image_status,
                 CursorImageStatus::default_named()
             );
         }
@@ -294,7 +295,7 @@ mod tests {
         fn an_unchanged_cursor_image_needs_no_restoration() {
             let (_event_loop, mut state) = new_compositor();
             let surface = null_surface(&state);
-            state.cursor_image_status = CursorImageStatus::Hidden;
+            state.native.cursor_image_status = CursorImageStatus::Hidden;
 
             restore_client_cursor_image(
                 &mut state,
@@ -305,13 +306,13 @@ mod tests {
                 )),
             );
 
-            assert_eq!(state.cursor_image_status, CursorImageStatus::Hidden);
+            assert_eq!(state.native.cursor_image_status, CursorImageStatus::Hidden);
         }
 
         #[test]
         fn synthetic_refresh_is_live_when_no_animation_moves_the_pointers_output() {
             let (_event_loop, mut state) = new_compositor();
-            state.runtime.pointer_location = Point::from((10.0, 10.0));
+            state.native.runtime.pointer_location = Point::from((10.0, 10.0));
 
             assert!(!synthetic_refresh_deferred(&state));
         }
@@ -329,8 +330,8 @@ mod tests {
                 .bar(30, true)
                 .build(),
         );
-        let pointer = state.seat.get_pointer().unwrap();
-        let keyboard = state.seat.get_keyboard().unwrap();
+        let pointer = state.native.seat.get_pointer().unwrap();
+        let keyboard = state.native.seat.get_keyboard().unwrap();
 
         let _ = process_pointer_motion_command_cached(
             &mut wm,
@@ -387,8 +388,8 @@ mod tests {
                 geo,
             )
             .unwrap();
-        let pointer = state.seat.get_pointer().unwrap();
-        let keyboard = state.seat.get_keyboard().unwrap();
+        let pointer = state.native.seat.get_pointer().unwrap();
+        let keyboard = state.native.seat.get_keyboard().unwrap();
 
         reset_pointer_hit_counters();
         let mut cached_hit = None;
@@ -421,11 +422,15 @@ mod tests {
     fn two_output_space(
         state: &mut crate::backend::wayland::compositor::WaylandState,
     ) -> (smithay::output::Output, smithay::output::Output) {
-        let left = state.create_output("left", Size::new(1920, 1080), None);
-        let right = state.create_output("right", Size::new(1920, 1440), None);
+        let left = state
+            .native
+            .create_output("left", Size::new(1920, 1080), None);
+        let right = state
+            .native
+            .create_output("right", Size::new(1920, 1440), None);
         // Top-aligned: left is short, so (100,1200) is a void below it.
-        state.space.map_output(&left, (0, 0));
-        state.space.map_output(&right, (1920, 0));
+        state.native.space.map_output(&left, (0, 0));
+        state.native.space.map_output(&right, (1920, 0));
         (left, right)
     }
 
@@ -440,7 +445,7 @@ mod tests {
 
         // Must not park in the void below the short monitor.
         assert_eq!(clamped, Point::from((100.0, 1079.0)));
-        assert!(state.space.output_under(clamped).next().is_some());
+        assert!(state.native.space.output_under(clamped).next().is_some());
     }
 
     #[test]
@@ -458,10 +463,14 @@ mod tests {
     #[test]
     fn absolute_motion_uses_layout_origin_for_negative_layouts() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let top = state.create_output("top", Size::new(1920, 1080), None);
-        let bottom = state.create_output("bottom", Size::new(1920, 1080), None);
-        state.space.map_output(&top, (0, -1080));
-        state.space.map_output(&bottom, (0, 0));
+        let top = state
+            .native
+            .create_output("top", Size::new(1920, 1080), None);
+        let bottom = state
+            .native
+            .create_output("bottom", Size::new(1920, 1080), None);
+        state.native.space.map_output(&top, (0, -1080));
+        state.native.space.map_output(&bottom, (0, 0));
 
         let bounds = layout_bounds_from_space(&state).expect("two outputs");
         assert_eq!(bounds.loc.x, 0);
@@ -498,7 +507,7 @@ pub(crate) fn dispatch_smithay_pointer_motion(
     focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
     event: &smithay::input::pointer::MotionEvent,
 ) {
-    let image_before: CursorImageStatus = state.cursor_image_status.clone();
+    let image_before: CursorImageStatus = state.native.cursor_image_status.clone();
     pointer_handle.motion(state, focus.clone(), event);
     restore_client_cursor_image(state, image_before, focus.as_ref());
 }
@@ -513,9 +522,9 @@ fn restore_client_cursor_image(
     image_before: CursorImageStatus,
     new_focus: Option<&(PointerFocusTarget, Point<f64, Logical>)>,
 ) {
-    if new_focus.is_some() && state.cursor_image_status != image_before {
-        state.cursor_image_status = image_before;
-        state.request_render();
+    if new_focus.is_some() && state.native.cursor_image_status != image_before {
+        state.native.cursor_image_status = image_before;
+        state.native.request_render();
     }
 }
 
@@ -530,11 +539,12 @@ fn restore_client_cursor_image(
 /// `process_animations_and_request_render`).
 fn synthetic_refresh_deferred(state: &WaylandState) -> bool {
     state
+        .native
         .space
-        .output_under(state.runtime.pointer_location)
+        .output_under(state.native.runtime.pointer_location)
         .next()
         .is_some_and(|output| {
-            state.has_window_animations_on_output(output)
+            state.native.has_window_animations_on_output(output)
                 || state.has_active_layout_preview_animation()
         })
 }
@@ -632,11 +642,11 @@ pub(crate) fn process_pointer_motion_command_cached(
                 // protocol dispatch.
                 return PointerMotionCache {
                     current_hit: state
-                        .contents_under_pointer(&wm.core, state.runtime.pointer_location),
+                        .contents_under_pointer(&wm.core, state.native.runtime.pointer_location),
                     snapshot: None,
                 };
             }
-            let location = state.runtime.pointer_location;
+            let location = state.native.runtime.pointer_location;
             handle_pointer_motion(
                 wm,
                 state,
@@ -689,12 +699,12 @@ fn handle_pointer_motion(
         pointer: pointer_handle,
         ..
     } = handles;
-    state.runtime.cursor_hidden_by_touch = false;
+    state.native.runtime.cursor_hidden_by_touch = false;
 
     let fallback_w = wm.core.derived.display.width;
     let fallback_h = wm.core.derived.display.height;
 
-    let current_location = state.runtime.pointer_location;
+    let current_location = state.native.runtime.pointer_location;
     let raw_location = event.raw_location(current_location);
 
     // Relative motion uses the niri barrier (voids block, no parking in gaps).
@@ -771,13 +781,13 @@ fn handle_pointer_motion(
         };
     }
 
-    state.runtime.pointer_location = final_location;
+    state.native.runtime.pointer_location = final_location;
 
     // Hot corners are compositor-owned pointer interactions. Evaluate them
     // before the final hit test so this motion is dispatched against the
     // newly shown or hidden overlay. Session-locked input must never trigger
     // WM UI.
-    let scene_changed = if source == PointerMotionSource::Device && !state.is_locked() {
+    let scene_changed = if source == PointerMotionSource::Device && !state.native.is_locked() {
         let root = RootPoint::from_f64_round(final_location.x, final_location.y);
         let mut ctx = wm.wayland_ctx(state);
         crate::mouse::update_overlay_hot_corner(&mut ctx, root)
@@ -844,7 +854,7 @@ fn dispatch_pointer_motion(
         pointer: pointer_handle,
         keyboard: keyboard_handle,
     } = handles;
-    let pointer_location = state.runtime.pointer_location;
+    let pointer_location = state.native.runtime.pointer_location;
     let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
 
     // Get active drag window once - used in multiple phases
@@ -1001,10 +1011,10 @@ fn resolve_pointer_focus_from_hit(
     in_bar_band: bool,
     in_bar_guard_band: bool,
 ) -> (Option<SurfaceFocus>, Option<crate::types::WindowId>) {
-    let pointer_location = state.runtime.pointer_location;
+    let pointer_location = state.native.runtime.pointer_location;
 
     // When the session is locked, only the lock surface should receive pointer events.
-    if state.is_locked() {
+    if state.native.is_locked() {
         let pointer_focus = state.lock_surface_under_pointer(pointer_location);
         return (pointer_focus, None);
     }
@@ -1027,7 +1037,7 @@ fn handle_resize_drag_motion(
     time: InputTime,
     update_active_drag: bool,
 ) -> bool {
-    let pointer_location = state.runtime.pointer_location;
+    let pointer_location = state.native.runtime.pointer_location;
     let handled = {
         let mut ctx = wm.wayland_ctx(state);
         if update_active_drag {
@@ -1072,7 +1082,7 @@ fn handle_bar_motion(
     bar_pos: Option<BarPosition>,
     time: InputTime,
 ) -> bool {
-    let pointer_location = state.runtime.pointer_location;
+    let pointer_location = state.native.runtime.pointer_location;
     let is_drag = wm.core.interaction.drag.has_capture();
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.wayland_ctx(state);

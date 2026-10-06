@@ -121,7 +121,7 @@ fn pump(
         .dispatch(Some(Duration::from_millis(250)), state)
         .unwrap();
     state.dispatch_pending_commits();
-    state.display_handle.flush_clients().unwrap();
+    state.native.display_handle.flush_clients().unwrap();
     while client.sync_count < next_sync {
         queue.blocking_dispatch(client).unwrap();
     }
@@ -133,6 +133,7 @@ fn connect_native_window(
 ) -> (Connection, EventQueue<NativeClient>, NativeClient, WindowId) {
     let (client_socket, server_socket) = UnixStream::pair().unwrap();
     state
+        .native
         .display_handle
         .insert_client(server_socket, Arc::new(WaylandClientState::default()))
         .unwrap();
@@ -163,7 +164,7 @@ fn connect_native_window(
     // Register without a buffer so this test can exercise real configure
     // dispatch independently of a renderer. Model geometry supplies the
     // intended tiled and floating rectangles.
-    let native = state.runtime.pending_toplevels.pop().unwrap();
+    let native = state.native.runtime.pending_toplevels.pop().unwrap();
     let win = state.setup_managed_window(native);
     (conn, queue, client, win)
 }
@@ -205,7 +206,12 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     );
     assert_eq!(wm.core.model.client(win).unwrap().geo, floating);
     assert_eq!(
-        state.geometry_sync.get(&win).unwrap().scheduled_size(),
+        state
+            .native
+            .geometry_sync
+            .get(&win)
+            .unwrap()
+            .scheduled_size(),
         Some(floating.size())
     );
     assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true));
@@ -271,7 +277,12 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     state.resize_window(&wm.core, win, target);
     assert!(state.animation_targets_outer_rect(win, target));
     assert_eq!(
-        state.geometry_sync.get(&win).unwrap().scheduled_size(),
+        state
+            .native
+            .geometry_sync
+            .get(&win)
+            .unwrap()
+            .scheduled_size(),
         None
     );
     drop(wm);
@@ -314,7 +325,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     wm = wm_handle.borrow_mut();
     let configured_count = client.sizes.len();
-    let element = state.find_window(win).unwrap().clone();
+    let element = state.native.find_window(win).unwrap().clone();
 
     let target = Rect::new(100, 100, 640, 480);
     wm.core.model.sync_client_geometry(win, target);
@@ -329,10 +340,15 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     );
     assert!(state.window_has_active_animation(win));
     state.unmap_window_from_space(&wm.core, win);
-    assert_eq!(state.space.element_location(&element), None);
+    assert_eq!(state.native.space.element_location(&element), None);
     assert!(!state.window_has_active_animation(win));
     assert_eq!(
-        state.geometry_sync.get(&win).unwrap().scheduled_size(),
+        state
+            .native
+            .geometry_sync
+            .get(&win)
+            .unwrap()
+            .scheduled_size(),
         None
     );
     drop(wm);
@@ -355,10 +371,15 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
             duration: Duration::from_millis(500),
         },
     );
-    assert_eq!(state.space.element_location(&element), None);
+    assert_eq!(state.native.space.element_location(&element), None);
     assert!(!state.window_has_active_animation(win));
     assert_eq!(
-        state.geometry_sync.get(&win).unwrap().scheduled_size(),
+        state
+            .native
+            .geometry_sync
+            .get(&win)
+            .unwrap()
+            .scheduled_size(),
         None
     );
     state.unmap_window_from_space(&wm.core, win);
@@ -420,7 +441,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     drop(wm);
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert_eq!(client.sizes.len(), configured_count + 3);
-    assert!(!state.geometry_sync.contains_key(&win));
+    assert!(!state.native.geometry_sync.contains_key(&win));
 }
 
 /// Shared focus projections must use the explicitly supplied core view,
@@ -455,12 +476,12 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     }
     let _ = wm.core.model.set_fullscreen(b, true).unwrap();
     for win in [a, b] {
-        let element = state.find_window(win).unwrap().clone();
-        state.space.map_element(element, (0, 0), false);
+        let element = state.native.find_window(win).unwrap().clone();
+        state.native.space.map_element(element, (0, 0), false);
     }
-    state.command_queue.borrow_mut().clear();
+    state.native.command_queue.borrow_mut().clear();
 
-    state.push_command(WmCommand::FocusWindow(b));
+    state.native.push_command(WmCommand::FocusWindow(b));
     {
         let dispatch_owner = state.wm_handle();
         let _unavailable_for_reentry = dispatch_owner.borrow_mut();
@@ -483,7 +504,7 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     // Focus ordering must be projected immediately, rather than coalesced to
     // one final selection at the next tick. The old window keeps fullscreen
     // while losing activation; the tiled target keeps its maximized flags.
-    state.push_command(WmCommand::FocusWindow(a));
+    state.native.push_command(WmCommand::FocusWindow(a));
     {
         let dispatch_owner = state.wm_handle();
         let _unavailable_for_reentry = dispatch_owner.borrow_mut();
@@ -512,6 +533,7 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     assert!(unfocused_b.contains(&(xdg_toplevel::State::Fullscreen as u32)));
     assert_eq!(
         state
+            .native
             .space
             .elements()
             .map(|element| {
@@ -531,7 +553,7 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
 
     // Reconcile native focus drift even when selection has not changed.
     state.clear_seat_focus();
-    state.push_command(WmCommand::FocusWindow(a));
+    state.native.push_command(WmCommand::FocusWindow(a));
     {
         let dispatch_owner = state.wm_handle();
         let _unavailable_for_reentry = dispatch_owner.borrow_mut();
@@ -539,7 +561,7 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     }
     assert!(state.is_seat_focused_on(a));
 
-    state.push_command(WmCommand::RestoreFocus);
+    state.native.push_command(WmCommand::RestoreFocus);
     {
         let dispatch_owner = state.wm_handle();
         let _unavailable_for_reentry = dispatch_owner.borrow_mut();
@@ -551,14 +573,14 @@ fn borrowed_focus_projects_without_reacquiring_dispatch_owner() {
     for win in [a, b] {
         wm.core.model.client_mut(win).unwrap().is_hidden = true;
     }
-    state.push_command(WmCommand::RestoreFocus);
+    state.native.push_command(WmCommand::RestoreFocus);
     {
         let dispatch_owner = state.wm_handle();
         let _unavailable_for_reentry = dispatch_owner.borrow_mut();
         drain_command_queue(&mut wm, &mut state);
     }
     assert_eq!(wm.core.model.selected_win(), None);
-    assert!(state.keyboard.current_focus().is_none());
+    assert!(state.native.keyboard.current_focus().is_none());
     pump(
         &mut event_loop,
         &mut state,
@@ -635,7 +657,7 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
         assert_eq!(client.sizes.last(), Some(&(desktop.w, desktop.h)));
         // Reproduce the ordering constraint that originally motivated the WM
         // back-reference: another native configure before a shared WM tick.
-        let window = state.find_window(win).unwrap().clone();
+        let window = state.native.find_window(win).unwrap().clone();
         state.send_toplevel_configure(&wm.core, &window, None);
     }
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
@@ -707,6 +729,7 @@ fn blocked_native_commits_dispatch_after_runtime_borrows_end() {
     let (mut event_loop, mut state) = crate::test_support::new_compositor();
     let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
     let surface = state
+        .native
         .find_window(win)
         .unwrap()
         .toplevel()
@@ -731,8 +754,8 @@ fn blocked_native_commits_dispatch_after_runtime_borrows_end() {
     let runtime_borrow = owner.borrow_mut();
     barrier.signal();
     // Signaling during a runtime lease must not invoke the post-commit hook.
-    state.defer_commit_client(surface.client().unwrap());
-    state.defer_commit_client(surface.client().unwrap());
+    state.native.defer_commit_client(surface.client().unwrap());
+    state.native.defer_commit_client(surface.client().unwrap());
     assert_eq!(applied.load(Ordering::SeqCst), 0);
     drop(runtime_borrow);
     state.dispatch_pending_commits();

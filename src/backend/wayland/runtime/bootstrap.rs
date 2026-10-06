@@ -18,10 +18,9 @@ pub(crate) fn create_wayland_wm() -> std::rc::Rc<std::cell::RefCell<Wm>> {
 /// Attach GLES renderer, dmabuf global, and screencopy protocol (winit and DRM).
 pub fn attach_gles_renderer_and_protocols(
     state: &mut WaylandState,
-    graphics: crate::backend::wayland::compositor::graphics::GraphicsHandle,
+    mut graphics: crate::backend::wayland::compositor::graphics::Graphics,
     egl_display: Option<&EGLDisplay>,
 ) {
-    state.attach_graphics(graphics.clone());
     graphics.with_renderer(|renderer| {
         let egl_for_dmabuf = egl_display.or_else(|| Some(renderer.egl_context().display()));
         state.init_dmabuf_global(
@@ -29,6 +28,7 @@ pub fn attach_gles_renderer_and_protocols(
             egl_for_dmabuf,
         );
     });
+    state.attach_graphics(graphics);
     state.init_screencopy_manager();
 }
 
@@ -44,7 +44,9 @@ pub fn setup_listen_socket(
     // the worker its request slot; see `WaylandState::take_expected_systray_menu_toplevel`.
     let wake = crate::runtime::make_wake_ping(loop_handle);
     wm.start_systray(
-        Some(std::sync::Arc::clone(&state.runtime.pending_systray_menu)),
+        Some(std::sync::Arc::clone(
+            &state.native.runtime.pending_systray_menu,
+        )),
         wake,
     );
 }

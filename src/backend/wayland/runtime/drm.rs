@@ -2,7 +2,6 @@
 
 use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
-use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
@@ -189,7 +188,7 @@ pub fn run() -> ! {
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
-    state.runtime.session = Some(session.clone());
+    state.native.runtime.session = Some(session.clone());
 
     crate::runtime::init_keyboard_layout(&mut wm.wayland_ctx(&mut state));
 
@@ -202,19 +201,12 @@ pub fn run() -> ! {
         egl_display,
         renderer_value,
     ) = init_gpu(&mut session, &seat_name);
-    let renderer_handle = Rc::new(std::cell::RefCell::new(renderer_value));
+    let mut renderer = renderer_value;
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
     state.init_drm_syncobj(drm_fd.clone());
 
-    super::bootstrap::attach_gles_renderer_and_protocols(
-        &mut state,
-        crate::backend::wayland::compositor::graphics::GraphicsHandle::Drm(renderer_handle.clone()),
-        Some(&egl_display),
-    );
-
-    let mut renderer = renderer_handle.borrow_mut();
-    let mut cursor_manager = init_cursor_manager(&state.cursor_config);
+    let mut cursor_manager = init_cursor_manager(&state.native.cursor_config);
     let output_manager = Arc::new(Mutex::new(create_output_manager(
         drm_device,
         &renderer,
@@ -223,16 +215,18 @@ pub fn run() -> ! {
 
     let mut output_surfaces = {
         let mut manager = output_manager.lock().unwrap();
-        build_output_surfaces(&mut manager, &mut renderer, &mut state)
+        build_output_surfaces(&mut manager, &mut renderer, &mut state.native)
     };
     for entry in &output_surfaces {
         state
+            .native
             .space
             .map_output(&entry.output, (entry.rect.x, entry.rect.y));
     }
 
     // Register all DRM outputs with wlr-output-management.
     state
+        .native
         .output_management_state
         .add_heads::<crate::backend::wayland::compositor::WaylandState>(
             output_surfaces.iter().map(|e| &e.output),
@@ -244,7 +238,9 @@ pub fn run() -> ! {
         use crate::monitor::refresh_monitor_layout;
         refresh_monitor_layout(&mut wm.wayland_ctx(&mut state));
     }
-    state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
+    state
+        .native
+        .push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.wayland_ctx(&mut state));
 
     let mut layout_state = init_layout_state(&output_surfaces, layout);
@@ -286,8 +282,8 @@ pub fn run() -> ! {
             // The source borrows the shared WM only for this input event;
             // the loop body's borrow starts after calloop dispatch returns.
             let old_pointer_location = crate::types::Point::new(
-                state.runtime.pointer_location.x as i32,
-                state.runtime.pointer_location.y as i32,
+                state.native.runtime.pointer_location.x as i32,
+                state.native.runtime.pointer_location.y as i32,
             );
             let outcome = {
                 let wm_handle = state.wm_handle();
@@ -346,15 +342,15 @@ pub fn run() -> ! {
         .handle()
         .insert_source(render_ping_source, |_, _, state| {
             if matches!(
-                state.runtime.render_targets,
+                state.native.runtime.render_targets,
                 crate::backend::wayland::compositor::PendingRenderTargets::None
             ) {
-                state.runtime.render_targets =
+                state.native.runtime.render_targets =
                     crate::backend::wayland::compositor::PendingRenderTargets::All;
             }
         })
         .expect("render ping source");
-    state.runtime.render_ping = Some(render_ping);
+    state.native.runtime.render_ping = Some(render_ping);
     initial_render_ping.ping();
 
     let start_time = Instant::now();
@@ -363,10 +359,15 @@ pub fn run() -> ! {
     crate::runtime::spawn_status_bar(&mut wm);
 
     let (led_state_tx, led_state_rx) = mpsc::channel();
-    state.runtime.led_state_tx = Some(led_state_tx);
+    state.native.runtime.led_state_tx = Some(led_state_tx);
 
     drop(wm);
-    drop(renderer);
+    super::bootstrap::attach_gles_renderer_and_protocols(
+        &mut state,
+        crate::backend::wayland::compositor::graphics::Graphics::Drm(Box::new(renderer)),
+        Some(&egl_display),
+    );
+
     run_event_loop(
         event_loop,
         wm_handle,
@@ -376,7 +377,6 @@ pub fn run() -> ! {
         &mut loop_state,
         &mut output_surfaces,
         &output_manager,
-        renderer_handle,
         &mut cursor_manager,
         &mut ipc_server,
         &mut render_failures,
@@ -476,7 +476,7 @@ fn refresh_drm_layout_state(
     layout_state: &mut DrmLayoutState,
 ) {
     for entry in output_surfaces.iter_mut().filter(|entry| entry.enabled) {
-        if let Some(geometry) = state.space.output_geometry(&entry.output) {
+        if let Some(geometry) = state.native.space.output_geometry(&entry.output) {
             entry.rect = crate::types::Rect::new(
                 geometry.loc.x,
                 geometry.loc.y,
@@ -489,7 +489,9 @@ fn refresh_drm_layout_state(
     // source (see `propagate_mirror_render_flags`).
     let active: Vec<_> = output_surfaces
         .iter()
-        .filter(|entry| entry.enabled && state.space.output_geometry(&entry.output).is_some())
+        .filter(|entry| {
+            entry.enabled && state.native.space.output_geometry(&entry.output).is_some()
+        })
         .collect();
     let layout = output_layout_bounds(
         active.iter().map(|entry| entry.rect),
@@ -647,7 +649,6 @@ fn run_event_loop(
     loop_state: &mut DrmLoopState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
-    renderer_handle: Rc<std::cell::RefCell<GlesRenderer>>,
     cursor_manager: &mut CursorManager,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
@@ -657,7 +658,7 @@ fn run_event_loop(
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
     let loop_handle = event_loop.handle();
-    let pointer_handle = state.pointer.clone();
+    let pointer_handle = state.native.pointer.clone();
     let render_retry_guard = crate::runtime::AnimationTimerGuard::new();
     let shared_input_dimensions = Rc::clone(input_dimensions);
     let monotonic_clock = Clock::<Monotonic>::new();
@@ -674,13 +675,11 @@ fn run_event_loop(
             );
             if topology_changed {
                 let mut wm = wm_handle.borrow_mut();
-                let mut renderer = renderer_handle.borrow_mut();
                 if reconcile_drm_outputs(
                     &mut wm,
                     state,
                     output_surfaces,
                     output_manager,
-                    &mut renderer,
                     loop_state,
                     layout_state,
                     &shared_input_dimensions,
@@ -709,37 +708,42 @@ fn run_event_loop(
             state.dispatch_pending_commits();
             let mut wm_borrow = wm_handle.borrow_mut();
             let wm = &mut *wm_borrow;
-            let mut renderer_borrow = renderer_handle.borrow_mut();
-            let renderer = &mut *renderer_borrow;
             super::engine::event_loop_tick_and_request_render(wm, state, ipc_server);
-            if mem::take(&mut state.runtime.lid_policy_dirty) {
-                state.queue_output_policy_projection(&wm.core.config.monitors);
+            if mem::take(&mut state.native.runtime.lid_policy_dirty) {
+                state
+                    .native
+                    .queue_output_policy_projection(&wm.core.config.monitors);
             }
-            process_output_configurations(
-                state,
-                output_surfaces,
-                output_manager,
-                renderer,
-                loop_state,
-            );
-            let outputs_changed = state.project_completed_output_transactions();
+            {
+                let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
+                graphics.with_renderer(|renderer| {
+                    process_output_configurations(
+                        &mut state.native,
+                        output_surfaces,
+                        output_manager,
+                        renderer,
+                        loop_state,
+                    )
+                });
+            }
+            let outputs_changed = state.native.project_completed_output_transactions();
             if outputs_changed {
                 crate::monitor::refresh_monitor_layout(&mut wm.wayland_ctx(state));
-                state.push_command(
+                state.native.push_command(
                     crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones,
                 );
                 refresh_drm_layout_state(state, output_surfaces, layout_state);
                 shared_input_dimensions.set(layout_state.layout);
                 recover_pointer_after_output_change(wm, state);
             }
-            state.project_completed_output_power_requests();
-            process_output_power_requests(state, output_surfaces, loop_state);
-            state.project_completed_output_power_requests();
+            state.native.project_completed_output_power_requests();
+            process_output_power_requests(&mut state.native, output_surfaces, loop_state);
+            state.native.project_completed_output_power_requests();
             if pointer_moved {
                 loop_state.mark_pointer_output_dirty(
                     crate::types::Point::new(
-                        state.runtime.pointer_location.x as i32,
-                        state.runtime.pointer_location.y as i32,
+                        state.native.runtime.pointer_location.x as i32,
+                        state.native.runtime.pointer_location.y as i32,
                     ),
                     layout_state,
                 );
@@ -755,7 +759,7 @@ fn run_event_loop(
             if wm.work.input_config {
                 wm.work.input_config = false;
                 crate::backend::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.runtime.tracked_devices,
+                    &mut state.native.runtime.tracked_devices,
                     &wm.core.config.input,
                 );
             }
@@ -764,13 +768,13 @@ fn run_event_loop(
                 wm.work.cursor_config = false;
                 let cursor = &wm.core.config.cursor;
                 cursor_manager.reload(&cursor.theme, cursor_size(cursor.size));
-                state.cursor_config = cursor.clone();
+                state.native.cursor_config = cursor.clone();
                 loop_state.mark_all_dirty();
             }
 
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
-                for device in state.runtime.tracked_devices.iter_mut() {
+                for device in state.native.runtime.tracked_devices.iter_mut() {
                     use smithay::reexports::input::DeviceCapability;
                     if device.has_capability(DeviceCapability::Keyboard) {
                         device.led_update(leds);
@@ -783,33 +787,32 @@ fn run_event_loop(
             // independent compositor timer drifting against scanout.
             let animated = {
                 let presentation = resolve_cursor(
-                    &state.cursor_image_status,
-                    state.cursor_icon_override,
-                    state.runtime.dnd_icon.as_ref(),
-                    state.runtime.cursor_hidden_by_touch,
+                    &state.native.cursor_image_status,
+                    state.native.cursor_icon_override,
+                    state.native.runtime.dnd_icon.as_ref(),
+                    state.native.runtime.cursor_hidden_by_touch,
                 );
                 resolved_cursor_icon(&presentation)
                     .is_some_and(|icon| cursor_manager.is_animated(icon, 1))
             };
-            state.runtime.cursor_is_animated = animated;
+            state.native.runtime.cursor_is_animated = animated;
             if animated {
                 loop_state.mark_pointer_output_dirty(
                     crate::types::Point::new(
-                        state.runtime.pointer_location.x as i32,
-                        state.runtime.pointer_location.y as i32,
+                        state.native.runtime.pointer_location.x as i32,
+                        state.native.runtime.pointer_location.y as i32,
                     ),
                     layout_state,
                 );
             }
 
-            if let Some(keyboard_handle) = state.seat.get_keyboard() {
+            if let Some(keyboard_handle) = state.native.seat.get_keyboard() {
                 process_cursor_warp(wm, state, &pointer_handle, &keyboard_handle, loop_state);
             }
 
             render_outputs(
                 wm,
                 state,
-                renderer,
                 output_surfaces,
                 cursor_manager,
                 &loop_handle,
@@ -826,11 +829,10 @@ fn run_event_loop(
                 |_| false,
             );
 
-            drop(renderer_borrow);
             drop(wm_borrow);
             state.dispatch_pending_commits();
 
-            if state.display_handle.flush_clients().is_err() {
+            if state.native.display_handle.flush_clients().is_err() {
                 loop_signal.stop();
             }
         })
@@ -899,7 +901,6 @@ fn reconcile_drm_outputs(
     state: &mut WaylandState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
-    renderer: &mut GlesRenderer,
     loop_state: &mut DrmLoopState,
     layout_state: &mut DrmLayoutState,
     input_dimensions: &Rc<Cell<crate::types::Rect>>,
@@ -936,17 +937,19 @@ fn reconcile_drm_outputs(
 
     if !removed.is_empty() {
         state
+            .native
             .output_management_state
             .remove_heads::<WaylandState>(removed.iter().map(|entry| &entry.output));
         for mut entry in removed {
             let name = entry.output.name();
             log::info!("Output {name}: disconnected");
             state
+                .native
                 .runtime
                 .lid_output_policy
                 .forget(&OutputId(name.clone()));
             if let Some(id) = entry.pending_power_on.take() {
-                state.runtime.output_power.complete(
+                state.native.runtime.output_power.complete(
                     id,
                     (
                         OutputId(name.clone()),
@@ -956,21 +959,24 @@ fn reconcile_drm_outputs(
             }
             entry.surface.take();
             loop_state.remove_output(entry.crtc);
-            state.space.unmap_output(&entry.output);
-            state.set_output_global_enabled(&entry.output, false);
-            state.fail_pending_captures_for_output(&entry.output);
-            state.runtime.output_power_modes.remove(&name);
-            state.runtime.output_metadata.remove(&name);
-            state.runtime.output_position_sources.remove(&name);
-            let cancelled = state.output_power_state.fail_output(&name);
-            state.runtime.output_power.cancel(&cancelled);
+            state.native.space.unmap_output(&entry.output);
+            state.native.set_output_global_enabled(&entry.output, false);
+            state.native.fail_pending_captures_for_output(&entry.output);
+            state.native.runtime.output_power_modes.remove(&name);
+            state.native.runtime.output_metadata.remove(&name);
+            state.native.runtime.output_position_sources.remove(&name);
+            let cancelled = state.native.output_power_state.fail_output(&name);
+            state.native.runtime.output_power.cancel(&cancelled);
         }
-        state.drop_unavailable_mirrors();
+        state.native.drop_unavailable_mirrors();
     }
 
     {
         let mut manager = output_manager.lock().unwrap();
-        add_new_output_surfaces(&mut manager, renderer, state, output_surfaces);
+        let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
+        graphics.with_renderer(|renderer| {
+            add_new_output_surfaces(&mut manager, renderer, &mut state.native, output_surfaces)
+        });
     }
 
     let added: Vec<_> = output_surfaces
@@ -979,11 +985,13 @@ fn reconcile_drm_outputs(
         .collect();
     for entry in &added {
         state
+            .native
             .space
             .map_output(&entry.output, (entry.rect.x, entry.rect.y));
         loop_state.add_output(entry.crtc);
     }
     state
+        .native
         .output_management_state
         .add_heads::<WaylandState>(added.iter().map(|entry| &entry.output));
 
@@ -1000,11 +1008,13 @@ fn reconcile_drm_outputs(
     refresh_drm_layout_state(state, output_surfaces, layout_state);
     input_dimensions.set(layout_state.layout);
     crate::monitor::refresh_monitor_layout(&mut wm.wayland_ctx(state));
-    state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
+    state
+        .native
+        .push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.wayland_ctx(state));
     // Re-evaluate suppression even without a new lid event: the availability
     // of an external display may have changed while the laptop stayed closed.
-    state.runtime.lid_policy_dirty = true;
+    state.native.runtime.lid_policy_dirty = true;
     recover_pointer_after_output_change(wm, state);
     true
 }
@@ -1013,8 +1023,9 @@ fn reconcile_drm_outputs(
 /// Recover immediately, including for explicit/client-managed layouts with gaps.
 fn recover_pointer_after_output_change(wm: &Wm, state: &mut WaylandState) {
     if state
+        .native
         .space
-        .output_under(state.runtime.pointer_location)
+        .output_under(state.native.runtime.pointer_location)
         .next()
         .is_some()
     {
@@ -1026,13 +1037,14 @@ fn recover_pointer_after_output_change(wm: &Wm, state: &mut WaylandState) {
         .selected_monitor()
         .and_then(|monitor| {
             state
+                .native
                 .space
                 .outputs()
                 .find(|output| output.name() == monitor.name)
         })
-        .or_else(|| state.space.outputs().next());
+        .or_else(|| state.native.space.outputs().next());
     let center = target
-        .and_then(|output| state.space.output_geometry(output))
+        .and_then(|output| state.native.space.output_geometry(output))
         .map(|geometry| {
             (
                 geometry.loc.x as f64 + geometry.size.w as f64 / 2.0,
@@ -1050,11 +1062,13 @@ fn compact_drm_automatic_layout(
 ) {
     let mut placements: Vec<_> = output_surfaces
         .iter()
-        .filter(|entry| entry.enabled && state.space.output_geometry(&entry.output).is_some())
+        .filter(|entry| {
+            entry.enabled && state.native.space.output_geometry(&entry.output).is_some()
+        })
         .map(|entry| OutputPlacement {
             id: entry.output.name(),
             rect: entry.rect,
-            source: state.output_position_source(&entry.output.name()),
+            source: state.native.output_position_source(&entry.output.name()),
         })
         .collect();
     for (name, position) in plan_automatic_output_positions(&mut placements) {
@@ -1070,6 +1084,7 @@ fn compact_drm_automatic_layout(
             .output
             .change_current_state(None, None, None, Some((position.x, position.y).into()));
         state
+            .native
             .space
             .map_output(&entry.output, (position.x, position.y));
     }
@@ -1096,7 +1111,7 @@ fn process_commit_redraws(
 ) {
     use crate::backend::wayland::compositor::PendingRenderTargets;
 
-    match state.take_render_targets() {
+    match state.native.take_render_targets() {
         PendingRenderTargets::None => {}
         PendingRenderTargets::All => loop_state.mark_all_dirty(),
         PendingRenderTargets::Outputs(outputs) => {
@@ -1119,7 +1134,7 @@ fn process_frame_callback_requests(
 ) {
     use crate::backend::wayland::compositor::PendingRenderTargets;
 
-    let targets = state.take_frame_callback_targets();
+    let targets = state.native.take_frame_callback_targets();
     for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
         let targeted = match &targets {
             PendingRenderTargets::None => false,
@@ -1158,11 +1173,16 @@ fn propagate_mirror_render_flags(
     output_surfaces: &[OutputSurfaceEntry],
     render_flags: &mut HashMap<crtc::Handle, bool>,
 ) {
-    if state.runtime.realized_mirrors.is_empty() {
+    if state.native.runtime.realized_mirrors.is_empty() {
         return;
     }
     for entry in output_surfaces {
-        let Some(source) = state.runtime.realized_mirrors.get(&entry.output.name()) else {
+        let Some(source) = state
+            .native
+            .runtime
+            .realized_mirrors
+            .get(&entry.output.name())
+        else {
             continue;
         };
         let source_dirty = output_surfaces
@@ -1181,7 +1201,6 @@ fn propagate_mirror_render_flags(
 fn render_outputs(
     wm: &mut Wm,
     state: &mut WaylandState,
-    renderer: &mut GlesRenderer,
     output_surfaces: &mut [OutputSurfaceEntry],
     cursor_manager: &CursorManager,
     loop_handle: &LoopHandle<'_, WaylandState>,
@@ -1198,10 +1217,10 @@ fn render_outputs(
         let needs_any_render = output_surfaces
             .iter()
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
-        let shared_scene = if needs_any_render && !state.is_locked() {
+        let shared_scene = if needs_any_render && !state.native.is_locked() {
             Some(build_shared_scene_elements(
                 wm,
-                state,
+                &mut state.native,
                 &mut loop_state.scene_cache,
             ))
         } else {
@@ -1224,27 +1243,32 @@ fn render_outputs(
             let suppress_upper_layers =
                 crate::backend::wayland::render::scene::output_has_real_fullscreen(
                     wm,
-                    &state.presented_output(&entry.output),
+                    &state.native.presented_output(&entry.output),
                 );
-            let rendered = render_drm_output(
-                state,
-                renderer,
-                entry,
-                cursor_manager,
-                start_time,
-                shared_scene.clone(),
-                suppress_upper_layers,
-            );
+            let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
+            let rendered = graphics.with_renderer(|renderer| {
+                render_drm_output(
+                    &mut state.native,
+                    renderer,
+                    entry,
+                    cursor_manager,
+                    start_time,
+                    shared_scene.clone(),
+                    suppress_upper_layers,
+                )
+            });
 
             match rendered {
                 RenderOutcome::Submitted => {
                     if let Some(id) = entry.pending_power_on.take() {
                         let output = OutputId(entry.output.name());
                         state
+                            .native
                             .runtime
                             .output_power_modes
                             .insert(output.0.clone(), OutputPowerMode::On);
                         state
+                            .native
                             .runtime
                             .output_power
                             .complete(id, (output, Ok(OutputPowerMode::On)));
@@ -1291,7 +1315,7 @@ fn render_outputs(
                     {
                         entry.powered = false;
                         let output = OutputId(entry.output.name());
-                        state.runtime.output_power.complete(
+                        state.native.runtime.output_power.complete(
                             id,
                             (
                                 output,
@@ -1340,9 +1364,11 @@ mod output_layout_tests {
     fn removed_output_recovers_the_pointer_even_with_a_gap_in_the_layout() {
         use crate::test_support::MonitorBuilder;
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let output = state.create_output("DP-1", Size::new(1920, 1080), None);
-        state.space.map_output(&output, (1920, 0));
-        state.runtime.pointer_location = (50.0, 50.0).into();
+        let output = state
+            .native
+            .create_output("DP-1", Size::new(1920, 1080), None);
+        state.native.space.map_output(&output, (1920, 0));
+        state.native.runtime.pointer_location = (50.0, 50.0).into();
         let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.monitors.push(
             MonitorBuilder::new()
@@ -1352,17 +1378,21 @@ mod output_layout_tests {
         );
 
         super::recover_pointer_after_output_change(&wm, &mut state);
-        assert_eq!(state.pending_warp, Some((2880.0, 540.0).into()));
-        let pointer = state.pointer.clone();
-        let keyboard = state.keyboard.clone();
+        assert_eq!(state.native.pending_warp, Some((2880.0, 540.0).into()));
+        let pointer = state.native.pointer.clone();
+        let keyboard = state.native.keyboard.clone();
         assert!(crate::backend::wayland::input::apply_pending_warp(
             &mut wm, &mut state, &pointer, &keyboard
         ));
-        assert_eq!(state.runtime.pointer_location, (2880.0, 540.0).into());
+        assert_eq!(
+            state.native.runtime.pointer_location,
+            (2880.0, 540.0).into()
+        );
         assert!(
             state
+                .native
                 .space
-                .output_under(state.runtime.pointer_location)
+                .output_under(state.native.runtime.pointer_location)
                 .next()
                 .is_some()
         );
@@ -1371,12 +1401,14 @@ mod output_layout_tests {
     #[test]
     fn output_changes_do_not_warp_a_pointer_already_on_a_remaining_display() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        let output = state.create_output("DP-1", Size::new(1920, 1080), None);
-        state.space.map_output(&output, (0, 0));
-        state.runtime.pointer_location = (50.0, 50.0).into();
+        let output = state
+            .native
+            .create_output("DP-1", Size::new(1920, 1080), None);
+        state.native.space.map_output(&output, (0, 0));
+        state.native.runtime.pointer_location = (50.0, 50.0).into();
         let wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
         super::recover_pointer_after_output_change(&wm, &mut state);
-        assert!(state.pending_warp.is_none());
+        assert!(state.native.pending_warp.is_none());
     }
 
     #[test]

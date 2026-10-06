@@ -11,7 +11,7 @@ use crate::backend::output::{
     OutputPowerMode, OutputSnapshot, OutputTransaction, OutputTransactionError,
     OutputTransactionKind,
 };
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::drm::{
     ManagedDrmOutputManager, OutputSurfaceEntry, build_output_dmabuf_feedback,
 };
@@ -109,7 +109,7 @@ fn requested_vrr(
 }
 
 pub(super) fn process_output_configurations(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output_surfaces: &mut [OutputSurfaceEntry],
     output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
     renderer: &mut GlesRenderer,
@@ -332,7 +332,7 @@ pub(super) fn process_output_configurations(
 }
 
 pub(super) fn process_output_power_requests(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output_surfaces: &mut [OutputSurfaceEntry],
     loop_state: &mut DrmLoopState,
 ) {
@@ -427,7 +427,7 @@ pub(super) fn process_output_power_requests(
 /// the source, the only head advertising a `wl_output`, so its realized
 /// mirrors follow it.
 fn power_mirrors_with_source(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output_surfaces: &mut [OutputSurfaceEntry],
     loop_state: &mut DrmLoopState,
     source: &str,

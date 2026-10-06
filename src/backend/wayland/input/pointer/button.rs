@@ -39,7 +39,7 @@ pub(crate) fn handle_pointer_button(
         pointer_location: input.location,
     };
 
-    if state.is_locked() {
+    if state.native.is_locked() {
         forward_button(state, pointer, button);
         pointer.frame(state);
         return;
@@ -187,7 +187,7 @@ fn handle_button_press(
 
 fn close_bar_systray_menu(wm: &mut Wm, state: &mut WaylandState) {
     if crate::backend::wayland::input::bar::close_systray_menu(wm) {
-        state.request_bar_redraw();
+        state.native.request_bar_redraw();
     }
 }
 

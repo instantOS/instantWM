@@ -100,6 +100,7 @@ impl WaylandState {
             return;
         };
         let Some(window) = self
+            .native
             .space
             .elements()
             .find(|window| window.wl_surface().as_deref() == Some(&root_surface))
@@ -107,23 +108,23 @@ impl WaylandState {
             return;
         };
 
-        let mut outputs = self.space.outputs_for_element(window);
+        let mut outputs = self.native.space.outputs_for_element(window);
         if outputs.is_empty() {
             return;
         }
         let Some(mut target) = outputs
             .pop()
-            .and_then(|output| self.space.output_geometry(&output))
+            .and_then(|output| self.native.space.output_geometry(&output))
         else {
             return;
         };
         for output in outputs {
-            if let Some(geometry) = self.space.output_geometry(&output) {
+            if let Some(geometry) = self.native.space.output_geometry(&output) {
                 target = target.merge(geometry);
             }
         }
 
-        let Some(window_geometry) = self.space.element_geometry(window) else {
+        let Some(window_geometry) = self.native.space.element_geometry(window) else {
             return;
         };
         target.loc -= get_popup_toplevel_coords(&kind);
@@ -139,7 +140,8 @@ impl WaylandState {
             return;
         };
         let properties = self.window_properties(win);
-        self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
+        self.native
+            .push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
         self.apply_floating_policy(&surface);
         self.update_foreign_toplevel(win);
     }
@@ -219,7 +221,7 @@ impl WaylandState {
         if wants_floating {
             self.raise_window_visual_only(win);
             if has_parent {
-                self.request_space_sync();
+                self.native.request_space_sync();
             }
         }
     }
@@ -231,7 +233,7 @@ impl SeatHandler for WaylandState {
     type TouchFocus = super::focus::PointerFocusTarget;
 
     fn seat_state(&mut self) -> &mut smithay::input::SeatState<WaylandState> {
-        &mut self.seat_state
+        &mut self.native.seat_state
     }
 
     fn focus_changed(
@@ -242,8 +244,8 @@ impl SeatHandler for WaylandState {
         let wl_surface = target.and_then(WaylandFocus::wl_surface);
         let client = wl_surface
             .as_ref()
-            .and_then(|s| self.display_handle.get_client(s.id()).ok());
-        set_data_device_focus(&self.display_handle, seat, client);
+            .and_then(|s| self.native.display_handle.get_client(s.id()).ok());
+        set_data_device_focus(&self.native.display_handle, seat, client);
         self.shortcut_recovery_focus_changed(wl_surface.as_deref());
     }
 
@@ -252,8 +254,8 @@ impl SeatHandler for WaylandState {
         _seat: &smithay::input::Seat<Self>,
         image: smithay::input::pointer::CursorImageStatus,
     ) {
-        self.cursor_image_status = image;
-        self.request_render();
+        self.native.cursor_image_status = image;
+        self.native.request_render();
     }
 
     fn led_state_changed(
@@ -261,7 +263,7 @@ impl SeatHandler for WaylandState {
         _seat: &smithay::input::Seat<Self>,
         led_state: smithay::input::keyboard::LedState,
     ) {
-        if let Some(tx) = &self.runtime.led_state_tx {
+        if let Some(tx) = &self.native.runtime.led_state_tx {
             let _ = tx.send(led_state);
         }
     }
@@ -273,7 +275,7 @@ impl TabletSeatHandler for WaylandState {
 
 impl XdgForeignHandler for WaylandState {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
-        &mut self.xdg_foreign_state
+        &mut self.native.xdg_foreign_state
     }
 }
 
@@ -292,7 +294,7 @@ impl SelectionHandler for WaylandState {
         source: Option<SelectionSource>,
         _seat: smithay::input::Seat<Self>,
     ) {
-        if let Some(xwm) = self.xwm.as_mut()
+        if let Some(xwm) = self.native.xwm.as_mut()
             && let Err(err) = xwm.new_selection(ty, source.map(|s| s.mime_types()))
         {
             log::warn!("Failed to notify XWayland of new selection: {:?}", err);
@@ -307,7 +309,7 @@ impl SelectionHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
         _user_data: &Self::SelectionUserData,
     ) {
-        if let Some(xwm) = self.xwm.as_mut()
+        if let Some(xwm) = self.native.xwm.as_mut()
             && let Err(err) = xwm.send_selection(ty, mime_type, fd)
         {
             log::warn!("Failed to send selection to XWayland: {:?}", err);
@@ -317,25 +319,25 @@ impl SelectionHandler for WaylandState {
 
 impl DataDeviceHandler for WaylandState {
     fn data_device_state(&mut self) -> &mut DataDeviceState {
-        &mut self.data_device_state
+        &mut self.native.data_device_state
     }
 }
 
 impl PrimarySelectionHandler for WaylandState {
     fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
-        &mut self.primary_selection_state
+        &mut self.native.primary_selection_state
     }
 }
 
 impl ExtDataControlHandler for WaylandState {
     fn data_control_state(&mut self) -> &mut ExtDataControlState {
-        &mut self.ext_data_control_state
+        &mut self.native.ext_data_control_state
     }
 }
 
 impl WlrDataControlHandler for WaylandState {
     fn data_control_state(&mut self) -> &mut WlrDataControlState {
-        &mut self.wlr_data_control_state
+        &mut self.native.wlr_data_control_state
     }
 }
 
@@ -348,27 +350,27 @@ impl WaylandDndGrabHandler for WaylandState {
         serial: smithay::utils::Serial,
         type_: GrabType,
     ) {
-        self.runtime.dnd_icon = icon;
-        self.request_render();
+        self.native.runtime.dnd_icon = icon;
+        self.native.request_render();
 
         match type_ {
             GrabType::Pointer => {
                 let Some(pointer) = seat.get_pointer() else {
                     source.cancel();
-                    self.runtime.dnd_icon = None;
-                    self.request_render();
+                    self.native.runtime.dnd_icon = None;
+                    self.native.request_render();
                     return;
                 };
                 let Some(start_data) = pointer.grab_start_data() else {
                     source.cancel();
-                    self.runtime.dnd_icon = None;
-                    self.request_render();
+                    self.native.runtime.dnd_icon = None;
+                    self.native.request_render();
                     return;
                 };
 
                 pointer.set_grab(
                     self,
-                    DnDGrab::new_pointer(&self.display_handle, start_data, source, seat),
+                    DnDGrab::new_pointer(&self.native.display_handle, start_data, source, seat),
                     serial,
                     Focus::Keep,
                 );
@@ -376,20 +378,20 @@ impl WaylandDndGrabHandler for WaylandState {
             GrabType::Touch => {
                 let Some(touch) = seat.get_touch() else {
                     source.cancel();
-                    self.runtime.dnd_icon = None;
-                    self.request_render();
+                    self.native.runtime.dnd_icon = None;
+                    self.native.request_render();
                     return;
                 };
                 let Some(start_data) = touch.grab_start_data() else {
                     source.cancel();
-                    self.runtime.dnd_icon = None;
-                    self.request_render();
+                    self.native.runtime.dnd_icon = None;
+                    self.native.request_render();
                     return;
                 };
 
                 touch.set_grab(
                     self,
-                    DnDGrab::new_touch(&self.display_handle, start_data, source, seat),
+                    DnDGrab::new_touch(&self.native.display_handle, start_data, source, seat),
                     serial,
                 );
             }
@@ -405,14 +407,14 @@ impl smithay::input::dnd::DndGrabHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
         _location: smithay::utils::Point<f64, smithay::utils::Logical>,
     ) {
-        self.runtime.dnd_icon = None;
-        self.request_render();
+        self.native.runtime.dnd_icon = None;
+        self.native.request_render();
     }
 }
 
 impl XdgShellHandler for WaylandState {
     fn xdg_shell_state(&mut self) -> &mut smithay::wayland::shell::xdg::XdgShellState {
-        &mut self.xdg_shell_state
+        &mut self.native.xdg_shell_state
     }
 
     fn ack_configure(
@@ -428,7 +430,7 @@ impl XdgShellHandler for WaylandState {
         if !surface.is_initial_configure_sent() {
             let _ = surface.send_configure();
         }
-        self.runtime.pending_toplevels.push(surface);
+        self.native.runtime.pending_toplevels.push(surface);
     }
 
     fn title_changed(&mut self, surface: ToplevelSurface) {
@@ -444,10 +446,11 @@ impl XdgShellHandler for WaylandState {
             let parent = surface
                 .parent()
                 .and_then(|parent| self.window_id_for_surface(&parent));
-            self.push_command(super::super::commands::WmCommand::UpdateTransientFor {
-                win,
-                parent,
-            });
+            self.native
+                .push_command(super::super::commands::WmCommand::UpdateTransientFor {
+                    win,
+                    parent,
+                });
         }
         self.apply_floating_policy(&surface);
     }
@@ -455,7 +458,7 @@ impl XdgShellHandler for WaylandState {
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         self.unconstrain_popup(&surface);
         let kind = smithay::desktop::PopupKind::Xdg(surface);
-        if let Err(error) = self.popups.track_popup(kind) {
+        if let Err(error) = self.native.popups.track_popup(kind) {
             log::warn!("failed to track xdg popup: {error}");
         }
     }
@@ -464,12 +467,13 @@ impl XdgShellHandler for WaylandState {
         // If the surface was still pending (never committed a buffer),
         // just remove it — no window management state was ever created.
         if let Some(pos) = self
+            .native
             .runtime
             .pending_toplevels
             .iter()
             .position(|t: &ToplevelSurface| t.wl_surface() == surface.wl_surface())
         {
-            self.runtime.pending_toplevels.swap_remove(pos);
+            self.native.runtime.pending_toplevels.swap_remove(pos);
             return;
         }
 
@@ -477,12 +481,14 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         let is_overlay = self
+            .native
             .find_window(win)
             .and_then(|window| window.user_data().get::<super::state::WindowIdMarker>())
             .is_some_and(|marker| marker.is_overlay);
         self.remove_window_tracking(win);
         if !is_overlay {
-            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            self.native
+                .push_command(super::super::commands::WmCommand::UnmanageWindow(win));
         }
 
         // Recover mon.sel if it was cleared by detach_z_order, then re-apply seat focus.
@@ -494,10 +500,10 @@ impl XdgShellHandler for WaylandState {
         // cleaned.  Restore focus only after removing dead popup entries;
         // otherwise KeyboardHandle::is_grabbed() remains true and suppresses
         // compositor keybindings after the popup has closed.
-        self.popups.cleanup();
+        self.native.popups.cleanup();
 
         if let Some(old_id) = self.focused_window() {
-            if self.window_index.contains_key(&old_id) {
+            if self.native.window_index.contains_key(&old_id) {
                 self.focus_window(old_id, None);
             } else {
                 self.restore_focus_after_overlay();
@@ -511,7 +517,7 @@ impl XdgShellHandler for WaylandState {
         _seat: wl_seat::WlSeat,
         serial: smithay::utils::Serial,
     ) {
-        if self.is_locked() {
+        if self.native.is_locked() {
             return;
         }
         let kind = PopupKind::Xdg(surface);
@@ -520,6 +526,7 @@ impl XdgShellHandler for WaylandState {
             Err(_) => return,
         };
         let root = match self
+            .native
             .space
             .elements()
             .find(|w| w.wl_surface().as_deref() == Some(&root_surface))
@@ -529,12 +536,16 @@ impl XdgShellHandler for WaylandState {
             None => return,
         };
 
-        let mut grab = match self.popups.grab_popup(root, kind, &self.seat, serial) {
+        let mut grab = match self
+            .native
+            .popups
+            .grab_popup(root, kind, &self.native.seat, serial)
+        {
             Ok(g) => g,
             Err(_) => return,
         };
 
-        if let Some(keyboard) = self.seat.get_keyboard() {
+        if let Some(keyboard) = self.native.seat.get_keyboard() {
             if keyboard.is_grabbed()
                 && !(keyboard.has_grab(serial)
                     || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
@@ -545,7 +556,7 @@ impl XdgShellHandler for WaylandState {
             self.set_keyboard_focus(grab.current_grab(), serial);
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
-        if let Some(pointer) = self.seat.get_pointer() {
+        if let Some(pointer) = self.native.seat.get_pointer() {
             if pointer.is_grabbed()
                 && !(pointer.has_grab(serial)
                     || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
@@ -619,8 +630,8 @@ impl XdgShellHandler for WaylandState {
                 transition,
             );
             self.sync_window_presentation(&wm_view.core, win);
-            self.request_space_sync();
-            self.request_render();
+            self.native.request_space_sync();
+            self.native.request_render();
         } else {
             self.record_pending_toplevel_presentation(&surface, |state| state.fullscreen = true);
         }
@@ -639,8 +650,8 @@ impl XdgShellHandler for WaylandState {
                 transition,
             );
             self.sync_window_presentation(&wm_view.core, win);
-            self.request_space_sync();
-            self.request_render();
+            self.native.request_space_sync();
+            self.native.request_render();
         } else {
             self.record_pending_toplevel_presentation(&surface, |state| state.fullscreen = false);
         }
@@ -662,8 +673,8 @@ impl XdgShellHandler for WaylandState {
                 self.raise_window_visual_only(win);
             }
             self.sync_window_presentation(&wm_view.core, win);
-            self.request_space_sync();
-            self.request_render();
+            self.native.request_space_sync();
+            self.native.request_render();
         } else {
             self.record_pending_toplevel_presentation(&surface, |state| state.maximized = true);
         }
@@ -685,8 +696,8 @@ impl XdgShellHandler for WaylandState {
                 self.raise_window_visual_only(win);
             }
             self.sync_window_presentation(&wm_view.core, win);
-            self.request_space_sync();
-            self.request_render();
+            self.native.request_space_sync();
+            self.native.request_render();
         } else {
             self.record_pending_toplevel_presentation(&surface, |state| state.maximized = false);
         }
@@ -724,7 +735,7 @@ impl XdgDecorationHandler for WaylandState {
 
 impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
     fn activation_state(&mut self) -> &mut smithay::wayland::xdg_activation::XdgActivationState {
-        &mut self.xdg_activation_state
+        &mut self.native.xdg_activation_state
     }
 
     fn token_created(
@@ -771,8 +782,9 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                     .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()))
             };
 
-            self.push_command(super::super::commands::WmCommand::ActivateWindow(win));
-            self.request_bar_redraw();
+            self.native
+                .push_command(super::super::commands::WmCommand::ActivateWindow(win));
+            self.native.request_bar_redraw();
 
             log::debug!(
                 "xdg_activation: requested activation for window {:?} (visible={}, app_id: {:?})",

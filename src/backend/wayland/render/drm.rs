@@ -35,7 +35,7 @@ use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
 
 use crate::backend::BackendVrrSupport;
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::compositor::image_capture::PendingImageCapture;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::frame::{
@@ -105,7 +105,7 @@ render_elements! {
 /// surfaces are actually on; `suppress_upper_layers` is decided for the
 /// source as well.
 pub fn render_drm_output(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     renderer: &mut GlesRenderer,
     entry: &mut OutputSurfaceEntry,
     cursor_manager: &CursorManager,
@@ -251,7 +251,7 @@ pub fn render_drm_output(
 }
 
 fn send_output_dmabuf_feedback(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     entry: &OutputSurfaceEntry,
     render_states: &RenderElementStates,
 ) {
@@ -291,7 +291,7 @@ fn send_output_dmabuf_feedback(
 }
 
 fn build_drm_cursor_elements(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     renderer: &mut GlesRenderer,
     output: &Output,
     output_rect: crate::types::Rect,
@@ -323,7 +323,7 @@ fn build_drm_cursor_elements(
 }
 
 fn build_drm_render_elements(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     renderer: &mut GlesRenderer,
     output: &Output,
     cursor_elements: Vec<DrmExtras>,
@@ -345,7 +345,7 @@ fn build_drm_render_elements(
 }
 
 fn build_locked_drm_render_elements(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     renderer: &mut GlesRenderer,
     output: &Output,
     cursor_elements: Vec<DrmExtras>,
@@ -371,7 +371,7 @@ fn build_locked_drm_render_elements(
 }
 
 fn build_unlocked_drm_render_elements(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     renderer: &mut GlesRenderer,
     output: &Output,
     cursor_elements: Vec<DrmExtras>,
@@ -413,7 +413,7 @@ fn drm_frame_flags(entry: &OutputSurfaceEntry) -> FrameFlags {
 }
 
 fn collect_presentation_feedback(
-    state: &WaylandState,
+    state: &WaylandNativeState,
     entry: &OutputSurfaceEntry,
     render_states: &RenderElementStates,
 ) -> OutputPresentationFeedback {

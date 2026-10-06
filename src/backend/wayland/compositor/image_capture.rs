@@ -41,7 +41,7 @@ impl ImageCaptureSourceHandler for WaylandState {
 
 impl OutputCaptureSourceHandler for WaylandState {
     fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
-        &mut self.output_capture_source_state
+        &mut self.native.output_capture_source_state
     }
 
     fn output_source_created(&mut self, source: ImageCaptureSource, output: &Output) {
@@ -51,7 +51,7 @@ impl OutputCaptureSourceHandler for WaylandState {
 
 impl ImageCopyCaptureHandler for WaylandState {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
-        &mut self.image_copy_capture_state
+        &mut self.native.image_copy_capture_state
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
@@ -59,7 +59,7 @@ impl ImageCopyCaptureHandler for WaylandState {
         let output = weak_output.upgrade()?;
         let size = capture_size_for_output(&output)?;
 
-        let render_node = self.render_node;
+        let render_node = self.native.render_node;
         let dma = self
             .with_renderer(|renderer| {
                 capture_dmabuf_constraints(Some(renderer), render_node, Fourcc::Xrgb8888)
@@ -79,10 +79,11 @@ impl ImageCopyCaptureHandler for WaylandState {
         if let Some(constraints) = self.capture_constraints(&session.source()) {
             session.as_ref().update_constraints(constraints);
         }
-        self.runtime
+        self.native
+            .runtime
             .image_copy_sessions
             .retain(|session| session.alive());
-        self.runtime.image_copy_sessions.push(session);
+        self.native.runtime.image_copy_sessions.push(session);
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
@@ -99,12 +100,13 @@ impl ImageCopyCaptureHandler for WaylandState {
             frame.fail(CaptureFailureReason::Stopped);
             return;
         };
-        if !self.output_can_render(&output) {
+        if !self.native.output_can_render(&output) {
             frame.fail(CaptureFailureReason::Stopped);
             return;
         }
 
-        self.runtime
+        self.native
+            .runtime
             .pending_image_captures
             .push(PendingImageCapture {
                 transform: output.current_transform(),
@@ -113,17 +115,19 @@ impl ImageCopyCaptureHandler for WaylandState {
                 size,
                 frame,
             });
-        self.request_output_render(&output);
+        self.native.request_output_render(&output);
     }
 
     fn frame_aborted(&mut self, frame: FrameRef) {
-        self.runtime
+        self.native
+            .runtime
             .pending_image_captures
             .retain(|pending| pending.frame != frame);
     }
 
     fn session_destroyed(&mut self, session: SessionRef) {
-        self.runtime
+        self.native
+            .runtime
             .image_copy_sessions
             .retain(|stored| stored.as_ref() != session);
     }

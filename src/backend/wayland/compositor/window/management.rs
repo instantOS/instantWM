@@ -17,10 +17,12 @@ impl WaylandState {
         location: Point<i32, smithay::utils::Logical>,
         activate: bool,
     ) {
-        if self.space.element_location(element).is_some() {
-            self.space.relocate_element(element, location);
+        if self.native.space.element_location(element).is_some() {
+            self.native.space.relocate_element(element, location);
         } else {
-            self.space.map_element(element.clone(), location, activate);
+            self.native
+                .space
+                .map_element(element.clone(), location, activate);
         }
     }
 
@@ -41,20 +43,20 @@ impl WaylandState {
         self.set_window_target_rect(core_view, window, rect, mode);
         // An immediate request may preserve an existing spatial animation to
         // this target, but its protocol resize must still be sent now.
-        if let Some(element) = self.find_window(window).cloned() {
+        if let Some(element) = self.native.find_window(window).cloned() {
             self.dispatch_window_resize(core_view, window, &element, rect);
         }
     }
 
     /// Raise a window to the top of the stack.
     pub fn raise_window_visual_only(&mut self, window: WindowId) {
-        if let Some(element) = self.find_window(window).cloned() {
+        if let Some(element) = self.native.find_window(window).cloned() {
             // Focus is handled independently by `set_focus`, so we pass `false`
-            self.space.raise_element(&element, false);
+            self.native.space.raise_element(&element, false);
 
             // XWayland requires us to explicitly raise the X11 surface so X clients draw correctly.
             if let Some(surface) = element.x11_surface()
-                && let Some(xwm) = self.xwm.as_mut()
+                && let Some(xwm) = self.native.xwm.as_mut()
             {
                 let _ = xwm.raise_window(surface);
             }
@@ -65,10 +67,10 @@ impl WaylandState {
     /// Apply a complete z-order (bottom-to-top).
     pub fn apply_z_order(&mut self, windows: &[WindowId]) {
         for window in windows.iter() {
-            if let Some(element) = self.find_window(*window).cloned() {
+            if let Some(element) = self.native.find_window(*window).cloned() {
                 // Focus / activation is managed by `set_focus`, so we pass `false`
                 // here to avoid overriding the focus state visually.
-                self.space.raise_element(&element, false);
+                self.native.space.raise_element(&element, false);
             }
         }
         self.raise_unmanaged_x11_windows();

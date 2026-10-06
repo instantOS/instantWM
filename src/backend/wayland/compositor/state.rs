@@ -115,6 +115,14 @@ impl smithay::reexports::wayland_server::backend::ClientData for WaylandClientSt
 /// of every `delegate_*!` macro.  It also bridges into instantWM's
 /// `CoreState` for shared WM state (tags, clients, config, etc.).
 pub struct WaylandState {
+    pub(crate) native: WaylandNativeState,
+    pub(crate) graphics: Option<super::graphics::Graphics>,
+    wm: std::rc::Rc<std::cell::RefCell<Wm>>,
+}
+
+/// Protocol and scene data, separate from the graphics owner so frames borrow
+/// their renderer and scene exclusively as disjoint fields.
+pub struct WaylandNativeState {
     // -- Wayland infrastructure --
     pub display_handle: DisplayHandle,
 
@@ -188,7 +196,6 @@ pub struct WaylandState {
     pub idle_inhibiting_surfaces: HashSet<WlSurface>,
     /// DRM node used for rendering, needed to tag imported dmabufs.
     pub(super) render_node: Option<DrmNode>,
-    graphics: Option<super::graphics::GraphicsHandle>,
 
     // -- Input --
     pub seat: Seat<WaylandState>,
@@ -205,9 +212,6 @@ pub struct WaylandState {
 
     // -- Internal state --
     pub(super) next_window_id: u32,
-    /// Shared WM owner, borrowed only at protocol/input dispatch boundaries.
-    /// Shared runtime actions already hold the WM and pass core views explicitly.
-    wm: std::rc::Rc<std::cell::RefCell<Wm>>,
     pending_commit_clients: Vec<smithay::reexports::wayland_server::Client>,
     /// Desired, dispatched, and acknowledged geometry for each client.
     pub(super) geometry_sync:
@@ -377,10 +381,10 @@ impl WaylandState {
         &mut self,
         time: smithay::backend::input::InputTime,
     ) {
-        if self.runtime.pointer_touch_slot.take().is_none() {
+        if self.native.runtime.pointer_touch_slot.take().is_none() {
             return;
         }
-        let pointer = self.pointer.clone();
+        let pointer = self.native.pointer.clone();
         pointer.button(
             self,
             &smithay::input::pointer::ButtonEvent {
@@ -398,7 +402,7 @@ impl WaylandState {
         client_pid: Option<u32>,
     ) -> Option<crate::systray::status_notifier::NativeMenuRequest> {
         const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(2);
-        let mut pending = self.runtime.pending_systray_menu.lock().ok()?;
+        let mut pending = self.native.runtime.pending_systray_menu.lock().ok()?;
         let request = pending.as_ref()?;
         if request.created.elapsed() > MAX_AGE {
             pending.take();
@@ -413,20 +417,22 @@ impl WaylandState {
     pub(crate) fn active_systray_menu(
         &self,
     ) -> Option<&crate::systray::status_notifier::ActiveNativeMenu> {
-        self.runtime.active_systray_menu.as_ref()
+        self.native.runtime.active_systray_menu.as_ref()
     }
 
     /// Whether the active or not-yet-mapped native menu belongs to an item.
     /// Adapters use this before dismissing the menu to implement click-toggle
     /// without letting native compositor state leak into shared mouse policy.
     pub(crate) fn native_systray_menu_matches(&self, service: &str, path: &str) -> bool {
-        self.runtime
+        self.native
+            .runtime
             .active_systray_menu
             .as_ref()
             .is_some_and(|menu| {
                 menu.service == service && menu.path == path && !menu.close_requested
             })
             || self
+                .native
                 .runtime
                 .pending_systray_menu
                 .lock()
@@ -440,11 +446,12 @@ impl WaylandState {
     /// Dismiss a native menu whether its toplevel is active or still pending.
     pub(crate) fn dismiss_native_systray_menu(&mut self) -> bool {
         let dismissed_pending = self
+            .native
             .runtime
             .pending_systray_menu
             .lock()
             .is_ok_and(|mut pending| pending.take().is_some());
-        let Some(active) = self.runtime.active_systray_menu.as_mut() else {
+        let Some(active) = self.native.runtime.active_systray_menu.as_mut() else {
             return dismissed_pending;
         };
         let should_send_close = !active.close_requested;
@@ -458,12 +465,13 @@ impl WaylandState {
 
     pub(crate) fn clear_active_systray_menu(&mut self, win: crate::types::WindowId) {
         if self
+            .native
             .runtime
             .active_systray_menu
             .as_ref()
             .is_some_and(|active| active.win == win)
         {
-            self.runtime.active_systray_menu = None;
+            self.native.runtime.active_systray_menu = None;
         }
     }
 
@@ -549,109 +557,113 @@ impl WaylandState {
         let pointer = seat.add_pointer();
         let touch = seat.add_touch();
 
-        WaylandState {
-            display_handle: dh,
-            space: Space::default(),
-            popups: PopupManager::default(),
-            alpha_modifier_state,
-            compositor_state,
-            content_type_state,
-            commit_timing_manager_state,
-            cursor_shape_manager_state,
-            fixes_state,
-            fractional_scale_manager_state,
-            shm_state,
-            xdg_shell_state,
-            xdg_decoration_state,
-            xdg_dialog_state,
-            xdg_activation_state,
-            xdg_foreign_state,
-            seat_state,
-            output_manager_state,
-            presentation_state,
-            data_device_state,
-            primary_selection_state,
-            ext_data_control_state,
-            wlr_data_control_state,
-            xwayland_shell_state,
-            xwayland_keyboard_grab_state,
-            wlr_layer_shell_state,
-            loop_handle: handle.clone(),
-            dmabuf_state,
-            dmabuf_global: None,
-            drm_syncobj_state: None,
-            fifo_manager_state,
-            fifo_constraint_surfaces: HashSet::new(),
-            commit_timing_surfaces: HashSet::new(),
-            foreign_toplevel_list_state,
-            image_capture_source_state,
-            output_capture_source_state,
-            image_copy_capture_state,
-            pointer_gestures_state,
-            pointer_constraints_state,
-            pointer_warp_manager,
-            relative_pointer_manager_state,
-            single_pixel_buffer_state,
-            tablet_manager_state,
-            viewporter_state,
-            virtual_keyboard_manager_state,
-            text_input_manager_state,
-            input_method_manager_state,
-            keyboard_shortcuts_inhibit_state,
-            idle_inhibit_manager_state,
-            idle_notify_manager_state,
-            session_lock_manager_state,
-            ext_workspace_state,
-            output_management_state,
-            output_power_state,
-            foreign_toplevel_management_state,
-            lock_state: SessionLockState::Unlocked,
-            lock_surfaces: HashMap::new(),
-            idle_inhibiting_surfaces: HashSet::new(),
-            render_node: None,
-            graphics: None,
-            seat,
-            keyboard,
-            pointer,
-            touch,
-            cursor_config,
-            cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
-            cursor_icon_override: None,
-            xwm: None,
-            xdisplay: None,
-            next_window_id: 1,
+        Self {
             wm,
-            pending_commit_clients: Vec::new(),
-            geometry_sync: HashMap::new(),
-            placed_border: HashMap::new(),
-            native_size_hints: HashMap::new(),
-            active_resize: None,
-            window_index: HashMap::new(),
-            window_animations: HashMap::new(),
-            layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
-            layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
-            layout_preview_target: None,
-            foreign_toplevel_handles: HashMap::new(),
-            pending_warp: None,
-            cursor_position_hint: None,
-            runtime: WaylandRuntimeState::default(),
-            command_queue: std::cell::RefCell::new(Vec::new()),
+            graphics: None,
+            native: WaylandNativeState {
+                display_handle: dh,
+                space: Space::default(),
+                popups: PopupManager::default(),
+                alpha_modifier_state,
+                compositor_state,
+                content_type_state,
+                commit_timing_manager_state,
+                cursor_shape_manager_state,
+                fixes_state,
+                fractional_scale_manager_state,
+                shm_state,
+                xdg_shell_state,
+                xdg_decoration_state,
+                xdg_dialog_state,
+                xdg_activation_state,
+                xdg_foreign_state,
+                seat_state,
+                output_manager_state,
+                presentation_state,
+                data_device_state,
+                primary_selection_state,
+                ext_data_control_state,
+                wlr_data_control_state,
+                xwayland_shell_state,
+                xwayland_keyboard_grab_state,
+                wlr_layer_shell_state,
+                loop_handle: handle.clone(),
+                dmabuf_state,
+                dmabuf_global: None,
+                drm_syncobj_state: None,
+                fifo_manager_state,
+                fifo_constraint_surfaces: HashSet::new(),
+                commit_timing_surfaces: HashSet::new(),
+                foreign_toplevel_list_state,
+                image_capture_source_state,
+                output_capture_source_state,
+                image_copy_capture_state,
+                pointer_gestures_state,
+                pointer_constraints_state,
+                pointer_warp_manager,
+                relative_pointer_manager_state,
+                single_pixel_buffer_state,
+                tablet_manager_state,
+                viewporter_state,
+                virtual_keyboard_manager_state,
+                text_input_manager_state,
+                input_method_manager_state,
+                keyboard_shortcuts_inhibit_state,
+                idle_inhibit_manager_state,
+                idle_notify_manager_state,
+                session_lock_manager_state,
+                ext_workspace_state,
+                output_management_state,
+                output_power_state,
+                foreign_toplevel_management_state,
+                lock_state: SessionLockState::Unlocked,
+                lock_surfaces: HashMap::new(),
+                idle_inhibiting_surfaces: HashSet::new(),
+                render_node: None,
+                seat,
+                keyboard,
+                pointer,
+                touch,
+                cursor_config,
+                cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
+                cursor_icon_override: None,
+                xwm: None,
+                xdisplay: None,
+                next_window_id: 1,
+                pending_commit_clients: Vec::new(),
+                geometry_sync: HashMap::new(),
+                placed_border: HashMap::new(),
+                native_size_hints: HashMap::new(),
+                active_resize: None,
+                window_index: HashMap::new(),
+                window_animations: HashMap::new(),
+                layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
+                layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
+                layout_preview_target: None,
+                foreign_toplevel_handles: HashMap::new(),
+                pending_warp: None,
+                cursor_position_hint: None,
+                runtime: WaylandRuntimeState::default(),
+                command_queue: std::cell::RefCell::new(Vec::new()),
+            },
         }
     }
 
     pub fn init_drm_syncobj(&mut self, drm_device: smithay::backend::drm::DrmDeviceFd) {
         if smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&drm_device) {
             log::info!("Explicit sync (wp_linux_drm_syncobj_v1) is supported and initialized");
-            self.drm_syncobj_state = Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<
-                Self,
-            >(&self.display_handle, drm_device));
+            self.native.drm_syncobj_state =
+                Some(smithay::wayland::drm_syncobj::DrmSyncobjState::new::<Self>(
+                    &self.native.display_handle,
+                    drm_device,
+                ));
         } else {
             log::info!("DRM device does not support syncobj eventfd; explicit sync disabled");
         }
     }
 
     pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
-        if self.dmabuf_global.is_some() {
+        if self.native.dmabuf_global.is_some() {
             return;
         }
 
@@ -671,19 +683,21 @@ impl WaylandState {
                 })
         });
 
-        self.render_node = render_node;
+        self.native.render_node = render_node;
 
-        self.dmabuf_global = Some(if let Some(node) = self.render_node {
+        self.native.dmabuf_global = Some(if let Some(node) = self.native.render_node {
             log::info!("dmabuf: advertising zwp_linux_dmabuf_feedback_v1 v4 on node {node:?}");
             let feedback = DmabufFeedbackBuilder::new(node.dev_id(), formats)
                 .build()
                 .expect("DmabufFeedbackBuilder::build");
-            self.dmabuf_state
-                .create_global_with_default_feedback::<Self>(&self.display_handle, &feedback)
+            self.native
+                .dmabuf_state
+                .create_global_with_default_feedback::<Self>(&self.native.display_handle, &feedback)
         } else {
             log::info!("dmabuf: no render node available, falling back to zwp_linux_dmabuf_v1 v3");
-            self.dmabuf_state
-                .create_global::<Self>(&self.display_handle, formats)
+            self.native
+                .dmabuf_state
+                .create_global::<Self>(&self.native.display_handle, formats)
         });
     }
 
@@ -691,11 +705,11 @@ impl WaylandState {
     /// separate calloop phases; the handle enforces that the renderer cannot
     /// be borrowed by both. Nested graphics retains ownership of its renderer.
     #[allow(unexpected_cfgs)]
-    pub(crate) fn attach_graphics(&mut self, graphics: super::graphics::GraphicsHandle) {
+    pub(crate) fn attach_graphics(&mut self, mut graphics: super::graphics::Graphics) {
         #[cfg(feature = "use_system_lib")]
         graphics.with_renderer(|renderer| {
             use smithay::backend::renderer::ImportEgl;
-            match renderer.bind_wl_display(&self.display_handle) {
+            match renderer.bind_wl_display(&self.native.display_handle) {
                 Ok(()) => log::info!("EGL wl_drm hardware-acceleration enabled"),
                 Err(err) => log::debug!(
                     "EGL wl_drm not available ({}); dmabuf v4 will be used instead",
@@ -706,9 +720,9 @@ impl WaylandState {
         self.graphics = Some(graphics);
     }
 
-    pub(super) fn with_renderer<T>(&self, f: impl FnOnce(&mut GlesRenderer) -> T) -> Option<T> {
+    pub(super) fn with_renderer<T>(&mut self, f: impl FnOnce(&mut GlesRenderer) -> T) -> Option<T> {
         self.graphics
-            .as_ref()
+            .as_mut()
             .map(|graphics| graphics.with_renderer(f))
     }
 
@@ -732,50 +746,28 @@ impl WaylandState {
         std::cell::Ref::map(self.wm.borrow(), |wm| &wm.core)
     }
 
-    /// Barrier signaling may happen during a frame or shared WM work. Smithay's
-    /// blocker_cleared synchronously invokes CompositorHandler::commit, which
-    /// can consult the model (native menu placement) or graphics. Keep that
-    /// callback outside all WM/graphics leases instead of relying on each
-    /// caller to know which protocol handlers are reentrant.
-    pub(crate) fn defer_commit_client(
-        &mut self,
-        client: smithay::reexports::wayland_server::Client,
-    ) {
-        if !self
-            .pending_commit_clients
-            .iter()
-            .any(|pending| pending.id() == client.id())
-        {
-            self.pending_commit_clients.push(client);
-        }
-    }
-
     /// Run at dispatch boundaries, before borrowing runtime resources or after
     /// dropping them. Drains in the same event-loop iteration, never on a timer
     /// or an extra WM tick. Commit handlers may register new barriers safely.
     pub(crate) fn dispatch_pending_commits(&mut self) {
         use smithay::wayland::compositor::CompositorHandler;
-        while !self.pending_commit_clients.is_empty() {
-            let mut clients = std::mem::take(&mut self.pending_commit_clients);
-            let dh = self.display_handle.clone();
+        while !self.native.pending_commit_clients.is_empty() {
+            let mut clients = std::mem::take(&mut self.native.pending_commit_clients);
+            let dh = self.native.display_handle.clone();
             for client in clients.drain(..) {
                 self.client_compositor_state(&client)
                     .blocker_cleared(self, &dh);
             }
-            if self.pending_commit_clients.is_empty() {
-                self.pending_commit_clients = clients;
+            if self.native.pending_commit_clients.is_empty() {
+                self.native.pending_commit_clients = clients;
             }
         }
-    }
-
-    /// Push a command to the WM command queue.
-    pub fn push_command(&self, command: super::super::commands::WmCommand) {
-        self.command_queue.borrow_mut().push(command);
     }
 
     /// Project the shared model into the Smithay space.
     pub fn sync_space(&mut self, core_view: &crate::core_state::CoreState) {
         let dead_windows: Vec<WindowId> = self
+            .native
             .window_index
             .iter()
             .filter_map(|(&id, w)| if !w.alive() { Some(id) } else { None })
@@ -783,24 +775,27 @@ impl WaylandState {
 
         for win in dead_windows {
             let is_overlay = self
+                .native
                 .find_window(win)
                 .and_then(|window| window.user_data().get::<WindowIdMarker>())
                 .is_some_and(|marker| marker.is_overlay);
             self.remove_window_tracking(win);
             if !is_overlay {
-                self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+                self.native
+                    .push_command(super::super::commands::WmCommand::UnmanageWindow(win));
             }
         }
 
         // Purge surfaces whose underlying resource is gone, so the HashSet
         // does not grow unbounded when clients crash or destroy surfaces
         // without sending an explicit uninhibit request.
-        self.idle_inhibiting_surfaces.retain(|s| s.alive());
+        self.native.idle_inhibiting_surfaces.retain(|s| s.alive());
 
         // Only recover focus when the seat focus is actually missing or dead.
         // A plain space sync must not steal focus away from a live overlay
         // surface such as fuzzel/rofi, or from any other valid keyboard target.
         let seat_focus_needs_recovery = self
+            .native
             .seat
             .get_keyboard()
             .and_then(|k| k.current_focus())
@@ -811,6 +806,7 @@ impl WaylandState {
 
         let state = core_view;
         let updates: Vec<(WindowId, Rect)> = self
+            .native
             .space
             .elements()
             .filter_map(|window| {
@@ -851,31 +847,28 @@ impl WaylandState {
             rules: "evdev",
         };
 
-        let keyboard = self.keyboard.clone();
+        let keyboard = self.native.keyboard.clone();
         keyboard
             .set_xkb_config(self, config)
             .map_err(|e| format!("failed to apply Wayland keyboard layout: {e}"))
     }
 
-    /// Returns `true` if the session is currently locked.
-    pub fn is_locked(&self) -> bool {
-        matches!(self.lock_state, SessionLockState::Locked(_))
-    }
-
     /// Flush pending data to clients.
     pub fn flush(&mut self) {
-        self.space.refresh();
-        let _ = self.display_handle.flush_clients();
+        self.native.space.refresh();
+        let _ = self.native.display_handle.flush_clients();
     }
 
     /// Notify the idle manager of user activity.
     pub fn notify_activity(&mut self) {
-        self.idle_notify_manager_state.notify_activity(&self.seat);
+        self.native
+            .idle_notify_manager_state
+            .notify_activity(&self.native.seat);
     }
 
     /// Switch to a Linux virtual terminal (TTY) if running on a DRM session.
     pub fn switch_vt(&mut self, vt: i32) -> bool {
-        if let Some(session) = self.runtime.session.as_mut() {
+        if let Some(session) = self.native.runtime.session.as_mut() {
             log::info!("Switching to VT {vt}");
             if let Err(err) = smithay::backend::session::Session::change_vt(session, vt) {
                 log::error!("Failed to switch to VT {vt}: {err}");
@@ -920,7 +913,7 @@ mod native_menu_tests {
     #[test]
     fn pending_native_menu_identity_is_available_until_dismissal() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
-        *state.runtime.pending_systray_menu.lock().unwrap() = Some(NativeMenuRequest {
+        *state.native.runtime.pending_systray_menu.lock().unwrap() = Some(NativeMenuRequest {
             created: Instant::now(),
             anchor: Point::new(10, 20),
             service: "org.example.Tray".into(),
@@ -932,5 +925,35 @@ mod native_menu_tests {
         assert!(!state.native_systray_menu_matches("org.example.Other", "/org/example/Tray"));
         assert!(state.dismiss_native_systray_menu());
         assert!(!state.native_systray_menu_matches("org.example.Tray", "/org/example/Tray"));
+    }
+}
+
+impl crate::backend::wayland::compositor::WaylandNativeState {
+    /// Barrier signaling may happen during a frame or shared WM work. Smithay's
+    /// blocker_cleared synchronously invokes CompositorHandler::commit, which
+    /// can consult the model (native menu placement) or graphics. Keep that
+    /// callback outside all WM/graphics leases instead of relying on each
+    /// caller to know which protocol handlers are reentrant.
+    pub(crate) fn defer_commit_client(
+        &mut self,
+        client: smithay::reexports::wayland_server::Client,
+    ) {
+        if !self
+            .pending_commit_clients
+            .iter()
+            .any(|pending| pending.id() == client.id())
+        {
+            self.pending_commit_clients.push(client);
+        }
+    }
+    /// Returns `true` if the session is currently locked.
+    pub fn is_locked(&self) -> bool {
+        matches!(self.lock_state, SessionLockState::Locked(_))
+    }
+}
+
+impl WaylandNativeState {
+    pub fn push_command(&self, command: super::super::commands::WmCommand) {
+        self.command_queue.borrow_mut().push(command);
     }
 }

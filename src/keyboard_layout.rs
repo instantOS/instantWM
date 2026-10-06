@@ -284,6 +284,7 @@ mod tests {
         ));
         assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
         let symbol = state
+            .native
             .keyboard
             .clone()
             .with_xkb_state(&mut state, |context| {

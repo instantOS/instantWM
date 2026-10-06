@@ -17,7 +17,7 @@ impl DrmCaptureRequests {
 }
 
 pub(super) fn take_drm_capture_requests(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output: &Output,
 ) -> DrmCaptureRequests {
     let has_cursor_screencopy = state
@@ -52,7 +52,7 @@ pub(super) fn take_drm_capture_requests(
 }
 
 pub(super) fn submit_drm_capture_requests<B, F>(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
     frame_result: &RenderFrameResult<'_, B, F, DrmOutputElement>,
@@ -216,7 +216,7 @@ fn submit_dmabuf_image_captures<B, F>(
 
 #[allow(clippy::too_many_arguments)]
 fn submit_offscreen_capture<B, F>(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
     frame_result: &RenderFrameResult<'_, B, F, DrmOutputElement>,

@@ -58,7 +58,7 @@ impl<B: BackendState> Wm<B> {
     /// This is the one place that names the fields making up a [`CoreCtx`];
     /// [`Wm::core_ctx`] and backend context construction are built on it, so adding a
     /// field touches a single spot.
-    fn split_core_and_backend(&mut self) -> (CoreCtx<'_>, &mut B) {
+    pub(crate) fn split_core_and_backend(&mut self) -> (CoreCtx<'_>, &mut B) {
         let Self {
             core,
             work,

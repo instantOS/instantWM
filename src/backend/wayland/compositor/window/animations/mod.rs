@@ -31,7 +31,7 @@ mod tests {
         let tiled = Rect::new(0, 0, 1920, 1080);
         let floating = Rect::new(900, 500, 640, 360);
         let started_at = Instant::now();
-        state.window_animations.insert(
+        state.native.window_animations.insert(
             win,
             WaylandWindowAnimation::new(
                 WindowAnimation {
@@ -47,6 +47,7 @@ mod tests {
             ),
         );
         state
+            .native
             .geometry_sync
             .entry(win)
             .or_default()
@@ -56,28 +57,36 @@ mod tests {
         assert!(!state.native_commit_may_update_model(win, 1920, 1080, None, true));
         let tiled_serial = smithay::utils::Serial::from(10);
         state
+            .native
             .geometry_sync
             .entry(win)
             .or_default()
             .sent(tiled.size(), Some(tiled_serial));
         state
+            .native
             .geometry_sync
             .get_mut(&win)
             .unwrap()
             .schedule(floating.size());
         assert!(!state.native_commit_may_update_model(win, 1920, 1080, Some(tiled_serial), true,));
         assert_eq!(
-            state.geometry_sync.get(&win).unwrap().scheduled_size(),
+            state
+                .native
+                .geometry_sync
+                .get(&win)
+                .unwrap()
+                .scheduled_size(),
             Some(floating.size())
         );
 
-        let tick = state.window_animations.get_mut(&win).unwrap().tick(
+        let tick = state.native.window_animations.get_mut(&win).unwrap().tick(
             started_at + Duration::from_millis(30),
             Size::from((1920, 1080)),
         );
         assert!(tick.resize_due);
         let restore_serial = smithay::utils::Serial::from(11);
         state
+            .native
             .geometry_sync
             .get_mut(&win)
             .unwrap()
@@ -107,7 +116,7 @@ mod tests {
                 ..Client::default()
             },
         );
-        state.window_animations.insert(
+        state.native.window_animations.insert(
             win,
             WaylandWindowAnimation::new(
                 WindowAnimation {
@@ -127,7 +136,7 @@ mod tests {
         // placement or consume the existing animation in the first place.
         wm.wayland_ctx(&mut state)
             .move_resize(win, target, MoveResizeOptions::animate_to(50));
-        assert_eq!(state.displayed_animation_frame(win), Some(from));
+        assert_eq!(state.native.displayed_animation_frame(win), Some(from));
         assert!(state.animation_targets_outer_rect(win, target));
     }
 }
@@ -162,33 +171,22 @@ impl WaylandState {
         animate: bool,
         duration: Duration,
     ) {
-        self.layout_preview_style = style;
-        self.layout_preview_target = target_window;
-        self.layout_preview_animation
+        self.native.layout_preview_style = style;
+        self.native.layout_preview_target = target_window;
+        self.native
+            .layout_preview_animation
             .set_target(target, animate, duration, Instant::now());
-        self.request_render();
-    }
-
-    pub(crate) fn layout_preview_rect(&self) -> Option<Rect> {
-        self.layout_preview_animation.displayed()
-    }
-
-    pub(crate) fn layout_preview_style(&self) -> crate::types::InteractionOutlineStyle {
-        self.layout_preview_style
-    }
-
-    pub(crate) fn layout_preview_target(&self) -> Option<WindowId> {
-        self.layout_preview_target
+        self.native.request_render();
     }
 
     pub(crate) fn has_active_layout_preview_animation(&self) -> bool {
-        self.layout_preview_animation.is_active()
+        self.native.layout_preview_animation.is_active()
     }
 
     /// Discard presentation without dispatching geometry. Retargeting and
     /// teardown must be able to remove obsolete frames without sending them.
     pub(crate) fn drop_window_animation(&mut self, win: WindowId) {
-        self.window_animations.remove(&win);
+        self.native.window_animations.remove(&win);
     }
 
     pub(crate) fn animations_enabled(&self, core_view: &crate::core_state::CoreState) -> bool {
@@ -214,9 +212,10 @@ impl WaylandState {
     }
 
     fn output_rects(&self) -> Vec<Rect> {
-        self.space
+        self.native
+            .space
             .outputs()
-            .filter_map(|output| self.space.output_geometry(output))
+            .filter_map(|output| self.native.space.output_geometry(output))
             .map(|geometry| {
                 Rect::new(
                     geometry.loc.x,
@@ -248,6 +247,7 @@ impl WaylandState {
         target: Rect,
     ) {
         let Some(size) = self
+            .native
             .geometry_sync
             .get(&window_id)
             .and_then(|sync| sync.scheduled_size())
@@ -279,6 +279,7 @@ impl WaylandState {
         let size = crate::types::Size::new(target.w.max(1), target.h.max(1));
         if element.toplevel().is_some() {
             if self
+                .native
                 .geometry_sync
                 .get(&window_id)
                 .and_then(|sync| sync.scheduled_size())
@@ -296,7 +297,8 @@ impl WaylandState {
                 (size.w, size.h).into(),
             );
             let _ = surface.configure(Some(geometry));
-            self.geometry_sync
+            self.native
+                .geometry_sync
                 .entry(window_id)
                 .or_default()
                 .sent(size, None);
@@ -318,7 +320,7 @@ impl WaylandState {
     ) {
         self.configure_window_geometry(core_view, window_id, element, target);
         self.remap_window_immediately(window_id, element, target_loc);
-        self.placed_border.insert(window_id, to_border);
+        self.native.placed_border.insert(window_id, to_border);
     }
 
     /// Place a window at `target` (in outer/WM coordinates) using the given
@@ -340,7 +342,7 @@ impl WaylandState {
         target: Rect,
         mode: WindowMoveMode,
     ) {
-        let Some(element) = self.find_window(window_id).cloned() else {
+        let Some(element) = self.native.find_window(window_id).cloned() else {
             return;
         };
         let Some(to_border) = core_view.model.client(window_id).map(|c| c.border_width) else {
@@ -350,9 +352,10 @@ impl WaylandState {
         // Convert outer WM rect → inner surface rect.
         let target_loc: Point<i32, Logical> =
             Point::from((target.x + to_border, target.y + to_border));
-        let actual_loc = self.space.element_location(&element);
+        let actual_loc = self.native.space.element_location(&element);
 
         let resize_scheduled = self
+            .native
             .geometry_sync
             .entry(window_id)
             .or_default()
@@ -370,7 +373,7 @@ impl WaylandState {
         // same target (e.g. sync_space during a decorative
         // AnimateFrom slide-in, or an immediate move that preserves an
         // animation already landing on this rect).
-        if let Some(animation) = self.window_animations.get(&window_id)
+        if let Some(animation) = self.native.window_animations.get(&window_id)
             && animation.target() == target
         {
             if resize_scheduled && animation.resize_dispatch_ready() {
@@ -397,16 +400,18 @@ impl WaylandState {
         // mutated post-transition value. Unplaced windows fall back to the
         // requested target width.
         let from_border = self
+            .native
             .window_animations
             .get(&window_id)
             .map(WaylandWindowAnimation::displayed_border_width)
-            .or_else(|| self.placed_border.get(&window_id).copied())
+            .or_else(|| self.native.placed_border.get(&window_id).copied())
             .unwrap_or(to_border);
 
         // Resolve the displayed outer frame at animation start. The actual
         // committed surface size deliberately remains independent.
         let actual_size = element.geometry().size;
         let animated_from = self
+            .native
             .window_animations
             .get(&window_id)
             .map(WaylandWindowAnimation::displayed_frame);
@@ -466,9 +471,9 @@ impl WaylandState {
         if actual_loc != Some(start_loc) {
             self.remap_element_preserving_z_order(&element, start_loc, false);
         }
-        self.placed_border.insert(window_id, from_border);
+        self.native.placed_border.insert(window_id, from_border);
 
-        self.window_animations.insert(window_id, animation);
+        self.native.window_animations.insert(window_id, animation);
     }
 
     /// Cancel a single window's in-flight animation.
@@ -481,25 +486,27 @@ impl WaylandState {
         core_view: &crate::core_state::CoreState,
         win: WindowId,
     ) {
-        let Some(anim) = self.window_animations.remove(&win) else {
+        let Some(anim) = self.native.window_animations.remove(&win) else {
             return;
         };
-        let Some(element) = self.find_window(win).cloned() else {
+        let Some(element) = self.native.find_window(win).cloned() else {
             return;
         };
         if let Some(target) = core_view.model.client(win).map(|client| client.geo) {
             self.dispatch_window_resize(core_view, win, &element, target);
         }
-        if self.space.element_location(&element).is_some() {
+        if self.native.space.element_location(&element).is_some() {
             let target = anim.target();
             let border_width = anim.target_border_width();
-            self.request_visual_rect_render(anim.displayed_frame().with_borders(border_width));
-            self.request_visible_window_render(&element);
+            self.native
+                .request_visual_rect_render(anim.displayed_frame().with_borders(border_width));
+            self.native.request_visible_window_render(&element);
             let loc = Point::from((target.x + border_width, target.y + border_width));
             self.remap_element_preserving_z_order(&element, loc, false);
-            self.placed_border.insert(win, border_width);
-            self.request_visible_window_render(&element);
-            self.request_visual_rect_render(target.with_borders(border_width));
+            self.native.placed_border.insert(win, border_width);
+            self.native.request_visible_window_render(&element);
+            self.native
+                .request_visual_rect_render(target.with_borders(border_width));
         }
     }
 
@@ -510,7 +517,7 @@ impl WaylandState {
         win: WindowId,
         _now: Instant,
     ) -> Option<Rect> {
-        let animation = self.window_animations.remove(&win)?;
+        let animation = self.native.window_animations.remove(&win)?;
         Some(animation.displayed_frame())
     }
 
@@ -523,6 +530,7 @@ impl WaylandState {
         committed_size: Size<i32, Logical>,
     ) {
         let Some(animation) = self
+            .native
             .window_animations
             .get(&win)
             .filter(|animation| animation.is_waiting_for_resize())
@@ -534,46 +542,51 @@ impl WaylandState {
         let landed = animation.has_landed(committed_size);
         let loc = animation.target_surface_location(committed_size);
 
-        if let Some(element) = self.find_window(win).cloned()
-            && self.space.element_location(&element).is_some()
+        if let Some(element) = self.native.find_window(win).cloned()
+            && self.native.space.element_location(&element).is_some()
         {
-            self.request_visible_window_render(&element);
-            if self.space.element_location(&element) != Some(loc) {
+            self.native.request_visible_window_render(&element);
+            if self.native.space.element_location(&element) != Some(loc) {
                 self.remap_element_preserving_z_order(&element, loc, false);
             }
-            self.placed_border.insert(win, border_width);
-            self.request_visible_window_render(&element);
-            self.request_visual_rect_render(target.with_borders(border_width));
+            self.native.placed_border.insert(win, border_width);
+            self.native.request_visible_window_render(&element);
+            self.native
+                .request_visual_rect_render(target.with_borders(border_width));
         }
 
         if landed {
-            self.window_animations.remove(&win);
+            self.native.window_animations.remove(&win);
         }
     }
 
     /// Tick all active window animations.
     pub fn tick_animations(&mut self, core_view: &crate::core_state::CoreState) {
-        let preview_active = self.layout_preview_animation.is_active();
+        let preview_active = self.native.layout_preview_animation.is_active();
         if !self.has_active_window_animations() && !preview_active {
             return;
         }
         let now = Instant::now();
         if preview_active {
-            self.layout_preview_animation.tick(now);
-            self.request_render();
+            self.native.layout_preview_animation.tick(now);
+            self.native.request_render();
         }
         let animation_inputs: Vec<_> = self
+            .native
             .window_animations
             .iter()
             .filter(|(_, animation)| !animation.is_waiting_for_resize())
             .map(|(&win, _)| {
                 (
                     win,
-                    self.find_window(win).map(|element| element.geometry().size),
+                    self.native
+                        .find_window(win)
+                        .map(|element| element.geometry().size),
                 )
             })
             .collect();
         let output_rects: Vec<_> = if self
+            .native
             .window_animations
             .values()
             .any(WaylandWindowAnimation::requires_output_revalidation)
@@ -589,7 +602,7 @@ impl WaylandState {
                 finished.push(win);
                 continue;
             };
-            if let Some(animation) = self.window_animations.get_mut(&win) {
+            if let Some(animation) = self.native.window_animations.get_mut(&win) {
                 animation.revalidate_offscreen_resize_phase(committed_size, &output_rects);
                 let tick = animation.tick(now, committed_size);
                 let border_width = animation.displayed_border_width();
@@ -609,23 +622,25 @@ impl WaylandState {
         for (win, loc, resize_due, previous_frame, frame, border_width, done, waiting_for_resize) in
             updates
         {
-            if let Some(element) = self.find_window(win).cloned() {
-                self.request_visual_rect_render(previous_frame.with_borders(border_width));
-                self.request_visible_window_render(&element);
+            if let Some(element) = self.native.find_window(win).cloned() {
+                self.native
+                    .request_visual_rect_render(previous_frame.with_borders(border_width));
+                self.native.request_visible_window_render(&element);
                 if resize_due
                     && let Some(target) = core_view.model.client(win).map(|client| client.geo)
                 {
                     self.dispatch_window_resize(core_view, win, &element, target);
                 }
-                if self.space.element_location(&element) != Some(loc) {
+                if self.native.space.element_location(&element) != Some(loc) {
                     self.remap_element_preserving_z_order(&element, loc, false);
                 }
-                self.placed_border.insert(win, border_width);
+                self.native.placed_border.insert(win, border_width);
                 // Preserve damage on both sides of a cross-output move and
                 // redraw animated borders even when an anchored edge keeps
                 // the surface location stationary.
-                self.request_visible_window_render(&element);
-                self.request_visual_rect_render(frame.with_borders(border_width));
+                self.native.request_visible_window_render(&element);
+                self.native
+                    .request_visual_rect_render(frame.with_borders(border_width));
             } else {
                 finished.push(win);
                 continue;
@@ -642,7 +657,7 @@ impl WaylandState {
     /// Cancel all in-flight window animations, snapping each mapped window
     /// to its animation target position.
     pub fn cancel_all_window_animations(&mut self, core_view: &crate::core_state::CoreState) {
-        let active_windows: Vec<WindowId> = self.window_animations.keys().copied().collect();
+        let active_windows: Vec<WindowId> = self.native.window_animations.keys().copied().collect();
         for win in active_windows {
             self.cancel_window_animation(core_view, win);
         }
@@ -650,14 +665,16 @@ impl WaylandState {
 
     /// Check if there are active window animations.
     pub fn has_active_window_animations(&self) -> bool {
-        self.window_animations
+        self.native
+            .window_animations
             .values()
             .any(WaylandWindowAnimation::is_active)
     }
 
     /// Check whether one window currently has an active geometry animation.
     pub fn window_has_active_animation(&self, win: WindowId) -> bool {
-        self.window_animations
+        self.native
+            .window_animations
             .get(&win)
             .is_some_and(WaylandWindowAnimation::is_active)
     }
@@ -665,7 +682,7 @@ impl WaylandState {
     /// Check if any compositor visual transition needs another frame.
     pub fn has_active_animations(&self) -> bool {
         self.has_active_window_animations()
-            || self.layout_preview_animation.is_active()
+            || self.native.layout_preview_animation.is_active()
             || self.shortcut_recovery_needs_tick()
     }
 
@@ -673,17 +690,28 @@ impl WaylandState {
     /// (in WM/outer coordinates).  The border-width conversion is handled
     /// internally so callers don't need to know about the inner coordinate space.
     pub(crate) fn animation_targets_outer_rect(&self, win: WindowId, outer_target: Rect) -> bool {
-        self.window_animations
+        self.native
+            .window_animations
             .get(&win)
             .is_some_and(|animation| animation.target() == outer_target)
     }
+}
 
+impl crate::backend::wayland::compositor::WaylandNativeState {
+    pub(crate) fn layout_preview_rect(&self) -> Option<Rect> {
+        self.layout_preview_animation.displayed()
+    }
+    pub(crate) fn layout_preview_style(&self) -> crate::types::InteractionOutlineStyle {
+        self.layout_preview_style
+    }
+    pub(crate) fn layout_preview_target(&self) -> Option<WindowId> {
+        self.layout_preview_target
+    }
     pub(crate) fn displayed_animation_frame(&self, win: WindowId) -> Option<Rect> {
         self.window_animations
             .get(&win)
             .map(WaylandWindowAnimation::displayed_frame)
     }
-
     /// The border width the window is currently *presented* with.
     ///
     /// While animated the interpolated transition border wins; otherwise the

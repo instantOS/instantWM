@@ -160,7 +160,7 @@ mod tests {
         use crate::test_support::new_compositor;
 
         fn null_surface(state: &crate::backend::wayland::compositor::WaylandState) -> WlSurface {
-            WlSurface::from_id(&state.display_handle.clone(), ObjectId::null()).unwrap()
+            WlSurface::from_id(&state.native.display_handle.clone(), ObjectId::null()).unwrap()
         }
 
         #[test]

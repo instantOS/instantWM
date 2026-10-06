@@ -3,7 +3,7 @@ use super::*;
 pub fn build_output_surfaces(
     output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
 ) -> Vec<OutputSurfaceEntry> {
     let mut output_surfaces: Vec<OutputSurfaceEntry> = Vec::new();
     add_new_output_surfaces(output_manager, renderer, state, &mut output_surfaces);
@@ -16,7 +16,7 @@ pub fn build_output_surfaces(
 pub fn add_new_output_surfaces(
     output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
 ) {
     let mut output_x_offset = output_surfaces
@@ -250,7 +250,7 @@ where
 fn initialize_drm_output_surface(
     output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     init_render_elements: &DrmOutputRenderElements<GlesRenderer, DrmOutputElement>,
     spec: DrmOutputSpec,
     x_offset: i32,
@@ -363,7 +363,11 @@ pub(crate) fn build_output_dmabuf_feedback(
     Some(OutputDmabufFeedback { render, scanout })
 }
 
-fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offset: i32) -> Output {
+fn create_drm_wayland_output(
+    state: &WaylandNativeState,
+    spec: &DrmOutputSpec,
+    x_offset: i32,
+) -> Output {
     let out_mode = OutputMode::from(spec.mode);
     let output = state.create_output_global(
         spec.name.clone(),
@@ -384,7 +388,7 @@ fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offse
 }
 
 fn configure_drm_output_vrr(
-    state: &mut WaylandState,
+    state: &mut WaylandNativeState,
     output_name: &str,
     connector: connector::Handle,
     surface: &state::ManagedDrmOutput,

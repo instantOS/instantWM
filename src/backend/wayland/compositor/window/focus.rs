@@ -19,7 +19,7 @@ impl WaylandState {
     /// This is an asynchronous request that goes through the WM command queue
     /// to avoid deadlocks from nested lock acquisition during Smithay events.
     pub(crate) fn request_window_focus(&self, window: WindowId) {
-        self.push_command(WmCommand::FocusWindow(window));
+        self.native.push_command(WmCommand::FocusWindow(window));
     }
 
     /// Apply a keyboard focus request on the seat, honoring an active session
@@ -36,15 +36,15 @@ impl WaylandState {
         target: Option<KeyboardFocusTarget>,
         serial: smithay::utils::Serial,
     ) {
-        let effective = if self.is_locked() {
+        let effective = if self.native.is_locked() {
             self.locked_keyboard_focus()
         } else {
             target
         };
-        if let Some(keyboard) = self.seat.get_keyboard() {
+        if let Some(keyboard) = self.native.seat.get_keyboard() {
             // A grab can ignore set_focus or redirect the next key event to
             // its own client. No pre-lock grab may survive into the lock.
-            if self.is_locked() && keyboard.is_grabbed() {
+            if self.native.is_locked() && keyboard.is_grabbed() {
                 keyboard.unset_grab(self);
             }
             keyboard.set_focus(self, effective, serial);
@@ -65,10 +65,10 @@ impl WaylandState {
     /// ([`crate::focus::focus`]) is the single authority for `mon.selected`.
     pub(crate) fn focus_window(&mut self, window: WindowId, presentation: Option<(bool, bool)>) {
         let serial = SERIAL_COUNTER.next_serial();
-        let focus_window = self.find_window(window).cloned();
+        let focus_window = self.native.find_window(window).cloned();
 
         // If the window doesn't exist in our index, clear seat focus.
-        if focus_window.is_none() && !self.window_index.contains_key(&window) {
+        if focus_window.is_none() && !self.native.window_index.contains_key(&window) {
             log::warn!(
                 "set_focus: window {:?} not found, clearing seat focus",
                 window
@@ -95,7 +95,7 @@ impl WaylandState {
         if let Some(new_window) = focus_window {
             self.set_window_activated(window, true, presentation);
             // Set keyboard focus on the Smithay seat
-            if let Some(keyboard) = self.seat.get_keyboard() {
+            if let Some(keyboard) = self.native.seat.get_keyboard() {
                 let new_focus = KeyboardFocusTarget::Window(new_window.clone());
 
                 // Popup keyboard grabs intentionally reject focus changes while
@@ -124,7 +124,7 @@ impl WaylandState {
             // This ensures games (including those using subsurfaces) regain
             // mouse locks after being Alt-Tabbed.
             if let Some(surface) = new_window.wl_surface() {
-                let pointer = self.seat.get_pointer();
+                let pointer = self.native.seat.get_pointer();
                 if let Some(pointer) = pointer {
                     // Walk the entire surface tree to handle constraints on subsurfaces.
                     // We collect the surfaces first to avoid potential deadlocks from
@@ -167,7 +167,7 @@ impl WaylandState {
         activated: bool,
         presentation: Option<(bool, bool)>,
     ) {
-        let Some(element) = self.window_index.get(&window).cloned() else {
+        let Some(element) = self.native.window_index.get(&window).cloned() else {
             return;
         };
         if element.set_activated(activated) {
@@ -184,7 +184,8 @@ impl WaylandState {
     /// Check whether the Smithay keyboard seat is currently focused on the
     /// X11 surface with the given `window_id`.
     pub(crate) fn is_x11_surface_focused(&self, window_id: u32) -> bool {
-        self.seat
+        self.native
+            .seat
             .get_keyboard()
             .and_then(|k| k.current_focus())
             .is_some_and(|focus| {
@@ -221,7 +222,8 @@ impl WaylandState {
 
     /// Check if the Smithay seat keyboard focus is currently on the given window.
     pub(crate) fn is_seat_focused_on(&self, window: WindowId) -> bool {
-        self.seat
+        self.native
+            .seat
             .get_keyboard()
             .and_then(|k| k.current_focus())
             .is_some_and(|focus| match focus {
@@ -236,7 +238,8 @@ impl WaylandState {
     /// Restore seat focus after an overlay (e.g., dmenu) is closed, or
     /// after a window was destroyed and `mon.sel` was cleared.
     pub(crate) fn restore_focus_after_overlay(&self) {
-        self.push_command(crate::backend::wayland::commands::WmCommand::RestoreFocus);
+        self.native
+            .push_command(crate::backend::wayland::commands::WmCommand::RestoreFocus);
     }
 }
 

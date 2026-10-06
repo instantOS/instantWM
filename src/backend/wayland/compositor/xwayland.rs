@@ -21,7 +21,7 @@ pub(super) fn focus_overlay_if_launcher(
     state: &mut WaylandState,
     element: &smithay::desktop::Window,
 ) {
-    let typ = state.classify_window(element);
+    let typ = state.native.classify_window(element);
     if typ != WindowType::Launcher && typ != WindowType::Unmanaged {
         return;
     }
@@ -79,7 +79,9 @@ pub(super) fn xdg_resize_edge_to_direction(
 /// the existing title-drag motion handler.
 pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
     state.request_window_focus(win);
-    state.push_command(super::super::commands::WmCommand::BeginMove(win));
+    state
+        .native
+        .push_command(super::super::commands::WmCommand::BeginMove(win));
 }
 
 /// Begin an interactive resize drag triggered by a client request
@@ -92,16 +94,20 @@ pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
 /// handler then drives the resize from subsequent pointer motion events.
 pub(super) fn begin_app_resize_drag(state: &mut WaylandState, win: WindowId, dir: ResizeDirection) {
     state.request_window_focus(win);
-    state.push_command(super::super::commands::WmCommand::BeginResize { win, dir });
+    state
+        .native
+        .push_command(super::super::commands::WmCommand::BeginResize { win, dir });
 }
 
 /// Trigger a pointer focus update to ensure hover state is correct.
 pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
-    state.push_command(super::super::commands::WmCommand::PointerMotion(
-        super::super::commands::PointerMotionCommand::Refresh {
-            time: smithay::backend::input::InputTime::now(),
-        },
-    ));
+    state
+        .native
+        .push_command(super::super::commands::WmCommand::PointerMotion(
+            super::super::commands::PointerMotionCommand::Refresh {
+                time: smithay::backend::input::InputTime::now(),
+            },
+        ));
 }
 
 fn sync_surface_metadata(
@@ -110,7 +116,9 @@ fn sync_surface_metadata(
     surface: &X11Surface,
 ) {
     let properties = crate::backend::x11::policy::window_properties_from_x11_surface(surface);
-    state.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
+    state
+        .native
+        .push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
     state.update_foreign_toplevel(win);
 }
 
@@ -119,22 +127,27 @@ fn apply_surface_policy(
     win: crate::types::WindowId,
     surface: &X11Surface,
 ) {
-    state.push_command(super::super::commands::WmCommand::UpdateXWaylandPolicy {
-        win,
-        update: crate::backend::x11::policy::XWaylandPolicyUpdate {
-            hints: surface.hints(),
-            size_hints: surface.size_hints(),
-            is_fullscreen: surface.is_fullscreen(),
-            is_maximized: surface.is_maximized(),
-            is_hidden: surface.is_hidden(),
-            is_above: surface.is_above(),
-        },
-    });
+    state
+        .native
+        .push_command(super::super::commands::WmCommand::UpdateXWaylandPolicy {
+            win,
+            update: crate::backend::x11::policy::XWaylandPolicyUpdate {
+                hints: surface.hints(),
+                size_hints: surface.size_hints(),
+                is_fullscreen: surface.is_fullscreen(),
+                is_maximized: surface.is_maximized(),
+                is_hidden: surface.is_hidden(),
+                is_above: surface.is_above(),
+            },
+        });
 }
 
 impl XwmHandler for WaylandState {
     fn xwm_state(&mut self, _xwm: smithay::xwayland::xwm::XwmId) -> &mut smithay::xwayland::X11Wm {
-        self.xwm.as_mut().expect("XWayland is not initialized")
+        self.native
+            .xwm
+            .as_mut()
+            .expect("XWayland is not initialized")
     }
 
     fn new_window(
@@ -165,6 +178,7 @@ impl XwmHandler for WaylandState {
         if is_unmanaged_x11_overlay(&window) {
             let window_id = window.window_id();
             let existing = self
+                .native
                 .space
                 .elements()
                 .find(|w| {
@@ -173,19 +187,23 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(existing) = existing {
-                self.request_visible_window_render(&existing);
-                self.space.map_element(existing.clone(), geo.loc, false);
-                self.space.raise_element(&existing, false);
+                self.native.request_visible_window_render(&existing);
+                self.native
+                    .space
+                    .map_element(existing.clone(), geo.loc, false);
+                self.native.space.raise_element(&existing, false);
                 focus_overlay_if_launcher(self, &existing);
                 trigger_pointer_focus_update(self);
-                self.request_visible_window_render(&existing);
+                self.native.request_visible_window_render(&existing);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
-                self.space.map_element(element.clone(), geo.loc, false);
-                self.space.raise_element(&element, false);
+                self.native
+                    .space
+                    .map_element(element.clone(), geo.loc, false);
+                self.native.space.raise_element(&element, false);
                 focus_overlay_if_launcher(self, &element);
                 trigger_pointer_focus_update(self);
-                self.request_visible_window_render(&element);
+                self.native.request_visible_window_render(&element);
             }
             return;
         }
@@ -221,8 +239,10 @@ impl XwmHandler for WaylandState {
             "fresh X11 Window already carries a WindowIdMarker; its id would diverge from window_index"
         );
 
-        self.space.map_element(element.clone(), geo.loc, false);
-        self.window_index.insert(win, element);
+        self.native
+            .space
+            .map_element(element.clone(), geo.loc, false);
+        self.native.window_index.insert(win, element);
 
         let properties = self.window_properties(win);
         let initial_geo = Some(crate::types::Rect {
@@ -235,19 +255,20 @@ impl XwmHandler for WaylandState {
             .size_hints()
             .is_some_and(|hints| hints.position.is_some());
 
-        self.push_command(super::super::commands::WmCommand::MapWindow(
-            super::super::commands::MapWindowParams {
-                win,
-                properties,
-                initial_geo,
-                initial_position_is_explicit,
-                launch_pid: window.pid(),
-                launch_startup_id: window.startup_id(),
-                x11_hints: window.hints(),
-                x11_size_hints: window.size_hints(),
-                parent,
-            },
-        ));
+        self.native
+            .push_command(super::super::commands::WmCommand::MapWindow(
+                super::super::commands::MapWindowParams {
+                    win,
+                    properties,
+                    initial_geo,
+                    initial_position_is_explicit,
+                    launch_pid: window.pid(),
+                    launch_startup_id: window.startup_id(),
+                    x11_hints: window.hints(),
+                    x11_size_hints: window.size_hints(),
+                    parent,
+                },
+            ));
 
         self.create_foreign_toplevel(win);
         self.request_window_focus(win);
@@ -260,11 +281,13 @@ impl XwmHandler for WaylandState {
     ) {
         let geo = window.last_configure();
         let element = smithay::desktop::Window::new_x11_window(window);
-        self.space.map_element(element.clone(), geo.loc, false);
-        self.space.raise_element(&element, false);
+        self.native
+            .space
+            .map_element(element.clone(), geo.loc, false);
+        self.native.space.raise_element(&element, false);
         focus_overlay_if_launcher(self, &element);
         trigger_pointer_focus_update(self);
-        self.request_visible_window_render(&element);
+        self.native.request_visible_window_render(&element);
     }
 
     fn unmapped_window(
@@ -288,9 +311,11 @@ impl XwmHandler for WaylandState {
             // backend-neutral unmanage path reconcile model, focus, layout,
             // bar state, and decorations.
             self.remove_window_tracking(win);
-            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            self.native
+                .push_command(super::super::commands::WmCommand::UnmanageWindow(win));
         } else {
             let element = self
+                .native
                 .space
                 .elements()
                 .find(|w| {
@@ -299,8 +324,8 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
-                self.request_visible_window_render(&element);
-                self.space.unmap_elem(&element);
+                self.native.request_visible_window_render(&element);
+                self.native.space.unmap_elem(&element);
             }
         }
         trigger_pointer_focus_update(self);
@@ -329,9 +354,11 @@ impl XwmHandler for WaylandState {
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.remove_window_tracking(win);
-            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            self.native
+                .push_command(super::super::commands::WmCommand::UnmanageWindow(win));
         } else if is_overlay {
             let element = self
+                .native
                 .space
                 .elements()
                 .find(|w| {
@@ -340,8 +367,8 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
-                self.request_visible_window_render(&element);
-                self.space.unmap_elem(&element);
+                self.native.request_visible_window_render(&element);
+                self.native.space.unmap_elem(&element);
             }
         }
         trigger_pointer_focus_update(self);
@@ -375,11 +402,12 @@ impl XwmHandler for WaylandState {
             geo.size.h = h as i32;
         }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.push_command(super::super::commands::WmCommand::RequestX11WindowSize {
-                win,
-                w: geo.size.w,
-                h: geo.size.h,
-            });
+            self.native
+                .push_command(super::super::commands::WmCommand::RequestX11WindowSize {
+                    win,
+                    w: geo.size.w,
+                    h: geo.size.h,
+                });
             return;
         }
         let _ = window.configure(Some(geo));
@@ -400,6 +428,7 @@ impl XwmHandler for WaylandState {
 
         let window_id = window.window_id();
         let element = self
+            .native
             .space
             .elements()
             .find(|w| {
@@ -409,10 +438,12 @@ impl XwmHandler for WaylandState {
             .cloned();
         if let Some(element) = element {
             // An unmanaged window owns its geometry and can cross outputs.
-            self.request_visible_window_render(&element);
-            self.space.map_element(element.clone(), geometry.loc, false);
-            self.space.raise_element(&element, false);
-            self.request_visible_window_render(&element);
+            self.native.request_visible_window_render(&element);
+            self.native
+                .space
+                .map_element(element.clone(), geometry.loc, false);
+            self.native.space.raise_element(&element, false);
+            self.native.request_visible_window_render(&element);
         }
     }
 
@@ -446,10 +477,11 @@ impl XwmHandler for WaylandState {
                     property,
                     WmWindowProperty::TransientFor | WmWindowProperty::WindowType
                 ) {
-                    self.push_command(super::super::commands::WmCommand::RequestSpaceSync);
+                    self.native
+                        .push_command(super::super::commands::WmCommand::RequestSpaceSync);
                 }
                 if matches!(property, WmWindowProperty::Hints) {
-                    self.request_bar_redraw();
+                    self.native.request_bar_redraw();
                 }
             }
             WmWindowProperty::Other(_) => {}
@@ -465,10 +497,11 @@ impl XwmHandler for WaylandState {
             return;
         };
         let _ = window.set_maximized(true);
-        self.push_command(super::super::commands::WmCommand::SetMaximized {
-            win,
-            maximized: true,
-        });
+        self.native
+            .push_command(super::super::commands::WmCommand::SetMaximized {
+                win,
+                maximized: true,
+            });
     }
 
     fn unmaximize_request(
@@ -480,10 +513,11 @@ impl XwmHandler for WaylandState {
             return;
         };
         let _ = window.set_maximized(false);
-        self.push_command(super::super::commands::WmCommand::SetMaximized {
-            win,
-            maximized: false,
-        });
+        self.native
+            .push_command(super::super::commands::WmCommand::SetMaximized {
+                win,
+                maximized: false,
+            });
     }
 
     fn fullscreen_request(
@@ -495,10 +529,11 @@ impl XwmHandler for WaylandState {
             return;
         };
         let _ = window.set_fullscreen(true);
-        self.push_command(super::super::commands::WmCommand::SetFullscreen {
-            win,
-            fullscreen: true,
-        });
+        self.native
+            .push_command(super::super::commands::WmCommand::SetFullscreen {
+                win,
+                fullscreen: true,
+            });
     }
 
     fn unfullscreen_request(
@@ -510,10 +545,11 @@ impl XwmHandler for WaylandState {
             return;
         };
         let _ = window.set_fullscreen(false);
-        self.push_command(super::super::commands::WmCommand::SetFullscreen {
-            win,
-            fullscreen: false,
-        });
+        self.native
+            .push_command(super::super::commands::WmCommand::SetFullscreen {
+                win,
+                fullscreen: false,
+            });
     }
 
     fn minimize_request(
@@ -525,10 +561,11 @@ impl XwmHandler for WaylandState {
             return;
         };
         let _ = window.set_hidden(true);
-        self.push_command(super::super::commands::WmCommand::SetMinimized {
-            win,
-            minimized: true,
-        });
+        self.native
+            .push_command(super::super::commands::WmCommand::SetMinimized {
+                win,
+                minimized: true,
+            });
     }
 
     fn unminimize_request(
@@ -540,10 +577,11 @@ impl XwmHandler for WaylandState {
             return;
         };
         let _ = window.set_hidden(false);
-        self.push_command(super::super::commands::WmCommand::SetMinimized {
-            win,
-            minimized: false,
-        });
+        self.native
+            .push_command(super::super::commands::WmCommand::SetMinimized {
+                win,
+                minimized: false,
+            });
     }
 
     fn resize_request(
@@ -601,7 +639,7 @@ impl XwmHandler for WaylandState {
     ) {
         use smithay::wayland::selection::data_device::request_data_device_client_selection;
         use smithay::wayland::selection::primary_selection::request_primary_client_selection;
-        let seat = self.seat.clone();
+        let seat = self.native.seat.clone();
         match selection {
             SelectionTarget::Clipboard => {
                 if let Err(err) = request_data_device_client_selection(&seat, mime_type, fd) {
@@ -630,13 +668,13 @@ impl XwmHandler for WaylandState {
     ) {
         use smithay::wayland::selection::data_device::set_data_device_selection;
         use smithay::wayland::selection::primary_selection::set_primary_selection;
-        let seat = self.seat.clone();
+        let seat = self.native.seat.clone();
         match selection {
             SelectionTarget::Clipboard => {
-                set_data_device_selection(&self.display_handle, &seat, mime_types, ());
+                set_data_device_selection(&self.native.display_handle, &seat, mime_types, ());
             }
             SelectionTarget::Primary => {
-                set_primary_selection(&self.display_handle, &seat, mime_types, ());
+                set_primary_selection(&self.native.display_handle, &seat, mime_types, ());
             }
         }
     }
@@ -652,23 +690,23 @@ impl XwmHandler for WaylandState {
         use smithay::wayland::selection::primary_selection::{
             clear_primary_selection, current_primary_selection_userdata,
         };
-        let seat = self.seat.clone();
+        let seat = self.native.seat.clone();
         match selection {
             SelectionTarget::Clipboard => {
                 if current_data_device_selection_userdata(&seat).is_some() {
-                    clear_data_device_selection(&self.display_handle, &seat);
+                    clear_data_device_selection(&self.native.display_handle, &seat);
                 }
             }
             SelectionTarget::Primary => {
                 if current_primary_selection_userdata(&seat).is_some() {
-                    clear_primary_selection(&self.display_handle, &seat);
+                    clear_primary_selection(&self.native.display_handle, &seat);
                 }
             }
         }
     }
 
     fn disconnected(&mut self, _xwm: smithay::xwayland::xwm::XwmId) {
-        self.xwm = None;
-        self.xdisplay = None;
+        self.native.xwm = None;
+        self.native.xdisplay = None;
     }
 }

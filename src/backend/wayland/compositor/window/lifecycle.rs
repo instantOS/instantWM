@@ -14,12 +14,12 @@ impl WaylandState {
     /// tag visibility is independent from the lifetime of the client surface.
     fn clear_window_presentation_state(&mut self, window: WindowId) {
         self.drop_window_animation(window);
-        self.placed_border.remove(&window);
+        self.native.placed_border.remove(&window);
     }
 
     /// Forget state whose lifetime is tied to a managed client surface.
     fn clear_window_protocol_state(&mut self, window: WindowId) {
-        self.geometry_sync.remove(&window);
+        self.native.geometry_sync.remove(&window);
     }
 
     pub(crate) fn setup_managed_window(&mut self, surface: ToplevelSurface) -> WindowId {
@@ -42,6 +42,7 @@ impl WaylandState {
 
         let window_id = self.register_toplevel(surface, true);
         let window = self
+            .native
             .find_window(window_id)
             .expect("a newly registered toplevel must be indexed")
             .clone();
@@ -53,10 +54,12 @@ impl WaylandState {
             rect.x.saturating_sub(geometry.loc.x),
             rect.y.saturating_sub(geometry.loc.y),
         );
-        self.space.map_element(window.clone(), location, false);
-        self.space.raise_element(&window, true);
+        self.native
+            .space
+            .map_element(window.clone(), location, false);
+        self.native.space.raise_element(&window, true);
 
-        if let Some(previous) = self.runtime.active_systray_menu.replace(
+        if let Some(previous) = self.native.runtime.active_systray_menu.replace(
             crate::systray::status_notifier::ActiveNativeMenu {
                 win: window_id,
                 service: request.service,
@@ -71,8 +74,8 @@ impl WaylandState {
         }
 
         self.focus_window(window_id, None);
-        self.request_visible_window_render(&window);
-        self.request_render();
+        self.native.request_visible_window_render(&window);
+        self.native.request_render();
         Ok(window_id)
     }
 
@@ -101,8 +104,8 @@ impl WaylandState {
             "fresh Window already carries a WindowIdMarker; its id would diverge from window_index"
         );
 
-        self.window_index.insert(window_id, window.clone());
-        self.geometry_sync.entry(window_id).or_default();
+        self.native.window_index.insert(window_id, window.clone());
+        self.native.geometry_sync.entry(window_id).or_default();
 
         // Refresh the Window's internal geometry cache.
         window.on_commit();
@@ -122,8 +125,9 @@ impl WaylandState {
         // Get the location from the space if the element is already mapped,
         // otherwise use the client's stored geometry to avoid animating from (0,0)
         let is_already_mapped = self
+            .native
             .find_window(window)
-            .is_some_and(|w| self.space.elements().any(|e| e == w));
+            .is_some_and(|w| self.native.space.elements().any(|e| e == w));
 
         // If the window is already mapped, calling `map_element` will unnecessarily
         // pull it to the top of the stack and disrupt the Z-order.
@@ -132,8 +136,8 @@ impl WaylandState {
             return;
         }
 
-        if let Some(element) = self.window_index.get(&window).cloned() {
-            let is_mapped = self.space.elements().any(|w| w == &element);
+        if let Some(element) = self.native.window_index.get(&window).cloned() {
+            let is_mapped = self.native.space.elements().any(|w| w == &element);
             if !is_mapped {
                 let Some((loc, border_width)): Option<(Point<i32, Logical>, i32)> =
                     core_view.model.client(window).map(|c| {
@@ -145,10 +149,10 @@ impl WaylandState {
                 else {
                     return;
                 };
-                self.placed_border.insert(window, border_width);
+                self.native.placed_border.insert(window, border_width);
                 self.drop_window_animation(window);
-                self.space.map_element(element.clone(), loc, false);
-                self.request_visible_window_render(&element);
+                self.native.space.map_element(element.clone(), loc, false);
+                self.native.request_visible_window_render(&element);
 
                 // If this window was the pending focus target (selected by the
                 // focus path before arrange/show_hide ran), re-apply keyboard
@@ -172,7 +176,7 @@ impl WaylandState {
         core_view: &crate::core_state::CoreState,
         window: WindowId,
     ) {
-        let Some(element) = self.window_index.get(&window).cloned() else {
+        let Some(element) = self.native.window_index.get(&window).cloned() else {
             debug!("unmap_window_from_space({window:?}): no-op, window not found");
             return;
         };
@@ -181,7 +185,7 @@ impl WaylandState {
         if let Some(target) = core_view.model.client(window).map(|client| client.geo) {
             self.dispatch_window_resize(core_view, window, &element, target);
         }
-        let is_mapped = self.space.elements().any(|w| w == &element);
+        let is_mapped = self.native.space.elements().any(|w| w == &element);
         if !is_mapped {
             self.clear_window_presentation_state(window);
             debug!("unmap_window_from_space({window:?}): no-op, already unmapped");
@@ -189,8 +193,8 @@ impl WaylandState {
         }
 
         // Invalidate its old outputs before removing the geometry from Space.
-        self.request_visible_window_render(&element);
-        self.space.unmap_elem(&element);
+        self.native.request_visible_window_render(&element);
+        self.native.space.unmap_elem(&element);
         self.clear_window_presentation_state(window);
 
         // Hiding a tag is presentation-only. Keep the latest configured size
@@ -200,7 +204,7 @@ impl WaylandState {
         // resize/configure round trip. Full protocol cleanup belongs exclusively
         // to `remove_window_tracking`.
         self.clear_seat_focus_if_focused(window);
-        self.request_space_sync();
+        self.native.request_space_sync();
     }
 
     /// Remove all tracking for a window.
@@ -209,28 +213,33 @@ impl WaylandState {
     /// `mon.sel`. The caller is responsible for WM focus reconciliation.
     pub(crate) fn remove_window_tracking(&mut self, window: WindowId) {
         self.clear_active_systray_menu(window);
-        if let Some(element) = self.window_index.get(&window).cloned()
-            && self.space.elements().any(|mapped| mapped == &element)
+        if let Some(element) = self.native.window_index.get(&window).cloned()
+            && self
+                .native
+                .space
+                .elements()
+                .any(|mapped| mapped == &element)
         {
             // Invalidate its old outputs before removing the geometry from Space.
-            self.request_visible_window_render(&element);
-            self.space.unmap_elem(&element);
+            self.native.request_visible_window_render(&element);
+            self.native.space.unmap_elem(&element);
         }
-        self.window_index.remove(&window);
-        self.native_size_hints.remove(&window);
-        if self.active_resize == Some(window) {
-            self.active_resize = None;
+        self.native.window_index.remove(&window);
+        self.native.native_size_hints.remove(&window);
+        if self.native.active_resize == Some(window) {
+            self.native.active_resize = None;
         }
         self.clear_window_presentation_state(window);
         self.clear_window_protocol_state(window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
-        self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
+        self.native
+            .push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
     }
 
     /// Close a window.
     pub fn close_window(&mut self, window: WindowId) -> bool {
-        let Some(element) = self.find_window(window).cloned() else {
+        let Some(element) = self.native.find_window(window).cloned() else {
             return false;
         };
         if let Some(x11) = element.x11_surface() {
@@ -258,22 +267,23 @@ mod tests {
         let configured = (1280, 720);
         let serial = Serial::from(17);
 
-        state.geometry_sync.entry(win).or_default().sent(
+        state.native.geometry_sync.entry(win).or_default().sent(
             crate::types::Size::new(configured.0, configured.1),
             Some(serial),
         );
         state
+            .native
             .geometry_sync
             .get_mut(&win)
             .unwrap()
             .schedule(crate::types::Size::new(640, 360));
-        let transaction = state.geometry_sync.get(&win).unwrap().clone();
-        state.placed_border.insert(win, 2);
+        let transaction = state.native.geometry_sync.get(&win).unwrap().clone();
+        state.native.placed_border.insert(win, 2);
 
         state.clear_window_presentation_state(win);
 
-        assert_eq!(state.geometry_sync.get(&win), Some(&transaction));
-        assert!(!state.placed_border.contains_key(&win));
+        assert_eq!(state.native.geometry_sync.get(&win), Some(&transaction));
+        assert!(!state.native.placed_border.contains_key(&win));
     }
 
     #[test]
@@ -282,13 +292,14 @@ mod tests {
         let win = WindowId(42);
 
         state
+            .native
             .geometry_sync
             .entry(win)
             .or_default()
             .sent(crate::types::Size::new(1280, 720), Some(Serial::from(17)));
         state.clear_window_protocol_state(win);
 
-        assert!(!state.geometry_sync.contains_key(&win));
+        assert!(!state.native.geometry_sync.contains_key(&win));
         assert!(!state.native_commit_may_update_model(
             win,
             1280,
@@ -296,6 +307,6 @@ mod tests {
             Some(Serial::from(17)),
             true,
         ));
-        assert!(!state.geometry_sync.contains_key(&win));
+        assert!(!state.native.geometry_sync.contains_key(&win));
     }
 }

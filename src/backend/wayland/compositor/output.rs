@@ -96,7 +96,7 @@ fn close_layer_surfaces(output: &Output) -> bool {
     !layers.is_empty()
 }
 
-impl WaylandState {
+impl crate::backend::wayland::compositor::WaylandNativeState {
     pub(crate) fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
         let Some(global) = output.user_data().get::<OutputGlobal>() else {
             return;
@@ -104,13 +104,13 @@ impl WaylandState {
         let mut global_id = global.0.lock().unwrap();
         match (enabled, global_id.take()) {
             (true, None) => {
-                *global_id = Some(output.create_global::<Self>(&self.display_handle));
+                *global_id = Some(output.create_global::<WaylandState>(&self.display_handle));
             }
             (true, Some(existing)) => {
                 *global_id = Some(existing);
             }
             (false, Some(existing)) => {
-                self.display_handle.remove_global::<Self>(existing);
+                self.display_handle.remove_global::<WaylandState>(existing);
             }
             (false, None) => {}
         }
@@ -173,7 +173,7 @@ impl WaylandState {
             changed_outputs.push(output);
         }
         self.output_management_state
-            .update_heads::<Self>(changed_outputs.iter());
+            .update_heads::<WaylandState>(changed_outputs.iter());
         self.set_mirror_roles(realized_mirrors(&self.runtime.mirror_of, snapshot));
         self.request_render();
     }
@@ -240,21 +240,6 @@ impl WaylandState {
         if realized.len() != self.runtime.realized_mirrors.len() {
             self.set_mirror_roles(realized);
         }
-    }
-
-    /// The output whose region `output` presents: its source for a realized
-    /// mirror, itself otherwise.
-    pub(crate) fn presented_output(&self, output: &Output) -> Output {
-        self.runtime
-            .realized_mirrors
-            .get(&output.name())
-            .and_then(|source| {
-                self.space
-                    .outputs()
-                    .find(|candidate| candidate.name() == *source)
-            })
-            .unwrap_or(output)
-            .clone()
     }
 
     /// Current ownership of an output's position for automatic placement.
@@ -501,7 +486,7 @@ impl WaylandState {
 
         // Register the new output with wlr-output-management.
         self.output_management_state
-            .add_heads::<Self>(std::iter::once(&output));
+            .add_heads::<WaylandState>(std::iter::once(&output));
 
         output
     }
@@ -739,7 +724,7 @@ impl WaylandState {
                 output_state.set(output_state.enabled(), enabled);
             }
             self.output_management_state
-                .update_heads::<Self>(std::iter::once(&output));
+                .update_heads::<WaylandState>(std::iter::once(&output));
         }
     }
 
@@ -815,16 +800,19 @@ mod tests {
     fn three_outputs() -> WaylandState {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
         for (index, name) in ["eDP-1", "DP-1", "HDMI-1"].into_iter().enumerate() {
-            let output = state.create_output(name, Size::new(1920, 1080), None);
+            let output = state
+                .native
+                .create_output(name, Size::new(1920, 1080), None);
             let location = (index as i32 * 1920, 0).into();
             output.change_current_state(None, None, None, Some(location));
-            state.space.map_output(&output, location);
+            state.native.space.map_output(&output, location);
         }
         state
     }
 
     fn pending_head(state: &WaylandState, name: &str) -> OutputHeadConfiguration {
         state
+            .native
             .runtime
             .output_transactions
             .latest_pending_apply()
@@ -838,7 +826,7 @@ mod tests {
 
     /// Exercise the policy/snapshot boundary without owning physical DRM.
     fn apply_policy(state: &mut WaylandState, requested: &OutputTransaction) -> OutputTransaction {
-        let effective = state.effective_output_transaction(requested, true);
+        let effective = state.native.effective_output_transaction(requested, true);
         let snapshot = OutputSnapshot {
             heads: effective
                 .heads
@@ -851,8 +839,12 @@ mod tests {
                 })
                 .collect(),
         };
-        state.runtime.lid_output_policy.remember_applied(requested);
-        state.apply_output_snapshot(&snapshot);
+        state
+            .native
+            .runtime
+            .lid_output_policy
+            .remember_applied(requested);
+        state.native.apply_output_snapshot(&snapshot);
         effective
     }
 
@@ -860,42 +852,52 @@ mod tests {
     fn lid_closure_removes_the_panel_compacts_outputs_and_opening_restores_intent() {
         let mut state = three_outputs();
         state
+            .native
             .runtime
             .lid_output_policy
             .set_internal("eDP-1".into(), true);
-        let requested = state.current_output_transaction();
-        state.runtime.lid_output_policy.set_closed(true);
+        let requested = state.native.current_output_transaction();
+        state.native.runtime.lid_output_policy.set_closed(true);
         let effective = apply_policy(&mut state, &requested);
         assert!(!effective.heads[0].enabled);
         assert_eq!(effective.heads[1].position, Point::new(0, 0));
         assert_eq!(effective.heads[2].position, Point::new(1920, 0));
-        assert_eq!(state.space.outputs().count(), 2);
-        assert!(state.space.outputs().all(|output| output.name() != "eDP-1"));
-        assert_eq!(state.current_output_transaction(), requested);
+        assert_eq!(state.native.space.outputs().count(), 2);
+        assert!(
+            state
+                .native
+                .space
+                .outputs()
+                .all(|output| output.name() != "eDP-1")
+        );
+        assert_eq!(state.native.current_output_transaction(), requested);
 
-        state.runtime.lid_output_policy.set_closed(false);
-        let restored = state.current_output_transaction();
+        state.native.runtime.lid_output_policy.set_closed(false);
+        let restored = state.native.current_output_transaction();
         assert_eq!(apply_policy(&mut state, &restored), requested);
-        assert_eq!(state.space.outputs().count(), 3);
+        assert_eq!(state.native.space.outputs().count(), 3);
     }
 
     #[test]
     fn lid_policy_preserves_configured_and_client_managed_positions() {
         let mut state = three_outputs();
         state
+            .native
             .runtime
             .lid_output_policy
             .set_internal("eDP-1".into(), true);
-        state.runtime.lid_output_policy.set_closed(true);
+        state.native.runtime.lid_output_policy.set_closed(true);
         state
+            .native
             .runtime
             .configured_output_positions
             .insert("DP-1".into());
         state
+            .native
             .runtime
             .output_position_sources
             .insert("HDMI-1".into(), OutputPositionSource::ClientManaged);
-        let requested = state.current_output_transaction();
+        let requested = state.native.current_output_transaction();
         let effective = apply_policy(&mut state, &requested);
         assert_eq!(effective.heads[1].position, requested.heads[1].position);
         assert_eq!(effective.heads[2].position, requested.heads[2].position);
@@ -904,22 +906,30 @@ mod tests {
     #[test]
     fn external_mirror_becomes_a_desktop_when_its_internal_source_is_suppressed() {
         let mut state = three_outputs();
-        state.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
+        state.native.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
         state
+            .native
             .runtime
             .lid_output_policy
             .set_internal("eDP-1".into(), true);
-        state.runtime.lid_output_policy.set_closed(true);
-        let requested = state.current_output_transaction();
+        state.native.runtime.lid_output_policy.set_closed(true);
+        let requested = state.native.current_output_transaction();
         apply_policy(&mut state, &requested);
-        assert!(state.runtime.realized_mirrors.is_empty());
-        assert!(state.space.outputs().any(|output| output.name() == "DP-1"));
+        assert!(state.native.runtime.realized_mirrors.is_empty());
+        assert!(
+            state
+                .native
+                .space
+                .outputs()
+                .any(|output| output.name() == "DP-1")
+        );
 
-        state.runtime.lid_output_policy.set_closed(false);
-        let requested = state.current_output_transaction();
+        state.native.runtime.lid_output_policy.set_closed(false);
+        let requested = state.native.current_output_transaction();
         apply_policy(&mut state, &requested);
         assert_eq!(
             state
+                .native
                 .runtime
                 .realized_mirrors
                 .get("DP-1")
@@ -931,9 +941,13 @@ mod tests {
     #[test]
     fn pending_configuration_keeps_new_hotplugged_heads() {
         let mut state = three_outputs();
-        state.queue_output_policy_projection(&Default::default());
-        state.create_output("DP-NEW", Size::new(1280, 720), None);
-        let requested = state.current_output_transaction();
+        state
+            .native
+            .queue_output_policy_projection(&Default::default());
+        state
+            .native
+            .create_output("DP-NEW", Size::new(1280, 720), None);
+        let requested = state.native.current_output_transaction();
         assert_eq!(requested.heads.len(), 4);
         assert!(requested.heads.iter().any(|head| head.id.0 == "DP-NEW"));
     }
@@ -942,23 +956,24 @@ mod tests {
     fn monitor_configuration_can_disable_a_lid_suppressed_panel_permanently() {
         let mut state = three_outputs();
         state
+            .native
             .runtime
             .lid_output_policy
             .set_internal("eDP-1".into(), true);
-        state.runtime.lid_output_policy.set_closed(true);
-        let requested = state.current_output_transaction();
+        state.native.runtime.lid_output_policy.set_closed(true);
+        let requested = state.native.current_output_transaction();
         apply_policy(&mut state, &requested);
-        state.set_output_config(
+        state.native.set_output_config(
             "eDP-1",
             &crate::config::config_toml::MonitorConfig {
                 enable: Some(false),
                 ..Default::default()
             },
         );
-        let requested = state.current_output_transaction();
+        let requested = state.native.current_output_transaction();
         apply_policy(&mut state, &requested);
-        state.runtime.lid_output_policy.set_closed(false);
-        assert!(!state.current_output_transaction().heads[0].enabled);
+        state.native.runtime.lid_output_policy.set_closed(false);
+        assert!(!state.native.current_output_transaction().heads[0].enabled);
     }
 
     #[test]
@@ -984,35 +999,40 @@ mod tests {
     fn mirror_roles_move_heads_out_of_and_back_into_the_space() {
         let mut state = three_outputs();
         let in_space = |state: &WaylandState| -> Vec<String> {
-            let mut names: Vec<_> = state.space.outputs().map(Output::name).collect();
+            let mut names: Vec<_> = state.native.space.outputs().map(Output::name).collect();
             names.sort();
             names
         };
 
-        state.set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
+        state
+            .native
+            .set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
         assert_eq!(in_space(&state), vec!["HDMI-1", "eDP-1"]);
         let mirror = state
+            .native
             .output_management_state
             .outputs()
             .iter()
             .find(|output| output.name() == "DP-1")
             .unwrap()
             .clone();
-        assert_eq!(state.presented_output(&mirror).name(), "eDP-1");
+        assert_eq!(state.native.presented_output(&mirror).name(), "eDP-1");
 
-        state.set_mirror_roles(Default::default());
+        state.native.set_mirror_roles(Default::default());
         assert_eq!(in_space(&state), vec!["DP-1", "HDMI-1", "eDP-1"]);
-        assert_eq!(state.presented_output(&mirror).name(), "DP-1");
+        assert_eq!(state.native.presented_output(&mirror).name(), "DP-1");
     }
 
     #[test]
     fn projection_closes_the_hole_a_new_mirror_leaves() {
         let mut state = three_outputs();
-        state.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
+        state.native.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
 
-        state.queue_output_policy_projection(&Default::default());
+        state
+            .native
+            .queue_output_policy_projection(&Default::default());
 
-        assert!(state.runtime.projected_mirrors.contains("DP-1"));
+        assert!(state.native.runtime.projected_mirrors.contains("DP-1"));
         assert_eq!(pending_head(&state, "eDP-1").position, Point::new(0, 0));
         assert_eq!(pending_head(&state, "HDMI-1").position, Point::new(1920, 0));
     }
@@ -1022,8 +1042,13 @@ mod tests {
         let mut state = three_outputs();
         // DP-1 was pinned onto eDP-1 (position and scale) and its
         // declaration has now been removed.
-        state.runtime.projected_mirrors.insert("DP-1".to_string());
+        state
+            .native
+            .runtime
+            .projected_mirrors
+            .insert("DP-1".to_string());
         let mirror = state
+            .native
             .output_management_state
             .outputs()
             .iter()
@@ -1037,20 +1062,26 @@ mod tests {
             Some((0, 0).into()),
         );
 
-        state.queue_output_policy_projection(&Default::default());
+        state
+            .native
+            .queue_output_policy_projection(&Default::default());
 
         let released = pending_head(&state, "DP-1");
         assert_eq!(released.scale, 1.0);
         // Compaction then packs it after the other automatic outputs.
         assert_eq!(pending_head(&state, "eDP-1").position, Point::new(0, 0));
         assert_eq!(released.position, Point::new(3840, 0));
-        assert!(state.runtime.projected_mirrors.is_empty());
+        assert!(state.native.runtime.projected_mirrors.is_empty());
     }
 
     #[test]
     fn a_released_mirror_keeps_its_configured_scale() {
         let mut state = three_outputs();
-        state.runtime.projected_mirrors.insert("DP-1".to_string());
+        state
+            .native
+            .runtime
+            .projected_mirrors
+            .insert("DP-1".to_string());
         let configs: std::collections::HashMap<_, _> = [(
             "DP-1".to_string(),
             crate::config::config_toml::MonitorConfig {
@@ -1059,9 +1090,9 @@ mod tests {
             },
         )]
         .into();
-        state.set_output_config("DP-1", &configs["DP-1"]);
+        state.native.set_output_config("DP-1", &configs["DP-1"]);
 
-        state.queue_output_policy_projection(&configs);
+        state.native.queue_output_policy_projection(&configs);
 
         assert_eq!(pending_head(&state, "DP-1").scale, 1.25);
     }
@@ -1076,5 +1107,22 @@ mod tests {
             logical_output_size(&configuration(OutputTransform::Flipped270, 1.0)),
             Size::new(1080, 1920)
         );
+    }
+}
+
+impl crate::backend::wayland::compositor::WaylandNativeState {
+    /// The output whose region `output` presents: its source for a realized
+    /// mirror, itself otherwise.
+    pub(crate) fn presented_output(&self, output: &Output) -> Output {
+        self.runtime
+            .realized_mirrors
+            .get(&output.name())
+            .and_then(|source| {
+                self.space
+                    .outputs()
+                    .find(|candidate| candidate.name() == *source)
+            })
+            .unwrap_or(output)
+            .clone()
     }
 }

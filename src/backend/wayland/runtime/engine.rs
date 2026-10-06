@@ -72,9 +72,12 @@ where
                     .is_some_and(|current| *current == generation);
                 if is_current {
                     armed_for_timer.borrow_mut().remove(&timer_key);
-                    crate::backend::wayland::render::frame::release_fifo_barriers(state, &output);
+                    crate::backend::wayland::render::frame::release_fifo_barriers(
+                        &mut state.native,
+                        &output,
+                    );
                     crate::backend::wayland::render::frame::send_frame_callbacks(
-                        state,
+                        &mut state.native,
                         &output,
                         start_time.elapsed(),
                     );
@@ -125,7 +128,7 @@ where
         let presentation_delay = self.next_presentation_delay(&key, period, Instant::now());
         let frame_target = clock.now() + presentation_delay;
         let Some(deadline) = crate::backend::wayland::render::frame::service_commit_timing(
-            state,
+            &mut state.native,
             output,
             frame_target,
         ) else {
@@ -168,9 +171,11 @@ where
                     let clock = Clock::<Monotonic>::new();
                     let target = clock.now() + output_frame_callback_delay(&output);
                     crate::backend::wayland::render::frame::service_commit_timing(
-                        state, &output, target,
+                        &mut state.native,
+                        &output,
+                        target,
                     );
-                    state.request_output_render(&output);
+                    state.native.request_output_render(&output);
                 }
                 smithay::reexports::calloop::timer::TimeoutAction::Drop
             },
@@ -245,8 +250,10 @@ pub(crate) fn event_loop_tick_and_request_render(
     // protocol focus in every mode. The synthetic source is kept distinct so
     // only `force` may turn that protocol refresh into keyboard focus.
     if tick.layout_applied
-        && let (Some(pointer), Some(keyboard)) =
-            (state.seat.get_pointer(), state.seat.get_keyboard())
+        && let (Some(pointer), Some(keyboard)) = (
+            state.native.seat.get_pointer(),
+            state.native.seat.get_keyboard(),
+        )
     {
         crate::backend::wayland::input::pointer::motion::process_pointer_motion_command(
             wm,
@@ -268,7 +275,7 @@ pub(crate) fn event_loop_tick_and_request_render(
         || tick.layout_applied
         || tick.systray_updated
     {
-        state.request_render();
+        state.native.request_render();
     }
 }
 
@@ -299,7 +306,7 @@ pub(crate) fn process_animations_and_request_render(
     state: &mut WaylandState,
     core_view: &crate::core_state::CoreState,
 ) {
-    let space_synced = if state.take_space_sync_pending() {
+    let space_synced = if state.native.take_space_sync_pending() {
         state.sync_space(core_view);
         // Output membership for foreign-toplevel clients must be computed
         // from post-arrange geometry: this is the point in the tick where
@@ -322,18 +329,20 @@ pub(crate) fn process_animations_and_request_render(
             // authoritative. Issue the pointer-focus refresh that the
             // transition guard deferred while intermediate animation frames
             // were the only hittable state.
-            state.push_command(crate::backend::wayland::commands::WmCommand::PointerMotion(
-                crate::backend::wayland::commands::PointerMotionCommand::Refresh {
-                    time: smithay::backend::input::InputTime::now(),
-                },
-            ));
+            state
+                .native
+                .push_command(crate::backend::wayland::commands::WmCommand::PointerMotion(
+                    crate::backend::wayland::commands::PointerMotionCommand::Refresh {
+                        time: smithay::backend::input::InputTime::now(),
+                    },
+                ));
         }
     }
 
     // Animation ticks enqueue output-local redraws themselves. Space sync can
     // affect arbitrary windows, so it remains conservatively global.
     if space_synced {
-        state.request_render();
+        state.native.request_render();
     }
 }
 

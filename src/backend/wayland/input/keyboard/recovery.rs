@@ -97,6 +97,7 @@ impl WaylandState {
     /// Arm (or continue holding) the fixed recovery gesture for `surface`.
     pub(crate) fn arm_shortcut_recovery(&mut self, keycode: Keycode, surface: WlSurface) {
         if self
+            .native
             .runtime
             .shortcut_recovery
             .armed
@@ -109,27 +110,27 @@ impl WaylandState {
         let output_name = self
             .shortcut_recovery_output(&surface)
             .map(|output| output.name());
-        self.runtime.shortcut_recovery.armed = Some(ArmedShortcutRecovery {
+        self.native.runtime.shortcut_recovery.armed = Some(ArmedShortcutRecovery {
             keycode,
             surface,
             output_name,
             started_at: Instant::now(),
         });
-        self.runtime.shortcut_recovery.consumed_keycode = Some(keycode);
-        self.runtime.shortcut_recovery.confirmation = None;
-        self.request_render();
+        self.native.runtime.shortcut_recovery.consumed_keycode = Some(keycode);
+        self.native.runtime.shortcut_recovery.confirmation = None;
+        self.native.request_render();
     }
 
     /// Cancel an incomplete gesture.  Its trigger-key release is still
     /// intercepted by the normal paired-release bookkeeping.
     pub(crate) fn cancel_shortcut_recovery(&mut self) {
-        if self.runtime.shortcut_recovery.armed.take().is_some() {
-            self.request_render();
+        if self.native.runtime.shortcut_recovery.armed.take().is_some() {
+            self.native.request_render();
         }
     }
 
     pub(crate) fn shortcut_recovery_owns_key(&self, keycode: Keycode) -> bool {
-        self.runtime.shortcut_recovery.owns_key(keycode)
+        self.native.runtime.shortcut_recovery.owns_key(keycode)
     }
 
     /// Finish ownership of the trigger key on its physical release.
@@ -137,26 +138,30 @@ impl WaylandState {
         if !self.shortcut_recovery_owns_key(keycode) {
             return false;
         }
-        self.runtime.shortcut_recovery.consumed_keycode = None;
+        self.native.runtime.shortcut_recovery.consumed_keycode = None;
         self.cancel_shortcut_recovery();
         true
     }
 
     pub(crate) fn shortcut_recovery_is_armed(&self) -> bool {
-        self.runtime.shortcut_recovery.is_armed()
+        self.native.runtime.shortcut_recovery.is_armed()
     }
 
     pub(crate) fn shortcut_recovery_needs_tick(&self) -> bool {
-        self.runtime.shortcut_recovery.needs_tick()
+        self.native.runtime.shortcut_recovery.needs_tick()
     }
 
     pub(crate) fn shortcut_recovery_bypasses(&self, surface: &WlSurface) -> bool {
-        self.runtime.shortcut_recovery.target_matches(surface)
+        self.native
+            .runtime
+            .shortcut_recovery
+            .target_matches(surface)
     }
 
     /// Update recovery ownership after a seat focus change.
     pub(crate) fn shortcut_recovery_focus_changed(&mut self, focused: Option<&WlSurface>) {
         let armed_matches = self
+            .native
             .runtime
             .shortcut_recovery
             .armed
@@ -167,20 +172,24 @@ impl WaylandState {
         }
 
         let bypass_matches = self
+            .native
             .runtime
             .shortcut_recovery
             .bypassed_surface
             .as_ref()
             .is_some_and(|surface| focused == Some(surface));
         if !bypass_matches {
-            self.runtime.shortcut_recovery.bypassed_surface = None;
+            self.native.runtime.shortcut_recovery.bypassed_surface = None;
         }
 
         // An inhibitor explicitly deactivated by recovery becomes eligible
         // again after the user leaves it and later returns focus to it.
         if let Some(surface) = focused
             && !self.shortcut_recovery_bypasses(surface)
-            && let Some(inhibitor) = self.seat.keyboard_shortcuts_inhibitor_for_surface(surface)
+            && let Some(inhibitor) = self
+                .native
+                .seat
+                .keyboard_shortcuts_inhibitor_for_surface(surface)
             && !inhibitor.is_active()
         {
             inhibitor.activate();
@@ -190,6 +199,7 @@ impl WaylandState {
     /// Advance the safety gesture and break the grab at its deadline.
     pub(crate) fn tick_shortcut_recovery(&mut self, now: Instant) {
         if self
+            .native
             .runtime
             .shortcut_recovery
             .confirmation
@@ -199,17 +209,18 @@ impl WaylandState {
                     >= SHORTCUT_RECOVERY_CONFIRMATION
             })
         {
-            self.runtime.shortcut_recovery.confirmation = None;
-            self.request_render();
-        } else if self.runtime.shortcut_recovery.confirmation.is_some() {
-            self.request_render();
+            self.native.runtime.shortcut_recovery.confirmation = None;
+            self.native.request_render();
+        } else if self.native.runtime.shortcut_recovery.confirmation.is_some() {
+            self.native.request_render();
         }
 
-        let Some(armed) = self.runtime.shortcut_recovery.armed.as_ref() else {
+        let Some(armed) = self.native.runtime.shortcut_recovery.armed.as_ref() else {
             return;
         };
 
         let focused_surface = self
+            .native
             .seat
             .get_keyboard()
             .and_then(|keyboard| keyboard.current_focus())
@@ -217,64 +228,62 @@ impl WaylandState {
         let still_focused = focused_surface.as_ref() == Some(&armed.surface);
         let target_alive = armed.surface.alive();
         let suppression_still_active = self
+            .native
             .seat
             .keyboard_shortcuts_inhibitor_for_surface(&armed.surface)
             .is_some_and(|inhibitor| inhibitor.is_active())
-            || self.seat.get_keyboard().is_some_and(|keyboard| {
-                keyboard.is_grabbed() && !self.seat.input_method().keyboard_grabbed()
+            || self.native.seat.get_keyboard().is_some_and(|keyboard| {
+                keyboard.is_grabbed() && !self.native.seat.input_method().keyboard_grabbed()
             });
 
-        if self.is_locked() || !target_alive || !still_focused || !suppression_still_active {
+        if self.native.is_locked() || !target_alive || !still_focused || !suppression_still_active {
             self.cancel_shortcut_recovery();
             return;
         }
 
         if now.saturating_duration_since(armed.started_at) < SHORTCUT_RECOVERY_HOLD {
             if let Some(name) = armed.output_name.clone() {
-                self.request_output_name_render(name);
+                self.native.request_output_name_render(name);
             } else {
-                self.request_render();
+                self.native.request_render();
             }
             return;
         }
 
         let surface = armed.surface.clone();
         let output_name = armed.output_name.clone();
-        self.runtime.shortcut_recovery.armed = None;
-        self.runtime.shortcut_recovery.bypassed_surface = Some(surface.clone());
-        self.runtime.shortcut_recovery.confirmation = Some(ShortcutRecoveryConfirmation {
+        self.native.runtime.shortcut_recovery.armed = None;
+        self.native.runtime.shortcut_recovery.bypassed_surface = Some(surface.clone());
+        self.native.runtime.shortcut_recovery.confirmation = Some(ShortcutRecoveryConfirmation {
             output_name,
             started_at: now,
         });
 
-        if let Some(inhibitor) = self.seat.keyboard_shortcuts_inhibitor_for_surface(&surface)
+        if let Some(inhibitor) = self
+            .native
+            .seat
+            .keyboard_shortcuts_inhibitor_for_surface(&surface)
             && inhibitor.is_active()
         {
             inhibitor.inactivate();
         }
-        if let Some(keyboard) = self.seat.get_keyboard()
+        if let Some(keyboard) = self.native.seat.get_keyboard()
             && keyboard.is_grabbed()
-            && !self.seat.input_method().keyboard_grabbed()
+            && !self.native.seat.input_method().keyboard_grabbed()
         {
             keyboard.unset_grab(self);
         }
 
         log::info!("restored compositor shortcuts after emergency hold");
-        self.request_render();
-    }
-
-    pub(crate) fn shortcut_recovery_progress(&self, output: &Output) -> Option<f64> {
-        self.runtime
-            .shortcut_recovery
-            .progress_for_output(&output.name(), Instant::now())
+        self.native.request_render();
     }
 
     fn shortcut_recovery_output(&self, surface: &WlSurface) -> Option<Output> {
         if let Some(window_id) = self.window_id_for_surface(surface)
-            && let Some(window) = self.find_window(window_id)
+            && let Some(window) = self.native.find_window(window_id)
         {
-            let outputs = self.outputs_for_window_geometry(window);
-            if let Some(pointer_output) = self.output_at_point(self.runtime.pointer_location)
+            let outputs = self.native.outputs_for_window_geometry(window);
+            if let Some(pointer_output) = self.output_at_point(self.native.runtime.pointer_location)
                 && outputs.contains(&pointer_output)
             {
                 return Some(pointer_output);
@@ -284,16 +293,17 @@ impl WaylandState {
             }
         }
 
-        self.output_at_point(self.runtime.pointer_location)
-            .or_else(|| self.space.outputs().next().cloned())
+        self.output_at_point(self.native.runtime.pointer_location)
+            .or_else(|| self.native.space.outputs().next().cloned())
     }
 
     fn output_at_point(
         &self,
         point: smithay::utils::Point<f64, smithay::utils::Logical>,
     ) -> Option<Output> {
-        self.space.outputs().find_map(|output| {
-            self.space
+        self.native.space.outputs().find_map(|output| {
+            self.native
+                .space
                 .output_geometry(output)
                 .is_some_and(|geometry| geometry.to_f64().contains(point))
                 .then(|| output.clone())
@@ -317,5 +327,13 @@ mod tests {
             normalized_progress(now, now + Duration::from_secs(3)),
             Some(1.0)
         );
+    }
+}
+
+impl crate::backend::wayland::compositor::WaylandNativeState {
+    pub(crate) fn shortcut_recovery_progress(&self, output: &Output) -> Option<f64> {
+        self.runtime
+            .shortcut_recovery
+            .progress_for_output(&output.name(), Instant::now())
     }
 }

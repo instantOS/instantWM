@@ -66,39 +66,41 @@ pub fn run() -> ! {
 
     let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
-    let backend = std::rc::Rc::new(std::cell::RefCell::new(backend_init));
+    let output_size = backend_init.window_size();
+    let host_refresh_millihertz = backend_init
+        .window()
+        .current_monitor()
+        .and_then(|monitor| monitor.current_video_mode())
+        .and_then(|mode| mode.refresh_rate_millihertz())
+        .map(std::num::NonZeroU32::get);
     super::bootstrap::attach_gles_renderer_and_protocols(
         &mut state,
-        crate::backend::wayland::compositor::graphics::GraphicsHandle::Nested(backend.clone()),
+        crate::backend::wayland::compositor::graphics::Graphics::Nested(Box::new(backend_init)),
         None,
     );
 
-    let output_size = backend.borrow().window_size();
     // An output needs an initial mode, so floor a degenerate startup size.
     // The first usable `Resized` event replaces it.
     let initial_size = clamp_output_size(Size::new(output_size.w, output_size.h));
     wm.core.derived.display.width = initial_size.w;
     wm.core.derived.display.height = initial_size.h;
     refresh_monitor_layout(&mut wm.wayland_ctx(&mut state));
-    state.push_command(WmCommand::SyncLayerExclusiveZones);
+    state
+        .native
+        .push_command(WmCommand::SyncLayerExclusiveZones);
 
     // Store initial window size for the calloop source callback.
-    state.runtime.winit_window_size = output_size;
+    state.native.runtime.winit_window_size = output_size;
 
-    let host_refresh_millihertz = backend
-        .borrow()
-        .window()
-        .current_monitor()
-        .and_then(|monitor| monitor.current_video_mode())
-        .and_then(|mode| mode.refresh_rate_millihertz())
-        .map(std::num::NonZeroU32::get);
-    let output = state.create_output("winit", initial_size, host_refresh_millihertz);
+    let output = state
+        .native
+        .create_output("winit", initial_size, host_refresh_millihertz);
     crate::monitor::apply_monitor_config(&mut wm.wayland_ctx(&mut state));
     let mut damage_tracker =
         smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
 
-    let keyboard_handle = state.keyboard.clone();
-    let pointer_handle = state.pointer.clone();
+    let keyboard_handle = state.native.keyboard.clone();
+    let pointer_handle = state.native.pointer.clone();
 
     super::bootstrap::setup_listen_socket(&loop_handle, &state, &mut wm);
 
@@ -108,16 +110,16 @@ pub fn run() -> ! {
     loop_handle
         .insert_source(render_ping_source, |_, _, state| {
             if matches!(
-                state.runtime.render_targets,
+                state.native.runtime.render_targets,
                 crate::backend::wayland::compositor::PendingRenderTargets::None
             ) {
-                state.runtime.render_targets =
+                state.native.runtime.render_targets =
                     crate::backend::wayland::compositor::PendingRenderTargets::All;
             }
         })
         .expect("render ping source");
-    state.runtime.render_ping = Some(render_ping);
-    state.request_render();
+    state.native.runtime.render_ping = Some(render_ping);
+    state.native.request_render();
 
     // ── Winit event source ──────────────────────────────────────────────
     // Insert the winit event loop as a calloop source so host window
@@ -130,17 +132,17 @@ pub fn run() -> ! {
                 // Remember the raw size even when degenerate: input mapping
                 // must drop events for a window that has one (the window is
                 // minimized or not yet mapped).
-                state.runtime.winit_window_size = size;
+                state.native.runtime.winit_window_size = size;
                 // A degenerate size is never a mode. Clear any earlier resize
                 // queued in this batch and keep the last published mode until
                 // the window has a usable size again.
-                state.runtime.pending_winit_resize = usable_window_size(size);
+                state.native.runtime.pending_winit_resize = usable_window_size(size);
             }
             WinitEvent::Input(event) => {
                 dispatch_winit_input(state, &kb, event);
             }
             WinitEvent::CloseRequested => {
-                state.runtime.winit_close_requested = true;
+                state.native.runtime.winit_close_requested = true;
             }
             WinitEvent::Redraw | WinitEvent::Focus(_) => {}
         })
@@ -164,10 +166,10 @@ pub fn run() -> ! {
             state.dispatch_pending_commits();
             let mut wm = wm_handle.borrow_mut();
             // ── 1. Process buffered winit resize/close ──────────────────
-            if let Some(size) = state.runtime.pending_winit_resize.take() {
+            if let Some(size) = state.native.runtime.pending_winit_resize.take() {
                 crate::backend::wayland::input::handle_resize(&mut wm, state, &output, size);
             }
-            if state.runtime.winit_close_requested {
+            if state.native.runtime.winit_close_requested {
                 loop_signal.stop();
                 return;
             }
@@ -175,10 +177,12 @@ pub fn run() -> ! {
             // ── 2. Shared tick: layout, IPC, monitor config ─────────────
             super::engine::event_loop_tick_and_request_render(&mut wm, state, &mut ipc_server);
             process_output_configurations(state, &output);
-            let outputs_changed = state.project_completed_output_transactions();
+            let outputs_changed = state.native.project_completed_output_transactions();
             if outputs_changed {
                 refresh_monitor_layout(&mut wm.wayland_ctx(state));
-                state.push_command(WmCommand::SyncLayerExclusiveZones);
+                state
+                    .native
+                    .push_command(WmCommand::SyncLayerExclusiveZones);
             }
 
             // Winit has no libinput devices to reconfigure, but clear the
@@ -198,7 +202,7 @@ pub fn run() -> ! {
             // result is ready.  While the bar is dirty, consume that wakeup by
             // rebuilding the cached Smithay memory elements.
             if wm.bar.needs_redraw() {
-                state.request_render();
+                state.native.request_render();
             }
 
             // ── 3. Arm animation timer if needed ────────────────────────
@@ -215,36 +219,42 @@ pub fn run() -> ! {
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
-            if let Some(keyboard_handle) = state.seat.get_keyboard()
+            if let Some(keyboard_handle) = state.native.seat.get_keyboard()
                 && apply_pending_warp(&mut wm, state, &pointer_handle, &keyboard_handle)
             {
-                state.request_render();
+                state.native.request_render();
             }
 
-            let render_requested = match state.take_render_targets() {
+            let render_requested = match state.native.take_render_targets() {
                 crate::backend::wayland::compositor::PendingRenderTargets::None => false,
                 crate::backend::wayland::compositor::PendingRenderTargets::All => true,
                 crate::backend::wayland::compositor::PendingRenderTargets::Outputs(outputs) => {
                     outputs.contains(&output.name())
                 }
             };
-            let callbacks_requested = match state.take_frame_callback_targets() {
+            let callbacks_requested = match state.native.take_frame_callback_targets() {
                 crate::backend::wayland::compositor::PendingRenderTargets::None => false,
                 crate::backend::wayland::compositor::PendingRenderTargets::All => true,
                 crate::backend::wayland::compositor::PendingRenderTargets::Outputs(outputs) => {
                     outputs.contains(&output.name())
                 }
             };
-            let submitted = render_requested
-                && render_frame(
+            let submitted = render_requested && {
+                let Some(crate::backend::wayland::compositor::graphics::Graphics::Nested(backend)) =
+                    state.graphics.as_mut()
+                else {
+                    unreachable!("nested runtime owns nested graphics");
+                };
+                render_frame(
                     &mut wm,
-                    state,
-                    &mut backend.borrow_mut(),
+                    &mut state.native,
+                    backend,
                     &output,
                     &mut damage_tracker,
                     &mut scene_cache,
                     start_time,
-                );
+                )
+            };
 
             if submitted {
                 presentation_scheduler.presentation_submitted(&());
@@ -262,7 +272,7 @@ pub fn run() -> ! {
             drop(wm);
             state.dispatch_pending_commits();
 
-            if state.display_handle.flush_clients().is_err() {
+            if state.native.display_handle.flush_clients().is_err() {
                 loop_signal.stop();
             }
         })
@@ -272,7 +282,7 @@ pub fn run() -> ! {
 }
 
 fn process_output_configurations(state: &mut WaylandState, output: &smithay::output::Output) {
-    if !state.runtime.output_transactions.has_pending() {
+    if !state.native.runtime.output_transactions.has_pending() {
         return;
     }
 
@@ -290,7 +300,7 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
         modes: modes.clone(),
         adaptive_sync: false,
     }];
-    while let Some((id, pending)) = state.runtime.output_transactions.take_next_pending() {
+    while let Some((id, pending)) = state.native.runtime.output_transactions.take_next_pending() {
         let kind = pending.kind;
         let result = pending.transaction.validate(&capabilities).map(|()| {
             let head = &pending.transaction.heads[0];
@@ -304,6 +314,7 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
             }
         });
         state
+            .native
             .runtime
             .output_transactions
             .complete(id, (kind, result));
@@ -335,57 +346,65 @@ fn dispatch_winit_input(
             }
         }
         InputEvent::PointerMotionAbsolute { event: motion } => {
-            let Some(size) = usable_window_size(state.runtime.winit_window_size) else {
+            let Some(size) = usable_window_size(state.native.runtime.winit_window_size) else {
                 return;
             };
             let x = motion.x_transformed(size.w);
             let y = motion.y_transformed(size.h);
-            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
-                x,
-                y,
-                time: motion.time(),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
+                    x,
+                    y,
+                    time: motion.time(),
+                }));
         }
         InputEvent::PointerMotion { event: motion } => {
             use smithay::backend::winit::WinitInput;
-            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
-                dx: PointerMotionEvent::<WinitInput>::delta_x(&motion),
-                dy: PointerMotionEvent::<WinitInput>::delta_y(&motion),
-                dx_unaccel: PointerMotionEvent::<WinitInput>::delta_x_unaccel(&motion),
-                dy_unaccel: PointerMotionEvent::<WinitInput>::delta_y_unaccel(&motion),
-                time: Event::<WinitInput>::time(&motion),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
+                    dx: PointerMotionEvent::<WinitInput>::delta_x(&motion),
+                    dy: PointerMotionEvent::<WinitInput>::delta_y(&motion),
+                    dx_unaccel: PointerMotionEvent::<WinitInput>::delta_x_unaccel(&motion),
+                    dy_unaccel: PointerMotionEvent::<WinitInput>::delta_y_unaccel(&motion),
+                    time: Event::<WinitInput>::time(&motion),
+                }));
         }
         InputEvent::PointerButton { event: btn } => {
-            state.push_command(WmCommand::PointerButton(PointerButtonCommand {
-                code: btn.button_code(),
-                state: btn.state(),
-                time: btn.time(),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerButton(PointerButtonCommand {
+                    code: btn.button_code(),
+                    state: btn.state(),
+                    time: btn.time(),
+                }));
         }
         InputEvent::PointerAxis { event: axis } => {
             let horizontal_axis = smithay::backend::input::Axis::Horizontal;
             let vertical_axis = smithay::backend::input::Axis::Vertical;
-            state.push_command(WmCommand::PointerAxis(PointerAxisCommand {
-                source: axis.source(),
-                horizontal: PointerAxis {
-                    amount: axis.amount(horizontal_axis),
-                    v120: axis.amount_v120(horizontal_axis),
-                    relative_direction: axis.relative_direction(horizontal_axis),
-                },
-                vertical: PointerAxis {
-                    amount: axis.amount(vertical_axis),
-                    v120: axis.amount_v120(vertical_axis),
-                    relative_direction: axis.relative_direction(vertical_axis),
-                },
-                time: axis.time(),
-            }));
+            state
+                .native
+                .push_command(WmCommand::PointerAxis(PointerAxisCommand {
+                    source: axis.source(),
+                    horizontal: PointerAxis {
+                        amount: axis.amount(horizontal_axis),
+                        v120: axis.amount_v120(horizontal_axis),
+                        relative_direction: axis.relative_direction(horizontal_axis),
+                    },
+                    vertical: PointerAxis {
+                        amount: axis.amount(vertical_axis),
+                        v120: axis.amount_v120(vertical_axis),
+                        relative_direction: axis.relative_direction(vertical_axis),
+                    },
+                    time: axis.time(),
+                }));
         }
         InputEvent::TouchDown { event } => {
             let Some(position) = normalized_winit_touch_position(
                 event.x(),
                 event.y(),
-                state.runtime.winit_window_size,
+                state.native.runtime.winit_window_size,
             ) else {
                 return;
             };
@@ -411,7 +430,7 @@ fn dispatch_winit_input(
             let Some(position) = normalized_winit_touch_position(
                 event.x(),
                 event.y(),
-                state.runtime.winit_window_size,
+                state.native.runtime.winit_window_size,
             ) else {
                 return;
             };
