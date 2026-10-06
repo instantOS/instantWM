@@ -445,20 +445,25 @@ pub fn hover_window(
 /// by the single shared focus entry point, so keyboard and IPC focus changes do
 /// not need overview-specific branches at their individual call sites.
 pub(crate) fn follow_focus(ctx: &mut WmCtx<'_>) {
-    if !ctx.core().model().is_overview_active() {
+    follow_focus_core(ctx.core_mut());
+}
+
+/// Core-only follow-up shared by borrowed backend transactions.
+pub(crate) fn follow_focus_core(core: &mut crate::contexts::CoreCtx<'_>) {
+    if !core.model().is_overview_active() {
         return;
     }
-    let monitor_id = ctx.core().model().selected_monitor_id();
-    let selected = ctx.core().model().selected_win();
+    let monitor_id = core.model().selected_monitor_id();
+    let selected = core.model().selected_win();
     let changed = {
-        let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+        let monitor = core.model_mut().expect_selected_monitor_mut();
         let Some(state) = monitor.overview_state.as_mut() else {
             return;
         };
         state.follow_focus(selected)
     };
     if changed {
-        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+        core.queue_layout_for_monitor_urgent(monitor_id);
     }
 }
 

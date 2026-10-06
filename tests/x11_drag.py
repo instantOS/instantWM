@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""X11 capture regressions on a private Xvfb (debug binaries must be built).
+"""X11 focus and capture regressions on a private Xvfb (debug binaries must be built).
 
 Requires Xvfb, xdotool, xmessage, xprop, xev, stdbuf and an icon font for the normal bar.
 No running desktop is needed. All child processes and input belong to our Xvfb.
 """
+import argparse
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,10 @@ def wait_for(check, description, timeout=8):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--focus-only", action="store_true",
+                        help="Run focus/urgency regressions without capture scenarios")
+    args = parser.parse_args()
     for tool in (
         "Xvfb", "xdotool", "xmessage", "xprop", "xev", "xwininfo", "stdbuf",
     ):
@@ -168,6 +173,33 @@ def main():
                     result = run("xprop", "-root", "_NET_CLIENT_LIST").stdout
                     return [int(token.strip(","), 16) for token in result.split() if token.startswith("0x")]
 
+                # The shared focus transaction clears core urgency before native
+                # projection. Verify the X server hint and input focus agree.
+                focus_a_process, focus_a = spawn("iwm-focus-a")
+                focus_b_process, focus_b = spawn("iwm-focus-b")
+                ctl("window", "focus", str(focus_b))
+                run("xdotool", "set_window", "--urgency", "1", str(focus_a))
+                wait_for(lambda: next(w for w in windows() if w["id"] == focus_a)
+                         ["state"]["urgent"], "core urgency from WM_HINTS")
+                ctl("window", "focus", str(focus_a))
+                wait_for(lambda: int(run("xdotool", "getwindowfocus").stdout) == focus_a,
+                         "native X11 input focus")
+                wait_for(lambda: not next(w for w in windows() if w["id"] == focus_a)
+                         ["state"]["urgent"], "focused core urgency cleared")
+                hints = run("xprop", "-id", str(focus_a), "-f", "WM_HINTS", "32c",
+                            "WM_HINTS").stdout
+                flags = int(re.search(r"=\s*(\d+)", hints).group(1))
+                assert flags & 256 == 0, hints
+                active = run("xprop", "-root", "_NET_ACTIVE_WINDOW").stdout
+                assert int(re.search(r"0x[0-9a-f]+", active).group(0), 16) == focus_a, active
+                print("PASS: shared focus clears core/native urgency and sets X11 input focus")
+                for process in [focus_a_process, focus_b_process]:
+                    process.terminate()
+                    process.wait(timeout=3)
+                wait_for(lambda: not windows(), "focus regression clients removed")
+                if args.focus_only:
+                    return
+
                 # Mapping and property changes must survive capture. Removing an
                 # unrelated window must not end the original interaction.
                 first, first_id = spawn("iwm-drag-primary")
@@ -278,6 +310,7 @@ def main():
                 process.terminate()
                 process.wait(timeout=3)
                 print("PASS: mid-drag tag-switch keybind cancels capture and keeps the client")
+
             except BaseException:
                 log.flush()
                 print((directory / "wm.log").read_text())

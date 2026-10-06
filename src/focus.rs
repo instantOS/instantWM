@@ -58,27 +58,32 @@ fn update_focus_state(model: &mut WmModel, sel_mon_id: MonitorId, target: Option
     }
 }
 
-/// Backend-specific focus operations trait.
-/// This allows the common focus logic to call backend-specific operations
-/// without duplicating the surrounding logic.
+/// Native projection of a committed focus transaction.
 ///
-/// Implementations only ever need shared access to themselves, so
-/// `apply_focus_transition` takes `&dyn FocusBackendOps` rather than
-/// `&mut dyn`. That lets a backend implement this directly on its own handle
-/// instead of wrapping it in a throwaway adapter struct.
+/// Backend facts are queried before core mutation. Projection receives only a
+/// read-only core view: urgency, selection and history belong to shared policy.
+/// A compositor can implement this on its explicitly borrowed dispatch state.
 pub(crate) trait FocusBackendOps {
-    fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection);
-    fn on_desktop_binding_state_changed(&self, state: &CoreState);
+    fn project_focus(&mut self, state: &CoreState, projection: FocusProjection);
+    fn on_desktop_binding_state_changed(&mut self, state: &CoreState);
     fn needs_focus_refresh(&self, _target: Option<WindowId>) -> bool {
         false
     }
 }
 
-/// Complete backend projection of one core focus transaction.
+/// Native consequences of one committed core focus transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FocusProjection {
     pub previous: Option<WindowId>,
     pub current: Option<WindowId>,
+    pub clear_urgency: bool,
+}
+
+#[must_use = "focus effects must be projected before the next input event"]
+struct FocusEffects {
+    refresh_bindings: bool,
+    projection: Option<FocusProjection>,
+    z_order_monitor: Option<MonitorId>,
 }
 
 /// Whether [`apply_focus_transition`] must re-apply backend focus state even
@@ -100,51 +105,74 @@ pub(crate) enum BackendRefresh {
 /// [`focus`] entry point additionally follows the selection into the overview
 /// and syncs projected z-order; callers that need the previous backend focus to
 /// be re-derived from scratch use [`refresh_focus`] instead.
-pub(crate) fn apply_focus_transition(
+pub(crate) fn apply_focus_transition<B: FocusBackendOps + ?Sized>(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     previous_focus: Option<WindowId>,
-    backend: &dyn FocusBackendOps,
+    backend: &mut B,
     refresh: BackendRefresh,
 ) -> Option<MonitorId> {
-    let force_backend_refresh = matches!(refresh, BackendRefresh::Force);
     if core.model().monitors.is_empty() {
         return None;
     }
-
-    let sel_mon_id = core.model().selected_monitor_id();
     let target = resolve_focus_target(core.model(), win);
-    let desktop_bindings_before =
-        crate::keyboard::desktop_bindings_enabled(previous_focus, &core.behavior().current_mode);
-    core.mutate_selection(|model| update_focus_state(model, sel_mon_id, target));
-    let focus_changed = previous_focus != target;
-    let desktop_bindings_after =
-        crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
+    let needs_refocus = backend.needs_focus_refresh(target);
+    let effects = commit_focus_transition(core, target, previous_focus, needs_refocus, refresh);
 
-    // Track the previously focused window for focus-last-client.
-    // This is done in the shared path so both backends behave identically.
-    if focus_changed && let Some(cur_win) = previous_focus {
-        core.focus.last_client = cur_win;
-    }
-
-    if desktop_bindings_before != desktop_bindings_after || force_backend_refresh {
+    // No mutable core access crosses the native projection boundary. These
+    // effects run now, not at the next tick: keyboard interception and the
+    // next event must observe the committed focus and passive grabs.
+    if effects.refresh_bindings {
         backend.on_desktop_binding_state_changed(core.state());
     }
+    if let Some(projection) = effects.projection {
+        backend.project_focus(core.state(), projection);
+    }
+    effects.z_order_monitor
+}
 
-    let needs_refocus = backend.needs_focus_refresh(target);
-
-    if focus_changed || needs_refocus || force_backend_refresh {
-        core.bar.mark_dirty();
-        backend.project_focus(
-            core,
-            FocusProjection {
-                previous: previous_focus,
-                current: target,
-            },
-        );
+/// Commit shared policy without calling the backend or retaining model borrows.
+fn commit_focus_transition(
+    core: &mut CoreCtx<'_>,
+    target: Option<WindowId>,
+    previous_focus: Option<WindowId>,
+    needs_refocus: bool,
+    refresh: BackendRefresh,
+) -> FocusEffects {
+    let force = matches!(refresh, BackendRefresh::Force);
+    let sel_mon_id = core.model().selected_monitor_id();
+    let bindings_before =
+        crate::keyboard::desktop_bindings_enabled(previous_focus, &core.behavior().current_mode);
+    core.mutate_selection(|model| update_focus_state(model, sel_mon_id, target));
+    let changed = previous_focus != target;
+    let bindings_after =
+        crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
+    if changed && let Some(previous) = previous_focus {
+        core.focus.last_client = previous;
     }
 
-    (focus_changed || force_backend_refresh).then_some(sel_mon_id)
+    let projection = (changed || needs_refocus || force).then(|| {
+        core.bar.mark_dirty();
+        let clear_urgency = target
+            .and_then(|win| core.model_mut().client_mut(win))
+            .is_some_and(|client| {
+                let urgent = client.is_urgent;
+                if urgent {
+                    client.clear_urgency();
+                }
+                urgent
+            });
+        FocusProjection {
+            previous: previous_focus,
+            current: target,
+            clear_urgency,
+        }
+    });
+    FocusEffects {
+        refresh_bindings: bindings_before != bindings_after || force,
+        projection,
+        z_order_monitor: (changed || force).then_some(sel_mon_id),
+    }
 }
 
 /// Best-effort focus - the single public entry point for `WmCtx` holders.
@@ -192,19 +220,31 @@ fn focus_impl(
     use crate::contexts::WmCtx::*;
     let z_order_monitor = match ctx {
         X11(x11_ctx) => {
-            let backend = crate::backend::x11::focus::X11FocusBackend {
+            let mut backend = crate::backend::x11::focus::X11FocusBackend {
                 x11: &x11_ctx.x11,
                 x11_runtime: &*x11_ctx.x11_runtime,
             };
-            apply_focus_transition(&mut x11_ctx.core, win, previous_focus, &backend, refresh)
+            apply_focus_transition(
+                &mut x11_ctx.core,
+                win,
+                previous_focus,
+                &mut backend,
+                refresh,
+            )
         }
-        Wayland(wayland_ctx) => apply_focus_transition(
-            &mut wayland_ctx.core,
-            win,
-            previous_focus,
-            wayland_ctx.wayland,
-            refresh,
-        ),
+        Wayland(wayland_ctx) => {
+            // Compatibility seam for callers whose context does not yet carry
+            // a compositor borrow. Native dispatch can pass WaylandState itself
+            // to apply_focus_transition instead, without this bridge.
+            let mut backend = wayland_ctx.wayland;
+            apply_focus_transition(
+                &mut wayland_ctx.core,
+                win,
+                previous_focus,
+                &mut backend,
+                refresh,
+            )
+        }
     };
     if let Some(monitor_id) = z_order_monitor {
         crate::layouts::sync_monitor_z_order(ctx, monitor_id);

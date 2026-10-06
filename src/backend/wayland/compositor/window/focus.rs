@@ -54,13 +54,18 @@ impl WaylandState {
     /// Apply keyboard focus to a window on the Smithay seat.
     ///
     /// This is a **seat-only** operation. It:
-    /// 1. Deactivates the previously focused window (via Smithay activated state)
-    /// 2. Activates the new window
-    /// 3. Sets Smithay keyboard focus
+    /// 1. Activates the new window
+    /// 2. Sets Smithay keyboard focus
+    ///
+    /// The shared focus projection deactivates the previous window first.
     ///
     /// It does **not** update `mon.selected`. The WM layer
     /// ([`crate::focus::focus`]) is the single authority for `mon.selected`.
     pub fn set_focus(&mut self, window: WindowId) {
+        self.set_focus_with_model(window, None);
+    }
+
+    fn set_focus_with_model(&mut self, window: WindowId, model: Option<&crate::model::WmModel>) {
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
 
@@ -90,7 +95,7 @@ impl WaylandState {
 
         // Activate the new window and set keyboard focus
         if let Some(new_window) = focus_window {
-            self.set_window_activated(window, true);
+            self.set_window_activated_with_model(window, true, model);
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
                 let new_focus = KeyboardFocusTarget::Window(new_window.clone());
@@ -158,12 +163,27 @@ impl WaylandState {
     /// The core focus transaction supplies the previous window explicitly;
     /// deriving it here is too late because `mon.selected` has already been
     /// committed before backend projection begins.
-    pub(crate) fn set_window_activated(&mut self, window: WindowId, activated: bool) {
+    fn set_window_activated_with_model(
+        &mut self,
+        window: WindowId,
+        activated: bool,
+        model: Option<&crate::model::WmModel>,
+    ) {
         let Some(element) = self.window_index.get(&window).cloned() else {
             return;
         };
         if element.set_activated(activated) {
-            self.send_toplevel_configure(&element, None);
+            if let Some(model) = model {
+                let presentation = model.client(window).map(|client| {
+                    (
+                        client.mode().is_fullscreen(),
+                        model.client_protocol_maximized(window).unwrap_or(false),
+                    )
+                });
+                self.send_toplevel_configure_with_presentation(&element, None, presentation);
+            } else {
+                self.send_toplevel_configure(&element, None);
+            }
         }
     }
 
@@ -229,6 +249,35 @@ impl WaylandState {
     /// after a window was destroyed and `mon.sel` was cleared.
     pub(crate) fn restore_focus_after_overlay(&self) {
         self.push_command(crate::backend::wayland::commands::WmCommand::RestoreFocus);
+    }
+}
+
+/// Project shared focus policy through an ordinary exclusive compositor borrow.
+/// This path neither mutates core state nor needs either raw state back-reference.
+impl crate::focus::FocusBackendOps for WaylandState {
+    fn project_focus(
+        &mut self,
+        core: &crate::core_state::CoreState,
+        projection: crate::focus::FocusProjection,
+    ) {
+        if projection.previous != projection.current
+            && let Some(previous) = projection.previous
+        {
+            self.set_window_activated_with_model(previous, false, Some(&core.model));
+        }
+        if let Some(current) = projection.current {
+            self.set_focus_with_model(current, Some(&core.model));
+        } else {
+            self.clear_seat_focus();
+        }
+    }
+
+    fn on_desktop_binding_state_changed(&mut self, _core: &crate::core_state::CoreState) {
+        // Smithay intercepts keys; Wayland has no X11-style passive grabs.
+    }
+
+    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
+        target.is_some_and(|win| !self.is_seat_focused_on(win))
     }
 }
 

@@ -8,7 +8,7 @@
 //! minimal backend-specific match arms.
 
 pub mod bootstrap;
-mod dispatch;
+pub(crate) mod dispatch;
 pub mod drm;
 pub mod engine;
 pub mod winit;

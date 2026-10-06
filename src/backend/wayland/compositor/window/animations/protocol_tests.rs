@@ -24,6 +24,7 @@ struct NativeClient {
     sync_count: usize,
     serials: Vec<u32>,
     sizes: Vec<(i32, i32)>,
+    states: Vec<Vec<u32>>,
 }
 
 impl Dispatch<wl_callback::WlCallback, ()> for NativeClient {
@@ -82,8 +83,22 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for NativeClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_toplevel::Event::Configure { width, height, .. } = event {
+        if let xdg_toplevel::Event::Configure {
+            width,
+            height,
+            states,
+        } = event
+        {
             state.sizes.push((width, height));
+            state.states.push(
+                states
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .copied()
+                    .map(u32::from_ne_bytes)
+                    .collect(),
+            );
         }
     }
 }
@@ -382,4 +397,137 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
     assert_eq!(client.sizes.len(), configured_count + 3);
     assert!(!state.geometry_sync.contains_key(&win));
+}
+
+/// Exercise the production focus command with neither raw back-reference
+/// attached. Activation configures must use the explicitly supplied core view.
+#[test]
+fn borrowed_focus_projects_selection_and_protocol_state_without_back_references() {
+    use crate::backend::wayland::commands::WmCommand;
+    use crate::backend::wayland::runtime::dispatch::drain_command_queue;
+
+    let (mut event_loop, mut state) =
+        crate::backend::wayland::compositor::new_event_loop_and_state();
+    let (conn_a, mut queue_a, mut client_a, a) = connect_native_window(&mut event_loop, &mut state);
+    let (conn_b, mut queue_b, mut client_b, b) = connect_native_window(&mut event_loop, &mut state);
+    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let monitor = wm.core.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1920, 1080))
+            .tag_count(1)
+            .selected_tags(crate::types::TagMask::single(1).unwrap())
+            .build(),
+    );
+    for win in [a, b] {
+        add_client(
+            &mut wm.core.model,
+            monitor,
+            Client {
+                win,
+                is_urgent: true,
+                tags: crate::types::TagMask::single(1).unwrap(),
+                ..Client::default()
+            },
+        );
+    }
+    let _ = wm.core.model.set_fullscreen(b, true).unwrap();
+    for win in [a, b] {
+        let element = state.find_window(win).unwrap().clone();
+        state.space.map_element(element, (0, 0), false);
+    }
+    state.command_queue.borrow_mut().clear();
+
+    state.push_command(WmCommand::FocusWindow(b));
+    drain_command_queue(&mut wm, &mut state);
+    assert_eq!(wm.core.model.selected_win(), Some(b));
+    assert!(state.is_seat_focused_on(b));
+    assert!(!wm.core.model.client(b).unwrap().is_urgent);
+    pump(
+        &mut event_loop,
+        &mut state,
+        &conn_b,
+        &mut queue_b,
+        &mut client_b,
+    );
+    let focused_b = client_b.states.last().unwrap();
+    assert!(focused_b.contains(&(xdg_toplevel::State::Activated as u32)));
+    assert!(focused_b.contains(&(xdg_toplevel::State::Fullscreen as u32)));
+
+    // Focus ordering must be projected immediately, rather than coalesced to
+    // one final selection at the next tick. The old window keeps fullscreen
+    // while losing activation; the tiled target keeps its maximized flags.
+    state.push_command(WmCommand::FocusWindow(a));
+    drain_command_queue(&mut wm, &mut state);
+    assert_eq!(wm.core.model.selected_win(), Some(a));
+    assert_eq!(wm.focus.last_client, b);
+    assert!(state.is_seat_focused_on(a));
+    assert!(!wm.core.model.client(a).unwrap().is_urgent);
+    pump(
+        &mut event_loop,
+        &mut state,
+        &conn_a,
+        &mut queue_a,
+        &mut client_a,
+    );
+    pump(
+        &mut event_loop,
+        &mut state,
+        &conn_b,
+        &mut queue_b,
+        &mut client_b,
+    );
+    let unfocused_b = client_b.states.last().unwrap();
+    assert!(!unfocused_b.contains(&(xdg_toplevel::State::Activated as u32)));
+    assert!(unfocused_b.contains(&(xdg_toplevel::State::Fullscreen as u32)));
+    assert_eq!(
+        state
+            .space
+            .elements()
+            .map(|element| {
+                element
+                    .user_data()
+                    .get::<crate::backend::wayland::compositor::WindowIdMarker>()
+                    .unwrap()
+                    .id
+            })
+            .collect::<Vec<_>>(),
+        vec![a, b],
+        "focusing a tiled client must leave fullscreen in its protected layer",
+    );
+    let focused_a = client_a.states.last().unwrap();
+    assert!(focused_a.contains(&(xdg_toplevel::State::Activated as u32)));
+    assert!(focused_a.contains(&(xdg_toplevel::State::Maximized as u32)));
+
+    // Reconcile native focus drift even when selection has not changed.
+    state.clear_seat_focus();
+    state.push_command(WmCommand::FocusWindow(a));
+    drain_command_queue(&mut wm, &mut state);
+    assert!(state.is_seat_focused_on(a));
+
+    state.push_command(WmCommand::RestoreFocus);
+    drain_command_queue(&mut wm, &mut state);
+    assert_eq!(wm.core.model.selected_win(), Some(a));
+    assert!(state.is_seat_focused_on(a));
+
+    for win in [a, b] {
+        wm.core.model.client_mut(win).unwrap().is_hidden = true;
+    }
+    state.push_command(WmCommand::RestoreFocus);
+    drain_command_queue(&mut wm, &mut state);
+    assert_eq!(wm.core.model.selected_win(), None);
+    assert!(state.keyboard.current_focus().is_none());
+    pump(
+        &mut event_loop,
+        &mut state,
+        &conn_a,
+        &mut queue_a,
+        &mut client_a,
+    );
+    assert!(
+        !client_a
+            .states
+            .last()
+            .unwrap()
+            .contains(&(xdg_toplevel::State::Activated as u32))
+    );
 }

@@ -70,21 +70,36 @@ pub mod visibility;
 use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
 
-/// Wayland backend placeholder/state wrapper.
-///
-/// This struct acts as a bridge between the generic `Wm` logic and the
-/// Smithay-specific `WaylandState`. Since `WaylandState` is owned by the
-/// event loop (calloop), and the `Wm` struct (which owns this backend)
-/// is passed into the event loop's callback, we use an `Option<NonNull>`
-/// pointer to establish a safe-at-runtime circular reference.
-///
-/// This design avoids the overhead of `Rc<RefCell<...>>` cycles while
-/// maintaining the ability for the WM to perform backend-specific actions.
 use std::cell::RefCell;
 use std::ptr::NonNull;
 
 use crate::backend::wayland::compositor::WaylandState;
 
+/// Bridge from shared WM operations to Smithay's dispatch state.
+///
+/// Refactoring constraint: Smithay's handlers and calloop sources receive
+/// `&mut WaylandState`, but shared actions acquire backend capabilities through
+/// `Wm::ctx()`. Input handlers also call those actions before returning (notably
+/// the keyboard filter must decide whether to forward the current key). This
+/// creates the state -> WM -> state borrow cycle used by this bridge.
+///
+/// Wrapping the entire state in Rc<RefCell<_>> does not resolve the cycle:
+/// dispatch would hold its mutable borrow when the action borrows it again.
+/// A mutex around the same object would deadlock instead. Pinning/boxing only
+/// solves address stability, not aliasing. Single-threaded dispatch alone is
+/// likewise not a proof that overlapping Rust references are valid.
+///
+/// Smithay does NOT require a raw pointer here. Removing it needs shared WM
+/// contexts to accept an explicitly borrowed backend, plus an explicit core
+/// view for protocol queries currently served by WaylandState::globals().
+/// Queued effects are another option, but must preserve synchronous query
+/// results and input/focus ordering rather than delaying everything a tick.
+/// Focus is the first migrated operation: the shared focus transaction returns
+/// effects, WaylandState projects them through an explicit borrow, and queued
+/// focus commands no longer use this bridge. Other WmCtx callers still use a
+/// compatibility adapter until their surrounding operations are migrated.
+/// The guard in with_state catches bridge reentry only; it does not track
+/// references supplied directly by calloop or references to WM core state.
 pub struct WaylandBackend {
     state: RefCell<Option<NonNull<WaylandState>>>,
 }
@@ -97,6 +112,11 @@ impl WaylandBackend {
     }
 
     pub fn attach_state(&self, state: &mut WaylandState) {
+        // This stores an address, not a lifetime-tracked borrow. The state must
+        // stay at this address and alive through the last backend operation.
+        // The safe signature does not enforce those obligations; replacing
+        // it with `unsafe fn` alone would not fix the dispatch borrow cycle
+        // documented on WaylandBackend.
         *self.state.borrow_mut() = Some(NonNull::from(state));
     }
 
@@ -161,16 +181,6 @@ impl WaylandBackend {
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
             .unwrap_or(false)
-    }
-
-    pub fn clear_keyboard_focus(&self) {
-        let _ = self.with_state(|state: &mut WaylandState| state.clear_seat_focus());
-    }
-
-    /// Project the core focus transaction into the surface's activated state.
-    pub(crate) fn set_window_activated(&self, window: WindowId, activated: bool) {
-        let _ = self
-            .with_state(|state: &mut WaylandState| state.set_window_activated(window, activated));
     }
 
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
@@ -248,7 +258,17 @@ impl WaylandBackend {
     }
 
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
-        let maybe_ptr = *self.state.borrow();
+        // Keep the slot exclusively borrowed until f returns, including unwind.
+        // Previously the borrow ended before f, allowing bridge reentry to
+        // manufacture another &mut WaylandState. This is deliberately a
+        // RefCell guard, not a mutex: all access is on the event-loop thread.
+        // It also prevents replacing the pointer during a bridge operation.
+        // It cannot detect a conflicting reference obtained outside this bridge.
+        let state = self
+            .state
+            .try_borrow_mut()
+            .expect("reentrant WaylandBackend state access");
+        let maybe_ptr = *state;
         maybe_ptr.map(|mut ptr| unsafe { f(ptr.as_mut()) })
     }
 
@@ -384,44 +404,24 @@ impl WindowOps for WaylandBackend {
     }
 }
 
-/// Wayland implementation of [`FocusBackendOps`].
-///
-/// The compositor handle already owns every operation this needs, so it
-/// implements the trait directly instead of being wrapped in a per-call
-/// adapter struct. Desktop bindings need no Wayland-specific refresh: key
-/// interception is owned by Smithay rather than by X11-style passive grabs.
-impl crate::focus::FocusBackendOps for WaylandBackend {
+/// Compatibility adapter for shared contexts that still hold the backend
+/// handle. Policy and native projection are the same as the explicitly borrowed
+/// dispatch path; only acquisition of the compositor borrow differs.
+impl crate::focus::FocusBackendOps for &WaylandBackend {
     fn project_focus(
-        &self,
-        ctx: &mut crate::contexts::CoreCtx<'_>,
+        &mut self,
+        core: &crate::core_state::CoreState,
         projection: crate::focus::FocusProjection,
     ) {
-        use crate::backend::WindowOps as _;
-
-        if projection.previous != projection.current
-            && let Some(previous) = projection.previous
-        {
-            self.set_window_activated(previous, false);
-        }
-        if let Some(current) = projection.current {
-            if ctx.model().client(current).is_some_and(|c| c.is_urgent)
-                && let Some(client) = ctx.model_mut().client_mut(current)
-            {
-                client.clear_urgency();
-            }
-            self.set_focus(current);
-        } else {
-            self.clear_keyboard_focus();
-        }
+        let _ = self.with_state(|state| {
+            crate::focus::FocusBackendOps::project_focus(state, core, projection);
+        });
     }
 
-    fn on_desktop_binding_state_changed(&self, _state: &crate::core_state::CoreState) {}
+    fn on_desktop_binding_state_changed(&mut self, _core: &crate::core_state::CoreState) {}
 
     fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
-        match target {
-            Some(win) => !self.is_keyboard_focused_on(win),
-            None => false,
-        }
+        target.is_some_and(|win| !self.is_keyboard_focused_on(win))
     }
 }
 
@@ -597,6 +597,20 @@ mod tests {
     use crate::backend::{OutputOps, WindowOps, WindowProtocol};
     use crate::types::{AltCursor, ResizeDirection, WindowId};
     use smithay::input::pointer::CursorIcon;
+
+    #[test]
+    fn bridge_reentry_is_rejected_and_the_guard_recovers_after_unwind() {
+        let (_event_loop, mut state) =
+            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let backend = WaylandBackend::new();
+        backend.attach_state(&mut state);
+
+        let reentry = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            backend.with_state(|_| backend.with_state(|_| ()));
+        }));
+        assert!(reentry.is_err());
+        assert_eq!(backend.with_state(|_| 42), Some(42));
+    }
 
     #[test]
     fn apply_monitor_configs_records_mirrors_without_anchoring_them() {

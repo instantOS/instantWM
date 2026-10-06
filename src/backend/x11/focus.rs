@@ -6,7 +6,6 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::WM_HINTS_URGENCY_HINT;
-use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
 use crate::types::{ButtonTarget, ModMask, Modifier, WindowId};
 use x11rb::CURRENT_TIME;
@@ -375,8 +374,8 @@ pub fn clear_urgency_hint(x11: &X11BackendRef, win: WindowId) {
 use crate::focus::{FocusBackendOps, FocusProjection};
 /// X11 implementation of `FocusBackendOps`.
 ///
-/// `X11FocusBackend` needs an adapter because unlike the Wayland handle it
-/// must carry two pieces of state: the connection and the runtime config that
+/// Unlike the explicitly borrowed Wayland compositor state, this adapter
+/// carries two pieces of state: the connection and the runtime config that
 /// the focus path needs to read.
 pub struct X11FocusBackend<'a> {
     pub x11: &'a X11BackendRef<'a>,
@@ -384,20 +383,17 @@ pub struct X11FocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
-    fn project_focus(&self, ctx: &mut CoreCtx<'_>, projection: FocusProjection) {
+    fn project_focus(&mut self, state: &CoreState, projection: FocusProjection) {
         if projection.previous != projection.current
             && let Some(previous) = projection.previous
         {
-            unfocus_win(ctx.state(), self.x11, self.x11_runtime, previous, false);
+            unfocus_win(state, self.x11, self.x11_runtime, previous, false);
         }
         if let Some(current) = projection.current {
-            if ctx.model().client(current).is_some_and(|c| c.is_urgent) {
-                if let Some(client) = ctx.model_mut().client_mut(current) {
-                    client.clear_urgency();
-                }
+            if projection.clear_urgency {
                 clear_urgency_hint(self.x11, current);
             }
-            set_focus(ctx.state_mut(), self.x11, self.x11_runtime, current);
+            set_focus(state, self.x11, self.x11_runtime, current);
         } else {
             let _ = self.x11.conn.set_input_focus(
                 InputFocus::POINTER_ROOT,
@@ -412,7 +408,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         }
     }
 
-    fn on_desktop_binding_state_changed(&self, state: &CoreState) {
+    fn on_desktop_binding_state_changed(&mut self, state: &CoreState) {
         crate::backend::x11::keyboard::grab_keys(state, self.x11, self.x11_runtime);
     }
 }

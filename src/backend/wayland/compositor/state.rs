@@ -683,6 +683,18 @@ impl WaylandState {
     }
 
     /// Attach the GLES renderer.
+    ///
+    /// Ownership constraint: DmabufHandler::dmabuf_imported receives only
+    /// &mut WaylandState and needs renderer access to validate an import.
+    /// In nested mode Smithay's WinitGraphicsBackend owns the renderer and
+    /// bind() returns the renderer together with its borrowed framebuffer;
+    /// the renderer cannot simply be moved into this state. DRM could own its
+    /// renderer here, but that alone would not solve the nested backend.
+    /// The pointer is used during protocol dispatch, while rendering happens
+    /// in the subsequent loop callback. Do not move/drop/replace the renderer
+    /// while attached, or dispatch protocols while it is borrowed for a frame.
+    /// This is an integration constraint, not a Smithay requirement to use
+    /// unsafe code: a scoped renderer service during dispatch is an alternative.
     #[allow(unexpected_cfgs)]
     pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
         self.renderer = Some(NonNull::from(renderer));
@@ -711,6 +723,11 @@ impl WaylandState {
     }
 
     /// Attach the WM to this state.
+    ///
+    /// The back-reference supplies protocol queries and synchronous input
+    /// actions. It is paired with the reverse pointer in WaylandBackend;
+    /// see that type's borrow-cycle notes before changing either direction.
+    /// The WM must remain at the same address and outlive every use here.
     pub fn attach_wm(&mut self, wm: &mut Wm) {
         self.cursor_config = wm.core.config.cursor.clone();
         self.wm = Some(NonNull::from(wm));
@@ -726,9 +743,11 @@ impl WaylandState {
     /// # Safety
     /// The returned pointer is valid only for the duration of the calloop
     /// dispatch. Callers must ensure no other `&mut Wm` reference is live.
-    /// This is safe in practice because calloop sources run synchronously
-    /// during `event_loop.dispatch()`, within the event loop body's
-    /// `&mut Wm` borrow scope.
+    /// Calloop sources and the loop callback execute sequentially, which
+    /// prevents concurrent execution but does not itself prove Rust aliasing
+    /// rules. In particular, do not retain a globals() reference across a WM
+    /// mutation. The reverse WaylandBackend bridge has additional aliasing
+    /// obligations; its reentry guard does not cover this pointer.
     #[inline]
     pub(crate) unsafe fn wm_mut_ptr(&self) -> Option<*mut Wm> {
         self.wm.map(|p| p.as_ptr())

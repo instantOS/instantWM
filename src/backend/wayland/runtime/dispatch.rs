@@ -22,7 +22,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
         }
         match command {
             WmCommand::FocusWindow(win) => {
-                handle_focus_window(wm, Some(win));
+                handle_focus_window(wm, state, Some(win));
             }
             WmCommand::RaiseWindow(win) => handle_raise_window(wm, win),
             WmCommand::MapWindow(params) => handle_map_window(wm, state, params),
@@ -154,7 +154,7 @@ pub(crate) fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 wm.bar.mark_dirty();
             }
             WmCommand::RestoreFocus => {
-                handle_focus_window(wm, None);
+                handle_focus_window(wm, state, None);
             }
             WmCommand::SyncLayerExclusiveZones => {
                 if crate::backend::wayland::compositor::layer_shell::apply_available_rects(
@@ -179,9 +179,27 @@ fn should_update_active_drag(active: bool, next_is_pointer_motion: bool) -> bool
     !active || !next_is_pointer_motion
 }
 
-fn handle_focus_window(wm: &mut Wm, win: Option<crate::types::WindowId>) {
-    let mut ctx = wm.ctx();
-    crate::focus::focus(&mut ctx, win);
+fn handle_focus_window(wm: &mut Wm, state: &mut WaylandState, win: Option<crate::types::WindowId>) {
+    // Already holding the dispatch state: focus must use this borrow, not
+    // reacquire it through WaylandBackend's raw pointer. The shared transaction
+    // applies native focus before returning, without a queue or a model copy.
+    let mut core = wm.core_ctx();
+    let previous = core.model().selected_win();
+    let z_order_monitor = crate::focus::apply_focus_transition(
+        &mut core,
+        win,
+        previous,
+        state,
+        crate::focus::BackendRefresh::IfNeeded,
+    );
+    if let Some(monitor_id) = z_order_monitor {
+        state.request_bar_redraw();
+        if let Some(stack) = crate::layouts::manager::monitor_z_order(core.model(), monitor_id) {
+            state.apply_z_order(&stack);
+            state.flush();
+        }
+    }
+    crate::overview::follow_focus_core(&mut core);
 }
 
 fn handle_raise_window(wm: &mut Wm, win: crate::types::WindowId) {

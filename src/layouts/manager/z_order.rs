@@ -5,19 +5,23 @@ use std::collections::HashSet;
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_geometry_update(monitor_id);
 
-    let Some(monitor) = ctx.core().model().monitor(monitor_id) else {
-        return;
-    };
-
-    if ctx.core().model().is_overview_active_on(monitor) {
-        return;
-    }
-
-    let Some(stack) = compute_monitor_z_order(monitor) else {
+    let Some(stack) = monitor_z_order(ctx.core().model(), monitor_id) else {
         return;
     };
     ctx.window_backend().apply_z_order(&stack);
     ctx.window_backend().flush();
+}
+
+/// Compute a projection without backend access; overview owns its own order.
+pub(crate) fn monitor_z_order(
+    model: &crate::model::WmModel,
+    monitor_id: MonitorId,
+) -> Option<Vec<WindowId>> {
+    let monitor = model.monitor(monitor_id)?;
+    if model.is_overview_active_on(monitor) {
+        return None;
+    }
+    compute_monitor_z_order(monitor)
 }
 
 /// Number of managed transient ancestors for `win`.

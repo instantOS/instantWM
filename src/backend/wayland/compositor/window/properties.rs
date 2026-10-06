@@ -286,11 +286,6 @@ impl WaylandState {
         window: &Window,
         size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
     ) -> Option<smithay::utils::Serial> {
-        let toplevel = window.toplevel()?;
-        let is_resizing = window
-            .user_data()
-            .get::<WindowIdMarker>()
-            .is_some_and(|marker| self.active_resize == Some(marker.id));
         let presentation = window
             .user_data()
             .get::<WindowIdMarker>()
@@ -307,6 +302,22 @@ impl WaylandState {
                     })
                 })
             });
+        self.send_toplevel_configure_with_presentation(window, size, presentation)
+    }
+
+    /// Send an activation configure using an explicit core presentation view.
+    /// The borrowed focus path must not reach back through globals().
+    pub(crate) fn send_toplevel_configure_with_presentation(
+        &mut self,
+        window: &Window,
+        size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
+        presentation: Option<(bool, bool)>,
+    ) -> Option<smithay::utils::Serial> {
+        let toplevel = window.toplevel()?;
+        let is_resizing = window
+            .user_data()
+            .get::<WindowIdMarker>()
+            .is_some_and(|marker| self.active_resize == Some(marker.id));
         let is_fullscreen = presentation.is_some_and(|state| state.0);
         let is_maximized = presentation.is_some_and(|state| state.1);
         toplevel.with_pending_state(|state| {
