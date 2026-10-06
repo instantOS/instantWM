@@ -83,7 +83,7 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> 
 }
 
 /// Apply the process policy shared by keybinding and IPC launches.
-pub(crate) fn prepare_spawn_command(ctx: &WmCtx, command: &mut Command) -> SpawnLaunchMetadata {
+pub(crate) fn prepare_spawn_command(ctx: &mut WmCtx, command: &mut Command) -> SpawnLaunchMetadata {
     let context = current_launch_context(ctx.core().model());
     let startup_id = new_startup_id();
     command.env("DESKTOP_STARTUP_ID", &startup_id);

@@ -212,9 +212,9 @@ pub fn manage(
     ctx.set_geometry_impl(window, offscreen, GeometryApplyMode::VisualOnly);
     arrange(&mut ctx, Some(monitor_id));
     if !initially_hidden {
-        ctx.window_backend().map_window(window);
+        ctx.map_window(window);
     }
-    ctx.window_backend().flush();
+    ctx.flush();
     // Route initial selection through the normal focus transaction. Passing
     // the managed window explicitly ensures backend focus, histories and
     // persistent z-order are updated together. Hidden windows are rejected by
@@ -472,14 +472,11 @@ pub(crate) fn get_transient_for_hint(x11: &X11BackendRef, window: WindowId) -> O
 }
 
 use crate::backend::x11::ServerGrab;
-use crate::wm::Wm;
+use crate::wm::X11Wm as Wm;
 use x11rb::protocol::xproto::{ConfigureWindowAux, Window};
 
 pub fn cleanup(wm: &mut Wm) {
-    let x11_data = match wm.backend.x11_data_mut() {
-        Some(data) => data,
-        None => return,
-    };
+    let x11_data = &mut wm.backend;
     let conn = &x11_data.conn;
     let x11_runtime = &mut x11_data.x11_runtime;
 

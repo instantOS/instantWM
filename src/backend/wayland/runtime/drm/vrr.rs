@@ -5,7 +5,7 @@ use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::render::drm::OutputSurfaceEntry;
 use crate::config::config_toml::VrrMode;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {
     state

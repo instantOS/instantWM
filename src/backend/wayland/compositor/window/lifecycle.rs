@@ -30,15 +30,15 @@ impl WaylandState {
 
     pub(crate) fn setup_native_systray_menu(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         surface: ToplevelSurface,
         request: crate::systray::status_notifier::NativeMenuRequest,
     ) -> Result<WindowId, Box<ToplevelSurface>> {
-        let Some((monitor_id, opened_tags, work_rect)) = self.globals().and_then(|globals| {
-            let monitor = globals.model.monitors.monitor_at_pointer(request.anchor)?;
-            Some((monitor.id(), monitor.selected_tags(), monitor.work_rect()))
-        }) else {
+        let Some(monitor) = core_view.model.monitors.monitor_at_pointer(request.anchor) else {
             return Err(Box::new(surface));
         };
+        let (monitor_id, opened_tags, work_rect) =
+            (monitor.id(), monitor.selected_tags(), monitor.work_rect());
 
         let window_id = self.register_toplevel(surface, true);
         let window = self
@@ -70,7 +70,7 @@ impl WaylandState {
             self.close_window(previous.win);
         }
 
-        self.set_focus(window_id);
+        self.focus_window(window_id, None);
         self.request_visible_window_render(&window);
         self.request_render();
         Ok(window_id)
@@ -114,7 +114,11 @@ impl WaylandState {
     ///
     /// This is compositor-space visibility only; it does not begin a new
     /// Wayland or XWayland protocol lifecycle.
-    pub fn map_window_in_space(&mut self, window: WindowId) {
+    pub fn map_window_in_space(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        window: WindowId,
+    ) {
         // Get the location from the space if the element is already mapped,
         // otherwise use the client's stored geometry to avoid animating from (0,0)
         let is_already_mapped = self
@@ -131,10 +135,8 @@ impl WaylandState {
         if let Some(element) = self.window_index.get(&window).cloned() {
             let is_mapped = self.space.elements().any(|w| w == &element);
             if !is_mapped {
-                let Some((loc, border_width)): Option<(Point<i32, Logical>, i32)> = self
-                    .globals()
-                    .and_then(|state| state.model.client(window))
-                    .map(|c| {
+                let Some((loc, border_width)): Option<(Point<i32, Logical>, i32)> =
+                    core_view.model.client(window).map(|c| {
                         (
                             Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)),
                             c.border_width,
@@ -151,9 +153,9 @@ impl WaylandState {
                 // If this window was the pending focus target (selected by the
                 // focus path before arrange/show_hide ran), re-apply keyboard
                 // focus now that the window is actually in the space and
-                // reachable by set_focus.
-                if self.focused_window() == Some(window) {
-                    self.set_focus(window);
+                // reachable by focus_window.
+                if core_view.model.selected_win() == Some(window) {
+                    self.focus_window(window, None);
                 }
             }
         }
@@ -165,18 +167,19 @@ impl WaylandState {
     /// unmanage the underlying Wayland/XWayland surface. Clears Smithay seat
     /// focus if this window holds it, but does **not** touch `mon.sel`. The WM
     /// layer will reconcile focus after the show/hide pass.
-    pub fn unmap_window_from_space(&mut self, window: WindowId) {
+    pub fn unmap_window_from_space(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        window: WindowId,
+    ) {
         let Some(element) = self.window_index.get(&window).cloned() else {
             debug!("unmap_window_from_space({window:?}): no-op, window not found");
             return;
         };
         // Hiding removes the animation timer, not the client's protocol
         // lifecycle. Finish its current pending intent without remapping it.
-        if let Some(target) = self
-            .globals()
-            .and_then(|core| core.model.client(window).map(|client| client.geo))
-        {
-            self.dispatch_window_resize(window, &element, target);
+        if let Some(target) = core_view.model.client(window).map(|client| client.geo) {
+            self.dispatch_window_resize(core_view, window, &element, target);
         }
         let is_mapped = self.space.elements().any(|w| w == &element);
         if !is_mapped {
@@ -250,8 +253,7 @@ mod tests {
 
     #[test]
     fn presentation_hide_preserves_protocol_transactions() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let win = WindowId(42);
         let configured = (1280, 720);
         let serial = Serial::from(17);
@@ -276,8 +278,7 @@ mod tests {
 
     #[test]
     fn protocol_state_is_cleared_only_at_end_of_lifecycle() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let win = WindowId(42);
 
         state

@@ -2,6 +2,7 @@
 //!
 //! This module handles click and drag interactions on window title bars,
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
+use crate::backend::PointerOps;
 
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
@@ -122,7 +123,7 @@ fn begin_move_drag(
         }
         let start = warp::clamp_into(position, geo);
         if start != position {
-            ctx.pointer_backend().warp_to_point(start);
+            ctx.warp_to_point(start);
         }
         Some((geo, start))
     }
@@ -478,15 +479,14 @@ pub fn begin_thresholded_client_drag(
 #[cfg(test)]
 mod tests {
     use super::{DragInput, begin_move_drag, process_title_drag_motion, title_drag_begin};
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::tree::Preset;
     use crate::mouse::constants::DRAG_THRESHOLD;
+    use crate::test_support::TestWm as Wm;
     use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::{
         Client, ClientMode, InteractionSource, MonitorId, MouseButton, Point, Rect, SnapPosition,
         TagMask, WindowId,
     };
-    use crate::wm::Wm;
 
     /// Push the 1200x800 monitor every drag fixture sits on.
     ///
@@ -510,7 +510,7 @@ mod tests {
     }
 
     fn tiled_pair_fixture() -> (Wm, WindowId, Rect) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 0, false, 9);
         wm.core.model.monitors.set_selected(monitor_id);
@@ -550,7 +550,7 @@ mod tests {
         let (mut wm, win, geo) = tiled_pair_fixture();
         let press = Point::new(geo.x + geo.w / 2, geo.y + geo.h / 2);
         assert!(title_drag_begin(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             MouseButton::Right,
             crate::core_state::ArmedDragOrigin::Client,
@@ -560,7 +560,7 @@ mod tests {
         ));
 
         assert!(process_title_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             DragInput::Absolute(Point::new(press.x + 20, press.y))
         ));
         let active = wm.core.interaction.drag.active_interaction().unwrap();
@@ -573,7 +573,7 @@ mod tests {
     fn bar_title_fixture(
         presentation: crate::layouts::PresentationMode,
     ) -> (Wm, MonitorId, WindowId, WindowId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 9;
         let tags = TagMask::single(1).unwrap();
         let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 30, true, 9);
@@ -598,7 +598,7 @@ mod tests {
                 .layout_tree
                 .apply_preset(Preset::MasterStack, &windows, 1);
         }
-        crate::bar::render_hit_caches_for_test(wm.ctx().core_mut());
+        crate::bar::render_hit_caches_for_test(wm.test_ctx().core_mut());
         (wm, monitor_id, windows[0], windows[1])
     }
 
@@ -606,7 +606,7 @@ mod tests {
     /// hit-test so the test cannot drift from the renderer's layout.
     fn title_cell_center(wm: &mut Wm, monitor_id: MonitorId, win: WindowId) -> i32 {
         let mut span: Option<(i32, i32)> = None;
-        let ctx = wm.ctx();
+        let ctx = wm.test_ctx();
         for x in 0..1200 {
             if super::title_strip_target(&ctx, monitor_id, Point::new(x, 10)) == Some(win) {
                 match span {
@@ -629,7 +629,7 @@ mod tests {
 
         let press = Point::new(first_x, 10);
         assert!(title_drag_begin(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             first,
             MouseButton::Left,
             crate::core_state::ArmedDragOrigin::BarTitle,
@@ -641,7 +641,7 @@ mod tests {
         // Crossing the threshold while still on the title strip starts a
         // reorder, not a move.
         assert!(process_title_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(
@@ -655,7 +655,7 @@ mod tests {
 
         // Dragging onto the neighbour's cell swaps the bar order.
         assert!(super::process_title_reorder_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             Point::new(second_x, 10)
         ));
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
@@ -668,7 +668,7 @@ mod tests {
         // A second sample at the same location used to read the stale rendered
         // identity and immediately swap the two titles back.
         assert!(super::process_title_reorder_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             Point::new(second_x, 10)
         ));
         let monitor = wm.core.model.monitor(monitor_id).unwrap();
@@ -676,7 +676,7 @@ mod tests {
 
         // Leaving the strip converts the reorder into an ordinary move drag.
         assert!(super::process_title_reorder_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             Point::new(second_x, 200)
         ));
         assert!(wm.core.interaction.drag.reordering_interaction().is_none());
@@ -697,7 +697,7 @@ mod tests {
         let second_x = title_cell_center(&mut wm, monitor_id, second);
 
         assert!(title_drag_begin(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             first,
             MouseButton::Left,
             crate::core_state::ArmedDragOrigin::BarTitle,
@@ -706,11 +706,11 @@ mod tests {
             false,
         ));
         assert!(process_title_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(super::process_title_reorder_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             Point::new(second_x, 10)
         ));
 
@@ -729,7 +729,7 @@ mod tests {
         let first_x = title_cell_center(&mut wm, monitor_id, first);
 
         assert!(title_drag_begin(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             first,
             MouseButton::Left,
             crate::core_state::ArmedDragOrigin::Client,
@@ -738,7 +738,7 @@ mod tests {
             true,
         ));
         assert!(process_title_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             DragInput::Absolute(Point::new(first_x + DRAG_THRESHOLD + 1, 10))
         ));
         assert!(
@@ -750,7 +750,7 @@ mod tests {
 
     #[test]
     fn snapped_move_restores_free_geometry_before_starting() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let work = Rect::new(0, 30, 1200, 770);
         let monitor_id = push_drag_monitor(&mut wm, work, 0, true, 0);
@@ -769,7 +769,7 @@ mod tests {
         wm.core.model.add_client(monitor_id, client);
 
         let result = begin_move_drag(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             DragInput::Absolute(Point::new(300, 220)),
             Point::new(300, 220),
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn edge_scratchpad_cannot_start_a_move_drag() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 30, 1200, 770), 0, true, 0);
         wm.core.model.monitors.set_selected(monitor_id);
         let win = WindowId(24);
@@ -807,7 +807,7 @@ mod tests {
 
         assert_eq!(
             begin_move_drag(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 win,
                 DragInput::Absolute(Point::new(100, 200)),
                 Point::new(100, 200),

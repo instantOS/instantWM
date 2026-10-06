@@ -10,7 +10,7 @@ use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::{ModMask, MouseButton, Point as RootPoint};
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PointerButtonInput {
@@ -112,7 +112,7 @@ fn handle_button_press(
         return false;
     }
 
-    let clicked_win = state.logical_window_under_pointer(button.pointer_location);
+    let clicked_win = state.logical_window_under_pointer(&wm.core, button.pointer_location);
     if state.is_pointer_over_overlay(button.pointer_location) {
         if !state
             .active_systray_menu()
@@ -136,7 +136,7 @@ fn handle_button_press(
     };
 
     let outcome = {
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.wayland_ctx(state);
         crate::mouse::press::dispatch_press_policy(&mut ctx, input)
     };
 
@@ -171,7 +171,7 @@ fn handle_button_press(
             root,
         } => {
             if !toggled_native_menu {
-                let mut ctx = wm.ctx();
+                let mut ctx = wm.wayland_ctx(state);
                 crate::systray::press_icon(ctx.core_mut(), index, button, root);
             }
             pointer_handle.frame(state);
@@ -238,12 +238,12 @@ fn handle_button_release(
             .is_some()
             || state.is_pointer_over_overlay(button.pointer_location)
             || state
-                .logical_window_under_pointer(button.pointer_location)
+                .logical_window_under_pointer(&wm.core, button.pointer_location)
                 .is_some();
         let hover_target = (!occupied)
             .then(|| crate::mouse::pointer::sidebar_target_at(&wm.core.model, button.root))
             .flatten();
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.wayland_ctx(state);
         let outcome = crate::mouse::interaction::handle(
             &mut ctx,
             crate::mouse::interaction::InteractionEvent::pointer_end(

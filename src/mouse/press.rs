@@ -259,14 +259,13 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
 mod tests {
     use super::*;
     use crate::actions::{ButtonAction, NamedAction};
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::{add_selected_client_with, push_monitor_with};
     use crate::types::{Button, ClientMode, MonitorId, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     fn setup_wm() -> (Wm, WindowId, MonitorId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 4;
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(10);
@@ -299,7 +298,7 @@ mod tests {
             time_msec: 100,
         };
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), input);
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(outcome, PressOutcome::ReplayToClient { window: Some(win) });
         assert_eq!(wm.core.model.selected_win(), Some(win));
     }
@@ -307,7 +306,7 @@ mod tests {
     #[test]
     fn empty_root_click_is_consumed() {
         let (mut wm, win, _) = setup_wm();
-        crate::focus::focus(&mut wm.ctx(), Some(win));
+        crate::focus::focus(&mut wm.test_ctx(), Some(win));
         assert_eq!(wm.core.model.selected_win(), Some(win));
 
         let input = PressInput {
@@ -320,14 +319,14 @@ mod tests {
             time_msec: 100,
         };
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), input);
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(outcome, PressOutcome::Consumed);
     }
 
     #[test]
     fn overview_active_client_click_captures_interaction() {
         let (mut wm, win, _) = setup_wm();
-        crate::overview::toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+        crate::overview::toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
         assert!(wm.core.model.is_overview_active());
 
         let input = PressInput {
@@ -340,7 +339,7 @@ mod tests {
             time_msec: 100,
         };
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), input);
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(
             outcome,
             PressOutcome::CapturedInteraction {
@@ -352,7 +351,7 @@ mod tests {
     #[test]
     fn overview_active_root_click_exits_overview_and_consumes() {
         let (mut wm, _, _) = setup_wm();
-        crate::overview::toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+        crate::overview::toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
         assert!(wm.core.model.is_overview_active());
 
         let input = PressInput {
@@ -365,7 +364,7 @@ mod tests {
             time_msec: 100,
         };
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), input);
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(outcome, PressOutcome::Consumed);
         assert!(!wm.core.model.is_overview_active());
     }
@@ -385,7 +384,7 @@ mod tests {
         wm.core.config.bindings.buttons = vec![overview_binding(), overview_binding()];
 
         let outcome = dispatch_press_policy(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             PressInput {
                 root: Point::new(800, 800),
                 button: Some(MouseButton::Left),
@@ -407,7 +406,7 @@ mod tests {
         wm.core.config.bindings.buttons = vec![overview_binding()];
 
         let outcome = dispatch_press_policy(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             PressInput {
                 root: Point::new(800, 800),
                 button: Some(MouseButton::Left),
@@ -430,7 +429,7 @@ mod tests {
         let border = Point::new(100, 150);
 
         let outcome = dispatch_press_policy(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             PressInput {
                 root: border,
                 button: Some(MouseButton::Left),
@@ -448,7 +447,7 @@ mod tests {
         let (mut pointer_wm, pointer_win, _) = setup_wm();
         pointer_wm.core.config.bindings.buttons.clear();
         let pointer_outcome = dispatch_press_policy(
-            &mut pointer_wm.ctx(),
+            &mut pointer_wm.test_ctx(),
             PressInput {
                 root: border,
                 button: Some(MouseButton::Left),
@@ -473,12 +472,12 @@ mod tests {
         wm.core.config.bindings.buttons.clear();
         let border = Point::new(100, 150);
         assert_eq!(
-            crate::mouse::update_resize_offer_at(&mut wm.ctx(), border),
+            crate::mouse::update_resize_offer_at(&mut wm.test_ctx(), border),
             Some(win)
         );
 
         let outcome = dispatch_press_policy(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             PressInput {
                 root: border,
                 button: Some(MouseButton::Middle),
@@ -552,7 +551,7 @@ mod tests {
             action: ButtonAction::DragTagBegin,
         }];
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(50));
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), left_click_at(50));
 
         assert_eq!(
             outcome,
@@ -576,7 +575,7 @@ mod tests {
             action: ButtonAction::WindowTitleMouseHandler,
         }];
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(250));
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), left_click_at(250));
 
         assert_eq!(
             outcome,
@@ -600,7 +599,7 @@ mod tests {
             action: ButtonAction::ToggleClickedViewTag,
         }];
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(250));
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), left_click_at(250));
 
         assert_eq!(outcome, PressOutcome::Consumed);
         assert_eq!(wm.core.interaction.drag.captured_source(), None);
@@ -620,7 +619,7 @@ mod tests {
             action: ButtonAction::DrawWindowOnRelease,
         }];
 
-        let outcome = dispatch_press_policy(&mut wm.ctx(), left_click_at(285));
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), left_click_at(285));
 
         assert_eq!(
             outcome,

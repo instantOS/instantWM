@@ -21,7 +21,7 @@ pub use modifiers::modifiers_to_x11_mask;
 use crate::backend::wayland::output::clamp_output_size;
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
 use smithay::utils::Transform;
@@ -123,7 +123,7 @@ pub fn handle_resize(
 
     wm.core.derived.display.width = safe_size.w;
     wm.core.derived.display.height = safe_size.h;
-    refresh_monitor_layout(&mut wm.ctx());
+    refresh_monitor_layout(&mut wm.wayland_ctx(state));
     // `refresh_monitor_layout` resets each monitor's `available_rect` back to
     // its full output rect, so re-apply the layer-shell exclusive zones.
     let _ = crate::backend::wayland::compositor::layer_shell::apply_available_rects(wm, state);

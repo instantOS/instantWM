@@ -10,7 +10,6 @@
 use crate::config::hooks::HookEvent;
 use crate::model::WmModel;
 use crate::types::Rect;
-use crate::wm::Wm;
 
 /// The parts of a monitor whose change is visible to monitor hooks.
 ///
@@ -72,18 +71,24 @@ pub fn diff_topology(previous: &[MonitorSnapshot], current: &[MonitorSnapshot]) 
 ///
 /// The first topology seen (startup) is recorded without firing anything;
 /// startup work belongs in `exec`/`exec_once`.
-pub fn run_monitor_hooks(wm: &mut Wm) {
-    let current = snapshot_monitors(&wm.core.model);
+pub fn run_monitor_hooks(ctx: &mut crate::contexts::WmCtx<'_>) {
+    let current = snapshot_monitors(ctx.core().model());
     if current.is_empty() {
         return;
     }
-    let previous = std::mem::replace(&mut wm.work.hooked_monitors, current);
+    let previous = std::mem::replace(
+        &mut ctx.core_mut().pending_work_mut().hooked_monitors,
+        current,
+    );
     if previous.is_empty() {
         return;
     }
-    let change = diff_topology(&previous, &wm.work.hooked_monitors);
+    let change = diff_topology(
+        &previous,
+        &ctx.core_mut().pending_work_mut().hooked_monitors,
+    );
     if change.changed {
-        dispatch_monitor_hooks(wm, &change);
+        dispatch_monitor_hooks(ctx, &change);
     }
 }
 
@@ -93,9 +98,10 @@ pub fn run_monitor_hooks(wm: &mut Wm) {
 /// Spawned processes receive `INSTANTWM_HOOK_EVENT`, `INSTANTWM_MONITORS`
 /// (all current outputs, space separated) and, for per-monitor events,
 /// `INSTANTWM_MONITOR`.
-fn dispatch_monitor_hooks(wm: &mut Wm, change: &TopologyChange) {
-    let monitors = wm
-        .work
+fn dispatch_monitor_hooks(ctx: &mut crate::contexts::WmCtx<'_>, change: &TopologyChange) {
+    let monitors = ctx
+        .core_mut()
+        .pending_work_mut()
         .hooked_monitors
         .iter()
         .map(|m| m.name.as_str())
@@ -117,8 +123,9 @@ fn dispatch_monitor_hooks(wm: &mut Wm, change: &TopologyChange) {
 
     for (event, monitor) in events {
         log::info!("instantwm: {} {}", event.name(), monitor.unwrap_or(""));
-        let actions: Vec<_> = wm
-            .core
+        let actions: Vec<_> = ctx
+            .core()
+            .state()
             .config
             .hooks
             .iter()
@@ -136,13 +143,13 @@ fn dispatch_monitor_hooks(wm: &mut Wm, change: &TopologyChange) {
         if let Some(monitor) = monitor {
             env.push(("INSTANTWM_MONITOR", monitor.to_string()));
         }
-        wm.core.hook_env = env;
+        ctx.core_mut().state_mut().hook_env = env;
         for action in &actions {
-            if let Err(error) = crate::actions::try_execute_key_action(&mut wm.ctx(), action) {
+            if let Err(error) = crate::actions::try_execute_key_action(ctx, action) {
                 log::warn!("instantwm: {} hook failed: {error}", event.name());
             }
         }
-        wm.core.hook_env.clear();
+        ctx.core_mut().state_mut().hook_env.clear();
     }
 }
 
@@ -150,9 +157,9 @@ fn dispatch_monitor_hooks(wm: &mut Wm, change: &TopologyChange) {
 mod tests {
     use super::*;
     use crate::actions::{KeyAction, NamedAction};
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::hooks::Hook;
     use crate::core_state::ActiveWmMode;
+    use crate::test_support::TestWm as Wm;
 
     fn monitor(name: &str, x: i32) -> MonitorSnapshot {
         MonitorSnapshot {
@@ -198,7 +205,7 @@ mod tests {
     }
 
     fn wm_with_mode_hooks(hooks: Vec<(HookEvent, Option<&str>, &str)>) -> Wm {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         for (event, monitor, mode) in hooks {
             wm.core
                 .config
@@ -228,14 +235,16 @@ mod tests {
         ]);
         wm.work.hooked_monitors = vec![monitor("eDP-1", 0), monitor("DP-1", 1920)];
 
-        dispatch_monitor_hooks(
-            &mut wm,
-            &TopologyChange {
-                disconnected: Vec::new(),
-                connected: names(&["DP-1"]),
-                changed: true,
-            },
-        );
+        wm.with_ctx(|wm| {
+            dispatch_monitor_hooks(
+                wm,
+                &TopologyChange {
+                    disconnected: Vec::new(),
+                    connected: names(&["DP-1"]),
+                    changed: true,
+                },
+            )
+        });
 
         // monitors_changed runs last, after the matching connect hook.
         assert_eq!(
@@ -249,14 +258,16 @@ mod tests {
             (HookEvent::MonitorConnected, Some("HDMI-A-1"), "wrong"),
             (HookEvent::MonitorDisconnected, None, "wrong"),
         ]);
-        dispatch_monitor_hooks(
-            &mut wm,
-            &TopologyChange {
-                disconnected: Vec::new(),
-                connected: names(&["DP-1"]),
-                changed: true,
-            },
-        );
+        wm.with_ctx(|wm| {
+            dispatch_monitor_hooks(
+                wm,
+                &TopologyChange {
+                    disconnected: Vec::new(),
+                    connected: names(&["DP-1"]),
+                    changed: true,
+                },
+            )
+        });
         assert_eq!(
             current_mode(&wm),
             &ActiveWmMode::Named("docked".to_string())
@@ -269,8 +280,8 @@ mod tests {
         use crate::test_support::MonitorBuilder;
         use crate::types::MonitorId;
 
-        let push = |wm: &mut Wm, id: u64, name: &str, x: i32| {
-            wm.core.model.monitors.push(
+        let push = |wm: &mut crate::contexts::WmCtx<'_>, id: u64, name: &str, x: i32| {
+            wm.core_mut().model_mut().monitors.push(
                 MonitorBuilder::new()
                     .named(name)
                     .monitor_rect(Rect::new(x, 0, 1920, 1080))
@@ -283,22 +294,22 @@ mod tests {
         };
         let mut wm = wm_with_mode_hooks(vec![(HookEvent::MonitorsChanged, None, "changed")]);
         wm.core.model.monitors = MonitorManager::new();
-        push(&mut wm, 0, "eDP-1", 0);
+        wm.with_ctx(|wm| push(wm, 0, "eDP-1", 0));
         let initial = current_mode(&wm).clone();
 
-        run_monitor_hooks(&mut wm);
+        wm.with_ctx(run_monitor_hooks);
         assert_eq!(current_mode(&wm), &initial, "startup must not fire");
         assert_eq!(wm.work.hooked_monitors.len(), 1);
 
-        push(&mut wm, 1, "DP-1", 1920);
-        run_monitor_hooks(&mut wm);
+        wm.with_ctx(|wm| push(wm, 1, "DP-1", 1920));
+        wm.with_ctx(run_monitor_hooks);
         assert_eq!(
             current_mode(&wm),
             &ActiveWmMode::Named("changed".to_string())
         );
 
         wm.core.behavior.current_mode = initial.clone();
-        run_monitor_hooks(&mut wm);
+        wm.with_ctx(run_monitor_hooks);
         assert_eq!(
             current_mode(&wm),
             &initial,
@@ -311,7 +322,7 @@ mod tests {
         let mut wm = wm_with_mode_hooks(vec![(HookEvent::MonitorsChanged, None, "changed")]);
         let before = current_mode(&wm).clone();
 
-        run_monitor_hooks(&mut wm);
+        wm.with_ctx(run_monitor_hooks);
 
         assert!(wm.work.hooked_monitors.is_empty());
         assert_eq!(current_mode(&wm), &before);

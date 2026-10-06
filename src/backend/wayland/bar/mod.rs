@@ -250,9 +250,8 @@ mod tests {
         );
     }
 
-    fn test_wm() -> crate::wm::Wm {
-        use crate::backend::{Backend, wayland::WaylandBackend};
-        crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()))
+    fn test_wm() -> crate::wm::WaylandWm {
+        crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default())
     }
 
     /// The bottom strip must be an opaque, monitor-width buffer aligned to the

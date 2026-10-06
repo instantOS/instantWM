@@ -8,7 +8,7 @@ use crate::backend::wayland::commands::PointerAxisCommand;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::{ModMask, Point as RootPoint};
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 use crate::backend::wayland::input::bar::{handle_bar_scroll, update_bar_hit_state};
 
@@ -54,13 +54,13 @@ pub(crate) fn handle_pointer_axis(
     let bar_pos = if wm.core.interaction.drag.owns_bar_hover() {
         None
     } else {
-        update_bar_hit_state(wm, root, true)
+        update_bar_hit_state(wm, state, root, true)
     };
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0)
         && let Some(pos) = bar_pos
     {
         let clean_state = modifiers_to_x11_mask(&keyboard.modifier_state()).cleaned(ModMask::NONE);
-        handle_bar_scroll(wm, pos, delta, root, clean_state);
+        handle_bar_scroll(wm, state, pos, delta, root, clean_state);
     }
 
     let mut frame =
@@ -111,10 +111,8 @@ mod tests {
 
     /// A monitor with a visible bar and two tiled clients whose titles the
     /// strip presents in order `[first, second]`.
-    fn wm_with_title_strip() -> (crate::wm::Wm, MonitorId, WindowId, WindowId) {
-        use crate::backend::{Backend, wayland::WaylandBackend};
-
-        let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    fn wm_with_title_strip() -> (crate::wm::WaylandWm, MonitorId, WindowId, WindowId) {
+        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 9;
         // A headless test monitor supplies its own bar height.
         let tags = TagMask::single(1).unwrap();
@@ -185,7 +183,7 @@ mod tests {
 
     /// Root-space center x of tag `index` (0-based), scanned through the
     /// shared hit-test so the test cannot drift from the renderer's layout.
-    fn tag_cell_center(wm: &mut crate::wm::Wm, index: usize) -> i32 {
+    fn tag_cell_center(wm: &mut crate::wm::WaylandWm, index: usize) -> i32 {
         let mut span: Option<(i32, i32)> = None;
         let mut core = wm.core_ctx();
         crate::bar::render_hit_caches_for_test(&mut core);
@@ -212,8 +210,7 @@ mod tests {
     #[test]
     fn tag_scroll_direction_matches_x11_button_convention() {
         let (mut wm, monitor_id, _first, _second) = wm_with_title_strip();
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let (Some(pointer), Some(keyboard)) = (state.seat.get_pointer(), state.seat.get_keyboard())
         else {
             panic!("test seat must provide pointer and keyboard handles");
@@ -226,7 +223,7 @@ mod tests {
             .unwrap()
             .set_selected_tags(TagMask::single(2).unwrap());
         let tag_root = Point::new(tag_cell_center(&mut wm, 1), 10);
-        let selected = |wm: &mut crate::wm::Wm| {
+        let selected = |wm: &mut crate::wm::WaylandWm| {
             wm.core
                 .model
                 .monitor(monitor_id)
@@ -266,7 +263,7 @@ mod tests {
 
     /// Root-space center x of `win`'s title cell, scanned through the shared
     /// hit-test so the test cannot drift from the renderer's layout.
-    fn title_cell_center(wm: &mut crate::wm::Wm, win: WindowId) -> i32 {
+    fn title_cell_center(wm: &mut crate::wm::WaylandWm, win: WindowId) -> i32 {
         let mut span: Option<(i32, i32)> = None;
         let mut core = wm.core_ctx();
         crate::bar::render_hit_caches_for_test(&mut core);
@@ -293,8 +290,7 @@ mod tests {
     #[test]
     fn scroll_during_a_captured_gesture_leaves_bar_hover_untouched() {
         let (mut wm, monitor_id, _first, second) = wm_with_title_strip();
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let (Some(pointer), Some(keyboard)) = (state.seat.get_pointer(), state.seat.get_keyboard())
         else {
             panic!("test seat must provide pointer and keyboard handles");

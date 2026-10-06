@@ -3,39 +3,40 @@
 //! Thin transport shim: the reflection-by-name reads/writes and their
 //! validation live in [`crate::config::runtime`], shared with the
 //! `config_set`/`config_toggle` named actions, and this module only applies
-//! the returned [`ConfigEffect`] with a full [`Wm`].
+//! the returned [`ConfigEffect`] with a borrowed [`crate::contexts::WmCtx`].
 //!
 //! **Persistence:** edits made through this command live in the running
 //! WM only — `reload` reloads from disk and discards them.
 
 use crate::config::runtime::{self, ConfigEffect};
 use crate::ipc_types::{ConfigCommand, Response};
-use crate::wm::Wm;
 
-pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
+pub fn handle_config_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: ConfigCommand) -> Response {
     match cmd {
-        ConfigCommand::Get { key } => match runtime::get_runtime_field(&wm.core, &key) {
+        ConfigCommand::Get { key } => match runtime::get_runtime_field(ctx.core().state(), &key) {
             Ok(value) => Response::ConfigValue(value),
             Err(error) => Response::err(error),
         },
         ConfigCommand::Set { key, value } => {
-            match runtime::set_runtime_field(&mut wm.core, &key, value) {
+            match runtime::set_runtime_field(ctx.core_mut().state_mut(), &key, value) {
                 Ok(effect) => {
-                    apply_effect(wm, effect);
+                    apply_effect(ctx, effect);
                     Response::ok()
                 }
                 Err(error) => Response::err(error),
             }
         }
-        ConfigCommand::Toggle { key } => match runtime::toggle_runtime_field(&mut wm.core, &key) {
-            Ok((effect, value)) => {
-                apply_effect(wm, effect);
-                Response::ConfigValue(value)
+        ConfigCommand::Toggle { key } => {
+            match runtime::toggle_runtime_field(ctx.core_mut().state_mut(), &key) {
+                Ok((effect, value)) => {
+                    apply_effect(ctx, effect);
+                    Response::ConfigValue(value)
+                }
+                Err(error) => Response::err(error),
             }
-            Err(error) => Response::err(error),
-        },
+        }
         ConfigCommand::List { prefix } => {
-            match runtime::list_runtime_fields(&wm.core, prefix.as_deref()) {
+            match runtime::list_runtime_fields(ctx.core().state(), prefix.as_deref()) {
                 Ok(entries) => Response::ConfigList(entries),
                 Err(error) => Response::err(error),
             }
@@ -48,43 +49,46 @@ pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
 /// A `WmCtx` is borrowed purely to run [`crate::actions::apply_config_effect`],
 /// the single applier shared with the `config_set`/`config_toggle` actions, so
 /// IPC edits and keybind edits cannot drift.
-fn apply_effect(wm: &mut Wm, effect: ConfigEffect) {
-    crate::actions::apply_config_effect(&mut wm.ctx(), effect);
+fn apply_effect(ctx: &mut crate::contexts::WmCtx<'_>, effect: ConfigEffect) {
+    crate::actions::apply_config_effect(ctx, effect);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::runtime::RuntimeConfigSection;
     use crate::test_support::MonitorBuilder;
+    use crate::test_support::TestWm as Wm;
     use crate::types::{Monitor, Rect};
 
     fn test_wm() -> Wm {
-        Wm::new(Backend::new_wayland(WaylandBackend::new()))
+        Wm::new(crate::backend::WaylandBackendData::default())
     }
 
-    fn do_get(wm: &mut Wm, key: &str) -> Response {
-        handle_config_command(wm, ConfigCommand::Get { key: key.into() })
+    fn do_get(ctx: &mut crate::contexts::WmCtx<'_>, key: &str) -> Response {
+        handle_config_command(ctx, ConfigCommand::Get { key: key.into() })
     }
-    fn do_set(wm: &mut Wm, key: &str, value: &str) -> Response {
+    fn do_set(ctx: &mut crate::contexts::WmCtx<'_>, key: &str, value: &str) -> Response {
         handle_config_command(
-            wm,
+            ctx,
             ConfigCommand::Set {
                 key: key.into(),
                 value: value.into(),
             },
         )
     }
-    fn do_toggle(wm: &mut Wm, key: &str) -> Response {
-        handle_config_command(wm, ConfigCommand::Toggle { key: key.into() })
+    fn do_toggle(ctx: &mut crate::contexts::WmCtx<'_>, key: &str) -> Response {
+        handle_config_command(ctx, ConfigCommand::Toggle { key: key.into() })
     }
-    fn do_list(wm: &mut Wm) -> Response {
-        handle_config_command(wm, ConfigCommand::List { prefix: None })
+    fn do_list(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
+        handle_config_command(ctx, ConfigCommand::List { prefix: None })
     }
-    fn list_keys(wm: &mut Wm, prefix: &str) -> Result<Vec<String>, String> {
+    fn list_keys(
+        ctx: &mut crate::contexts::WmCtx<'_>,
+        prefix: &str,
+    ) -> Result<Vec<String>, String> {
         match handle_config_command(
-            wm,
+            ctx,
             ConfigCommand::List {
                 prefix: Some(prefix.into()),
             },
@@ -98,45 +102,48 @@ mod tests {
     #[test]
     fn get_returns_value_and_handles_bad_keys() {
         let mut wm = test_wm();
-        match do_get(&mut wm, "window.border_width_px") {
+        match wm.with_ctx(|wm| do_get(wm, "window.border_width_px")) {
             Response::ConfigValue(v) => assert_eq!(v, "3"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         assert!(matches!(
-            do_get(&mut wm, "window.nonexistent"),
+            wm.with_ctx(|wm| do_get(wm, "window.nonexistent")),
             Response::Err(_)
         ));
         assert!(matches!(
-            do_get(&mut wm, "nonexistent.field"),
+            wm.with_ctx(|wm| do_get(wm, "nonexistent.field")),
             Response::Err(_)
         ));
-        assert!(matches!(do_get(&mut wm, "nodot"), Response::Err(_)));
+        assert!(matches!(
+            wm.with_ctx(|wm| do_get(wm, "nodot")),
+            Response::Err(_)
+        ));
     }
 
     #[test]
     fn set_updates_and_roundtrips() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "layout.inner_gap", "42"),
+            wm.with_ctx(|wm| do_set(wm, "layout.inner_gap", "42")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.layout.inner_gap, 42);
 
         assert!(matches!(
-            do_set(&mut wm, "window.resize_hints", "false"),
+            wm.with_ctx(|wm| do_set(wm, "window.resize_hints", "false")),
             Response::Ok
         ));
         assert!(!wm.core.config.window.resize_hints);
 
         // Plain string fallback when value isn't valid JSON.
         assert!(matches!(
-            do_set(&mut wm, "cursor.theme", "my-cursor"),
+            wm.with_ctx(|wm| do_set(wm, "cursor.theme", "my-cursor")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.cursor.theme, "my-cursor");
         assert!(wm.work.cursor_config);
 
-        match do_get(&mut wm, "layout.inner_gap") {
+        match wm.with_ctx(|wm| do_get(wm, "layout.inner_gap")) {
             Response::ConfigValue(v) => assert_eq!(v, "42"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -146,18 +153,18 @@ mod tests {
     fn toggle_flips_boolean_options_and_returns_the_new_value() {
         let mut wm = test_wm();
         // Defaults: decor_hints on, show_icons off.
-        match do_toggle(&mut wm, "window.decor_hints") {
+        match wm.with_ctx(|wm| do_toggle(wm, "window.decor_hints")) {
             Response::ConfigValue(v) => assert_eq!(v, "false"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         assert!(!wm.core.config.window.decor_hints);
-        match do_toggle(&mut wm, "window.decor_hints") {
+        match wm.with_ctx(|wm| do_toggle(wm, "window.decor_hints")) {
             Response::ConfigValue(v) => assert_eq!(v, "true"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         assert!(wm.core.config.window.decor_hints);
 
-        match do_toggle(&mut wm, "tags.show_icons") {
+        match wm.with_ctx(|wm| do_toggle(wm, "tags.show_icons")) {
             Response::ConfigValue(v) => assert_eq!(v, "true"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -169,24 +176,24 @@ mod tests {
     fn focus_horizontal_edge_round_trips_and_rejects_unknown_policies() {
         let mut wm = test_wm();
         // The default keeps the historical "walk the windows, then the tags".
-        match do_get(&mut wm, "focus.horizontal_edge") {
+        match wm.with_ctx(|wm| do_get(wm, "focus.horizontal_edge")) {
             Response::ConfigValue(v) => assert_eq!(v, "overflow"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
 
-        do_set(&mut wm, "focus.horizontal_edge", "wrap");
+        wm.with_ctx(|wm| do_set(wm, "focus.horizontal_edge", "wrap"));
         assert_eq!(
             wm.core.config.focus.horizontal_edge,
             crate::config::config_toml::HorizontalEdge::Wrap
         );
-        match do_get(&mut wm, "focus.horizontal_edge") {
+        match wm.with_ctx(|wm| do_get(wm, "focus.horizontal_edge")) {
             Response::ConfigValue(v) => assert_eq!(v, "wrap"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
 
         // An unknown policy must be rejected without mutating the config.
         assert!(matches!(
-            do_set(&mut wm, "focus.horizontal_edge", "bounce"),
+            wm.with_ctx(|wm| do_set(wm, "focus.horizontal_edge", "bounce")),
             Response::Err(_)
         ));
         assert_eq!(
@@ -199,17 +206,17 @@ mod tests {
     fn focus_vertical_edge_round_trips_and_rejects_overflow() {
         let mut wm = test_wm();
         // The default answers the boundary by jumping to the far edge.
-        match do_get(&mut wm, "focus.vertical_edge") {
+        match wm.with_ctx(|wm| do_get(wm, "focus.vertical_edge")) {
             Response::ConfigValue(v) => assert_eq!(v, "wrap"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
 
-        do_set(&mut wm, "focus.vertical_edge", "none");
+        wm.with_ctx(|wm| do_set(wm, "focus.vertical_edge", "none"));
         assert_eq!(
             wm.core.config.focus.vertical_edge,
             crate::config::config_toml::VerticalEdge::None
         );
-        match do_get(&mut wm, "focus.vertical_edge") {
+        match wm.with_ctx(|wm| do_get(wm, "focus.vertical_edge")) {
             Response::ConfigValue(v) => assert_eq!(v, "none"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -217,7 +224,7 @@ mod tests {
         // `overflow` is the horizontal workspace switch, which has no
         // vertical counterpart, so it must be rejected without mutating.
         assert!(matches!(
-            do_set(&mut wm, "focus.vertical_edge", "overflow"),
+            wm.with_ctx(|wm| do_set(wm, "focus.vertical_edge", "overflow")),
             Response::Err(_)
         ));
         assert_eq!(
@@ -230,10 +237,10 @@ mod tests {
     fn toggle_flips_input_toggle_settings() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "input.type:touchpad.tap", "enabled"),
+            wm.with_ctx(|wm| do_set(wm, "input.type:touchpad.tap", "enabled")),
             Response::Ok
         ));
-        match do_toggle(&mut wm, "input.type:touchpad.tap") {
+        match wm.with_ctx(|wm| do_toggle(wm, "input.type:touchpad.tap")) {
             Response::ConfigValue(v) => assert_eq!(v, "disabled"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -247,7 +254,7 @@ mod tests {
     fn toggle_rejects_non_boolean_keys_without_mutating() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "layout.inner_gap", "42"),
+            wm.with_ctx(|wm| do_set(wm, "layout.inner_gap", "42")),
             Response::Ok
         ));
         for key in [
@@ -259,7 +266,7 @@ mod tests {
             "nodot",                      // malformed key
         ] {
             assert!(
-                matches!(do_toggle(&mut wm, key), Response::Err(_)),
+                matches!(wm.with_ctx(|wm| do_toggle(wm, key)), Response::Err(_)),
                 "toggle should reject '{key}'"
             );
         }
@@ -270,13 +277,13 @@ mod tests {
     fn tags_set_takes_effect_live() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "tags.show_icons", "true"),
+            wm.with_ctx(|wm| do_set(wm, "tags.show_icons", "true")),
             Response::Ok
         ));
         // The bar reads this straight from config, so an IPC set is live
         // immediately — there is no model copy left to fall out of sync.
         assert!(wm.core.config.tags.show_icons);
-        match do_get(&mut wm, "tags.show_icons") {
+        match wm.with_ctx(|wm| do_get(wm, "tags.show_icons")) {
             Response::ConfigValue(v) => assert_eq!(v, "true"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -288,7 +295,7 @@ mod tests {
         let original = wm.core.config.tags.clone();
 
         // Readable…
-        match do_get(&mut wm, "tags.count") {
+        match wm.with_ctx(|wm| do_get(wm, "tags.count")) {
             Response::ConfigValue(v) => assert_eq!(v, "20"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -296,7 +303,7 @@ mod tests {
         for key in ["tags.count", "tags.names", "tags.icons"] {
             assert!(
                 matches!(
-                    do_set(&mut wm, key, "[\"x\"]"),
+                    wm.with_ctx(|wm| do_set(wm, key, "[\"x\"]")),
                     Response::Err(message) if message.contains("applies on reload")
                 ),
                 "setting {key} should be rejected"
@@ -318,7 +325,7 @@ mod tests {
         );
 
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.tag_slots", "5"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.tag_slots", "5")),
             Response::Ok
         ));
         assert!(!wm.work.monitor_config);
@@ -332,7 +339,7 @@ mod tests {
     fn invalid_per_output_tag_display_is_rejected() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.tag_slots", "0"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.tag_slots", "0")),
             Response::Err(message) if message.contains("monitors.DP-1.tag_slots")
         ));
         assert!(!wm.core.config.monitors.contains_key("DP-1"));
@@ -343,13 +350,13 @@ mod tests {
         let mut wm = test_wm();
         let original = wm.core.config.layout;
         assert!(matches!(
-            do_set(&mut wm, "layout.inner_gap", "-12"),
+            wm.with_ctx(|wm| do_set(wm, "layout.inner_gap", "-12")),
             Response::Err(message) if message.contains("layout.inner_gap")
         ));
         assert_eq!(wm.core.config.layout.inner_gap, original.inner_gap);
 
         assert!(matches!(
-            do_set(&mut wm, "layout.minimum_weight", "0.8"),
+            wm.with_ctx(|wm| do_set(wm, "layout.minimum_weight", "0.8")),
             Response::Err(message) if message.contains("layout.minimum_weight")
         ));
         assert_eq!(
@@ -364,7 +371,7 @@ mod tests {
         let original = wm.core.config.bar.clone();
 
         assert!(matches!(
-            do_set(&mut wm, "bar.startmenu_size", "-1"),
+            wm.with_ctx(|wm| do_set(wm, "bar.startmenu_size", "-1")),
             Response::Err(message) if message.contains("bar.startmenu_size")
         ));
         assert_eq!(wm.core.config.bar, original);
@@ -374,17 +381,17 @@ mod tests {
     fn font_roles_roundtrip_and_invalid_sizes_are_rejected() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "fonts.icon_size", "18"),
+            wm.with_ctx(|wm| do_set(wm, "fonts.icon_size", "18")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.fonts.icon_size, 18.0);
         assert!(matches!(
-            do_get(&mut wm, "fonts.icon_size"),
+            wm.with_ctx(|wm| do_get(wm, "fonts.icon_size")),
             Response::ConfigValue(value) if value == "18.0"
         ));
 
         assert!(matches!(
-            do_set(&mut wm, "fonts.icon_size", "0"),
+            wm.with_ctx(|wm| do_set(wm, "fonts.icon_size", "0")),
             Response::Err(message) if message.contains("fonts.icon_size")
         ));
         assert_eq!(wm.core.config.fonts.icon_size, 18.0);
@@ -394,7 +401,7 @@ mod tests {
     fn placement_policy_roundtrips_through_runtime_config_ipc() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "layout.new_window_placement", "force"),
+            wm.with_ctx(|wm| do_set(wm, "layout.new_window_placement", "force")),
             Response::Ok
         ));
         assert_eq!(
@@ -402,11 +409,11 @@ mod tests {
             crate::config::config_toml::NewWindowPlacement::Force
         );
         assert!(matches!(
-            do_get(&mut wm, "layout.new_window_placement"),
+            wm.with_ctx(|wm| do_get(wm, "layout.new_window_placement")),
             Response::ConfigValue(value) if value == "force"
         ));
         assert!(matches!(
-            do_set(&mut wm, "layout.new_window_placement", "not-a-policy"),
+            wm.with_ctx(|wm| do_set(wm, "layout.new_window_placement", "not-a-policy")),
             Response::Err(_)
         ));
     }
@@ -415,18 +422,18 @@ mod tests {
     fn animation_speed_roundtrips_and_preserves_valid_runtime_state() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "animations.speed", "0.1"),
+            wm.with_ctx(|wm| do_set(wm, "animations.speed", "0.1")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.animations.speed.get(), 0.1);
         assert!(matches!(
-            do_get(&mut wm, "animations.speed"),
+            wm.with_ctx(|wm| do_get(wm, "animations.speed")),
             Response::ConfigValue(value) if value == "0.1"
         ));
 
         for invalid in ["0", "-1", "101", r#""slow""#] {
             assert!(matches!(
-                do_set(&mut wm, "animations.speed", invalid),
+                wm.with_ctx(|wm| do_set(wm, "animations.speed", invalid)),
                 Response::Err(_)
             ));
             assert_eq!(wm.core.config.animations.speed.get(), 0.1);
@@ -438,12 +445,12 @@ mod tests {
         let mut wm = test_wm();
         // Type mismatch (serde rejects).
         assert!(matches!(
-            do_set(&mut wm, "window.border_width_px", r#""nope""#),
+            wm.with_ctx(|wm| do_set(wm, "window.border_width_px", r#""nope""#)),
             Response::Err(_)
         ));
         // Unknown field.
         assert!(matches!(
-            do_set(&mut wm, "window.nonexistent", "1"),
+            wm.with_ctx(|wm| do_set(wm, "window.nonexistent", "1")),
             Response::Err(_)
         ));
     }
@@ -454,11 +461,11 @@ mod tests {
         let original = wm.core.config.window.clone();
 
         assert!(matches!(
-            do_set(&mut wm, "window.border_width_px", "-1"),
+            wm.with_ctx(|wm| do_set(wm, "window.border_width_px", "-1")),
             Response::Err(_)
         ));
         assert!(matches!(
-            do_set(&mut wm, "window.snap_threshold", "-1"),
+            wm.with_ctx(|wm| do_set(wm, "window.snap_threshold", "-1")),
             Response::Err(_)
         ));
         assert_eq!(
@@ -474,8 +481,8 @@ mod tests {
     #[test]
     fn get_returns_unquoted_strings() {
         let mut wm = test_wm();
-        do_set(&mut wm, "cursor.theme", "my-cursor");
-        match do_get(&mut wm, "cursor.theme") {
+        wm.with_ctx(|wm| do_set(wm, "cursor.theme", "my-cursor"));
+        match wm.with_ctx(|wm| do_get(wm, "cursor.theme")) {
             Response::ConfigValue(v) => assert_eq!(v, "my-cursor"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -486,7 +493,7 @@ mod tests {
         let mut wm = test_wm();
         // Bare non-JSON value into a string field works (fallback path).
         assert!(matches!(
-            do_set(&mut wm, "cursor.theme", "my-cursor"),
+            wm.with_ctx(|wm| do_set(wm, "cursor.theme", "my-cursor")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.cursor.theme, "my-cursor");
@@ -494,7 +501,7 @@ mod tests {
         // Bare non-JSON value into a numeric field is rejected as parse
         // error, not silently coerced to a string and then mis-typed.
         assert!(matches!(
-            do_set(&mut wm, "window.border_width_px", "nope"),
+            wm.with_ctx(|wm| do_set(wm, "window.border_width_px", "nope")),
             Response::Err(_)
         ));
     }
@@ -504,7 +511,7 @@ mod tests {
         let mut wm = test_wm();
         // monitors.DP-1.position is Option<String>; defaults to None.
         // A bare (non-JSON) value should be accepted as the string.
-        let resp = do_set(&mut wm, "monitors.DP-1.position", "0,0");
+        let resp = wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.position", "0,0"));
         assert!(matches!(resp, Response::Ok), "got {resp:?}");
         assert_eq!(
             wm.core
@@ -519,32 +526,36 @@ mod tests {
     #[test]
     fn list_filters_by_section_key_and_map_entry_prefix() {
         let mut wm = test_wm();
-        do_set(&mut wm, "input.type:touchpad.tap", r#""enabled""#);
+        wm.with_ctx(|wm| do_set(wm, "input.type:touchpad.tap", r#""enabled""#));
 
-        let fonts = list_keys(&mut wm, "fonts").unwrap();
+        let fonts = wm.with_ctx(|wm| list_keys(wm, "fonts")).unwrap();
         assert!(!fonts.is_empty());
         assert!(fonts.iter().all(|key| key.starts_with("fonts.")));
 
         assert_eq!(
-            list_keys(&mut wm, "fonts.icon_size").unwrap(),
+            wm.with_ctx(|wm| list_keys(wm, "fonts.icon_size")).unwrap(),
             ["fonts.icon_size"]
         );
         assert!(
-            list_keys(&mut wm, "input.type:touchpad")
+            wm.with_ctx(|wm| list_keys(wm, "input.type:touchpad"))
                 .unwrap()
                 .iter()
                 .all(|key| key.starts_with("input.type:touchpad."))
         );
-        assert!(list_keys(&mut wm, "fonts.nonexistent").unwrap().is_empty());
-        assert!(list_keys(&mut wm, "frobnicate").is_err());
+        assert!(
+            wm.with_ctx(|wm| list_keys(wm, "fonts.nonexistent"))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(wm.with_ctx(|wm| list_keys(wm, "frobnicate")).is_err());
     }
 
     #[test]
     fn list_includes_fixed_and_map_sections() {
         let mut wm = test_wm();
-        do_set(&mut wm, "input.type:touchpad.tap", r#""enabled""#);
-        do_set(&mut wm, "monitors.DP-1.enable", "true");
-        match do_list(&mut wm) {
+        wm.with_ctx(|wm| do_set(wm, "input.type:touchpad.tap", r#""enabled""#));
+        wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.enable", "true"));
+        match wm.with_ctx(do_list) {
             Response::ConfigList(entries) => {
                 assert!(entries.iter().any(|(k, _)| k == "layout.inner_gap"));
                 assert!(
@@ -564,10 +575,10 @@ mod tests {
         // must agree with the sections `list()` actually emits. Populate the
         // map sections first so input/monitors show up.
         let mut wm = test_wm();
-        do_set(&mut wm, "input.type:touchpad.pointer_accel", "0.5");
-        do_set(&mut wm, "monitors.DP-1.scale", "2.0");
+        wm.with_ctx(|wm| do_set(wm, "input.type:touchpad.pointer_accel", "0.5"));
+        wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.scale", "2.0"));
 
-        let emitted: std::collections::BTreeSet<String> = match do_list(&mut wm) {
+        let emitted: std::collections::BTreeSet<String> = match wm.with_ctx(do_list) {
             Response::ConfigList(entries) => entries
                 .iter()
                 .map(|(k, _)| k.split('.').next().unwrap().to_string())
@@ -588,19 +599,19 @@ mod tests {
     fn input_set_creates_entry_and_queues_apply() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "input.type:touchpad.pointer_accel", "0.5"),
+            wm.with_ctx(|wm| do_set(wm, "input.type:touchpad.pointer_accel", "0.5")),
             Response::Ok
         ));
         assert!(wm.core.config.input.contains_key("type:touchpad"));
         assert!(wm.work.input_config);
 
-        match do_get(&mut wm, "input.type:touchpad.pointer_accel") {
+        match wm.with_ctx(|wm| do_get(wm, "input.type:touchpad.pointer_accel")) {
             Response::ConfigValue(v) => assert_eq!(v, "0.5"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
         // Unknown device on get.
         assert!(matches!(
-            do_get(&mut wm, "input.nonexistent.tap"),
+            wm.with_ctx(|wm| do_get(wm, "input.nonexistent.tap")),
             Response::Err(_)
         ));
     }
@@ -609,7 +620,7 @@ mod tests {
     fn touchscreen_output_mapping_is_runtime_configurable() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "input.type:touch.map_to_output", "eDP-1"),
+            wm.with_ctx(|wm| do_set(wm, "input.type:touch.map_to_output", "eDP-1")),
             Response::Ok
         ));
         assert_eq!(
@@ -621,7 +632,7 @@ mod tests {
             Some("eDP-1")
         );
         assert!(wm.work.input_config);
-        match do_get(&mut wm, "input.type:touch.map_to_output") {
+        match wm.with_ctx(|wm| do_get(wm, "input.type:touch.map_to_output")) {
             Response::ConfigValue(value) => assert_eq!(value, "eDP-1"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
@@ -631,13 +642,13 @@ mod tests {
     fn monitor_set_creates_entry_and_queues_apply() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.scale", "2.0"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.scale", "2.0")),
             Response::Ok
         ));
         assert!(wm.core.config.monitors.contains_key("DP-1"));
         assert!(wm.work.monitor_config);
         assert!(matches!(
-            do_get(&mut wm, "monitors.nonexistent.scale"),
+            wm.with_ctx(|wm| do_get(wm, "monitors.nonexistent.scale")),
             Response::Err(_)
         ));
     }
@@ -647,14 +658,14 @@ mod tests {
         let mut wm = test_wm();
 
         assert!(matches!(
-            do_set(&mut wm, "input.type:touchpad.pointer_accel", r#""fast""#),
+            wm.with_ctx(|wm| do_set(wm, "input.type:touchpad.pointer_accel", r#""fast""#)),
             Response::Err(_)
         ));
         assert!(!wm.core.config.input.contains_key("type:touchpad"));
         assert!(!wm.work.input_config);
 
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.scale", r#""large""#),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.scale", r#""large""#)),
             Response::Err(_)
         ));
         assert!(!wm.core.config.monitors.contains_key("DP-1"));
@@ -666,7 +677,7 @@ mod tests {
         let mut wm = test_wm();
 
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", "DP-1"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "DP-1")),
             Response::Err(message) if message.contains("cannot mirror itself")
         ));
         assert!(!wm.core.config.monitors.contains_key("DP-1"));
@@ -677,14 +688,14 @@ mod tests {
     fn monitor_mirror_set_validates_against_the_stored_entry() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "HDMI-1")),
             Response::Ok
         ));
         let before = serde_json::to_value(&wm.core.config.monitors).unwrap();
 
         // Self-reference on a populated entry: rejected, map unchanged.
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", "DP-1"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "DP-1")),
             Response::Err(message) if message.contains("cannot mirror itself")
         ));
         let after = serde_json::to_value(&wm.core.config.monitors).unwrap();
@@ -700,7 +711,7 @@ mod tests {
             },
         );
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.scale", "2.0"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.scale", "2.0")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.monitors["DP-1"].scale, Some(2.0));
@@ -714,24 +725,24 @@ mod tests {
     fn monitor_mirror_empty_value_clears_the_declaration() {
         let mut wm = test_wm();
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "HDMI-1")),
             Response::Ok
         ));
 
         // Bare empty string clears instead of tripping EmptyTarget.
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", ""),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
 
         // JSON string form of the empty value clears as well.
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "HDMI-1")),
             Response::Ok
         ));
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", r#""""#),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", r#""""#)),
             Response::Ok
         ));
         assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
@@ -746,7 +757,7 @@ mod tests {
 
         // Bare enum value via the serde string fallback.
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror_fit", "cover"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror_fit", "cover")),
             Response::Ok
         ));
         assert_eq!(
@@ -760,7 +771,7 @@ mod tests {
         // Invalid enum values are rejected with the config untouched.
         let before = serde_json::to_value(&wm.core.config.monitors).unwrap();
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror_fit", "sideways"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror_fit", "sideways")),
             Response::Err(_)
         ));
         assert_eq!(
@@ -772,7 +783,7 @@ mod tests {
         // sentinel (clearing happens via the JSON null below or by clearing
         // the mirror itself).
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror_fit", ""),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror_fit", "")),
             Response::Err(_)
         ));
         assert_eq!(
@@ -782,7 +793,7 @@ mod tests {
 
         // JSON null clears the fit through the ordinary Option path.
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror_fit", "null"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror_fit", "null")),
             Response::Ok
         ));
         assert_eq!(wm.core.config.monitors["DP-1"].mirror_fit, None);
@@ -798,11 +809,11 @@ mod tests {
         // Fit set first, mirror second: the mirror validation must not reject
         // or clear the already-stored fit.
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror_fit", "contain"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror_fit", "contain")),
             Response::Ok
         ));
         assert!(matches!(
-            do_set(&mut wm, "monitors.DP-1.mirror", "HDMI-1"),
+            wm.with_ctx(|wm| do_set(wm, "monitors.DP-1.mirror", "HDMI-1")),
             Response::Ok
         ));
         assert_eq!(
@@ -823,7 +834,10 @@ mod tests {
         monitor.available_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
 
-        assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
+        assert!(matches!(
+            wm.with_ctx(|wm| do_set(wm, "bar.height", "32")),
+            Response::Ok
+        ));
 
         let monitor = wm.core.model.monitors_iter().next().unwrap().1;
         assert_eq!(monitor.bar_height, 32);
@@ -842,7 +856,10 @@ mod tests {
         monitor.per_tag_state().show_bar = Some(true);
         wm.core.model.monitors.push(monitor);
 
-        assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
+        assert!(matches!(
+            wm.with_ctx(|wm| do_set(wm, "bar.height", "32")),
+            Response::Ok
+        ));
         assert_eq!(
             wm.core
                 .model
@@ -854,7 +871,7 @@ mod tests {
             "bar geometry changes preserve per-view visibility"
         );
         assert!(matches!(
-            do_set(&mut wm, "bar.tag_slots", "5"),
+            wm.with_ctx(|wm| do_set(wm, "bar.tag_slots", "5")),
             Response::Ok
         ));
         assert_eq!(
@@ -867,13 +884,19 @@ mod tests {
             Some(true),
             "tag baseline changes preserve per-view visibility"
         );
-        assert!(matches!(do_set(&mut wm, "bar.show", "false"), Response::Ok));
+        assert!(matches!(
+            wm.with_ctx(|wm| do_set(wm, "bar.show", "false")),
+            Response::Ok
+        ));
         let monitor = wm.core.model.monitors_iter().next().unwrap().1;
         assert!(!monitor.bar_default_show);
         assert!(!monitor.shows_bar());
         assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 600));
 
-        assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
+        assert!(matches!(
+            wm.with_ctx(|wm| do_set(wm, "bar.show", "true")),
+            Response::Ok
+        ));
         let monitor = wm.core.model.monitors_iter().next().unwrap().1;
         assert!(monitor.bar_default_show);
         assert!(monitor.shows_bar());

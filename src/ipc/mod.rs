@@ -1,6 +1,5 @@
 use crate::ipc_types::{IpcCommand, IpcRequest, Response};
 use crate::reload::reload_config;
-use crate::wm::Wm;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -98,7 +97,7 @@ impl IpcServer {
 
     /// Process all pending IPC connections and data. Returns `true` when at least one
     /// command was handled (callers can use this to decide whether to re-render).
-    pub fn process_pending(&mut self, wm: &mut Wm) -> bool {
+    pub fn process_pending(&mut self, ctx: &mut crate::contexts::WmCtx<'_>) -> bool {
         let now = Instant::now();
         prune_idle_clients(&mut self.clients, now);
 
@@ -130,7 +129,7 @@ impl IpcServer {
                 PendingRead::Complete => {
                     // Client closed their write half (EOF). Process the request.
                     let client = self.clients.remove(i);
-                    if self.process_client_request(client, wm) {
+                    if self.process_client_request(client, ctx) {
                         handled = true;
                     }
                     // Don't increment i, as we removed the current element.
@@ -148,7 +147,11 @@ impl IpcServer {
         handled
     }
 
-    fn process_client_request(&self, mut client: PendingClient, wm: &mut Wm) -> bool {
+    fn process_client_request(
+        &self,
+        mut client: PendingClient,
+        ctx: &mut crate::contexts::WmCtx<'_>,
+    ) -> bool {
         if client.buffer.is_empty() {
             let _ = send_response(&mut client.stream, &Response::err("empty request"));
             return false;
@@ -171,7 +174,7 @@ impl IpcServer {
             return false;
         }
 
-        let response = handle_command(wm, request.command);
+        let response = handle_command(ctx, request.command);
         let _ = send_response(&mut client.stream, &response);
         true
     }
@@ -277,34 +280,34 @@ fn write_all_nonblocking(stream: &mut UnixStream, mut data: &[u8]) -> io::Result
     Ok(())
 }
 
-fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
+fn handle_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: IpcCommand) -> Response {
     if let Some(exit_mode) = ipc_overview_exit(&cmd) {
-        crate::overview::exit_overview(&mut wm.ctx(), exit_mode);
+        crate::overview::exit_overview(ctx, exit_mode);
     }
     match cmd {
-        IpcCommand::Status => general::get_status(wm),
-        IpcCommand::Reload => match reload_config(wm) {
+        IpcCommand::Status => general::get_status(ctx),
+        IpcCommand::Reload => match reload_config(ctx) {
             Ok(()) => Response::ok(),
             Err(err) => Response::err(err),
         },
-        IpcCommand::RunAction { name, args } => general::run_action(wm, name, args),
-        IpcCommand::PendingTmpRule(cmd) => pending_tmp_rule::handle_pending_tmp_rule(wm, cmd),
-        IpcCommand::UpdateStatus(text) => general::update_status(wm, text),
-        IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(wm, cmd),
-        IpcCommand::Window(cmd) => window::handle_window_command(wm, cmd),
-        IpcCommand::Tag(cmd) => tag::handle_tag_command(wm, cmd),
-        IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd),
-        IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(wm, cmd),
-        IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),
-        IpcCommand::LayoutList => layout::list_layouts(wm),
-        IpcCommand::LayoutStatus => layout::layout_status(wm),
-        IpcCommand::ListKeybinds => keybinds::list_keybinds(wm),
-        IpcCommand::ListModes => mode::list_modes(wm),
-        IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
-        IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
-        IpcCommand::Test(cmd) => test::handle_test_command(wm, cmd),
-        IpcCommand::GetTheme => theme::get_theme(wm),
-        IpcCommand::SetTheme(theme) => theme::set_theme(wm, theme),
+        IpcCommand::RunAction { name, args } => general::run_action(ctx, name, args),
+        IpcCommand::PendingTmpRule(cmd) => pending_tmp_rule::handle_pending_tmp_rule(ctx, cmd),
+        IpcCommand::UpdateStatus(text) => general::update_status(ctx, text),
+        IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(ctx, cmd),
+        IpcCommand::Window(cmd) => window::handle_window_command(ctx, cmd),
+        IpcCommand::Tag(cmd) => tag::handle_tag_command(ctx, cmd),
+        IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(ctx, cmd),
+        IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(ctx, cmd),
+        IpcCommand::Input(cmd) => input::handle_input_command(ctx, cmd),
+        IpcCommand::LayoutList => layout::list_layouts(ctx),
+        IpcCommand::LayoutStatus => layout::layout_status(ctx),
+        IpcCommand::ListKeybinds => keybinds::list_keybinds(ctx),
+        IpcCommand::ListModes => mode::list_modes(ctx),
+        IpcCommand::Wallpaper(path) => general::set_wallpaper(ctx, path),
+        IpcCommand::Config(cmd) => config::handle_config_command(ctx, cmd),
+        IpcCommand::Test(cmd) => test::handle_test_command(ctx, cmd),
+        IpcCommand::GetTheme => theme::get_theme(ctx),
+        IpcCommand::SetTheme(theme) => theme::set_theme(ctx, theme),
         IpcCommand::ListThemes => theme::list_themes(),
     }
 }
@@ -384,8 +387,8 @@ fn ipc_overview_exit(cmd: &IpcCommand) -> Option<crate::overview::ExitMode> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use std::io::Write;
     use std::net::Shutdown;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -495,9 +498,9 @@ mod tests {
         let bytes = bincode::encode_to_vec(&request, bincode::config::standard()).unwrap();
         stream.write_all(&bytes).unwrap();
         stream.shutdown(Shutdown::Write).unwrap();
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
-        assert!(server.process_pending(&mut wm));
+        assert!(wm.with_ctx(|wm| server.process_pending(wm)));
         assert!(server.clients.is_empty());
     }
 

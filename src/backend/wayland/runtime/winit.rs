@@ -56,40 +56,44 @@ fn normalized_winit_touch_position(
 
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
-    let mut wm = super::bootstrap::create_wayland_wm_boxed();
+    let wm_handle = super::bootstrap::create_wayland_wm();
     let (mut event_loop, mut state) =
-        crate::backend::wayland::compositor::new_event_loop_and_state();
+        crate::backend::wayland::compositor::new_event_loop_and_state(wm_handle.clone());
     let loop_handle = event_loop.handle();
-    state.attach_wm(&mut wm);
-    super::bootstrap::attach_backend_state(&mut wm, &mut state);
+    let mut wm = wm_handle.borrow_mut();
 
-    crate::runtime::init_keyboard_layout(&mut wm);
+    crate::runtime::init_keyboard_layout(&mut wm.wayland_ctx(&mut state));
 
     let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
-    let mut backend = Box::new(backend_init);
-    super::bootstrap::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
+    let backend = std::rc::Rc::new(std::cell::RefCell::new(backend_init));
+    super::bootstrap::attach_gles_renderer_and_protocols(
+        &mut state,
+        crate::backend::wayland::compositor::graphics::GraphicsHandle::Nested(backend.clone()),
+        None,
+    );
 
-    let output_size = backend.window_size();
+    let output_size = backend.borrow().window_size();
     // An output needs an initial mode, so floor a degenerate startup size.
     // The first usable `Resized` event replaces it.
     let initial_size = clamp_output_size(Size::new(output_size.w, output_size.h));
     wm.core.derived.display.width = initial_size.w;
     wm.core.derived.display.height = initial_size.h;
-    refresh_monitor_layout(&mut wm.ctx());
+    refresh_monitor_layout(&mut wm.wayland_ctx(&mut state));
     state.push_command(WmCommand::SyncLayerExclusiveZones);
 
     // Store initial window size for the calloop source callback.
     state.runtime.winit_window_size = output_size;
 
     let host_refresh_millihertz = backend
+        .borrow()
         .window()
         .current_monitor()
         .and_then(|monitor| monitor.current_video_mode())
         .and_then(|mode| mode.refresh_rate_millihertz())
         .map(std::num::NonZeroU32::get);
     let output = state.create_output("winit", initial_size, host_refresh_millihertz);
-    crate::monitor::apply_monitor_config(&mut wm.ctx());
+    crate::monitor::apply_monitor_config(&mut wm.wayland_ctx(&mut state));
     let mut damage_tracker =
         smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
 
@@ -154,8 +158,11 @@ pub fn run() -> ! {
     let mut scene_cache = SceneCache::default();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
+    drop(wm);
     event_loop
         .run(None, &mut state, move |state| {
+            state.dispatch_pending_commits();
+            let mut wm = wm_handle.borrow_mut();
             // ── 1. Process buffered winit resize/close ──────────────────
             if let Some(size) = state.runtime.pending_winit_resize.take() {
                 crate::backend::wayland::input::handle_resize(&mut wm, state, &output, size);
@@ -170,7 +177,7 @@ pub fn run() -> ! {
             process_output_configurations(state, &output);
             let outputs_changed = state.project_completed_output_transactions();
             if outputs_changed {
-                refresh_monitor_layout(&mut wm.ctx());
+                refresh_monitor_layout(&mut wm.wayland_ctx(state));
                 state.push_command(WmCommand::SyncLayerExclusiveZones);
             }
 
@@ -179,7 +186,7 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             wm.work.input_config = false;
 
-            super::engine::process_animations_and_request_render(state);
+            super::engine::process_animations_and_request_render(state, &wm.core);
             presentation_scheduler.schedule_commit_timing(
                 (),
                 &loop_handle_for_timer,
@@ -232,7 +239,7 @@ pub fn run() -> ! {
                 && render_frame(
                     &mut wm,
                     state,
-                    &mut backend,
+                    &mut backend.borrow_mut(),
                     &output,
                     &mut damage_tracker,
                     &mut scene_cache,
@@ -251,6 +258,9 @@ pub fn run() -> ! {
                     start_time,
                 );
             }
+
+            drop(wm);
+            state.dispatch_pending_commits();
 
             if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();
@@ -315,11 +325,12 @@ fn dispatch_winit_input(
     match event {
         InputEvent::Keyboard { event } => {
             // Keyboard events need synchronous WM access for keybindings.
-            // SAFETY: the calloop source callback runs synchronously within
-            // event_loop.dispatch(); the &mut Wm borrow in the main body has
-            // not yet resumed.
-            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
-                let wm = unsafe { &mut *wm_ptr };
+            // The source borrows the shared WM only for this input event;
+            // the loop body's borrow starts after calloop dispatch returns.
+            {
+                let wm_handle = state.wm_handle();
+                let mut wm_borrow = wm_handle.borrow_mut();
+                let wm = &mut *wm_borrow;
                 handle_keyboard(wm, state, keyboard_handle, event);
             }
         }
@@ -378,8 +389,10 @@ fn dispatch_winit_input(
             ) else {
                 return;
             };
-            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
-                let wm = unsafe { &mut *wm_ptr };
+            {
+                let wm_handle = state.wm_handle();
+                let mut wm_borrow = wm_handle.borrow_mut();
+                let wm = &mut *wm_borrow;
                 handle_touch_down(
                     wm,
                     state,
@@ -402,8 +415,10 @@ fn dispatch_winit_input(
             ) else {
                 return;
             };
-            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
-                let wm = unsafe { &mut *wm_ptr };
+            {
+                let wm_handle = state.wm_handle();
+                let mut wm_borrow = wm_handle.borrow_mut();
+                let wm = &mut *wm_borrow;
                 handle_touch_motion(
                     wm,
                     state,
@@ -418,17 +433,19 @@ fn dispatch_winit_input(
             }
         }
         InputEvent::TouchUp { event } => {
-            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
-                let wm = unsafe { &mut *wm_ptr };
+            {
+                let wm_handle = state.wm_handle();
+                let mut wm_borrow = wm_handle.borrow_mut();
+                let wm = &mut *wm_borrow;
                 handle_touch_up(wm, state, event.slot(), event.time());
             }
             handle_touch_frame(state);
         }
         InputEvent::TouchCancel { .. } => {
-            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
-                let wm = unsafe { &mut *wm_ptr };
-                handle_touch_cancel(wm, state);
-            }
+            let wm_handle = state.wm_handle();
+            let mut wm_borrow = wm_handle.borrow_mut();
+            let wm = &mut *wm_borrow;
+            handle_touch_cancel(wm, state);
         }
         _ => {}
     }

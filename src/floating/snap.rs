@@ -16,6 +16,7 @@
 //!
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
+use crate::backend::PointerOps;
 
 use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
@@ -69,7 +70,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
         rect,
         MoveResizeOptions::animate_to(DEFAULT_ANIMATION_MILLIS).with_size_hints(),
     );
-    ctx.pointer_backend().warp_to_point(rect.center());
+    ctx.warp_to_point(rect.center());
     crate::focus::focus(ctx, Some(win));
 }
 

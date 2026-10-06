@@ -155,12 +155,12 @@ impl WaylandState {
         win: crate::types::WindowId,
         fullscreen: bool,
     ) -> Option<crate::client::mode::FullscreenTransition> {
-        // SAFETY: XDG handlers run synchronously inside calloop's Wayland
-        // display-source dispatch. The event-loop body's `&mut Wm` borrow is
-        // not active until dispatch returns; this is the same access window as
-        // synchronous keyboard handling.
-        let wm_ptr = (unsafe { self.wm_mut_ptr() })?;
-        let wm = unsafe { &mut *wm_ptr };
+        // Protocol dispatch and the runtime body borrow the WM in separate
+        // calloop phases. Commit only shared policy while this borrow is held;
+        // project native geometry afterward using an explicit read-only view.
+        let wm_handle = self.wm_handle();
+        let mut wm_borrow = wm_handle.borrow_mut();
+        let wm = &mut *wm_borrow;
         crate::backend::wayland::commands::apply_fullscreen_request(
             &mut wm.core,
             &mut wm.work,
@@ -175,9 +175,10 @@ impl WaylandState {
         win: crate::types::WindowId,
         maximized: bool,
     ) -> Option<crate::client::mode::ClientMaximizeIntentTransition> {
-        // SAFETY: see `commit_native_fullscreen_request`.
-        let wm_ptr = (unsafe { self.wm_mut_ptr() })?;
-        let wm = unsafe { &mut *wm_ptr };
+        // Same borrow boundary as commit_native_fullscreen_request.
+        let wm_handle = self.wm_handle();
+        let mut wm_borrow = wm_handle.borrow_mut();
+        let wm = &mut *wm_borrow;
         crate::backend::wayland::commands::apply_maximized_request(
             &mut wm.core,
             &mut wm.work,
@@ -497,7 +498,7 @@ impl XdgShellHandler for WaylandState {
 
         if let Some(old_id) = self.focused_window() {
             if self.window_index.contains_key(&old_id) {
-                self.set_focus(old_id);
+                self.focus_window(old_id, None);
             } else {
                 self.restore_focus_after_overlay();
             }
@@ -609,8 +610,15 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_fullscreen_request(win, true)
         {
-            crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
-            self.sync_window_presentation(win);
+            let wm_handle = self.wm_handle();
+            let wm_view = wm_handle.borrow();
+            crate::backend::wayland::commands::apply_fullscreen_geometry(
+                &wm_view.core,
+                self,
+                win,
+                transition,
+            );
+            self.sync_window_presentation(&wm_view.core, win);
             self.request_space_sync();
             self.request_render();
         } else {
@@ -622,8 +630,15 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_fullscreen_request(win, false)
         {
-            crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
-            self.sync_window_presentation(win);
+            let wm_handle = self.wm_handle();
+            let wm_view = wm_handle.borrow();
+            crate::backend::wayland::commands::apply_fullscreen_geometry(
+                &wm_view.core,
+                self,
+                win,
+                transition,
+            );
+            self.sync_window_presentation(&wm_view.core, win);
             self.request_space_sync();
             self.request_render();
         } else {
@@ -635,11 +650,18 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_maximized_request(win, true)
         {
-            crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+            let wm_handle = self.wm_handle();
+            let wm_view = wm_handle.borrow();
+            crate::backend::wayland::commands::apply_maximized_geometry(
+                &wm_view.core,
+                self,
+                win,
+                transition,
+            );
             if transition.entered_floating_presentation() {
                 self.raise_window_visual_only(win);
             }
-            self.sync_window_presentation(win);
+            self.sync_window_presentation(&wm_view.core, win);
             self.request_space_sync();
             self.request_render();
         } else {
@@ -651,11 +673,18 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(transition) = self.commit_native_maximized_request(win, false)
         {
-            crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+            let wm_handle = self.wm_handle();
+            let wm_view = wm_handle.borrow();
+            crate::backend::wayland::commands::apply_maximized_geometry(
+                &wm_view.core,
+                self,
+                win,
+                transition,
+            );
             if transition.entered_floating_presentation() {
                 self.raise_window_visual_only(win);
             }
-            self.sync_window_presentation(win);
+            self.sync_window_presentation(&wm_view.core, win);
             self.request_space_sync();
             self.request_render();
         } else {
@@ -703,7 +732,8 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         _token: smithay::wayland::xdg_activation::XdgActivationToken,
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
     ) -> bool {
-        if let Some(state) = self.globals() {
+        {
+            let state = self.protocol_core();
             let context = token_data
                 .surface
                 .as_ref()
@@ -733,10 +763,13 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .get::<crate::client::LaunchContext>()
             .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
-            let is_currently_visible = self
-                .globals()
-                .and_then(|state| state.model.client_view(win))
-                .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()));
+            let is_currently_visible = {
+                let state = self.protocol_core();
+                state
+                    .model
+                    .client_view(win)
+                    .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()))
+            };
 
             self.push_command(super::super::commands::WmCommand::ActivateWindow(win));
             self.request_bar_redraw();

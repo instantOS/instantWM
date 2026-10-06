@@ -1,3 +1,4 @@
+use crate::backend::WindowOps;
 use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -186,8 +187,8 @@ fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
         crate::client::show_window(ctx, win);
     }
 
-    ctx.window_backend().map_window(win);
-    ctx.window_backend().flush();
+    ctx.map_window(win);
+    ctx.flush();
 
     was_hidden
 }
@@ -218,7 +219,7 @@ fn scratchpad_windows(model: &WmModel, visible: bool) -> Vec<WindowId> {
 /// shared by every scratchpad action so a missed backend event cannot leave a
 /// model-only scratchpad that can be toggled forever.
 fn is_live(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
-    if ctx.window_backend().window_exists(win) {
+    if ctx.window_exists(win) {
         return true;
     }
     crate::client::lifecycle::remove_managed_client(ctx, win);
@@ -594,7 +595,7 @@ fn show_scratchpad_window_with_options(
     } else if ctx.core().model().selected_win() != previous_focus {
         crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
-    ctx.window_backend().raise_window_visual_only(found);
+    ctx.raise_window_visual_only(found);
 
     if options.warp_pointer {
         ctx.warp_cursor_to_client(found);

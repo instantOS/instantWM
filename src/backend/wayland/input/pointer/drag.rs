@@ -1,7 +1,7 @@
 //! Pointer drag handling (title drag, tag drag, resize drag).
 
 use crate::types::WindowId;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 /// Get the active drag window (if any).
 pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
@@ -14,18 +14,17 @@ pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
 
 #[cfg(test)]
 mod tests {
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::layouts::tree::Preset;
     use crate::test_support::{add_client, push_monitor_with};
     use crate::types::{Client, ClientMode, MouseButton, Point, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     const SAMPLE_COUNT: usize = 8_192;
     const HIGH_RATE_BATCH_SIZE: usize = 48;
 
     fn twenty_window_drag_fixture() -> (Wm, WindowId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
@@ -97,7 +96,7 @@ mod tests {
 
     fn process_drag_sample(wm: &mut Wm, point: Point) {
         assert!(crate::mouse::drag::apply_active_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             point
         ));
     }

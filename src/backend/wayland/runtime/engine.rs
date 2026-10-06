@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::utils::{Clock, Monotonic, Time};
@@ -231,13 +231,14 @@ pub(crate) fn event_loop_tick_and_request_render(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) {
     super::dispatch::drain_command_queue(wm, state);
-    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(state);
+    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(&wm.core, state);
+    let animations_active = state.has_active_window_animations();
     let tick = crate::runtime::event_loop_tick_with_options(
-        wm,
+        &mut wm.wayland_ctx(state),
         ipc_server,
         crate::runtime::TickOptions {
             defer_layout_while_animations_active: true,
-            animations_active: state.has_active_window_animations(),
+            animations_active,
         },
     );
     // Moving surfaces under a stationary pointer must update Wayland pointer
@@ -260,7 +261,7 @@ pub(crate) fn event_loop_tick_and_request_render(
     // Commit external protocol projections only after every shared and
     // Wayland-specific operation belonging to this tick has completed.
     let selection_transition = wm.focus.take_pending_selection();
-    state.reconcile_foreign_toplevel_selection(selection_transition);
+    state.reconcile_foreign_toplevel_selection(&wm.core, selection_transition);
     dismiss_invalid_native_systray_menu(wm, state);
     if tick.ipc_handled
         || tick.monitor_config_applied
@@ -294,13 +295,16 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
 
 /// Run compositor-space sync and animation progression in one place, then
 /// preserve the resulting redraw in the shared Wayland scheduler.
-pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
+pub(crate) fn process_animations_and_request_render(
+    state: &mut WaylandState,
+    core_view: &crate::core_state::CoreState,
+) {
     let space_synced = if state.take_space_sync_pending() {
-        state.sync_space_from_globals();
+        state.sync_space(core_view);
         // Output membership for foreign-toplevel clients must be computed
         // from post-arrange geometry: this is the point in the tick where
         // pending layouts have been applied and the space reconciled.
-        state.refresh_all_foreign_toplevels();
+        state.refresh_all_foreign_toplevels(core_view);
         true
     } else {
         false
@@ -309,11 +313,11 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
         state.tick_shortcut_recovery(Instant::now());
     }
     if state.has_active_animations() {
-        state.tick_animations();
+        state.tick_animations(core_view);
         // A retarget that just settled moves windows between outputs after
         // the refresh above already ran; catch up once animations drain.
         if !state.has_active_animations() {
-            state.refresh_all_foreign_toplevels();
+            state.refresh_all_foreign_toplevels(core_view);
             // Window animations just drained, so the final geometry is now
             // authoritative. Issue the pointer-focus refresh that the
             // transition guard deferred while intermediate animation frames

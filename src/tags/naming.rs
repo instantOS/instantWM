@@ -83,11 +83,10 @@ fn default_tag_name(i: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::config_toml::TagsConfig;
     use crate::config::resolve_config;
+    use crate::test_support::TestWm as Wm;
     use crate::types::Monitor;
-    use crate::wm::Wm;
 
     fn wm_with(names: &[&str], icons: &[&str]) -> Wm {
         let mut user: crate::config::config_toml::UserConfig = toml::from_str("").unwrap();
@@ -98,7 +97,7 @@ mod tests {
             show_icons: false,
         };
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.monitors.push(Monitor::default());
         wm.core.apply_config(config).unwrap();
         wm.core
@@ -122,10 +121,10 @@ mod tests {
     fn rename_is_a_session_override_and_empty_arg_restores_the_configured_name() {
         let mut wm = wm_with(&["web", "mail"], &["W", "M"]);
 
-        name_tag(&mut wm.ctx(), "browser");
+        name_tag(&mut wm.test_ctx(), "browser");
         assert_eq!(labels(&wm), vec!["browser", "mail"]);
 
-        name_tag(&mut wm.ctx(), "");
+        name_tag(&mut wm.test_ctx(), "");
         assert_eq!(labels(&wm), vec!["web", "mail"]);
     }
 
@@ -133,18 +132,18 @@ mod tests {
     fn overlong_renames_are_ignored() {
         let mut wm = wm_with(&["web"], &[]);
 
-        name_tag(&mut wm.ctx(), "this-name-is-far-too-long");
+        name_tag(&mut wm.test_ctx(), "this-name-is-far-too-long");
         assert_eq!(labels(&wm), vec!["web"]);
     }
 
     #[test]
     fn reset_restores_configured_names() {
         let mut wm = wm_with(&["web", "mail", "code"], &[]);
-        name_tag(&mut wm.ctx(), "x");
+        name_tag(&mut wm.test_ctx(), "x");
         // Only tag 1 is selected, so tag 2 keeps its configured name.
         assert_eq!(labels(&wm), vec!["x", "mail", "code"]);
 
-        reset_name_tag(&mut wm.ctx());
+        reset_name_tag(&mut wm.test_ctx());
         assert_eq!(labels(&wm), vec!["web", "mail", "code"]);
     }
 }

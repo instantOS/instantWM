@@ -255,11 +255,11 @@ pub(crate) fn update_pointer_tree_resize(
         .layout_tree = candidate;
     let animated = ctx.core().config().animations.enabled;
     if animated {
-        ctx.core_mut().state_mut().config.animations.enabled = false;
+        ctx.core_mut().config_mut().animations.enabled = false;
     }
     arrange(ctx, Some(monitor_id));
     if animated {
-        ctx.core_mut().state_mut().config.animations.enabled = true;
+        ctx.core_mut().config_mut().animations.enabled = true;
     }
     true
 }

@@ -31,13 +31,18 @@ impl WaylandState {
     /// animation mode. Anything reaching this entry point is geometry the WM
     /// wants applied now, so it always snaps rather than re-deriving an
     /// animation mode from the active-drag heuristic.
-    pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
+    pub fn resize_window(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        window: WindowId,
+        rect: Rect,
+    ) {
         let mode = WindowMoveMode::Snap;
-        self.set_window_target_rect(window, rect, mode);
+        self.set_window_target_rect(core_view, window, rect, mode);
         // An immediate request may preserve an existing spatial animation to
         // this target, but its protocol resize must still be sent now.
         if let Some(element) = self.find_window(window).cloned() {
-            self.dispatch_window_resize(window, &element, rect);
+            self.dispatch_window_resize(core_view, window, &element, rect);
         }
     }
 

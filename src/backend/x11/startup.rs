@@ -5,13 +5,12 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
 use crate::backend::x11::draw::{AllocScheme, BorderScheme, DrawContext};
 use crate::config::load_startup_config;
-use crate::wm::Wm;
+use crate::wm::X11Wm as Wm;
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -38,11 +37,11 @@ pub fn run() {
     // Before autostart and session services read the environment.
     crate::backend::x11::session::export_session_env();
 
-    let mut wm = Wm::new(WmBackend::new_x11(conn, screen_num));
+    let mut wm = Wm::new(crate::backend::X11BackendData::new(conn, screen_num));
     wm_init(&mut wm);
     crate::backend::x11::events::setup(&mut wm);
     {
-        let ctx = wm.ctx();
+        let ctx = wm.x11_ctx();
         if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
@@ -58,9 +57,7 @@ fn wm_init(wm: &mut Wm) {
     setup_signal_handlers();
 
     let (screen, root) = {
-        let Some((conn, screen_num)) = wm.backend.x11_conn() else {
-            return;
-        };
+        let (conn, screen_num) = (&wm.backend.conn, wm.backend.screen_num);
         let screen = conn.setup().roots[screen_num].clone();
         let root = screen.root;
         crate::backend::x11::events::check_other_wm(conn, root);
@@ -76,9 +73,9 @@ fn wm_init(wm: &mut Wm) {
     crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
-    crate::runtime::init_keyboard_layout(wm);
+    crate::runtime::init_keyboard_layout(&mut wm.x11_ctx());
     {
-        let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx() else {
+        let crate::contexts::WmCtx::X11(mut ctx) = wm.x11_ctx() else {
             return;
         };
         crate::backend::x11::bar::reconcile_bar_windows(
@@ -104,9 +101,7 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
     let cfg = load_startup_config(BackendKind::X11);
 
     // X11-specific runtime initialization
-    if let Some(data) = wm.backend.x11_data_mut() {
-        data.x11_runtime.root = root;
-    }
+    wm.backend.x11_runtime.root = root;
     wm.core.derived.display.width = screen.width_in_pixels as i32;
     wm.core.derived.display.height = screen.height_in_pixels as i32;
 
@@ -115,16 +110,15 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
         .expect("startup tag state must be valid");
 
     if !wm.core.config.monitors.is_empty() {
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.x11_ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
     }
 
     // RandR events diff against the last seen topology; without this seed the
     // first event would treat every connected-but-disabled output as newly
     // plugged and enable it.
-    if let Some(data) = wm.backend.x11_data_mut()
-        && let Some(snapshot) = crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, root)
-    {
+    let data = &mut wm.backend;
+    if let Some(snapshot) = crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, root) {
         data.x11_runtime.connected_outputs = snapshot.connected_names();
         data.x11_runtime.active_outputs = snapshot.active_names();
     }
@@ -139,11 +133,8 @@ fn setup_signal_handlers() {
     }
 }
 
-fn init_atoms(backend: &mut crate::backend::Backend) {
-    let (conn, x11_runtime) = match backend {
-        crate::backend::Backend::X11(data) => (&mut data.conn, &mut data.x11_runtime),
-        crate::backend::Backend::Wayland(_) => return,
-    };
+fn init_atoms(backend: &mut crate::backend::X11BackendData) {
+    let (conn, x11_runtime) = (&mut backend.conn, &mut backend.x11_runtime);
     const ATOM_NAMES: &[&str] = &[
         "WM_PROTOCOLS",
         "WM_DELETE_WINDOW",
@@ -247,9 +238,7 @@ fn intern_atoms(
 }
 
 pub fn init_drw_and_schemes(wm: &mut Wm) {
-    let Some(data) = wm.backend.x11_data_mut() else {
-        return;
-    };
+    let data = &mut wm.backend;
     init_drw_and_schemes_impl(&mut data.x11_runtime, &wm.core.config);
 }
 

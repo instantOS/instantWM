@@ -28,6 +28,7 @@
 
 mod capture_common;
 mod focus;
+pub(crate) mod graphics;
 mod handlers;
 pub(crate) mod image_capture;
 pub(crate) mod layer_shell;
@@ -50,14 +51,16 @@ use smithay::delegate_dispatch2;
 
 /// Construct the calloop event loop and Smithay compositor state shared by
 /// production runtimes and compositor tests.
-pub(crate) fn new_event_loop_and_state() -> (
+pub(crate) fn new_event_loop_and_state(
+    wm: std::rc::Rc<std::cell::RefCell<crate::wm::WaylandWm>>,
+) -> (
     smithay::reexports::calloop::EventLoop<'static, WaylandState>,
     WaylandState,
 ) {
     let event_loop = smithay::reexports::calloop::EventLoop::try_new().expect("wayland event loop");
     let loop_handle = event_loop.handle();
     let display = smithay::reexports::wayland_server::Display::new().expect("wayland display");
-    let state = WaylandState::new(display, &loop_handle);
+    let state = WaylandState::new(display, &loop_handle, wm);
     (event_loop, state)
 }
 

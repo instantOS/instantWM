@@ -18,7 +18,7 @@ use smithay::utils::{Physical, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bar render elements
@@ -46,15 +46,14 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
-    let mut ctx = wm.ctx();
+    let render_ping = state.runtime.render_ping.clone();
+    let mut ctx = wm.wayland_ctx(state);
     let crate::contexts::WmCtx::Wayland(wayland) = &mut ctx else {
         return Vec::new();
     };
 
     let mut buffers = if show_top {
-        wayland
-            .bar_renderer
-            .set_render_ping(state.runtime.render_ping.clone());
+        wayland.bar_renderer.set_render_ping(render_ping);
         crate::backend::wayland::bar::render_bar_buffers(&mut wayland.core, wayland.bar_renderer)
     } else {
         Vec::new()

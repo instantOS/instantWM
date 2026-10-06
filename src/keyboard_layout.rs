@@ -259,25 +259,27 @@ mod tests {
             return;
         }
 
-        use crate::backend::{Backend, wayland::WaylandBackend};
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
-        let backend = WaylandBackend::new();
-        backend.attach_state(&mut state);
-        let mut wm = crate::wm::Wm::new(Backend::new_wayland(backend));
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
         wm.core.interaction.keyboard_layout.layouts =
             vec![KeyboardLayout::new("us"), KeyboardLayout::new("de")];
 
-        assert!(set_keyboard_layout_by_name(&mut wm.ctx(), "de"));
+        assert!(set_keyboard_layout_by_name(
+            &mut wm.wayland_ctx(&mut state),
+            "de"
+        ));
         assert_eq!(wm.core.interaction.keyboard_layout.current, 1);
-        assert!(!set_keyboard_layout_by_name(&mut wm.ctx(), "missing"));
+        assert!(!set_keyboard_layout_by_name(
+            &mut wm.wayland_ctx(&mut state),
+            "missing"
+        ));
         wm.core
             .interaction
             .keyboard_layout
             .layouts
             .push(KeyboardLayout::new("invalid-layout-name"));
         assert!(!set_keyboard_layout_by_name(
-            &mut wm.ctx(),
+            &mut wm.wayland_ctx(&mut state),
             "invalid-layout-name"
         ));
         assert_eq!(wm.core.interaction.keyboard_layout.current, 1);

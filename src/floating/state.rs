@@ -179,15 +179,14 @@ mod tests {
         WindowModeChange, WindowModeRequest, set_window_mode, set_window_placement_from_policy,
         toggle_floating,
     };
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::client::geometry::FloatingPlacementIntent;
     use crate::test_support::MonitorBuilder;
     use crate::types::{Client, ClientMode, ClientPlacement, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     fn wm_with_client(mode: ClientMode, geo: Rect) -> (Wm, WindowId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = wm.core.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 1200, 800), Rect::new(0, 30, 1200, 770))
@@ -213,7 +212,7 @@ mod tests {
         let (mut wm, win) = wm_with_client(ClientMode::tiled(), Rect::new(0, 30, 1200, 770));
 
         let change = set_window_mode(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
         );
@@ -236,11 +235,11 @@ mod tests {
         let floating = Rect::new(180, 140, 700, 500);
         let (mut wm, win) = wm_with_client(ClientMode::floating(), floating);
 
-        toggle_floating(&mut wm.ctx());
+        toggle_floating(&mut wm.test_ctx());
         assert!(wm.core.model.client(win).unwrap().mode().is_normal_tiling());
         assert_eq!(wm.core.model.client_protocol_maximized(win), Some(true));
 
-        toggle_floating(&mut wm.ctx());
+        toggle_floating(&mut wm.test_ctx());
         assert!(
             wm.core
                 .model
@@ -261,7 +260,7 @@ mod tests {
         wm.core.model.client_mut(win).unwrap().border_width = 0;
 
         let change = set_window_placement_from_policy(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
         );
@@ -290,7 +289,7 @@ mod tests {
             .save_floating_placement(saved, Rect::new(0, 30, 1200, 770));
 
         let change =
-            set_window_placement_from_policy(&mut wm.ctx(), win, WindowModeRequest::Tiling);
+            set_window_placement_from_policy(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
 
         assert_eq!(change, WindowModeChange::ChangedToTiling);
         let client = wm.core.model.client(win).unwrap();
@@ -314,7 +313,7 @@ mod tests {
             .unwrap()
             .save_floating_placement(saved, Rect::new(0, 30, 1200, 770));
 
-        toggle_floating(&mut wm.ctx());
+        toggle_floating(&mut wm.test_ctx());
 
         let client = wm.core.model.client(win).unwrap();
         assert_eq!(client.mode(), ClientMode::tiled());
@@ -332,7 +331,7 @@ mod tests {
             .unwrap()
             .save_floating_placement(Rect::new(200, 160, 700, 500), Rect::new(0, 30, 1200, 770));
 
-        let change = set_window_mode(&mut wm.ctx(), win, WindowModeRequest::Tiling);
+        let change = set_window_mode(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
 
         assert_eq!(change, WindowModeChange::ChangedToTiling);
         let client = wm.core.model.client(win).unwrap();

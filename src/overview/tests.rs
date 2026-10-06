@@ -4,10 +4,8 @@ use crate::test_support::{MonitorBuilder, add_client};
 fn wm_with_overview_clients(
     selected_tags: TagMask,
     clients: &[(WindowId, TagMask)],
-) -> crate::wm::Wm {
-    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
-        crate::backend::wayland::WaylandBackend::new(),
-    ));
+) -> crate::test_support::TestWm {
+    let mut wm = crate::test_support::TestWm::new(crate::backend::WaylandBackendData::default());
     let num_tags = clients
         .iter()
         .filter_map(|(_, tags)| tags.first_tag())
@@ -296,7 +294,7 @@ fn hovered_card_is_committed_on_overview_confirmation() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert_eq!(
         wm.core.model.expect_selected_monitor().selected_tags(),
         tag1
@@ -306,7 +304,7 @@ fn hovered_card_is_committed_on_overview_confirmation() {
         TagMask::all(2)
     );
     assert!(hover_window(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         Some(second),
         Some(Point::new(900, 300))
     ));
@@ -314,7 +312,7 @@ fn hovered_card_is_committed_on_overview_confirmation() {
     // focus until the user confirms overview.
     assert_eq!(wm.core.model.selected_win(), Some(first));
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
 
     assert_eq!(wm.core.model.selected_win(), Some(second));
     assert_eq!(
@@ -331,9 +329,9 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert!(begin_card_gesture(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         second,
         crate::types::MouseButton::Left,
         crate::types::InteractionSource::Pointer,
@@ -348,7 +346,7 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
     assert_eq!(wm.core.model.selected_win(), Some(first));
 
     assert!(finish_card_gesture(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         crate::types::MouseButton::Left,
     ));
 
@@ -368,17 +366,20 @@ fn non_upward_overview_drag_is_consumed_without_selecting() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert!(begin_card_gesture(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         second,
         crate::types::MouseButton::Left,
         crate::types::InteractionSource::Pointer,
         Point::new(500, 400),
     ));
-    assert!(update_card_gesture(&mut wm.ctx(), Point::new(600, 400)));
+    assert!(update_card_gesture(
+        &mut wm.test_ctx(),
+        Point::new(600, 400)
+    ));
     assert!(finish_card_gesture(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         crate::types::MouseButton::Left,
     ));
 
@@ -393,9 +394,9 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
     let win = WindowId(1);
     let mut wm = wm_with_overview_clients(tags, &[(win, tags)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert!(begin_card_gesture(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         win,
         crate::types::MouseButton::Left,
         crate::types::InteractionSource::Pointer,
@@ -403,7 +404,10 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
     ));
     assert_eq!(wm.core.interaction.layout_preview, None);
 
-    assert!(update_card_gesture(&mut wm.ctx(), Point::new(510, 350)));
+    assert!(update_card_gesture(
+        &mut wm.test_ctx(),
+        Point::new(510, 350)
+    ));
     let client = wm.core.model.client(win).unwrap();
     assert_eq!(
         wm.core.interaction.layout_preview,
@@ -414,11 +418,14 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
         crate::types::InteractionOutlineStyle::Close
     );
 
-    assert!(update_card_gesture(&mut wm.ctx(), Point::new(500, 395)));
+    assert!(update_card_gesture(
+        &mut wm.test_ctx(),
+        Point::new(500, 395)
+    ));
     assert_eq!(wm.core.interaction.layout_preview, None);
 
     assert!(finish_card_gesture(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         crate::types::MouseButton::Left,
     ));
     assert_eq!(wm.core.interaction.layout_preview, None);
@@ -431,9 +438,9 @@ fn keyboard_navigation_continues_from_the_hovered_card() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
-    hover_window(&mut wm.ctx(), Some(second), Some(Point::new(900, 300)));
-    assert!(focus_direction(&mut wm.ctx(), Direction::Left));
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    hover_window(&mut wm.test_ctx(), Some(second), Some(Point::new(900, 300)));
+    assert!(focus_direction(&mut wm.test_ctx(), Direction::Left));
 
     let state = wm
         .core
@@ -454,10 +461,10 @@ fn layout_action_commits_hovered_card_before_changing_its_tag_layout() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
-    hover_window(&mut wm.ctx(), Some(second), Some(Point::new(900, 300)));
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    hover_window(&mut wm.test_ctx(), Some(second), Some(Point::new(900, 300)));
     crate::actions::execute_key_action(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         &crate::actions::KeyAction::named(crate::actions::NamedAction::ToggleTilingMaximized),
     );
 
@@ -478,9 +485,9 @@ fn explicit_tag_navigation_cancels_the_overview_projection() {
     let tag2 = TagMask::single(2).unwrap();
     let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1), (WindowId(2), tag2)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     crate::actions::execute_key_action(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         &crate::actions::KeyAction::ViewTag { tag_idx: 1 },
     );
 
@@ -495,7 +502,7 @@ fn visibility_uses_the_projection_while_workspace_state_stays_authoritative() {
     let tag2 = TagMask::single(2).unwrap();
     let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1), (WindowId(2), tag2)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
 
     let monitor = wm.core.model.expect_selected_monitor();
     assert_eq!(monitor.selected_tags(), tag1);
@@ -520,9 +527,9 @@ fn changing_monitors_cancels_the_session_on_its_owner() {
             .build(),
     );
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
     assert!(crate::focus::select_monitor(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         second_monitor_id
     ));
 
@@ -547,8 +554,8 @@ fn removing_the_last_card_leaves_overview() {
     let win = WindowId(1);
     let mut wm = wm_with_overview_clients(tags, &[(win, tags)]);
 
-    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
-    assert!(crate::client::lifecycle::remove_managed_client(&mut wm.ctx(), win).is_some());
+    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    assert!(crate::client::lifecycle::remove_managed_client(&mut wm.test_ctx(), win).is_some());
 
     assert!(!wm.core.model.is_overview_active());
     assert_eq!(
@@ -564,7 +571,7 @@ fn overview_exit_is_a_noop_for_other_modes() {
     let resize_mode = crate::core_state::ActiveWmMode::Named("resize".to_string());
     wm.core.behavior.current_mode = resize_mode.clone();
 
-    exit_overview(&mut wm.ctx(), ExitMode::RestorePrevious);
+    exit_overview(&mut wm.test_ctx(), ExitMode::RestorePrevious);
 
     assert_eq!(wm.core.behavior.current_mode, resize_mode);
 }

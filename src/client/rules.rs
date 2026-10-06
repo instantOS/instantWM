@@ -549,18 +549,17 @@ mod tests {
         InitialRulePlacement, WindowProperties, apply_initial_rules, apply_property_change,
         update_window_properties,
     };
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::core_state::{CoreState, LayoutWorkTargets};
     use crate::test_support::{
         MonitorBuilder, add_client, add_selected_client, push_monitor, push_monitor_with,
     };
     use crate::types::{Client, ClientMode, Monitor, Rect, RuleFloat, TagMask, WindowId};
-    use crate::wm::Wm;
 
     #[test]
     fn property_title_change_dirties_bar_without_queueing_layout() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(41);
         add_client(
@@ -575,7 +574,7 @@ mod tests {
         wm.work.layout.clear();
         let bar_seq = wm.bar.update_seq();
 
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.test_ctx();
         update_window_properties(
             ctx.core_mut(),
             win,
@@ -591,7 +590,7 @@ mod tests {
 
     #[test]
     fn first_native_constraint_snapshot_queues_layout_even_when_values_are_default() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_monitor(&mut wm.core.model);
         let win = WindowId(47);
         add_client(
@@ -605,7 +604,7 @@ mod tests {
         );
         wm.work.layout.clear();
 
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.test_ctx();
         update_window_properties(
             ctx.core_mut(),
             win,
@@ -627,7 +626,7 @@ mod tests {
         use crate::types::{MonitorSelector, Rule, RuleFloat};
         use std::borrow::Cow;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let old_monitor = push_monitor_with(&mut wm.core.model, |monitor| monitor.num = 0);
         let new_monitor = push_monitor_with(&mut wm.core.model, |monitor| monitor.num = 1);
         wm.core.config.bindings.rules = vec![Rule {
@@ -652,7 +651,7 @@ mod tests {
         );
         wm.work.layout.clear();
 
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.test_ctx();
         update_window_properties(
             ctx.core_mut(),
             win,
@@ -1327,7 +1326,7 @@ mod tests {
         use crate::types::{MonitorSelector, Rule};
         use std::borrow::Cow;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 1;
         let monitor_id = push_monitor(&mut wm.core.model);
         let default_border = wm.core.config.window.border_width_px;
@@ -1354,7 +1353,7 @@ mod tests {
         );
 
         {
-            let mut ctx = wm.ctx();
+            let mut ctx = wm.test_ctx();
             update_window_properties(
                 ctx.core_mut(),
                 win,
@@ -1373,7 +1372,7 @@ mod tests {
         // state rather than disappearing on unrelated metadata churn.
         wm.work.layout.clear();
         {
-            let mut ctx = wm.ctx();
+            let mut ctx = wm.test_ctx();
             update_window_properties(
                 ctx.core_mut(),
                 win,

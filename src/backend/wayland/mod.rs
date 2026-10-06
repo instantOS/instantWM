@@ -70,121 +70,67 @@ pub mod visibility;
 use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
 
-use std::cell::RefCell;
-use std::ptr::NonNull;
-
 use crate::backend::wayland::compositor::WaylandState;
 
-/// Bridge from shared WM operations to Smithay's dispatch state.
+/// Native capabilities borrowed exclusively for one shared WM operation.
+/// Queries borrow immutably; effects require `&mut self`. The borrow checker
+/// enforces lifetime, stable address and exclusive/reentrant access without a
+/// RefCell, mutex, stored address, or callback-phase convention.
 ///
-/// Refactoring constraint: Smithay's handlers and calloop sources receive
-/// `&mut WaylandState`, but shared actions acquire backend capabilities through
-/// `Wm::ctx()`. Input handlers also call those actions before returning (notably
-/// the keyboard filter must decide whether to forward the current key). This
-/// creates the state -> WM -> state borrow cycle used by this bridge.
-///
-/// Wrapping the entire state in Rc<RefCell<_>> does not resolve the cycle:
-/// dispatch would hold its mutable borrow when the action borrows it again.
-/// A mutex around the same object would deadlock instead. Pinning/boxing only
-/// solves address stability, not aliasing. Single-threaded dispatch alone is
-/// likewise not a proof that overlapping Rust references are valid.
-///
-/// Smithay does NOT require a raw pointer here. Removing it needs shared WM
-/// contexts to accept an explicitly borrowed backend, plus an explicit core
-/// view for protocol queries currently served by WaylandState::globals().
-/// Queued effects are another option, but must preserve synchronous query
-/// results and input/focus ordering rather than delaying everything a tick.
-/// Focus is the first migrated operation: the shared focus transaction returns
-/// effects, WaylandState projects them through an explicit borrow, and queued
-/// focus commands no longer use this bridge. Other WmCtx callers still use a
-/// compatibility adapter until their surrounding operations are migrated.
-/// The guard in with_state catches bridge reentry only; it does not track
-/// references supplied directly by calloop or references to WM core state.
-pub struct WaylandBackend {
-    state: RefCell<Option<NonNull<WaylandState>>>,
+/// `tests/borrow_contract.py` checks these contracts against the actual API,
+/// including rejected external state access and rejected reentrant effects.
+pub struct WaylandBackend<'a> {
+    state: &'a mut WaylandState,
 }
 
-impl WaylandBackend {
-    pub fn new() -> Self {
-        Self {
-            state: RefCell::new(None),
-        }
+impl<'a> WaylandBackend<'a> {
+    pub fn new(state: &'a mut WaylandState) -> Self {
+        Self { state }
     }
 
-    pub fn attach_state(&self, state: &mut WaylandState) {
-        // This stores an address, not a lifetime-tracked borrow. The state must
-        // stay at this address and alive through the last backend operation.
-        // The safe signature does not enforce those obligations; replacing
-        // it with `unsafe fn` alone would not fix the dispatch borrow cycle
-        // documented on WaylandBackend.
-        *self.state.borrow_mut() = Some(NonNull::from(state));
+    pub(crate) fn reborrow(&mut self) -> WaylandBackend<'_> {
+        WaylandBackend::new(self.state)
     }
 
-    /// List available display modes for a display (format: "WIDTHxHEIGHT@REFRESH").
-    pub fn list_display_modes(&self, display: &str) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| state.list_display_modes(display))
-            .unwrap_or_default()
-    }
-
-    /// List all connected display names.
-    pub fn list_displays(&self) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| state.list_displays())
-            .unwrap_or_default()
-    }
-
-    pub fn close_window(&self, window: WindowId) -> bool {
+    pub fn close_window(&mut self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.close_window(window))
-            .unwrap_or(false)
     }
 
     pub fn window_title(&self, window: WindowId) -> Option<String> {
-        self.with_state(|state: &mut WaylandState| state.window_title(window))
-            .flatten()
+        self.with_state_ref(|state: &WaylandState| state.window_title(window))
     }
 
     pub fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        self.with_state(|state: &mut WaylandState| state.window_protocol(window))
-            .unwrap_or(WindowProtocol::Unknown)
+        self.with_state_ref(|state: &WaylandState| state.window_protocol(window))
     }
 
     pub fn xdisplay(&self) -> Option<u32> {
-        self.with_state(|state: &mut WaylandState| state.xdisplay)
-            .flatten()
+        self.with_state_ref(|state: &WaylandState| state.xdisplay)
     }
 
     pub fn pointer_location(&self) -> Option<Point> {
-        self.with_state(|state: &mut WaylandState| {
+        Some(self.with_state_ref(|state: &WaylandState| {
             let loc = state.pointer.current_location();
             Point::from_f64_round(loc.x, loc.y)
-        })
+        }))
     }
 
-    pub fn warp_pointer(&self, x: f64, y: f64) {
-        let _ = self.with_state(|state: &mut WaylandState| {
+    pub fn warp_pointer(&mut self, x: f64, y: f64) {
+        self.with_state(|state: &mut WaylandState| {
             state.request_warp(x, y);
         });
     }
 
-    pub fn request_bar_redraw(&self) -> bool {
-        self.with_state(|state: &mut WaylandState| state.request_bar_redraw())
-            .is_some()
+    pub fn request_space_sync(&mut self) {
+        self.with_state(|state: &mut WaylandState| state.request_space_sync());
     }
 
-    pub fn request_space_sync(&self) {
-        let _ = self.with_state(|state: &mut WaylandState| state.request_space_sync());
+    pub fn request_render(&mut self) {
+        self.with_state(|state: &mut WaylandState| state.request_render());
     }
 
-    pub fn request_render(&self) {
-        let _ = self.with_state(|state: &mut WaylandState| state.request_render());
-    }
-
-    pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
-            .unwrap_or(false)
-    }
-
-    pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
-        let _ = self.with_state(|state: &mut WaylandState| {
+    pub fn set_cursor_icon_override(&mut self, icon: Option<smithay::input::pointer::CursorIcon>) {
+        self.with_state(|state: &mut WaylandState| {
             if state.cursor_icon_override == icon {
                 return;
             }
@@ -196,26 +142,19 @@ impl WaylandBackend {
     /// Apply the compositor-native keyboard layout. X11 uses `setxkbmap`
     /// directly and deliberately does not pretend to provide this capability.
     pub fn set_keyboard_layout(
-        &self,
+        &mut self,
         layout: &str,
         variant: &str,
         options: Option<&str>,
         model: Option<&str>,
     ) -> Result<(), String> {
-        let layout = layout.to_owned();
-        let variant = variant.to_owned();
-        let options = options.map(str::to_owned);
-        let model = model.map(str::to_owned);
-        self.with_state(move |state| {
-            state.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref())
-        })
-        .ok_or_else(|| "Wayland compositor state is unavailable".to_string())?
+        self.with_state(|state| state.set_keyboard_layout(layout, variant, options, model))
     }
 
     /// Return Wayland input devices. This is intentionally not part of the
     /// cross-backend window capability trait.
     pub fn get_input_devices(&self) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| {
+        self.with_state_ref(|state: &WaylandState| {
             state
                 .runtime
                 .tracked_devices
@@ -254,55 +193,50 @@ impl WaylandBackend {
                 })
                 .collect()
         })
-        .unwrap_or_default()
     }
 
-    pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
-        // Keep the slot exclusively borrowed until f returns, including unwind.
-        // Previously the borrow ended before f, allowing bridge reentry to
-        // manufacture another &mut WaylandState. This is deliberately a
-        // RefCell guard, not a mutex: all access is on the event-loop thread.
-        // It also prevents replacing the pointer during a bridge operation.
-        // It cannot detect a conflicting reference obtained outside this bridge.
-        let state = self
-            .state
-            .try_borrow_mut()
-            .expect("reentrant WaylandBackend state access");
-        let maybe_ptr = *state;
-        maybe_ptr.map(|mut ptr| unsafe { f(ptr.as_mut()) })
+    pub(crate) fn with_state_ref<T>(&self, f: impl FnOnce(&WaylandState) -> T) -> T {
+        f(self.state)
     }
 
-    pub(crate) fn sync_window_presentation(&self, window: WindowId) {
-        let _ = self.with_state(|state| state.sync_window_presentation(window));
+    pub(crate) fn with_state<T>(&mut self, f: impl FnOnce(&mut WaylandState) -> T) -> T {
+        f(self.state)
+    }
+
+    pub(crate) fn sync_window_presentation(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        window: WindowId,
+    ) {
+        self.with_state(|state| state.sync_window_presentation(core_view, window));
     }
 
     pub(crate) fn take_current_window_animation_rect(
-        &self,
+        &mut self,
         win: WindowId,
         now: std::time::Instant,
     ) -> Option<Rect> {
         self.with_state(|state| state.take_current_window_animation_rect(win, now))
-            .flatten()
     }
 
-    pub(crate) fn cancel_window_animation(&self, win: WindowId) {
-        let _ = self.with_state(|state| state.drop_window_animation(win));
+    pub(crate) fn cancel_window_animation(&mut self, win: WindowId) {
+        self.with_state(|state| state.drop_window_animation(win));
     }
 
     pub(crate) fn window_animation_targets(&self, win: WindowId, target: Rect) -> bool {
-        self.with_state(|state| state.animation_targets_outer_rect(win, target))
-            .unwrap_or(false)
+        self.with_state_ref(|state| state.animation_targets_outer_rect(win, target))
     }
 
     pub(crate) fn begin_window_animation(
-        &self,
+        &mut self,
+        core_view: &crate::core_state::CoreState,
         win: WindowId,
         from: Rect,
         to: Rect,
         duration: std::time::Duration,
     ) {
-        let _ = self.with_state(|state| {
-            state.set_window_target_rect(
+        self.with_state(|state| {
+            state.set_window_target_rect(core_view,
                 win,
                 to,
                 crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateFrom {
@@ -314,14 +248,14 @@ impl WaylandBackend {
     }
 
     pub(crate) fn prepare_launch_environment(
-        &self,
+        &mut self,
         command: &mut std::process::Command,
         selected_window: Option<WindowId>,
         context: crate::client::LaunchContext,
     ) {
         use smithay::wayland::seat::WaylandFocus;
 
-        if let Some(token) = self.with_state(|state| {
+        let token = self.with_state(|state| {
             let source_surface = selected_window.and_then(|win| {
                 state
                     .find_window(win)
@@ -338,9 +272,8 @@ impl WaylandBackend {
                 .xdg_activation_state
                 .create_external_token(Some(token_data));
             token.as_str().to_owned()
-        }) {
-            command.env("XDG_ACTIVATION_TOKEN", token);
-        }
+        });
+        command.env("XDG_ACTIVATION_TOKEN", token);
 
         if let Some(display) = self.xdisplay() {
             command.env("DISPLAY", format!(":{display}"));
@@ -350,87 +283,59 @@ impl WaylandBackend {
     }
 }
 
-impl Default for WaylandBackend {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WindowOps for WaylandBackend {
-    fn resize_window(&self, window: WindowId, rect: Rect) {
-        let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
-    }
-
-    fn set_border_width(&self, _window: WindowId, _width: i32) {
-        // Wayland borders are compositor-rendered from core client state.
-    }
-
-    fn raise_window_visual_only(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.raise_window_visual_only(window));
-    }
-
-    fn apply_z_order(&self, windows: &[WindowId]) {
-        let _ = self.with_state(|state: &mut WaylandState| state.apply_z_order(windows));
-    }
-
-    fn set_focus(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.set_focus(window));
-    }
-
-    fn map_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.map_window_in_space(window));
-    }
-
-    fn unmap_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.unmap_window_from_space(window));
-    }
-
-    fn window_exists(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.window_exists(window))
-            .unwrap_or(false)
-    }
-
-    fn window_animation_active(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.window_has_active_animation(window))
-            .unwrap_or(false)
-    }
-
-    fn flush(&self) {
-        let _ = self.with_state(WaylandState::flush);
-    }
-
-    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        WaylandBackend::window_protocol(self, window)
-    }
-}
-
-/// Compatibility adapter for shared contexts that still hold the backend
-/// handle. Policy and native projection are the same as the explicitly borrowed
-/// dispatch path; only acquisition of the compositor borrow differs.
-impl crate::focus::FocusBackendOps for &WaylandBackend {
-    fn project_focus(
-        &mut self,
-        core: &crate::core_state::CoreState,
-        projection: crate::focus::FocusProjection,
-    ) {
-        let _ = self.with_state(|state| {
-            crate::focus::FocusBackendOps::project_focus(state, core, projection);
+impl WindowOps for crate::contexts::WmCtxWayland<'_> {
+    fn resize_window(&mut self, window: WindowId, rect: Rect) {
+        self.wayland.with_state(|state: &mut WaylandState| {
+            state.resize_window(self.core.state(), window, rect)
         });
     }
 
-    fn on_desktop_binding_state_changed(&mut self, _core: &crate::core_state::CoreState) {}
+    fn set_border_width(&mut self, _window: WindowId, _width: i32) {
+        // Wayland borders are compositor-rendered from core client state.
+    }
 
-    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
-        target.is_some_and(|win| !self.is_keyboard_focused_on(win))
+    fn raise_window_visual_only(&mut self, window: WindowId) {
+        self.wayland
+            .with_state(|state: &mut WaylandState| state.raise_window_visual_only(window));
+    }
+
+    fn apply_z_order(&mut self, windows: &[WindowId]) {
+        self.wayland
+            .with_state(|state: &mut WaylandState| state.apply_z_order(windows));
+    }
+
+    fn map_window(&mut self, window: WindowId) {
+        self.wayland.with_state(|state: &mut WaylandState| {
+            state.map_window_in_space(self.core.state(), window)
+        });
+    }
+
+    fn unmap_window(&mut self, window: WindowId) {
+        self.wayland.with_state(|state: &mut WaylandState| {
+            state.unmap_window_from_space(self.core.state(), window)
+        });
+    }
+
+    fn window_exists(&self, window: WindowId) -> bool {
+        self.wayland
+            .with_state_ref(|state: &WaylandState| state.window_exists(window))
+    }
+
+    fn flush(&mut self) {
+        self.wayland.with_state(WaylandState::flush);
+    }
+
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        self.wayland.window_protocol(window)
     }
 }
 
-impl PointerOps for WaylandBackend {
+impl PointerOps for WaylandBackend<'_> {
     fn pointer_location(&self) -> Option<Point> {
         WaylandBackend::pointer_location(self)
     }
 
-    fn warp_pointer(&self, x: f64, y: f64) {
+    fn warp_pointer(&mut self, x: f64, y: f64) {
         WaylandBackend::warp_pointer(self, x, y);
     }
 }
@@ -470,9 +375,9 @@ impl crate::backend::InteractionProjectionOps for crate::contexts::WmCtxWayland<
     ) {
         self.wayland
             .set_cursor_icon_override(wayland_cursor_icon(desired.cursor));
-        let _ = self
-            .wayland
-            .with_state(|state| state.reconcile_interactive_resize(desired.active_resize_window));
+        self.wayland.with_state(|state| {
+            state.reconcile_interactive_resize(self.core.state(), desired.active_resize_window)
+        });
     }
 }
 
@@ -482,10 +387,10 @@ impl crate::backend::WindowCloseOps for crate::contexts::WmCtxWayland<'_> {
     }
 }
 
-impl WaylandBackend {
+impl WaylandBackend<'_> {
     /// Project the sanitized monitor policy onto the output state.
-    pub fn apply_monitor_configs(&self, policy: &crate::output_mirror::MonitorPolicy) {
-        let _ = self.with_state(|state: &mut WaylandState| {
+    pub fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy) {
+        self.with_state(|state: &mut WaylandState| {
             let output_names: Vec<_> = state
                 .output_management_state
                 .outputs()
@@ -517,9 +422,9 @@ impl crate::backend::OutputPolicyOps for crate::contexts::WmCtxWayland<'_> {
     }
 }
 
-impl OutputOps for WaylandBackend {
+impl OutputOps for WaylandBackend<'_> {
     fn connected_output_names(&self) -> Vec<String> {
-        self.with_state(|state| {
+        self.with_state_ref(|state| {
             state
                 .output_management_state
                 .outputs()
@@ -527,11 +432,10 @@ impl OutputOps for WaylandBackend {
                 .map(|output| output.name())
                 .collect()
         })
-        .unwrap_or_default()
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
-        self.with_state(|state: &mut WaylandState| {
+        self.with_state_ref(|state: &WaylandState| {
             state
                 .space
                 .outputs()
@@ -566,7 +470,6 @@ impl OutputOps for WaylandBackend {
                 })
                 .collect()
         })
-        .unwrap_or_default()
     }
 }
 
@@ -585,7 +488,7 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
         animate: bool,
         duration: std::time::Duration,
     ) {
-        let _ = self.wayland.with_state(|state| {
+        self.wayland.with_state(|state| {
             state.set_layout_preview_target(rect, style, target, animate, duration)
         });
     }
@@ -594,34 +497,18 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
 #[cfg(test)]
 mod tests {
     use super::{WaylandBackend, wayland_cursor_icon};
-    use crate::backend::{OutputOps, WindowOps, WindowProtocol};
+    use crate::backend::{OutputOps, WindowProtocol};
     use crate::types::{AltCursor, ResizeDirection, WindowId};
     use smithay::input::pointer::CursorIcon;
-
-    #[test]
-    fn bridge_reentry_is_rejected_and_the_guard_recovers_after_unwind() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
-        let backend = WaylandBackend::new();
-        backend.attach_state(&mut state);
-
-        let reentry = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            backend.with_state(|_| backend.with_state(|_| ()));
-        }));
-        assert!(reentry.is_err());
-        assert_eq!(backend.with_state(|_| 42), Some(42));
-    }
 
     #[test]
     fn apply_monitor_configs_records_mirrors_without_anchoring_them() {
         use crate::config::config_toml::MonitorConfig;
 
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         state.create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
         state.create_output("DP-1", crate::types::Size::new(1920, 1080), None);
-        let backend = WaylandBackend::new();
-        backend.attach_state(&mut state);
+        let mut backend = WaylandBackend::new(&mut state);
 
         let configs = [
             (
@@ -644,29 +531,25 @@ mod tests {
 
         backend.apply_monitor_configs(&crate::output_mirror::MonitorPolicy::new(&configs));
 
-        backend
-            .with_state(|state| {
-                assert_eq!(state.runtime.mirror_of.source_of("DP-1"), Some("eDP-1"));
-                // A mirror owns no desktop region, so it is not a placement
-                // anchor; automatic placement simply skips it.
-                assert!(state.runtime.configured_output_positions.contains("eDP-1"));
-                assert!(!state.runtime.configured_output_positions.contains("DP-1"));
-                assert!(state.runtime.projected_mirrors.contains("DP-1"));
-                // Roles change only once the pinning transaction applies.
-                assert!(state.runtime.realized_mirrors.is_empty());
-            })
-            .expect("state attached");
+        backend.with_state(|state| {
+            assert_eq!(state.runtime.mirror_of.source_of("DP-1"), Some("eDP-1"));
+            // A mirror owns no desktop region, so it is not a placement
+            // anchor; automatic placement simply skips it.
+            assert!(state.runtime.configured_output_positions.contains("eDP-1"));
+            assert!(!state.runtime.configured_output_positions.contains("DP-1"));
+            assert!(state.runtime.projected_mirrors.contains("DP-1"));
+            // Roles change only once the pinning transaction applies.
+            assert!(state.runtime.realized_mirrors.is_empty());
+        });
     }
 
     #[test]
     fn discovery_reports_realized_mirrors_under_their_source() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         state.create_output("eDP-1", crate::types::Size::new(1920, 1080), None);
         state.create_output("DP-1", crate::types::Size::new(1920, 1080), None);
         state.set_mirror_roles([("DP-1".to_string(), "eDP-1".to_string())].into());
-        let backend = WaylandBackend::new();
-        backend.attach_state(&mut state);
+        let backend = WaylandBackend::new(&mut state);
 
         let outputs = backend.get_outputs();
         assert_eq!(outputs.len(), 1);
@@ -681,8 +564,10 @@ mod tests {
 
     #[test]
     fn window_protocol_trait_dispatch_delegates_to_inherent_query() {
-        let backend = WaylandBackend::new();
-        let ops: &dyn WindowOps = &backend;
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
+        let ctx = wm.wayland_ctx(&mut state);
+        let ops: &dyn crate::backend::WindowOps = &ctx;
 
         assert_eq!(ops.window_protocol(WindowId(1)), WindowProtocol::Unknown);
     }

@@ -70,15 +70,14 @@ pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::TagMask;
-    use crate::wm::Wm;
 
     #[test]
     fn drop_uses_the_clients_assignment_not_the_selected_monitor() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let source = wm.core.model.monitors.push(
             MonitorBuilder::new()
@@ -111,7 +110,7 @@ mod tests {
             client.geo = Rect::new(100, 100, 400, 300);
         });
 
-        handle_monitor_switch(&mut wm.ctx(), win, &Rect::new(1200, 100, 400, 300));
+        handle_monitor_switch(&mut wm.test_ctx(), win, &Rect::new(1200, 100, 400, 300));
 
         assert_eq!(wm.core.model.monitor_of_client(win), Some(target));
         assert!(!wm.core.model.monitor(source).unwrap().has_client(win));

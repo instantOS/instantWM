@@ -137,7 +137,6 @@ mod tests {
         PointerRegion, bottom_bar_target_at, button_region_at, right_sidebar_rect,
         sidebar_target_at,
     };
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::model::WmModel;
     use crate::test_support::MonitorBuilder;
     use crate::types::{Monitor, Point, Rect, SIDEBAR_WIDTH, WindowId};
@@ -170,7 +169,7 @@ mod tests {
 
     #[test]
     fn bottom_bar_hit_test_is_scoped_to_the_pointer_monitor() {
-        let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
 
         let mut short = Monitor::new_with_values();
         short.show_bottom_bar = true;

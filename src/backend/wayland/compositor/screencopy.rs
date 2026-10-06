@@ -84,8 +84,8 @@ impl WaylandState {
     }
 
     fn screencopy_dmabuf_supported(&mut self) -> bool {
-        self.renderer_mut()
-            .and_then(|renderer| Bind::<Dmabuf>::supported_formats(renderer))
+        self.with_renderer(|renderer| Bind::<Dmabuf>::supported_formats(renderer))
+            .flatten()
             .is_some_and(|formats| formats.iter().any(|format| format.code == Fourcc::Xrgb8888))
     }
 
@@ -98,8 +98,8 @@ impl WaylandState {
             && dmabuf.size().h == buffer_region.size.h
             && dmabuf.format().code == Fourcc::Xrgb8888
             && self
-                .renderer_mut()
-                .and_then(|renderer| Bind::<Dmabuf>::supported_formats(renderer))
+                .with_renderer(|renderer| Bind::<Dmabuf>::supported_formats(renderer))
+                .flatten()
                 .is_some_and(|formats| formats.contains(&dmabuf.format()))
     }
 }

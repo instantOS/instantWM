@@ -1,3 +1,4 @@
+use crate::backend::WindowOps;
 use crate::contexts::WmCtx;
 use crate::layouts::{LayoutCommand, PresentationMode};
 use crate::types::{Monitor, StackDirection, WindowId};
@@ -356,8 +357,8 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
 
     // Raise immediately so the promoted window appears on top while the
     // resulting layout pass is applied.
-    ctx.window_backend().raise_window_visual_only(window);
-    ctx.window_backend().flush();
+    ctx.raise_window_visual_only(window);
+    ctx.flush();
 
     let target_focus = ctx
         .core_mut()

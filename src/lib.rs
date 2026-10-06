@@ -40,3 +40,9 @@ mod toggles;
 pub mod types;
 mod util;
 mod wm;
+
+// Compile-negative fixtures use the real private API, rather than doctests
+// that could fail merely because backend modules are private.
+#[cfg(instantwm_borrow_contract)]
+#[path = "../tests/ui/native_borrow.rs"]
+mod native_borrow_contract;

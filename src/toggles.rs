@@ -117,15 +117,14 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
 #[cfg(test)]
 mod tests {
     use super::{set_bottom_bar_shown, toggle_mode_name, unhide_all};
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::core_state::ActiveWmMode;
+    use crate::test_support::TestWm as Wm;
     use crate::test_support::{add_client, add_selected_client};
     use crate::types::{Client, Monitor, TagMask, WindowId};
-    use crate::wm::Wm;
 
     /// A WM with one output whose configured bar visibility is `show`.
     fn wm_with_bar(show: bool) -> Wm {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = wm.core.model.monitors.push(Monitor::new_with_values());
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
@@ -144,12 +143,12 @@ mod tests {
     fn toggle_bar_is_a_per_view_override_that_leaves_the_default_alone() {
         let mut wm = wm_with_bar(true);
 
-        super::toggle_bar(&mut wm.ctx());
+        super::toggle_bar(&mut wm.test_ctx());
         assert!(!bar_visible(&wm));
         // The configured default is untouched; only the view overrides it.
         assert!(wm.core.model.expect_selected_monitor().bar_default_show);
 
-        super::toggle_bar(&mut wm.ctx());
+        super::toggle_bar(&mut wm.test_ctx());
         assert!(bar_visible(&wm));
     }
 
@@ -161,7 +160,7 @@ mod tests {
             .expect_selected_monitor_mut()
             .set_selected_tags(TagMask::single(1).unwrap());
 
-        super::toggle_bar(&mut wm.ctx());
+        super::toggle_bar(&mut wm.test_ctx());
         assert!(!bar_visible(&wm));
 
         // Switching to another view falls back to the configured value.
@@ -182,7 +181,7 @@ mod tests {
     #[test]
     fn reloading_restores_the_configured_bar_visibility() {
         let mut wm = wm_with_bar(true);
-        super::toggle_bar(&mut wm.ctx());
+        super::toggle_bar(&mut wm.test_ctx());
         assert!(!bar_visible(&wm));
 
         // A reload is "restore every configured value", overrides included.
@@ -215,7 +214,7 @@ mod tests {
 
     #[test]
     fn unhide_all_reveals_hidden_windows_without_moving_focus() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = wm.core.model.monitors.push(Monitor::default());
         wm.core.model.monitors.set_selected(monitor_id);
 
@@ -245,7 +244,7 @@ mod tests {
             },
         );
 
-        unhide_all(&mut wm.ctx());
+        unhide_all(&mut wm.test_ctx());
 
         assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
         assert!(!wm.core.model.client(also_hidden).unwrap().is_hidden);
@@ -258,7 +257,7 @@ mod tests {
         // every monitor and survive tag switches; historically it was stored
         // per selected monitor and per tag mask, so other monitors kept the
         // bar and switching tags resurrected it.
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
         let first = wm.core.model.monitors.push(Monitor::default());
         let second = wm.core.model.monitors.push(Monitor::default());
@@ -282,7 +281,7 @@ mod tests {
         }
 
         // Toggle off while viewing tag_a of the second monitor.
-        set_bottom_bar_shown(&mut wm.ctx(), false);
+        set_bottom_bar_shown(&mut wm.test_ctx(), false);
 
         let all_hidden = |wm: &Wm| {
             [first, second]
@@ -300,7 +299,7 @@ mod tests {
         assert!(all_hidden(&wm));
 
         // Toggling back on re-enables it everywhere again.
-        set_bottom_bar_shown(&mut wm.ctx(), true);
+        set_bottom_bar_shown(&mut wm.test_ctx(), true);
         assert!(
             [first, second]
                 .iter()

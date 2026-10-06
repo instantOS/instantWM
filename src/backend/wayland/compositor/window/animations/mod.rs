@@ -19,16 +19,14 @@ mod x11_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::geometry::MoveResizeOptions;
     use crate::test_support::{add_client, push_monitor_with};
     use crate::types::Client;
-    use crate::wm::Wm;
+    use crate::wm::WaylandWm as Wm;
 
     #[test]
     fn floating_restore_rejects_redraws_until_staged_resize_is_sent() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let win = WindowId(92);
         let tiled = Rect::new(0, 0, 1920, 1080);
         let floating = Rect::new(900, 500, 640, 360);
@@ -92,11 +90,8 @@ mod tests {
 
     #[test]
     fn repeated_move_target_keeps_the_existing_animation() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
-        let backend = WaylandBackend::new();
-        backend.attach_state(&mut state);
-        let mut wm = Wm::new(Backend::new_wayland(backend));
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
         });
@@ -130,7 +125,7 @@ mod tests {
 
         // No surface is needed: an unchanged target must never reach native
         // placement or consume the existing animation in the first place.
-        wm.ctx()
+        wm.wayland_ctx(&mut state)
             .move_resize(win, target, MoveResizeOptions::animate_to(50));
         assert_eq!(state.displayed_animation_frame(win), Some(from));
         assert!(state.animation_targets_outer_rect(win, target));
@@ -196,20 +191,26 @@ impl WaylandState {
         self.window_animations.remove(&win);
     }
 
-    pub(crate) fn animations_enabled(&self) -> bool {
-        self.globals()
-            .map(|state| state.config.animations.enabled)
-            .unwrap_or(false)
+    pub(crate) fn animations_enabled(&self, core_view: &crate::core_state::CoreState) -> bool {
+        core_view.config.animations.enabled
     }
 
-    fn configured_animation_duration(&self, duration: Duration) -> Duration {
-        self.globals()
-            .map(|core| core.config.animations.scale_duration(duration))
-            .unwrap_or(duration)
+    fn configured_animation_duration(
+        &self,
+        core_view: &crate::core_state::CoreState,
+        duration: Duration,
+    ) -> Duration {
+        core_view.config.animations.scale_duration(duration)
     }
 
-    pub(crate) fn default_animation_duration(&self) -> Duration {
-        self.configured_animation_duration(Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS))
+    pub(crate) fn default_animation_duration(
+        &self,
+        core_view: &crate::core_state::CoreState,
+    ) -> Duration {
+        self.configured_animation_duration(
+            core_view,
+            Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
+        )
     }
 
     fn output_rects(&self) -> Vec<Rect> {
@@ -241,6 +242,7 @@ impl WaylandState {
     /// ownership is independent from the animation frame currently displayed.
     pub(super) fn dispatch_window_resize(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         window_id: WindowId,
         element: &smithay::desktop::Window,
         target: Rect,
@@ -253,6 +255,7 @@ impl WaylandState {
             return;
         };
         self.configure_window_geometry(
+            core_view,
             window_id,
             element,
             Rect {
@@ -268,6 +271,7 @@ impl WaylandState {
     /// moves, even when no size request is scheduled.
     fn configure_window_geometry(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         window_id: WindowId,
         element: &smithay::desktop::Window,
         target: Rect,
@@ -280,7 +284,11 @@ impl WaylandState {
                 .and_then(|sync| sync.scheduled_size())
                 .is_some()
             {
-                self.send_toplevel_configure(element, Some(Size::from((size.w, size.h))));
+                self.send_toplevel_configure(
+                    core_view,
+                    element,
+                    Some(Size::from((size.w, size.h))),
+                );
             }
         } else if let Some(surface) = element.x11_surface() {
             let geometry = smithay::utils::Rectangle::new(
@@ -301,13 +309,14 @@ impl WaylandState {
     /// no-transition placement (animations disabled, or `from == target`).
     fn snap_window_to(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         window_id: WindowId,
         element: &smithay::desktop::Window,
         target: Rect,
         target_loc: Point<i32, Logical>,
         to_border: i32,
     ) {
-        self.configure_window_geometry(window_id, element, target);
+        self.configure_window_geometry(core_view, window_id, element, target);
         self.remap_window_immediately(window_id, element, target_loc);
         self.placed_border.insert(window_id, to_border);
     }
@@ -323,9 +332,10 @@ impl WaylandState {
     ///
     /// It does **not** write to `client.geo`.  The WM layer owns logical
     /// position and always sets `client.geo` before calling this function
-    /// (or via `sync_space_from_globals`).
+    /// (or via `sync_space`).
     pub(crate) fn set_window_target_rect(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         window_id: WindowId,
         target: Rect,
         mode: WindowMoveMode,
@@ -333,10 +343,7 @@ impl WaylandState {
         let Some(element) = self.find_window(window_id).cloned() else {
             return;
         };
-        let Some(to_border) = self
-            .globals()
-            .and_then(|state| state.model.client(window_id).map(|c| c.border_width))
-        else {
+        let Some(to_border) = core_view.model.client(window_id).map(|c| c.border_width) else {
             return;
         };
 
@@ -354,20 +361,20 @@ impl WaylandState {
         // Geometry updates for hidden/unmapped windows must not remap them.
         // The WM layer owns visibility.
         if actual_loc.is_none() && mode != WindowMoveMode::Snap {
-            self.dispatch_window_resize(window_id, &element, target);
+            self.dispatch_window_resize(core_view, window_id, &element, target);
             self.drop_window_animation(window_id);
             return;
         }
 
         // Keep an in-flight animation when callers repeatedly request the
-        // same target (e.g. sync_space_from_globals during a decorative
+        // same target (e.g. sync_space during a decorative
         // AnimateFrom slide-in, or an immediate move that preserves an
         // animation already landing on this rect).
         if let Some(animation) = self.window_animations.get(&window_id)
             && animation.target() == target
         {
             if resize_scheduled && animation.resize_dispatch_ready() {
-                self.dispatch_window_resize(window_id, &element, target);
+                self.dispatch_window_resize(core_view, window_id, &element, target);
             }
             return;
         }
@@ -405,7 +412,9 @@ impl WaylandState {
             .map(WaylandWindowAnimation::displayed_frame);
         let (from, animation_duration) = match mode {
             WindowMoveMode::Snap => {
-                self.snap_window_to(window_id, &element, target, target_loc, to_border);
+                self.snap_window_to(
+                    core_view, window_id, &element, target, target_loc, to_border,
+                );
                 return;
             }
             WindowMoveMode::AnimateFrom { from, duration } => (from, duration),
@@ -423,10 +432,12 @@ impl WaylandState {
             }
         };
 
-        let should_snap = !self.animations_enabled() || from == target;
+        let should_snap = !self.animations_enabled(core_view) || from == target;
 
         if should_snap {
-            self.snap_window_to(window_id, &element, target, target_loc, to_border);
+            self.snap_window_to(
+                core_view, window_id, &element, target, target_loc, to_border,
+            );
             return;
         }
 
@@ -465,18 +476,19 @@ impl WaylandState {
     /// If the window is currently mapped (has a location in the space), it is
     /// snapped to the animation's target position. Pending geometry is sent
     /// even for hidden windows, without remapping them.
-    pub fn cancel_window_animation(&mut self, win: WindowId) {
+    pub fn cancel_window_animation(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        win: WindowId,
+    ) {
         let Some(anim) = self.window_animations.remove(&win) else {
             return;
         };
         let Some(element) = self.find_window(win).cloned() else {
             return;
         };
-        if let Some(target) = self
-            .globals()
-            .and_then(|core| core.model.client(win).map(|client| client.geo))
-        {
-            self.dispatch_window_resize(win, &element, target);
+        if let Some(target) = core_view.model.client(win).map(|client| client.geo) {
+            self.dispatch_window_resize(core_view, win, &element, target);
         }
         if self.space.element_location(&element).is_some() {
             let target = anim.target();
@@ -540,7 +552,7 @@ impl WaylandState {
     }
 
     /// Tick all active window animations.
-    pub fn tick_animations(&mut self) {
+    pub fn tick_animations(&mut self, core_view: &crate::core_state::CoreState) {
         let preview_active = self.layout_preview_animation.is_active();
         if !self.has_active_window_animations() && !preview_active {
             return;
@@ -601,11 +613,9 @@ impl WaylandState {
                 self.request_visual_rect_render(previous_frame.with_borders(border_width));
                 self.request_visible_window_render(&element);
                 if resize_due
-                    && let Some(target) = self
-                        .globals()
-                        .and_then(|core| core.model.client(win).map(|client| client.geo))
+                    && let Some(target) = core_view.model.client(win).map(|client| client.geo)
                 {
-                    self.dispatch_window_resize(win, &element, target);
+                    self.dispatch_window_resize(core_view, win, &element, target);
                 }
                 if self.space.element_location(&element) != Some(loc) {
                     self.remap_element_preserving_z_order(&element, loc, false);
@@ -625,16 +635,16 @@ impl WaylandState {
             }
         }
         for win in finished {
-            self.cancel_window_animation(win);
+            self.cancel_window_animation(core_view, win);
         }
     }
 
     /// Cancel all in-flight window animations, snapping each mapped window
     /// to its animation target position.
-    pub fn cancel_all_window_animations(&mut self) {
+    pub fn cancel_all_window_animations(&mut self, core_view: &crate::core_state::CoreState) {
         let active_windows: Vec<WindowId> = self.window_animations.keys().copied().collect();
         for win in active_windows {
-            self.cancel_window_animation(win);
+            self.cancel_window_animation(core_view, win);
         }
     }
 

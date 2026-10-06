@@ -236,17 +236,16 @@ fn apply_target(ctx: &mut WmCtx<'_>, source: WindowId, target: PlacementTarget) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::layouts::tree::Preset;
     use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
     use crate::types::{Client, ClientMode, TagMask};
-    use crate::wm::Wm;
 
     /// A selected monitor showing `clients` in a master-stack tree, with the
     /// first client selected.
     fn tiled_wm(rect: Rect, clients: Vec<Client>) -> Wm {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(
             MonitorBuilder::new()
@@ -301,13 +300,16 @@ mod tests {
         let mut wm = tiled_wm(Rect::new(0, 0, 1200, 800), vec![client(1), client(2)]);
         let source = WindowId(1);
 
-        assert!(begin_tree_placement(&mut wm.ctx()));
+        assert!(begin_tree_placement(&mut wm.test_ctx()));
         assert_eq!(wm.core.model.selected_win(), Some(source));
 
-        assert!(cycle_keyboard_tree_placement(&mut wm.ctx(), false));
+        assert!(cycle_keyboard_tree_placement(&mut wm.test_ctx(), false));
         assert_eq!(wm.core.model.selected_win(), Some(source));
 
-        assert!(step_keyboard_tree_placement(&mut wm.ctx(), Side::Right));
+        assert!(step_keyboard_tree_placement(
+            &mut wm.test_ctx(),
+            Side::Right
+        ));
         assert_eq!(wm.core.model.selected_win(), Some(source));
     }
 
@@ -315,7 +317,7 @@ mod tests {
     fn single_tiled_window_has_no_tree_placement_targets() {
         let mut wm = tiled_wm(Rect::new(0, 0, 1200, 800), vec![client(1)]);
 
-        assert!(!begin_tree_placement(&mut wm.ctx()));
+        assert!(!begin_tree_placement(&mut wm.test_ctx()));
         assert!(matches!(
             wm.core.behavior.current_mode,
             ActiveWmMode::Default
@@ -333,14 +335,14 @@ mod tests {
             ],
         );
 
-        let targets = placement_targets(&wm.ctx(), WindowId(1));
+        let targets = placement_targets(&wm.test_ctx(), WindowId(1));
 
         assert!(
             targets
                 .iter()
                 .any(|target| matches!(target.side, Some(Side::Top | Side::Bottom)))
         );
-        assert!(begin_tree_placement(&mut wm.ctx()));
+        assert!(begin_tree_placement(&mut wm.test_ctx()));
     }
 
     #[test]
@@ -348,7 +350,7 @@ mod tests {
         let mut client = client_with_minimum(1, 140, 60);
         client.border_width = 0;
         let mut wm = tiled_wm(Rect::new(0, 0, 100, 100), vec![client]);
-        let tiling = selected_tiling(&wm.ctx());
+        let tiling = selected_tiling(&wm.test_ctx());
         let slot = Rect::new(10, 20, 10, 8);
 
         assert_eq!(

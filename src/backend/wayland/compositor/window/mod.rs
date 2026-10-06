@@ -90,7 +90,7 @@ impl WaylandState {
     /// authoritative WM position (`client.geo.x/y`).
     ///
     /// Position is always owned by the WM layer and flows one-way into
-    /// the compositor via `sync_space_from_globals`.  We never read it
+    /// the compositor via `sync_space`.  We never read it
     /// back from the Smithay space.
     pub(crate) fn observe_native_committed_size(&mut self, window: WindowId) {
         let Some(element) = self.find_window(window).cloned() else {
@@ -160,7 +160,11 @@ impl WaylandState {
     /// Reconcile xdg-toplevel's `resizing` state with the interaction model.
     /// Ending a resize emits the final configure without the resizing flag;
     /// redundant synchronization has no protocol effect.
-    pub(crate) fn reconcile_interactive_resize(&mut self, desired: Option<WindowId>) {
+    pub(crate) fn reconcile_interactive_resize(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        desired: Option<WindowId>,
+    ) {
         if self.active_resize == desired {
             return;
         }
@@ -169,7 +173,7 @@ impl WaylandState {
         if let Some(window) = ended.filter(|window| Some(*window) != desired)
             && let Some(element) = self.find_window(window).cloned()
         {
-            self.send_toplevel_configure(&element, None);
+            self.send_toplevel_configure(core_view, &element, None);
         }
     }
 
@@ -235,26 +239,25 @@ mod tests {
 
     #[test]
     fn interactive_resize_reconciliation_is_idempotent() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let core_view = crate::core_state::CoreState::default();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let win = WindowId(23);
 
-        state.reconcile_interactive_resize(Some(win));
+        state.reconcile_interactive_resize(&core_view, Some(win));
         assert_eq!(state.active_resize, Some(win));
 
-        state.reconcile_interactive_resize(Some(win));
+        state.reconcile_interactive_resize(&core_view, Some(win));
         assert_eq!(state.active_resize, Some(win));
 
-        state.reconcile_interactive_resize(None);
+        state.reconcile_interactive_resize(&core_view, None);
         assert_eq!(state.active_resize, None);
-        state.reconcile_interactive_resize(None);
+        state.reconcile_interactive_resize(&core_view, None);
         assert_eq!(state.active_resize, None);
     }
 
     #[test]
     fn constrained_response_requests_dispatch_but_stale_response_does_not() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let _ = state.take_space_sync_pending();
         let win = WindowId(18);
         state

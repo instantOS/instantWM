@@ -106,21 +106,19 @@ struct WorkspaceSnapshot {
 }
 
 impl WorkspaceSnapshot {
-    fn capture(state: &WaylandState) -> Self {
-        let globals = state.globals();
+    fn capture(core_view: &crate::core_state::CoreState, state: &WaylandState) -> Self {
+        let globals = core_view;
         let monitors = state
             .space
             .outputs()
             .cloned()
             .map(|output| {
                 let output_name = output.name();
-                let monitor = globals.and_then(|globals| {
-                    globals
-                        .model
-                        .monitors
-                        .iter_all()
-                        .find(|monitor| monitor.name == output_name)
-                });
+                let monitor = globals
+                    .model
+                    .monitors
+                    .iter_all()
+                    .find(|monitor| monitor.name == output_name);
                 let selected_tags = monitor.map_or(
                     crate::types::TagMask::EMPTY,
                     crate::types::Monitor::selected_tags,
@@ -189,11 +187,11 @@ impl WorkspaceSnapshot {
     }
 }
 
-pub fn refresh(state: &mut WaylandState) {
-    if !refresh_needed(state) {
+pub fn refresh(core_view: &crate::core_state::CoreState, state: &mut WaylandState) {
+    if !refresh_needed(core_view, state) {
         return;
     }
-    let snapshot = WorkspaceSnapshot::capture(state);
+    let snapshot = WorkspaceSnapshot::capture(core_view, state);
     let protocol = &mut state.ext_workspace_state;
     snapshot.update_cache(protocol);
     let mut changed = remove_stale_outputs(protocol, &snapshot.output_names());
@@ -209,7 +207,7 @@ pub fn refresh(state: &mut WaylandState) {
     }
 }
 
-fn refresh_needed(state: &WaylandState) -> bool {
+fn refresh_needed(core_view: &crate::core_state::CoreState, state: &WaylandState) -> bool {
     let protocol = &state.ext_workspace_state;
     if state.space.outputs().count() != protocol.last_output_names.len()
         || state
@@ -220,9 +218,7 @@ fn refresh_needed(state: &WaylandState) -> bool {
     {
         return true;
     }
-    let Some(globals) = state.globals() else {
-        return true;
-    };
+    let globals = core_view;
     for output in state.space.outputs() {
         let output_name = output.name();
         let Some(monitor) = globals

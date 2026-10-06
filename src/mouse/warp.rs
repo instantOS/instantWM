@@ -11,6 +11,7 @@
 //! | [`warp_pointer_to_monitor`]        | Carry the pointer along on monitor-switch focus        |
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
+use crate::backend::PointerOps;
 
 use crate::contexts::WmCtx;
 use crate::types::*;
@@ -80,9 +81,9 @@ pub fn warp_pointer_to_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
         return;
     };
 
-    let pointer = ctx.pointer_backend().pointer_location();
+    let pointer = ctx.pointer_location();
     if let Some(target) = warp_target_for_monitor(monitor_rect, center, pointer) {
-        ctx.pointer_backend().warp_to_point(target);
+        ctx.warp_to_point(target);
     }
 }
 
@@ -106,7 +107,7 @@ pub fn warp_to_resize_corner(
     let c = ctx.core().model().client(win)?;
     let offset = direction.warp_offset(c.geo.size(), c.border_width);
     let target = Point::new(c.geo.x + offset.x, c.geo.y + offset.y);
-    ctx.pointer_backend().warp_to_point(target);
+    ctx.warp_to_point(target);
     Some(target)
 }
 

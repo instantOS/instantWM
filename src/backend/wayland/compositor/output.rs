@@ -813,7 +813,7 @@ mod tests {
 
     /// Three 1920x1080 outputs side by side, all automatically placed.
     fn three_outputs() -> WaylandState {
-        let (_event_loop, mut state) = super::super::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         for (index, name) in ["eDP-1", "DP-1", "HDMI-1"].into_iter().enumerate() {
             let output = state.create_output(name, Size::new(1920, 1080), None);
             let location = (index as i32 * 1920, 0).into();

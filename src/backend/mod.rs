@@ -8,8 +8,7 @@ pub mod output;
 pub mod wayland;
 pub mod x11;
 
-use crate::backend::wayland::WaylandBackend;
-use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::backend::x11::X11RuntimeConfig;
 use crate::config::config_toml::VrrMode;
 use crate::types::{Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
@@ -45,6 +44,41 @@ pub enum BackendKind {
 }
 
 impl BackendKind {
+    /// Apply a desktop wallpaper by spawning the platform's setter tool.
+    ///
+    /// Wayland compositors have no root pixmap, so sessions delegate to
+    /// swaybg (restarting it if one is already running). X11 uses feh.
+    /// Fire-and-forget: the child outlives the call either way.
+    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
+        match self {
+            Self::X11 => Command::new("feh")
+                .arg("--bg-fill")
+                .arg(path)
+                .spawn()
+                .map(|_| ()),
+            Self::Wayland => {
+                let _ = Command::new("killall").arg("swaybg").status();
+                let spawned = Command::new("swaybg")
+                    .arg("-i")
+                    .arg(path)
+                    .arg("-m")
+                    .arg("fill")
+                    .spawn();
+                // Wayland has no SIGCHLD handler, so the replacement swaybg
+                // must be handed to the dedicated reaper thread (see
+                // [`BackendKind::reaps_children_via_signals`]) instead of
+                // accumulating as a zombie on every wallpaper change.
+                match spawned {
+                    Ok(child) if !self.reaps_children_via_signals() => {
+                        crate::util::reap_child_async(child);
+                        Ok(())
+                    }
+                    result => result.map(|_| ()),
+                }
+            }
+        }
+    }
+
     /// External tool that lets the user drag out a screen rectangle, used by
     /// the `draw_window` action.
     ///
@@ -84,15 +118,14 @@ pub enum WindowProtocol {
 
 /// Window lifecycle and stacking effects shared by all backends.
 pub trait WindowOps {
-    fn resize_window(&self, window: WindowId, rect: Rect);
+    fn resize_window(&mut self, window: WindowId, rect: Rect);
     /// Apply a backend-native border width when the backend has one.
     /// Compositor-rendered backends may implement this as a no-op.
-    fn set_border_width(&self, window: WindowId, width: i32);
-    fn raise_window_visual_only(&self, window: WindowId);
-    fn apply_z_order(&self, windows: &[WindowId]);
-    fn set_focus(&self, window: WindowId);
-    fn map_window(&self, window: WindowId);
-    fn unmap_window(&self, window: WindowId);
+    fn set_border_width(&mut self, window: WindowId, width: i32);
+    fn raise_window_visual_only(&mut self, window: WindowId);
+    fn apply_z_order(&mut self, windows: &[WindowId]);
+    fn map_window(&mut self, window: WindowId);
+    fn unmap_window(&mut self, window: WindowId);
 
     /// Check if a window still exists in the backend.
     ///
@@ -100,17 +133,9 @@ pub trait WindowOps {
     /// This is a query method that returns state rather than performing an action.
     fn window_exists(&self, window: WindowId) -> bool;
 
-    /// Whether the backend is currently animating this window's geometry.
-    ///
-    /// Default implementation reports no animation; backends with animation
-    /// bookkeeping override this.
-    fn window_animation_active(&self, _window: WindowId) -> bool {
-        false
-    }
-
     /// Return the protocol/backend surface type for a managed window.
     fn window_protocol(&self, window: WindowId) -> WindowProtocol;
-    fn flush(&self);
+    fn flush(&mut self);
 }
 
 /// Pointer queries and cursor movement.
@@ -122,10 +147,10 @@ pub trait PointerOps {
     fn pointer_location(&self) -> Option<Point>;
 
     /// Warp pointer to (x, y) in root coordinates.
-    fn warp_pointer(&self, x: f64, y: f64);
+    fn warp_pointer(&mut self, x: f64, y: f64);
 
     /// Warp to an integer logical point without repeating coordinate casts.
-    fn warp_to_point(&self, point: Point) {
+    fn warp_to_point(&mut self, point: Point) {
         self.warp_pointer(f64::from(point.x), f64::from(point.y));
     }
 }
@@ -197,260 +222,28 @@ pub struct X11BackendData {
 }
 
 /// Wayland-specific backend data.
+#[derive(Default)]
 pub struct WaylandBackendData {
-    pub backend: WaylandBackend,
     pub bar_renderer: crate::backend::wayland::bar::WaylandBarRenderer,
 }
 
-/// Owned backend implementation.
-///
-/// Each variant owns the backend-specific connection **and** runtime state
-/// (atoms, cursors, systray, drawing helpers, etc.) so that `Wm` stays
-/// backend-agnostic at the type level.
-pub enum Backend {
-    X11(Box<X11BackendData>),
-    Wayland(Box<WaylandBackendData>),
+/// Backend identity is fixed by the runtime owner type.
+pub trait BackendState {
+    const KIND: BackendKind;
 }
-
-impl Backend {
-    pub fn new_x11(conn: x11rb::rust_connection::RustConnection, screen_num: usize) -> Self {
-        Self::X11(Box::new(X11BackendData {
+impl BackendState for X11BackendData {
+    const KIND: BackendKind = BackendKind::X11;
+}
+impl BackendState for WaylandBackendData {
+    const KIND: BackendKind = BackendKind::Wayland;
+}
+impl X11BackendData {
+    pub fn new(conn: x11rb::rust_connection::RustConnection, screen_num: usize) -> Self {
+        Self {
             conn,
             screen_num,
             x11_runtime: X11RuntimeConfig::default(),
             xembed_tray: None,
-        }))
-    }
-
-    pub fn new_wayland(backend: WaylandBackend) -> Self {
-        Self::Wayland(Box::new(WaylandBackendData {
-            backend,
-            bar_renderer: crate::backend::wayland::bar::WaylandBarRenderer::default(),
-        }))
-    }
-
-    /// Shorthand: get the X11 connection + screen, if running X11.
-    pub fn x11_conn(&self) -> Option<(&x11rb::rust_connection::RustConnection, usize)> {
-        match self {
-            Self::X11(data) => Some((&data.conn, data.screen_num)),
-            Self::Wayland(_) => None,
-        }
-    }
-
-    pub fn x11_conn_mut(&mut self) -> Option<(&mut x11rb::rust_connection::RustConnection, usize)> {
-        match self {
-            Self::X11(data) => Some((&mut data.conn, data.screen_num)),
-            Self::Wayland(_) => None,
-        }
-    }
-
-    pub fn x11_data(&self) -> Option<&X11BackendData> {
-        match self {
-            Self::X11(data) => Some(data),
-            Self::Wayland(_) => None,
-        }
-    }
-
-    pub fn x11_data_mut(&mut self) -> Option<&mut X11BackendData> {
-        match self {
-            Self::X11(data) => Some(data),
-            Self::Wayland(_) => None,
-        }
-    }
-
-    pub fn wayland_data(&self) -> Option<&WaylandBackendData> {
-        match self {
-            Self::X11(_) => None,
-            Self::Wayland(data) => Some(data),
-        }
-    }
-
-    pub fn wayland_data_mut(&mut self) -> Option<&mut WaylandBackendData> {
-        match self {
-            Self::X11(_) => None,
-            Self::Wayland(data) => Some(data),
-        }
-    }
-
-    pub fn get_input_devices(&self) -> Vec<String> {
-        match self {
-            Self::X11(_) => Vec::new(),
-            Self::Wayland(data) => data.backend.get_input_devices(),
-        }
-    }
-
-    /// Apply a desktop wallpaper by spawning the platform's setter tool.
-    ///
-    /// Wayland compositors have no root pixmap, so sessions delegate to
-    /// swaybg (restarting it if one is already running). X11 uses feh.
-    /// Fire-and-forget: the child outlives the call either way.
-    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
-        match self {
-            Self::X11(_) => Command::new("feh")
-                .arg("--bg-fill")
-                .arg(path)
-                .spawn()
-                .map(|_| ()),
-            Self::Wayland(_) => {
-                let _ = Command::new("killall").arg("swaybg").status();
-                let spawned = Command::new("swaybg")
-                    .arg("-i")
-                    .arg(path)
-                    .arg("-m")
-                    .arg("fill")
-                    .spawn();
-                // Wayland has no SIGCHLD handler, so the replacement swaybg
-                // must be handed to the dedicated reaper thread (see
-                // [`BackendKind::reaps_children_via_signals`]) instead of
-                // accumulating as a zombie on every wallpaper change.
-                match spawned {
-                    Ok(child) if !self.kind().reaps_children_via_signals() => {
-                        crate::util::reap_child_async(child);
-                        Ok(())
-                    }
-                    result => result.map(|_| ()),
-                }
-            }
-        }
-    }
-
-    pub fn kind(&self) -> BackendKind {
-        match self {
-            Self::X11(_) => BackendKind::X11,
-            Self::Wayland(_) => BackendKind::Wayland,
-        }
-    }
-}
-
-impl WindowOps for Backend {
-    fn resize_window(&self, window: WindowId, rect: Rect) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).resize_window(window, rect)
-            }
-            Backend::Wayland(data) => data.backend.resize_window(window, rect),
-        }
-    }
-
-    fn set_border_width(&self, window: WindowId, width: i32) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).set_border_width(window, width)
-            }
-            Backend::Wayland(data) => data.backend.set_border_width(window, width),
-        }
-    }
-
-    fn raise_window_visual_only(&self, window: WindowId) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).raise_window_visual_only(window)
-            }
-            Backend::Wayland(data) => data.backend.raise_window_visual_only(window),
-        }
-    }
-
-    fn apply_z_order(&self, windows: &[WindowId]) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).apply_z_order(windows)
-            }
-            Backend::Wayland(data) => data.backend.apply_z_order(windows),
-        }
-    }
-
-    fn set_focus(&self, window: WindowId) {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).set_focus(window),
-            Backend::Wayland(data) => data.backend.set_focus(window),
-        }
-    }
-
-    fn map_window(&self, window: WindowId) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).map_window(window)
-            }
-            Backend::Wayland(data) => data.backend.map_window(window),
-        }
-    }
-
-    fn unmap_window(&self, window: WindowId) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).unmap_window(window)
-            }
-            Backend::Wayland(data) => data.backend.unmap_window(window),
-        }
-    }
-
-    fn window_exists(&self, window: WindowId) -> bool {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).window_exists(window)
-            }
-            Backend::Wayland(data) => data.backend.window_exists(window),
-        }
-    }
-
-    fn window_animation_active(&self, window: WindowId) -> bool {
-        match self {
-            Backend::X11(data) => data.x11_runtime.window_animations.contains_key(&window),
-            Backend::Wayland(data) => data.backend.window_animation_active(window),
-        }
-    }
-
-    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window)
-            }
-            Backend::Wayland(data) => data.backend.window_protocol(window),
-        }
-    }
-
-    fn flush(&self) {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).flush(),
-            Backend::Wayland(data) => data.backend.flush(),
-        }
-    }
-}
-
-impl PointerOps for Backend {
-    fn pointer_location(&self) -> Option<Point> {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).pointer_location()
-            }
-            Backend::Wayland(data) => data.backend.pointer_location(),
-        }
-    }
-
-    fn warp_pointer(&self, x: f64, y: f64) {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).warp_pointer(x, y)
-            }
-            Backend::Wayland(data) => data.backend.warp_pointer(x, y),
-        }
-    }
-}
-
-impl OutputOps for Backend {
-    fn connected_output_names(&self) -> Vec<String> {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).connected_output_names()
-            }
-            Backend::Wayland(data) => data.backend.connected_output_names(),
-        }
-    }
-
-    fn get_outputs(&self) -> Vec<BackendOutputInfo> {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
-            Backend::Wayland(data) => data.backend.get_outputs(),
         }
     }
 }

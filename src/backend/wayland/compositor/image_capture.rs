@@ -60,10 +60,11 @@ impl ImageCopyCaptureHandler for WaylandState {
         let size = capture_size_for_output(&output)?;
 
         let render_node = self.render_node;
-        let dma = {
-            let renderer = self.renderer_mut();
-            capture_dmabuf_constraints(renderer, render_node, Fourcc::Xrgb8888)
-        };
+        let dma = self
+            .with_renderer(|renderer| {
+                capture_dmabuf_constraints(Some(renderer), render_node, Fourcc::Xrgb8888)
+            })
+            .flatten();
 
         let shm_formats = vec![wl_shm::Format::Xrgb8888];
 

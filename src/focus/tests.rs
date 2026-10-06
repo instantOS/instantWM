@@ -377,11 +377,9 @@ fn projection_uses_focus_from_before_a_precommitted_model_change() {
 
 #[test]
 fn monitor_switch_records_the_global_window_transition() {
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
-    use crate::wm::Wm;
+    use crate::test_support::TestWm as Wm;
 
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let tag = TagMask::single(1).unwrap();
     let first = WindowId(1);
     let second = WindowId(2);
@@ -405,7 +403,7 @@ fn monitor_switch_records_the_global_window_transition() {
     }
     wm.core.model.monitors.set_selected(first_monitor);
 
-    assert!(super::select_monitor(&mut wm.ctx(), second_monitor));
+    assert!(super::select_monitor(&mut wm.test_ctx(), second_monitor));
     assert_eq!(
         wm.focus.take_pending_selection(),
         Some(crate::client::focus::SelectionTransition {
@@ -417,15 +415,13 @@ fn monitor_switch_records_the_global_window_transition() {
 
 #[test]
 fn missing_monitor_is_rejected_before_selection_changes() {
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
-    use crate::wm::Wm;
+    use crate::test_support::TestWm as Wm;
 
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let selected = wm.core.model.monitors.push(Monitor::default());
     let missing = MonitorId::from_raw(999);
 
-    assert!(!super::select_monitor(&mut wm.ctx(), missing));
+    assert!(!super::select_monitor(&mut wm.test_ctx(), missing));
     assert_eq!(wm.core.model.selected_monitor_id(), selected);
     assert_eq!(wm.focus.take_pending_selection(), None);
 }

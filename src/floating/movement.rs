@@ -131,17 +131,16 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
 #[cfg(test)]
 mod tests {
     use super::{center_window, key_move};
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::layouts::PresentationMode;
     use crate::test_support::MonitorBuilder;
+    use crate::test_support::TestWm as Wm;
     use crate::types::{
         Client, ClientMode, ClientPlacement, Direction, Monitor, Rect, TagMask, WindowId,
     };
-    use crate::wm::Wm;
 
     #[test]
     fn moving_literal_floating_presentation_maximize_restores_and_clears_protocol_state() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let work_rect = Rect::new(0, 30, 1200, 770);
         let monitor_id = wm.core.model.monitors.push(
             MonitorBuilder::new()
@@ -167,7 +166,7 @@ mod tests {
         client.save_floating_placement(saved, work_rect);
         assert!(wm.core.model.add_client(monitor_id, client));
 
-        assert!(key_move(&mut wm.ctx(), win, Direction::Right));
+        assert!(key_move(&mut wm.test_ctx(), win, Direction::Right));
 
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_normal_floating());
@@ -178,7 +177,7 @@ mod tests {
     /// Center a floating window on a monitor built by `configure` and report
     /// the resulting `y` against the work-area center it should have matched.
     fn centered_y(configure: impl FnOnce(&mut Monitor)) -> (i32, i32) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let mut monitor = MonitorBuilder::new()
             .rect(Rect::new(0, 0, 1200, 800), Rect::new(0, 0, 1200, 800))
             .bar(30, true)
@@ -204,7 +203,7 @@ mod tests {
         client.set_placement(ClientPlacement::Floating);
         assert!(wm.core.model.add_client(monitor_id, client));
 
-        center_window(&mut wm.ctx(), win);
+        center_window(&mut wm.test_ctx(), win);
 
         let centered = wm.core.model.client(win).unwrap().geo;
         assert_eq!(centered.w, 400);

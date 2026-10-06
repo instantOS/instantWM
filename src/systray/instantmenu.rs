@@ -20,9 +20,9 @@ use std::sync::{Arc, Mutex};
 
 use calloop::ping::Ping;
 
+use crate::contexts::CoreCtx;
 use crate::core_state::TrayMenuBackend;
 use crate::systray::{MenuAction, MenuEntry, MenuView};
-use crate::wm::Wm;
 
 const INSTANTMENU_BIN: &str = "instantmenu";
 /// Fixed context-menu width. `auto` would apply instantMENU's launcher
@@ -120,8 +120,8 @@ impl Drop for InstantMenuHost {
 /// (a selection may close the session or navigate a level), then spawns,
 /// replaces, or tears down the child to match the session state. Returns
 /// `true` when bar-visible content changed.
-pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
-    let backend = wm.core.config.systray.menu_backend;
+pub(crate) fn drive_instantmenu_menu(wm: &mut CoreCtx<'_>) -> bool {
+    let backend = wm.state_mut().config.systray.menu_backend;
     wm.bar
         .systray_host
         .instantmenu
@@ -152,6 +152,7 @@ pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
         }
     }
 
+    let bar_height = wm.config().bar_metrics().height;
     let host = &mut wm.bar.systray_host.instantmenu;
     let presentation = wm.bar.systray_host.menu.presentation();
     let wanted = if hosting { presentation.as_ref() } else { None };
@@ -173,12 +174,7 @@ pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
                     host.presented = None;
                     close_session(wm);
                     changed = true;
-                } else if spawn_menu(
-                    host,
-                    presentation.session_id,
-                    lines,
-                    wm.core.config.bar_metrics().height,
-                ) {
+                } else if spawn_menu(host, presentation.session_id, lines, bar_height) {
                     host.presented = Some(fingerprint);
                     changed = true;
                 } else {
@@ -200,7 +196,7 @@ pub(crate) fn drive_instantmenu_menu(wm: &mut Wm) -> bool {
 /// This decouples selection from fragile label equality and handles duplicate
 /// labels. A failing parse falls back to legacy label matching for backward
 /// compatibility.
-fn handle_selection(wm: &mut Wm, session_id: u64, label: &str, hosting: bool) -> bool {
+fn handle_selection(wm: &mut CoreCtx<'_>, session_id: u64, label: &str, hosting: bool) -> bool {
     let Some(presentation) = wm.bar.systray_host.menu.presentation() else {
         return false;
     };
@@ -244,7 +240,7 @@ fn handle_selection(wm: &mut Wm, session_id: u64, label: &str, hosting: bool) ->
     false
 }
 
-fn session_is_open(wm: &Wm, session_id: u64) -> bool {
+fn session_is_open(wm: &CoreCtx<'_>, session_id: u64) -> bool {
     wm.bar
         .systray_host
         .menu
@@ -254,7 +250,7 @@ fn session_is_open(wm: &Wm, session_id: u64) -> bool {
 
 /// Close the open session on the main thread and tell the worker, mirroring
 /// [`crate::systray::close_menu`].
-fn close_session(wm: &mut Wm) {
+fn close_session(wm: &mut CoreCtx<'_>) {
     let Some(session_id) = wm.bar.systray_host.menu.close() else {
         return;
     };

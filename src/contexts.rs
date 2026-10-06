@@ -14,7 +14,9 @@
 //!   `backend::startup` wiring.
 //! * A missing Wayland implementation is stated as a documented no-op arm,
 //!   never as a silent early return in shared code.
+use crate::backend::PointerOps;
 
+use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
@@ -48,6 +50,45 @@ impl<'a> CoreCtx<'a> {
             bar,
             focus,
         }
+    }
+
+    /// Drain StatusNotifier worker events. Returns `true` when tray content
+    /// changed and the bar must be redrawn.
+    pub fn poll_systray(&mut self) -> bool {
+        self.configure_tray_icons();
+        let changed = self.bar.systray_host.poll();
+        if changed {
+            self.bar.mark_dirty();
+        }
+        changed
+    }
+
+    pub(crate) fn configure_tray_icons(&mut self) {
+        let config = &self.state.config.systray;
+        // Monitor bar heights already include output scaling. One source at
+        // the largest required resolution can serve every bar without upscaling.
+        let height = self
+            .state
+            .model
+            .monitors_iter_all()
+            .map(|monitor| {
+                let padding = crate::systray::visual_padding(monitor.bar_height, config.spacing);
+                (monitor.bar_height - 2 * padding).max(1) as u32
+            })
+            .max()
+            .unwrap_or(24);
+        if let Some(runtime) = self.bar.systray_host.runtime.as_mut() {
+            runtime.configure_icons(crate::systray::status_notifier::IconSettings {
+                theme: config.icon_theme.clone(),
+                height,
+            });
+        }
+    }
+
+    pub fn start_status_sources(&mut self) {
+        self.bar
+            .status_sources
+            .start(self.state.config.status_command.as_deref());
     }
 
     pub fn model(&self) -> &WmModel {
@@ -247,7 +288,7 @@ impl<'a> WmCtxX11<'a> {
 
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
-    pub wayland: &'a crate::backend::wayland::WaylandBackend,
+    pub wayland: crate::backend::wayland::WaylandBackend<'a>,
     /// Bar rendering resources. Like [`WmCtxX11`]'s runtime state, this is a
     /// backend resource rather than backend-neutral core state; carrying it
     /// here lets bar rendering borrow core state and the renderer at once
@@ -259,7 +300,7 @@ impl<'a> WmCtxWayland<'a> {
     pub fn reborrow(&mut self) -> WmCtxWayland<'_> {
         WmCtxWayland {
             core: self.core.reborrow(),
-            wayland: self.wayland,
+            wayland: self.wayland.reborrow(),
             bar_renderer: self.bar_renderer,
         }
     }
@@ -271,6 +312,70 @@ pub enum WmCtx<'a> {
 }
 
 impl<'a> WmCtx<'a> {
+    /// Runtime animation ownership is distinct from native window operations.
+    /// Both variants explicitly consult their complete animation bookkeeping.
+    pub fn window_animation_active(&self, window: WindowId) -> bool {
+        match self {
+            Self::X11(ctx) => ctx.x11_runtime.window_animations.contains_key(&window),
+            Self::Wayland(ctx) => ctx
+                .wayland
+                .with_state_ref(|state| state.window_has_active_animation(window)),
+        }
+    }
+
+    pub fn window_protocol(&self, window: WindowId) -> crate::backend::WindowProtocol {
+        crate::backend::WindowOps::window_protocol(self, window)
+    }
+
+    pub fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
+        self.output_backend().get_outputs()
+    }
+
+    pub fn connected_output_names(&self) -> Vec<String> {
+        self.output_backend().connected_output_names()
+    }
+
+    pub fn get_input_devices(&self) -> Vec<String> {
+        match self {
+            Self::X11(_) => Vec::new(),
+            Self::Wayland(ctx) => ctx.wayland.get_input_devices(),
+        }
+    }
+
+    pub fn warp_pointer(&mut self, x: f64, y: f64) {
+        crate::backend::PointerOps::warp_pointer(self, x, y);
+    }
+
+    pub fn list_display_modes(&self, display_name: &str) -> Vec<crate::ipc_types::MonitorMode> {
+        match self {
+            Self::Wayland(ctx) => {
+                let mode_strings = ctx
+                    .wayland
+                    .with_state_ref(|state| state.list_display_modes(display_name));
+                mode_strings.iter().filter_map(|s| s.parse().ok()).collect()
+            }
+            Self::X11(ctx) => {
+                use x11rb::connection::Connection;
+
+                let root = ctx.x11.conn.setup().roots[ctx.x11.screen_num].root;
+                crate::backend::x11::randr::get_output_modes(ctx.x11.conn, root, display_name)
+                    .into_iter()
+                    .filter_map(|mode| {
+                        Some(crate::ipc_types::MonitorMode {
+                            width: u32::try_from(mode.width).ok()?,
+                            height: u32::try_from(mode.height).ok()?,
+                            refresh_mhz: u32::try_from(mode.refresh_millihertz).ok()?,
+                        })
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
+        self.backend_kind().set_wallpaper(path)
+    }
+
     // Backend-agnostic core accessors - use these for common operations
 
     /// Access the shared core context immutably.
@@ -286,20 +391,6 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(ctx) => &mut ctx.core,
             WmCtx::Wayland(ctx) => &mut ctx.core,
-        }
-    }
-
-    pub fn window_backend(&self) -> &dyn crate::backend::WindowOps {
-        match self {
-            WmCtx::X11(ctx) => &ctx.x11,
-            WmCtx::Wayland(ctx) => ctx.wayland,
-        }
-    }
-
-    pub fn pointer_backend(&self) -> &dyn crate::backend::PointerOps {
-        match self {
-            WmCtx::X11(ctx) => &ctx.x11,
-            WmCtx::Wayland(ctx) => ctx.wayland,
         }
     }
 
@@ -357,7 +448,7 @@ impl<'a> WmCtx<'a> {
     pub fn output_backend(&self) -> &dyn crate::backend::OutputOps {
         match self {
             WmCtx::X11(ctx) => &ctx.x11,
-            WmCtx::Wayland(ctx) => ctx.wayland,
+            WmCtx::Wayland(ctx) => &ctx.wayland,
         }
     }
 
@@ -469,7 +560,7 @@ impl<'a> WmCtx<'a> {
 
     /// Request backend-specific space/compositor sync after authoritative WM
     /// geometry changes.
-    pub fn request_space_sync(&self) {
+    pub fn request_space_sync(&mut self) {
         if let WmCtx::Wayland(ctx) = self {
             ctx.wayland.request_space_sync();
         }
@@ -499,14 +590,14 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(_) => {
                 if apply_mode == GeometryApplyMode::VisualOnly {
-                    self.window_backend().resize_window(win, rect);
+                    self.resize_window(win, rect);
                     return;
                 }
 
                 // ConfigureWindow is authoritative for managed clients. Size
                 // hints have already been applied by shared geometry policy,
                 // so reading geometry back here only stalls the event loop.
-                self.window_backend().resize_window(win, rect);
+                self.resize_window(win, rect);
                 let WmCtx::X11(x11) = self else {
                     unreachable!()
                 };
@@ -518,9 +609,9 @@ impl<'a> WmCtx<'a> {
                 if apply_mode == GeometryApplyMode::Logical {
                     self.core_mut().model_mut().sync_client_geometry(win, rect);
                 }
-                self.window_backend().resize_window(win, rect);
+                self.resize_window(win, rect);
                 if apply_mode == GeometryApplyMode::VisualOnly {
-                    self.window_backend().flush();
+                    self.flush();
                 }
             }
         }
@@ -535,7 +626,7 @@ impl<'a> WmCtx<'a> {
         if let Some(client) = self.core_mut().model_mut().client_mut(win) {
             client.border_width = width;
         }
-        self.window_backend().set_border_width(win, width);
+        self.set_border_width(win, width);
     }
 
     /// Update root EWMH workspace/tag properties. X11 only; no-op on Wayland.
@@ -582,7 +673,7 @@ impl<'a> WmCtx<'a> {
                 win,
                 fullscreen,
             ),
-            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(win),
+            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(ctx.core.state(), win),
         }
     }
 
@@ -596,7 +687,7 @@ impl<'a> WmCtx<'a> {
                 win,
                 maximized,
             ),
-            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(win),
+            WmCtx::Wayland(ctx) => ctx.wayland.sync_window_presentation(ctx.core.state(), win),
         }
     }
 
@@ -606,7 +697,6 @@ impl<'a> WmCtx<'a> {
     /// the next layout pass. Wayland needs no extra work: geometry flows
     /// through `move_resize` and z-order through the arrange pipeline.
     pub fn apply_entered_fullscreen_effects(&mut self, win: WindowId, monitor_rect: Rect) {
-        use crate::backend::WindowOps;
         match self {
             WmCtx::X11(ctx) => {
                 crate::backend::x11::fullscreen::remove_border(&ctx.x11, win);
@@ -699,7 +789,7 @@ impl<'a> WmCtx<'a> {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
             let mon = self.core().model().expect_selected_monitor();
-            self.pointer_backend().warp_to_point(mon.center());
+            self.warp_to_point(mon.center());
             return;
         }
 
@@ -707,7 +797,7 @@ impl<'a> WmCtx<'a> {
             return;
         };
 
-        let Some(ptr) = self.pointer_backend().pointer_location() else {
+        let Some(ptr) = self.pointer_location() else {
             return;
         };
 
@@ -724,7 +814,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        self.pointer_backend().warp_to_point(c.geo.center());
+        self.warp_to_point(c.geo.center());
     }
 
     /// Warp unconditionally to the center of a client's current geometry.
@@ -736,7 +826,7 @@ impl<'a> WmCtx<'a> {
         let Some(rect) = self.core().client_geo(win) else {
             return;
         };
-        self.pointer_backend().warp_to_point(rect.center());
+        self.warp_to_point(rect.center());
     }
 
     /// Take any in-flight geometry animation for `win`, returning its
@@ -777,7 +867,10 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(x11) => x11
                 .x11_runtime
                 .begin_window_animation(&x11.x11, win, from, to, duration),
-            WmCtx::Wayland(wl) => wl.wayland.begin_window_animation(win, from, to, duration),
+            WmCtx::Wayland(wl) => {
+                wl.wayland
+                    .begin_window_animation(wl.core.state(), win, from, to, duration)
+            }
         }
     }
 
@@ -798,12 +891,11 @@ impl<'a> WmCtx<'a> {
     /// otherwise it flashes at its initial buffer size. X11 maps windows
     /// eagerly and needs no staging step.
     pub fn snap_deferred_spawn_geometry(&mut self, win: WindowId, rect: Rect) {
-        use crate::backend::WindowOps;
         match self {
             WmCtx::X11(_) => {}
             WmCtx::Wayland(wl) => {
-                wl.wayland.resize_window(win, rect);
-                wl.wayland.flush();
+                crate::backend::WindowOps::resize_window(wl, win, rect);
+                crate::backend::WindowOps::flush(wl);
             }
         }
     }
@@ -879,14 +971,14 @@ impl<'a> WmCtx<'a> {
     /// when activation arrives) and points XWayland clients at the
     /// compositor-owned display.
     pub fn prepare_launch_environment(
-        &self,
+        &mut self,
         command: &mut std::process::Command,
         context: crate::client::LaunchContext,
     ) {
         match self {
             WmCtx::X11(_) => {}
             WmCtx::Wayland(wl) => {
-                let selected_window = self.core().model().selected_win();
+                let selected_window = wl.core.model().selected_win();
                 wl.wayland
                     .prepare_launch_environment(command, selected_window, context);
             }
@@ -906,9 +998,8 @@ impl<'a> WmCtx<'a> {
                 );
             }
             WmCtx::Wayland(ctx) => {
-                if !ctx.wayland.request_bar_redraw() {
-                    ctx.core.bar.mark_dirty();
-                }
+                ctx.core.bar.mark_dirty();
+                ctx.wayland.request_render();
             }
         }
     }
@@ -928,9 +1019,8 @@ impl<'a> WmCtx<'a> {
                 ctx.core.bar.mark_dirty();
             }
             WmCtx::Wayland(ctx) => {
-                if !ctx.wayland.request_bar_redraw() {
-                    ctx.core.bar.mark_dirty();
-                }
+                ctx.core.bar.mark_dirty();
+                ctx.wayland.request_render();
             }
         }
     }
@@ -1006,9 +1096,8 @@ impl<'a> WmCtx<'a> {
                 ctx_x11.core.bar.mark_dirty();
             }
             WmCtx::Wayland(ctx_wayland) => {
-                if !ctx_wayland.wayland.request_bar_redraw() {
-                    ctx_wayland.core.bar.mark_dirty();
-                }
+                ctx_wayland.core.bar.mark_dirty();
+                ctx_wayland.wayland.request_render();
             }
         }
     }
@@ -1085,18 +1174,92 @@ impl<'a> WmCtx<'a> {
     }
 }
 
+impl crate::backend::PointerOps for WmCtx<'_> {
+    fn pointer_location(&self) -> Option<crate::types::Point> {
+        match self {
+            Self::X11(ctx) => ctx.x11.pointer_location(),
+            Self::Wayland(ctx) => ctx.wayland.pointer_location(),
+        }
+    }
+    fn warp_pointer(&mut self, x: f64, y: f64) {
+        match self {
+            Self::X11(ctx) => ctx.x11.warp_pointer(x, y),
+            Self::Wayland(ctx) => ctx.wayland.warp_pointer(x, y),
+        }
+    }
+}
+
+// Native window effects dispatch through the complete borrowed context on both
+// backends. Runtime queries belong to explicit context methods, not defaults
+// on a narrower connection capability.
+impl crate::backend::WindowOps for WmCtx<'_> {
+    fn resize_window(&mut self, window: WindowId, rect: Rect) {
+        match self {
+            Self::X11(ctx) => ctx.x11.resize_window(window, rect),
+            Self::Wayland(ctx) => ctx.resize_window(window, rect),
+        }
+    }
+    fn set_border_width(&mut self, window: WindowId, width: i32) {
+        match self {
+            Self::X11(ctx) => ctx.x11.set_border_width(window, width),
+            Self::Wayland(ctx) => ctx.set_border_width(window, width),
+        }
+    }
+    fn raise_window_visual_only(&mut self, window: WindowId) {
+        match self {
+            Self::X11(ctx) => ctx.x11.raise_window_visual_only(window),
+            Self::Wayland(ctx) => ctx.raise_window_visual_only(window),
+        }
+    }
+    fn apply_z_order(&mut self, windows: &[WindowId]) {
+        match self {
+            Self::X11(ctx) => ctx.x11.apply_z_order(windows),
+            Self::Wayland(ctx) => ctx.apply_z_order(windows),
+        }
+    }
+    fn map_window(&mut self, window: WindowId) {
+        match self {
+            Self::X11(ctx) => ctx.x11.map_window(window),
+            Self::Wayland(ctx) => ctx.map_window(window),
+        }
+    }
+    fn unmap_window(&mut self, window: WindowId) {
+        match self {
+            Self::X11(ctx) => ctx.x11.unmap_window(window),
+            Self::Wayland(ctx) => ctx.unmap_window(window),
+        }
+    }
+    fn window_exists(&self, window: WindowId) -> bool {
+        match self {
+            Self::X11(ctx) => ctx.x11.window_exists(window),
+            Self::Wayland(ctx) => ctx.window_exists(window),
+        }
+    }
+    fn window_protocol(&self, window: WindowId) -> crate::backend::WindowProtocol {
+        match self {
+            Self::X11(ctx) => ctx.x11.window_protocol(window),
+            Self::Wayland(ctx) => ctx.window_protocol(window),
+        }
+    }
+    fn flush(&mut self) {
+        match self {
+            Self::X11(ctx) => ctx.x11.flush(),
+            Self::Wayland(ctx) => ctx.flush(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod mode_transition_tests {
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::core_state::{ActiveWmMode, KeyboardTreePlacement};
     use crate::layouts::tree::PlacementTarget;
     use crate::types::{MonitorId, Point, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     #[test]
     fn leaving_placement_clears_its_preview_through_the_mode_transition() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let placement = KeyboardTreePlacement::new(
             WindowId(1),
             MonitorId::default(),
@@ -1113,7 +1276,7 @@ mod mode_transition_tests {
         wm.core.behavior.current_mode = ActiveWmMode::TreePlacement(placement);
         wm.core.interaction.layout_preview = Some(Rect::new(0, 0, 100, 100));
 
-        wm.ctx()
+        wm.test_ctx()
             .set_current_mode(ActiveWmMode::Named("resize".to_string()));
 
         assert_eq!(

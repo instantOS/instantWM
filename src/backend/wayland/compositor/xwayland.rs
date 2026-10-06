@@ -197,7 +197,9 @@ impl XwmHandler for WaylandState {
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             sync_surface_metadata(self, win, &window);
             apply_surface_policy(self, win, &window);
-            self.map_window_in_space(win);
+            let wm_handle = self.wm_handle();
+            let wm_view = wm_handle.borrow();
+            self.map_window_in_space(&wm_view.core, win);
             self.request_window_focus(win);
             return;
         }

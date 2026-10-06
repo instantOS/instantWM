@@ -893,9 +893,9 @@ impl PendingWork {
 #[cfg(test)]
 mod tag_count_reload_tests {
     use super::*;
-    use crate::backend::{Backend, BackendKind, wayland::WaylandBackend};
+    use crate::backend::BackendKind;
     use crate::config::{config_toml::UserConfig, resolve_config};
-    use crate::wm::Wm;
+    use crate::wm::WaylandWm as Wm;
 
     fn config_with_count(count: usize) -> EffectiveConfig {
         let mut user = UserConfig::default();
@@ -905,7 +905,7 @@ mod tag_count_reload_tests {
 
     #[test]
     fn reducing_tag_count_rejects_a_window_on_a_removed_tag_without_mutation() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.apply_config(config_with_count(5)).unwrap();
         let id = wm.core.model.monitors.push(Monitor::new_with_values());
         let win = WindowId(42);
@@ -929,7 +929,7 @@ mod tag_count_reload_tests {
 
     #[test]
     fn reducing_tag_count_rejects_a_scratchpad_with_a_removed_restore_tag() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.apply_config(config_with_count(5)).unwrap();
         let id = wm.core.model.monitors.push(Monitor::new_with_values());
         let win = WindowId(43);
@@ -956,7 +956,7 @@ mod tag_count_reload_tests {
 
     #[test]
     fn reducing_tag_count_keeps_a_scratchpad_with_valid_restore_tags() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.apply_config(config_with_count(5)).unwrap();
         let id = wm.core.model.monitors.push(Monitor::new_with_values());
         let win = WindowId(44);
@@ -981,7 +981,7 @@ mod tag_count_reload_tests {
 
     #[test]
     fn reducing_tag_count_rejects_an_active_removed_view() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.apply_config(config_with_count(5)).unwrap();
         let id = wm.core.model.monitors.push(Monitor::new_with_values());
         wm.core
@@ -997,7 +997,7 @@ mod tag_count_reload_tests {
 
     #[test]
     fn reducing_tag_count_prunes_inactive_view_history() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.apply_config(config_with_count(5)).unwrap();
         let id = wm.core.model.monitors.push(Monitor::new_with_values());
         let monitor = wm.core.model.monitor_mut(id).unwrap();

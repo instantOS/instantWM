@@ -120,9 +120,7 @@ impl CompositorHandler for WaylandState {
                     && let Some(client) = surface.client()
                 {
                     let res = state.loop_handle.insert_source(source, move |_, _, data| {
-                        let dh = data.display_handle.clone();
-                        data.client_compositor_state(&client)
-                            .blocker_cleared(data, &dh);
+                        data.defer_commit_client(client.clone());
                         Ok(())
                     });
                     if res.is_ok() {
@@ -161,7 +159,9 @@ impl CompositorHandler for WaylandState {
                     .and_then(|credentials| u32::try_from(credentials.pid).ok());
                 let systray_menu = self.take_expected_systray_menu_toplevel(client_pid);
                 if let Some(request) = systray_menu {
-                    match self.setup_native_systray_menu(toplevel, request) {
+                    let wm_handle = self.wm_handle();
+                    let wm_view = wm_handle.borrow();
+                    match self.setup_native_systray_menu(&wm_view.core, toplevel, request) {
                         Ok(_) => {
                             service_surface_commit(self, commit_kind, None, None);
                             return;
@@ -421,8 +421,8 @@ impl DmabufHandler for WaylandState {
         }
 
         let imported = self
-            .renderer_mut()
-            .and_then(|renderer| renderer.import_dmabuf(&dmabuf, None).ok())
+            .with_renderer(|renderer| renderer.import_dmabuf(&dmabuf, None).ok())
+            .flatten()
             .is_some();
         if imported {
             let _ = notifier.successful::<Self>();
@@ -800,7 +800,7 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
         window: crate::types::WindowId,
     ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
     {
-        self.foreign_toplevel_snapshot(window)
+        self.foreign_toplevel_snapshot(&self.protocol_core(), window)
     }
 
     fn foreign_toplevel_request(
@@ -864,8 +864,7 @@ mod tests {
 
     #[test]
     fn remove_constraint_applies_matching_cursor_position_hint() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let pointer = state.seat.get_pointer().unwrap();
 
         state.runtime.pointer_location = Point::from((500.0, 500.0));

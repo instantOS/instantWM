@@ -12,7 +12,7 @@ use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::Keysym;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 use smithay::utils::SERIAL_COUNTER;
 
@@ -134,17 +134,13 @@ pub fn handle_keyboard<B: InputBackend>(
     let suppression = shortcut_suppression(state, keyboard_handle);
     let key_code = event.key_code();
     let key_state = event.state();
-    // Borrow-cycle refactoring note: the filter receives &mut WaylandState,
-    // then handle_keysym obtains backend access through wm.ctx(). That backend
-    // currently reaches the same state through a raw pointer (see WaylandBackend).
-    // Smithay 73f2570's KeyboardHandle::input_from_source drops its internal
-    // keyboard lock BEFORE calling this filter; a keyboard-lock deadlock is
-    // not the reason for retaining the bridge. Keep action execution before
-    // forwarding, because actions can change focus and determine interception.
-    // Smithay offers input_intercept/input_forward for separating these phases,
-    // but input_intercept currently discards key_input's is_transition flag,
-    // unlike input_from_source (important for keys held by multiple sources).
-    // A replacement must preserve that behavior as well as intercepted releases.
+    // Smithay 73f2570's input_from_source drops the keyboard lock before
+    // invoking this filter. Borrow its `data` directly for shared WM actions;
+    // no pointer bridge or second compositor borrow is needed. Run actions
+    // before forwarding, since they can change focus and interception.
+    // Do not move this work into SeatHandler::focus_changed: that callback
+    // runs with the keyboard lock held. input_intercept/input_forward also
+    // loses input_from_source's is_transition handling for multiple sources.
     keyboard_handle.input(
         state,
         key_code,
@@ -217,7 +213,7 @@ pub fn handle_keyboard<B: InputBackend>(
             }
             if suppression.is_none() {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
-                let ctx = wm.ctx();
+                let ctx = wm.wayland_ctx(data);
                 let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
                 };

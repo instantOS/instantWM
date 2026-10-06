@@ -28,7 +28,7 @@ use crate::backend::wayland::input::touch::{
 };
 use crate::config::config_toml::InputConfig;
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 use std::collections::HashMap;
 
 /// Compositor-side work caused directly by a libinput event.
@@ -488,15 +488,15 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TabletToolAxis { event } => {
-            handle_tablet_tool_axis(state, &event, layout);
+            handle_tablet_tool_axis(state, &wm.core, &event, layout);
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::TabletToolProximity { event } => {
-            handle_tablet_tool_proximity(state, &event, layout);
+            handle_tablet_tool_proximity(state, &wm.core, &event, layout);
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::TabletToolTip { event } => {
-            handle_tablet_tool_tip(state, &event);
+            handle_tablet_tool_tip(state, &wm.core, &event);
             LibinputEventOutcome::Activity
         }
         InputEvent::TabletToolButton { event } => {
@@ -509,6 +509,7 @@ pub fn dispatch_libinput_event(
 
 fn handle_tablet_tool_axis(
     state: &mut WaylandState,
+    core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolAxisEvent,
     layout: crate::types::Rect,
 ) {
@@ -522,7 +523,7 @@ fn handle_tablet_tool_axis(
     }
 
     let snapshot = state.pointer_hit_snapshot();
-    let hit = state.contents_under_pointer_in_snapshot(pointer_location, &snapshot);
+    let hit = state.contents_under_pointer_in_snapshot(core_view, pointer_location, &snapshot);
     let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
 
     let tool = tablet_seat.get_tool(&event.tool());
@@ -558,6 +559,7 @@ fn handle_tablet_tool_axis(
 
 fn handle_tablet_tool_proximity(
     state: &mut WaylandState,
+    core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolProximityEvent,
     layout: crate::types::Rect,
 ) {
@@ -572,7 +574,7 @@ fn handle_tablet_tool_proximity(
 
     let tool_desc = event.tool();
     let snapshot = state.pointer_hit_snapshot();
-    let hit = state.contents_under_pointer_in_snapshot(pointer_location, &snapshot);
+    let hit = state.contents_under_pointer_in_snapshot(core_view, pointer_location, &snapshot);
     let focus = hit.surface.map(|(s, loc)| (s, loc.to_f64()));
 
     let tablet = tablet_seat.get_tablet(&TabletDescriptor::from(&event.device()));
@@ -624,6 +626,7 @@ fn handle_tablet_tool_proximity(
 
 fn handle_tablet_tool_tip(
     state: &mut WaylandState,
+    core_view: &crate::core_state::CoreState,
     event: &<LibinputInputBackend as smithay::backend::input::InputBackend>::TabletToolTipEvent,
 ) {
     let tablet_seat = state.seat.tablet_seat();
@@ -644,7 +647,7 @@ fn handle_tablet_tool_tip(
 
                 let loc = state.runtime.pointer_location;
                 let snapshot = state.pointer_hit_snapshot();
-                let hit = state.contents_under_pointer_in_snapshot(loc, &snapshot);
+                let hit = state.contents_under_pointer_in_snapshot(core_view, loc, &snapshot);
                 if let Some(win) = hit.hovered_win {
                     state.request_window_focus(win);
                 }
@@ -695,8 +698,7 @@ mod tests {
 
     #[test]
     fn lid_state_aggregates_devices_and_only_reprojects_on_a_transition() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         state.runtime.lid_switches.insert("first".into(), true);
         state.runtime.lid_switches.insert("second".into(), false);
         super::update_lid_state(&mut state);
@@ -758,7 +760,7 @@ mod tests {
 
     #[test]
     fn tablet_seat_initializes_and_counts_tablets() {
-        let (_event_loop, state) = crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, state) = crate::test_support::new_compositor();
         let tablet_seat = state.seat.tablet_seat();
         assert_eq!(tablet_seat.count_tablets(), 0);
     }

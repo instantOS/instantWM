@@ -1,5 +1,4 @@
-use crate::backend::Backend;
-use crate::wm::Wm;
+use crate::wm::X11Wm as Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::randr::{ConnectionExt as RandrConnectionExt, NotifyMask};
 use x11rb::protocol::xinput::{
@@ -24,9 +23,7 @@ pub fn check_other_wm(conn: &RustConnection, root: Window) {
 pub fn setup(_wm: &mut Wm) {}
 
 pub fn setup_root(wm: &mut Wm) {
-    let Backend::X11(data) = &mut wm.backend else {
-        return;
-    };
+    let data = &mut wm.backend;
 
     let root = data.x11_runtime.root;
     let netatom = data.x11_runtime.netatom;
@@ -150,7 +147,7 @@ pub fn setup_root(wm: &mut Wm) {
     // Now set wmcheckwin with mutable access
     data.x11_runtime.wm_check_win = wmcheckwin;
 
-    let mut ctx = wm.ctx();
+    let mut ctx = wm.x11_ctx();
     crate::monitor::refresh_monitor_layout(&mut ctx);
     ctx.update_ewmh_desktop_props();
 

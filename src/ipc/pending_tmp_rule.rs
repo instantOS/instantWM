@@ -9,7 +9,6 @@
 
 use crate::ipc_types::{PendingTmpRuleCmd, PendingTmpRuleInfo, Response};
 use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
-use crate::wm::Wm;
 use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
@@ -21,7 +20,10 @@ static NEXT_PENDING_TMP_RULE_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
 
 /// Dispatch a `PendingTmpRuleCmd` IPC request.
-pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response {
+pub fn handle_pending_tmp_rule(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    cmd: PendingTmpRuleCmd,
+) -> Response {
     match cmd {
         PendingTmpRuleCmd::Add {
             class,
@@ -75,7 +77,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
             // MAX_TAGS: a tag beyond num_tags is masked out to nothing at apply
             // time and the window silently lands on the monitor's current tags
             // — while the one-shot rule is still consumed.
-            let num_tags = wm.ctx().core().model().tags.num_tags;
+            let num_tags = ctx.core().model().tags.num_tags;
             if let Some(n) = tag
                 && (n == 0 || n as usize > num_tags)
             {
@@ -87,8 +89,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
             // (`apply_monitor_rule` can only target existing monitors).
             if let Some(selector) = &on_monitor
                 && !matches!(selector, MonitorSelector::Any)
-                && crate::monitor::resolve_monitor_selector(wm.ctx().core().model(), selector)
-                    .is_none()
+                && crate::monitor::resolve_monitor_selector(ctx.core().model(), selector).is_none()
             {
                 return Response::err(format!(
                     "on-monitor {selector} does not match any connected monitor"
@@ -121,8 +122,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
                 deadline: Instant::now() + Duration::from_millis(timeout_ms),
             };
 
-            wm.ctx()
-                .with_behavior_mut(|behavior| behavior.pending_tmp_rules.push(entry));
+            ctx.with_behavior_mut(|behavior| behavior.pending_tmp_rules.push(entry));
 
             Response::PendingTmpRuleAdded { id, timeout_ms }
         }
@@ -131,11 +131,10 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
             // Drop expired entries so `list` never reports already-inert rules
             // (clamped to 0ms remaining). They would otherwise linger until the
             // next window spawn sweeps them on the apply path.
-            wm.ctx().with_behavior_mut(|behavior| {
+            ctx.with_behavior_mut(|behavior| {
                 behavior.pending_tmp_rules.retain(|p| p.deadline > now);
             });
-            let entries: Vec<PendingTmpRuleInfo> = wm
-                .ctx()
+            let entries: Vec<PendingTmpRuleInfo> = ctx
                 .core()
                 .behavior()
                 .pending_tmp_rules
@@ -169,7 +168,7 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
         PendingTmpRuleCmd::Cancel { id } => {
             let now = Instant::now();
             let mut cancelled = false;
-            wm.ctx().with_behavior_mut(|behavior| {
+            ctx.with_behavior_mut(|behavior| {
                 // Sweep expired entries first so cancelling an id that already
                 // expired reports "not found" rather than a spurious success.
                 behavior.pending_tmp_rules.retain(|p| p.deadline > now);
@@ -189,15 +188,14 @@ pub fn handle_pending_tmp_rule(wm: &mut Wm, cmd: PendingTmpRuleCmd) -> Response 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::MonitorBuilder;
     use crate::types::{MonitorSelector, PendingTmpRule, Rule, TagMask};
-    use crate::wm::Wm;
 
     /// Build a Wm with `num_tags` tags and a single monitor reporting `num=0`.
     fn wm_with(num_tags: usize) -> Wm {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = num_tags;
         wm.core
             .model
@@ -226,8 +224,8 @@ mod tests {
     }
 
     /// Push an expired entry directly, bypassing Add validation.
-    fn inject_expired(wm: &mut Wm, id: u64) {
-        wm.ctx().with_behavior_mut(|b| {
+    fn inject_expired(ctx: &mut crate::contexts::WmCtx<'_>, id: u64) {
+        ctx.with_behavior_mut(|b| {
             b.pending_tmp_rules.push(PendingTmpRule {
                 id,
                 rule: Rule {
@@ -248,7 +246,7 @@ mod tests {
     #[test]
     fn bare_add_without_matcher_or_effect_is_rejected() {
         let mut wm = wm_with(9);
-        let resp = handle_pending_tmp_rule(&mut wm, add(None, None, None));
+        let resp = wm.with_ctx(|wm| handle_pending_tmp_rule(wm, add(None, None, None)));
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -257,10 +255,10 @@ mod tests {
         let mut wm = wm_with(3);
         // 3 is the last valid tag with num_tags=3; 4 exceeds it.
         assert!(matches!(
-            handle_pending_tmp_rule(&mut wm, add(Some("x"), Some(3), None)),
+            wm.with_ctx(|wm| handle_pending_tmp_rule(wm, add(Some("x"), Some(3), None))),
             Response::PendingTmpRuleAdded { .. }
         ));
-        let resp = handle_pending_tmp_rule(&mut wm, add(Some("x"), Some(4), None));
+        let resp = wm.with_ctx(|wm| handle_pending_tmp_rule(wm, add(Some("x"), Some(4), None)));
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -268,16 +266,15 @@ mod tests {
     fn on_monitor_with_no_matching_monitor_is_rejected() {
         let mut wm = wm_with(9); // only monitor num 0 exists
         assert!(matches!(
-            handle_pending_tmp_rule(
-                &mut wm,
+            wm.with_ctx(|wm| handle_pending_tmp_rule(
+                wm,
                 add(Some("x"), None, Some(MonitorSelector::Index(0)))
-            ),
+            )),
             Response::PendingTmpRuleAdded { .. }
         ));
-        let resp = handle_pending_tmp_rule(
-            &mut wm,
-            add(Some("x"), None, Some(MonitorSelector::Index(1))),
-        );
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(wm, add(Some("x"), None, Some(MonitorSelector::Index(1))))
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -289,49 +286,53 @@ mod tests {
             .monitors
             .push(MonitorBuilder::new().named("DP-1").build());
         assert!(matches!(
-            handle_pending_tmp_rule(
-                &mut wm,
+            wm.with_ctx(|wm| handle_pending_tmp_rule(
+                wm,
                 add(
                     Some("x"),
                     None,
                     Some(MonitorSelector::Name("DP-1".to_owned()))
                 )
-            ),
+            )),
             Response::PendingTmpRuleAdded { .. }
         ));
-        let resp = handle_pending_tmp_rule(
-            &mut wm,
-            add(
-                Some("x"),
-                None,
-                Some(MonitorSelector::Name("HDMI-9".to_owned())),
-            ),
-        );
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(
+                wm,
+                add(
+                    Some("x"),
+                    None,
+                    Some(MonitorSelector::Name("HDMI-9".to_owned())),
+                ),
+            )
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
     #[test]
     fn geometry_add_is_valid_and_counts_as_effect() {
         let mut wm = wm_with(9);
-        let resp = handle_pending_tmp_rule(
-            &mut wm,
-            PendingTmpRuleCmd::Add {
-                class: Some("pin-me".to_owned()),
-                instance: None,
-                title: None,
-                is_floating: None,
-                tag: None,
-                on_monitor: None,
-                geometry: Some(crate::types::RuleGeometry {
-                    x: 100,
-                    y: 50,
-                    width: 800,
-                    height: 600,
-                }),
-                borderless: false,
-                timeout_ms: 5_000,
-            },
-        );
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(
+                wm,
+                PendingTmpRuleCmd::Add {
+                    class: Some("pin-me".to_owned()),
+                    instance: None,
+                    title: None,
+                    is_floating: None,
+                    tag: None,
+                    on_monitor: None,
+                    geometry: Some(crate::types::RuleGeometry {
+                        x: 100,
+                        y: 50,
+                        width: 800,
+                        height: 600,
+                    }),
+                    borderless: false,
+                    timeout_ms: 5_000,
+                },
+            )
+        });
         assert!(
             matches!(resp, Response::PendingTmpRuleAdded { .. }),
             "{resp:?}"
@@ -341,70 +342,76 @@ mod tests {
     #[test]
     fn geometry_with_degenerate_size_is_rejected() {
         let mut wm = wm_with(9);
-        let resp = handle_pending_tmp_rule(
-            &mut wm,
-            PendingTmpRuleCmd::Add {
-                class: Some("pin-me".to_owned()),
-                instance: None,
-                title: None,
-                is_floating: None,
-                tag: None,
-                on_monitor: None,
-                geometry: Some(crate::types::RuleGeometry {
-                    x: 0,
-                    y: 0,
-                    width: 0,
-                    height: 600,
-                }),
-                borderless: false,
-                timeout_ms: 5_000,
-            },
-        );
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(
+                wm,
+                PendingTmpRuleCmd::Add {
+                    class: Some("pin-me".to_owned()),
+                    instance: None,
+                    title: None,
+                    is_floating: None,
+                    tag: None,
+                    on_monitor: None,
+                    geometry: Some(crate::types::RuleGeometry {
+                        x: 0,
+                        y: 0,
+                        width: 0,
+                        height: 600,
+                    }),
+                    borderless: false,
+                    timeout_ms: 5_000,
+                },
+            )
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
     #[test]
     fn tile_conflicts_with_geometry() {
         let mut wm = wm_with(9);
-        let resp = handle_pending_tmp_rule(
-            &mut wm,
-            PendingTmpRuleCmd::Add {
-                class: Some("pin-me".to_owned()),
-                instance: None,
-                title: None,
-                is_floating: Some(false),
-                tag: None,
-                on_monitor: None,
-                geometry: Some(crate::types::RuleGeometry {
-                    x: 0,
-                    y: 0,
-                    width: 800,
-                    height: 600,
-                }),
-                borderless: false,
-                timeout_ms: 5_000,
-            },
-        );
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(
+                wm,
+                PendingTmpRuleCmd::Add {
+                    class: Some("pin-me".to_owned()),
+                    instance: None,
+                    title: None,
+                    is_floating: Some(false),
+                    tag: None,
+                    on_monitor: None,
+                    geometry: Some(crate::types::RuleGeometry {
+                        x: 0,
+                        y: 0,
+                        width: 800,
+                        height: 600,
+                    }),
+                    borderless: false,
+                    timeout_ms: 5_000,
+                },
+            )
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
     #[test]
     fn borderless_only_add_counts_as_effect() {
         let mut wm = wm_with(9);
-        let resp = handle_pending_tmp_rule(
-            &mut wm,
-            PendingTmpRuleCmd::Add {
-                class: None,
-                instance: None,
-                title: None,
-                is_floating: None,
-                tag: None,
-                on_monitor: None,
-                geometry: None,
-                borderless: true,
-                timeout_ms: 5_000,
-            },
-        );
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(
+                wm,
+                PendingTmpRuleCmd::Add {
+                    class: None,
+                    instance: None,
+                    title: None,
+                    is_floating: None,
+                    tag: None,
+                    on_monitor: None,
+                    geometry: None,
+                    borderless: true,
+                    timeout_ms: 5_000,
+                },
+            )
+        });
         assert!(
             matches!(resp, Response::PendingTmpRuleAdded { .. }),
             "{resp:?}"
@@ -414,28 +421,31 @@ mod tests {
     #[test]
     fn any_monitor_without_a_matcher_or_other_effect_is_rejected() {
         let mut wm = wm_with(9);
-        let resp = handle_pending_tmp_rule(&mut wm, add(None, None, Some(MonitorSelector::Any)));
+        let resp = wm.with_ctx(|wm| {
+            handle_pending_tmp_rule(wm, add(None, None, Some(MonitorSelector::Any)))
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
     #[test]
     fn list_omits_and_drops_expired_entries() {
         let mut wm = wm_with(9);
-        inject_expired(&mut wm, 7);
-        let resp = handle_pending_tmp_rule(&mut wm, PendingTmpRuleCmd::List);
+        wm.with_ctx(|wm| inject_expired(wm, 7));
+        let resp = wm.with_ctx(|wm| handle_pending_tmp_rule(wm, PendingTmpRuleCmd::List));
         let Response::PendingTmpRuleList(entries) = resp else {
             panic!("unexpected response {resp:?}");
         };
         assert!(entries.is_empty());
         // The entry is actually removed, not just hidden from the listing.
-        assert!(wm.ctx().core().behavior().pending_tmp_rules.is_empty());
+        assert!(wm.test_ctx().core().behavior().pending_tmp_rules.is_empty());
     }
 
     #[test]
     fn cancel_of_expired_entry_reports_not_found() {
         let mut wm = wm_with(9);
-        inject_expired(&mut wm, 7);
-        let resp = handle_pending_tmp_rule(&mut wm, PendingTmpRuleCmd::Cancel { id: 7 });
+        wm.with_ctx(|wm| inject_expired(wm, 7));
+        let resp =
+            wm.with_ctx(|wm| handle_pending_tmp_rule(wm, PendingTmpRuleCmd::Cancel { id: 7 }));
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 }

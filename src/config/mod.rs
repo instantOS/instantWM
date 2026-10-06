@@ -261,7 +261,7 @@ pub fn resolve_config(
 mod resolution_tests {
     use super::*;
     use crate::core_state::SystrayConfig;
-    use crate::wm::Wm;
+    use crate::wm::WaylandWm as Wm;
 
     #[test]
     fn resolution_rejects_invalid_layout_before_building_effective_config() {
@@ -332,8 +332,6 @@ mod resolution_tests {
 
     #[test]
     fn apply_config_applies_tag_and_bar_defaults() {
-        use crate::backend::Backend;
-        use crate::backend::wayland::WaylandBackend;
         use crate::types::Rect;
 
         let user: config_toml::UserConfig = toml::from_str(
@@ -352,7 +350,7 @@ mod resolution_tests {
         let config = crate::config::resolve_config(user, crate::backend::BackendKind::Wayland)
             .expect("valid config");
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         // Only `monitor_rect` is set: the original fixture left
         // `available_rect` at its default, so the builder's `monitor_rect()`
         // (which sets both) would widen the work area and change the fixture.

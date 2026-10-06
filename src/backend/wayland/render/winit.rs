@@ -14,7 +14,7 @@ use crate::backend::wayland::render::scene::{
     SceneCache, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, output_has_real_fullscreen, remove_duplicate_overlay_elements,
 };
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 render_elements! {
     pub WaylandExtras<=GlesRenderer>;

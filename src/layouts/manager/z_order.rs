@@ -1,3 +1,4 @@
+use crate::backend::WindowOps;
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, MonitorId, WindowId};
 use std::collections::HashSet;
@@ -8,8 +9,8 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let Some(stack) = monitor_z_order(ctx.core().model(), monitor_id) else {
         return;
     };
-    ctx.window_backend().apply_z_order(&stack);
-    ctx.window_backend().flush();
+    ctx.apply_z_order(&stack);
+    ctx.flush();
 }
 
 /// Compute a projection without backend access; overview owns its own order.

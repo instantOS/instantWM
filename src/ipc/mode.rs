@@ -1,9 +1,8 @@
 use crate::ipc_types::{ModeInfo, Response};
-use crate::wm::Wm;
 
-pub fn list_modes(wm: &mut Wm) -> Response {
-    let modes = &wm.core.config.bindings.modes;
-    let current_mode = &wm.core.behavior.current_mode;
+pub fn list_modes(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
+    let modes = &ctx.core().config().bindings.modes;
+    let current_mode = &ctx.core().state().behavior.current_mode;
 
     if modes.is_empty() {
         return Response::ModeList(Vec::new());

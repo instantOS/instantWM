@@ -419,21 +419,20 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModM
 #[cfg(test)]
 mod tests {
     use super::apply_active_drag_motion;
-    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::test_support::TestWm as Wm;
     use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::{
         ClientMode, InteractionSource, ModMask, MonitorId, MouseButton, Point, Rect,
         ResizeDirection, TagMask, WindowId,
     };
-    use crate::wm::Wm;
 
     /// Push the 1920x1080 monitor these drag fixtures sit on.
     ///
     /// The tag list is seeded because every caller then selects tag 1, which a
     /// monitor without tags would silently swallow.
-    fn push_drag_monitor(wm: &mut Wm, bar_shown: bool) -> MonitorId {
+    fn push_drag_monitor(model: &mut crate::model::WmModel, bar_shown: bool) -> MonitorId {
         let rect = Rect::new(0, 0, 1920, 1080);
-        wm.core.model.monitors.push(
+        model.monitors.push(
             MonitorBuilder::new()
                 .rect(rect, rect)
                 .bar(0, bar_shown)
@@ -467,12 +466,12 @@ mod tests {
         .unwrap()
         .check()
         .unwrap();
-        let mut wm = Wm::new(Backend::new_x11(conn, screen));
+        let mut wm = crate::wm::X11Wm::new(crate::backend::X11BackendData::new(conn, screen));
         wm.core.config.animations.enabled = true;
         wm.core.derived.display.width = 1920;
         wm.core.derived.display.height = 1080;
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_drag_monitor(&mut wm, false);
+        let monitor_id = push_drag_monitor(&mut wm.core.model, false);
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -501,28 +500,13 @@ mod tests {
             )
             .unwrap();
         assert!(apply_active_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.x11_ctx(),
             Point::new(350, 300)
         ));
         let moved = wm.core.model.client(win).unwrap().geo;
         assert_eq!(moved, Rect::new(300, 250, 500, 300));
-        assert!(
-            wm.backend
-                .x11_data()
-                .unwrap()
-                .x11_runtime
-                .window_animations
-                .is_empty()
-        );
-        let actual = wm
-            .backend
-            .x11_data()
-            .unwrap()
-            .conn
-            .get_geometry(xid)
-            .unwrap()
-            .reply()
-            .unwrap();
+        assert!(wm.backend.x11_runtime.window_animations.is_empty());
+        let actual = wm.backend.conn.get_geometry(xid).unwrap().reply().unwrap();
         assert_eq!((actual.x, actual.y), (300, 250));
 
         wm.core.interaction.drag.cancel_capture().unwrap();
@@ -539,38 +523,21 @@ mod tests {
             )
             .unwrap();
         assert!(apply_active_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.x11_ctx(),
             Point::new(moved.x + 699, moved.y)
         ));
-        assert!(
-            wm.backend
-                .x11_data()
-                .unwrap()
-                .x11_runtime
-                .window_animations
-                .is_empty()
-        );
-        let actual = wm
-            .backend
-            .x11_data()
-            .unwrap()
-            .conn
-            .get_geometry(xid)
-            .unwrap()
-            .reply()
-            .unwrap();
+        assert!(wm.backend.x11_runtime.window_animations.is_empty());
+        let actual = wm.backend.conn.get_geometry(xid).unwrap().reply().unwrap();
         assert_eq!(actual.width, 700);
 
         wm.core.interaction.drag.cancel_capture().unwrap();
-        wm.ctx().move_resize(
+        wm.x11_ctx().move_resize(
             win,
             original,
             crate::geometry::MoveResizeOptions::for_floating_transition(),
         );
         assert!(
             wm.backend
-                .x11_data()
-                .unwrap()
                 .x11_runtime
                 .window_animation_targets(win, original)
         );
@@ -578,9 +545,9 @@ mod tests {
 
     #[test]
     fn end_edge_resize_accounts_for_the_modelled_border() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_drag_monitor(&mut wm, true);
+        let monitor_id = push_drag_monitor(&mut wm.core.model, true);
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -610,7 +577,7 @@ mod tests {
             .unwrap();
 
         assert!(apply_active_drag_motion(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             Point::new(710, 250)
         ));
         assert_eq!(wm.core.model.client(win).unwrap().geo.w, 601);
@@ -618,7 +585,7 @@ mod tests {
 
     #[test]
     fn invalid_tree_resize_motion_reports_not_applied() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let win = WindowId(99);
         wm.core
             .interaction
@@ -634,14 +601,17 @@ mod tests {
             })
             .unwrap();
 
-        assert!(!apply_active_drag_motion(&mut wm.ctx(), Point::new(20, 10)));
+        assert!(!apply_active_drag_motion(
+            &mut wm.test_ctx(),
+            Point::new(20, 10)
+        ));
     }
 
     #[test]
     fn mid_drag_tag_switch_cancels_instead_of_steering_a_hidden_window() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
-        let monitor_id = push_drag_monitor(&mut wm, true);
+        let monitor_id = push_drag_monitor(&mut wm.core.model, true);
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
             .model
@@ -680,7 +650,7 @@ mod tests {
         // hidden window, and later samples are ignored.
         assert_eq!(
             crate::mouse::interaction::handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 crate::mouse::interaction::InteractionEvent::pointer_update(
                     Point::new(350, 275),
                     ModMask::NONE
@@ -691,7 +661,7 @@ mod tests {
         assert!(wm.core.interaction.drag.capture().is_none());
         assert_eq!(
             crate::mouse::interaction::handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 crate::mouse::interaction::InteractionEvent::pointer_update(
                     Point::new(360, 280),
                     ModMask::NONE

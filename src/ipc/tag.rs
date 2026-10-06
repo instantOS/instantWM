@@ -1,12 +1,11 @@
 use crate::ipc_types::{Response, TagCommand, TagInfo};
 use crate::tags::{name_tag, reset_name_tag};
-use crate::wm::Wm;
 
-pub fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> Response {
+pub fn handle_tag_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: TagCommand) -> Response {
     match cmd {
-        TagCommand::List => return list_tags(wm),
-        TagCommand::Name { name } => name_tag(&mut wm.ctx(), &name),
-        TagCommand::Reset => reset_name_tag(&mut wm.ctx()),
+        TagCommand::List => return list_tags(ctx),
+        TagCommand::Name { name } => name_tag(ctx, &name),
+        TagCommand::Reset => reset_name_tag(ctx),
     }
     Response::ok()
 }
@@ -14,8 +13,8 @@ pub fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> Response {
 /// Describe every tag of the selected monitor: configured name and icon,
 /// the label the bar currently shows, and whether the tag is occupied or
 /// selected.
-fn list_tags(wm: &Wm) -> Response {
-    let core = &wm.core;
+fn list_tags(ctx: &crate::contexts::WmCtx<'_>) -> Response {
+    let core = ctx.core().state();
     let monitor = core.model.expect_selected_monitor();
     let show_icons = core.config.tags.show_icons;
     let occupied = monitor.occupied_tags();
@@ -41,10 +40,10 @@ fn list_tags(wm: &Wm) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::config::config_toml::TagsConfig;
     use crate::config::resolve_config;
     use crate::test_support::MonitorBuilder;
+    use crate::test_support::TestWm as Wm;
     use crate::types::{Client, Rect, TagMask, WindowId};
 
     fn wm(show_icons: bool) -> Wm {
@@ -56,7 +55,7 @@ mod tests {
             show_icons,
         };
         let config = resolve_config(user, crate::backend::BackendKind::Wayland).unwrap();
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 800, 600))
@@ -70,8 +69,8 @@ mod tests {
         wm
     }
 
-    fn list(wm: &mut Wm) -> Vec<TagInfo> {
-        match handle_tag_command(wm, TagCommand::List) {
+    fn list(ctx: &mut crate::contexts::WmCtx<'_>) -> Vec<TagInfo> {
+        match handle_tag_command(ctx, TagCommand::List) {
             Response::TagList(tags) => tags,
             other => panic!("expected TagList, got {other:?}"),
         }
@@ -91,7 +90,7 @@ mod tests {
             },
         );
 
-        let tags = list(&mut wm);
+        let tags = wm.with_ctx(list);
         assert_eq!(tags.len(), 3);
         assert_eq!(tags[0].name.as_deref(), Some("web"));
         assert_eq!(tags[0].icon.as_deref(), Some("W"));
@@ -107,7 +106,7 @@ mod tests {
 
         // Icon mode on: the icon wins where one exists, names elsewhere.
         wm.core.config.tags.show_icons = true;
-        let tags = list(&mut wm);
+        let tags = wm.with_ctx(list);
         assert_eq!(tags[0].label, "W");
         assert_eq!(tags[1].label, "mail");
     }

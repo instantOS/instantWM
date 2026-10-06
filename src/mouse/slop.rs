@@ -448,8 +448,8 @@ fn watch_region_selection(slot: &Mutex<ActiveSelection>, generation: u64) -> Opt
 ///
 /// Returns `true` when at least one selection was applied this call. Starting a
 /// tool is not a state change, so it is not reported.
-pub fn drain_region_selection(wm: &mut crate::wm::Wm) -> bool {
-    start_pending_region_selection(wm);
+pub fn drain_region_selection(ctx: &mut crate::contexts::WmCtx<'_>) -> bool {
+    start_pending_region_selection(ctx);
 
     let runtime = region_selection_runtime();
     let Ok(receiver) = runtime.receiver.lock() else {
@@ -461,13 +461,11 @@ pub fn drain_region_selection(wm: &mut crate::wm::Wm) -> bool {
         let Some(rect) = outcome.rect else {
             continue;
         };
-        if !is_valid_window_size(&wm.core.model, &rect, outcome.window) {
+        if !is_valid_window_size(ctx.core().model(), &rect, outcome.window) {
             continue;
         }
-
-        let mut ctx = wm.ctx();
-        handle_monitor_switch(&mut ctx, outcome.window, &rect);
-        apply_window_resize(&mut ctx, outcome.window, &rect);
+        handle_monitor_switch(ctx, outcome.window, &rect);
+        apply_window_resize(ctx, outcome.window, &rect);
         applied = true;
     }
     applied
@@ -477,29 +475,28 @@ pub fn drain_region_selection(wm: &mut crate::wm::Wm) -> bool {
 ///
 /// Runs from the shared tick so pointer ownership is already back with the
 /// server.
-fn start_pending_region_selection(wm: &mut crate::wm::Wm) {
-    let Some(win) = wm.work.take_region_selection() else {
+fn start_pending_region_selection(ctx: &mut crate::contexts::WmCtx<'_>) {
+    let Some(win) = ctx.core_mut().pending_work_mut().take_region_selection() else {
         return;
     };
-    if wm.core.model.client(win).is_none() {
+    if ctx.core().model().client(win).is_none() {
         log::debug!("dropping region selection for closed window {win:?}");
         return;
     }
-    spawn_region_selection(wm.backend_kind(), win);
+    spawn_region_selection(ctx.backend_kind(), win);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::{MonitorBuilder, add_client_with};
     use crate::types::ClientMode;
-    use crate::wm::Wm;
 
     /// Build a window manager whose single output covers `rect`.
     fn wm_with_monitor(rect: Rect) -> (Wm, crate::types::MonitorId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.derived.display.width = rect.w.max(1);
         wm.core.derived.display.height = rect.h.max(1);
         let monitor_id = wm
@@ -512,12 +509,12 @@ mod tests {
     }
 
     fn insert_floating_client(
-        wm: &mut Wm,
+        ctx: &mut crate::contexts::WmCtx<'_>,
         monitor_id: crate::types::MonitorId,
         win: WindowId,
         geo: Rect,
     ) {
-        add_client_with(&mut wm.core.model, monitor_id, |client| {
+        add_client_with(ctx.core_mut().model_mut(), monitor_id, |client| {
             client.win = win;
             client.geo = geo;
             client.mode = ClientMode::floating();
@@ -605,7 +602,9 @@ mod tests {
     fn selections_on_outputs_left_of_the_origin_validate() {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(-1920, -50, 1920, 1080));
         let win = WindowId(1);
-        insert_floating_client(&mut wm, monitor_id, win, Rect::new(-1920, -50, 600, 400));
+        wm.with_ctx(|wm| {
+            insert_floating_client(wm, monitor_id, win, Rect::new(-1920, -50, 600, 400))
+        });
 
         // On the left output, well inside the layout bounds.
         assert!(is_valid_window_size(
@@ -626,8 +625,12 @@ mod tests {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let pinned = WindowId(1);
         let selected = WindowId(2);
-        insert_floating_client(&mut wm, monitor_id, pinned, Rect::new(10, 10, 600, 400));
-        insert_floating_client(&mut wm, monitor_id, selected, Rect::new(10, 10, 600, 400));
+        wm.with_ctx(|wm| {
+            insert_floating_client(wm, monitor_id, pinned, Rect::new(10, 10, 600, 400))
+        });
+        wm.with_ctx(|wm| {
+            insert_floating_client(wm, monitor_id, selected, Rect::new(10, 10, 600, 400))
+        });
         wm.core
             .model
             .monitor_mut(monitor_id)
@@ -653,7 +656,7 @@ mod tests {
             })
             .unwrap();
 
-        assert!(drain_region_selection(&mut wm));
+        assert!(wm.with_ctx(drain_region_selection));
         assert_eq!(
             wm.core.model.client(pinned).unwrap().geo,
             Rect::new(100, 100, 1200, 900)
@@ -668,10 +671,10 @@ mod tests {
     fn a_press_is_captured_and_spawns_nothing_until_it_is_released() {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let win = WindowId(1);
-        insert_floating_client(&mut wm, monitor_id, win, Rect::new(10, 10, 600, 400));
+        wm.with_ctx(|wm| insert_floating_client(wm, monitor_id, win, Rect::new(10, 10, 600, 400)));
 
         assert!(arm_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -687,7 +690,7 @@ mod tests {
         assert_eq!(pending_region_selection(&wm), None);
 
         assert!(finish_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             MouseButton::Left
         ));
 
@@ -699,22 +702,22 @@ mod tests {
     fn the_release_of_another_button_does_not_start_the_selection() {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let win = WindowId(1);
-        insert_floating_client(&mut wm, monitor_id, win, Rect::new(10, 10, 600, 400));
+        wm.with_ctx(|wm| insert_floating_client(wm, monitor_id, win, Rect::new(10, 10, 600, 400)));
         assert!(arm_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             MouseButton::Left,
             InteractionSource::Pointer,
         ));
 
         assert!(!finish_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             MouseButton::Right
         ));
         assert_eq!(pending_region_selection(&wm), None);
         // The press is still armed, so its own release still completes it.
         assert!(finish_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             MouseButton::Left
         ));
         assert_eq!(pending_region_selection(&wm), Some(win));
@@ -725,7 +728,7 @@ mod tests {
         let (mut wm, _) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
 
         assert!(!arm_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             WindowId(404),
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -738,20 +741,20 @@ mod tests {
     fn the_tick_discards_a_selection_whose_window_closed_while_the_button_was_held() {
         let (mut wm, monitor_id) = wm_with_monitor(Rect::new(0, 0, 1920, 1080));
         let win = WindowId(1);
-        insert_floating_client(&mut wm, monitor_id, win, Rect::new(10, 10, 600, 400));
+        wm.with_ctx(|wm| insert_floating_client(wm, monitor_id, win, Rect::new(10, 10, 600, 400)));
         assert!(arm_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             MouseButton::Left,
             InteractionSource::Pointer,
         ));
         assert!(finish_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             MouseButton::Left
         ));
 
         wm.core.model.remove_client(win).unwrap();
-        drain_region_selection(&mut wm);
+        wm.with_ctx(drain_region_selection);
 
         assert_eq!(pending_region_selection(&wm), None);
         assert!(!is_tool_running());

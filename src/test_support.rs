@@ -179,3 +179,53 @@ pub fn add_selected_client_with(
     f(&mut client);
     add_selected_client(model, monitor_id, client)
 }
+
+/// A shared-policy fixture owns the same native state used by production.
+/// Its context is built through the production entry point; no fixture fields
+/// or alternate dispatch code are compiled into the window manager.
+pub struct TestWm {
+    wm: crate::wm::WaylandWm,
+    native: crate::backend::wayland::compositor::WaylandState,
+}
+
+impl TestWm {
+    pub fn new(backend: crate::backend::WaylandBackendData) -> Self {
+        Self {
+            wm: crate::wm::WaylandWm::new(backend),
+            native: crate::test_support::new_compositor().1,
+        }
+    }
+
+    pub fn test_ctx(&mut self) -> crate::contexts::WmCtx<'_> {
+        self.wm.wayland_ctx(&mut self.native)
+    }
+
+    pub fn with_ctx<T>(&mut self, f: impl FnOnce(&mut crate::contexts::WmCtx<'_>) -> T) -> T {
+        f(&mut self.test_ctx())
+    }
+}
+
+// Field shorthand is confined to fixtures. Production access is explicit.
+impl std::ops::Deref for TestWm {
+    type Target = crate::wm::WaylandWm;
+    fn deref(&self) -> &Self::Target {
+        &self.wm
+    }
+}
+impl std::ops::DerefMut for TestWm {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.wm
+    }
+}
+
+/// Protocol fixtures use the production constructor with a real WM owner.
+pub fn new_compositor() -> (
+    calloop::EventLoop<'static, crate::backend::wayland::compositor::WaylandState>,
+    crate::backend::wayland::compositor::WaylandState,
+) {
+    crate::backend::wayland::compositor::new_event_loop_and_state(std::rc::Rc::new(
+        std::cell::RefCell::new(crate::wm::WaylandWm::new(
+            crate::backend::WaylandBackendData::default(),
+        )),
+    ))
+}

@@ -2,6 +2,7 @@
 //!
 //! This module contains the core logic for moving windows with the mouse,
 //! including bar hover handling, edge snapping, and drop completion.
+use crate::backend::PointerOps;
 
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
@@ -168,7 +169,7 @@ pub fn handle_bar_drop(
     pointer_override: Option<Point>,
     modifiers: ModMask,
 ) {
-    let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
+    let Some(root) = pointer_override.or_else(|| ctx.pointer_location()) else {
         return;
     };
     let Some(mon) = bar_monitor_at(ctx.core().model(), root) else {
@@ -314,7 +315,7 @@ pub fn promote_to_floating(
     // freely in that presentation.
     crate::client::fullscreen::leave_maximized(ctx, win);
 
-    let (is_floating, geo, monitor_id) = ctx.core().state().model.client_view(win).map(|view| {
+    let (is_floating, geo, monitor_id) = ctx.core().model().client_view(win).map(|view| {
         (
             view.client.mode().is_normal_floating(),
             view.client.geo,
@@ -352,13 +353,12 @@ pub fn promote_to_floating(
 #[cfg(test)]
 mod tests {
     use super::promote_to_floating;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::client::geometry::FloatingPlacementIntent;
     use crate::layouts::PresentationMode;
     use crate::test_support::{MonitorBuilder, add_client, add_client_with};
     use crate::types::{Client, ClientMode, ClientPlacement, MonitorId, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     /// Push the 1200x800 monitor these drop fixtures sit on.
     fn push_drop_monitor(wm: &mut Wm, available: Rect) -> MonitorId {
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn floating_presentation_drag_does_not_change_tiled_placement() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_drop_monitor(&mut wm, Rect::new(0, 0, 1200, 800));
         wm.core.model.monitors.set_selected(monitor_id);
         wm.core
@@ -390,7 +390,7 @@ mod tests {
         });
 
         let result = promote_to_floating(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(200, 200)),
         );
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn dragging_client_maximized_floating_window_restores_its_float_geometry() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let work_rect = Rect::new(0, 30, 1200, 770);
         let monitor_id = push_drop_monitor(&mut wm, work_rect);
         wm.core.model.monitors.set_selected(monitor_id);
@@ -421,7 +421,7 @@ mod tests {
         add_client(&mut wm.core.model, monitor_id, client);
 
         let result = promote_to_floating(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(600, 200)),
         );
@@ -437,12 +437,11 @@ mod tests {
 #[cfg(test)]
 mod destination_tests {
     use super::*;
-    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::test_support::TestWm as Wm;
     use crate::test_support::{MonitorBuilder, add_selected_client_with};
-    use crate::wm::Wm;
 
     fn fixture() -> (Wm, WindowId, MonitorId, MonitorId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.config.animations.enabled = false;
         wm.core.model.tags.num_tags = 9;
         let a = wm.core.model.monitors.push(
@@ -479,7 +478,7 @@ mod destination_tests {
         {
             tag.name = (index + 1).to_string();
         }
-        crate::bar::render_hit_caches_for_test(wm.ctx().core_mut());
+        crate::bar::render_hit_caches_for_test(wm.test_ctx().core_mut());
         (wm, win, a, b)
     }
 
@@ -495,7 +494,7 @@ mod destination_tests {
         let root = (800..1600)
             .map(|x| Point::new(x, 10))
             .find(|point| {
-                let ctx = wm.ctx();
+                let ctx = wm.test_ctx();
                 let mon = ctx.core().model().monitor(b).unwrap();
                 crate::bar::model::bar_position_at_x(
                     mon,
@@ -509,7 +508,7 @@ mod destination_tests {
             Some(MoveDropTarget::Bar(b))
         );
         handle_bar_drop(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             Rect::new(0, 0, 800, 600),
             Some(root),
@@ -538,7 +537,7 @@ mod destination_tests {
         let root = (800..1600)
             .map(|x| Point::new(x, 10))
             .find(|point| {
-                let ctx = wm.ctx();
+                let ctx = wm.test_ctx();
                 let mon = ctx.core().model().monitor(b).unwrap();
                 crate::bar::model::bar_position_at_x(
                     mon,
@@ -548,7 +547,7 @@ mod destination_tests {
             })
             .unwrap();
         handle_bar_drop(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             Rect::new(0, 0, 800, 600),
             Some(root),
@@ -583,7 +582,7 @@ mod destination_tests {
             resolve_move_drop(&wm.core.model, win, root),
             Some(MoveDropTarget::Snap(b, SnapPosition::Right))
         );
-        complete_move_drop(&mut wm.ctx(), win, free, root, free, ModMask::NONE);
+        complete_move_drop(&mut wm.test_ctx(), win, free, root, free, ModMask::NONE);
         let client = wm.core.model.client(win).unwrap();
         assert_eq!(wm.core.model.monitor_of_client(win), Some(b));
         assert_eq!(client.snap_status, SnapPosition::Right);

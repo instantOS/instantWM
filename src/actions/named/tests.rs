@@ -1,18 +1,16 @@
 use super::{
     ConfigAssignment, NamedAction, focus_horizontal, focus_vertical, move_horizontal, move_vertical,
 };
-use crate::backend::Backend;
-use crate::backend::wayland::WaylandBackend;
 use crate::config::config_toml::{HorizontalEdge, VerticalEdge};
 use crate::layouts::tree::Preset;
 
 use crate::layouts::{LayoutCommand, PresentationMode};
+use crate::test_support::TestWm as Wm;
 use crate::test_support::{MonitorBuilder, add_client};
 use crate::types::{
     Client, ClientMode, HorizontalDirection, MonitorId, Rect, StackDirection, TagMask,
     VerticalDirection, WindowId,
 };
-use crate::wm::Wm;
 
 /// Restore a monitor's focus stack to `order`.
 ///
@@ -30,7 +28,7 @@ fn set_focus_order(wm: &mut Wm, monitor_id: MonitorId, order: &[WindowId]) {
 }
 
 fn maximized_tiled_wm(windows: &[WindowId], selected: WindowId) -> Wm {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
     let monitor_id = wm.core.model.monitors.push(
@@ -88,7 +86,7 @@ fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
     assert!(wm.core.config.animations.enabled);
 
     NamedAction::ConfigToggle("animations.enabled".into())
-        .execute(&mut wm.ctx())
+        .execute(&mut wm.test_ctx())
         .unwrap();
     assert!(!wm.core.config.animations.enabled);
 
@@ -98,7 +96,7 @@ fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
             value: "true".into(),
         })
     };
-    force_on().execute(&mut wm.ctx()).unwrap();
+    force_on().execute(&mut wm.test_ctx()).unwrap();
     assert!(wm.core.config.animations.enabled);
 
     let force_off = || {
@@ -107,7 +105,7 @@ fn config_toggle_flips_the_animation_switch_and_config_set_forces_it() {
             value: "false".into(),
         })
     };
-    force_off().execute(&mut wm.ctx()).unwrap();
+    force_off().execute(&mut wm.test_ctx()).unwrap();
     assert!(!wm.core.config.animations.enabled);
 }
 
@@ -179,25 +177,29 @@ fn rendered_arguments_parse_back_to_the_same_action() {
 
 #[test]
 fn gap_actions_move_both_gaps_and_clamp_at_zero() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.config.layout.inner_gap = 4;
     wm.core.config.layout.outer_gap = 8;
 
     NamedAction::IncGaps(Some(3))
-        .execute(&mut wm.ctx())
+        .execute(&mut wm.test_ctx())
         .unwrap();
     assert_eq!(wm.core.config.layout.inner_gap, 7);
     assert_eq!(wm.core.config.layout.outer_gap, 11);
 
     // The default step applies when no argument is passed.
-    NamedAction::DecGaps(None).execute(&mut wm.ctx()).unwrap();
+    NamedAction::DecGaps(None)
+        .execute(&mut wm.test_ctx())
+        .unwrap();
     assert_eq!(wm.core.config.layout.inner_gap, 5);
     assert_eq!(wm.core.config.layout.outer_gap, 9);
 
     // Decreasing past the floor clamps instead of disabling windows into
     // negative gaps.
     for _ in 0..10 {
-        NamedAction::DecGaps(None).execute(&mut wm.ctx()).unwrap();
+        NamedAction::DecGaps(None)
+            .execute(&mut wm.test_ctx())
+            .unwrap();
     }
     assert_eq!(wm.core.config.layout.inner_gap, 0);
     assert_eq!(wm.core.config.layout.outer_gap, 0);
@@ -205,30 +207,30 @@ fn gap_actions_move_both_gaps_and_clamp_at_zero() {
 
 #[test]
 fn config_actions_are_idempotent_when_set_and_alternate_when_toggled() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let set_on = || {
         NamedAction::ConfigSet(ConfigAssignment {
             key: "tags.show_icons".into(),
             value: "true".into(),
         })
     };
-    set_on().execute(&mut wm.ctx()).unwrap();
-    set_on().execute(&mut wm.ctx()).unwrap();
+    set_on().execute(&mut wm.test_ctx()).unwrap();
+    set_on().execute(&mut wm.test_ctx()).unwrap();
     assert!(wm.core.config.tags.show_icons);
 
     let toggle = || NamedAction::ConfigToggle("tags.show_icons".into());
-    toggle().execute(&mut wm.ctx()).unwrap();
+    toggle().execute(&mut wm.test_ctx()).unwrap();
     assert!(!wm.core.config.tags.show_icons);
-    toggle().execute(&mut wm.ctx()).unwrap();
+    toggle().execute(&mut wm.test_ctx()).unwrap();
     assert!(wm.core.config.tags.show_icons);
 }
 
 #[test]
 fn config_actions_reject_bad_keys_and_values_without_mutating() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     assert!(
         NamedAction::ConfigToggle("layout.inner_gap".into())
-            .execute(&mut wm.ctx())
+            .execute(&mut wm.test_ctx())
             .is_err()
     );
     assert!(
@@ -236,7 +238,7 @@ fn config_actions_reject_bad_keys_and_values_without_mutating() {
             key: "window.border_width_px".into(),
             value: "-2".into(),
         })
-        .execute(&mut wm.ctx())
+        .execute(&mut wm.test_ctx())
         .is_err()
     );
     assert!(wm.core.config.window.border_width_px > 0);
@@ -244,29 +246,29 @@ fn config_actions_reject_bad_keys_and_values_without_mutating() {
 
 #[test]
 fn quit_action_uses_the_normal_wm_shutdown_flag() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-    NamedAction::Quit.execute(&mut wm.ctx()).unwrap();
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+    NamedAction::Quit.execute(&mut wm.test_ctx()).unwrap();
     assert!(!wm.running);
 }
 
 #[test]
 fn action_dispatch_rejects_unknown_and_interaction_owned_modes() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
     let unknown = NamedAction::SetMode("does-not-exist".to_string())
-        .execute(&mut wm.ctx())
+        .execute(&mut wm.test_ctx())
         .unwrap_err();
     assert!(unknown.contains("not found"));
 
     let placement = NamedAction::SetMode(crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string())
-        .execute(&mut wm.ctx())
+        .execute(&mut wm.test_ctx())
         .unwrap_err();
     assert!(placement.contains("begin_tree_placement"));
 }
 
 #[test]
 fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.model.tags.num_tags = 3;
     let tag1 = TagMask::single(1).unwrap();
     let tag2 = TagMask::single(2).unwrap();
@@ -301,7 +303,7 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
         .layout_tree
         .apply_preset(Preset::MasterStack, &[left, right], 1);
 
-    move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     // The first press has a visual neighbour, so it only swaps the tree.
     assert_eq!(wm.core.model.client(left).unwrap().tags, tag1);
@@ -310,7 +312,7 @@ fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
         tag1
     );
 
-    move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     // The same client is now at the right edge, so the next press carries
     // it into the adjacent tag and follows it there.
@@ -342,7 +344,7 @@ fn maximized_window_move_reorders_adjacent_titles_not_hidden_visual_neighbors() 
         Some(WindowId(2))
     );
 
-    move_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+    move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
 
     let monitor = wm.core.model.expect_selected_monitor();
     assert_eq!(
@@ -363,7 +365,7 @@ fn maximized_horizontal_move_crosses_tags_at_title_strip_boundary() {
     let mut wm = maximized_tiled_wm(&windows, selected);
     let tag2 = TagMask::single(2).unwrap();
 
-    move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     assert_eq!(wm.core.model.client(selected).unwrap().tags, tag2);
     assert_eq!(
@@ -380,7 +382,7 @@ fn maximized_vertical_move_stops_at_title_strip_boundary() {
     let mut wm = maximized_tiled_wm(&windows, selected);
     let tag1 = TagMask::single(1).unwrap();
 
-    move_vertical(&mut wm.ctx(), VerticalDirection::Up);
+    move_vertical(&mut wm.test_ctx(), VerticalDirection::Up);
     assert_eq!(
         wm.core
             .model
@@ -392,7 +394,7 @@ fn maximized_vertical_move_stops_at_title_strip_boundary() {
         vec![WindowId(1), WindowId(3), WindowId(2)]
     );
 
-    move_vertical(&mut wm.ctx(), VerticalDirection::Down);
+    move_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_eq!(
         wm.core
             .model
@@ -404,7 +406,7 @@ fn maximized_vertical_move_stops_at_title_strip_boundary() {
         windows
     );
 
-    move_vertical(&mut wm.ctx(), VerticalDirection::Down);
+    move_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
 
     let monitor = wm.core.model.expect_selected_monitor();
     assert_eq!(monitor.per_tag().unwrap().layout_tree.leaves(), windows);
@@ -430,7 +432,7 @@ fn maximized_move_does_not_treat_pending_tree_reconciliation_as_a_boundary() {
     // Title order defensively appends a newly managed tiled client before
     // the next arrange reconciles its leaf. Moving left during that window
     // must not fall through to an adjacent-tag transfer.
-    move_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+    move_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
 
     assert_eq!(wm.core.model.client(selected).unwrap().tags, tag1);
     assert_eq!(
@@ -447,11 +449,11 @@ fn vertical_focus_wraps_across_the_screen_when_tiled() {
     // No window is below the bottom-most one, so `wrap` answers with the
     // topmost — a jump across the screen, not a walk through bar order.
     wm.core.model.expect_selected_monitor_mut().selected = Some(bottom);
-    focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+    focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_eq!(wm.core.model.selected_win(), Some(top));
 
     // And symmetrically off the top edge, so neither direction is special.
-    focus_vertical(&mut wm.ctx(), VerticalDirection::Up);
+    focus_vertical(&mut wm.test_ctx(), VerticalDirection::Up);
     assert_eq!(wm.core.model.selected_win(), Some(bottom));
 }
 
@@ -463,10 +465,10 @@ fn maximized_vertical_focus_cycles_in_bar_order() {
     let windows = [WindowId(1), WindowId(2), WindowId(3)];
     let mut wm = maximized_tiled_wm(&windows, WindowId(3));
 
-    focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+    focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
 
-    focus_vertical(&mut wm.ctx(), VerticalDirection::Up);
+    focus_vertical(&mut wm.test_ctx(), VerticalDirection::Up);
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(3)));
 }
 
@@ -477,7 +479,7 @@ fn maximized_vertical_focus_cycles_in_bar_order() {
 /// window shares one coordinate there, so the first press is already the
 /// boundary.
 fn stacked_wm() -> (Wm, [WindowId; 3]) {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
     let monitor_id = wm.core.model.monitors.push(
@@ -530,7 +532,7 @@ fn vertical_focus_ignores_the_horizontal_edge_policy() {
         let (mut wm, [top, _, _]) = stacked_wm();
         wm.core.config.focus.horizontal_edge = edge;
 
-        focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+        focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
 
         assert_ne!(
             wm.core.model.selected_win(),
@@ -552,7 +554,7 @@ fn vertical_focus_stops_at_the_boundary_when_configured() {
 
     // The policy only governs the fallthrough, so an ordinary step between
     // two windows still moves.
-    focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+    focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_ne!(
         wm.core.model.selected_win(),
         Some(top),
@@ -562,7 +564,7 @@ fn vertical_focus_stops_at_the_boundary_when_configured() {
     // Park on the bottom-most window: there is nowhere below it, so the
     // press is consumed rather than wrapping back around to the top.
     wm.core.model.expect_selected_monitor_mut().selected = Some(bottom);
-    focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+    focus_vertical(&mut wm.test_ctx(), VerticalDirection::Down);
     assert_eq!(wm.core.model.selected_win(), Some(bottom));
 }
 
@@ -576,7 +578,7 @@ fn horizontal_focus_ignores_the_vertical_edge_policy() {
         wm.core.config.focus.vertical_edge = edge;
         let tag2 = TagMask::single(2).unwrap();
 
-        focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+        focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
         assert_eq!(
             wm.core.model.expect_selected_monitor().selected_tags(),
@@ -589,7 +591,7 @@ fn horizontal_focus_ignores_the_vertical_edge_policy() {
 /// `windows` tiled on tag 1 in tree order, `selected` focused, with enough
 /// tags that an overflow has somewhere to go.
 fn tiled_row_wm(windows: &[WindowId], selected: WindowId) -> Wm {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.model.tags.num_tags = 3;
     let tag = TagMask::single(1).unwrap();
     let monitor_id = wm.core.model.monitors.push(
@@ -633,7 +635,7 @@ fn horizontal_focus_overflows_into_the_adjacent_tag_by_default() {
     let mut wm = tiled_row_wm(&windows, WindowId(2));
     let tag2 = TagMask::single(2).unwrap();
 
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     assert_eq!(
         wm.core.model.expect_selected_monitor().selected_tags(),
@@ -648,7 +650,7 @@ fn horizontal_focus_wraps_to_the_far_end_of_the_same_tag() {
     wm.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
     let tag1 = TagMask::single(1).unwrap();
 
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
     assert_eq!(
@@ -657,7 +659,7 @@ fn horizontal_focus_wraps_to_the_far_end_of_the_same_tag() {
     );
 
     // Wrapping is symmetric and does not need the tag edge to be reached.
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
 }
 
@@ -669,7 +671,7 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
     // the only thing that can steer the wrap here is geometry.
     let (a, b, c) = (WindowId(1), WindowId(2), WindowId(3));
     let screen_order = [a, b, c];
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.model.tags.num_tags = 3;
     let tag1 = TagMask::single(1).unwrap();
     let monitor_id = wm.core.model.monitors.push(
@@ -705,11 +707,11 @@ fn horizontal_focus_wrap_follows_geometry_not_bar_order() {
 
     // Off the right edge: the leftmost window is A, even though A is not the
     // head of the bar. A bar-order cycle would have landed on B.
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
     assert_eq!(wm.core.model.selected_win(), Some(a));
 
     // Off the left edge: symmetrically, the rightmost window is C.
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
     assert_eq!(wm.core.model.selected_win(), Some(c));
     assert_eq!(
         wm.core.model.expect_selected_monitor().selected_tags(),
@@ -737,8 +739,8 @@ fn horizontal_focus_wrap_does_not_change_tags() {
         .update_tag_mask(|tags| tags | tag2);
     wm.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
 
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
 
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
     assert_eq!(
@@ -775,10 +777,10 @@ fn horizontal_focus_wrap_cannot_reach_a_window_on_another_tag() {
             .set_focus_order(vec![WindowId(1), WindowId(2), WindowId(3)])
     );
 
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(1)));
 
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Left);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Left);
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
     assert_eq!(
         wm.core.model.expect_selected_monitor().selected_tags(),
@@ -793,7 +795,7 @@ fn horizontal_focus_stays_put_at_the_edge_when_configured() {
     wm.core.config.focus.horizontal_edge = HorizontalEdge::None;
     let tag1 = TagMask::single(1).unwrap();
 
-    focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
     assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
     assert_eq!(
@@ -816,7 +818,7 @@ fn horizontal_focus_still_moves_to_a_neighbour_before_the_edge() {
         wm.core.config.focus.horizontal_edge = edge;
         let tag1 = TagMask::single(1).unwrap();
 
-        focus_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+        focus_horizontal(&mut wm.test_ctx(), HorizontalDirection::Right);
 
         assert_eq!(wm.core.model.selected_win(), Some(WindowId(2)));
         assert_eq!(
@@ -834,12 +836,12 @@ fn maximized_horizontal_focus_follows_the_configured_edge_policy() {
     // boundary the policy has to resolve.
     let mut wrap = maximized_tiled_wm(&windows, WindowId(4));
     wrap.core.config.focus.horizontal_edge = HorizontalEdge::Wrap;
-    focus_horizontal(&mut wrap.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut wrap.test_ctx(), HorizontalDirection::Right);
     assert_eq!(wrap.core.model.selected_win(), Some(WindowId(1)));
 
     let mut overflow = maximized_tiled_wm(&windows, WindowId(4));
     overflow.core.config.focus.horizontal_edge = HorizontalEdge::Overflow;
-    focus_horizontal(&mut overflow.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut overflow.test_ctx(), HorizontalDirection::Right);
     assert_eq!(
         overflow
             .core
@@ -851,6 +853,6 @@ fn maximized_horizontal_focus_follows_the_configured_edge_policy() {
 
     let mut none = maximized_tiled_wm(&windows, WindowId(4));
     none.core.config.focus.horizontal_edge = HorizontalEdge::None;
-    focus_horizontal(&mut none.ctx(), HorizontalDirection::Right);
+    focus_horizontal(&mut none.test_ctx(), HorizontalDirection::Right);
     assert_eq!(none.core.model.selected_win(), Some(WindowId(4)));
 }

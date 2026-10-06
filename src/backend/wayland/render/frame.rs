@@ -14,7 +14,6 @@ use smithay::output::Output;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, Resource};
 use smithay::wayland::commit_timing::{CommitTimerBarrierStateUserData, Timestamp};
-use smithay::wayland::compositor::CompositorHandler;
 use smithay::wayland::fifo::FifoBarrierCachedState;
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
@@ -50,7 +49,7 @@ pub fn service_commit_timing(
             continue;
         };
         if deadline.is_none() {
-            // Remove before blocker_cleared: applying the newly unblocked
+            // Remove before queuing blocker_cleared: applying the newly unblocked
             // commit may synchronously register another timed constraint.
             state.commit_timing_surfaces.remove(&surface);
         }
@@ -63,11 +62,8 @@ pub fn service_commit_timing(
             next_deadline = Some(deadline);
         }
     }
-    let dh = state.display_handle.clone();
     for client in clients {
-        state
-            .client_compositor_state(&client)
-            .blocker_cleared(state, &dh);
+        state.defer_commit_client(client);
     }
     next_deadline
 }
@@ -115,11 +111,8 @@ pub fn release_fifo_barriers(state: &mut WaylandState, output: &Output) {
         }
     }
 
-    let dh = state.display_handle.clone();
     for client in clients {
-        state
-            .client_compositor_state(&client)
-            .blocker_cleared(state, &dh);
+        state.defer_commit_client(client);
     }
 }
 

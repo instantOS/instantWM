@@ -1,7 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use std::ptr::NonNull;
-
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::IsAlive;
@@ -77,7 +75,7 @@ use super::protocols::output_power::OutputPowerState;
 use crate::config::config_toml::CursorConfig;
 use crate::core_state::CoreState;
 use crate::types::{Rect, WindowId};
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 use super::image_capture::PendingImageCapture;
 use super::screencopy::PendingScreencopy;
@@ -190,7 +188,7 @@ pub struct WaylandState {
     pub idle_inhibiting_surfaces: HashSet<WlSurface>,
     /// DRM node used for rendering, needed to tag imported dmabufs.
     pub(super) render_node: Option<DrmNode>,
-    renderer: Option<NonNull<GlesRenderer>>,
+    graphics: Option<super::graphics::GraphicsHandle>,
 
     // -- Input --
     pub seat: Seat<WaylandState>,
@@ -207,9 +205,10 @@ pub struct WaylandState {
 
     // -- Internal state --
     pub(super) next_window_id: u32,
-    /// Read-only back-reference to the main WM state for queries.
-    /// Mutations must go through the command_queue.
-    wm: Option<NonNull<Wm>>,
+    /// Shared WM owner, borrowed only at protocol/input dispatch boundaries.
+    /// Shared runtime actions already hold the WM and pass core views explicitly.
+    wm: std::rc::Rc<std::cell::RefCell<Wm>>,
+    pending_commit_clients: Vec<smithay::reexports::wayland_server::Client>,
     /// Desired, dispatched, and acknowledged geometry for each client.
     pub(super) geometry_sync:
         HashMap<WindowId, super::window::geometry_sync::WindowGeometrySync>,
@@ -469,8 +468,13 @@ impl WaylandState {
     }
 
     /// Create a new `WaylandState` and register all Wayland globals.
-    pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
+    pub fn new(
+        display: Display<WaylandState>,
+        handle: &LoopHandle<'static, WaylandState>,
+        wm: std::rc::Rc<std::cell::RefCell<Wm>>,
+    ) -> Self {
         let dh = display.handle();
+        let cursor_config = wm.borrow().core.config.cursor.clone();
 
         // Insert the Wayland display as a calloop source so that protocol
         // messages from connected clients are dispatched on each loop tick.
@@ -605,18 +609,19 @@ impl WaylandState {
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
             render_node: None,
-            renderer: None,
+            graphics: None,
             seat,
             keyboard,
             pointer,
             touch,
-            cursor_config: CursorConfig::default(),
+            cursor_config,
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             cursor_icon_override: None,
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
-            wm: None,
+            wm,
+            pending_commit_clients: Vec::new(),
             geometry_sync: HashMap::new(),
             placed_border: HashMap::new(),
             native_size_hints: HashMap::new(),
@@ -682,30 +687,13 @@ impl WaylandState {
         });
     }
 
-    /// Attach the GLES renderer.
-    ///
-    /// Ownership constraint: DmabufHandler::dmabuf_imported receives only
-    /// &mut WaylandState and needs renderer access to validate an import.
-    /// In nested mode Smithay's WinitGraphicsBackend owns the renderer and
-    /// bind() returns the renderer together with its borrowed framebuffer;
-    /// the renderer cannot simply be moved into this state. DRM could own its
-    /// renderer here, but that alone would not solve the nested backend.
-    /// The pointer is used during protocol dispatch, while rendering happens
-    /// in the subsequent loop callback. Do not move/drop/replace the renderer
-    /// while attached, or dispatch protocols while it is borrowed for a frame.
-    /// This is an integration constraint, not a Smithay requirement to use
-    /// unsafe code: a scoped renderer service during dispatch is an alternative.
+    /// Attach shared graphics ownership. Protocol dispatch and rendering are
+    /// separate calloop phases; the handle enforces that the renderer cannot
+    /// be borrowed by both. Nested graphics retains ownership of its renderer.
     #[allow(unexpected_cfgs)]
-    pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
-        self.renderer = Some(NonNull::from(renderer));
-        // Bind the compositor's Wayland display to the EGL display.  This
-        // enables the legacy EGL_WL_bind_wayland_display / wl_drm path that
-        // Mesa falls back to when zwp_linux_dmabuf_feedback_v1 v4 is
-        // unavailable.  Together with the v4 dmabuf feedback we advertise in
-        // init_dmabuf_global this ensures GPU clients like kitty never need
-        // to resort to software rendering.
+    pub(crate) fn attach_graphics(&mut self, graphics: super::graphics::GraphicsHandle) {
         #[cfg(feature = "use_system_lib")]
-        {
+        graphics.with_renderer(|renderer| {
             use smithay::backend::renderer::ImportEgl;
             match renderer.bind_wl_display(&self.display_handle) {
                 Ok(()) => log::info!("EGL wl_drm hardware-acceleration enabled"),
@@ -714,43 +702,70 @@ impl WaylandState {
                     err
                 ),
             }
+        });
+        self.graphics = Some(graphics);
+    }
+
+    pub(super) fn with_renderer<T>(&self, f: impl FnOnce(&mut GlesRenderer) -> T) -> Option<T> {
+        self.graphics
+            .as_ref()
+            .map(|graphics| graphics.with_renderer(f))
+    }
+
+    /// Smithay handlers receive only `&mut WaylandState`. Keep the shared WM
+    /// owner present from construction so synchronous configure transactions
+    /// cannot depend on optional attachment. Shared native operations receive
+    /// explicit core views and never reacquire the protocol-dispatch owner.
+    ///
+    /// Putting Wm directly in this struct does not by itself solve borrowing:
+    /// WmCtx borrows core state while native seat operations need the complete
+    /// `&mut WaylandState` for Smithay's callbacks. One route to sole ownership
+    /// is for shared actions to return native effects, then apply those after
+    /// ending the core borrow. This can be done locally without a Smithay fork.
+    /// Do not reintroduce a raw back-reference
+    /// or silently queue configure-critical model transitions to a later tick.
+    pub(crate) fn wm_handle(&self) -> std::rc::Rc<std::cell::RefCell<Wm>> {
+        self.wm.clone()
+    }
+
+    pub(super) fn protocol_core(&self) -> std::cell::Ref<'_, CoreState> {
+        std::cell::Ref::map(self.wm.borrow(), |wm| &wm.core)
+    }
+
+    /// Barrier signaling may happen during a frame or shared WM work. Smithay's
+    /// blocker_cleared synchronously invokes CompositorHandler::commit, which
+    /// can consult the model (native menu placement) or graphics. Keep that
+    /// callback outside all WM/graphics leases instead of relying on each
+    /// caller to know which protocol handlers are reentrant.
+    pub(crate) fn defer_commit_client(
+        &mut self,
+        client: smithay::reexports::wayland_server::Client,
+    ) {
+        if !self
+            .pending_commit_clients
+            .iter()
+            .any(|pending| pending.id() == client.id())
+        {
+            self.pending_commit_clients.push(client);
         }
     }
 
-    /// Get mutable reference to the renderer.
-    pub(super) fn renderer_mut(&mut self) -> Option<&mut GlesRenderer> {
-        self.renderer.map(|mut p| unsafe { p.as_mut() })
-    }
-
-    /// Attach the WM to this state.
-    ///
-    /// The back-reference supplies protocol queries and synchronous input
-    /// actions. It is paired with the reverse pointer in WaylandBackend;
-    /// see that type's borrow-cycle notes before changing either direction.
-    /// The WM must remain at the same address and outlive every use here.
-    pub fn attach_wm(&mut self, wm: &mut Wm) {
-        self.cursor_config = wm.core.config.cursor.clone();
-        self.wm = Some(NonNull::from(wm));
-    }
-
-    #[inline]
-    pub(super) fn globals(&self) -> Option<&CoreState> {
-        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().core })
-    }
-
-    /// Get a mutable pointer to the WM for calloop source callbacks.
-    ///
-    /// # Safety
-    /// The returned pointer is valid only for the duration of the calloop
-    /// dispatch. Callers must ensure no other `&mut Wm` reference is live.
-    /// Calloop sources and the loop callback execute sequentially, which
-    /// prevents concurrent execution but does not itself prove Rust aliasing
-    /// rules. In particular, do not retain a globals() reference across a WM
-    /// mutation. The reverse WaylandBackend bridge has additional aliasing
-    /// obligations; its reentry guard does not cover this pointer.
-    #[inline]
-    pub(crate) unsafe fn wm_mut_ptr(&self) -> Option<*mut Wm> {
-        self.wm.map(|p| p.as_ptr())
+    /// Run at dispatch boundaries, before borrowing runtime resources or after
+    /// dropping them. Drains in the same event-loop iteration, never on a timer
+    /// or an extra WM tick. Commit handlers may register new barriers safely.
+    pub(crate) fn dispatch_pending_commits(&mut self) {
+        use smithay::wayland::compositor::CompositorHandler;
+        while !self.pending_commit_clients.is_empty() {
+            let mut clients = std::mem::take(&mut self.pending_commit_clients);
+            let dh = self.display_handle.clone();
+            for client in clients.drain(..) {
+                self.client_compositor_state(&client)
+                    .blocker_cleared(self, &dh);
+            }
+            if self.pending_commit_clients.is_empty() {
+                self.pending_commit_clients = clients;
+            }
+        }
     }
 
     /// Push a command to the WM command queue.
@@ -758,8 +773,8 @@ impl WaylandState {
         self.command_queue.borrow_mut().push(command);
     }
 
-    /// Sync the Smithay space from the CoreState state.
-    pub fn sync_space_from_globals(&mut self) {
+    /// Project the shared model into the Smithay space.
+    pub fn sync_space(&mut self, core_view: &crate::core_state::CoreState) {
         let dead_windows: Vec<WindowId> = self
             .window_index
             .iter()
@@ -794,9 +809,7 @@ impl WaylandState {
             self.restore_focus_after_overlay();
         }
 
-        let Some(state) = self.globals() else {
-            return;
-        };
+        let state = core_view;
         let updates: Vec<(WindowId, Rect)> = self
             .space
             .elements()
@@ -811,10 +824,11 @@ impl WaylandState {
             // geometry; use a fixed policy to avoid interactive-motion
             // heuristics changing this reconciliation path.
             self.set_window_target_rect(
+                core_view,
                 window_id,
                 geo,
                 super::window::animations::WindowMoveMode::Retarget {
-                    duration: self.default_animation_duration(),
+                    duration: self.default_animation_duration(core_view),
                 },
             );
         }
@@ -883,9 +897,29 @@ mod native_menu_tests {
     use crate::types::Point;
 
     #[test]
+    fn compositor_owns_wm_lifetime_and_rejects_conflicting_protocol_borrows() {
+        let (_event_loop, state) = crate::test_support::new_compositor();
+        let owner = state.wm_handle();
+        let weak = std::rc::Rc::downgrade(&owner);
+        {
+            let _runtime_borrow = owner.borrow_mut();
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _conflicting = state.protocol_core();
+                }))
+                .is_err()
+            );
+        }
+        drop(owner);
+        assert_eq!(state.protocol_core().model.client_count(), 0);
+        assert!(weak.upgrade().is_some());
+        drop(state);
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
     fn pending_native_menu_identity_is_available_until_dismissal() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         *state.runtime.pending_systray_menu.lock().unwrap() = Some(NativeMenuRequest {
             created: Instant::now(),
             anchor: Point::new(10, 20),

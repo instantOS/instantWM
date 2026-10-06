@@ -114,15 +114,14 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
 #[cfg(test)]
 mod tests {
     use super::set_client_tag;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::{add_client, add_selected_client};
     use crate::types::{Client, ClientPlacement, Monitor, TagMask, WindowId};
-    use crate::wm::Wm;
 
     #[test]
     fn assigning_a_tag_explicitly_restores_a_scratchpad() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 9;
         let monitor_id = wm.core.model.monitors.push(Monitor::default());
         wm.core.model.monitors.set_selected(monitor_id);
@@ -146,7 +145,7 @@ mod tests {
             .unwrap();
         add_selected_client(&mut wm.core.model, monitor_id, client);
 
-        set_client_tag(&mut wm.ctx(), win, target_tags);
+        set_client_tag(&mut wm.test_ctx(), win, target_tags);
 
         let restored = wm.core.model.client(win).unwrap();
         assert!(!restored.is_scratchpad());
@@ -160,7 +159,7 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 9;
         let monitor_id = wm.core.model.monitors.push(Monitor::default());
         wm.core.model.monitors.set_selected(monitor_id);
@@ -185,8 +184,8 @@ mod tests {
             );
         }
         // Populate focus history for tag 2 by viewing it and focusing B.
-        crate::tags::view::view_tags(&mut wm.ctx(), tag2);
-        crate::focus::focus(&mut wm.ctx(), Some(win_b));
+        crate::tags::view::view_tags(&mut wm.test_ctx(), tag2);
+        crate::focus::focus(&mut wm.test_ctx(), Some(win_b));
         assert_eq!(wm.core.model.selected_win(), Some(win_b));
 
         // --- Tag 1: one window A, which we will move. ---
@@ -204,13 +203,13 @@ mod tests {
                 ..Client::default()
             },
         );
-        crate::tags::view::view_tags(&mut wm.ctx(), tag1);
-        crate::focus::focus(&mut wm.ctx(), Some(win_a));
+        crate::tags::view::view_tags(&mut wm.test_ctx(), tag1);
+        crate::focus::focus(&mut wm.test_ctx(), Some(win_a));
         assert_eq!(wm.core.model.selected_win(), Some(win_a));
 
         // --- Move A to tag 2, then immediately switch to tag 2. ---
-        crate::tags::client_tags::set_client_tag(&mut wm.ctx(), win_a, tag2);
-        crate::tags::view::view_tags(&mut wm.ctx(), tag2);
+        crate::tags::client_tags::set_client_tag(&mut wm.test_ctx(), win_a, tag2);
+        crate::tags::view::view_tags(&mut wm.test_ctx(), tag2);
 
         // EXPECTED: A should be on top because the user just moved it there.
         assert_eq!(

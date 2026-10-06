@@ -1,3 +1,4 @@
+use crate::backend::WindowOps;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -178,8 +179,8 @@ pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId) {
     );
 
     if !is_tiling {
-        ctx.window_backend().raise_window_visual_only(window);
-        ctx.window_backend().flush();
+        ctx.raise_window_visual_only(window);
+        ctx.flush();
     }
 }
 

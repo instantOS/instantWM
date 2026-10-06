@@ -23,7 +23,7 @@ use std::collections::HashMap;
 /// Follow-up work a config edit requires.
 ///
 /// Each applier lives with its caller: the IPC handler applies effects with
-/// a full [`crate::wm::Wm`], the named actions with a
+/// a full [`crate::wm::WaylandWm`], the named actions with a
 /// [`crate::contexts::WmCtx`]. Values are backend-agnostic so both can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigEffect {

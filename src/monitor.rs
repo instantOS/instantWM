@@ -2,6 +2,9 @@
 //!
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
+use crate::backend::PointerOps;
+
+use crate::backend::WindowOps;
 
 use crate::backend::BackendOutputInfo;
 use crate::bar::policy::TagBarPolicy;
@@ -341,7 +344,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     refresh_focus_after_selection(ctx, previous_focus, Some(c_win));
 
-    ctx.window_backend().raise_window_visual_only(c_win);
+    ctx.raise_window_visual_only(c_win);
     ctx.warp_cursor_to_client(c_win);
 }
 
@@ -449,7 +452,6 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     ctx.core_mut().queue_layout_for_all_monitors();
     ctx.core_mut().bar.mark_dirty();
     let target_monitor_id = ctx
-        .pointer_backend()
         .pointer_location()
         .and_then(|ptr| ctx.core().model().monitors.monitor_at_pointer(ptr))
         .map(Monitor::id);
@@ -711,7 +713,7 @@ fn scaled_monitor_ui_metrics(config: &EffectiveConfig, scale: f64) -> MonitorUiM
 /// reconciling monitors; this
 /// entry point covers the paths that change the base without touching
 /// topology — `config set` and a full config reload, both of which funnel
-/// through [`Wm::reinit_bar_resources`](crate::wm::Wm::reinit_bar_resources).
+/// through [`WmCtx::reinit_bar_resources`](crate::wm::WaylandWmCtx::reinit_bar_resources).
 ///
 /// Layout deliberately does *not* substitute for this: `arrange` reads bar
 /// geometry, and the unscaled global is never a valid value for a scaled

@@ -15,13 +15,13 @@ use crate::backend::wayland::input::pointer::constraints::{
     ActivePointerConstraint, activate_under,
 };
 use crate::backend::wayland::input::pointer::drag::active_drag_window;
-use crate::contexts::{WmCtx, WmCtxWayland};
+use crate::contexts::WmCtx;
 use crate::mouse::{clear_hover_offer, set_sidebar_offer};
 use crate::types::BarPosition;
 use crate::types::ModMask;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 
 /// Unified pointer motion event that abstracts over input source.
 #[derive(Debug, Clone, Copy)]
@@ -169,8 +169,7 @@ fn clamp_absolute_to_layout(
 #[cfg(test)]
 mod tests {
     use super::{MotionEvent, PointerMotionSource, process_pointer_motion_command_cached};
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+
     use crate::backend::wayland::commands::PointerMotionCommand;
     use crate::backend::wayland::compositor::window::hit_test::{
         pointer_hit_counters, reset_pointer_hit_counters,
@@ -180,7 +179,7 @@ mod tests {
         Client, ClientMode, HoverFocusTrigger, MouseButton, Point as RootPoint, Rect, TagMask,
         WindowId,
     };
-    use crate::wm::Wm;
+    use crate::wm::WaylandWm as Wm;
     use smithay::backend::input::InputTime;
     use smithay::utils::Point;
 
@@ -250,7 +249,7 @@ mod tests {
         use super::super::{restore_client_cursor_image, synthetic_refresh_deferred};
         use crate::backend::wayland::compositor::PointerFocusTarget;
         use crate::backend::wayland::compositor::WaylandState;
-        use crate::backend::wayland::compositor::new_event_loop_and_state;
+        use crate::test_support::new_compositor;
 
         fn null_surface(state: &WaylandState) -> WlSurface {
             WlSurface::from_id(&state.display_handle.clone(), ObjectId::null()).unwrap()
@@ -258,7 +257,7 @@ mod tests {
 
         #[test]
         fn a_games_hidden_cursor_survives_focus_churn_over_client_surfaces() {
-            let (_event_loop, mut state) = new_event_loop_and_state();
+            let (_event_loop, mut state) = new_compositor();
             let surface = null_surface(&state);
 
             // Smithay's focus-churn auto-reset landed during the dispatch…
@@ -280,7 +279,7 @@ mod tests {
 
         #[test]
         fn the_desktop_default_stands_when_the_pointer_reaches_the_root() {
-            let (_event_loop, mut state) = new_event_loop_and_state();
+            let (_event_loop, mut state) = new_compositor();
             state.cursor_image_status = CursorImageStatus::default_named();
 
             restore_client_cursor_image(&mut state, CursorImageStatus::Hidden, None);
@@ -293,7 +292,7 @@ mod tests {
 
         #[test]
         fn an_unchanged_cursor_image_needs_no_restoration() {
-            let (_event_loop, mut state) = new_event_loop_and_state();
+            let (_event_loop, mut state) = new_compositor();
             let surface = null_surface(&state);
             state.cursor_image_status = CursorImageStatus::Hidden;
 
@@ -311,7 +310,7 @@ mod tests {
 
         #[test]
         fn synthetic_refresh_is_live_when_no_animation_moves_the_pointers_output() {
-            let (_event_loop, mut state) = new_event_loop_and_state();
+            let (_event_loop, mut state) = new_compositor();
             state.runtime.pointer_location = Point::from((10.0, 10.0));
 
             assert!(!synthetic_refresh_deferred(&state));
@@ -320,9 +319,8 @@ mod tests {
 
     #[test]
     fn sidebar_hover_still_advances_smithay_pointer_location() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.derived.display.width = 1920;
         wm.core.derived.display.height = 1080;
         wm.core.model.monitors.push(
@@ -355,9 +353,8 @@ mod tests {
     #[test]
     fn active_drag_batch_reuses_current_hit_and_scene_snapshot() {
         const MOTIONS: usize = 48;
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(1);
         let geo = Rect::new(100, 100, 600, 400);
@@ -434,8 +431,7 @@ mod tests {
 
     #[test]
     fn relative_motion_into_a_void_is_clipped_to_the_source_output() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let (_left, _right) = two_output_space(&mut state);
 
         let current = Point::from((100.0, 1000.0));
@@ -449,8 +445,7 @@ mod tests {
 
     #[test]
     fn relative_motion_across_a_shared_edge_is_accepted() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let (_left, _right) = two_output_space(&mut state);
 
         let current = Point::from((1910.0, 500.0));
@@ -462,8 +457,7 @@ mod tests {
 
     #[test]
     fn absolute_motion_uses_layout_origin_for_negative_layouts() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
         let top = state.create_output("top", Size::new(1920, 1080), None);
         let bottom = state.create_output("bottom", Size::new(1920, 1080), None);
         state.space.map_output(&top, (0, -1080));
@@ -637,7 +631,8 @@ pub(crate) fn process_pointer_motion_command_cached(
                 // after the guard lifts starts from reality without a
                 // protocol dispatch.
                 return PointerMotionCache {
-                    current_hit: state.contents_under_pointer(state.runtime.pointer_location),
+                    current_hit: state
+                        .contents_under_pointer(&wm.core, state.runtime.pointer_location),
                     snapshot: None,
                 };
             }
@@ -722,8 +717,9 @@ fn handle_pointer_motion(
         .map(|cache| (Some(cache.current_hit), cache.snapshot))
         .unwrap_or_default();
     let snapshot = hit_snapshot.get_or_insert_with(|| state.pointer_hit_snapshot());
-    let current_hit = cached_current_hit
-        .unwrap_or_else(|| state.contents_under_pointer_in_snapshot(current_location, snapshot));
+    let current_hit = cached_current_hit.unwrap_or_else(|| {
+        state.contents_under_pointer_in_snapshot(&wm.core, current_location, snapshot)
+    });
     let constraint = ActivePointerConstraint::under(
         pointer_handle,
         current_hit.surface.as_ref(),
@@ -761,8 +757,11 @@ fn handle_pointer_motion(
     }
 
     let final_location = potential_location;
-    let candidate_hit =
-        state.contents_under_pointer_in_snapshot(final_location, hit_snapshot.as_ref().unwrap());
+    let candidate_hit = state.contents_under_pointer_in_snapshot(
+        &wm.core,
+        final_location,
+        hit_snapshot.as_ref().unwrap(),
+    );
 
     if !constraint.allows_motion_to(candidate_hit.surface.as_ref(), final_location) {
         pointer_handle.frame(state);
@@ -780,7 +779,7 @@ fn handle_pointer_motion(
     // WM UI.
     let scene_changed = if source == PointerMotionSource::Device && !state.is_locked() {
         let root = RootPoint::from_f64_round(final_location.x, final_location.y);
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.wayland_ctx(state);
         crate::mouse::update_overlay_hot_corner(&mut ctx, root)
     } else {
         false
@@ -791,7 +790,11 @@ fn handle_pointer_motion(
     // overwhelmingly common pointer-motion path.
     let final_hit = if scene_changed {
         hit_snapshot = Some(state.pointer_hit_snapshot());
-        state.contents_under_pointer_in_snapshot(final_location, hit_snapshot.as_ref().unwrap())
+        state.contents_under_pointer_in_snapshot(
+            &wm.core,
+            final_location,
+            hit_snapshot.as_ref().unwrap(),
+        )
     } else {
         candidate_hit
     };
@@ -854,18 +857,15 @@ fn dispatch_pointer_motion(
     let (pointer_focus, hovered_win) =
         resolve_pointer_focus_from_hit(state, hit_test, in_bar_band, in_bar_guard_band);
 
-    // Phase 3: Handle resize drag motion (early return path)
-    let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-        && handle_resize_drag_motion(
-            &mut ctx,
-            state,
-            pointer_handle,
-            pointer_focus.clone(),
-            time,
-            update_active_drag,
-        )
-    {
+    // Core actions and native pointer dispatch run in successive borrow scopes.
+    if handle_resize_drag_motion(
+        wm,
+        state,
+        pointer_handle,
+        pointer_focus.clone(),
+        time,
+        update_active_drag,
+    ) {
         return;
     }
 
@@ -876,7 +876,7 @@ fn dispatch_pointer_motion(
     let bar_pos = if wm.core.interaction.drag.owns_bar_hover() {
         None
     } else {
-        update_bar_hit_state(wm, root, false)
+        update_bar_hit_state(wm, state, root, false)
     };
     if handle_bar_motion(
         wm,
@@ -894,20 +894,20 @@ fn dispatch_pointer_motion(
     // must not consume the motion event: Smithay's pointer position is the
     // protocol authority used by constraints, buttons, and cursor rendering.
     let sidebar_offer_active = if !wm.core.interaction.drag.has_capture() {
-        let ctx = wm.ctx();
+        let sidebar_target = crate::mouse::pointer::sidebar_target_at(&wm.core.model, root);
+        let blocked_by_non_desktop = sidebar_target.is_some()
+            && (state
+                .logical_window_under_pointer(&wm.core, pointer_location)
+                .is_some()
+                || state
+                    .layer_surface_under_pointer(pointer_location)
+                    .is_some()
+                || state.is_pointer_over_overlay(pointer_location));
+        let ctx = wm.wayland_ctx(state);
         if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
             // Layer/overlay hit testing is substantially richer than the
             // monitor-rectangle sidebar test. Only pay for it inside the edge
             // strip; ordinary pointer motion must not gain another scene walk.
-            let sidebar_target = crate::mouse::pointer::sidebar_target_at(ctx.core.model(), root);
-            let blocked_by_non_desktop = sidebar_target.is_some()
-                && (state
-                    .logical_window_under_pointer(pointer_location)
-                    .is_some()
-                    || state
-                        .layer_surface_under_pointer(pointer_location)
-                        .is_some()
-                    || state.is_pointer_over_overlay(pointer_location));
             let target = if blocked_by_non_desktop {
                 None
             } else {
@@ -927,7 +927,7 @@ fn dispatch_pointer_motion(
     if !sidebar_offer_active {
         // Phase 5: Update floating-border and tiled-gap resize offers
         let suppress_hover_focus =
-            update_hover_resize_state(wm, root, wm.core.interaction.drag.has_capture());
+            update_hover_resize_state(wm, state, root, wm.core.interaction.drag.has_capture());
 
         // Phase 6: Update pointer focus based on drag state. An exclusive layer
         // surface (for example slurp) temporarily owns keyboard focus; moving the
@@ -936,6 +936,7 @@ fn dispatch_pointer_motion(
         if !state.exclusive_layer_has_keyboard_focus() {
             update_pointer_focus(
                 wm,
+                state,
                 active_drag_window,
                 hovered_win,
                 suppress_hover_focus,
@@ -947,7 +948,7 @@ fn dispatch_pointer_motion(
 
     // Phase 7: Handle tag/title drag motion
     if hover_focus_trigger == crate::types::HoverFocusTrigger::PointerMotion {
-        handle_wm_drag_motion(wm, keyboard_handle, root);
+        handle_wm_drag_motion(wm, state, keyboard_handle, root);
     }
 
     // Phase 8: Dispatch final motion event to Smithay
@@ -1019,7 +1020,7 @@ fn resolve_pointer_focus_from_hit(
 
 /// Handle resize drag motion. Returns true if handled (early return).
 fn handle_resize_drag_motion(
-    ctx: &mut WmCtxWayland<'_>,
+    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     pointer_focus: Option<SurfaceFocus>,
@@ -1027,17 +1028,20 @@ fn handle_resize_drag_motion(
     update_active_drag: bool,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
-    let handled = if update_active_drag {
-        crate::mouse::interaction::handle(
-            &mut WmCtx::Wayland(ctx.reborrow()),
-            crate::mouse::interaction::InteractionEvent::pointer_update(
-                RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
-                ModMask::NONE,
-            ),
-        )
-        .captured()
-    } else {
-        ctx.core.interaction().drag.active_interaction().is_some()
+    let handled = {
+        let mut ctx = wm.wayland_ctx(state);
+        if update_active_drag {
+            crate::mouse::interaction::handle(
+                &mut ctx,
+                crate::mouse::interaction::InteractionEvent::pointer_update(
+                    RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
+                    ModMask::NONE,
+                ),
+            )
+            .captured()
+        } else {
+            ctx.core().interaction().drag.active_interaction().is_some()
+        }
     };
     if !handled {
         return false;
@@ -1071,7 +1075,7 @@ fn handle_bar_motion(
     let pointer_location = state.runtime.pointer_location;
     let is_drag = wm.core.interaction.drag.has_capture();
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
-        let ctx = wm.ctx();
+        let ctx = wm.wayland_ctx(state);
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return true;
         };
@@ -1098,9 +1102,14 @@ fn handle_bar_motion(
 /// yanking focus to whatever lies beneath would fight the offered gesture.
 /// Without an offer, hover focus applies normally (focus-follows-mouse,
 /// unfocus when hovering the root).
-fn update_hover_resize_state(wm: &mut Wm, root: RootPoint, drag_active: bool) -> bool {
+fn update_hover_resize_state(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    root: RootPoint,
+    drag_active: bool,
+) -> bool {
     if wm.core.model.is_overview_active() {
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.wayland_ctx(state);
         clear_hover_offer(&mut ctx);
         return false;
     }
@@ -1108,7 +1117,7 @@ fn update_hover_resize_state(wm: &mut Wm, root: RootPoint, drag_active: bool) ->
         return false;
     }
 
-    let ctx = wm.ctx();
+    let ctx = wm.wayland_ctx(state);
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
@@ -1120,6 +1129,7 @@ fn update_hover_resize_state(wm: &mut Wm, root: RootPoint, drag_active: bool) ->
 /// Update pointer focus based on drag state.
 fn update_pointer_focus(
     wm: &mut Wm,
+    state: &mut WaylandState,
     active_drag_window: Option<crate::types::WindowId>,
     hovered_win: Option<crate::types::WindowId>,
     suppress_hover_focus: bool,
@@ -1127,12 +1137,12 @@ fn update_pointer_focus(
     trigger: crate::types::HoverFocusTrigger,
 ) {
     if wm.core.model.is_overview_active() {
-        let mut ctx = wm.ctx();
+        let mut ctx = wm.wayland_ctx(state);
         crate::focus::apply_hover_focus(&mut ctx, hovered_win, false, Some(root), trigger);
         return;
     }
     if let Some(lock_win) = active_drag_window {
-        let ctx = wm.ctx();
+        let ctx = wm.wayland_ctx(state);
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
@@ -1143,7 +1153,7 @@ fn update_pointer_focus(
             );
         }
     } else if !suppress_hover_focus {
-        let ctx = wm.ctx();
+        let ctx = wm.wayland_ctx(state);
         let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
             return;
         };
@@ -1155,10 +1165,11 @@ fn update_pointer_focus(
 /// Handle tag and title drag motion.
 fn handle_wm_drag_motion(
     wm: &mut Wm,
+    state: &mut WaylandState,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     root: RootPoint,
 ) {
-    let mut ctx = wm.ctx();
+    let mut ctx = wm.wayland_ctx(state);
     let modifiers = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
     let _ = crate::mouse::interaction::handle(
         &mut ctx,

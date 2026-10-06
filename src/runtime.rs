@@ -1,6 +1,7 @@
 //! Shared event-loop tick helpers used by both X11 and Wayland backends.
 //!
-//! These functions operate purely on [`Wm`] and are backend-agnostic.
+//! Shared operations receive [`crate::contexts::WmCtx`], whose capabilities are
+//! borrowed from the running backend. Policy remains backend-independent.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -10,7 +11,6 @@ use calloop::generic::Generic;
 use calloop::timer::{TimeoutAction, Timer};
 use calloop::{Interest, Mode, PostAction};
 
-use crate::backend::WindowOps;
 use crate::core_state::LayoutWorkTargets;
 use crate::wm::Wm;
 
@@ -46,25 +46,24 @@ pub struct TickResult {
 /// 5. layout work
 /// 6. dirty-bar redraw (backend-routed)
 pub fn event_loop_tick_with_options(
-    wm: &mut Wm,
+    ctx: &mut crate::contexts::WmCtx<'_>,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     options: TickOptions,
 ) -> TickResult {
-    let systray_updated = wm.poll_systray();
-    if crate::systray::instantmenu::drive_instantmenu_menu(wm) {
-        wm.bar.mark_dirty();
+    let systray_updated = ctx.core_mut().poll_systray();
+    if crate::systray::instantmenu::drive_instantmenu_menu(ctx.core_mut()) {
+        ctx.core_mut().bar.mark_dirty();
     }
-    let status_handled = wm.bar.drain_status_updates();
+    let status_handled = ctx.core_mut().bar.drain_status_updates();
     // A finished region selection may resize a window, so it drains before
     // pending work to let the same tick apply the resulting layout.
-    let region_selection_applied = crate::mouse::slop::drain_region_selection(wm);
-    let ipc_handled = process_ipc_commands(ipc_server, wm);
-    let work = process_pending_work(wm, options);
-    crate::bar::status::sync_visibility(wm);
+    let region_selection_applied = crate::mouse::slop::drain_region_selection(ctx);
+    let ipc_handled = process_ipc_commands(ipc_server, ctx);
+    let work = process_pending_work(ctx, options);
+    crate::bar::status::sync_visibility(ctx.core_mut());
 
     {
-        let mut ctx = wm.ctx();
-        let _ = crate::mouse::interaction::reconcile_capture(&mut ctx);
+        let _ = crate::mouse::interaction::reconcile_capture(ctx);
         ctx.redraw_bars_if_dirty();
     }
     TickResult {
@@ -82,60 +81,65 @@ pub struct PendingWorkResult {
 }
 
 /// Apply all pending work in deterministic order.
-pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkResult {
+pub fn process_pending_work(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    options: TickOptions,
+) -> PendingWorkResult {
     let mut result = PendingWorkResult::default();
 
-    if wm.work.monitor_config {
-        wm.work.monitor_config = false;
-        let mut ctx = wm.ctx();
-        crate::monitor::apply_monitor_config(&mut ctx);
+    if ctx.core_mut().pending_work_mut().monitor_config {
+        ctx.core_mut().pending_work_mut().monitor_config = false;
+        crate::monitor::apply_monitor_config(ctx);
         result.monitor_config_applied = true;
     }
 
-    crate::hooks::run_monitor_hooks(wm);
+    crate::hooks::run_monitor_hooks(ctx);
 
     // Edge scratchpads finish their slide-out through backend animation
     // bookkeeping; complete the deferred logical hide once it drained.
-    let pending_hides = wm.work.pending_scratchpad_hide_windows();
+    let pending_hides = ctx
+        .core_mut()
+        .pending_work_mut()
+        .pending_scratchpad_hide_windows();
     let finished_hides: Vec<crate::types::WindowId> = pending_hides
         .into_iter()
-        .filter(|win| !wm.backend.window_animation_active(*win))
+        .filter(|win| !ctx.window_animation_active(*win))
         .collect();
     for win in &finished_hides {
-        wm.work.cancel_pending_scratchpad_hide(*win);
+        ctx.core_mut()
+            .pending_work_mut()
+            .cancel_pending_scratchpad_hide(*win);
     }
     if !finished_hides.is_empty() {
-        let mut ctx = wm.ctx();
-        crate::floating::finish_scratchpad_hides(&mut ctx, &finished_hides);
+        crate::floating::finish_scratchpad_hides(ctx, &finished_hides);
     }
 
-    if !wm.work.layout.is_pending() {
+    if !ctx.core_mut().pending_work_mut().layout.is_pending() {
         return result;
     }
 
     if options.defer_layout_while_animations_active
         && options.animations_active
-        && !wm.work.layout.is_urgent()
+        && !ctx.core_mut().pending_work_mut().layout.is_urgent()
     {
         return result;
     }
 
-    let Some(targets) = wm.work.layout.take_targets() else {
+    let Some(targets) = ctx.core_mut().pending_work_mut().layout.take_targets() else {
         return result;
     };
-    result.layout_applied = apply_layout_targets(wm, targets);
+    result.layout_applied = apply_layout_targets(ctx, targets);
     result
 }
 
-fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
-    if wm.core.model.client_count() == 0 {
+fn apply_layout_targets(ctx: &mut crate::contexts::WmCtx<'_>, targets: LayoutWorkTargets) -> bool {
+    if ctx.core().model().client_count() == 0 {
         return false;
     }
 
     match targets {
         LayoutWorkTargets::AllMonitors => {
-            let mut ctx = wm.ctx();
-            crate::layouts::arrange(&mut ctx, None);
+            crate::layouts::arrange(ctx, None);
             true
         }
         LayoutWorkTargets::Monitors(monitors) => {
@@ -143,8 +147,7 @@ fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
                 return false;
             }
             for monitor_id in monitors {
-                let mut ctx = wm.ctx();
-                crate::layouts::arrange(&mut ctx, Some(monitor_id));
+                crate::layouts::arrange(ctx, Some(monitor_id));
             }
             true
         }
@@ -154,26 +157,28 @@ fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
 /// Process pending IPC commands.
 ///
 /// Returns `true` when at least one command was handled.
-pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: &mut Wm) -> bool {
+pub fn process_ipc_commands(
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    ctx: &mut crate::contexts::WmCtx<'_>,
+) -> bool {
     let Some(server) = ipc_server.as_mut() else {
         return false;
     };
-    server.process_pending(wm)
+    server.process_pending(ctx)
 }
 
 // ── Startup helpers ─────────────────────────────────────────────────────
 
 /// Initialise the keyboard layout from the WM configuration.
-pub fn init_keyboard_layout(wm: &mut Wm) {
-    let mut ctx = wm.ctx();
-    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
+pub fn init_keyboard_layout(ctx: &mut crate::contexts::WmCtx<'_>) {
+    crate::keyboard_layout::init_keyboard_layout(ctx);
 }
 
 /// Spawn the configured status bar command, the auto-detected
 /// `i3status-rs`, or the built-in default (in that order of
 /// precedence).
-pub fn spawn_status_bar(wm: &mut Wm) {
-    crate::bar::status::sync_visibility(wm);
+pub fn spawn_status_bar<B: crate::backend::BackendState>(wm: &mut Wm<B>) {
+    crate::bar::status::sync_visibility(&mut wm.core_ctx());
     wm.bar
         .status_sources
         .start(wm.core.config.status_command.as_deref());
@@ -184,7 +189,7 @@ pub fn spawn_status_bar(wm: &mut Wm) {
 /// Called by each backend during startup. The Wayland backends call this
 /// from [`autostart_ipc_status_ping`], while X11 calls it from
 /// [`late_init_x11`].
-pub fn run_startup_commands(wm: &Wm) {
+pub fn run_startup_commands<B: crate::backend::BackendState>(wm: &Wm<B>) {
     crate::startup::autostart::run_autostart();
     crate::startup::autostart::run_exec_commands(&wm.core.config.exec_once);
     crate::startup::autostart::run_exec_commands(&wm.core.config.exec);
@@ -197,7 +202,7 @@ pub fn run_startup_commands(wm: &Wm) {
 /// the compositor immediately, then runs them and spawns the status bar.
 /// The StatusNotifier worker starts later, from the calloop event loop, so it
 /// can receive a wake ping; see `backend::x11::events::run`.
-pub fn late_init_x11(wm: &mut Wm) -> Option<crate::ipc::IpcServer> {
+pub fn late_init_x11(wm: &mut crate::wm::X11Wm) -> Option<crate::ipc::IpcServer> {
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     run_startup_commands(wm);
     spawn_status_bar(wm);
@@ -316,9 +321,9 @@ pub fn animation_frame_interval(refresh_millihertz: Option<u32>) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::{TickOptions, animation_frame_interval, process_pending_work};
-    use crate::backend::{Backend as WmBackend, wayland::WaylandBackend};
+    use crate::test_support::TestWm as Wm;
     use crate::types::MonitorId;
-    use crate::wm::Wm;
+
     use std::time::Duration;
 
     #[test]
@@ -341,35 +346,127 @@ mod tests {
 
     #[test]
     fn non_urgent_layout_can_be_deferred_for_animations() {
-        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.work.layout.clear();
         wm.work.layout.mark_monitor(MonitorId::default());
 
-        process_pending_work(
-            &mut wm,
-            TickOptions {
-                defer_layout_while_animations_active: true,
-                animations_active: true,
-            },
-        );
+        wm.with_ctx(|wm| {
+            process_pending_work(
+                wm,
+                TickOptions {
+                    defer_layout_while_animations_active: true,
+                    animations_active: true,
+                },
+            )
+        });
 
         assert!(wm.work.layout.is_pending());
     }
 
     #[test]
     fn urgent_layout_bypasses_animation_defer() {
-        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.work.layout.clear();
         wm.work.layout.mark_monitor_urgent(MonitorId::default());
 
-        process_pending_work(
-            &mut wm,
-            TickOptions {
-                defer_layout_while_animations_active: true,
-                animations_active: true,
-            },
-        );
+        wm.with_ctx(|wm| {
+            process_pending_work(
+                wm,
+                TickOptions {
+                    defer_layout_while_animations_active: true,
+                    animations_active: true,
+                },
+            )
+        });
 
         assert!(!wm.work.layout.is_pending());
+    }
+    /// Exercise the shared scheduler against a real X11 connection: an edge
+    /// scratchpad must remain mapped until the X11 animation map drains.
+    #[test]
+    #[ignore = "requires a dedicated Xvfb display"]
+    fn x11_scratchpad_hide_waits_for_native_animation() {
+        use crate::test_support::MonitorBuilder;
+        use crate::types::{Client, Rect, WindowId};
+        use x11rb::connection::Connection;
+        use x11rb::protocol::xproto::{ConnectionExt, CreateWindowAux, MapState, WindowClass};
+
+        let (conn, screen) = x11rb::connect(None).expect("test requires Xvfb");
+        let root = conn.setup().roots[screen].root;
+        let xid = conn.generate_id().unwrap();
+        conn.create_window(
+            x11rb::COPY_DEPTH_FROM_PARENT,
+            xid,
+            root,
+            0,
+            0,
+            640,
+            360,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            0,
+            &CreateWindowAux::new(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        conn.map_window(xid).unwrap().check().unwrap();
+        let mut wm = crate::wm::X11Wm::new(crate::backend::X11BackendData::new(conn, screen));
+        wm.backend.x11_runtime.root = root;
+        let monitor = wm.core.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1920, 1080))
+                .bar(0, false)
+                .build(),
+        );
+        wm.core.model.monitors.set_selected(monitor);
+        let win = WindowId::from(xid);
+        let mut client = Client {
+            win,
+            geo: Rect::new(0, 0, 640, 360),
+            ..Client::default()
+        };
+        client
+            .promote_to_scratchpad(
+                monitor,
+                "edge",
+                Some(crate::types::EdgeDirection::Top),
+                1920,
+                1080,
+            )
+            .unwrap();
+        wm.core.model.add_client(monitor, client);
+        wm.core.config.animations.enabled = true;
+        crate::floating::scratchpad::hide_scratchpad_window(&mut wm.x11_ctx(), win);
+        assert!(wm.x11_ctx().window_animation_active(win));
+
+        process_pending_work(&mut wm.x11_ctx(), TickOptions::default());
+        assert!(wm.work.has_pending_scratchpad_hide(win));
+        assert!(wm.core.model.client(win).unwrap().is_scratchpad_visible());
+        assert_eq!(
+            wm.backend
+                .conn
+                .get_window_attributes(xid)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .map_state,
+            MapState::VIEWABLE
+        );
+
+        wm.backend.x11_runtime.window_animations.remove(&win);
+        process_pending_work(&mut wm.x11_ctx(), TickOptions::default());
+        assert!(!wm.work.has_pending_scratchpad_hide(win));
+        assert!(!wm.core.model.client(win).unwrap().is_scratchpad_visible());
+        assert_eq!(
+            wm.backend
+                .conn
+                .get_window_attributes(xid)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .map_state,
+            MapState::UNMAPPED
+        );
     }
 }

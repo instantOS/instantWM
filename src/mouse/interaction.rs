@@ -255,14 +255,13 @@ fn cancel_capture(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::{MonitorBuilder, add_selected_client_with, push_monitor_with};
     use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     fn floating_drag_fixture(source: InteractionSource) -> (Wm, WindowId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(7);
         let monitor_id = push_monitor_with(&mut wm.core.model, |monitor| {
@@ -323,7 +322,9 @@ mod tests {
     fn removing_drag_target_cancels_pointer_and_touch_before_late_input() {
         for source in [InteractionSource::Pointer, InteractionSource::Touch(4)] {
             let (mut wm, win) = floating_drag_fixture(source);
-            assert!(crate::client::lifecycle::remove_managed_client(&mut wm.ctx(), win).is_some());
+            assert!(
+                crate::client::lifecycle::remove_managed_client(&mut wm.test_ctx(), win).is_some()
+            );
             assert!(wm.core.interaction.drag.capture().is_none());
             assert!(wm.core.model.client(win).is_none());
             for phase in [
@@ -335,7 +336,7 @@ mod tests {
             ] {
                 assert_eq!(
                     handle(
-                        &mut wm.ctx(),
+                        &mut wm.test_ctx(),
                         InteractionEvent {
                             source,
                             phase,
@@ -358,14 +359,14 @@ mod tests {
 
         assert_eq!(
             handle(
-                &mut pointer_wm.ctx(),
+                &mut pointer_wm.test_ctx(),
                 update(InteractionSource::Pointer, root)
             ),
             InteractionOutcome::Captured
         );
         assert_eq!(
             handle(
-                &mut touch_wm.ctx(),
+                &mut touch_wm.test_ctx(),
                 update(InteractionSource::Touch(4), root)
             ),
             InteractionOutcome::Captured
@@ -395,18 +396,18 @@ mod tests {
 
     #[test]
     fn uncaptured_samples_are_explicitly_ignored_for_client_forwarding() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(10, 20))
             ),
             InteractionOutcome::Ignored
         );
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Touch(2), Point::new(10, 20))
             ),
             InteractionOutcome::Ignored
@@ -414,7 +415,7 @@ mod tests {
     }
 
     fn bottom_bar_fixture() -> (Wm, MonitorId) {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 9;
         let tags = TagMask::single(2).unwrap();
         let monitor_id = wm.core.model.monitors.push(
@@ -463,7 +464,7 @@ mod tests {
             .expect("fixture point must be on the bottom bar");
         assert_eq!(target.monitor_id, monitor_id);
         assert!(crate::mouse::drag::bottom_bar_gesture_begin(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             MouseButton::Left,
             InteractionSource::Pointer,
             target,
@@ -480,7 +481,7 @@ mod tests {
     fn end_bottom_bar_drag_at(wm: &mut Wm, root: Point, time_msec: u32) {
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 InteractionEvent {
                     source: InteractionSource::Pointer,
                     phase: InteractionPhase::End {
@@ -519,7 +520,7 @@ mod tests {
         // must not change the view (action fires on release).
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(164, 1060))
             ),
             InteractionOutcome::Captured
@@ -527,7 +528,7 @@ mod tests {
         // Dragging far beyond the threshold still produces only one action.
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(1500, 1060))
             ),
             InteractionOutcome::Captured
@@ -548,7 +549,7 @@ mod tests {
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(36, 1060))
             ),
             InteractionOutcome::Captured
@@ -602,7 +603,7 @@ mod tests {
         begin_bottom_bar_drag(&mut wm, monitor_id, begin_root);
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(164, 1060))
             ),
             InteractionOutcome::Captured
@@ -626,7 +627,7 @@ mod tests {
         // Motion alone must not fire anything (overview stays inactive).
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(100, 500))
             ),
             InteractionOutcome::Captured
@@ -645,7 +646,7 @@ mod tests {
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Touch(9), Point::new(700, 600)),
             ),
             InteractionOutcome::Ignored
@@ -654,7 +655,7 @@ mod tests {
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 InteractionEvent {
                     source: InteractionSource::Touch(9),
                     phase: InteractionPhase::End {
@@ -683,7 +684,7 @@ mod tests {
                 .set_selected_tags(TagMask::single(2).unwrap());
 
             assert_eq!(
-                handle(&mut wm.ctx(), update(source, Point::new(350, 275))),
+                handle(&mut wm.test_ctx(), update(source, Point::new(350, 275))),
                 InteractionOutcome::Captured
             );
             assert!(wm.core.interaction.drag.capture().is_none());
@@ -706,7 +707,7 @@ mod tests {
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Touch(9), Point::new(350, 275))
             ),
             InteractionOutcome::Ignored
@@ -715,7 +716,7 @@ mod tests {
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(350, 275))
             ),
             InteractionOutcome::Captured
@@ -728,7 +729,7 @@ mod tests {
         let (mut destroyed_wm, win) = floating_drag_fixture(InteractionSource::Pointer);
         assert!(destroyed_wm.core.model.remove_client(win).is_some());
         assert_eq!(
-            reconcile_capture(&mut destroyed_wm.ctx()),
+            reconcile_capture(&mut destroyed_wm.test_ctx()),
             Some(DragCancelReason::WindowDestroyed)
         );
         assert!(destroyed_wm.core.interaction.drag.capture().is_none());
@@ -741,7 +742,7 @@ mod tests {
         wm.core.model.client_mut(win).unwrap().is_hidden = true;
         arm_title_drag(&mut wm, win, true);
 
-        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
         assert!(wm.core.interaction.drag.capture().is_some());
 
         let monitor_id = wm.core.model.monitor_of_client(win).unwrap();
@@ -751,7 +752,7 @@ mod tests {
             .unwrap()
             .set_selected_tags(TagMask::single(2).unwrap());
         assert_eq!(
-            reconcile_capture(&mut wm.ctx()),
+            reconcile_capture(&mut wm.test_ctx()),
             Some(DragCancelReason::WindowHidden)
         );
         assert!(wm.core.interaction.drag.capture().is_none());
@@ -763,10 +764,10 @@ mod tests {
         wm.core.interaction.drag.cancel_capture().unwrap();
         arm_title_drag(&mut wm, win, false);
 
-        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
         wm.core.model.client_mut(win).unwrap().is_hidden = true;
         assert_eq!(
-            reconcile_capture(&mut wm.ctx()),
+            reconcile_capture(&mut wm.test_ctx()),
             Some(DragCancelReason::WindowHidden)
         );
         assert!(wm.core.interaction.drag.capture().is_none());
@@ -782,7 +783,7 @@ mod tests {
             .unwrap()
             .set_selected_tags(TagMask::single(3).unwrap());
 
-        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
         assert!(
             wm.core
                 .interaction
@@ -797,7 +798,7 @@ mod tests {
         let (mut wm, _) = bottom_bar_fixture();
         let win = WindowId(7);
         assert!(crate::mouse::slop::arm_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -807,17 +808,17 @@ mod tests {
         // the press armed: the window is not being dragged.
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 update(InteractionSource::Pointer, Point::new(600, 700))
             ),
             InteractionOutcome::Captured
         );
-        assert_eq!(reconcile_capture(&mut wm.ctx()), None);
+        assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
         assert!(wm.core.interaction.drag.capture().is_some());
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 InteractionEvent {
                     source: InteractionSource::Pointer,
                     phase: InteractionPhase::End {
@@ -839,7 +840,7 @@ mod tests {
         let (mut wm, _) = bottom_bar_fixture();
         let win = WindowId(7);
         assert!(crate::mouse::slop::arm_region_selection_press(
-            &mut wm.ctx(),
+            &mut wm.test_ctx(),
             win,
             MouseButton::Left,
             InteractionSource::Pointer,
@@ -847,13 +848,13 @@ mod tests {
 
         assert_eq!(
             handle(
-                &mut wm.ctx(),
+                &mut wm.test_ctx(),
                 InteractionEvent::pointer_cancel(DragCancelReason::InputCaptureLost)
             ),
             InteractionOutcome::Captured
         );
         assert!(wm.core.interaction.drag.capture().is_none());
         // Nothing is queued, so the next tick starts no tool.
-        crate::mouse::slop::drain_region_selection(&mut wm);
+        wm.with_ctx(crate::mouse::slop::drain_region_selection);
     }
 }

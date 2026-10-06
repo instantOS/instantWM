@@ -372,8 +372,8 @@ impl StatusSources {
     }
 }
 
-pub(crate) fn sync_visibility(wm: &mut crate::wm::Wm) {
-    let visible = status_visible(&wm.core.model);
+pub(crate) fn sync_visibility(wm: &mut crate::contexts::CoreCtx<'_>) {
+    let visible = status_visible(wm.model());
     wm.bar.status_sources.set_visible(visible);
 }
 

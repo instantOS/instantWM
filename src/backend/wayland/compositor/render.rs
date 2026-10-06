@@ -253,7 +253,7 @@ mod render_target_tests {
 
     #[test]
     fn presentation_constraints_are_compositor_managed() {
-        let (_event_loop, state) = crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (_event_loop, state) = crate::test_support::new_compositor();
         assert!(state.fifo_manager_state.is_managed());
         assert!(state.commit_timing_manager_state.is_managed());
     }

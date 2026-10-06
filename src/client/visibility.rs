@@ -133,10 +133,9 @@ pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: O
 #[cfg(test)]
 mod tests {
     use super::{show_window, visibility_plan};
-    use crate::backend::{Backend, wayland::WaylandBackend};
     use crate::model::WmModel;
+    use crate::test_support::TestWm as Wm;
     use crate::types::*;
-    use crate::wm::Wm;
 
     fn make_client(win: WindowId, tags: TagMask, hidden: bool, sticky: bool) -> Client {
         Client {
@@ -157,7 +156,7 @@ mod tests {
 
     #[test]
     fn showing_a_window_does_not_change_focus() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = wm.core.model.monitors.push(Monitor::default());
         wm.core.model.monitors.set_selected(monitor_id);
         let focused = WindowId(1);
@@ -178,7 +177,7 @@ mod tests {
             .unwrap()
             .set_selected(Some(focused));
 
-        show_window(&mut wm.ctx(), hidden);
+        show_window(&mut wm.test_ctx(), hidden);
 
         assert!(!wm.core.model.client(hidden).unwrap().is_hidden);
         assert_eq!(wm.core.model.selected_win(), Some(focused));

@@ -280,11 +280,10 @@ pub fn set_sidebar_offer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+
     use crate::test_support::{MonitorBuilder, add_client_with, add_selected_client_with};
     use crate::types::{ClientMode, MonitorId, TagMask, WindowId};
-    use crate::wm::Wm;
+    use crate::wm::WaylandWm as Wm;
 
     /// Push one taggable monitor for a hover fixture.
     ///
@@ -305,7 +304,7 @@ mod tests {
     /// window first.
     #[test]
     fn border_scan_prefers_the_topmost_window_over_focus_order() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let bottom = WindowId(1);
         let top = WindowId(2);
@@ -345,7 +344,7 @@ mod tests {
 
     #[test]
     fn border_scan_uses_the_monitor_under_the_pointer() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let left_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), true);
         let right_id = push_hover_monitor(&mut wm, Rect::new(1920, 0, 1920, 1080), true);
@@ -415,7 +414,7 @@ mod tests {
     /// passive motion offer nor the selected-window click commit may see them.
     #[test]
     fn covered_window_borders_are_not_offered_through_the_covering_surface() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         setup_stacked_floating_windows(
             &mut wm,
             Rect::new(150, 130, 400, 300),
@@ -443,7 +442,7 @@ mod tests {
     /// offered on its exposed side.
     #[test]
     fn exposed_border_of_a_covered_window_still_offers() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         setup_stacked_floating_windows(
             &mut wm,
             Rect::new(750, 130, 400, 300),

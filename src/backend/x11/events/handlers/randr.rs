@@ -24,7 +24,6 @@ fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
         &ctx.core.derived().monitor_policy,
     );
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
-    use crate::backend::PointerOps;
     if let Some(point) = ctx.x11.pointer_location() {
         let monitors = &ctx.core.model().monitors;
         if !monitors

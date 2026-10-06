@@ -1,10 +1,11 @@
 use crate::ipc_types::{KeyboardCommand, KeyboardLayoutInfo, Response};
 use crate::keyboard_layout;
 use crate::types::StackDirection;
-use crate::wm::Wm;
 
-pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
-    let mut ctx = wm.ctx();
+pub fn handle_keyboard_command(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    cmd: KeyboardCommand,
+) -> Response {
     match cmd {
         KeyboardCommand::Status => {
             let status = ctx.core().interaction().keyboard_layout.status();
@@ -33,27 +34,27 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             } else {
                 StackDirection::Previous
             };
-            let _ = keyboard_layout::cycle_keyboard_layout(&mut ctx, direction);
+            let _ = keyboard_layout::cycle_keyboard_layout(ctx, direction);
             Response::ok()
         }
         KeyboardCommand::Set { layouts } => {
-            keyboard_layout::set_keyboard_layouts(&mut ctx, layouts);
+            keyboard_layout::set_keyboard_layouts(ctx, layouts);
             Response::ok()
         }
         KeyboardCommand::Add { layout } => {
-            match keyboard_layout::add_keyboard_layout(&mut ctx, layout) {
+            match keyboard_layout::add_keyboard_layout(ctx, layout) {
                 Ok(()) => Response::ok(),
                 Err(e) => Response::err(e),
             }
         }
         KeyboardCommand::Remove { layout } => {
-            match keyboard_layout::remove_keyboard_layout(&mut ctx, &layout) {
+            match keyboard_layout::remove_keyboard_layout(ctx, &layout) {
                 Ok(()) => Response::ok(),
                 Err(e) => Response::err(e),
             }
         }
         KeyboardCommand::SwapEscape { enabled } => {
-            keyboard_layout::set_swapescape(&mut ctx, enabled);
+            keyboard_layout::set_swapescape(ctx, enabled);
             Response::ok()
         }
     }

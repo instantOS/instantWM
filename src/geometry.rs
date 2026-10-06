@@ -326,12 +326,11 @@ pub(crate) fn move_resize(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::model::WmModel;
     use crate::test_support::MonitorBuilder;
     use crate::types::Client;
-    use crate::wm::Wm;
 
     #[test]
     fn stale_geometry_response_cannot_supersede_the_latest_resize_intent() {
@@ -416,7 +415,7 @@ mod tests {
 
     #[test]
     fn wayland_hinted_resize_applies_stored_protocol_maximum() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = wm.core.model.monitors.push(
             MonitorBuilder::new()
                 .rect(Rect::new(0, 0, 500, 400), Rect::new(0, 0, 500, 400))
@@ -433,7 +432,7 @@ mod tests {
         client.size_hints.max_height = 90;
         wm.core.model.add_client(monitor_id, client);
 
-        wm.ctx().move_resize(
+        wm.test_ctx().move_resize(
             win,
             Rect::new(0, 0, 300, 200),
             MoveResizeOptions::hinted_immediate(false),

@@ -1,17 +1,18 @@
-use crate::backend::OutputOps;
 use crate::config::config_toml::MonitorConfig;
 use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, resolve_monitor_selector};
 use crate::output_mirror::{MirrorConfigError, MirrorMap};
 use crate::types::{MonitorDirection, MonitorSelector};
-use crate::wm::Wm;
 use std::collections::HashMap;
-pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
+pub fn handle_monitor_command(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    cmd: MonitorCommand,
+) -> Response {
     match cmd {
-        MonitorCommand::List => list_monitors(wm),
-        MonitorCommand::Switch { monitor } => switch_monitor(wm, monitor),
-        MonitorCommand::Next { count } => step_monitor(wm, MonitorDirection::Next, count),
-        MonitorCommand::Prev { count } => step_monitor(wm, MonitorDirection::Prev, count),
+        MonitorCommand::List => list_monitors(ctx),
+        MonitorCommand::Switch { monitor } => switch_monitor(ctx, monitor),
+        MonitorCommand::Next { count } => step_monitor(ctx, MonitorDirection::Next, count),
+        MonitorCommand::Prev { count } => step_monitor(ctx, MonitorDirection::Prev, count),
         MonitorCommand::Set {
             identifier,
             mut config,
@@ -21,25 +22,27 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             }) {
                 config.mirror = Some(String::new());
             }
-            set_monitor_config(wm, identifier, config)
+            set_monitor_config(ctx, identifier, config)
         }
-        MonitorCommand::Modes { identifier } => list_modes(wm, identifier),
+        MonitorCommand::Modes { identifier } => list_modes(ctx, identifier),
     }
 }
 
-fn list_monitors(wm: &Wm) -> Response {
-    let selected_id = wm.core.model.selected_monitor_id();
-    let mirror_map = &wm.core.derived.monitor_policy.mirrors;
+fn list_monitors(ctx: &mut crate::contexts::WmCtx<'_>) -> Response {
+    let outputs = ctx.get_outputs();
+    let selected_id = ctx.core().model().selected_monitor_id();
+    let mirror_map = &ctx.core().state().derived.monitor_policy.mirrors;
     // The same discovery the monitor layout uses, so each monitor finds its
     // own output (with the heads presenting it) by name.
     let output_info: HashMap<_, _> =
-        crate::monitor::logical_outputs(wm.backend.get_outputs(), mirror_map, &wm.core.model)
+        crate::monitor::logical_outputs(outputs, mirror_map, ctx.core().model())
             .into_iter()
             .map(|output| (output.name.clone(), output))
             .collect();
 
-    let monitors: Vec<crate::ipc_types::MonitorInfo> = wm
-        .core
+    let monitors: Vec<crate::ipc_types::MonitorInfo> = ctx
+        .core()
+        .state()
         .model
         .monitors_iter()
         .enumerate()
@@ -74,17 +77,17 @@ fn list_monitors(wm: &Wm) -> Response {
     Response::MonitorList(monitors)
 }
 
-fn switch_monitor(wm: &mut Wm, selector: MonitorSelector) -> Response {
+fn switch_monitor(ctx: &mut crate::contexts::WmCtx<'_>, selector: MonitorSelector) -> Response {
     if matches!(selector, MonitorSelector::Any) {
         return Response::err(
             "monitor switch needs a concrete monitor: name, position, \"focused\" or \"primary\"",
         );
     }
-    match resolve_monitor_selector(&wm.core.model, &selector) {
+    match resolve_monitor_selector(ctx.core().model(), &selector) {
         Some(target) => {
-            let changed = crate::focus::select_monitor(&mut wm.ctx(), target);
+            let changed = crate::focus::select_monitor(ctx, target);
             if changed {
-                crate::mouse::warp::warp_pointer_to_monitor(&mut wm.ctx(), target);
+                crate::mouse::warp::warp_pointer_to_monitor(ctx, target);
             }
             Response::ok()
         }
@@ -94,9 +97,13 @@ fn switch_monitor(wm: &mut Wm, selector: MonitorSelector) -> Response {
     }
 }
 
-fn step_monitor(wm: &mut Wm, direction: MonitorDirection, count: u32) -> Response {
+fn step_monitor(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    direction: MonitorDirection,
+    count: u32,
+) -> Response {
     for _ in 0..count.max(1) {
-        focus_monitor(&mut wm.ctx(), direction);
+        focus_monitor(ctx, direction);
     }
     Response::ok()
 }
@@ -165,9 +172,19 @@ fn merge_monitor_config(existing: Option<&MonitorConfig>, patch: MonitorConfig) 
 /// is stored and no apply is queued until both checks pass; fatal findings
 /// about *other* entries are left to degrade at apply time, where
 /// sanitization logs them.
-fn set_monitor_config(wm: &mut Wm, identifier: String, patch: MonitorConfig) -> Response {
+fn set_monitor_config(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    identifier: String,
+    patch: MonitorConfig,
+) -> Response {
     let resolved_id = if identifier == "focused" {
-        let name = wm.core.model.expect_selected_monitor().name.clone();
+        let name = ctx
+            .core()
+            .state()
+            .model
+            .expect_selected_monitor()
+            .name
+            .clone();
         if name.is_empty() {
             "*".to_string()
         } else {
@@ -180,9 +197,9 @@ fn set_monitor_config(wm: &mut Wm, identifier: String, patch: MonitorConfig) -> 
     // The merge consumes the patch; remember whether it declares a mirror,
     // since only that case is connectivity-checked below.
     let declared_mirror = patch.mirror.clone();
-    let candidate = merge_monitor_config(wm.core.config.monitors.get(&resolved_id), patch);
+    let candidate = merge_monitor_config(ctx.core().config().monitors.get(&resolved_id), patch);
 
-    let mut prospective = wm.core.config.monitors.clone();
+    let mut prospective = ctx.core().config().monitors.clone();
     prospective.insert(resolved_id.clone(), candidate.clone());
     if let Err(error) = candidate.validated(&resolved_id) {
         return Response::err(error);
@@ -200,7 +217,7 @@ fn set_monitor_config(wm: &mut Wm, identifier: String, patch: MonitorConfig) -> 
     if let Some(target) = declared_mirror.as_deref()
         && !target.is_empty()
     {
-        let connected = wm.backend.connected_output_names();
+        let connected = ctx.connected_output_names();
         if !connected.iter().any(|name| name == target) {
             let error = MirrorConfigError::SourceNotConnected {
                 output: resolved_id.clone(),
@@ -210,28 +227,40 @@ fn set_monitor_config(wm: &mut Wm, identifier: String, patch: MonitorConfig) -> 
         }
     }
 
-    wm.core.config.monitors.insert(resolved_id, candidate);
-    wm.work.queue_monitor_config_apply();
+    ctx.core_mut()
+        .state_mut()
+        .config
+        .monitors
+        .insert(resolved_id, candidate);
+    ctx.core_mut()
+        .pending_work_mut()
+        .queue_monitor_config_apply();
     Response::ok()
 }
 
-fn list_modes(wm: &mut Wm, identifier: String) -> Response {
+fn list_modes(ctx: &mut crate::contexts::WmCtx<'_>, identifier: String) -> Response {
     let display_names: Vec<String> = match identifier.as_str() {
         "focused" => {
-            let name = wm.core.model.expect_selected_monitor().name.clone();
+            let name = ctx
+                .core()
+                .state()
+                .model
+                .expect_selected_monitor()
+                .name
+                .clone();
             if name.is_empty() {
                 // List all displays
-                match &wm.backend {
-                    crate::backend::Backend::Wayland(data) => data.backend.list_displays(),
-                    crate::backend::Backend::X11(_) => {
-                        // For X11, get names from monitor list
-                        wm.core
-                            .model
-                            .monitors_iter()
-                            .map(|(_, m)| m.name.clone())
-                            .filter(|n| !n.is_empty())
-                            .collect()
-                    }
+                if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
+                    ctx.connected_output_names()
+                } else {
+                    // For X11, get names from monitor list
+                    ctx.core()
+                        .state()
+                        .model
+                        .monitors_iter()
+                        .map(|(_, m)| m.name.clone())
+                        .filter(|n| !n.is_empty())
+                        .collect()
                 }
             } else {
                 vec![name]
@@ -243,27 +272,7 @@ fn list_modes(wm: &mut Wm, identifier: String) -> Response {
     let mut all_modes = Vec::new();
 
     for display_name in &display_names {
-        let modes = match &wm.backend {
-            crate::backend::Backend::Wayland(data) => {
-                let mode_strings = data.backend.list_display_modes(display_name);
-                mode_strings.iter().filter_map(|s| s.parse().ok()).collect()
-            }
-            crate::backend::Backend::X11(data) => {
-                use x11rb::connection::Connection;
-
-                let root = data.conn.setup().roots[data.screen_num].root;
-                crate::backend::x11::randr::get_output_modes(&data.conn, root, display_name)
-                    .into_iter()
-                    .filter_map(|mode| {
-                        Some(crate::ipc_types::MonitorMode {
-                            width: u32::try_from(mode.width).ok()?,
-                            height: u32::try_from(mode.height).ok()?,
-                            refresh_mhz: u32::try_from(mode.refresh_millihertz).ok()?,
-                        })
-                    })
-                    .collect()
-            }
-        };
+        let modes = ctx.list_display_modes(display_name);
 
         all_modes.push(crate::ipc_types::DisplayModes {
             name: display_name.clone(),
@@ -277,20 +286,19 @@ fn list_modes(wm: &mut Wm, identifier: String) -> Response {
 #[cfg(test)]
 mod tests {
     use super::list_monitors;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::ipc_types::{MonitorCommand, Response};
     use crate::test_support::MonitorBuilder;
     use crate::types::Monitor;
-    use crate::wm::Wm;
 
     #[test]
     fn monitor_ipc_separates_stable_id_from_spatial_position() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let first = wm.core.model.monitors.push(Monitor::default());
         let second = wm.core.model.monitors.push(Monitor::default());
 
-        let Response::MonitorList(monitors) = list_monitors(&wm) else {
+        let Response::MonitorList(monitors) = wm.with_ctx(list_monitors) else {
             panic!("monitor list response");
         };
 
@@ -305,7 +313,7 @@ mod tests {
         use crate::ipc_types::MonitorCommand;
         use crate::types::MonitorSelector;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.monitors.push(Monitor::default());
         let side_id = wm
             .core
@@ -313,21 +321,25 @@ mod tests {
             .monitors
             .push(MonitorBuilder::new().named("DP-1").build());
 
-        let resp = super::handle_monitor_command(
-            &mut wm,
-            MonitorCommand::Switch {
-                monitor: MonitorSelector::Name("DP-1".to_owned()),
-            },
-        );
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(
+                wm,
+                MonitorCommand::Switch {
+                    monitor: MonitorSelector::Name("DP-1".to_owned()),
+                },
+            )
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         assert_eq!(wm.core.model.selected_monitor_id(), side_id);
 
-        let resp = super::handle_monitor_command(
-            &mut wm,
-            MonitorCommand::Switch {
-                monitor: MonitorSelector::Name("HDMI-9".to_owned()),
-            },
-        );
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(
+                wm,
+                MonitorCommand::Switch {
+                    monitor: MonitorSelector::Name("HDMI-9".to_owned()),
+                },
+            )
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -336,13 +348,15 @@ mod tests {
         use crate::ipc_types::MonitorCommand;
         use crate::types::MonitorSelector;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let resp = super::handle_monitor_command(
-            &mut wm,
-            MonitorCommand::Switch {
-                monitor: MonitorSelector::Focused,
-            },
-        );
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(
+                wm,
+                MonitorCommand::Switch {
+                    monitor: MonitorSelector::Focused,
+                },
+            )
+        });
         assert!(matches!(resp, Response::Err(_)), "{resp:?}");
     }
 
@@ -382,12 +396,15 @@ mod tests {
 
     #[test]
     fn monitor_set_merges_instead_of_replacing() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
-        let resp = super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, Some(2.0), None));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", None, Some(2.0), None))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
-        let resp =
-            super::handle_monitor_command(&mut wm, set_cmd("DP-1", Some("2560x1440"), None, None));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", Some("2560x1440"), None, None))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
 
         let config = wm.core.config.monitors.get("DP-1").expect("entry");
@@ -398,14 +415,17 @@ mod tests {
 
     #[test]
     fn monitor_set_mirror_to_unplugged_output_is_rejected() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
-        let resp = super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, Some(2.0), None));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", None, Some(2.0), None))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         wm.work.monitor_config = false;
 
         // A fresh WaylandBackend reports no outputs, so no target connects.
-        let resp =
-            super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("HDMI-1")));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", None, None, Some("HDMI-1")))
+        });
         let Response::Err(message) = resp else {
             panic!("expected error, got {resp:?}");
         };
@@ -423,7 +443,7 @@ mod tests {
     fn monitor_set_keeps_working_while_a_stored_mirror_source_is_unplugged() {
         use crate::config::config_toml::MonitorConfig;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.config.monitors.insert(
             "DP-1".to_owned(),
             MonitorConfig {
@@ -437,7 +457,9 @@ mod tests {
         // outputs), but this command leaves the mirror untouched: only a
         // patch declaring a mirror target is connectivity-checked, so an
         // unrelated field set must still succeed.
-        let resp = super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, Some(2.0), None));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", None, Some(2.0), None))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         let config = wm.core.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror.as_deref(), Some("HDMI-1"));
@@ -447,10 +469,11 @@ mod tests {
 
     #[test]
     fn monitor_set_self_reference_is_rejected() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
-        let resp =
-            super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("DP-1")));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", None, None, Some("DP-1")))
+        });
         let Response::Err(message) = resp else {
             panic!("expected error, got {resp:?}");
         };
@@ -465,7 +488,7 @@ mod tests {
     fn monitor_set_clear_sentinel_drops_an_existing_mirror() {
         use crate::config::config_toml::MonitorConfig;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.config.monitors.insert(
             "DP-1".to_owned(),
             MonitorConfig {
@@ -476,8 +499,9 @@ mod tests {
 
         // Clearing skips the connectivity check: the source may simply be
         // unplugged right now.
-        let resp =
-            super::handle_monitor_command(&mut wm, set_cmd("DP-1", None, None, Some("none")));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_cmd("DP-1", None, None, Some("none")))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         assert_eq!(wm.core.config.monitors["DP-1"].mirror, None);
         assert!(wm.work.monitor_config);
@@ -524,15 +548,14 @@ mod tests {
     fn monitor_set_fit_without_mirror_is_stored_at_the_ipc_layer() {
         use crate::ipc_types::MirrorFit;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
 
         // A fit on a non-mirror output is allowed (non-fatal by design);
         // sanitization clears it later at apply time, so the IPC layer must
         // store, not reject, it.
-        let resp = super::handle_monitor_command(
-            &mut wm,
-            set_mirror_cmd("DP-1", None, Some(MirrorFit::Cover)),
-        );
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_mirror_cmd("DP-1", None, Some(MirrorFit::Cover)))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         let config = wm.core.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror, None);
@@ -545,7 +568,7 @@ mod tests {
         use crate::config::config_toml::MonitorConfig;
         use crate::ipc_types::MirrorFit;
 
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.config.monitors.insert(
             "DP-1".to_owned(),
             MonitorConfig {
@@ -558,7 +581,9 @@ mod tests {
 
         // The clear sentinel takes the now-meaningless fit with it; this
         // keeps working while the source is unplugged (no connectivity check).
-        let resp = super::handle_monitor_command(&mut wm, set_mirror_cmd("DP-1", Some(""), None));
+        let resp = wm.with_ctx(|wm| {
+            super::handle_monitor_command(wm, set_mirror_cmd("DP-1", Some(""), None))
+        });
         assert!(matches!(resp, Response::Ok), "{resp:?}");
         let config = wm.core.config.monitors.get("DP-1").expect("entry");
         assert_eq!(config.mirror, None);

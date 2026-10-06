@@ -157,7 +157,7 @@ mod tests {
         use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
         use smithay::utils::Point;
 
-        use crate::backend::wayland::compositor::new_event_loop_and_state;
+        use crate::test_support::new_compositor;
 
         fn null_surface(state: &crate::backend::wayland::compositor::WaylandState) -> WlSurface {
             WlSurface::from_id(&state.display_handle.clone(), ObjectId::null()).unwrap()
@@ -165,7 +165,7 @@ mod tests {
 
         #[test]
         fn a_lock_without_pointer_focus_must_not_activate() {
-            let (_event_loop, state) = new_event_loop_and_state();
+            let (_event_loop, state) = new_compositor();
             let surface = null_surface(&state);
             assert!(!new_constraint_should_activate(
                 None,
@@ -180,7 +180,7 @@ mod tests {
         fn a_lock_for_another_client_must_not_activate() {
             // The null focus surface belongs to no client, so it can never
             // match the constrained surface's client.
-            let (_event_loop, state) = new_event_loop_and_state();
+            let (_event_loop, state) = new_compositor();
             let surface = null_surface(&state);
             let focus = null_surface(&state);
             assert!(!new_constraint_should_activate(
@@ -194,7 +194,7 @@ mod tests {
 
         #[test]
         fn a_lock_without_a_mapped_surface_origin_must_not_activate() {
-            let (_event_loop, state) = new_event_loop_and_state();
+            let (_event_loop, state) = new_compositor();
             let surface = null_surface(&state);
             let focus = null_surface(&state);
             assert!(!new_constraint_should_activate(

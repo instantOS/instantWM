@@ -8,11 +8,10 @@
 use crate::config::config_toml::ColorTheme;
 use crate::config::runtime::ConfigEffect;
 use crate::ipc_types::Response;
-use crate::wm::Wm;
 
 /// Return the name of the active theme.
-pub fn get_theme(wm: &Wm) -> Response {
-    Response::Theme(wm.core.config.theme.name())
+pub fn get_theme(ctx: &crate::contexts::WmCtx<'_>) -> Response {
+    Response::Theme(ctx.core().config().theme.name())
 }
 
 /// List every built-in theme name.
@@ -26,30 +25,33 @@ pub fn list_themes() -> Response {
 }
 
 /// Switch to a built-in theme, recolouring the running WM.
-pub fn set_theme(wm: &mut Wm, theme: ColorTheme) -> Response {
+pub fn set_theme(ctx: &mut crate::contexts::WmCtx<'_>, theme: ColorTheme) -> Response {
     // Recompute every colour table from the theme palette and install it as
     // one unit. Per-monitor tag sets mirror the shared tag table.
     let colors = crate::config::appearance::ColorConfig::from(theme);
-    wm.core.model.tags.colors = colors.tag.clone();
-    wm.core.config.colors = colors;
-    wm.core.config.theme = theme;
-    crate::actions::apply_config_effect(&mut wm.ctx(), ConfigEffect::Recolor);
+    ctx.core_mut().model_mut().tags.colors = colors.tag.clone();
+    ctx.core_mut().config_mut().colors = colors;
+    ctx.core_mut().config_mut().theme = theme;
+    crate::actions::apply_config_effect(ctx, ConfigEffect::Recolor);
     Response::ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::test_support::TestWm as Wm;
 
     fn test_wm() -> Wm {
-        Wm::new(Backend::new_wayland(WaylandBackend::new()))
+        Wm::new(crate::backend::WaylandBackendData::default())
     }
 
     #[test]
     fn set_theme_recolors_both_color_stores_and_records_it() {
         let mut wm = test_wm();
-        assert!(matches!(set_theme(&mut wm, ColorTheme::Nord), Response::Ok));
+        assert!(matches!(
+            wm.with_ctx(|wm| set_theme(wm, ColorTheme::Nord)),
+            Response::Ok
+        ));
 
         assert_eq!(wm.core.config.theme, ColorTheme::Nord);
         // Tag colours live in `model.tags.colors`…
@@ -72,8 +74,8 @@ mod tests {
     #[test]
     fn get_theme_returns_the_active_name() {
         let mut wm = test_wm();
-        set_theme(&mut wm, ColorTheme::Gruvbox);
-        match get_theme(&wm) {
+        wm.with_ctx(|wm| set_theme(wm, ColorTheme::Gruvbox));
+        match get_theme(&wm.test_ctx()) {
             Response::Theme(name) => assert_eq!(name, "gruvbox"),
             other => panic!("expected Theme, got {other:?}"),
         }

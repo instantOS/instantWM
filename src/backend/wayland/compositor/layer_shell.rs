@@ -14,7 +14,7 @@ use smithay::{
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
 use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 use crate::types::Rect;
-use crate::wm::Wm;
+use crate::wm::WaylandWm as Wm;
 use std::collections::HashMap;
 
 mod keyboard;
@@ -160,7 +160,7 @@ impl WlrLayerShellHandler for WaylandState {
             // whichever output happens to enumerate first (on a laptop that
             // is the built-in panel regardless of where focus is).
             .or_else(|| {
-                let selected = self.globals()?.model.selected_monitor()?.name.clone();
+                let selected = self.protocol_core().model.selected_monitor()?.name.clone();
                 self.space
                     .outputs()
                     .find(|output| output.name() == selected)

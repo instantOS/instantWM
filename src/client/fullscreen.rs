@@ -25,6 +25,8 @@
 //! module contains no backend imports and one shared policy for both
 //! backends.
 
+use crate::backend::WindowOps;
+
 use crate::client::mode::{
     ClientMaximizeIntentOutcome, FullscreenChange, FullscreenEntryProjection, MaximizedChange,
 };
@@ -221,7 +223,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
             },
             MoveResizeOptions::immediate(),
         );
-        ctx.window_backend().raise_window_visual_only(win);
+        ctx.raise_window_visual_only(win);
     }
 
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
@@ -250,15 +252,14 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
 #[cfg(test)]
 mod tests {
     use super::toggle_fake_fullscreen;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::MonitorBuilder;
     use crate::types::{Client, Rect, TagMask, WindowId};
-    use crate::wm::Wm;
 
     #[test]
     fn fake_fullscreen_cycle_is_shared_by_wayland() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.config.window.border_width_px = 3;
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(
@@ -287,18 +288,18 @@ mod tests {
             .unwrap()
             .set_selected(Some(win));
 
-        toggle_fake_fullscreen(&mut wm.ctx());
+        toggle_fake_fullscreen(&mut wm.test_ctx());
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_fake_fullscreen());
         assert_eq!(client.border_width, 3);
 
-        toggle_fake_fullscreen(&mut wm.ctx());
+        toggle_fake_fullscreen(&mut wm.test_ctx());
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(client.border_width, 0);
         assert_eq!(client.geo, Rect::new(103, 53, 1194, 794));
 
-        toggle_fake_fullscreen(&mut wm.ctx());
+        toggle_fake_fullscreen(&mut wm.test_ctx());
         let client = wm.core.model.client(win).unwrap();
         assert!(client.mode().is_fake_fullscreen());
         assert_eq!(client.border_width, 3);

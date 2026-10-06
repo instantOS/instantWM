@@ -4,7 +4,6 @@ mod arrange;
 mod commands;
 mod pointer;
 mod z_order;
-pub(crate) use z_order::monitor_z_order;
 
 pub use arrange::{arrange, arrange_monitor};
 pub(crate) use commands::finish_layout_change;

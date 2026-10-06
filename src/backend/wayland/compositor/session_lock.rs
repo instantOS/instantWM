@@ -334,8 +334,7 @@ mod session_lock_focus_tests {
 
     #[test]
     fn lock_focus_survives_grabs_and_output_surface_changes() {
-        let (mut event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (mut event_loop, mut state) = crate::test_support::new_compositor();
         state.create_output("lock-test", Size::new(800, 600), None);
 
         let (conn, mut queue, mut client, registry, server_client) =
@@ -379,7 +378,7 @@ mod session_lock_focus_tests {
 
         state.set_keyboard_focus(Some(regular_target.clone()), SERIAL_COUNTER.next_serial());
         assert_eq!(seat_focus(&state), None);
-        state.set_focus(WindowId::from(9999));
+        state.focus_window(WindowId::from(9999), None);
         assert_eq!(seat_focus(&state), None);
 
         let output: wl_output::WlOutput = registry.bind(global(&client, "wl_output"), 1, &qh, ());
@@ -438,8 +437,7 @@ mod session_lock_focus_tests {
 
     #[test]
     fn disconnected_lock_client_stays_locked_until_a_new_client_takes_over() {
-        let (mut event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
+        let (mut event_loop, mut state) = crate::test_support::new_compositor();
         state.create_output("lock-test", Size::new(800, 600), None);
 
         {

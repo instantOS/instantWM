@@ -9,11 +9,11 @@ use libc::c_void;
 use std::collections::{HashMap, HashSet};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
+use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 
+use crate::backend::OutputOps;
 use crate::backend::x11::draw::{AllocScheme, BorderScheme, Cursor, DrawContext};
-use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::{Keysym, ModMask, Point, Rect, WindowId};
@@ -365,8 +365,8 @@ impl Drop for ServerGrab<'_> {
     }
 }
 
-impl WindowOps for X11BackendRef<'_> {
-    fn resize_window(&self, window: WindowId, rect: Rect) {
+impl X11BackendRef<'_> {
+    pub fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;
         let height = rect.h.max(1) as u32;
@@ -380,11 +380,7 @@ impl WindowOps for X11BackendRef<'_> {
         );
     }
 
-    fn set_border_width(&self, window: WindowId, width: i32) {
-        X11BackendRef::set_border_width(self, window, width);
-    }
-
-    fn raise_window_visual_only(&self, window: WindowId) {
+    pub fn raise_window_visual_only(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.configure_window(
             x11_win,
@@ -399,7 +395,7 @@ impl WindowOps for X11BackendRef<'_> {
     /// above its predecessor. This produces one `ConfigureWindow` per window
     /// but they are all buffered in the X11 connection and flushed once by the
     /// caller, resulting in a single round-trip.
-    fn apply_z_order(&self, windows: &[WindowId]) {
+    pub fn apply_z_order(&self, windows: &[WindowId]) {
         let mut prev: Option<Window> = None;
         for &window in windows {
             let x11_win: Window = window.into();
@@ -420,24 +416,17 @@ impl WindowOps for X11BackendRef<'_> {
         }
     }
 
-    fn set_focus(&self, window: WindowId) {
-        let x11_win: Window = window.into();
-        let _ = self
-            .conn
-            .set_input_focus(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
-    }
-
-    fn map_window(&self, window: WindowId) {
+    pub fn map_window(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.map_window(x11_win);
     }
 
-    fn unmap_window(&self, window: WindowId) {
+    pub fn unmap_window(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.unmap_window(x11_win);
     }
 
-    fn window_exists(&self, window: WindowId) -> bool {
+    pub fn window_exists(&self, window: WindowId) -> bool {
         let x11_win: Window = window.into();
         self.conn
             .get_window_attributes(x11_win)
@@ -446,23 +435,23 @@ impl WindowOps for X11BackendRef<'_> {
             .is_some()
     }
 
-    fn flush(&self) {
+    pub fn flush(&self) {
         let _ = self.conn.flush();
     }
 
-    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
+    pub fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
         crate::backend::WindowProtocol::X11
     }
 }
 
-impl PointerOps for X11BackendRef<'_> {
-    fn pointer_location(&self) -> Option<Point> {
+impl X11BackendRef<'_> {
+    pub fn pointer_location(&self) -> Option<Point> {
         let root = self.conn.setup().roots[self.screen_num].root;
         let reply = self.conn.query_pointer(root).ok()?.reply().ok()?;
         Some(Point::new(reply.root_x as i32, reply.root_y as i32))
     }
 
-    fn warp_pointer(&self, x: f64, y: f64) {
+    pub fn warp_pointer(&self, x: f64, y: f64) {
         let root = self.conn.setup().roots[self.screen_num].root;
         let _ = self.conn.warp_pointer(
             CURRENT_TIME,

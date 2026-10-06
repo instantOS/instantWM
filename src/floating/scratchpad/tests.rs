@@ -3,12 +3,10 @@ use super::{
     regular_scratchpad_rect, scratchpad_restore_window, set_scratchpad_direction,
     show_scratchpad_window_with_options, show_transferred_scratchpad,
 };
-use crate::backend::Backend;
-use crate::backend::wayland::WaylandBackend;
 use crate::test_support::MonitorBuilder;
+use crate::test_support::TestWm as Wm;
 use crate::types::input::EdgeDirection;
 use crate::types::{Client, ClientPlacement, Monitor, Rect, Size, TagMask, WindowId};
-use crate::wm::Wm;
 
 #[test]
 fn scratchpad_identity_accepts_wayland_app_id_and_x11_instance() {
@@ -79,7 +77,7 @@ fn oversized_edge_scratchpads_are_clamped_to_content() {
 
 #[test]
 fn setting_scratchpad_direction_does_not_mutate_an_ordinary_window() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let monitor_id = wm.core.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
@@ -98,7 +96,7 @@ fn setting_scratchpad_direction_does_not_mutate_an_ordinary_window() {
         }
     ));
 
-    set_scratchpad_direction(&mut wm.ctx(), win, EdgeDirection::Left);
+    set_scratchpad_direction(&mut wm.test_ctx(), win, EdgeDirection::Left);
 
     let client = wm.core.model.client(win).unwrap();
     assert_eq!(client.geo, original_geo);
@@ -108,7 +106,7 @@ fn setting_scratchpad_direction_does_not_mutate_an_ordinary_window() {
 
 #[test]
 fn edge_scratchpad_hide_defers_concealment_until_the_animation_finishes() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let monitor_id = wm.core.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
@@ -127,7 +125,7 @@ fn edge_scratchpad_hide_defers_concealment_until_the_animation_finishes() {
         .unwrap();
     wm.core.model.add_client(monitor_id, client);
 
-    hide_scratchpad_window(&mut wm.ctx(), scratchpad);
+    hide_scratchpad_window(&mut wm.test_ctx(), scratchpad);
 
     // The slide-out is playing: the window stays logically visible and a
     // pending hide is queued.
@@ -141,7 +139,7 @@ fn edge_scratchpad_hide_defers_concealment_until_the_animation_finishes() {
     assert!(wm.work.has_pending_scratchpad_hide(scratchpad));
 
     // Completing the animation performs the deferred logical hide.
-    crate::floating::scratchpad::finish_scratchpad_hides(&mut wm.ctx(), &[scratchpad]);
+    crate::floating::scratchpad::finish_scratchpad_hides(&mut wm.test_ctx(), &[scratchpad]);
     assert!(
         !wm.core
             .model
@@ -153,7 +151,7 @@ fn edge_scratchpad_hide_defers_concealment_until_the_animation_finishes() {
 
 #[test]
 fn showing_during_a_slide_out_cancels_the_pending_hide() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let monitor_id = wm.core.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
@@ -172,11 +170,11 @@ fn showing_during_a_slide_out_cancels_the_pending_hide() {
         .unwrap();
     wm.core.model.add_client(monitor_id, client);
 
-    hide_scratchpad_window(&mut wm.ctx(), scratchpad);
+    hide_scratchpad_window(&mut wm.test_ctx(), scratchpad);
     assert!(wm.work.has_pending_scratchpad_hide(scratchpad));
 
     let shown = show_scratchpad_window_with_options(
-        &mut wm.ctx(),
+        &mut wm.test_ctx(),
         scratchpad,
         ScratchpadShowOptions {
             monitor_id,
@@ -201,7 +199,7 @@ fn showing_during_a_slide_out_cancels_the_pending_hide() {
 
 #[test]
 fn transferred_scratchpad_targets_a_monitor_without_stealing_selection() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     let source = wm.core.model.monitors.push(Monitor::default());
     let target = wm.core.model.monitors.push(Monitor::default());
     wm.core.model.monitors.set_selected(source);
@@ -227,7 +225,7 @@ fn transferred_scratchpad_targets_a_monitor_without_stealing_selection() {
         .unwrap();
     wm.core.model.add_client(target, client);
 
-    show_transferred_scratchpad(&mut wm.ctx(), scratchpad, target);
+    show_transferred_scratchpad(&mut wm.test_ctx(), scratchpad, target);
 
     assert_eq!(wm.core.model.selected_monitor_id(), source);
     assert_eq!(wm.core.model.selected_win(), Some(focused));
@@ -243,7 +241,7 @@ fn transferred_scratchpad_targets_a_monitor_without_stealing_selection() {
 
 #[test]
 fn restoring_a_hidden_portable_scratchpad_returns_to_its_original_monitor() {
-    let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
     wm.core.model.tags.num_tags = 9;
     let monitor = MonitorBuilder::new()
         .monitor_rect(Rect::new(0, 0, 1920, 1080))
@@ -278,7 +276,7 @@ fn restoring_a_hidden_portable_scratchpad_returns_to_its_original_monitor() {
     assert!(wm.core.model.add_client(original_monitor, client));
     assert!(wm.core.model.reassign_client_monitor(win, scratch_monitor));
 
-    scratchpad_restore_window(&mut wm.ctx(), win, None).unwrap();
+    scratchpad_restore_window(&mut wm.test_ctx(), win, None).unwrap();
 
     assert_eq!(wm.core.model.monitor_of_client(win), Some(original_monitor));
     let restored = wm.core.model.client(win).unwrap();

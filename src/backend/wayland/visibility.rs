@@ -12,21 +12,26 @@ use crate::types::WindowId;
 
 pub(crate) fn apply_visibility(ctx: &mut WmCtxWayland<'_>) {
     let globals = ctx.core.state();
-    let pending_spawns = &ctx.core.pending_work().spawn_animations;
     for entry in crate::client::visibility::visibility_plan(&globals.model) {
         // Newly spawned windows (pending their first layout) are intentionally
         // left unmapped here.  They are mapped at their layout-allocated rect
         // after arrange runs, so the client never appears at its initial
         // buffer size before the tiling layout resizes it.
-        if entry.visible && !pending_spawns.contains(&entry.win) {
-            ctx.wayland.map_window(entry.win);
+        if entry.visible
+            && !ctx
+                .core
+                .pending_work()
+                .spawn_animations
+                .contains(&entry.win)
+        {
+            ctx.map_window(entry.win);
         } else {
-            ctx.wayland.unmap_window(entry.win);
+            ctx.unmap_window(entry.win);
         }
     }
 }
 
 pub(crate) fn hide(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
-    ctx.wayland.unmap_window(win);
-    ctx.wayland.flush();
+    ctx.unmap_window(win);
+    ctx.flush();
 }

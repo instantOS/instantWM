@@ -4,6 +4,8 @@
 //! event loop, bringing the X11 backend closer to the Wayland backend's
 //! architecture and making animations non-blocking.
 
+use crate::backend::WindowOps;
+
 use std::os::unix::io::AsRawFd;
 
 use calloop::generic::Generic;
@@ -12,7 +14,7 @@ use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 use crate::geometry::GeometryApplyMode;
 use crate::ipc::IpcServer;
 use crate::runtime::{AnimationTimerGuard, animation_frame_interval};
-use crate::wm::Wm;
+use crate::wm::X11Wm as Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 
@@ -27,7 +29,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     loop_handle
         .insert_source(lid_source, |event, _, wm| {
             if let calloop::channel::Event::Msg(closed) = event
-                && let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx()
+                && let crate::contexts::WmCtx::X11(mut ctx) = wm.x11_ctx()
                 && ctx.x11_runtime.lid_output_policy.set_closed(closed)
             {
                 handlers::randr_notify(&mut ctx);
@@ -44,11 +46,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .expect("failed to start lid monitor");
 
     // ── X11 connection fd source ────────────────────────────────────────
-    let x11_fd = wm
-        .backend
-        .x11_conn()
-        .map(|(conn, _)| conn.stream().as_raw_fd())
-        .expect("X11 backend must have a connection");
+    let x11_fd = wm.backend.conn.stream().as_raw_fd();
 
     let x11_source = Generic::new(
         unsafe { std::os::unix::io::BorrowedFd::borrow_raw(x11_fd) },
@@ -89,10 +87,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     // ── Animation timer (on-demand, not persistent) ─────────────────────
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
-    let animation_interval = wm.backend.x11_data().and_then(|data| {
-        crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, data.x11_runtime.root)?
-            .max_active_refresh_millihertz()
-    });
+    let animation_interval = crate::backend::x11::randr::RandrSnapshot::fetch(
+        &wm.backend.conn,
+        wm.backend.x11_runtime.root,
+    )
+    .and_then(|snapshot| snapshot.max_active_refresh_millihertz());
     let animation_interval = animation_frame_interval(animation_interval);
 
     let loop_signal: LoopSignal = event_loop.get_signal();
@@ -103,7 +102,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             drain_x11_events(wm);
 
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
-            crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
+            crate::runtime::event_loop_tick_with_options(
+                &mut wm.x11_ctx(),
+                ipc_server,
+                Default::default(),
+            );
 
             // X11 focus is projected synchronously. End the shared selection
             // transaction here so changes from separate ticks never coalesce.
@@ -122,7 +125,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             );
 
             // ── 4. Flush X11 connection ─────────────────────────────────
-            crate::backend::WindowOps::flush(&wm.backend);
+            wm.x11_ctx().flush();
 
             // ── 5. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {
@@ -133,18 +136,19 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
 }
 
 fn has_x11_animations(wm: &Wm) -> bool {
-    wm.backend.x11_data().is_some_and(|data| {
+    {
+        let data = &wm.backend;
         !data.x11_runtime.window_animations.is_empty()
             || data.x11_runtime.layout_preview_animation.is_active()
-    })
+    }
 }
 
 /// Drain all pending X11 events from the connection and dispatch them.
 fn drain_x11_events(wm: &mut Wm) {
     let mut raw_motion_pending = false;
     let mut captured_motion_pending = None;
-    while let Some((conn, _)) = wm.backend.x11_conn() {
-        match conn.poll_for_event() {
+    loop {
+        match wm.backend.conn.poll_for_event() {
             Ok(Some(x11rb::protocol::Event::XinputRawMotion(_))) => {
                 // Raw motion carries device valuators rather than the
                 // accelerated root position used by shared pointer policy.
@@ -202,7 +206,8 @@ fn drain_x11_events(wm: &mut Wm) {
 /// This is transport state only. Logical capture validity is reconciled by
 /// `mouse::interaction`, independently of the backend.
 fn has_native_interaction_grab(wm: &Wm) -> bool {
-    wm.backend.x11_data().is_some_and(|data| {
+    {
+        let data = &wm.backend;
         matches!(
             data.x11_runtime.active_pointer_grab,
             Some(crate::backend::x11::ActivePointerGrab {
@@ -210,7 +215,7 @@ fn has_native_interaction_grab(wm: &Wm) -> bool {
                 ..
             })
         )
-    })
+    }
 }
 
 /// Events whose semantics depend on hover state established by earlier
@@ -228,7 +233,7 @@ fn event_requires_current_pointer_state(event: &x11rb::protocol::Event) -> bool 
 }
 
 fn dispatch_raw_motion(wm: &mut Wm) {
-    let ctx = wm.ctx();
+    let ctx = wm.x11_ctx();
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };
@@ -238,10 +243,7 @@ fn dispatch_raw_motion(wm: &mut Wm) {
 /// Tick active X11 window animations, interpolating geometry each frame.
 fn tick_x11_animations(wm: &mut Wm) {
     let finished_targets = {
-        let data = match wm.backend.x11_data_mut() {
-            Some(d) => d,
-            None => return,
-        };
+        let data = &mut wm.backend;
 
         let preview_active = data.x11_runtime.layout_preview_animation.is_active();
         if data.x11_runtime.window_animations.is_empty() && !preview_active {
@@ -303,7 +305,7 @@ fn tick_x11_animations(wm: &mut Wm) {
         return;
     }
 
-    let ctx = wm.ctx();
+    let ctx = wm.x11_ctx();
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };
@@ -314,7 +316,7 @@ fn tick_x11_animations(wm: &mut Wm) {
 }
 
 pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
-    let ctx = wm.ctx();
+    let ctx = wm.x11_ctx();
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };

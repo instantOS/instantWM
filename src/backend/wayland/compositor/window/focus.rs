@@ -57,15 +57,13 @@ impl WaylandState {
     /// 1. Activates the new window
     /// 2. Sets Smithay keyboard focus
     ///
-    /// The shared focus projection deactivates the previous window first.
+    /// The shared focus projection supplies presentation flags and deactivates
+    /// the previous window first. Native overlay/grab recovery passes None to
+    /// preserve the already projected protocol flags; it never reads WM state.
     ///
     /// It does **not** update `mon.selected`. The WM layer
     /// ([`crate::focus::focus`]) is the single authority for `mon.selected`.
-    pub fn set_focus(&mut self, window: WindowId) {
-        self.set_focus_with_model(window, None);
-    }
-
-    fn set_focus_with_model(&mut self, window: WindowId, model: Option<&crate::model::WmModel>) {
+    pub(crate) fn focus_window(&mut self, window: WindowId, presentation: Option<(bool, bool)>) {
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
 
@@ -95,7 +93,7 @@ impl WaylandState {
 
         // Activate the new window and set keyboard focus
         if let Some(new_window) = focus_window {
-            self.set_window_activated_with_model(window, true, model);
+            self.set_window_activated(window, true, presentation);
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
                 let new_focus = KeyboardFocusTarget::Window(new_window.clone());
@@ -163,34 +161,24 @@ impl WaylandState {
     /// The core focus transaction supplies the previous window explicitly;
     /// deriving it here is too late because `mon.selected` has already been
     /// committed before backend projection begins.
-    fn set_window_activated_with_model(
+    fn set_window_activated(
         &mut self,
         window: WindowId,
         activated: bool,
-        model: Option<&crate::model::WmModel>,
+        presentation: Option<(bool, bool)>,
     ) {
         let Some(element) = self.window_index.get(&window).cloned() else {
             return;
         };
         if element.set_activated(activated) {
-            if let Some(model) = model {
-                let presentation = model.client(window).map(|client| {
-                    (
-                        client.mode().is_fullscreen(),
-                        model.client_protocol_maximized(window).unwrap_or(false),
-                    )
-                });
-                self.send_toplevel_configure_with_presentation(&element, None, presentation);
-            } else {
-                self.send_toplevel_configure(&element, None);
-            }
+            self.send_toplevel_configure_with_presentation(&element, None, presentation);
         }
     }
 
     /// This returns the window that the WM thinks should be focused.
     /// For the actual Smithay seat focus, use `seat.get_keyboard().current_focus()`.
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.globals().and_then(|state| state.model.selected_win())
+        self.protocol_core().model.selected_win()
     }
 
     /// Check whether the Smithay keyboard seat is currently focused on the
@@ -252,8 +240,17 @@ impl WaylandState {
     }
 }
 
+fn presentation(model: &crate::model::WmModel, window: WindowId) -> Option<(bool, bool)> {
+    model.client(window).map(|client| {
+        (
+            client.mode().is_fullscreen(),
+            model.client_protocol_maximized(window).unwrap_or(false),
+        )
+    })
+}
+
 /// Project shared focus policy through an ordinary exclusive compositor borrow.
-/// This path neither mutates core state nor needs either raw state back-reference.
+/// This path neither mutates core state nor reacquires the shared WM owner.
 impl crate::focus::FocusBackendOps for WaylandState {
     fn project_focus(
         &mut self,
@@ -263,10 +260,10 @@ impl crate::focus::FocusBackendOps for WaylandState {
         if projection.previous != projection.current
             && let Some(previous) = projection.previous
         {
-            self.set_window_activated_with_model(previous, false, Some(&core.model));
+            self.set_window_activated(previous, false, presentation(&core.model, previous));
         }
         if let Some(current) = projection.current {
-            self.set_focus_with_model(current, Some(&core.model));
+            self.focus_window(current, presentation(&core.model, current));
         } else {
             self.clear_seat_focus();
         }

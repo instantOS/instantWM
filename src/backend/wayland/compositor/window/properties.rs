@@ -105,12 +105,13 @@ impl WaylandState {
     /// the managed model (freshly registered surface awaiting its map work).
     pub(crate) fn foreign_toplevel_snapshot(
         &self,
+        core_view: &crate::core_state::CoreState,
         window: WindowId,
     ) -> Option<crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot>
     {
         use crate::backend::wayland::compositor::protocols::foreign_toplevel::ToplevelSnapshot;
 
-        let core = self.globals()?;
+        let core = core_view;
         let client = core.model.client(window)?;
         Some(ToplevelSnapshot {
             title: self.window_title(window).unwrap_or_default(),
@@ -130,21 +131,25 @@ impl WaylandState {
     /// Push the current presentation of one window to managing clients
     /// (advertises it on first sight; diffs afterwards). Cheap when nothing
     /// changed.
-    pub fn refresh_foreign_toplevel(&mut self, window: WindowId) {
+    pub fn refresh_foreign_toplevel(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        window: WindowId,
+    ) {
         if !self.foreign_toplevel_handles.contains_key(&window) {
             return;
         }
-        if let Some(snapshot) = self.foreign_toplevel_snapshot(window) {
+        if let Some(snapshot) = self.foreign_toplevel_snapshot(core_view, window) {
             self.foreign_toplevel_management_state
                 .sync_toplevel::<Self>(window, &snapshot);
         }
     }
 
     /// Refresh every managed window's advertised presentation.
-    pub fn refresh_all_foreign_toplevels(&mut self) {
+    pub fn refresh_all_foreign_toplevels(&mut self, core_view: &crate::core_state::CoreState) {
         let windows: Vec<WindowId> = self.foreign_toplevel_handles.keys().copied().collect();
         for window in windows {
-            self.refresh_foreign_toplevel(window);
+            self.refresh_foreign_toplevel(core_view, window);
         }
     }
 
@@ -152,9 +157,10 @@ impl WaylandState {
     /// runtime tick.
     pub fn reconcile_foreign_toplevel_selection(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         transition: Option<crate::client::focus::SelectionTransition>,
     ) {
-        let selected = self.globals().and_then(|core| core.model.selected_win());
+        let selected = core_view.model.selected_win();
         debug_assert!(
             transition.is_none_or(|change| change.current == selected),
             "core selection changed outside the focus transaction boundary"
@@ -177,10 +183,10 @@ impl WaylandState {
             }
         }
         for previous in previous_windows {
-            self.refresh_foreign_toplevel(previous);
+            self.refresh_foreign_toplevel(core_view, previous);
         }
         if let Some(selected) = selected {
-            self.refresh_foreign_toplevel(selected);
+            self.refresh_foreign_toplevel(core_view, selected);
         }
         self.foreign_toplevel_management_state
             .set_advertised_selection(selected);
@@ -283,6 +289,7 @@ impl WaylandState {
     /// always classified against it.
     pub(crate) fn send_toplevel_configure(
         &mut self,
+        core_view: &crate::core_state::CoreState,
         window: &Window,
         size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
     ) -> Option<smithay::utils::Serial> {
@@ -290,23 +297,22 @@ impl WaylandState {
             .user_data()
             .get::<WindowIdMarker>()
             .and_then(|marker| {
-                self.globals().and_then(|state| {
-                    state.model.client(marker.id).map(|client| {
-                        (
-                            client.mode().is_fullscreen(),
-                            state
-                                .model
-                                .client_protocol_maximized(marker.id)
-                                .unwrap_or(false),
-                        )
-                    })
+                core_view.model.client(marker.id).map(|client| {
+                    (
+                        client.mode().is_fullscreen(),
+                        core_view
+                            .model
+                            .client_protocol_maximized(marker.id)
+                            .unwrap_or(false),
+                    )
                 })
             });
         self.send_toplevel_configure_with_presentation(window, size, presentation)
     }
 
     /// Send an activation configure using an explicit core presentation view.
-    /// The borrowed focus path must not reach back through globals().
+    /// Shared actions already borrow the WM; native projection consumes their
+    /// view instead of trying to borrow the WM owner again.
     pub(crate) fn send_toplevel_configure_with_presentation(
         &mut self,
         window: &Window,
@@ -364,17 +370,22 @@ impl WaylandState {
     /// This is needed for state-only transitions whose resulting geometry may
     /// equal the previous geometry. Relying on a resize to incidentally send a
     /// configure would otherwise allow the protocol and model to drift.
-    pub(crate) fn sync_window_presentation(&mut self, win: WindowId) {
+    pub(crate) fn sync_window_presentation(
+        &mut self,
+        core_view: &crate::core_state::CoreState,
+        win: WindowId,
+    ) {
         let Some(window) = self.find_window(win).cloned() else {
             return;
         };
-        let Some((mode, maximized)) = self.globals().and_then(|state| {
-            state.model.client(win).map(|client| {
-                (
-                    client.mode(),
-                    state.model.client_protocol_maximized(win).unwrap_or(false),
-                )
-            })
+        let Some((mode, maximized)) = core_view.model.client(win).map(|client| {
+            (
+                client.mode(),
+                core_view
+                    .model
+                    .client_protocol_maximized(win)
+                    .unwrap_or(false),
+            )
         }) else {
             return;
         };
@@ -383,25 +394,22 @@ impl WaylandState {
             let _ = surface.set_maximized(maximized);
             let _ = surface.set_fullscreen(mode.is_fullscreen());
         } else {
-            self.send_toplevel_configure(&window, None);
+            self.send_toplevel_configure(core_view, &window, None);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+
     use crate::test_support::{add_client, push_monitor};
     use crate::types::{Client, WindowId};
-    use crate::wm::Wm;
 
     #[test]
     fn foreign_toplevel_selection_reconciles_across_tick_boundaries() {
-        let (_event_loop, mut state) =
-            crate::backend::wayland::compositor::new_event_loop_and_state();
-        let mut wm = Box::new(Wm::new(Backend::new_wayland(WaylandBackend::new())));
-        state.attach_wm(&mut wm);
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let wm_handle = state.wm_handle();
+        let mut wm = wm_handle.borrow_mut();
 
         let first = WindowId(1);
         let second = WindowId(2);
@@ -423,7 +431,7 @@ mod tests {
             .unwrap()
             .set_selected(Some(first));
 
-        state.reconcile_foreign_toplevel_selection(None);
+        state.reconcile_foreign_toplevel_selection(&wm.core, None);
         assert_eq!(
             state
                 .foreign_toplevel_management_state
@@ -443,7 +451,7 @@ mod tests {
             previous: Some(first),
             current: Some(second),
         };
-        state.reconcile_foreign_toplevel_selection(Some(transition));
+        state.reconcile_foreign_toplevel_selection(&wm.core, Some(transition));
         assert_eq!(
             state
                 .foreign_toplevel_management_state

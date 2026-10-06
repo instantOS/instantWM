@@ -74,9 +74,13 @@ impl WaylandState {
     ///
     /// Returns both the surface focus and the logical hovered window in one
     /// traversal, avoiding repeated `windows_in_z_order()` allocations.
-    pub(crate) fn contents_under_pointer(&self, point: Point<f64, Logical>) -> PointerContents {
+    pub(crate) fn contents_under_pointer(
+        &self,
+        core_view: &crate::core_state::CoreState,
+        point: Point<f64, Logical>,
+    ) -> PointerContents {
         let windows = self.pointer_hit_snapshot();
-        self.contents_under_pointer_in_snapshot(point, &windows)
+        self.contents_under_pointer_in_snapshot(core_view, point, &windows)
     }
 
     /// Hit-test against a caller-owned stable z-order/classification snapshot.
@@ -86,6 +90,7 @@ impl WaylandState {
     /// window handles.
     pub(crate) fn contents_under_pointer_in_snapshot(
         &self,
+        core_view: &crate::core_state::CoreState,
         point: Point<f64, Logical>,
         windows: &[(Window, WindowType)],
     ) -> PointerContents {
@@ -95,15 +100,7 @@ impl WaylandState {
         use smithay::desktop::WindowSurfaceType;
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
-        let globals = match self.globals() {
-            Some(state) => state,
-            None => {
-                return PointerContents {
-                    surface: None,
-                    hovered_win: None,
-                };
-            }
-        };
+        let globals = core_view;
         // Explicit overlay windows are the first scene bucket. Include their
         // logical rectangle so transparent decoration/input holes cannot leak
         // hover focus into a lower window.
@@ -280,11 +277,12 @@ impl WaylandState {
     /// Used for WM hit-testing to prevent small surfaces from creating focus holes.
     pub(crate) fn logical_window_under_pointer(
         &self,
+        core_view: &crate::core_state::CoreState,
         point: Point<f64, Logical>,
     ) -> Option<WindowId> {
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
-        let globals = self.globals()?;
+        let globals = core_view;
 
         for (window, typ) in self.windows_in_z_order() {
             if typ.is_overlay() {

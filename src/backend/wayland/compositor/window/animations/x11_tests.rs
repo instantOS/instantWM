@@ -10,10 +10,8 @@ use smithay::xwayland::{X11Surface, xwm::Atoms};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, CreateWindowAux, WindowClass};
 
-use crate::backend::{Backend, wayland::WaylandBackend};
 use crate::test_support::{MonitorBuilder, add_client};
 use crate::types::{Client, ClientMode, Rect, WindowId};
-use crate::wm::Wm;
 
 struct TestServer(Child);
 
@@ -80,10 +78,9 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
         Arc::new(AtomicBool::new(false)),
     );
     let element = Window::new_x11_window(surface);
-    let (_event_loop, mut state) = crate::backend::wayland::compositor::new_event_loop_and_state();
-    let backend = WaylandBackend::new();
-    backend.attach_state(&mut state);
-    let mut wm = Wm::new(Backend::new_wayland(backend));
+    let (_event_loop, mut state) = crate::test_support::new_compositor();
+    let wm_handle = state.wm_handle();
+    let mut wm = wm_handle.borrow_mut();
     let monitor = wm.core.model.monitors.push(
         MonitorBuilder::new()
             .monitor_rect(Rect::new(0, 0, 1920, 1080))
@@ -100,9 +97,8 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
             ..Client::default()
         },
     );
-    state.attach_wm(&mut wm);
     state.window_index.insert(win, element);
-    state.resize_window(win, initial);
+    state.resize_window(&wm.core, win, initial);
     assert_eq!(
         state.geometry_sync.get(&win).unwrap().scheduled_size(),
         None
@@ -111,7 +107,7 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
     // Deliberately leave model geometry at the old origin: the protocol
     // dispatcher must use its supplied rectangle, not re-read the model.
     let moved = Rect::new(400, 250, initial.w, initial.h);
-    state.resize_window(win, moved);
+    state.resize_window(&wm.core, win, moved);
     assert_eq!(
         state.geometry_sync.get(&win).unwrap().scheduled_size(),
         None

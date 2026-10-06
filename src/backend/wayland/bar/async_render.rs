@@ -207,9 +207,8 @@ mod tests {
         scene::build_monitor_snapshots(core, 0)
     }
 
-    fn test_wm() -> crate::wm::Wm {
-        use crate::backend::{Backend, wayland::WaylandBackend};
-        let mut wm = crate::wm::Wm::new(Backend::new_wayland(WaylandBackend::new()));
+    fn test_wm() -> crate::wm::WaylandWm {
+        let mut wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
         let mut monitor = crate::types::Monitor::new_with_values();
         monitor.set_available_rect(crate::types::Rect::new(0, 0, 800, 600));
         monitor.bar_height = 24;

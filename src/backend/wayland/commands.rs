@@ -57,23 +57,25 @@ pub(crate) fn apply_maximized_request(
 /// layout would let a final fullscreen-sized commit look authoritative after
 /// the model had already returned to floating mode.
 pub(crate) fn apply_fullscreen_geometry(
+    core_view: &crate::core_state::CoreState,
     state: &mut crate::backend::wayland::compositor::WaylandState,
     win: WindowId,
     transition: crate::client::mode::FullscreenTransition,
 ) {
     if let Some(rect) = transition.presentation_rect() {
-        state.resize_window(win, rect);
+        state.resize_window(core_view, win, rect);
     }
 }
 
 /// Project geometry carried by a synchronous maximize transition.
 pub(crate) fn apply_maximized_geometry(
+    core_view: &crate::core_state::CoreState,
     state: &mut crate::backend::wayland::compositor::WaylandState,
     win: WindowId,
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
     if let Some(rect) = transition.presentation_rect() {
-        state.resize_window(win, rect);
+        state.resize_window(core_view, win, rect);
     }
 }
 

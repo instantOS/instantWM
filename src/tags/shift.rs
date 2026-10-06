@@ -1,5 +1,7 @@
 //! Moving clients between tags.
 
+use crate::backend::WindowOps;
+
 use crate::contexts::WmCtx;
 
 use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
@@ -85,7 +87,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection) {
-    ctx.window_backend().raise_window_visual_only(win);
+    ctx.raise_window_visual_only(win);
     let mon_w = ctx.core().model().expect_selected_monitor().monitor_rect.w;
     let Some(geo) = ctx.core().client_geo(win) else {
         return;
@@ -119,15 +121,14 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
     use crate::types::{Client, ClientMode, TagMask};
-    use crate::wm::Wm;
 
     #[test]
     fn move_and_follow_keeps_the_moved_window_selected() {
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 3;
         let tag1 = TagMask::single(1).expect("tag 1");
         let tag2 = TagMask::single(2).expect("tag 2");
@@ -166,7 +167,7 @@ mod tests {
             },
         );
 
-        move_client_follow_view(&mut wm.ctx(), HorizontalDirection::Right);
+        move_client_follow_view(&mut wm.test_ctx(), HorizontalDirection::Right);
 
         assert_eq!(
             wm.core.model.expect_selected_monitor().selected_tags(),
@@ -179,7 +180,7 @@ mod tests {
         );
 
         let tag3 = TagMask::single(3).expect("tag 3");
-        move_client_follow_view(&mut wm.ctx(), HorizontalDirection::Right);
+        move_client_follow_view(&mut wm.test_ctx(), HorizontalDirection::Right);
         assert_eq!(
             wm.core.model.expect_selected_monitor().selected_tags(),
             tag3

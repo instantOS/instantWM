@@ -232,19 +232,9 @@ fn focus_impl(
                 refresh,
             )
         }
-        Wayland(wayland_ctx) => {
-            // Compatibility seam for callers whose context does not yet carry
-            // a compositor borrow. Native dispatch can pass WaylandState itself
-            // to apply_focus_transition instead, without this bridge.
-            let mut backend = wayland_ctx.wayland;
-            apply_focus_transition(
-                &mut wayland_ctx.core,
-                win,
-                previous_focus,
-                &mut backend,
-                refresh,
-            )
-        }
+        Wayland(wayland_ctx) => wayland_ctx.wayland.with_state(|state| {
+            apply_focus_transition(&mut wayland_ctx.core, win, previous_focus, state, refresh)
+        }),
     };
     if let Some(monitor_id) = z_order_monitor {
         crate::layouts::sync_monitor_z_order(ctx, monitor_id);

@@ -261,6 +261,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
 #[cfg(test)]
 mod tests {
     use super::adjacent_scroll_mask;
+
     use crate::types::{HorizontalDirection, TagMask};
 
     #[test]
@@ -298,13 +299,12 @@ mod tests {
 #[cfg(test)]
 mod view_selection_tests {
     use super::{commit_view_selection, view_tags};
-    use crate::backend::Backend;
-    use crate::backend::wayland::WaylandBackend;
+    use crate::test_support::TestWm as Wm;
+
     use crate::core_state::CoreState;
     use crate::monitor::MonitorManager;
     use crate::test_support::MonitorBuilder;
     use crate::types::*;
-    use crate::wm::Wm;
 
     fn make_globals_with_one_monitor(selected: TagMask) -> CoreState {
         let mut state = CoreState::default();
@@ -338,7 +338,7 @@ mod view_selection_tests {
     fn changing_an_empty_view_explicitly_invalidates_the_bar() {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
-        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         wm.core.model.tags.num_tags = 9;
         let mut monitor = Monitor::default();
         monitor.set_selected_tags(tag1);
@@ -347,7 +347,7 @@ mod view_selection_tests {
         wm.bar.mark_drawn();
         assert!(!wm.bar.needs_redraw());
 
-        view_tags(&mut wm.ctx(), tag2);
+        view_tags(&mut wm.test_ctx(), tag2);
 
         assert!(wm.bar.needs_redraw());
         assert_eq!(

@@ -1,3 +1,4 @@
+use crate::backend::WindowOps;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
@@ -43,7 +44,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     flush_pending_spawn_animations(ctx, monitor_id);
 
     ctx.request_space_sync();
-    ctx.window_backend().flush();
+    ctx.flush();
 }
 
 /// Start pending spawn transitions whose assigned monitors were arranged by
@@ -108,8 +109,8 @@ impl ArrangePlan {
             .filter(|monitor| monitor.current_layout().is_maximized())
             .and_then(|monitor| monitor.selected)
         {
-            ctx.window_backend().raise_window_visual_only(selected);
-            ctx.window_backend().flush();
+            ctx.raise_window_visual_only(selected);
+            ctx.flush();
         }
 
         for output in &self.client_moves {
@@ -120,8 +121,8 @@ impl ArrangePlan {
         }
 
         if let Some(z_order) = &self.z_order {
-            ctx.window_backend().apply_z_order(z_order);
-            ctx.window_backend().flush();
+            ctx.apply_z_order(z_order);
+            ctx.flush();
         }
     }
 }

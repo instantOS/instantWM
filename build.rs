@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo::rustc-check-cfg=cfg(instantwm_borrow_contract)");
     println!("cargo:rerun-if-changed=build.rs");
     emit_git_rerun_paths();
 

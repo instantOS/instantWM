@@ -1,6 +1,5 @@
 use crate::config::config_toml::InputConfig;
 use crate::ipc_types::{InputCommand, Response};
-use crate::wm::Wm;
 use std::collections::HashMap;
 
 fn input_config_mut(
@@ -12,8 +11,8 @@ fn input_config_mut(
         .or_default()
 }
 
-pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
-    let inputs = &mut wm.core.config.input;
+pub fn handle_input_command(ctx: &mut crate::contexts::WmCtx<'_>, cmd: InputCommand) -> Response {
+    let inputs = &mut ctx.core_mut().config_mut().input;
     match cmd {
         InputCommand::List { identifier } => {
             let mut entries: Vec<(String, &crate::config::config_toml::InputConfig)> =
@@ -49,7 +48,7 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             return Response::Message(info.join("\n\n"));
         }
         InputCommand::Devices => {
-            let devices = wm.backend.get_input_devices();
+            let devices = ctx.get_input_devices();
             if devices.is_empty() {
                 return Response::Message(
                     "no input devices detected (or not supported by backend)".to_string(),
@@ -79,6 +78,6 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             input_config_mut(inputs, identifier).left_handed = Some(state);
         }
     }
-    wm.work.queue_input_config_apply();
+    ctx.core_mut().pending_work_mut().queue_input_config_apply();
     Response::ok()
 }
