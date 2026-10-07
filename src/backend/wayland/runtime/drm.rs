@@ -61,6 +61,7 @@ struct OutputHitRegion {
 
 struct DrmLoopState {
     session_active: bool,
+    topology_dirty: bool,
     render_flags: HashMap<crtc::Handle, bool>,
     taken_render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
@@ -78,6 +79,7 @@ impl DrmLoopState {
             .collect();
         Self {
             session_active: true,
+            topology_dirty: false,
             render_flags,
             taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
@@ -89,6 +91,12 @@ impl DrmLoopState {
             last_bar_update_seq: 0,
             scene_cache: SceneCache::default(),
         }
+    }
+
+    /// Remember hotplug events while DRM ownership belongs to another session.
+    fn take_topology_change(&mut self, changed: bool) -> bool {
+        self.topology_dirty |= changed;
+        self.session_active && mem::take(&mut self.topology_dirty)
     }
 
     fn mark_all_dirty(&mut self) {
@@ -535,6 +543,7 @@ fn setup_session_handlers(
                     .activate(false)
                 {
                     log::error!("failed to reactivate DRM device: {err}");
+                    return;
                 }
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionActivated);
             }
@@ -662,7 +671,7 @@ fn run_event_loop(
                 output_surfaces,
                 &monotonic_clock,
             );
-            if topology_changed
+            if loop_state.take_topology_change(topology_changed)
                 && reconcile_drm_outputs(
                     state,
                     output_surfaces,
@@ -700,7 +709,7 @@ fn run_event_loop(
                     .native
                     .queue_output_policy_projection(&state.wm.core.state.config.monitors);
             }
-            {
+            if loop_state.session_active {
                 let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
                 graphics.with_renderer(|renderer| {
                     process_output_configurations(
@@ -723,7 +732,9 @@ fn run_event_loop(
                 recover_pointer_after_output_change(state);
             }
             state.native.project_completed_output_power_requests();
-            process_output_power_requests(&mut state.native, output_surfaces, loop_state);
+            if loop_state.session_active {
+                process_output_power_requests(&mut state.native, output_surfaces, loop_state);
+            }
             state.native.project_completed_output_power_requests();
             if pointer_moved {
                 loop_state.mark_pointer_output_dirty(
@@ -838,8 +849,12 @@ fn process_runtime_events(
                 loop_state.session_active = false;
             }
             DrmRuntimeEvent::SessionActivated => {
+                // Keep in-flight flips intact: Smithay retains their buffers
+                // across activate(), and only a real vblank may retire them.
                 loop_state.session_active = true;
                 loop_state.mark_all_dirty();
+                // The dock may have disappeared while this session was inactive.
+                topology_changed = true;
             }
             DrmRuntimeEvent::VBlank(crtc) => {
                 loop_state
@@ -1340,6 +1355,66 @@ mod output_layout_tests {
 
     fn crtc(raw: u32) -> crtc::Handle {
         from_u32(raw).expect("test CRTC handles are non-zero")
+    }
+
+    #[test]
+    fn session_reactivation_reprobes_outputs_without_fabricating_flip_completion() {
+        use super::{DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events};
+        use smithay::utils::{Clock, Monotonic};
+        use std::sync::mpsc;
+
+        let panel = crtc(1);
+        let mut runtime = DrmLoopState::new(&[]);
+        runtime.add_output(panel);
+        runtime.render_flags.insert(panel, false);
+        runtime.pending_crtcs.insert(panel);
+        let layout = DrmLayoutState {
+            layout: Rect::new(0, 0, 1920, 1080),
+            output_hit_regions: vec![],
+        };
+        let (tx, rx) = mpsc::channel();
+        tx.send(DrmRuntimeEvent::SessionPaused).unwrap();
+        process_runtime_events(
+            &rx,
+            &mut runtime,
+            &layout,
+            &mut [],
+            &Clock::<Monotonic>::new(),
+        );
+        assert!(!runtime.session_active);
+        assert!(!runtime.has_renderable_dirty_outputs());
+
+        // Hotplug may arrive before we regain DRM ownership. Keep it queued.
+        assert!(!runtime.take_topology_change(true));
+        assert!(!runtime.take_topology_change(false));
+
+        // Resume must also request a scan independently of udev notifications.
+        tx.send(DrmRuntimeEvent::SessionActivated).unwrap();
+        let (_, topology_changed) = process_runtime_events(
+            &rx,
+            &mut runtime,
+            &layout,
+            &mut [],
+            &Clock::<Monotonic>::new(),
+        );
+        assert!(runtime.session_active);
+        assert!(topology_changed);
+        assert!(runtime.take_topology_change(topology_changed));
+        assert!(!runtime.take_topology_change(false));
+        assert!(runtime.pending_crtcs.contains(&panel));
+        assert!(!runtime.has_renderable_dirty_outputs());
+
+        // A delayed real completion, rather than resume, releases the redraw.
+        tx.send(DrmRuntimeEvent::VBlank(panel)).unwrap();
+        process_runtime_events(
+            &rx,
+            &mut runtime,
+            &layout,
+            &mut [],
+            &Clock::<Monotonic>::new(),
+        );
+        assert!(runtime.pending_crtcs.is_empty());
+        assert!(runtime.has_renderable_dirty_outputs());
     }
 
     #[test]
