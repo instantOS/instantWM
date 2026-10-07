@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/instantOS/instantWM/compare/v0.5.0...v0.5.1) - 2026-10-07
+
+### Changed
+
+- separate core transitions from native projection
+- enforce explicit compositor borrows and typed backend ownership
+- own graphics and borrow scene data independently
+- own WM and enforce model dispatch borrows statically
+- simplify shared policy access without weakening borrows
+- narrow helper inputs and remove data shortcuts
+- make layout execution explicit and separate projections
+
+### Fixed
+
+- resolve named SVG and PNG tray icons
+- unify tray monitor policy and correct X11 orientation
+
+### Other
+
+- clean up agents md
+- Refactor client operations around monitor ownership
+- Fix cross-monitor redraws and global window stacking
+- bump stuff
+
 ## [0.5.0](https://github.com/instantOS/instantWM/compare/v0.4.0...v0.5.0) - 2026-10-02
 
 ### Added
