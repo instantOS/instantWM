@@ -225,9 +225,9 @@ pub fn make_wake_ping<T: 'static>(
     Some(ping)
 }
 
-/// Register an IPC listener fd as a calloop source.
+/// Register IPC listener and client readiness as a calloop source.
 ///
-/// The source simply wakes the event loop when a new connection arrives;
+/// The source wakes the event loop for new connections and incoming request data;
 /// actual command processing is done by the caller via
 /// [`process_ipc_commands`].
 pub fn register_ipc_source<'loop_handle, T: 'static>(

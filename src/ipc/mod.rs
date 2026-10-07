@@ -4,6 +4,7 @@ use crate::reload::reload_config;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -29,8 +30,38 @@ pub mod window;
 
 pub struct IpcServer {
     listener: UnixListener,
+    readiness: IpcReadiness,
     path: PathBuf,
     clients: Vec<PendingClient>,
+}
+
+/// Aggregate listener and accepted-client readiness into one event-loop fd.
+/// Watching only the listener loses wakeups when request data arrives after accept.
+struct IpcReadiness(OwnedFd);
+
+impl IpcReadiness {
+    fn new(listener: &UnixListener) -> io::Result<Self> {
+        let fd = unsafe { libc::epoll_create1(libc::EPOLL_CLOEXEC) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let readiness = Self(unsafe { OwnedFd::from_raw_fd(fd) });
+        readiness.watch(listener.as_raw_fd())?;
+        Ok(readiness)
+    }
+
+    fn watch(&self, fd: std::os::fd::RawFd) -> io::Result<()> {
+        let mut event = libc::epoll_event {
+            events: libc::EPOLLIN as u32,
+            u64: 0,
+        };
+        let result =
+            unsafe { libc::epoll_ctl(self.0.as_raw_fd(), libc::EPOLL_CTL_ADD, fd, &mut event) };
+        if result < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
 }
 
 struct PendingClient {
@@ -89,8 +120,10 @@ impl IpcServer {
         let listener = UnixListener::bind(&path)?;
         listener.set_nonblocking(true)?;
         unsafe { env::set_var("INSTANTWM_SOCKET", &path) };
+        let readiness = IpcReadiness::new(&listener)?;
         Ok(Self {
             listener,
+            readiness,
             path,
             clients: Vec::new(),
         })
@@ -108,6 +141,7 @@ impl IpcServer {
                 Ok((stream, _)) => {
                     if self.clients.len() < MAX_PENDING_CLIENTS
                         && let Ok(()) = stream.set_nonblocking(true)
+                        && let Ok(()) = self.readiness.watch(stream.as_raw_fd())
                     {
                         self.clients.push(PendingClient {
                             stream,
@@ -185,7 +219,7 @@ impl Drop for IpcServer {
 
 impl std::os::unix::io::AsRawFd for IpcServer {
     fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
-        self.listener.as_raw_fd()
+        self.readiness.0.as_raw_fd()
     }
 }
 
@@ -478,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn one_server_tick_accepts_and_handles_a_complete_request() {
+    fn accepted_client_data_wakes_the_event_loop() {
         static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
         let socket_path = std::env::temp_dir().join(format!(
             "instantwm-ipc-test-{}-{}.sock",
@@ -487,19 +521,38 @@ mod tests {
         ));
         let listener = UnixListener::bind(&socket_path).unwrap();
         listener.set_nonblocking(true).unwrap();
+        let readiness = IpcReadiness::new(&listener).unwrap();
         let mut server = IpcServer {
             listener,
+            readiness,
             path: socket_path,
             clients: Vec::new(),
         };
         let mut stream = UnixStream::connect(&server.path).unwrap();
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        assert!(!wm.with_ctx(|wm| server.process_pending(wm)));
+        assert_eq!(server.clients.len(), 1);
+        let mut poll_fd = libc::pollfd {
+            fd: server.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
         let request = IpcRequest::new(IpcCommand::GetTheme, false);
         let bytes = bincode::encode_to_vec(&request, bincode::config::standard()).unwrap();
         stream.write_all(&bytes).unwrap();
+        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 1000) }, 1);
+        assert!(!wm.with_ctx(|wm| server.process_pending(wm)));
+        assert_eq!(server.clients.len(), 1);
+        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
+
+        // EOF completes the request and must produce its own wakeup.
         stream.shutdown(Shutdown::Write).unwrap();
-        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 1000) }, 1);
+        assert_ne!(poll_fd.revents & libc::POLLIN, 0);
 
         assert!(wm.with_ctx(|wm| server.process_pending(wm)));
+        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
         assert!(server.clients.is_empty());
     }
 

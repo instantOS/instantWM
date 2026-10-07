@@ -144,6 +144,11 @@ def main():
 
                 def begin(window):
                     ctl("window", "focus", str(window))
+                    client = next(w for w in windows() if w["id"] == window)
+                    # These transport regressions observe movement to detect
+                    # capture. Tiled drags can update only a layout preview.
+                    if client["state"]["mode"]["placement"] == "Tiling":
+                        ctl("action", "toggle_floating")
                     initial = geometry(window)
                     x = initial["x"] + initial["width"] // 2
                     y = initial["y"] + initial["height"] // 2

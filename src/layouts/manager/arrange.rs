@@ -150,15 +150,14 @@ impl Monitor {
             let overview = crate::overview::compute(self);
             overview.moves
         } else {
-            let moves = match self.current_layout() {
+            match self.current_layout() {
                 PresentationMode::Tiled => compute_manual_tree(self, layout_cfg, resize_hints),
                 PresentationMode::Maximized => {
                     reconcile_manual_tree(self, layout_cfg, resize_hints);
                     crate::layouts::algo::maximized(self, layout_cfg, animated)
                 }
                 PresentationMode::Floating => crate::layouts::algo::floating(self, animated),
-            };
-            moves
+            }
         };
 
         // Fullscreen is an ordinary overview card; reapplying fullscreen
