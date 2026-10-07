@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/instantOS/instantWM/compare/v0.5.1...v0.5.2) - 2026-10-07
+
+### Other
+
+- fmt
+- Fix IPC client wakeups and X11 drag test setup
+- Defer DRM output changes while inactive and rescan on reactivation
+- Merge branch 'dev'
+
 ## [0.5.1](https://github.com/instantOS/instantWM/compare/v0.5.0...v0.5.1) - 2026-10-07
 
 ### Changed
