@@ -73,10 +73,10 @@ impl WaylandNativeState {
                     .cloned()
             })
             .collect();
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(error) = xwm.update_stacking_order_downwards(x11_order.iter()) {
-                log::warn!("failed to synchronize Xwayland stacking: {error}");
-            }
+        if let Some(xwm) = self.xwm.as_mut()
+            && let Err(error) = xwm.update_stacking_order_downwards(x11_order.iter())
+        {
+            log::warn!("failed to synchronize Xwayland stacking: {error}");
         }
         self.raise_unmanaged_x11_windows();
     }
