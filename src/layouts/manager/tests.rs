@@ -486,7 +486,7 @@ fn arrange_commits_planned_borders_before_computing_geometry() {
 fn tiled_focus_does_not_mutate_or_project_a_different_persistent_order() {
     let monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
 
-    let projected = compute_monitor_z_order(&monitor).unwrap();
+    let projected = compute_monitor_z_order(&monitor);
 
     assert_eq!(
         projected,
@@ -509,7 +509,7 @@ fn floating_focus_does_not_raise_within_the_floating_layer() {
             .set_placement(ClientPlacement::Floating);
     }
 
-    let projected = compute_monitor_z_order(&monitor).unwrap();
+    let projected = compute_monitor_z_order(&monitor);
 
     assert_eq!(
         projected,
@@ -523,7 +523,7 @@ fn monitor_without_a_bar_window_is_not_projected_as_window_zero() {
     monitor.bar_win = WindowId::default();
     monitor.bottom_bar_win = WindowId::default();
 
-    let projected = compute_monitor_z_order(&monitor).unwrap();
+    let projected = compute_monitor_z_order(&monitor);
 
     assert_eq!(projected, vec![WindowId(1), WindowId(2)]);
 }
@@ -543,7 +543,7 @@ fn transient_dialogs_stay_above_ordinary_windows_and_nested_children() {
     monitor.client_mut(WindowId(3)).unwrap().transient_for = Some(WindowId(1));
     monitor.client_mut(WindowId(4)).unwrap().transient_for = Some(WindowId(3));
 
-    let projected = compute_monitor_z_order(&monitor).unwrap();
+    let projected = compute_monitor_z_order(&monitor);
 
     assert_eq!(
         projected,
@@ -775,7 +775,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
 
     assert_eq!(plan.client_moves.len(), 1);
     assert!(plan.fullscreen_moves.is_empty());
-    assert_eq!(plan.z_order, Some(vec![win]));
+    assert_eq!(crate::overview::z_order(&monitor), vec![win]);
 }
 
 #[test]
@@ -973,7 +973,7 @@ fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() 
         .set_placement(crate::types::ClientPlacement::Floating);
     monitor.client_mut(WindowId(4)).unwrap().enter_fullscreen();
 
-    let projected = compute_monitor_z_order(&monitor).unwrap();
+    let projected = compute_monitor_z_order(&monitor);
 
     assert_eq!(
         projected,
@@ -996,7 +996,7 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
         .unwrap()
         .set_placement(crate::types::ClientPlacement::Floating);
 
-    let projected = compute_monitor_z_order(&monitor).unwrap();
+    let projected = compute_monitor_z_order(&monitor);
 
     assert_eq!(
         projected,
@@ -1867,4 +1867,115 @@ fn immediate_arrange_drains_spawn_work_without_changing_animation_configuration(
     assert_eq!(wm.core.state.config.animations, configured);
     assert!(wm.core.work.spawn_animations.is_empty());
     assert!(!wm.test_ctx().window_animation_active(win));
+}
+
+#[test]
+fn global_stack_preserves_layers_across_monitor_order_and_focus() {
+    for reverse in [false, true] {
+        let mut wm = wayland_wm();
+        let groups = if reverse {
+            [[3, 4], [1, 2]]
+        } else {
+            [[1, 2], [3, 4]]
+        };
+        for (index, group) in groups.into_iter().enumerate() {
+            add_tiled_monitor(
+                &mut wm,
+                &group.map(WindowId),
+                Rect::new(index as i32 * 1000, 0, 1000, 800),
+            );
+        }
+        for win in [WindowId(2), WindowId(4)] {
+            wm.core
+                .state
+                .model
+                .client_mut(win)
+                .unwrap()
+                .set_placement(ClientPlacement::Floating);
+        }
+        for selected in [WindowId(1), WindowId(2), WindowId(3), WindowId(4)] {
+            let monitor = wm.core.state.model.monitor_of_client(selected).unwrap();
+            wm.core.state.model.monitor_mut(monitor).unwrap().selected = Some(selected);
+            let stack = super::z_order::global_z_order(&wm.core.state.model);
+            let position = |win| stack.iter().position(|&id| id == WindowId(win)).unwrap();
+            assert!(position(1) < position(2));
+            assert!(position(3) < position(2));
+            assert!(position(1) < position(4));
+            assert!(position(3) < position(4));
+        }
+    }
+}
+
+#[test]
+fn global_stack_orders_transient_ancestors_across_monitors() {
+    let mut wm = wayland_wm();
+    add_tiled_monitor(&mut wm, &[WindowId(3)], Rect::new(0, 0, 1000, 800));
+    add_tiled_monitor(
+        &mut wm,
+        &[WindowId(1), WindowId(2)],
+        Rect::new(1000, 0, 1000, 800),
+    );
+    wm.core
+        .state
+        .model
+        .client_mut(WindowId(2))
+        .unwrap()
+        .transient_for = Some(WindowId(1));
+    wm.core
+        .state
+        .model
+        .client_mut(WindowId(3))
+        .unwrap()
+        .transient_for = Some(WindowId(2));
+    assert_eq!(
+        super::z_order::global_z_order(&wm.core.state.model),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+}
+
+#[test]
+fn fake_fullscreen_keeps_its_placement_layer_in_the_global_stack() {
+    let mut wm = wayland_wm();
+    add_tiled_monitor(
+        &mut wm,
+        &[WindowId(1), WindowId(2)],
+        Rect::new(0, 0, 1000, 800),
+    );
+    wm.core
+        .state
+        .model
+        .client_mut(WindowId(1))
+        .unwrap()
+        .enter_fake_fullscreen();
+    let floating = wm.core.state.model.client_mut(WindowId(2)).unwrap();
+    floating.set_placement(ClientPlacement::Floating);
+    floating.enter_fake_fullscreen();
+    assert_eq!(
+        super::z_order::global_z_order(&wm.core.state.model),
+        vec![WindowId(1), WindowId(2)]
+    );
+}
+
+#[test]
+fn global_stack_preserves_overview_card_order_across_monitors() {
+    let mut wm = wayland_wm();
+    let overview = add_tiled_monitor(
+        &mut wm,
+        &[WindowId(1), WindowId(2)],
+        Rect::new(0, 0, 1000, 800),
+    );
+    add_tiled_monitor(&mut wm, &[WindowId(3)], Rect::new(1000, 0, 1000, 800));
+    wm.core.state.model.monitors.set_selected(overview);
+    let monitor = wm.core.state.model.monitor_mut(overview).unwrap();
+    monitor.overview_state = Some(crate::overview::OverviewState::new(
+        TagMask::single(1).unwrap(),
+        vec![WindowId(2), WindowId(1)],
+        HashMap::new(),
+        Some(WindowId(1)),
+    ));
+    monitor.client_mut(WindowId(2)).unwrap().enter_fullscreen();
+    assert_eq!(
+        super::z_order::global_z_order(&wm.core.state.model),
+        vec![WindowId(3), WindowId(2), WindowId(1)]
+    );
 }

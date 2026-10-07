@@ -17,11 +17,15 @@ impl WaylandNativeState {
         location: Point<i32, smithay::utils::Logical>,
         activate: bool,
     ) {
+        // Compositor-owned moves need damage even when the client never
+        // commits another buffer. Include both the vacated and new outputs.
+        self.request_visible_window_render(element);
         if self.space.element_location(element).is_some() {
             self.space.relocate_element(element, location);
         } else {
             self.space.map_element(element.clone(), location, activate);
         }
+        self.request_visible_window_render(element);
     }
 
     /// Apply authoritative geometry from the WM layer.
@@ -51,29 +55,27 @@ impl WaylandNativeState {
         }
     }
 
-    /// Raise a window to the top of the stack.
-    pub fn raise_window_visual_only(&mut self, window: WindowId) {
-        if let Some(element) = self.find_window(window).cloned() {
-            // Focus is handled independently by `set_focus`, so we pass `false`
-            self.space.raise_element(&element, false);
-
-            // XWayland requires us to explicitly raise the X11 surface so X clients draw correctly.
-            if let Some(surface) = element.x11_surface()
-                && let Some(xwm) = self.xwm.as_mut()
-            {
-                let _ = xwm.raise_window(surface);
-            }
-        }
-        self.raise_unmanaged_x11_windows();
-    }
-
     /// Apply a complete z-order (bottom-to-top).
     pub fn apply_z_order(&mut self, windows: &[WindowId]) {
         for window in windows.iter() {
             if let Some(element) = self.find_window(*window).cloned() {
                 // Focus / activation is managed by `set_focus`, so we pass `false`
                 // here to avoid overriding the focus state visually.
+                self.request_visible_window_render(&element);
                 self.space.raise_element(&element, false);
+            }
+        }
+        let x11_order: Vec<_> = windows
+            .iter()
+            .filter_map(|win| {
+                self.find_window(*win)
+                    .and_then(|window| window.x11_surface())
+                    .cloned()
+            })
+            .collect();
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(error) = xwm.update_stacking_order_downwards(x11_order.iter()) {
+                log::warn!("failed to synchronize Xwayland stacking: {error}");
             }
         }
         self.raise_unmanaged_x11_windows();

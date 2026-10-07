@@ -180,7 +180,7 @@ pub(crate) fn run_spawn_animation(ctx: &mut WmCtx, window: WindowId, animated: b
     );
 
     if !is_tiling {
-        ctx.raise_window_visual_only(window);
+        ctx.raise_client(window);
         ctx.flush();
     }
 }

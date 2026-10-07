@@ -238,7 +238,8 @@ fn handle_update_transient_for(
         return;
     };
     ctx.core_mut().queue_layout_for_monitor(monitor_id);
-    crate::layouts::sync_monitor_z_order(ctx, monitor_id);
+    ctx.request_bar_geometry_update(monitor_id);
+    crate::layouts::sync_z_order(ctx);
 }
 
 fn handle_x11_window_size_request(
@@ -768,7 +769,8 @@ fn handle_set_maximized(state: &mut WaylandState, win: crate::types::WindowId, m
         transition,
     );
     if transition.entered_floating_presentation() {
-        state.native.raise_window_visual_only(win);
+        let stack = crate::layouts::global_z_order(&state.wm.core.state.model);
+        state.native.apply_z_order(&stack);
     }
     state
         .native

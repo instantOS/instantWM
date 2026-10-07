@@ -41,7 +41,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
     ctx.apply_visibility_plan();
     if let Some(id) = monitor_id {
         arrange_monitor(ctx, id, animated);
-        super::z_order::sync_monitor_z_order(ctx, id);
+        ctx.request_bar_geometry_update(id);
     } else {
         let monitor_ids: Vec<MonitorId> = ctx
             .core()
@@ -53,11 +53,12 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
             .collect();
         for id in monitor_ids {
             arrange_monitor(ctx, id, animated);
-            super::z_order::sync_monitor_z_order(ctx, id);
+            ctx.request_bar_geometry_update(id);
         }
     }
 
     flush_pending_spawn_animations(ctx, monitor_id, animated);
+    super::z_order::sync_z_order(ctx);
 
     ctx.request_space_sync();
     ctx.flush();
@@ -108,26 +109,14 @@ fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId, animated: bool) {
         monitor.compute_arrange(&layout_cfg, resize_hints, animated)
     };
 
-    plan.apply(ctx, monitor_id);
+    plan.apply(ctx);
 }
 
 impl ArrangePlan {
-    fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+    fn apply(self, ctx: &mut WmCtx<'_>) {
         // Backend effects deliberately retain their established order.
         for (win, border) in &self.borders {
             ctx.set_border(*win, *border);
-        }
-
-        if let Some(selected) = ctx
-            .core()
-            .state
-            .model
-            .monitor(monitor_id)
-            .filter(|monitor| monitor.current_layout().is_maximized())
-            .and_then(|monitor| monitor.selected)
-        {
-            ctx.raise_window_visual_only(selected);
-            ctx.flush();
         }
 
         for output in &self.client_moves {
@@ -135,11 +124,6 @@ impl ArrangePlan {
         }
         for output in &self.fullscreen_moves {
             ctx.move_resize(output.win, output.rect, output.options);
-        }
-
-        if let Some(z_order) = &self.z_order {
-            ctx.apply_z_order(z_order);
-            ctx.flush();
         }
     }
 }
@@ -162,9 +146,9 @@ impl Monitor {
         apply_planned_borders(self, &borders);
 
         let is_overview = self.overview_state.is_some();
-        let (mut client_moves, z_order) = if is_overview {
+        let mut client_moves = if is_overview {
             let overview = crate::overview::compute(self);
-            (overview.moves, Some(overview.z_order))
+            overview.moves
         } else {
             let moves = match self.current_layout() {
                 PresentationMode::Tiled => compute_manual_tree(self, layout_cfg, resize_hints),
@@ -174,7 +158,7 @@ impl Monitor {
                 }
                 PresentationMode::Floating => crate::layouts::algo::floating(self, animated),
             };
-            (moves, None)
+            moves
         };
 
         // Fullscreen is an ordinary overview card; reapplying fullscreen
@@ -197,7 +181,6 @@ impl Monitor {
             borders,
             client_moves,
             fullscreen_moves,
-            z_order,
         }
     }
 }

@@ -825,7 +825,8 @@ impl WaylandState {
                 },
             );
         }
-        self.native.raise_unmanaged_x11_windows();
+        let stack = crate::layouts::global_z_order(&self.wm.core.state.model);
+        self.native.apply_z_order(&stack);
     }
 
     /// Set the keyboard layout.

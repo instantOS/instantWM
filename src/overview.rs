@@ -417,8 +417,6 @@ pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
 #[derive(Debug, Clone)]
 pub(crate) struct OverviewLayout {
     pub moves: Vec<LayoutOutput>,
-    /// Complete managed card order, bottom-to-top.
-    pub z_order: Vec<WindowId>,
 }
 
 /// Update overview selection from physical pointer motion without sending
@@ -521,23 +519,7 @@ pub fn compute(monitor: &mut Monitor) -> OverviewLayout {
             state.restore_geometry.entry(win).or_insert(rect);
         }
     }
-    let mut ordered_windows = monitor
-        .overview_state
-        .as_ref()
-        .map(|state| state.window_order.clone())
-        .unwrap_or_default();
-    ordered_windows.retain(|win| {
-        monitor
-            .client(*win)
-            .is_some_and(|client| overview_eligible(client, selected_tags))
-    });
-    // Windows mapped during overview join at the top of the hand without
-    // disturbing the positions of existing cards.
-    for (win, client) in monitor.iter_clients() {
-        if !ordered_windows.contains(&win) && overview_eligible(client, selected_tags) {
-            ordered_windows.push(win);
-        }
-    }
+    let ordered_windows = card_order(monitor);
     if let Some(state) = monitor.overview_state.as_mut() {
         state.reconcile_order(&ordered_windows);
     }
@@ -552,10 +534,7 @@ pub fn compute(monitor: &mut Monitor) -> OverviewLayout {
         .collect();
 
     if client_info.is_empty() {
-        return OverviewLayout {
-            moves: Vec::new(),
-            z_order: Vec::new(),
-        };
+        return OverviewLayout { moves: Vec::new() };
     }
 
     let work_rect = monitor.work_rect();
@@ -586,18 +565,33 @@ pub fn compute(monitor: &mut Monitor) -> OverviewLayout {
         })
         .collect();
 
-    // Include non-card managed windows below the hand. This matters on X11,
-    // where sibling-based restacking otherwise leaves an excluded overlay at
-    // an unspecified level which could cover the cards.
+    OverviewLayout { moves }
+}
+
+/// Overview cards share one layer, independent of their normal window modes.
+pub(crate) fn z_order(monitor: &Monitor) -> Vec<WindowId> {
+    let ordered_windows = card_order(monitor);
     let card_windows = ordered_windows.iter().copied().collect::<HashSet<_>>();
-    let mut z_order = monitor
+    monitor
         .iter_clients()
         .map(|(win, _)| win)
         .filter(|win| !card_windows.contains(win))
-        .collect::<Vec<_>>();
-    z_order.extend(ordered_windows);
+        .chain(ordered_windows)
+        .collect()
+}
 
-    OverviewLayout { moves, z_order }
+fn card_order(monitor: &Monitor) -> Vec<WindowId> {
+    let mut windows = monitor
+        .overview_state
+        .as_ref()
+        .map(|state| eligible_order(monitor, &state.window_order))
+        .unwrap_or_default();
+    for (win, client) in monitor.iter_clients() {
+        if !windows.contains(&win) && overview_eligible(client, monitor.visible_tags()) {
+            windows.push(win);
+        }
+    }
+    windows
 }
 
 fn restore_window_geometry(

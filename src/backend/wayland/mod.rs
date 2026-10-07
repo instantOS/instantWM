@@ -310,11 +310,6 @@ impl WindowOps for crate::contexts::WmCtxWayland<'_> {
         // Wayland borders are compositor-rendered from core client state.
     }
 
-    fn raise_window_visual_only(&mut self, window: WindowId) {
-        self.wayland
-            .with_state(|state: &mut WaylandState| state.native.raise_window_visual_only(window));
-    }
-
     fn apply_z_order(&mut self, windows: &[WindowId]) {
         self.wayland
             .with_state(|state: &mut WaylandState| state.native.apply_z_order(windows));

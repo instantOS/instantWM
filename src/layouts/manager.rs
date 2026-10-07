@@ -24,8 +24,10 @@ pub(crate) use pointer::{
 };
 pub use pointer::{place_tree_at_point, preview_tree_at_point};
 #[cfg(test)]
+#[cfg(test)]
 use z_order::compute_monitor_z_order;
-pub use z_order::sync_monitor_z_order;
+pub(crate) use z_order::global_z_order;
+pub use z_order::sync_z_order;
 
 #[cfg(test)]
 mod tests;

@@ -1,28 +1,65 @@
 use crate::backend::WindowOps;
 use crate::contexts::WmCtx;
-use crate::types::{Monitor, MonitorId, WindowId};
+use crate::types::{Monitor, WindowId};
 use std::collections::HashSet;
 
-pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    ctx.request_bar_geometry_update(monitor_id);
-
-    let Some(stack) = monitor_z_order(&ctx.core().state.model, monitor_id) else {
-        return;
-    };
+/// Apply one compositor-wide projection. Monitor ownership controls layout and
+/// visibility, never the layer of a window on a neighbouring output.
+pub fn sync_z_order(ctx: &mut WmCtx<'_>) {
+    let stack = global_z_order(&ctx.core().state.model);
     ctx.apply_z_order(&stack);
     ctx.flush();
 }
 
-/// Compute a projection without backend access; overview owns its own order.
-pub(crate) fn monitor_z_order(
-    model: &crate::model::WmModel,
-    monitor_id: MonitorId,
-) -> Option<Vec<WindowId>> {
-    let monitor = model.monitor(monitor_id)?;
-    if model.is_overview_active_on(monitor) {
-        return None;
+#[derive(Default)]
+struct StackLayers {
+    tiled: Vec<WindowId>,
+    bars: Vec<WindowId>,
+    floating: Vec<WindowId>,
+    fullscreen: Vec<WindowId>,
+    transients: Vec<WindowId>,
+    overview: Vec<WindowId>,
+}
+
+impl StackLayers {
+    fn flatten(self) -> Vec<WindowId> {
+        self.tiled
+            .into_iter()
+            .chain(self.bars)
+            .chain(self.floating)
+            .chain(self.fullscreen)
+            .chain(self.transients)
+            .chain(self.overview)
+            .collect()
     }
-    compute_monitor_z_order(monitor)
+}
+
+pub(crate) fn global_z_order(model: &crate::model::WmModel) -> Vec<WindowId> {
+    let mut layers = StackLayers::default();
+    for monitor in model.monitors.iter_all() {
+        if model.is_overview_active_on(monitor) {
+            layers.overview.extend(crate::overview::z_order(monitor));
+            layers.bars.extend(
+                [monitor.bar_win, monitor.bottom_bar_win]
+                    .into_iter()
+                    .filter(|win| *win != WindowId::default()),
+            );
+            continue;
+        }
+        let local = monitor_stack_layers(monitor);
+        layers.tiled.extend(local.tiled);
+        layers.bars.extend(local.bars);
+        layers.floating.extend(local.floating);
+        layers.fullscreen.extend(local.fullscreen);
+        layers.transients.extend(local.transients);
+    }
+    // Transient relationships can cross monitor ownership boundaries.
+    layers.transients.sort_by_key(|win| {
+        transient_depth(*win, |id| {
+            model.client(id).and_then(|client| client.transient_for)
+        })
+    });
+    layers.flatten()
 }
 
 /// Number of managed transient ancestors for `win`.
@@ -30,15 +67,12 @@ pub(crate) fn monitor_z_order(
 /// Unknown parents still count as one relationship so a dialog does not lose
 /// its protected layer during parent teardown. Cycles are malformed protocol
 /// input; stopping at the first repeated window keeps ordering deterministic.
-fn transient_depth(win: WindowId, monitor: &Monitor) -> usize {
+fn transient_depth(win: WindowId, parent_of: impl Fn(WindowId) -> Option<WindowId>) -> usize {
     let mut depth = 0;
     let mut current = win;
     let mut visited = HashSet::new();
     while visited.insert(current) {
-        let Some(parent) = monitor
-            .client(current)
-            .and_then(|client| client.transient_for)
-        else {
+        let Some(parent) = parent_of(current) else {
             break;
         };
         depth += 1;
@@ -47,7 +81,12 @@ fn transient_depth(win: WindowId, monitor: &Monitor) -> usize {
     depth
 }
 
-pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Option<Vec<WindowId>> {
+#[cfg(test)]
+pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Vec<WindowId> {
+    monitor_stack_layers(monitor).flatten()
+}
+
+fn monitor_stack_layers(monitor: &Monitor) -> StackLayers {
     let selected_window = monitor.selected;
     let selected_tags = monitor.visible_tags();
     let bar_win = monitor.bar_win;
@@ -67,7 +106,7 @@ pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Option<Vec<WindowId>
         if let Some(c) = monitor.client(win)
             && c.is_visible(selected_tags)
         {
-            let depth = transient_depth(win, monitor);
+            let depth = transient_depth(win, |id| monitor.client(id).and_then(|c| c.transient_for));
             if depth > 0 {
                 transient_stack.push((depth, win));
                 continue;
@@ -75,9 +114,9 @@ pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Option<Vec<WindowId>
             let mode = c.mode();
             if mode.is_true_fullscreen() {
                 fullscreen_stack.push(win);
-            } else if mode.is_fake_fullscreen() {
-                // Fake fullscreen keeps its existing layout layer.
-            } else if mode.is_normal_floating() || mode.is_maximized() {
+            } else if mode.placement() == crate::types::ClientPlacement::Floating
+                || mode.is_maximized()
+            {
                 floating_stack.push(win);
             } else if layout.is_tiling() {
                 tiled_stack.push(win);
@@ -126,19 +165,16 @@ pub(super) fn compute_monitor_z_order(monitor: &Monitor) -> Option<Vec<WindowId>
     // order within the floating layer. Keeping transients in the protected top
     // layer prevents a modal dialog from disappearing while its parent remains
     // blocked waiting for a response.
-    let mut stack = tiled_stack;
-    // A monitor whose bar window does not exist yet must not inject the "no
-    // bar" placeholder: `apply_z_order` chains every sibling off its
-    // predecessor, so one BadWindow for window 0 would abort the restack at
-    // this point and leave everything above the bar unstacked.
-    if bar_win != WindowId::default() {
-        stack.push(bar_win);
+    let bars = [bar_win, bottom_bar_win]
+        .into_iter()
+        .filter(|win| *win != WindowId::default())
+        .collect();
+    StackLayers {
+        tiled: tiled_stack,
+        bars,
+        floating: floating_stack,
+        fullscreen: fullscreen_stack,
+        transients: transient_stack.into_iter().map(|(_, win)| win).collect(),
+        overview: Vec::new(),
     }
-    if bottom_bar_win != WindowId::default() {
-        stack.push(bottom_bar_win);
-    }
-    stack.extend(floating_stack);
-    stack.extend(fullscreen_stack);
-    stack.extend(transient_stack.into_iter().map(|(_, win)| win));
-    Some(stack)
 }

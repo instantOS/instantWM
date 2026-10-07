@@ -1,6 +1,5 @@
 //! Moving clients between tags.
 
-use crate::backend::WindowOps;
 use crate::layouts::ArrangeAnimation;
 
 use crate::contexts::WmCtx;
@@ -120,7 +119,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection, geo: Rect) {
-    ctx.raise_window_visual_only(win);
+    ctx.raise_client(win);
     let mon_w = ctx
         .core()
         .state

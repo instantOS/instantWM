@@ -335,7 +335,8 @@ impl<'a> WmCtx<'a> {
         // Reapply the complete policy projection rather than visually raising
         // just this surface, which could place an ordinary window over a
         // protected transient dialog until the next layout pass.
-        crate::layouts::sync_monitor_z_order(self, monitor_id);
+        self.request_bar_geometry_update(monitor_id);
+        crate::layouts::sync_z_order(self);
     }
 
     pub(crate) fn set_geometry_impl(
@@ -944,12 +945,6 @@ impl crate::backend::WindowOps for WmCtx<'_> {
         match self {
             Self::X11(ctx) => ctx.x11.set_border_width(window, width),
             Self::Wayland(ctx) => ctx.set_border_width(window, width),
-        }
-    }
-    fn raise_window_visual_only(&mut self, window: WindowId) {
-        match self {
-            Self::X11(ctx) => ctx.x11.raise_window_visual_only(window),
-            Self::Wayland(ctx) => ctx.raise_window_visual_only(window),
         }
     }
     fn apply_z_order(&mut self, windows: &[WindowId]) {

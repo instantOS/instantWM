@@ -115,8 +115,6 @@ pub struct ArrangePlan {
     pub borders: Vec<(WindowId, i32)>,
     pub client_moves: Vec<LayoutOutput>,
     pub fullscreen_moves: Vec<LayoutOutput>,
-    /// Explicit bottom-to-top order used by overlapping presentations.
-    pub z_order: Option<Vec<WindowId>>,
 }
 
 /// Layout command accepted by configuration and IPC.
@@ -266,12 +264,13 @@ pub use keyboard_placement::{
     finish_keyboard_tree_placement, resize_keyboard_tree_placement, step_keyboard_tree_placement,
     swap_keyboard_tree_placement,
 };
+pub(crate) use manager::global_z_order;
 pub use manager::{
     ArrangeAnimation, MaximizedStackReorder, apply_tree_preset, arrange, cycle_layout_direction,
     focus_tree_neighbor, inc_master_count_by, place_tree_at_point, preview_tree_at_point,
     promote_tree, reorder_maximized_stack, reset_active_layout, resize_tree, resize_tree_smart,
-    set_layout, swap_bar_titles, swap_tree_neighbor, sync_monitor_z_order,
-    toggle_floating_presentation, toggle_tiling_maximized,
+    set_layout, swap_bar_titles, swap_tree_neighbor, sync_z_order, toggle_floating_presentation,
+    toggle_tiling_maximized,
 };
 
 #[cfg(test)]

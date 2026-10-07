@@ -139,23 +139,17 @@ fn client_covers_point(client: &Client, monitor: &Monitor, point: Point) -> bool
     client.is_visible(monitor.visible_tags()) && client.total_rect().contains_point(point)
 }
 
-/// [`client_covers_point`] for a client resolved from `monitor`'s own map.
-fn monitor_covers_point(monitor: &Monitor, win: WindowId, point: Point) -> bool {
-    monitor
-        .client(win)
-        .is_some_and(|client| client_covers_point(client, monitor, point))
-}
-
-/// `true` when a visible window stacked above `win` covers `point`.
-///
-/// The scan stays on `monitor`: only its own z-order stacks its windows, and
-/// its own map resolves each entry without searching the other outputs.
-fn point_occluded_above(monitor: &Monitor, win: WindowId, point: Point) -> bool {
-    monitor
-        .z_order()
-        .iter_top_to_bottom()
+/// Check occlusion using the same global layer projection as rendering.
+fn point_occluded_above(model: &WmModel, win: WindowId, point: Point) -> bool {
+    crate::layouts::global_z_order(model)
+        .into_iter()
+        .rev()
         .take_while(|&above| above != win)
-        .any(|above| monitor_covers_point(monitor, above, point))
+        .any(|above| {
+            model
+                .client_view(above)
+                .is_some_and(|view| client_covers_point(view.client, view.monitor, point))
+        })
 }
 
 /// Return the floating window + direction currently targeted by hover-resize.
@@ -165,21 +159,15 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
     if monitor.bar_contains_y(root.y) {
         return None;
     }
-    // Topmost first: the border the user *sees* must win the offer even when
-    // focus order disagrees with the visible stacking. Stale ids are skipped
-    // by the per-window visibility lookup. A window whose surface covers the
-    // pointer equally hides every border below it, so the scan stops there
-    // rather than offering the seam of a covered window. One client resolved
-    // from this monitor's own map serves both the band check and the
-    // occlusion stop.
-    for win in monitor.z_order().iter_top_to_bottom() {
-        let Some(client) = monitor.client(win) else {
+    // Ownership does not constrain where a window's visible border can be.
+    for win in crate::layouts::global_z_order(model).into_iter().rev() {
+        let Some(view) = model.client_view(win) else {
             continue;
         };
-        if let Some(hit) = resize_target_for_window(client, monitor, root) {
+        if let Some(hit) = resize_target_for_window(view.client, view.monitor, root) {
             return Some(hit);
         }
-        if client_covers_point(client, monitor, root) {
+        if client_covers_point(view.client, view.monitor, root) {
             return None;
         }
     }
@@ -198,7 +186,7 @@ pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Opti
     // A click must never commit a border the user cannot see: when another
     // window's surface covers the position, the press belongs to that window.
     // Checked before the band test so an occluded seam skips the hit math.
-    if point_occluded_above(monitor, win, position) {
+    if point_occluded_above(model, win, position) {
         return None;
     }
     resize_target_for_window(client, monitor, position)
@@ -469,5 +457,52 @@ mod tests {
                 .map(|hit| hit.win),
             Some(WindowId(1))
         );
+    }
+}
+
+#[cfg(test)]
+mod cross_output_tests {
+    use super::*;
+    use crate::test_support::{MonitorBuilder, add_client_with};
+    use crate::types::{ClientMode, TagMask};
+
+    #[test]
+    fn spanning_float_border_wins_over_destination_tiles() {
+        let mut wm =
+            crate::test_support::TestWm::new(crate::backend::WaylandBackendData::default());
+        let tags = TagMask::single(1).unwrap();
+        let monitors: Vec<_> = [0, 1000]
+            .into_iter()
+            .map(|x| {
+                wm.core.state.model.monitors.push(
+                    MonitorBuilder::new()
+                        .monitor_rect(Rect::new(x, 0, 1000, 800))
+                        .bar(0, false)
+                        .tag_count(1)
+                        .selected_tags(tags)
+                        .build(),
+                )
+            })
+            .collect();
+        let floating = WindowId(1);
+        let tile = WindowId(2);
+        add_client_with(&mut wm.core.state.model, monitors[0], |client| {
+            client.win = floating;
+            client.tags = tags;
+            client.mode = ClientMode::floating();
+            client.geo = Rect::new(800, 100, 400, 200);
+        });
+        add_client_with(&mut wm.core.state.model, monitors[1], |client| {
+            client.win = tile;
+            client.tags = tags;
+            client.mode = ClientMode::tiled();
+            client.geo = Rect::new(1000, 0, 1000, 800);
+        });
+        let point = Point::new(1100, 95);
+        assert_eq!(
+            hover_resize_target_at(&wm.core.state.model, point).map(|hit| hit.win),
+            Some(floating)
+        );
+        assert!(!point_occluded_above(&wm.core.state.model, floating, point));
     }
 }

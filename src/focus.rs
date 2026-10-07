@@ -254,7 +254,8 @@ fn focus_impl(
         }
     };
     if let Some(monitor_id) = z_order_monitor {
-        crate::layouts::sync_monitor_z_order(ctx, monitor_id);
+        ctx.request_bar_geometry_update(monitor_id);
+        crate::layouts::sync_z_order(ctx);
     }
 }
 
@@ -427,7 +428,7 @@ pub fn select_monitor_for_client(ctx: &mut WmCtx, win: WindowId) -> bool {
 /// through the normal WM focus path.
 ///
 /// This makes the target monitor current, reveals the client's non-scratchpad
-/// tags when needed, and then applies the backend focus/sync_monitor_z_order logic.
+/// tags when needed, and then applies the backend focus/sync_z_order logic.
 pub fn activate_client(ctx: &mut WmCtx, win: WindowId) -> bool {
     let Some((monitor_id, client_tags)) = ctx
         .core()

@@ -630,7 +630,8 @@ impl XdgShellHandler for WaylandState {
                 transition,
             );
             if transition.entered_floating_presentation() {
-                self.native.raise_window_visual_only(win);
+                let stack = crate::layouts::global_z_order(&self.wm.core.state.model);
+                self.native.apply_z_order(&stack);
             }
             self.native
                 .sync_window_presentation(&wm_view.core.state, win);
@@ -653,7 +654,8 @@ impl XdgShellHandler for WaylandState {
                 transition,
             );
             if transition.entered_floating_presentation() {
-                self.native.raise_window_visual_only(win);
+                let stack = crate::layouts::global_z_order(&self.wm.core.state.model);
+                self.native.apply_z_order(&stack);
             }
             self.native
                 .sync_window_presentation(&wm_view.core.state, win);
@@ -790,17 +792,11 @@ impl WaylandNativeState {
         )
     }
     pub(crate) fn apply_floating_policy(&mut self, surface: &ToplevelSurface) {
-        let has_parent = surface.parent().is_some();
-        let wants_floating = self.xdg_toplevel_wants_floating(surface);
-        let Some(win) = self.window_id_for_toplevel(surface) else {
-            return;
-        };
-
-        if wants_floating {
-            self.raise_window_visual_only(win);
-            if has_parent {
-                self.request_space_sync();
-            }
+        if self.window_id_for_toplevel(surface).is_some()
+            && self.xdg_toplevel_wants_floating(surface)
+        {
+            // Shared property reconciliation owns placement and stacking.
+            self.request_space_sync();
         }
     }
 }

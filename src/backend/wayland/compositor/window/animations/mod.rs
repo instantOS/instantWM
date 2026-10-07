@@ -188,9 +188,20 @@ impl WaylandNativeState {
         target_loc: Point<i32, Logical>,
         to_border: i32,
     ) {
+        // Decorations may intersect an output that the surface itself does
+        // not touch. Invalidate the old presentation before changing it.
+        if let Some(location) = self.space.element_location(element) {
+            let border = self.presented_border_width(window_id, to_border);
+            let size = element.geometry().size;
+            self.request_visual_rect_render(
+                Rect::new(location.x - border, location.y - border, size.w, size.h)
+                    .with_borders(border),
+            );
+        }
         self.configure_window_geometry(core_view, window_id, element, target);
         self.remap_window_immediately(window_id, element, target_loc);
         self.placed_border.insert(window_id, to_border);
+        self.request_visual_rect_render(target.with_borders(to_border));
     }
 
     /// Place a window at `target` (in outer/WM coordinates) using the given

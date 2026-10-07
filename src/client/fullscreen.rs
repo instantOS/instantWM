@@ -25,7 +25,6 @@
 //! module contains no backend imports and one shared policy for both
 //! backends.
 
-use crate::backend::WindowOps;
 use crate::layouts::ArrangeAnimation;
 
 use crate::client::mode::{
@@ -34,7 +33,7 @@ use crate::client::mode::{
 use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::{arrange, sync_monitor_z_order};
+use crate::layouts::{arrange, sync_z_order};
 use crate::types::{Rect, WindowId};
 
 // ---------------------------------------------------------------------------
@@ -70,7 +69,8 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
                 );
             }
             ctx.apply_entered_fullscreen_effects(win, monitor_rect);
-            sync_monitor_z_order(ctx, monitor_id);
+            ctx.request_bar_geometry_update(monitor_id);
+            sync_z_order(ctx);
         }
         FullscreenChange::Exited { restore_rect } => {
             ctx.set_client_fullscreen_signal(win, false);
@@ -245,7 +245,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
             },
             MoveResizeOptions::immediate(),
         );
-        ctx.raise_window_visual_only(win);
+        ctx.raise_client(win);
     }
 
     if let Some(client) = ctx

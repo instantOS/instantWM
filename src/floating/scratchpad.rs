@@ -215,7 +215,8 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, monitor_id: MonitorId, was_hi
     }
 
     arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
-    crate::layouts::sync_monitor_z_order(ctx, monitor_id);
+    ctx.request_bar_geometry_update(monitor_id);
+    crate::layouts::sync_z_order(ctx);
 }
 
 fn scratchpad_windows(model: &WmModel, visible: bool) -> Vec<WindowId> {
@@ -609,7 +610,7 @@ fn show_scratchpad_window_with_options(
     } else if ctx.core().state.model.selected_win() != previous_focus {
         crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     }
-    ctx.raise_window_visual_only(found);
+    ctx.raise_client(found);
 
     if options.warp_pointer {
         ctx.warp_cursor_to_client(found);

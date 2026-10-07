@@ -4,8 +4,6 @@
 //! for monitor-related operations.
 use crate::backend::PointerOps;
 
-use crate::backend::WindowOps;
-
 use crate::backend::BackendOutputInfo;
 use crate::bar::policy::TagBarPolicy;
 use crate::contexts::WmCtx;
@@ -345,7 +343,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     refresh_focus_after_selection(ctx, previous_focus, Some(c_win));
 
-    ctx.raise_window_visual_only(c_win);
+    ctx.raise_client(c_win);
     ctx.warp_cursor_to_client(c_win);
 }
 

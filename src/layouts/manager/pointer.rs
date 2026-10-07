@@ -71,11 +71,11 @@ pub(crate) fn pointer_tree_gap_resize_start(
     if monitor.current_layout() != PresentationMode::Tiled {
         return None;
     }
-    let visible_tags = monitor.visible_tags();
-    if monitor
-        .iter_clients()
-        .any(|(_, client)| client.is_visible(visible_tags) && client.geo.contains_point(point))
-    {
+    if model.monitors.iter_all().any(|owner| {
+        owner.iter_clients().any(|(_, client)| {
+            client.is_visible(owner.visible_tags()) && client.total_rect().contains_point(point)
+        })
+    }) {
         return None;
     }
 

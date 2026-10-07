@@ -5,7 +5,9 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::time::Duration;
 
-use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface};
+use wayland_client::protocol::{
+    wl_buffer, wl_callback, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+};
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
@@ -901,4 +903,177 @@ fn immediate_layout_suppresses_native_spawn_without_disabling_configured_animati
     );
     assert!(state.wm.core.state.config.animations.enabled);
     assert!(state.ctx().window_animation_active(win));
+}
+
+delegate_noop!(NativeClient: ignore wl_shm::WlShm);
+delegate_noop!(NativeClient: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(NativeClient: ignore wl_buffer::WlBuffer);
+
+#[test]
+fn immediate_moves_damage_old_new_and_border_only_outputs_without_client_commits() {
+    use crate::backend::wayland::compositor::render::PendingRenderTargets;
+    use crate::geometry::MoveResizeOptions;
+    use crate::types::{Size, TagMask};
+    use std::os::fd::AsFd;
+
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
+    state.wm.core.state.config.animations.enabled = false;
+    let tags = TagMask::single(1).unwrap();
+    let monitor = state.wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1000, 800))
+            .tag_count(1)
+            .selected_tags(tags)
+            .build(),
+    );
+    add_client(
+        &mut state.wm.core.state.model,
+        monitor,
+        Client {
+            win,
+            geo: Rect::new(800, 100, 400, 200),
+            border_width: 2,
+            mode: ClientMode::floating(),
+            tags,
+            ..Client::default()
+        },
+    );
+    for (name, x) in [("left", 0), ("right", 1000), ("unrelated", 2000)] {
+        let output = state.native.create_output(name, Size::new(1000, 800), None);
+        state.native.space.map_output(&output, (x, 0));
+    }
+    state.ctx().move_resize(
+        win,
+        Rect::new(800, 100, 400, 200),
+        MoveResizeOptions::immediate(),
+    );
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+
+    // Commit an actual surface once. Every subsequent movement is compositor
+    // work only: no client commits and no DRM pointer events can mask damage.
+    let registry = conn.display().get_registry(&queue.handle(), ());
+    let global = client
+        .globals
+        .iter()
+        .find(|(_, name)| name == "wl_shm")
+        .unwrap()
+        .0;
+    let shm: wl_shm::WlShm = registry.bind(global, 1, &queue.handle(), ());
+    let file = tempfile::tempfile().unwrap();
+    file.set_len(400 * 200 * 4).unwrap();
+    let pool = shm.create_pool(file.as_fd(), 400 * 200 * 4, &queue.handle(), ());
+    let buffer = pool.create_buffer(
+        0,
+        400,
+        200,
+        400 * 4,
+        wl_shm::Format::Argb8888,
+        &queue.handle(),
+        (),
+    );
+    let surface = client.surface.as_ref().unwrap();
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+    assert_eq!(
+        state.native.find_window(win).unwrap().geometry().size,
+        (400, 200).into()
+    );
+
+    for (x, expected) in [
+        (900, vec!["left", "right"]),
+        (1300, vec!["left", "right"]),
+        (100, vec!["left", "right"]),
+        (597, vec!["left", "right"]), // Only the right border reaches the right output.
+        (100, vec!["left", "right"]), // Erase that border again.
+        (-1000, vec!["left"]),
+    ] {
+        state.native.take_render_targets();
+        state.ctx().move_resize(
+            win,
+            Rect::new(x, 100, 400, 200),
+            MoveResizeOptions::immediate(),
+        );
+        let PendingRenderTargets::Outputs(outputs) = state.native.take_render_targets() else {
+            panic!("move to {x} must schedule targeted damage");
+        };
+        assert_eq!(
+            outputs,
+            expected.into_iter().map(str::to_owned).collect(),
+            "move to {x}"
+        );
+    }
+}
+
+#[test]
+fn arranging_either_monitor_keeps_spanning_floats_above_all_tiles() {
+    use crate::layouts::{ArrangeAnimation, arrange};
+    use crate::types::TagMask;
+
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let left_client = connect_native_window(&mut event_loop, &mut state);
+    let float_client = connect_native_window(&mut event_loop, &mut state);
+    let right_client = connect_native_window(&mut event_loop, &mut state);
+    let (left_tile, floating, right_tile) = (left_client.3, float_client.3, right_client.3);
+    let tags = TagMask::single(1).unwrap();
+    let monitors: Vec<_> = [0, 1000]
+        .into_iter()
+        .map(|x| {
+            state.wm.core.state.model.monitors.push(
+                MonitorBuilder::new()
+                    .rect(Rect::new(x, 0, 1000, 800), Rect::new(x, 0, 1000, 800))
+                    .bar(0, false)
+                    .tag_count(1)
+                    .selected_tags(tags)
+                    .build(),
+            )
+        })
+        .collect();
+    for (win, monitor, mode) in [
+        (left_tile, monitors[0], ClientMode::tiled()),
+        (floating, monitors[0], ClientMode::floating()),
+        (right_tile, monitors[1], ClientMode::tiled()),
+    ] {
+        add_client(
+            &mut state.wm.core.state.model,
+            monitor,
+            Client {
+                win,
+                mode,
+                tags,
+                geo: Rect::new(800, 100, 400, 200),
+                ..Client::default()
+            },
+        );
+    }
+    state.wm.core.state.model.monitors.set_selected(monitors[0]);
+    state.wm.core.state.config.animations.enabled = false;
+    for monitor in [
+        None,
+        Some(monitors[0]),
+        Some(monitors[1]),
+        Some(monitors[0]),
+    ] {
+        arrange(&mut state.ctx(), monitor, ArrangeAnimation::Immediate);
+        let stack: Vec<_> = state.native.space.elements().cloned().collect();
+        let position = |win| {
+            stack
+                .iter()
+                .position(|window| Some(window) == state.native.find_window(win))
+                .unwrap()
+        };
+        assert!(position(floating) > position(left_tile));
+        assert!(position(floating) > position(right_tile));
+        // Explicit raises of tiled clients must also obey the global layers.
+        state.ctx().raise_client(right_tile);
+        let stack: Vec<_> = state.native.space.elements().cloned().collect();
+        let position = |win| {
+            stack
+                .iter()
+                .position(|window| Some(window) == state.native.find_window(win))
+                .unwrap()
+        };
+        assert!(position(floating) > position(right_tile));
+    }
 }

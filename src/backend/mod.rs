@@ -122,7 +122,7 @@ pub trait WindowOps {
     /// Apply a backend-native border width when the backend has one.
     /// Compositor-rendered backends may implement this as a no-op.
     fn set_border_width(&mut self, window: WindowId, width: i32);
-    fn raise_window_visual_only(&mut self, window: WindowId);
+    /// Apply the complete global managed-window order, bottom to top.
     fn apply_z_order(&mut self, windows: &[WindowId]);
     fn map_window(&mut self, window: WindowId);
     fn unmap_window(&mut self, window: WindowId);

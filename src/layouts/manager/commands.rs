@@ -372,7 +372,7 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
 
     // Raise immediately so the promoted window appears on top while the
     // resulting layout pass is applied.
-    ctx.raise_window_visual_only(window);
+    ctx.raise_client(window);
     ctx.flush();
 
     let target_focus = ctx
