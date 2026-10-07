@@ -94,7 +94,7 @@ pub(crate) fn apply_client_maximize_intent(ctx: &mut WmCtx<'_>, win: WindowId, m
         return;
     };
     apply_client_maximize_intent_transition(ctx, win, transition);
-    sync_client_maximized_signal(ctx, win);
+    sync_owned_client_maximized_signal(ctx, transition.monitor_id, win);
     if transition.entered_floating_presentation() {
         ctx.raise_client(win);
     }
@@ -113,15 +113,41 @@ pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
     // Project transition geometry first. Native Wayland can then advertise
     // the cleared state and restored size in one final configure instead of
     // briefly advertising an unmaximized, maximized-sized window.
-    apply_maximized_transition(ctx, win, left);
+    apply_maximized_change(ctx, win, left.monitor_id, left.change);
 
-    sync_client_maximized_signal(ctx, win);
+    sync_owned_client_maximized_signal(ctx, left.monitor_id, win);
 
     true
 }
 
+/// Project the application-visible maximized state of `win`.
+///
+/// Callers that already know the owning monitor use
+/// [`sync_owned_client_maximized_signal`] instead of re-resolving the window.
 pub(crate) fn sync_client_maximized_signal(ctx: &mut WmCtx<'_>, win: WindowId) {
     let Some(maximized) = ctx.core().state.model.client_protocol_maximized(win) else {
+        return;
+    };
+    ctx.set_client_maximized_signal(win, maximized);
+}
+
+/// Project maximization after a transition on the known owning monitor.
+fn sync_owned_client_maximized_signal(
+    ctx: &mut WmCtx<'_>,
+    monitor_id: crate::types::MonitorId,
+    win: WindowId,
+) {
+    let Some(maximized) = ctx
+        .core()
+        .state
+        .model
+        .monitor(monitor_id)
+        .and_then(|monitor| {
+            monitor
+                .client(win)
+                .map(|client| crate::client::mode::protocol_maximized(monitor, client))
+        })
+    else {
         return;
     };
     ctx.set_client_maximized_signal(win, maximized);
@@ -152,14 +178,6 @@ fn apply_client_maximize_intent_transition(
         }
         ClientMaximizeIntentOutcome::Rejected => {}
     }
-}
-
-fn apply_maximized_transition(
-    ctx: &mut WmCtx<'_>,
-    win: WindowId,
-    transition: crate::client::mode::MaximizedTransition,
-) {
-    apply_maximized_change(ctx, win, transition.monitor_id, transition.change);
 }
 
 fn apply_maximized_change(
@@ -208,6 +226,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
     let Some(view) = core_state.model.client_view(win) else {
         return;
     };
+    let monitor_id = view.monitor.id();
     let was_fake = view.client.mode().is_fake_fullscreen();
     let old_border_width = view.client.old_border_width;
     let promotion_monitor_rect = was_fake.then_some(view.monitor.monitor_rect);
@@ -229,8 +248,14 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
         ctx.raise_window_visual_only(win);
     }
 
-    if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
-        if client.mode().is_fake_fullscreen() {
+    if let Some(client) = ctx
+        .core_mut()
+        .state
+        .model
+        .monitor_mut(monitor_id)
+        .and_then(|monitor| monitor.client_mut(win))
+    {
+        if was_fake {
             client.enter_fullscreen();
         } else {
             client.enter_fake_fullscreen();
@@ -248,8 +273,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
     // fullscreen differs only in remaining part of the layout stack.
     ctx.set_client_fullscreen_signal(win, true);
 
-    let selmon_id = ctx.core().state.model.selected_monitor_id();
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
 #[cfg(test)]

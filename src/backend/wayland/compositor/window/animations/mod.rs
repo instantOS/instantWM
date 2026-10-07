@@ -210,14 +210,13 @@ impl WaylandNativeState {
         core_view: &crate::core_state::CoreState,
         window_id: WindowId,
         target: Rect,
+        border_width: i32,
         mode: WindowMoveMode,
     ) {
         let Some(element) = self.find_window(window_id).cloned() else {
             return;
         };
-        let Some(to_border) = core_view.model.client(window_id).map(|c| c.border_width) else {
-            return;
-        };
+        let to_border = border_width;
 
         // Convert outer WM rect → inner surface rect.
         let target_loc: Point<i32, Logical> =

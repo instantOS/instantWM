@@ -801,17 +801,17 @@ impl WaylandState {
         }
 
         let state = &self.wm.core.state;
-        let updates: Vec<(WindowId, Rect)> = self
+        let updates: Vec<(WindowId, Rect, i32)> = self
             .native
             .space
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
                 let client = state.model.client(marker.id)?;
-                Some((marker.id, client.geo))
+                Some((marker.id, client.geo, client.border_width))
             })
             .collect();
-        for (window_id, geo) in updates {
+        for (window_id, geo, border_width) in updates {
             // Space sync reconciles compositor state from authoritative WM
             // geometry; use a fixed policy to avoid interactive-motion
             // heuristics changing this reconciliation path.
@@ -819,6 +819,7 @@ impl WaylandState {
                 &self.wm.core.state,
                 window_id,
                 geo,
+                border_width,
                 super::window::animations::WindowMoveMode::Retarget {
                     duration: self.native.default_animation_duration(&self.wm.core.state),
                 },

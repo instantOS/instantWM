@@ -32,12 +32,13 @@ fn list_windows(ctx: &WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
     let core_state = &ctx.core().state;
     let target = parsed_id;
     // Every client is owned by exactly one monitor, so carry the owning
-    // monitor's ID alongside the client to resolve its spatial position.
+    // monitor's ID alongside the client to resolve its spatial position. Both
+    // come from the same single resolve.
     let mut wins: Vec<(MonitorId, &Client)> = if let Some(win) = target {
         core_state
             .model
-            .monitor_of_client(win)
-            .zip(core_state.model.client(win))
+            .client_view(win)
+            .map(|view| (view.monitor.id(), view.client))
             .into_iter()
             .collect()
     } else {

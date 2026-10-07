@@ -175,35 +175,47 @@ impl ScratchpadInfo {
     }
 }
 
-fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
-    let was_hidden = ctx
-        .core()
-        .state
-        .model
-        .client(win)
-        .map(|c| c.is_hidden)
-        .unwrap_or(false);
+/// Scratchpad facts retained across a monitor reassignment.
+#[derive(Debug, Clone, Copy)]
+struct ScratchpadSnapshot {
+    is_hidden: bool,
+    direction: Option<EdgeDirection>,
+    size: Size,
+}
 
+impl ScratchpadSnapshot {
+    /// `None` when `win` is not a managed scratchpad.
+    fn read(model: &WmModel, win: WindowId) -> Option<Self> {
+        let client = model.client(win)?;
+        let scratchpad = client.scratchpad()?;
+        Some(Self {
+            is_hidden: client.is_hidden,
+            direction: scratchpad.direction(),
+            size: client.geo.size(),
+        })
+    }
+}
+
+/// Map a scratchpad window, unhiding it first when it was logically hidden.
+///
+/// `was_hidden` comes from the caller's snapshot; showing happens after the
+/// transition's own model work, which never changes it.
+fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bool) {
     if was_hidden {
         crate::client::show_window(ctx, win);
     }
 
     ctx.map_window(win);
     ctx.flush();
-
-    was_hidden
 }
 
-fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bool) {
+fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, monitor_id: MonitorId, was_hidden: bool) {
     if was_hidden {
         return;
     }
 
-    let Some(mid) = ctx.core().state.model.monitor_of_client(win) else {
-        return;
-    };
-    arrange(ctx, Some(mid), ArrangeAnimation::Configured);
-    crate::layouts::sync_monitor_z_order(ctx, mid);
+    arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
+    crate::layouts::sync_monitor_z_order(ctx, monitor_id);
 }
 
 fn scratchpad_windows(model: &WmModel, visible: bool) -> Vec<WindowId> {
@@ -308,8 +320,10 @@ pub fn scratchpad_create(
         .core_mut()
         .state
         .model
+        .monitor_mut(source_monitor)
+        .expect("source monitor was resolved from the window's owner")
         .client_mut(selected_window)
-        .ok_or_else(|| format!("window {} is not managed", selected_window.0))?;
+        .expect("window was validated as managed on that source monitor");
     client.promote_to_scratchpad(source_monitor, name, direction, mon_ww, mon_wh)?;
     if let Some(rect) = regular_rect {
         client.geo = rect;
@@ -517,16 +531,12 @@ fn show_scratchpad_window_with_options(
         ));
     }
 
-    let Some((was_visible, direction)) = core_state.model.client(found).and_then(|client| {
-        client
-            .scratchpad()
-            .map(|scratchpad| (client.is_scratchpad_visible(), scratchpad.direction()))
-    }) else {
+    let Some(state) = ScratchpadSnapshot::read(&core_state.model, found) else {
         return Err(format!("window {} is not a managed scratchpad", found.0));
     };
     let mut reversing_slide_out = false;
 
-    if was_visible {
+    if !state.is_hidden {
         // A pending hide means the slide-out is still animating; reversing the
         // toggle must cancel that pending hide so the deferred concealment
         // never runs, then fall through so the entrance animation retargets
@@ -551,40 +561,38 @@ fn show_scratchpad_window_with_options(
         let reassigned = model.reassign_client_monitor(found, target_monitor);
         debug_assert!(reassigned, "scratchpad target must be a managed monitor");
     });
-    // A reversed slide-out keeps the focus target remembered when it was
-    // first shown; overwriting it here would degrade the eventual hand-off.
-    if !reversing_slide_out
-        && let Some(client) = ctx.core_mut().state.model.client_mut(found)
-        && let Some(scratchpad) = client.scratchpad_mut()
-    {
-        scratchpad.remember_focus(restore_focus);
+    // Reversing a slide-out preserves the original focus restoration target.
+    if !reversing_slide_out {
+        let client = ctx
+            .core_mut()
+            .state
+            .model
+            .monitor_mut(target_monitor)
+            .expect("validated target monitor must exist while showing scratchpad")
+            .client_mut(found)
+            .expect("scratchpad was reassigned to the target monitor");
+        if let Some(scratchpad) = client.scratchpad_mut() {
+            scratchpad.remember_focus(restore_focus);
+        }
     }
 
-    if let Some(dir) = direction {
-        let (content_rect, client_size) = {
-            let mon = ctx
-                .core()
-                .state
-                .model
-                .monitor(target_monitor)
-                .expect("validated target monitor must exist while showing scratchpad");
-            let client = ctx
-                .core()
-                .state
-                .model
-                .client(found)
-                .expect("scratchpad client must exist after window_exists check");
-            (mon.visible_content_rect(), client.geo.size())
-        };
+    if let Some(dir) = state.direction {
+        let content_rect = ctx
+            .core()
+            .state
+            .model
+            .monitor(target_monitor)
+            .expect("validated target monitor must exist while showing scratchpad")
+            .visible_content_rect();
 
-        let slide = EdgeSlideRects::new(content_rect, dir, client_size);
+        let slide = EdgeSlideRects::new(content_rect, dir, state.size);
 
         // A reversed slide-out is still mapped mid-flight; re-parking it
         // off-screen first would make the window jump. The animate_to below
         // continues the existing transition from its current frame instead.
         if !reversing_slide_out {
             ctx.move_resize(found, slide.hidden, MoveResizeOptions::immediate());
-            reveal_scratchpad_window(ctx, found);
+            reveal_scratchpad_window(ctx, found, state.is_hidden);
         }
         ctx.move_resize(
             found,
@@ -592,8 +600,8 @@ fn show_scratchpad_window_with_options(
             MoveResizeOptions::animate_to(EMPHASIZED_ANIMATION_MILLIS),
         );
     } else {
-        let was_hidden = reveal_scratchpad_window(ctx, found);
-        arrange_visible_scratchpad(ctx, found, was_hidden);
+        reveal_scratchpad_window(ctx, found, state.is_hidden);
+        arrange_visible_scratchpad(ctx, target_monitor, state.is_hidden);
     }
 
     if options.focus {
@@ -616,16 +624,11 @@ fn show_scratchpad_window_with_options(
 /// those are governed by the transfer's explicit focus policy. The target is
 /// therefore passed directly instead of being inferred from global selection.
 pub(crate) fn show_transferred_scratchpad(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) {
-    if ctx
-        .core()
-        .state
-        .model
-        .client(win)
-        .is_none_or(|client| !client.is_scratchpad() || client.is_scratchpad_visible())
-    {
+    // A transfer must preserve an in-progress hide. Only an explicit show
+    // or toggle should reverse the slide-out.
+    if ctx.core().work.has_pending_scratchpad_hide(win) {
         return;
     }
-
     let _ = show_scratchpad_window_with_options(
         ctx,
         win,
@@ -660,8 +663,7 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
 pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
     let mut hidden_count = 0;
     for win in scratchpad_windows(&ctx.core().state.model, true) {
-        if is_live(ctx, win) {
-            hide_scratchpad_window(ctx, win);
+        if is_live(ctx, win) && hide_scratchpad_window(ctx, win) {
             hidden_count += 1;
         }
     }
@@ -677,16 +679,20 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
 
 /// Hide one scratchpad window whose liveness the caller already validated.
 ///
+/// Returns whether the window was visible and is now hiding. Callers that
+/// choose between hiding and showing read that outcome instead of resolving
+/// the same client a second time.
+///
 /// Edge-anchored scratchpads play their slide-out first and defer the logical
 /// hide until the backend reports the animation finished; see
 /// [`finish_scratchpad_hides`].
-pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) {
+pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) -> bool {
     let slide = {
         let Some(view) = ctx.core().state.model.client_view(found) else {
-            return;
+            return false;
         };
         if !view.client.is_scratchpad_visible() {
-            return;
+            return false;
         }
         view.client
             .scratchpad()
@@ -720,6 +726,7 @@ pub(crate) fn hide_scratchpad_window(ctx: &mut WmCtx, found: WindowId) {
             crate::client::visibility::hide_with_focus(ctx, found, restore_focus);
         }
     }
+    true
 }
 
 /// Consume a scratchpad's remembered pre-show focus target, if any.
@@ -766,19 +773,15 @@ fn toggle_named_scratchpad(ctx: &mut WmCtx, name: &str, show: impl FnOnce(&mut W
         return;
     };
     // A pending hide means the slide-out is still playing; the next toggle
-    // must reverse it rather than restart an identical slide-out.
-    let is_shown = ctx
-        .core()
-        .state
-        .model
-        .client(found)
-        .is_some_and(|client| client.is_scratchpad_visible())
-        && !ctx.core().work.has_pending_scratchpad_hide(found);
-    if is_shown {
-        hide_scratchpad_window(ctx, found);
-    } else {
-        show(ctx, found);
+    // must reverse it rather than restart an identical slide-out, so it
+    // falls through to the show path. Otherwise `hide_scratchpad_window`
+    // answers whether the scratchpad was shown in the first place — one
+    // model read serves both the decision and the action.
+    let pending_hide = ctx.core().work.has_pending_scratchpad_hide(found);
+    if !pending_hide && hide_scratchpad_window(ctx, found) {
+        return;
     }
+    show(ctx, found);
 }
 
 pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
@@ -827,19 +830,30 @@ pub fn collect_scratchpad_info(model: &WmModel) -> Vec<ScratchpadInfo> {
 }
 
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
-    let Some((was_visible, mon_ww, mon_wh)) = ctx.core().state.model.client_view(win).map(|view| {
-        (
-            view.client.is_scratchpad_visible(),
-            view.monitor.work_rect().w,
-            view.monitor.work_rect().h,
-        )
-    }) else {
+    let Some((monitor_id, was_visible, mon_ww, mon_wh)) =
+        ctx.core().state.model.client_view(win).map(|view| {
+            (
+                view.monitor.id(),
+                view.client.is_scratchpad_visible(),
+                view.monitor.work_rect().w,
+                view.monitor.work_rect().h,
+            )
+        })
+    else {
         return;
     };
 
-    if let Some(client) = ctx.core_mut().state.model.client_mut(win)
-        && let Some(sp) = client.scratchpad_mut()
-    {
+    // The entry view resolved the owner, so the mutation reaches the client
+    // through that monitor instead of scanning for it again.
+    let client = ctx
+        .core_mut()
+        .state
+        .model
+        .monitor_mut(monitor_id)
+        .expect("view resolved the owning monitor")
+        .client_mut(win)
+        .expect("view resolved the owning monitor's client");
+    if let Some(sp) = client.scratchpad_mut() {
         sp.set_direction(direction);
         client.border_width = 0;
         client.is_locked = true;
@@ -851,6 +865,8 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
     }
 
     if was_visible {
+        // The mutation above rewrote the direction and size, so the hide
+        // re-reads them instead of reusing this function's entry view.
         hide_scratchpad_window(ctx, win);
         let options = ScratchpadShowOptions::focused(&ctx.core().state);
         let _ = show_scratchpad_window_with_options(ctx, win, options);

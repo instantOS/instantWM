@@ -117,30 +117,31 @@ pub fn manage(
 
     let bar_height = ctx.core.state.config.bar_metrics().height;
     let model = &mut ctx.core.state.model;
-    let view = model
-        .client_view(window)
+    let monitor = model
+        .client_owner_mut(window)
         .expect("newly managed client must have an assigned monitor");
     let (work_rect, monitor_rect, maximized_layout) = (
-        view.monitor.work_rect(),
-        view.monitor.monitor_rect,
-        view.monitor.is_maximized_layout(),
+        monitor.work_rect(),
+        monitor.monitor_rect,
+        monitor.is_maximized_layout(),
     );
-    if let Some(client) = model.client_mut(window) {
-        let own_border = if client.is_borderless { 0 } else { border_px };
-        let fills_maximized_monitor = client.mode().is_normal_tiling()
-            && maximized_layout
-            && client.geo.w > monitor_rect.w - 30
-            && client.geo.h > monitor_rect.h - 30 - bar_height;
-        client.old_border_width = own_border;
-        client.border_width = if fills_maximized_monitor {
-            0
-        } else {
-            own_border
-        };
-        client
-            .geo
-            .clamp_position(&work_rect, client.total_width(), client.total_height());
-    }
+    let client = monitor
+        .client_mut(window)
+        .expect("owner was resolved from client membership");
+    let own_border = if client.is_borderless { 0 } else { border_px };
+    let fills_maximized_monitor = client.mode().is_normal_tiling()
+        && maximized_layout
+        && client.geo.w > monitor_rect.w - 30
+        && client.geo.h > monitor_rect.h - 30 - bar_height;
+    client.old_border_width = own_border;
+    client.border_width = if fills_maximized_monitor {
+        0
+    } else {
+        own_border
+    };
+    client
+        .geo
+        .clamp_position(&work_rect, client.total_width(), client.total_height());
     let x11_window: Window = window.into();
     let _ = ctx.x11.conn.change_window_attributes(
         x11_window,
@@ -149,7 +150,7 @@ pub fn manage(
         )),
     );
 
-    crate::backend::x11::focus::configure(&ctx.core.state, &ctx.x11, window);
+    crate::backend::x11::focus::configure(&ctx.x11, window, client.geo, client.border_width);
     update_window_type(ctx, window);
     let size_hints =
         crate::backend::x11::update_size_hints(&mut ctx.core.state.model, &ctx.x11, window);
@@ -353,12 +354,6 @@ fn read_client_info(
     x11_runtime: &X11RuntimeConfig,
     window: WindowId,
 ) {
-    if model
-        .client(window)
-        .is_some_and(|client| client.is_scratchpad())
-    {
-        return;
-    }
     let x11_window: Window = window.into();
     let client_info_atom = x11_runtime.netatom.client_info;
 
@@ -385,9 +380,17 @@ fn read_client_info(
         .find(|(_id, monitor)| monitor.num as u32 == monitor_number)
         .map(|(monitor_id, _monitor)| monitor_id);
 
-    if let Some(client) = model.client_mut(window) {
-        client.set_tag_mask(crate::types::TagMask::from_bits(tags));
+    // One resolve reads the scratchpad role and stamps the persisted tags.
+    // Scratchpad tags are authoritative and must not be overwritten by the
+    // previous session's assignment.
+    let client = model
+        .client_mut(window)
+        .expect("managed client is adopted before its hints are imported");
+    if client.is_scratchpad() {
+        return;
     }
+    client.set_tag_mask(crate::types::TagMask::from_bits(tags));
+
     // Ownership moves as a model transaction, so it cannot share the mutable
     // client borrow above.
     if let Some(monitor_id) = target_monitor {
@@ -418,40 +421,52 @@ fn read_wm_desktop_hint(
     };
     let Some(desktop) = data.next() else { return };
 
+    // Resolve the requested desktop without touching the client: `u32::MAX`
+    // keeps the window on every tag, anything else must name a live monitor
+    // and tag.
+    let target = if desktop == u32::MAX {
+        None
+    } else {
+        let Some((monitor_id, tag_index)) =
+            crate::backend::x11::properties::monitor_tag_for_desktop(model, desktop)
+        else {
+            return;
+        };
+        let Some(tags) = TagMask::single(tag_index) else {
+            return;
+        };
+        Some((monitor_id, tags))
+    };
+
     // Scratchpad role and parking tags were established by shared rules before
     // backend hints are imported. Generic EWMH sticky/desktop state must not
     // overwrite that authoritative role transition.
-    if model
-        .client(window)
-        .is_some_and(|client| client.is_scratchpad())
-    {
-        return;
-    }
-
-    if desktop == u32::MAX {
-        if let Some(client) = model.client_mut(window) {
-            client.is_sticky = true;
+    let moved_to = {
+        let client = model
+            .client_mut(window)
+            .expect("managed client is adopted before its hints are imported");
+        if client.is_scratchpad() {
+            return;
         }
-        return;
-    }
-
-    let Some((monitor_id, tag_index)) =
-        crate::backend::x11::properties::monitor_tag_for_desktop(model, desktop)
-    else {
-        return;
+        match target {
+            None => {
+                client.is_sticky = true;
+                None
+            }
+            Some((monitor_id, tags)) => {
+                client.is_sticky = false;
+                client.set_tag_mask(tags);
+                Some(monitor_id)
+            }
+        }
     };
-    let Some(tags) = TagMask::single(tag_index) else {
-        return;
-    };
 
-    if let Some(client) = model.client_mut(window) {
-        client.is_sticky = false;
-        client.set_tag_mask(tags);
-    }
     // Ownership moves as a model transaction, so it cannot share the mutable
     // client borrow above. The requested desktop may live on a different output
     // than the one the shared assignment policy picked.
-    model.reassign_client_monitor(window, monitor_id);
+    if let Some(monitor_id) = moved_to {
+        model.reassign_client_monitor(window, monitor_id);
+    }
 }
 
 pub(crate) fn get_transient_for_hint(x11: &X11BackendRef, window: WindowId) -> Option<WindowId> {

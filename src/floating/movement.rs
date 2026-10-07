@@ -59,14 +59,15 @@ pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     crate::client::fullscreen::leave_maximized(ctx, win);
+    // Leaving a snap can restore the saved floating geometry, so the resize
+    // must start from the client's state after that transition.
+    super::snap::reset_snap(ctx, win);
     let Some(view) = ctx.core().state.model.client_view(win) else {
         return;
     };
     let is_floating = view.client.mode().is_normal_floating();
     let geo = view.client.geo;
     let has_tiling = view.monitor.is_tiling_layout();
-
-    super::snap::reset_snap(ctx, win);
 
     if has_tiling && !is_floating {
         return;

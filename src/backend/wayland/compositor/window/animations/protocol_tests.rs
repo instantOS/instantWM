@@ -325,6 +325,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
             &state.wm.core.state,
             win,
             target,
+            state.wm.core.state.model.client(win).unwrap().border_width,
             super::WindowMoveMode::AnimateFrom {
                 from: constrained,
                 duration: Duration::from_millis(500),
@@ -396,6 +397,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         &state.wm.core.state,
         win,
         target,
+        state.wm.core.state.model.client(win).unwrap().border_width,
         super::WindowMoveMode::AnimateFrom {
             from: initial,
             duration: Duration::from_millis(500),
@@ -439,6 +441,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         &state.wm.core.state,
         win,
         hidden_target,
+        state.wm.core.state.model.client(win).unwrap().border_width,
         super::WindowMoveMode::Retarget {
             duration: Duration::from_millis(500),
         },
@@ -479,6 +482,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         &state.wm.core.state,
         win,
         obsolete,
+        state.wm.core.state.model.client(win).unwrap().border_width,
         super::WindowMoveMode::AnimateFrom {
             from: hidden_target,
             duration: Duration::from_millis(500),
@@ -500,6 +504,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         &state.wm.core.state,
         win,
         replacement,
+        state.wm.core.state.model.client(win).unwrap().border_width,
         super::WindowMoveMode::AnimateFrom {
             from: hidden_target,
             duration: Duration::from_millis(500),
@@ -525,6 +530,7 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
         &state.wm.core.state,
         win,
         obsolete,
+        state.wm.core.state.model.client(win).unwrap().border_width,
         super::WindowMoveMode::AnimateFrom {
             from: replacement,
             duration: Duration::from_millis(500),

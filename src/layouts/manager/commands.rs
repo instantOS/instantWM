@@ -348,11 +348,15 @@ pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
 
 pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     let core_state = &ctx.core().state;
-    let eligible = core_state.model.client_view(window).is_some_and(|view| {
-        view.monitor.id() == core_state.model.selected_monitor_id()
-            && tree_commands_allowed(view.monitor)
-            && view.client.mode().is_normal_tiling()
-    });
+    // Only the selected monitor's own client map can hold an eligible window,
+    // so one monitor-scoped lookup answers membership, layout, and mode.
+    let eligible = {
+        let monitor = core_state.model.expect_selected_monitor();
+        tree_commands_allowed(monitor)
+            && monitor
+                .client(window)
+                .is_some_and(|client| client.mode().is_normal_tiling())
+    };
     if !eligible {
         return false;
     }

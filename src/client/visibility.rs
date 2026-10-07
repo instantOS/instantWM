@@ -46,14 +46,13 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
 /// activation must request it through `crate::focus` after revealing the
 /// client.
 pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
-    // The owning monitor is resolved before the mutable borrow: a client cannot
-    // name a monitor other than the one holding it.
-    let Some(monitor_id) = ctx.core().state.model.monitor_of_client(win) else {
+    let Some(monitor) = ctx.core_mut().state.model.client_owner_mut(win) else {
         return;
     };
-    let Some(client) = ctx.core_mut().state.model.client_mut(win) else {
-        return;
-    };
+    let monitor_id = monitor.id();
+    let client = monitor
+        .client_mut(win)
+        .expect("monitor was resolved as the client's owner");
     if !client.is_hidden {
         return;
     }
@@ -65,21 +64,18 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
-    let scratchpad_name = ctx.core().state.model.client(win).and_then(|c| {
-        if c.is_scratchpad() {
-            Some(
-                c.scratchpad()
-                    .expect("is_scratchpad() implies scratchpad data is present")
-                    .name()
-                    .to_string(),
-            )
-        } else {
-            None
-        }
-    });
+    let Some(is_scratchpad) = ctx
+        .core()
+        .state
+        .model
+        .client(win)
+        .map(|c| c.is_scratchpad())
+    else {
+        return;
+    };
 
-    if let Some(name) = scratchpad_name {
-        crate::floating::scratchpad_hide_name(ctx, &name);
+    if is_scratchpad {
+        crate::floating::scratchpad::hide_scratchpad_window(ctx, win);
     } else {
         hide(ctx, win);
     }
@@ -95,27 +91,25 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// such as a scratchpad can supply the window that was focused before it was
 /// shown, preserving overlapping-layout presentation across the round trip.
 pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: Option<WindowId>) {
-    let core_state = &ctx.core().state;
-    let was_selected = core_state
-        .model
-        .client_view(win)
-        .is_some_and(|view| view.monitor.selected == Some(win));
-    // Resolved before the mutable borrow: a client cannot name a monitor other
-    // than the one holding it.
-    let Some(monitor_id) = core_state.model.monitor_of_client(win) else {
+    let Some(view) = ctx.core().state.model.client_view(win) else {
         return;
     };
-    let Some(client) = ctx.core_mut().state.model.client_mut(win) else {
-        return;
-    };
-    if client.is_hidden {
+    if view.client.is_hidden {
         return;
     }
+    let monitor_id = view.monitor.id();
+    let was_selected = view.monitor.selected == Some(win);
 
     ctx.conceal_client(win);
 
-    if let Some(c_mut) = ctx.core_mut().state.model.client_mut(win) {
-        c_mut.is_hidden = true;
+    if let Some(client) = ctx
+        .core_mut()
+        .state
+        .model
+        .monitor_mut(monitor_id)
+        .and_then(|monitor| monitor.client_mut(win))
+    {
+        client.is_hidden = true;
     }
 
     if was_selected {

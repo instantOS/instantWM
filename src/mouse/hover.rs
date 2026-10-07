@@ -27,7 +27,7 @@
 
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
-use crate::model::{ClientView, WmModel};
+use crate::model::WmModel;
 use crate::types::{Client, Monitor, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
@@ -100,27 +100,32 @@ pub fn clear_hover_offer(ctx: &mut WmCtx) {
     }
 }
 
-fn resize_target_for_window(view: ClientView<'_>, root: Point) -> Option<HoverResizeHit> {
-    let c = view.client;
-    let mon = view.monitor;
-    let selected_tags = mon.visible_tags();
-    let has_tiling = mon.is_tiling_layout();
+fn resize_target_for_window(
+    client: &Client,
+    monitor: &Monitor,
+    root: Point,
+) -> Option<HoverResizeHit> {
+    let selected_tags = monitor.visible_tags();
+    let has_tiling = monitor.is_tiling_layout();
 
-    if !c.is_visible(selected_tags) {
+    if !client.is_visible(selected_tags) {
         return None;
     }
-    if !c.mode().is_normal_floating() && has_tiling {
+    if !client.mode().is_normal_floating() && has_tiling {
         return None;
     }
-    if !c.geo.contains_resize_border_point(root, RESIZE_BORDER_ZONE) {
+    if !client
+        .geo
+        .contains_resize_border_point(root, RESIZE_BORDER_ZONE)
+    {
         return None;
     }
 
-    let hit = c.geo.local_point(root);
+    let hit = client.geo.local_point(root);
     Some(HoverResizeHit {
-        win: c.win,
-        dir: ResizeDirection::from_hit(c.geo.size(), hit),
-        geo: c.geo,
+        win: client.win,
+        dir: ResizeDirection::from_hit(client.geo.size(), hit),
+        geo: client.geo,
     })
 }
 
@@ -134,14 +139,8 @@ fn client_covers_point(client: &Client, monitor: &Monitor, point: Point) -> bool
     client.is_visible(monitor.visible_tags()) && client.total_rect().contains_point(point)
 }
 
-/// [`client_covers_point`] for an already-resolved view.
-fn view_covers_point(view: ClientView<'_>, point: Point) -> bool {
-    client_covers_point(view.client, view.monitor, point)
-}
-
-/// [`client_covers_point`] by window id inside `monitor`. Ids the monitor does
-/// not own simply do not occlude.
-fn is_point_over_client_surface(monitor: &Monitor, win: WindowId, point: Point) -> bool {
+/// [`client_covers_point`] for a client resolved from `monitor`'s own map.
+fn monitor_covers_point(monitor: &Monitor, win: WindowId, point: Point) -> bool {
     monitor
         .client(win)
         .is_some_and(|client| client_covers_point(client, monitor, point))
@@ -156,7 +155,7 @@ fn point_occluded_above(monitor: &Monitor, win: WindowId, point: Point) -> bool 
         .z_order()
         .iter_top_to_bottom()
         .take_while(|&above| above != win)
-        .any(|above| is_point_over_client_surface(monitor, above, point))
+        .any(|above| monitor_covers_point(monitor, above, point))
 }
 
 /// Return the floating window + direction currently targeted by hover-resize.
@@ -170,16 +169,17 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
     // focus order disagrees with the visible stacking. Stale ids are skipped
     // by the per-window visibility lookup. A window whose surface covers the
     // pointer equally hides every border below it, so the scan stops there
-    // rather than offering the seam of a covered window. One resolved view
-    // per window serves both the band check and the occlusion stop.
+    // rather than offering the seam of a covered window. One client resolved
+    // from this monitor's own map serves both the band check and the
+    // occlusion stop.
     for win in monitor.z_order().iter_top_to_bottom() {
-        let Some(view) = model.client_view(win) else {
+        let Some(client) = monitor.client(win) else {
             continue;
         };
-        if let Some(hit) = resize_target_for_window(view, root) {
+        if let Some(hit) = resize_target_for_window(client, monitor, root) {
             return Some(hit);
         }
-        if view_covers_point(view, root) {
+        if client_covers_point(client, monitor, root) {
             return None;
         }
     }
@@ -187,18 +187,21 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit
 }
 
 pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Option<HoverResizeHit> {
-    let win = model.selected_win()?;
-    let view = model.client_view(win)?;
-    if view.monitor.bar_contains_y(position.y) {
+    // The selected window belongs to the selected monitor, so the monitor's
+    // own map resolves both halves of the view without a model-wide scan.
+    let monitor = model.selected_monitor()?;
+    let win = monitor.selected?;
+    let client = monitor.client(win)?;
+    if monitor.bar_contains_y(position.y) {
         return None;
     }
     // A click must never commit a border the user cannot see: when another
     // window's surface covers the position, the press belongs to that window.
     // Checked before the band test so an occluded seam skips the hit math.
-    if point_occluded_above(view.monitor, win, position) {
+    if point_occluded_above(monitor, win, position) {
         return None;
     }
-    resize_target_for_window(view, position)
+    resize_target_for_window(client, monitor, position)
 }
 
 /// Check whether any visible client on the current monitor is tiled.

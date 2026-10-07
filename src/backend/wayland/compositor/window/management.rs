@@ -38,7 +38,12 @@ impl WaylandNativeState {
         rect: Rect,
     ) {
         let mode = WindowMoveMode::Snap;
-        self.set_window_target_rect(core_view, window, rect, mode);
+        // The entry point resolves the managed client once: unmanaged windows
+        // must not be visually placed, but still receive their protocol
+        // resize below.
+        if let Some(border_width) = core_view.model.client(window).map(|c| c.border_width) {
+            self.set_window_target_rect(core_view, window, rect, border_width, mode);
+        }
         // An immediate request may preserve an existing spatial animation to
         // this target, but its protocol resize must still be sent now.
         if let Some(element) = self.find_window(window).cloned() {

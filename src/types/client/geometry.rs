@@ -103,10 +103,17 @@ impl Client {
         }
     }
 
-    pub fn restore_border_width(&mut self) {
+    /// Border used when returning from a temporary borderless presentation.
+    pub fn restored_border_width(&self) -> i32 {
         if self.old_border_width != 0 {
-            self.border_width = self.old_border_width;
+            self.old_border_width
+        } else {
+            self.border_width
         }
+    }
+
+    pub fn restore_border_width(&mut self) {
+        self.border_width = self.restored_border_width();
     }
 }
 

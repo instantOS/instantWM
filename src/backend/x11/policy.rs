@@ -74,7 +74,12 @@ impl PolicyState {
     }
 }
 
-/// Reconcile a complete XWayland policy update with one client lookup.
+/// Reconcile a complete XWayland policy update.
+///
+/// The owning monitor is resolved once and every later access is scoped to it:
+/// the mode transitions own their single resolution each, and the hint
+/// application captures the post-update snapshot while it still holds the
+/// mutation borrow.
 ///
 /// The returned value owns everything the runtime needs after the model borrow
 /// ends. This prevents partially applied policy and makes forgotten layout/bar
@@ -112,8 +117,13 @@ pub(crate) fn apply_xwayland_policy(
         }
     }
 
-    {
-        let client = model.client_mut(win)?;
+    let after = {
+        let monitor = model
+            .monitor_mut(monitor_id)
+            .expect("owner monitor was resolved from the model");
+        let client = monitor
+            .client_mut(win)
+            .expect("mode transitions keep the client on its owner monitor");
         apply_wm_hints_to_client(client, update.hints);
         apply_size_hints_to_client(client, update.size_hints);
         client.is_hidden = update.is_hidden;
@@ -122,9 +132,8 @@ pub(crate) fn apply_xwayland_policy(
             client.save_floating_placement(client.geo, work_area);
             client.set_placement(crate::types::ClientPlacement::Floating);
         }
-    }
-
-    let after = PolicyState::capture(model.client(win)?);
+        PolicyState::capture(client)
+    };
     let layout_changed = before.mode != after.mode
         || before.hidden != after.hidden
         || before.fixed_size != after.fixed_size

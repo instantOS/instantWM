@@ -21,8 +21,10 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         let Some(source) = monitor.selected else {
             return false;
         };
+        // The selected window belongs to this monitor, so its own map answers
+        // the eligibility check without a model-wide scan.
         if !monitor.is_tiling_layout()
-            || !model
+            || !monitor
                 .client(source)
                 .is_some_and(|client| client.mode().is_normal_tiling())
         {
@@ -89,15 +91,18 @@ fn preview_rect(
     source: WindowId,
     target: PlacementTarget,
 ) -> Option<Rect> {
-    let model = &state.model;
     let tiling = selected_tiling(state);
-    let plan = model
-        .expect_selected_monitor()
-        .per_tag()?
-        .layout_tree
-        .plan_placement(source, target, tiling.work_rect(), &tiling.minimums)?;
+    // The placement session is armed on the selected monitor, which owns its
+    // source: one monitor-scoped lookup feeds both the plan and the projection.
+    let monitor = state.model.expect_selected_monitor();
+    let plan = monitor.per_tag()?.layout_tree.plan_placement(
+        source,
+        target,
+        tiling.work_rect(),
+        &tiling.minimums,
+    )?;
     Some(tiling.outer_rect(
-        model.client(source)?,
+        monitor.client(source)?,
         plan.source_slot(),
         state.config.window.resize_hints,
     ))

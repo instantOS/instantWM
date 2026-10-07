@@ -1563,10 +1563,13 @@ fn lone_tile_can_enter_empty_negative_output_and_adopt_destination_tags() {
         .set_selected_tags(TagMask::single(2).unwrap());
     wm.core.state.model.monitors.set_selected(a);
     super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
-    assert!(super::uses_manual_tree_pointer_interaction(
-        &wm.core.state.model,
-        win
-    ));
+    assert!(
+        wm.core
+            .state
+            .model
+            .client_view(win)
+            .is_some_and(super::uses_manual_tree_pointer_interaction)
+    );
     begin_tiled_move(&mut wm, win);
     let point = Point::new(-400, -300);
     crate::mouse::drag::apply_active_drag_motion(&mut wm.test_ctx(), point);
@@ -1736,21 +1739,25 @@ fn drag_target_ignores_selection_and_never_hits_outputs_through_voids() {
     let a = add_tiled_monitor(&mut wm, &[win], Rect::new(0, 0, 800, 600));
     let b = add_tiled_monitor(&mut wm, &[], Rect::new(0, 800, 800, 600));
     wm.core.state.model.monitors.set_selected(a);
-    assert_eq!(
-        resolve_move_drop(&wm.core.state.model, win, Point::new(799, 900)),
-        Some(MoveDropTarget::Tree(b))
-    );
-    assert_eq!(
-        resolve_move_drop(&wm.core.state.model, win, Point::new(799, 700)),
-        None
-    );
-    assert_eq!(
-        resolve_move_drop(&wm.core.state.model, win, Point::new(1200, -100)),
-        None
-    );
+    {
+        let client = wm.core.state.model.client(win).unwrap();
+        assert_eq!(
+            resolve_move_drop(&wm.core.state.model, client, Point::new(799, 900)),
+            Some(MoveDropTarget::Tree(b))
+        );
+        assert_eq!(
+            resolve_move_drop(&wm.core.state.model, client, Point::new(799, 700)),
+            None
+        );
+        assert_eq!(
+            resolve_move_drop(&wm.core.state.model, client, Point::new(1200, -100)),
+            None
+        );
+    }
     wm.core.state.model.monitors.set_selected(b);
+    let client = wm.core.state.model.client(win).unwrap();
     assert_eq!(
-        resolve_move_drop(&wm.core.state.model, win, Point::new(799, 300)),
+        resolve_move_drop(&wm.core.state.model, client, Point::new(799, 300)),
         Some(MoveDropTarget::Tree(a))
     );
 }

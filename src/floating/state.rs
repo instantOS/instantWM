@@ -15,6 +15,7 @@ pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
         view.client,
         view.monitor.work_rect(),
         FloatingPlacementIntent::RestoreOrCenter,
+        view.client.border_width,
     );
     ctx.move_resize(win, rect, MoveResizeOptions::for_floating_transition());
 }
@@ -55,17 +56,13 @@ pub fn set_window_mode(
     if mode.is_fullscreen() {
         crate::client::fullscreen::set_fullscreen(ctx, win, false);
     }
-    if ctx
-        .core()
-        .state
-        .model
-        .client(win)
-        .is_some_and(|client| client.mode().is_maximized())
-    {
-        crate::client::fullscreen::leave_maximized(ctx, win);
-    }
+    // Leaving fullscreen may restore a maximized presentation; this is a
+    // no-op for windows that are not maximized.
+    crate::client::fullscreen::leave_maximized(ctx, win);
 
     let change = set_window_placement_from_policy(ctx, win, request);
+    // Placement determines the protocol-visible maximized state in tiling
+    // presentations, so project it after the placement change.
     crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
     change
 }
@@ -80,13 +77,16 @@ pub(crate) fn set_window_placement_from_policy(
     win: WindowId,
     request: WindowModeRequest,
 ) -> WindowModeChange {
-    let Some(view) = ctx.core().state.model.client_view(win) else {
+    let Some(monitor) = ctx.core_mut().state.model.client_owner_mut(win) else {
         return WindowModeChange::MissingClient;
     };
-    let current_mode = view.client.mode();
-    let current_placement = view.client.placement();
-    let current_rect = view.client.geo;
-    let work_area = view.monitor.work_rect();
+    let work_area = monitor.work_rect();
+    let client = monitor
+        .client_mut(win)
+        .expect("owner was resolved from client membership");
+    let current_mode = client.mode();
+    let current_placement = client.placement();
+    let current_rect = client.geo;
 
     match request {
         WindowModeRequest::Floating(intent) => {
@@ -96,18 +96,18 @@ pub(crate) fn set_window_placement_from_policy(
                 };
             }
 
-            let mut placement_client = view.client.clone();
-            placement_client.restore_border_width();
-            let restored_geometry =
-                resolve_floating_transition(&placement_client, work_area, intent);
+            let restored_geometry = resolve_floating_transition(
+                client,
+                work_area,
+                intent,
+                client.restored_border_width(),
+            );
 
-            if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
-                client.set_placement(ClientPlacement::Floating);
-                if current_mode.is_normal_tiling() {
-                    client.restore_border_width();
-                } else {
-                    client.save_floating_placement(restored_geometry, work_area);
-                }
+            client.set_placement(ClientPlacement::Floating);
+            if current_mode.is_normal_tiling() {
+                client.restore_border_width();
+            } else {
+                client.save_floating_placement(restored_geometry, work_area);
             }
 
             // Temporary presentation modes retain their current geometry.
@@ -125,9 +125,7 @@ pub(crate) fn set_window_placement_from_policy(
             WindowModeChange::ChangedToFloating { restored_geometry }
         }
         WindowModeRequest::Tiling => {
-            if current_placement == ClientPlacement::Floating
-                && let Some(client) = ctx.core_mut().state.model.client_mut(win)
-            {
+            if current_placement == ClientPlacement::Floating {
                 if current_mode.is_normal_floating() {
                     client.save_floating_placement(current_rect, work_area);
                 }
@@ -139,35 +137,15 @@ pub(crate) fn set_window_placement_from_policy(
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let core_state = &ctx.core().state;
-    let mon = core_state.model.expect_selected_monitor();
-    let selected_window = match mon.selected {
-        Some(sel)
-            if !core_state
-                .model
-                .client(sel)
-                .is_some_and(|c| c.is_edge_scratchpad()) =>
-        {
-            if let Some(c) = core_state.model.client(sel)
-                && c.mode().is_true_fullscreen()
-            {
-                return;
-            }
-            Some(sel)
-        }
-        _ => None,
-    };
-
-    let Some(win) = selected_window else { return };
-
-    let Some((mode, is_fixed)) = core_state
-        .model
+    let mon = ctx.core().state.model.expect_selected_monitor();
+    let Some(win) = mon.selected else { return };
+    let client = mon
         .client(win)
-        .map(|c| (c.mode(), c.is_fixed_size))
-    else {
+        .expect("selected window is owned by its monitor");
+    if client.is_edge_scratchpad() || client.mode().is_true_fullscreen() {
         return;
-    };
-    let request = if mode.placement() != ClientPlacement::Floating || is_fixed {
+    }
+    let request = if client.placement() != ClientPlacement::Floating || client.is_fixed_size {
         WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter)
     } else {
         WindowModeRequest::Tiling

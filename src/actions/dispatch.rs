@@ -183,14 +183,13 @@ fn execute_button_action_inner(
                 return;
             }
             if let Some(win) = ctx.core().state.model.selected_win()
-                && ctx
+                && let Some(monitor_id) = ctx
                     .core_mut()
                     .state
                     .model
                     .move_client_in_stack(win, *direction)
             {
                 crate::focus::focus(ctx, Some(win));
-                let monitor_id = ctx.core().state.model.selected_monitor_id();
                 ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
             }
         }

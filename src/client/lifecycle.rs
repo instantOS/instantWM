@@ -38,10 +38,10 @@ pub(crate) fn remove_managed_client(
     }
 
     let previous_focus = ctx.core().state.model.selected_win();
-    // Resolved while the client is still owned: `remove_client` hands back the
-    // client but not the monitor that was holding it.
-    let monitor_id = ctx.core().state.model.monitor_of_client(win)?;
-    let removed = ctx
+    let crate::model::RemovedClient {
+        client: removed,
+        monitor_id,
+    } = ctx
         .core_mut()
         .mutate_selection(|model| model.remove_client(win))?;
 

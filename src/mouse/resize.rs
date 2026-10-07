@@ -8,7 +8,7 @@ use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::types::*;
 
-use super::drag::move_drop::promote_to_floating;
+use super::drag::move_drop::promote_restored_client;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -92,16 +92,23 @@ pub fn resize_from_point(
     point: Point,
 ) {
     crate::client::fullscreen::leave_maximized(ctx, win);
-    let Some((geo, is_floating)) = ctx.core().state.model.client(win).and_then(|client| {
-        (!client.mode().is_true_fullscreen())
-            .then_some((client.geo, client.mode().is_normal_floating()))
-    }) else {
-        return;
+    // One resolution after that teardown: mode and geometry feed every branch
+    // below, and the tree-resize start reads the same view.
+    let (geo, is_floating, tree_resize) = {
+        let Some(view) = ctx.core().state.model.client_view(win) else {
+            return;
+        };
+        if view.client.mode().is_true_fullscreen() {
+            return;
+        }
+        (
+            view.client.geo,
+            view.client.mode().is_normal_floating(),
+            crate::layouts::manager::pointer_tree_resize_start(view, point),
+        )
     };
 
-    if let Some(tree_resize) =
-        crate::layouts::manager::pointer_tree_resize_start(&ctx.core().state.model, win, point)
-    {
+    if let Some(tree_resize) = tree_resize {
         let _ =
             crate::mouse::drag::tree_resize_begin(ctx, win, btn, source, point, geo, tree_resize);
         return;
@@ -115,7 +122,8 @@ pub fn resize_from_point(
         .expect_selected_monitor()
         .is_tiling_layout();
     if !is_floating && has_tiling {
-        let Some((new_geo, _)) = promote_to_floating(
+        // The maximization teardown already ran at this event's entry point.
+        let Some((new_geo, _)) = promote_restored_client(
             ctx,
             win,
             FloatingPlacementIntent::PreservePointerAnchor(point),

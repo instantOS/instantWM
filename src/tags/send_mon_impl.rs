@@ -17,8 +17,12 @@ use crate::contexts::WmCtx;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::{MonitorDirection, MonitorId, Rect, WindowId};
 
+/// How a client crosses to the target monitor.
+///
+/// Floating clients keep their relative position and size fraction on the new
+/// output; every other placement is handed over untouched because the layout
+/// engine re-places it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-//BOZO: what does this mean? Is it messy? Should it be documented better?
 enum SendToMonitorStrategy {
     FloatingProportional,
     DirectTransfer,
@@ -35,16 +39,16 @@ fn plan_send_to_monitor(
     model: &crate::model::WmModel,
     direction: MonitorDirection,
 ) -> Option<SendToMonitorPlan> {
-    let win = model.selected_win()?;
     if model.monitors.len() <= 1 {
         return None;
     }
 
-    let target_id = model
-        .monitors
-        .id_in_direction(model.selected_monitor_id(), direction)?;
-
-    let strategy = if model
+    let selected_id = model.selected_monitor_id();
+    // The selected window is the selected monitor's own client, so its
+    // placement is a monitor-local lookup.
+    let monitor = model.monitor(selected_id)?;
+    let win = monitor.selected?;
+    let strategy = if monitor
         .client(win)
         .is_some_and(|client| client.placement() == crate::types::ClientPlacement::Floating)
     {
@@ -52,6 +56,8 @@ fn plan_send_to_monitor(
     } else {
         SendToMonitorStrategy::DirectTransfer
     };
+
+    let target_id = model.monitors.id_in_direction(selected_id, direction)?;
 
     Some(SendToMonitorPlan {
         win,
@@ -131,12 +137,21 @@ fn transfer_floating_to_monitor(
         }
     }
 
-    // Apply proportional position on the new monitor.
-    if let Some(rect) = ctx.core().state.model.client(win).map(|client| Rect {
-        x: tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32,
-        y: tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32,
-        ..client.geo
-    }) {
+    // Apply proportional position on the new monitor. The transfer above put
+    // the client there, so the target monitor's own lookup resolves it
+    // without scanning every monitor.
+    if let Some(rect) = ctx
+        .core()
+        .state
+        .model
+        .monitor(target_id)
+        .and_then(|monitor| monitor.client(win))
+        .map(|client| Rect {
+            x: tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32,
+            y: tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32,
+            ..client.geo
+        })
+    {
         ctx.core_mut().state.model.sync_client_geometry(win, rect);
     }
 

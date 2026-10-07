@@ -62,6 +62,17 @@ impl WmModel {
             .find_map(|monitor| monitor.client_mut(win))
     }
 
+    /// Return the monitor that owns `win`, mutably.
+    ///
+    /// This is the single-scan entry point for monitor-scoped client
+    /// mutations: read the owner's geometry, then reach the client through
+    /// [`Monitor::client_mut`] instead of resolving `win` a second time.
+    pub(crate) fn client_owner_mut(&mut self, win: WindowId) -> Option<&mut Monitor> {
+        self.monitors
+            .iter_all_mut()
+            .find(|monitor| monitor.has_client(win))
+    }
+
     /// Return the monitor that owns `win`.
     pub fn monitor_of_client(&self, win: WindowId) -> Option<MonitorId> {
         self.monitors
@@ -95,15 +106,16 @@ impl WmModel {
     /// placement unless it is snapped; other client modes only update current
     /// geometry.
     pub fn sync_client_geometry(&mut self, win: WindowId, rect: Rect) {
-        let work_area = self.client_view(win).map(|view| view.monitor.work_rect());
-        if let Some(client) = self.client_mut(win) {
-            client.update_geometry(rect);
-            if client.mode().is_normal_floating()
-                && client.snap_status == SnapPosition::None
-                && let Some(work_area) = work_area
-            {
-                client.save_floating_placement(rect, work_area);
-            }
+        let Some(monitor) = self.client_owner_mut(win) else {
+            return;
+        };
+        let work_area = monitor.work_rect();
+        let client = monitor
+            .client_mut(win)
+            .expect("owner was resolved from client membership");
+        client.update_geometry(rect);
+        if client.mode().is_normal_floating() && client.snap_status == SnapPosition::None {
+            client.save_floating_placement(rect, work_area);
         }
     }
 
@@ -145,22 +157,29 @@ impl WmModel {
     ///
     /// Backend teardown must happen before this call when it needs client
     /// metadata. Once this returns, the model cannot contain a partial client.
-    pub(crate) fn remove_client(&mut self, win: WindowId) -> Option<Client> {
-        let (client, _) = self.detach_client(win)?;
+    pub(crate) fn remove_client(&mut self, win: WindowId) -> Option<RemovedClient> {
+        let detached = self.detach_client(win)?;
         self.debug_assert_client_graph();
-        Some(client)
+        Some(RemovedClient {
+            client: detached.client,
+            monitor_id: detached.source_monitor,
+        })
     }
 
-    /// Take `win` out of its owning monitor, returning the client and whether
-    /// it held that monitor's selection.
+    /// Take `win` out of its owning monitor.
     ///
     /// The client leaves the model entirely: callers re-home it through
     /// [`Self::readopt_client`], hand it to a composed transaction such as
     /// [`Self::move_client_to_monitor`], or drop it.
-    fn detach_client(&mut self, win: WindowId) -> Option<(Client, bool)> {
-        let monitor_id = self.monitor_of_client(win)?;
-        let monitor = self.monitors.get_mut(monitor_id)?;
-        monitor.take_client(win)
+    fn detach_client(&mut self, win: WindowId) -> Option<DetachedClient> {
+        let monitor = self.client_owner_mut(win)?;
+        let source_monitor = monitor.id();
+        let (client, was_selected) = monitor.take_client(win)?;
+        Some(DetachedClient {
+            client,
+            source_monitor,
+            was_selected,
+        })
     }
 
     /// Place an owned client into `monitor_id`, rebuilding its monitor-owned
@@ -319,13 +338,13 @@ impl WmModel {
         win: WindowId,
         target_monitor: MonitorId,
     ) -> bool {
-        if self.monitor(target_monitor).is_none() || self.monitor_of_client(win).is_none() {
+        if self.monitor(target_monitor).is_none() {
             return false;
         }
-        let Some((client, was_selected)) = self.detach_client(win) else {
+        let Some(detached) = self.detach_client(win) else {
             return false;
         };
-        self.attach_client(target_monitor, client, was_selected);
+        self.attach_client(target_monitor, detached.client, detached.was_selected);
         self.debug_assert_client_graph();
         true
     }
@@ -400,28 +419,26 @@ impl WmModel {
     fn debug_assert_client_graph(&self) {}
 
     /// Move `win` to the top of its monitor's persistent z-order.
-    pub fn raise_client_in_z_order(&mut self, win: WindowId) {
-        let Some(monitor_id) = self.monitor_of_client(win) else {
-            return;
-        };
-        if let Some(monitor) = self.monitors.get_mut(monitor_id) {
-            monitor.raise_client(win);
-        }
+    ///
+    /// Returns the owning monitor, or `None` when `win` is not managed.
+    pub fn raise_client_in_z_order(&mut self, win: WindowId) -> Option<MonitorId> {
+        let monitor = self.client_owner_mut(win)?;
+        monitor.raise_client(win);
+        Some(monitor.id())
     }
 
-    /// Move a client within its monitor's focus list (stack order).
+    /// Move a client within its owning monitor's focus list (stack order).
     ///
-    /// Returns true if the position changed, false otherwise.
+    /// Returns the owning monitor when the position changed.
     pub fn move_client_in_stack(
         &mut self,
         win: WindowId,
         direction: crate::types::StackDirection,
-    ) -> bool {
-        if let Some(mon) = self.monitors.selected_monitor_mut() {
-            mon.move_client_in_stack(win, direction)
-        } else {
-            false
-        }
+    ) -> Option<MonitorId> {
+        let monitor = self.client_owner_mut(win)?;
+        monitor
+            .move_client_in_stack(win, direction)
+            .then(|| monitor.id())
     }
 
     /// Move a client window to a target monitor in the data model.
@@ -430,12 +447,13 @@ impl WmModel {
         win: WindowId,
         target_mon: MonitorId,
     ) -> Option<ClientTransferOutcome> {
-        let source_monitor = self.monitor_of_client(win)?;
+        let view = self.client_view(win)?;
+        let source_monitor = view.monitor.id();
         if source_monitor == target_mon {
             return None;
         }
-        let is_scratchpad = self.client(win)?.is_scratchpad();
-        let needs_arrange = !self.client(win)?.mode().is_normal_floating();
+        let is_scratchpad = view.client.is_scratchpad();
+        let needs_arrange = !view.client.mode().is_normal_floating();
         let target_monitor = self.monitors.get(target_mon)?;
         let target_tags = if is_scratchpad {
             crate::types::TagMask::EMPTY
@@ -444,7 +462,11 @@ impl WmModel {
         };
         let target_tag_idx = target_monitor.current_tag_number();
 
-        let (mut client, was_selected) = self.detach_client(win)?;
+        let DetachedClient {
+            mut client,
+            was_selected,
+            ..
+        } = self.detach_client(win)?;
         if !is_scratchpad {
             client.set_tag_mask(target_tags);
             client.reset_sticky(target_tag_idx);
@@ -459,6 +481,20 @@ impl WmModel {
             needs_arrange,
         })
     }
+}
+
+/// A client taken out of the model together with the monitor that owned it.
+struct DetachedClient {
+    client: Client,
+    source_monitor: MonitorId,
+    was_selected: bool,
+}
+
+/// A client removed from the model together with its former owner.
+#[derive(Debug)]
+pub struct RemovedClient {
+    pub client: Client,
+    pub monitor_id: MonitorId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -674,7 +710,9 @@ mod tests {
 
         let removed = model.remove_client(win);
 
-        assert_eq!(removed.map(|client| client.win), Some(win));
+        let removed = removed.expect("managed client is removed");
+        assert_eq!(removed.client.win, win);
+        assert_eq!(removed.monitor_id, monitor_id);
         assert!(model.client(win).is_none());
         let monitor = model.monitor(monitor_id).unwrap();
         assert!(!monitor.has_client(win));

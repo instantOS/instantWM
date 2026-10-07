@@ -179,7 +179,14 @@ pub fn win_view(ctx: &mut WmCtx) {
         return;
     };
 
-    let Some(tag_mask) = core_state.model.client(win).map(|client| client.tags) else {
+    // The selected window always belongs to the selected monitor, so its tags
+    // resolve through that owner rather than a model-wide scan.
+    let Some(tag_mask) = core_state
+        .model
+        .expect_selected_monitor()
+        .client(win)
+        .map(|client| client.tags)
+    else {
         return;
     };
 
@@ -240,13 +247,11 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
-    let core_state = &ctx.core().state;
-    let selmon_id = core_state.model.selected_monitor_id();
-    let selected_window = core_state.model.selected_win();
-    let Some(win) = selected_window else { return };
-
-    let Some(target_mask) = core_state
-        .model
+    let model = &ctx.core().state.model;
+    let Some(win) = model.selected_win() else {
+        return;
+    };
+    let Some(target_mask) = model
         .expect_selected_monitor()
         .prev_tag
         .and_then(TagMask::single)
@@ -254,11 +259,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
         return;
     };
 
-    crate::tags::client_tags::set_client_tag(ctx, win, target_mask);
-
-    view_tags(ctx, target_mask);
-    crate::focus::focus(ctx, Some(win));
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
+    crate::tags::client_tags::follow_tag(ctx, win, target_mask);
 }
 
 #[cfg(test)]

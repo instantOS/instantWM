@@ -5,6 +5,7 @@ use smithay::wayland::seat::WaylandFocus;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::window::properties::protocol_presentation;
 use crate::types::WindowId;
 
 use crate::backend::wayland::commands::WmCommand;
@@ -244,28 +245,20 @@ impl WaylandState {
     }
 }
 
-fn presentation(model: &crate::model::WmModel, window: WindowId) -> Option<(bool, bool)> {
-    model.client(window).map(|client| {
-        (
-            client.mode().is_fullscreen(),
-            model.client_protocol_maximized(window).unwrap_or(false),
-        )
-    })
-}
-
 impl WaylandState {
     pub(crate) fn project_focus(&mut self, projection: crate::focus::FocusProjection) {
-        let previous_flags = projection
-            .previous
-            .and_then(|win| presentation(&self.wm.core.state.model, win));
+        let model = &self.wm.core.state.model;
         let current_flags = projection
             .current
-            .and_then(|win| presentation(&self.wm.core.state.model, win));
+            .and_then(|win| protocol_presentation(model, win));
         // Presentation flags are owned values: no model borrow crosses a
-        // seat callback, which requires the complete compositor root.
+        // seat callback, which requires the complete compositor root. The
+        // previous window is only resolved when it actually needs
+        // deactivation, so an unchanged projection resolves each window once.
         if projection.previous != projection.current
             && let Some(previous) = projection.previous
         {
+            let previous_flags = protocol_presentation(model, previous);
             self.set_window_activated(previous, false, previous_flags);
         }
         if let Some(current) = projection.current {

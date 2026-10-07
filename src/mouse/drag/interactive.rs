@@ -118,16 +118,14 @@ pub fn hover_drag_begin(
         if btn != MouseButton::Left && btn != MouseButton::Right {
             return false;
         }
-        let Some(resize) = crate::layouts::manager::pointer_tree_resize_start(
-            &ctx.core().state.model,
-            win,
-            position,
-        ) else {
+        let Some(view) = ctx.core().state.model.client_view(win) else {
             return false;
         };
-        let Some(geometry) = ctx.core().state.model.client(win).map(|client| client.geo) else {
+        let Some(resize) = crate::layouts::manager::pointer_tree_resize_start(view, position)
+        else {
             return false;
         };
+        let geometry = view.client.geo;
         return tree_resize_begin(ctx, win, btn, source, position, geometry, resize);
     }
 
@@ -229,10 +227,18 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
     }
 }
 
+/// The rectangle a free move of `drag` would occupy at `root`.
+///
+/// The raw delta is clamped into the drop destination's work area — minus the
+/// modelled border — when `drop` resolves to [`MoveDropTarget::Free`]; every
+/// other destination (bar, tree, snapped edge) keeps the unclamped delta.
+/// Callers pass the destination they already resolved for this sample.
 fn free_move_geometry(
     model: &crate::model::WmModel,
     drag: &crate::core_state::ActiveWindowDrag,
     root: Point,
+    drop: Option<crate::mouse::drag::move_drop::MoveDropTarget>,
+    border_width: i32,
 ) -> Rect {
     let geo = drag.win_start_geo();
     let mut moved = Rect::new(
@@ -241,20 +247,21 @@ fn free_move_geometry(
         geo.w,
         geo.h,
     );
-    if let Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) =
-        crate::mouse::drag::move_drop::resolve_move_drop(model, drag.win(), root)
-    {
-        let mon = model.monitor(id).unwrap();
-        let work = mon.work_rect();
-        let border = model.client(drag.win()).unwrap().old_border_width.max(0);
-        moved.w = moved.w.min((work.w - 2 * border).max(1));
-        moved.h = moved.h.min((work.h - 2 * border).max(1));
-        moved.x = moved
-            .x
-            .clamp(work.x, (work.right() - moved.w - 2 * border).max(work.x));
-        moved.y = moved
-            .y
-            .clamp(work.y, (work.bottom() - moved.h - 2 * border).max(work.y));
+    if let Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) = drop {
+        let work = model
+            .monitor(id)
+            .expect("drop destination resolved its monitor")
+            .work_rect();
+        moved.w = moved.w.min((work.w - 2 * border_width).max(1));
+        moved.h = moved.h.min((work.h - 2 * border_width).max(1));
+        moved.x = moved.x.clamp(
+            work.x,
+            (work.right() - moved.w - 2 * border_width).max(work.x),
+        );
+        moved.y = moved.y.clamp(
+            work.y,
+            (work.bottom() - moved.h - 2 * border_width).max(work.y),
+        );
     }
     moved
 }
@@ -264,36 +271,48 @@ fn apply_move_drag_motion(
     drag: &crate::core_state::ActiveWindowDrag,
     root: Point,
 ) {
+    use crate::mouse::drag::move_drop::{MoveDropTarget, resolve_move_drop};
+
     let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
-    let target =
-        crate::mouse::drag::move_drop::resolve_move_drop(&ctx.core().state.model, drag.win(), root);
-    if crate::layouts::manager::uses_manual_tree_pointer_interaction(
-        &ctx.core().state.model,
-        drag.win(),
-    ) {
-        let preview = match target {
-            Some(crate::mouse::drag::move_drop::MoveDropTarget::Tree(_)) => {
+
+    // Only manual-tree gestures need a drop preview; floating motion skips it.
+    let (manual, drop, border_width, old_border_width) = {
+        let model = &ctx.core().state.model;
+        let view = model.client_view(drag.win());
+        let manual =
+            view.is_some_and(crate::layouts::manager::uses_manual_tree_pointer_interaction);
+        let drop = if manual {
+            view.and_then(|view| resolve_move_drop(model, view.client, root))
+        } else {
+            None
+        };
+        (
+            manual,
+            drop,
+            view.map_or(0, |view| view.client.border_width.max(0)),
+            view.map_or(0, |view| view.client.old_border_width.max(0)),
+        )
+    };
+
+    if manual {
+        let preview = match drop {
+            Some(MoveDropTarget::Tree(_)) => {
                 crate::layouts::preview_tree_at_point(&mut ctx.core_mut().state, drag.win(), root)
             }
-            Some(crate::mouse::drag::move_drop::MoveDropTarget::Free(id)) => {
-                let mon = ctx.core().state.model.monitor(id).unwrap();
-                if mon.current_layout().is_maximized() {
-                    Some(mon.work_rect())
+            Some(MoveDropTarget::Free(id)) => {
+                let model = &ctx.core().state.model;
+                let monitor = model
+                    .monitor(id)
+                    .expect("drop destination resolved its monitor");
+                if monitor.current_layout().is_maximized() {
+                    Some(monitor.work_rect())
                 } else {
-                    let content = free_move_geometry(&ctx.core().state.model, drag, root);
-                    let border = ctx
-                        .core()
-                        .state
-                        .model
-                        .client(drag.win())
-                        .unwrap()
-                        .old_border_width
-                        .max(0);
+                    let content = free_move_geometry(model, drag, root, drop, old_border_width);
                     Some(Rect::new(
                         content.x,
                         content.y,
-                        content.w + 2 * border,
-                        content.h + 2 * border,
+                        content.w + 2 * old_border_width,
+                        content.h + 2 * old_border_width,
                     ))
                 }
             }
@@ -322,7 +341,7 @@ fn apply_move_drag_motion(
 
     crate::mouse::drag::snap_window_to_monitor_edges(
         &ctx.core().state,
-        drag.win(),
+        border_width,
         drag.win_start_geo().size(),
         &mut new_pos,
         root,
@@ -405,25 +424,37 @@ pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModM
     };
 
     match drag.operation() {
-        crate::core_state::ActiveWindowOperation::Move => crate::mouse::drag::drag_move_finish(
-            ctx,
-            drag.win(),
-            drag.drop_restore_geo(),
-            drag.last_root_point(),
-            if crate::layouts::manager::uses_manual_tree_pointer_interaction(
-                &ctx.core().state.model,
+        crate::core_state::ActiveWindowOperation::Move => {
+            let root = drag.last_root_point();
+            // Tree gestures commit preview geometry; free moves use current geometry.
+            let model = &ctx.core().state.model;
+            let view = model.client_view(drag.win());
+            let free_geometry = match view {
+                Some(view)
+                    if crate::layouts::manager::uses_manual_tree_pointer_interaction(view) =>
+                {
+                    let drop =
+                        crate::mouse::drag::move_drop::resolve_move_drop(model, view.client, root);
+                    free_move_geometry(
+                        model,
+                        &drag,
+                        root,
+                        drop,
+                        view.client.old_border_width.max(0),
+                    )
+                }
+                Some(view) => view.client.geo,
+                None => drag.win_start_geo(),
+            };
+            crate::mouse::drag::drag_move_finish(
+                ctx,
                 drag.win(),
-            ) {
-                free_move_geometry(&ctx.core().state.model, &drag, drag.last_root_point())
-            } else {
-                ctx.core()
-                    .state
-                    .model
-                    .client(drag.win())
-                    .map_or(drag.win_start_geo(), |client| client.geo)
-            },
-            modifiers,
-        ),
+                drag.drop_restore_geo(),
+                root,
+                free_geometry,
+                modifiers,
+            );
+        }
         crate::core_state::ActiveWindowOperation::DirectResize { .. }
         | crate::core_state::ActiveWindowOperation::TreeResize { .. } => {
             crate::mouse::drag::drag_resize_finish(ctx, drag.win());

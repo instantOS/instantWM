@@ -195,24 +195,34 @@ fn apply_resize_policies(
     target: Rect,
     options: MoveResizeOptions,
 ) -> Option<Rect> {
-    let core_state = &ctx.core().state;
     if options.size_hints == SizeHintPolicy::Ignore {
         return Some(target);
     }
 
+    // One resolution supplies every fact the resize policies need; backend
+    // refinement carries the owned constraints instead of re-reading the model.
+    let core_state = &ctx.core().state;
+    let view = core_state.model.client_view(win)?;
+    let constraints = crate::client::geometry::ClientSizeConstraints::of(view.client);
+    let border_width = view.client.border_width;
+    let current_rect = view.client.geo;
+    let apply_client_hints = core_state.config.window.resize_hints
+        || view.client.mode().is_normal_floating()
+        || crate::client::geometry::is_floating_layout(&core_state.model, view.monitor);
+    let work_rect = view.monitor.work_rect();
+
     let mut adjusted = target;
     let interact = options.bounds == BoundsPolicy::Interactive;
-    let outcome = crate::client::geometry::apply_size_hints(
-        &core_state.model,
+    crate::client::geometry::apply_size_hints(
         &core_state.config,
-        &core_state.derived,
-        win,
+        &core_state.derived.display,
+        border_width,
+        work_rect,
         &mut adjusted,
         interact,
     );
-    ctx.refine_size_hints(win, outcome.should_apply_client_hints, &mut adjusted);
-    let changed =
-        crate::client::geometry::size_hints_changed(&ctx.core().state.model, win, &adjusted);
+    ctx.refine_size_hints(win, apply_client_hints, &constraints, &mut adjusted);
+    let changed = adjusted != current_rect;
 
     let client_count = ctx.core().state.model.client_count();
     if changed || client_count == 1 || options.bounds == BoundsPolicy::FloatingTransition {

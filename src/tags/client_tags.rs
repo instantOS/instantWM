@@ -1,50 +1,80 @@
 //! Client-to-tag assignment.
 
 use crate::contexts::WmCtx;
-use crate::types::{TagMask, WindowId};
+use crate::types::{MonitorId, TagMask, WindowId};
 
-pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let core_state = &ctx.core().state;
-    let Some(selmon_id) = core_state.model.monitor_of_client(win) else {
-        return;
+/// The resolved facts a tag assignment needs about its client.
+#[derive(Clone, Copy)]
+struct TagTarget {
+    win: WindowId,
+    monitor_id: MonitorId,
+    is_scratchpad: bool,
+}
+
+/// Assign `win` to `mask`.
+///
+/// Returns the client's monitor when the assignment was applied, or `None`
+/// when `win` is unmanaged or `mask` selects no configured tag.
+pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) -> Option<MonitorId> {
+    let model = &ctx.core().state.model;
+    let view = model.client_view(win)?;
+    let target = TagTarget {
+        win,
+        monitor_id: view.monitor.id(),
+        is_scratchpad: view.client.is_scratchpad(),
     };
-    let tagmask = core_state.model.tags.mask();
-    let effective_mask = mask & tagmask;
+    let effective_mask = mask & model.tags.mask();
+    apply_client_tags(ctx, target, effective_mask)
+}
+
+fn apply_client_tags(
+    ctx: &mut WmCtx,
+    target: TagTarget,
+    effective_mask: TagMask,
+) -> Option<MonitorId> {
+    let TagTarget {
+        win,
+        monitor_id,
+        is_scratchpad,
+    } = target;
     if effective_mask.is_empty() {
-        return;
+        return None;
     }
 
-    if core_state
-        .model
-        .client(win)
-        .is_some_and(|client| client.is_scratchpad())
-    {
-        let _ = crate::floating::scratchpad::scratchpad_restore_window(
+    if is_scratchpad {
+        return crate::floating::scratchpad::scratchpad_restore_window(
             ctx,
             win,
-            Some((selmon_id, effective_mask)),
-        );
-        return;
+            Some((monitor_id, effective_mask)),
+        )
+        .ok()
+        .map(|_| monitor_id);
     }
 
-    if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
+    {
+        let monitor = ctx
+            .core_mut()
+            .state
+            .model
+            .monitor_mut(monitor_id)
+            .expect("tag target monitor was resolved as the client's owner");
+        let client = monitor
+            .client_mut(win)
+            .expect("tag target was resolved from its owning monitor");
         client.is_sticky = false;
         client.set_tag_mask(effective_mask);
-    } else {
-        return;
+        // Record the window as most-recently-focused on the destination tag so
+        // that a subsequent view switch brings it to the front instead of
+        // falling back to a stale focus-history entry.
+        monitor.record_focus(effective_mask, win);
     }
-
-    // Record the window as most-recently-focused on the destination tag so
-    // that a subsequent view switch brings it to the front instead of falling
-    // back to a stale focus-history entry.
-    let mon = ctx.core_mut().state.model.monitor_mut(selmon_id).unwrap();
-    mon.record_focus(effective_mask, win);
 
     ctx.sync_client_tag_props(win);
-    if ctx.core().state.model.selected_monitor_id() == selmon_id {
+    if ctx.core().state.model.selected_monitor_id() == monitor_id {
         crate::focus::focus(ctx, None);
     }
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+    Some(monitor_id)
 }
 
 pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
@@ -66,49 +96,64 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
     };
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
 
-    let m = ctx.core().state.model.expect_selected_monitor();
-    let clients_on_tag: Vec<_> = m
+    let clients_on_tag: Vec<_> = ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
         .iter_clients()
         .filter(|(_, c)| c.tags.intersects(current_tag_mask))
         .map(|(win, _)| win)
         .collect();
 
+    let monitor = ctx
+        .core_mut()
+        .state
+        .model
+        .monitor_mut(selmon_id)
+        .expect("selected monitor resolved above");
     for win in clients_on_tag {
-        if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
-            client.is_sticky = false;
-            client.set_tag_mask(effective_mask);
-        }
+        let client = monitor
+            .client_mut(win)
+            .expect("client collected from this monitor in the same pass");
+        client.is_sticky = false;
+        client.set_tag_mask(effective_mask);
     }
 
     crate::focus::focus(ctx, None);
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
+/// Assign `win` to `mask` and switch its monitor's view there.
+///
+/// Nothing is followed when the assignment was rejected.
 pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    set_client_tag(ctx, win, mask);
-    if let Some(id) = ctx.core().state.model.monitor_of_client(win) {
-        crate::focus::select_monitor(ctx, id);
-        crate::tags::view::view_tags(ctx, mask);
-        crate::focus::focus(ctx, Some(win));
-    }
+    let Some(monitor_id) = set_client_tag(ctx, win, mask) else {
+        return;
+    };
+    crate::focus::select_monitor(ctx, monitor_id);
+    crate::tags::view::view_tags(ctx, mask);
+    crate::focus::focus(ctx, Some(win));
 }
 
 pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let core_state = &ctx.core().state;
-    let tagmask = core_state.model.tags.mask();
-    let current_tags = core_state
-        .model
-        .client(win)
-        .map_or(TagMask::EMPTY, |c| c.tags);
-    if current_tags.is_scratchpad_only() {
-        set_client_tag(ctx, win, mask);
+    let model = &ctx.core().state.model;
+    let Some(view) = model.client_view(win) else {
         return;
-    }
-    let new_tags = current_tags ^ (mask & tagmask);
-    if new_tags.is_empty() {
-        return;
-    }
-    set_client_tag(ctx, win, new_tags);
+    };
+    let target = TagTarget {
+        win,
+        monitor_id: view.monitor.id(),
+        is_scratchpad: view.client.is_scratchpad(),
+    };
+    let tagmask = model.tags.mask();
+    let current_tags = view.client.tags;
+    let new_tags = if current_tags.is_scratchpad_only() {
+        mask & tagmask
+    } else {
+        current_tags ^ (mask & tagmask)
+    };
+    let _ = apply_client_tags(ctx, target, new_tags);
 }
 
 #[cfg(test)]

@@ -236,9 +236,21 @@ impl<'a> WaylandBackend<'a> {
         duration: std::time::Duration,
     ) {
         self.with_state(|state| {
-            state.native.set_window_target_rect(&state.wm.core.state,
+            let Some(border_width) = state
+                .wm
+                .core
+                .state
+                .model
+                .client(win)
+                .map(|client| client.border_width)
+            else {
+                return;
+            };
+            state.native.set_window_target_rect(
+                &state.wm.core.state,
                 win,
                 to,
+                border_width,
                 crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateFrom {
                     from,
                     duration,

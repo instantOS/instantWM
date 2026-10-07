@@ -234,25 +234,9 @@ fn handle_update_transient_for(
     win: crate::types::WindowId,
     parent: Option<crate::types::WindowId>,
 ) {
-    let core_state = &ctx.core().state;
-    let Some(monitor_id) = core_state.model.monitor_of_client(win) else {
+    let Some(monitor_id) = crate::client::update_transient_for(ctx, win, parent) else {
         return;
     };
-    let needs_float = core_state.model.client(win).is_some_and(|client| {
-        parent.is_some() && client.placement() != crate::types::ClientPlacement::Floating
-    });
-    if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
-        client.transient_for = parent;
-    }
-    if needs_float {
-        let _ = crate::floating::set_window_placement_from_policy(
-            ctx,
-            win,
-            crate::floating::WindowModeRequest::Floating(
-                crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
-            ),
-        );
-    }
     ctx.core_mut().queue_layout_for_monitor(monitor_id);
     crate::layouts::sync_monitor_z_order(ctx, monitor_id);
 }
@@ -291,13 +275,10 @@ fn handle_committed_size_observation(
     h: i32,
     acknowledged_configure: Option<smithay::utils::Serial>,
 ) {
-    let client_size_is_authoritative = state
-        .wm
-        .core
-        .state
-        .model
-        .client(win)
-        .is_some_and(|client| client.client_size_is_authoritative());
+    let client = state.wm.core.state.model.client(win);
+    let client_size_is_authoritative =
+        client.is_some_and(|client| client.client_size_is_authoritative());
+    let committed_rect = client.and_then(|client| committed_window_rect(client, w, h));
     if !state.native.native_commit_may_update_model(
         win,
         w,
@@ -307,31 +288,30 @@ fn handle_committed_size_observation(
     ) {
         return;
     }
-    apply_committed_window_size(&mut state.wm.core.state.model, win, w, h);
+    if let Some(rect) = committed_rect {
+        state.wm.core.state.model.sync_client_geometry(win, rect);
+    }
 }
 
-fn apply_committed_window_size(
-    model: &mut crate::model::WmModel,
-    win: crate::types::WindowId,
+/// Geometry a committed client size implies, or `None` when the commit must
+/// not change the model.
+fn committed_window_rect(
+    client: &crate::types::Client,
     w: i32,
     h: i32,
-) {
-    if let Some(client) = model.client(win)
-        // Tiled, maximized, fullscreen, and scratchpad geometry is owned by the
-        // WM. In particular, a native Wayland client may commit a stale startup
-        // buffer after layout selected its final size; copying that size back
-        // here would overwrite the layout or scratchpad target.
-        && client.client_size_is_authoritative()
-        && (client.geo.w != w || client.geo.h != h)
-    {
-        let rect = crate::types::Rect {
+) -> Option<crate::types::Rect> {
+    // Tiled, maximized, fullscreen, and scratchpad geometry is owned by the
+    // WM. In particular, a native Wayland client may commit a stale startup
+    // buffer after layout selected its final size; copying that size back
+    // here would overwrite the layout or scratchpad target.
+    (client.client_size_is_authoritative() && (client.geo.w != w || client.geo.h != h)).then_some(
+        crate::types::Rect {
             x: client.geo.x,
             y: client.geo.y,
             w,
             h,
-        };
-        model.sync_client_geometry(win, rect);
-    }
+        },
+    )
 }
 
 fn handle_set_fullscreen(state: &mut WaylandState, win: crate::types::WindowId, fullscreen: bool) {
@@ -579,9 +559,15 @@ fn apply_wayland_surface_policy(
     win: crate::types::WindowId,
     parent: Option<crate::types::WindowId>,
 ) {
+    let Some(monitor) = state.model.client_owner_mut(win) else {
+        return;
+    };
+    let client = monitor
+        .client_mut(win)
+        .expect("owner was resolved from client membership");
+
     if let Some(toplevel) = element.and_then(|element| element.toplevel())
         && wl_state.xdg_toplevel_has_fixed_size_constraints(toplevel)
-        && let Some(client) = state.model.client_mut(win)
     {
         client.is_fixed_size = true;
     }
@@ -592,10 +578,7 @@ fn apply_wayland_surface_policy(
         } else if let Some(x11) = element.x11_surface() {
             parent.is_some()
                 || x11.is_above()
-                || state
-                    .model
-                    .client(win)
-                    .is_some_and(|client| client.is_fixed_size)
+                || client.is_fixed_size
                 || crate::backend::x11::policy::should_float_for_x11_type(x11.window_type())
         } else {
             false
@@ -603,10 +586,8 @@ fn apply_wayland_surface_policy(
     });
 
     if should_float {
-        if let Some(client) = state.model.client_mut(win) {
-            client.set_placement(crate::types::ClientPlacement::Floating);
-        }
-        state.model.raise_client_in_z_order(win);
+        client.set_placement(crate::types::ClientPlacement::Floating);
+        monitor.raise_client(win);
     }
 
     if let Some(toplevel) = element.and_then(|element| element.toplevel()) {
@@ -646,8 +627,8 @@ fn position_new_wayland_floating_window(
     }
 }
 
-/// Resolve where the freshly managed client ended up and whether it should be
-/// focused.
+/// Record the freshly managed client's final floating placement and resolve
+/// where it ended up and whether it should be focused.
 ///
 /// The client is already owned by its monitor by the time this runs:
 /// `WmModel::add_client` is the single point where a client enters the model,
@@ -656,26 +637,27 @@ fn finalize_wayland_client(
     state: &mut crate::core_state::CoreState,
     win: crate::types::WindowId,
 ) -> Option<(crate::types::MonitorId, bool)> {
+    let monitor = state.model.client_owner_mut(win);
     debug_assert!(
-        state.model.client(win).is_some(),
+        monitor.is_some(),
         "managed Wayland client must still be in the model"
     );
+    let monitor = monitor?;
+    let monitor_id = monitor.id();
+    let work_area = monitor.work_rect();
+    let visible_tags = monitor.visible_tags();
+    let client = monitor
+        .client_mut(win)
+        .expect("owner was resolved from client membership");
 
-    if state
-        .model
-        .client(win)
-        .is_some_and(|client| client.mode().is_normal_floating())
-        && let Some(current) = state.model.client(win).map(|client| client.geo)
+    // Spawn positioning may have left the current rectangle unrecorded;
+    // a normal floating client restores to where it first appeared.
+    if client.mode().is_normal_floating() && client.snap_status == crate::types::SnapPosition::None
     {
-        state.model.sync_client_geometry(win, current);
+        client.save_floating_placement(client.geo, work_area);
     }
 
-    state.model.client_view(win).map(|view| {
-        (
-            view.monitor.id(),
-            view.client.is_visible(view.monitor.visible_tags()),
-        )
-    })
+    Some((monitor_id, client.is_visible(visible_tags)))
 }
 
 fn handle_unmanage_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
@@ -691,17 +673,25 @@ fn cancel_interactive_drag(state: &mut WaylandState, reason: crate::core_state::
 }
 
 fn handle_activate_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
-    let is_currently_visible = ctx
-        .core()
-        .state
-        .model
-        .client_view(win)
-        .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()));
-
-    if is_currently_visible {
+    // One owner resolution decides both outcomes: a visible window is
+    // activated, an invisible one is only marked urgent.
+    let activate = {
+        let Some(monitor) = ctx.core_mut().state.model.client_owner_mut(win) else {
+            return;
+        };
+        let visible_tags = monitor.visible_tags();
+        let Some(client) = monitor.client_mut(win) else {
+            return;
+        };
+        if client.is_visible(visible_tags) {
+            true
+        } else {
+            client.is_urgent = true;
+            false
+        }
+    };
+    if activate {
         crate::focus::activate_client(ctx, win);
-    } else if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
-        client.is_urgent = true;
     }
 }
 
@@ -790,7 +780,7 @@ fn handle_set_maximized(state: &mut WaylandState, win: crate::types::WindowId, m
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_committed_window_size, drain_command_queue, handle_set_minimized,
+        committed_window_rect, drain_command_queue, handle_set_minimized,
         handle_update_xwayland_policy, should_update_active_drag,
     };
 
@@ -1041,8 +1031,7 @@ mod tests {
             .unwrap();
         add_client(&mut state.wm.core.state.model, monitor_id, client);
 
-        apply_committed_window_size(&mut state.wm.core.state.model, win, 1920, 1080);
-
-        assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, geo);
+        let client = state.wm.core.state.model.client(win).unwrap();
+        assert_eq!(committed_window_rect(client, 1920, 1080), None);
     }
 }

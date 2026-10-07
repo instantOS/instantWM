@@ -101,8 +101,9 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             ctx.x11_runtime,
             ctx.xembed_tray,
         );
-    } else if ctx.core.state.model.client(event_win).is_some() {
-        crate::backend::x11::focus::configure(&ctx.core.state, &ctx.x11, event_win);
+    } else if let Some(client) = ctx.core.state.model.client(event_win) {
+        let (geo, border_width) = (client.geo, client.border_width);
+        crate::backend::x11::focus::configure(&ctx.x11, event_win, geo, border_width);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -241,29 +242,9 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             x if x == u32::from(AtomEnum::WM_TRANSIENT_FOR) => {
                 let parent =
                     crate::backend::x11::lifecycle::get_transient_for_hint(&ctx.x11, event_win);
-                let monitor_id = ctx.core.state.model.monitor_of_client(event_win);
-                let needs_float = ctx
-                    .core
-                    .state
-                    .model
-                    .client(event_win)
-                    .is_some_and(|client| {
-                        parent.is_some()
-                            && client.placement() != crate::types::ClientPlacement::Floating
-                    });
-                if let Some(client) = ctx.core.state.model.client_mut(event_win) {
-                    client.transient_for = parent;
-                }
-                if needs_float {
-                    let _ = crate::floating::set_window_placement_from_policy(
-                        &mut ctx.wm_ctx(),
-                        event_win,
-                        crate::floating::WindowModeRequest::Floating(
-                            crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
-                        ),
-                    );
-                }
-                if let Some(monitor_id) = monitor_id {
+                if let Some(monitor_id) =
+                    crate::client::update_transient_for(&mut ctx.wm_ctx(), event_win, parent)
+                {
                     crate::layouts::arrange(
                         &mut ctx.wm_ctx(),
                         Some(monitor_id),

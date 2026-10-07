@@ -462,7 +462,12 @@ pub fn drain_region_selection(ctx: &mut WmCtx<'_>) -> bool {
         if !is_valid_window_size(&ctx.core().state.model, &rect, outcome.window) {
             continue;
         }
-        handle_monitor_switch(ctx, outcome.window, &rect);
+        // Validation just proved the window is managed; resolve its owner once
+        // so the switch does not scan for it again.
+        let Some(owner) = ctx.core().state.model.monitor_of_client(outcome.window) else {
+            continue;
+        };
+        handle_monitor_switch(ctx, outcome.window, owner, &rect);
         apply_window_resize(ctx, outcome.window, &rect);
         applied = true;
     }

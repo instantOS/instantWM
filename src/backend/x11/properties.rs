@@ -13,7 +13,7 @@ use crate::client::rules::WindowProperties;
 use crate::client::set_fullscreen;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{MonitorId, Rect, WindowId};
+use crate::types::{Client, Monitor, MonitorId, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -39,24 +39,48 @@ pub fn set_client_state(
     let _ = conn.flush();
 }
 
+/// Mirror a client's tags, owning monitor, and desktop into its X11
+/// properties. Resolves the client once; callers that already hold the
+/// resolved data publish through [`write_client_tag_props`].
 pub fn set_client_tag_prop(
     globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let conn = x11.conn;
-    let x11_win: Window = win.into();
     let Some(view) = globals.model.client_view(win) else {
         return;
     };
+    let desktop = ewmh_desktop(globals, view.monitor, view.client);
+    write_client_tag_props(
+        x11,
+        x11_runtime,
+        win,
+        view.client.tags,
+        view.monitor.num as u32,
+        desktop,
+    );
+}
 
-    let c = view.client;
-    let mon_num = view.monitor.num as u32;
-
+/// Publish `_NET_CLIENT_INFO` (first tag plus monitor number) and a
+/// caller-computed `_NET_WM_DESKTOP` for `win`.
+///
+/// Callers that have not resolved the client yet use [`set_client_tag_prop`],
+/// which performs the resolve and the desktop computation in one scan; this
+/// entry exists for callers that already hold the resolved data.
+pub fn write_client_tag_props(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+    tags: TagMask,
+    monitor_num: u32,
+    desktop: u32,
+) {
+    let conn = x11.conn;
+    let x11_win: Window = win.into();
     let mut data = [0u8; 8];
-    data[..4].copy_from_slice(&c.tags.bits().to_ne_bytes());
-    data[4..].copy_from_slice(&mon_num.to_ne_bytes());
+    data[..4].copy_from_slice(&tags.bits().to_ne_bytes());
+    data[4..].copy_from_slice(&monitor_num.to_ne_bytes());
     let _ = conn.change_property(
         PropMode::REPLACE,
         x11_win,
@@ -66,8 +90,18 @@ pub fn set_client_tag_prop(
         data.len() as u32,
         &data,
     );
-    set_wm_desktop_prop(globals, x11, x11_runtime, win);
+    set_wm_desktop_prop(x11, x11_runtime, win, desktop);
     let _ = conn.flush();
+}
+
+/// EWMH desktop index of `client`'s first tag on `monitor`, or `u32::MAX` for
+/// clients that are present on every desktop.
+fn ewmh_desktop(globals: &crate::core_state::CoreState, monitor: &Monitor, client: &Client) -> u32 {
+    if client.is_sticky || client.is_scratchpad() {
+        return u32::MAX;
+    }
+    let tag = client.tags.first_tag().unwrap_or(1);
+    desktop_for_monitor_tag(globals, monitor.id(), tag).unwrap_or(0)
 }
 
 pub fn desktop_count(globals: &crate::core_state::CoreState) -> u32 {
@@ -167,13 +201,13 @@ pub fn update_ewmh_desktop_props(
         &workarea,
     );
 
-    for win in globals
-        .model
-        .clients_iter_all()
-        .map(|(_, client)| client.win)
-        .collect::<Vec<_>>()
-    {
-        set_wm_desktop_prop(globals, x11, x11_runtime, win);
+    // EWMH mirrors the tag of every managed client; the monitor is already
+    // known from the iteration, so no client needs to be resolved again.
+    for monitor in globals.model.monitors_iter_all() {
+        for client in monitor.clients().values() {
+            let desktop = ewmh_desktop(globals, monitor, client);
+            set_wm_desktop_prop(x11, x11_runtime, client.win, desktop);
+        }
     }
 
     let _ = conn.flush();
@@ -236,23 +270,11 @@ fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
 }
 
 fn set_wm_desktop_prop(
-    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
+    desktop: u32,
 ) {
-    let Some(view) = globals.model.client_view(win) else {
-        return;
-    };
-
-    let client = view.client;
-    let desktop = if client.is_sticky || client.is_scratchpad() {
-        u32::MAX
-    } else {
-        let tag = client.tags.first_tag().unwrap_or(1);
-        desktop_for_monitor_tag(globals, view.monitor.id(), tag).unwrap_or(0)
-    };
-
     let x11_win: Window = win.into();
     let _ = x11.conn.change_property32(
         PropMode::REPLACE,
@@ -453,16 +475,6 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         return;
     }
 
-    let Some((c_w, c_h, c_x, c_y)) = ctx
-        .core
-        .state
-        .model
-        .client(win)
-        .map(|c| (c.total_width(), c.total_height(), c.geo.x, c.geo.y))
-    else {
-        return;
-    };
-
     let decorations = motif[MWM_HINTS_DECORATIONS_FIELD];
     let new_bw = if decorations & (MWM_DECOR_ALL | MWM_DECOR_BORDER | MWM_DECOR_TITLE) != 0 {
         border_px
@@ -470,10 +482,23 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         0
     };
 
-    if let Some(client) = ctx.core.state.model.client_mut(win) {
+    // One resolve samples the pre-change outer size (it still includes the old
+    // border) and applies the new border width; the resize below must not run
+    // before that sample.
+    let (c_w, c_h, c_x, c_y) = {
+        let Some(client) = ctx.core.state.model.client_mut(win) else {
+            return;
+        };
+        let outer = (
+            client.total_width(),
+            client.total_height(),
+            client.geo.x,
+            client.geo.y,
+        );
         client.border_width = new_bw;
         client.old_border_width = new_bw;
-    }
+        outer
+    };
 
     let mut tmp_ctx = ctx.wm_ctx();
     tmp_ctx.move_resize(

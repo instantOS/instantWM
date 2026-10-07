@@ -52,17 +52,28 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
 /// Returns the destination tag when the client moved.
 pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
     let core_state = &ctx.core().state;
-    let (win, current_tag, target_tags) = {
+    let monitor_id = core_state.model.selected_monitor_id();
+    let (win, current_tag, target_tags, is_scratchpad, geo) = {
         let model = &core_state.model;
         let mon = model.expect_selected_monitor();
         let current_tags = mon.selected_tags() & model.tags.mask();
         let target_tags =
             crate::tags::view::adjacent_scroll_mask(current_tags, dir, model.tags.count())?;
-        (mon.selected?, current_tags.first_tag(), target_tags)
+        // The selected window lives on the monitor it is selected on, so that
+        // monitor answers the role check and the geometry the slide
+        // animation will animate from — no global lookup needed.
+        let win = mon.selected?;
+        let client = mon.client(win)?;
+        (
+            win,
+            current_tags.first_tag(),
+            target_tags,
+            client.is_scratchpad(),
+            client.geo,
+        )
     };
 
-    if core_state.model.client(win)?.is_scratchpad() {
-        let monitor_id = core_state.model.selected_monitor_id();
+    if is_scratchpad {
         return crate::floating::scratchpad::scratchpad_restore_window(
             ctx,
             win,
@@ -72,33 +83,43 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<TagMask> {
         .then_some(target_tags);
     }
 
-    ctx.core_mut()
+    // Ownership was resolved above and nothing in between moves the client,
+    // so both mutations reach it through its known monitor.
+    let monitor = ctx
+        .core_mut()
         .state
         .model
-        .client_mut(win)?
+        .monitor_mut(monitor_id)
+        .expect("selected monitor was resolved from the model");
+    monitor
+        .client_mut(win)
+        .expect("selected window was resolved from its monitor")
         .reset_sticky(current_tag);
 
     if ctx.core().state.config.animations.enabled {
-        play_slide_animation(ctx, win, dir);
+        play_slide_animation(ctx, win, dir, geo);
     }
 
-    ctx.core_mut()
+    let monitor = ctx
+        .core_mut()
         .state
         .model
-        .client_mut(win)?
+        .monitor_mut(monitor_id)
+        .expect("selected monitor was resolved from the model");
+    monitor
+        .client_mut(win)
+        .expect("selected window was resolved from its monitor")
         .update_tag_mask(|tags| match dir {
             HorizontalDirection::Left => TagMask::from_bits(tags.bits() >> 1),
             HorizontalDirection::Right => TagMask::from_bits(tags.bits() << 1),
         });
 
-    let selected_monitor_id = ctx.core().state.model.selected_monitor_id();
     crate::focus::focus(ctx, None);
-    ctx.core_mut()
-        .queue_layout_for_monitor_urgent(selected_monitor_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
     Some(target_tags)
 }
 
-fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection) {
+fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection, geo: Rect) {
     ctx.raise_window_visual_only(win);
     let mon_w = ctx
         .core()
@@ -107,9 +128,6 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: HorizontalDirection
         .expect_selected_monitor()
         .monitor_rect
         .w;
-    let Some(geo) = ctx.core().client_geo(win) else {
-        return;
-    };
 
     let anim_dx = (mon_w / 10)
         * match dir {

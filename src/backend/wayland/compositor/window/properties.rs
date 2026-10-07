@@ -297,17 +297,7 @@ impl WaylandNativeState {
         let presentation = window
             .user_data()
             .get::<WindowIdMarker>()
-            .and_then(|marker| {
-                core_view.model.client(marker.id).map(|client| {
-                    (
-                        client.mode().is_fullscreen(),
-                        core_view
-                            .model
-                            .client_protocol_maximized(marker.id)
-                            .unwrap_or(false),
-                    )
-                })
-            });
+            .and_then(|marker| protocol_presentation(&core_view.model, marker.id));
         self.send_toplevel_configure_with_presentation(window, size, presentation)
     }
 
@@ -379,25 +369,34 @@ impl WaylandNativeState {
         let Some(window) = self.find_window(win).cloned() else {
             return;
         };
-        let Some((mode, maximized)) = core_view.model.client(win).map(|client| {
-            (
-                client.mode(),
-                core_view
-                    .model
-                    .client_protocol_maximized(win)
-                    .unwrap_or(false),
-            )
-        }) else {
+        let Some(presentation @ (is_fullscreen, maximized)) =
+            protocol_presentation(&core_view.model, win)
+        else {
             return;
         };
 
         if let Some(surface) = window.x11_surface() {
             let _ = surface.set_maximized(maximized);
-            let _ = surface.set_fullscreen(mode.is_fullscreen());
+            let _ = surface.set_fullscreen(is_fullscreen);
         } else {
-            self.send_toplevel_configure(core_view, &window, None);
+            self.send_toplevel_configure_with_presentation(&window, None, Some(presentation));
         }
     }
+}
+
+/// Protocol-visible `(fullscreen, maximized)` flags of a managed window.
+///
+/// `None` means the window is not (or no longer) managed.
+pub(crate) fn protocol_presentation(
+    model: &crate::model::WmModel,
+    win: WindowId,
+) -> Option<(bool, bool)> {
+    model.client_view(win).map(|view| {
+        (
+            view.client.mode().is_fullscreen(),
+            crate::client::mode::protocol_maximized(view.monitor, view.client),
+        )
+    })
 }
 
 #[cfg(test)]

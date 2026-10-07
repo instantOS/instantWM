@@ -302,3 +302,51 @@ fn restoring_a_hidden_portable_scratchpad_returns_to_its_original_monitor() {
     assert_eq!(restored.tags, original_tags);
     assert_eq!(restored.placement(), ClientPlacement::Tiling);
 }
+
+#[test]
+fn transferring_during_slide_out_preserves_pending_hide() {
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+    let source = wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1920, 1080))
+            .build(),
+    );
+    let target = wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(1920, 0, 1920, 1080))
+            .build(),
+    );
+    wm.core.state.model.monitors.set_selected(source);
+    let win = WindowId(92);
+    let mut client = Client {
+        win,
+        geo: Rect::new(0, 0, 640, 360),
+        ..Client::default()
+    };
+    client
+        .promote_to_scratchpad(
+            source,
+            "transfer-hide",
+            Some(EdgeDirection::Top),
+            1920,
+            1080,
+        )
+        .unwrap();
+    wm.core.state.model.add_client(source, client);
+    assert!(hide_scratchpad_window(&mut wm.test_ctx(), win));
+    assert!(wm.core.work.has_pending_scratchpad_hide(win));
+
+    let outcome = crate::monitor::transfer_client(
+        &mut wm.test_ctx(),
+        win,
+        target,
+        crate::monitor::TransferFocus::Preserve,
+    )
+    .unwrap();
+
+    assert_eq!(outcome.target_monitor, target);
+    assert_eq!(wm.core.state.model.monitor_of_client(win), Some(target));
+    assert!(wm.core.work.has_pending_scratchpad_hide(win));
+    super::finish_scratchpad_hides(&mut wm.test_ctx(), &[win]);
+    assert!(wm.core.state.model.client(win).unwrap().is_hidden);
+}

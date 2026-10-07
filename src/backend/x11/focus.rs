@@ -6,8 +6,9 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::WM_HINTS_URGENCY_HINT;
+use crate::backend::x11::draw::BorderScheme;
 use crate::core_state::CoreState;
-use crate::types::{ButtonTarget, ModMask, Modifier, WindowId};
+use crate::types::{ButtonTarget, ClientMode, ModMask, Modifier, Rect, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xinput::{
@@ -25,14 +26,13 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ConfigureNotify
 // ---------------------------------------------------------------------------
 
-/// Send a synthetic `ConfigureNotify` event to `win`.
-pub fn configure(globals: &crate::core_state::CoreState, x11: &X11BackendRef, win: WindowId) {
+/// Send a synthetic `ConfigureNotify` event reporting `win` at `geo`.
+///
+/// Callers pass the geometry they just established instead of having this
+/// helper re-read the model.
+pub fn configure(x11: &X11BackendRef, win: WindowId, geo: Rect, border_width: i32) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-
-    let Some(c) = globals.model.client(win) else {
-        return;
-    };
 
     let event = ConfigureNotifyEvent {
         response_type: CONFIGURE_NOTIFY_EVENT,
@@ -40,11 +40,11 @@ pub fn configure(globals: &crate::core_state::CoreState, x11: &X11BackendRef, wi
         event: x11_win,
         window: x11_win,
         above_sibling: 0,
-        x: c.geo.x as i16,
-        y: c.geo.y as i16,
-        width: c.geo.w as u16,
-        height: c.geo.h as u16,
-        border_width: c.border_width as u16,
+        x: geo.x as i16,
+        y: geo.y as i16,
+        width: geo.w as u16,
+        height: geo.h as u16,
+        border_width: border_width as u16,
         override_redirect: false,
     };
 
@@ -104,6 +104,18 @@ pub fn send_event(
 // Border colour
 // ---------------------------------------------------------------------------
 
+/// The border pixel a client's mode and focus state imply.
+fn border_pixel(scheme: &BorderScheme, mode: ClientMode, has_tiling: bool, focused: bool) -> u32 {
+    if !focused {
+        return scheme.normal.background.pixel();
+    }
+    if mode.is_free_positioned() || !has_tiling {
+        scheme.float_focus.background.pixel()
+    } else {
+        scheme.tile_focus.background.pixel()
+    }
+}
+
 /// Update the border color of `win` based on its current focus and floating state.
 pub fn refresh_border_color(
     globals: &crate::core_state::CoreState,
@@ -112,21 +124,16 @@ pub fn refresh_border_color(
     win: WindowId,
     focused: bool,
 ) {
-    let scheme = &x11_runtime.border_scheme;
     let Some(c) = globals.model.client(win) else {
         return;
     };
+    let mode = c.mode();
 
     let pixel = if focused {
         let has_tiling = globals.model.expect_selected_monitor().is_tiling_layout();
-        let isfloating = c.mode().is_free_positioned() || !has_tiling;
-        if isfloating {
-            scheme.float_focus.background.pixel()
-        } else {
-            scheme.tile_focus.background.pixel()
-        }
+        border_pixel(&x11_runtime.border_scheme, mode, has_tiling, true)
     } else {
-        scheme.normal.background.pixel()
+        border_pixel(&x11_runtime.border_scheme, mode, false, false)
     };
 
     let x11_win: Window = win.into();
@@ -147,11 +154,15 @@ pub fn set_focus(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
+    // One resolution supplies both the focus policy and the border repaint,
+    // which previously re-read the same client a second time.
     let Some(c) = globals.model.client(win) else {
         return;
     };
+    let never_focus = c.never_focus;
+    let mode = c.mode();
 
-    if !c.never_focus {
+    if !never_focus {
         let x11_win: Window = win.into();
         let _ = x11
             .conn
@@ -165,7 +176,13 @@ pub fn set_focus(
         );
     }
 
-    refresh_border_color(globals, x11, x11_runtime, win, true);
+    let has_tiling = globals.model.expect_selected_monitor().is_tiling_layout();
+    let pixel = border_pixel(&x11_runtime.border_scheme, mode, has_tiling, true);
+    let x11_win: Window = win.into();
+    let _ = x11.conn.change_window_attributes(
+        x11_win,
+        &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+    );
 
     grab_buttons(globals, x11, x11_runtime, win, true);
 

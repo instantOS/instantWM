@@ -195,7 +195,7 @@ define_named_actions!(
     ShiftViewLeft => { name: "shift_view_left", overview: Cancel, doc: "shift view to tag on left", run: |ctx| { shift_view(ctx, HorizontalDirection::Left); } },
     ShiftViewRight => { name: "shift_view_right", overview: Cancel, doc: "shift view to tag on right", run: |ctx| { shift_view(ctx, HorizontalDirection::Right); } },
     ViewAll => { name: "view_all", overview: Cancel, doc: "view all tags", run: |ctx| { crate::tags::view::view_selection(ctx, TagSelection::All); } },
-    TagAll => { name: "tag_all", doc: "tag client with all tags", run: |ctx| { with_selected_win(ctx, |ctx, win| crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS)); } },
+    TagAll => { name: "tag_all", doc: "tag client with all tags", run: |ctx| { with_selected_win(ctx, |ctx, win| { let _ = crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); }); } },
     ToggleOverview => { name: "toggle_overview", overview: Preserve, doc: "toggle overview mode", run: |ctx| { toggle_overview(ctx, TagMask::ALL_BITS); } },
     CancelOverview => { name: "cancel_overview", overview: Preserve, doc: "leave overview and restore previous view", run: |ctx| { cancel_overview(ctx, TagMask::ALL_BITS); } },
     EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", overview: Preserve, doc: "toggle the default edge scratchpad", run: |ctx| { scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME)); } },

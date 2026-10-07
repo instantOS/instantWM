@@ -1,7 +1,7 @@
 use crate::backend::x11::events::setup::SYSTEM_TRAY_REQUEST_DOCK;
 use crate::backend::x11::systray::XEmbedMessage;
 use crate::contexts::WmCtxX11;
-use crate::types::{Rect, TagMask, WindowId};
+use crate::types::{MonitorId, Rect, TagMask, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -203,30 +203,60 @@ fn handle_current_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     crate::tags::view::view_tags(&mut ctx.wm_ctx(), mask);
 }
 
+/// The resolved facts a `_NET_WM_DESKTOP` request needs, read from the single
+/// owner resolution at the top of [`handle_wm_desktop`].
+#[derive(Clone, Copy)]
+struct DesktopRequest {
+    is_scratchpad: bool,
+    previous_monitor: MonitorId,
+    tags: TagMask,
+    monitor_num: u32,
+}
+
 fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
     let desktop = e.data.as_data32()[0];
 
-    if desktop == u32::MAX {
-        if ctx
+    // The dispatcher validated this window: resolve its owner once and pass
+    // plain values to every step below. An all-desktops request also applies
+    // the sticky flag inside this pass; it changes neither the role nor the
+    // snapshot that both branches read.
+    let request = {
+        let monitor = ctx
             .core
             .state
             .model
-            .client(win)
-            .is_some_and(|client| client.is_scratchpad())
-        {
-            crate::backend::x11::set_client_tag_prop(
-                &ctx.core.state,
-                &ctx.x11,
-                ctx.x11_runtime,
-                win,
-            );
-            return;
-        }
-        if let Some(client) = ctx.core.state.model.client_mut(win) {
+            .client_owner_mut(win)
+            .expect("client_message validates the window before dispatch");
+        let (previous_monitor, monitor_num) = (monitor.id(), monitor.num as u32);
+        let client = monitor
+            .client_mut(win)
+            .expect("owner was resolved from client membership");
+        let request = DesktopRequest {
+            is_scratchpad: client.is_scratchpad(),
+            previous_monitor,
+            tags: client.tags,
+            monitor_num,
+        };
+        if desktop == u32::MAX && !request.is_scratchpad {
             client.is_sticky = true;
         }
-        crate::backend::x11::set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
-        ctx.core.queue_layout_for_all_monitors_urgent();
+        request
+    };
+
+    if desktop == u32::MAX {
+        // Sticky and scratchpad windows are present on every desktop, so the
+        // advertised desktop is `u32::MAX` in both cases.
+        crate::backend::x11::properties::write_client_tag_props(
+            &ctx.x11,
+            ctx.x11_runtime,
+            win,
+            request.tags,
+            request.monitor_num,
+            u32::MAX,
+        );
+        if !request.is_scratchpad {
+            ctx.core.queue_layout_for_all_monitors_urgent();
+        }
         return;
     }
 
@@ -239,13 +269,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     };
 
-    if ctx
-        .core
-        .state
-        .model
-        .client(win)
-        .is_some_and(|client| client.is_scratchpad())
-    {
+    if request.is_scratchpad {
         let _ = crate::floating::scratchpad::scratchpad_restore_window(
             &mut ctx.wm_ctx(),
             win,
@@ -254,15 +278,18 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     }
 
-    let old_mon = ctx.core.state.model.monitor_of_client(win);
     let previous_focus = ctx.core.state.model.selected_win();
     let reassigned = ctx.core.mutate_selection(|model| {
-        if let Some(client) = model.client_mut(win) {
-            client.is_sticky = false;
-            client.set_tag_mask(target_tags);
-        } else {
+        // The top resolve pinned the owner, so reach the client through that
+        // monitor instead of scanning every monitor for it again.
+        let Some(client) = model
+            .monitor_mut(request.previous_monitor)
+            .and_then(|monitor| monitor.client_mut(win))
+        else {
             return false;
-        }
+        };
+        client.is_sticky = false;
+        client.set_tag_mask(target_tags);
         model.reassign_client_monitor(win, target_mon)
     });
     debug_assert!(reassigned, "validated EWMH monitor transfer must succeed");
@@ -273,7 +300,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     crate::backend::x11::set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, win);
     crate::focus::refresh_focus_after_selection(&mut ctx.wm_ctx(), previous_focus, None);
 
-    if old_mon == Some(target_mon) {
+    if request.previous_monitor == target_mon {
         ctx.core.queue_layout_for_monitor_urgent(target_mon);
     } else {
         ctx.core.queue_layout_for_all_monitors_urgent();

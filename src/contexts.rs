@@ -329,10 +329,9 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        let Some(monitor_id) = self.core().state.model.monitor_of_client(win) else {
+        let Some(monitor_id) = self.core_mut().state.model.raise_client_in_z_order(win) else {
             return;
         };
-        self.core_mut().state.model.raise_client_in_z_order(win);
         // Reapply the complete policy projection rather than visually raising
         // just this surface, which could place an ordinary window over a
         // protected transient dialog until the next layout pass.
@@ -360,8 +359,14 @@ impl<'a> WmCtx<'a> {
                     unreachable!()
                 };
                 x11.core.state.model.sync_client_geometry(win, rect);
-
-                crate::backend::x11::focus::configure(&x11.core.state, &x11.x11, win);
+                if let Some(client) = x11.core.state.model.client(win) {
+                    crate::backend::x11::focus::configure(
+                        &x11.x11,
+                        win,
+                        client.geo,
+                        client.border_width,
+                    );
+                }
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
@@ -554,29 +559,22 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        let Some(c) = self.core().state.model.client(win).cloned() else {
-            return;
-        };
-
         let Some(ptr) = self.pointer_location() else {
             return;
         };
 
-        // Skip if already inside the window's border-aware outer bounds.
-        let in_window = c.total_rect().contains_point(ptr);
-
-        let on_bar = self
-            .core()
-            .state
-            .model
-            .client_view(win)
-            .is_some_and(|view| view.monitor.bar_contains_y(ptr.y));
-
-        if in_window || on_bar {
+        // One resolution supplies the containment test and the warp target.
+        let Some(view) = self.core().state.model.client_view(win) else {
+            return;
+        };
+        // Skip if already inside the window's border-aware outer bounds or on
+        // the bar under the pointer.
+        if view.client.total_rect().contains_point(ptr) || view.monitor.bar_contains_y(ptr.y) {
             return;
         }
+        let center = view.client.geo.center();
 
-        self.warp_to_point(c.geo.center());
+        self.warp_to_point(center);
     }
 
     /// Warp unconditionally to the center of a client's current geometry.
@@ -665,30 +663,25 @@ impl<'a> WmCtx<'a> {
     /// X11 re-reads live ICCCM hints from the server, which remain the
     /// authoritative source under X. Wayland constrains against the hints
     /// cached on the model from the client's last commit.
-    pub fn refine_size_hints(&mut self, win: WindowId, apply_hints: bool, adjusted: &mut Rect) {
+    pub(crate) fn refine_size_hints(
+        &mut self,
+        win: WindowId,
+        apply_hints: bool,
+        constraints: &crate::client::geometry::ClientSizeConstraints,
+        adjusted: &mut Rect,
+    ) {
+        if !apply_hints {
+            return;
+        }
         match self {
-            WmCtx::X11(ctx) => {
-                if apply_hints {
-                    crate::backend::x11::geometry::apply_icccm_size_hints(
-                        &mut ctx.core.state.model,
-                        &ctx.x11,
-                        win,
-                        adjusted,
-                    );
-                }
-            }
-            WmCtx::Wayland(ctx) => {
-                if apply_hints
-                    && let Some(client) = ctx.wayland.state.wm.core.state.model.client(win)
-                {
-                    let constrained = client.size_hints.constrain_size(
-                        adjusted.size(),
-                        client.min_aspect,
-                        client.max_aspect,
-                    );
-                    *adjusted = adjusted.with_size(constrained);
-                }
-            }
+            WmCtx::X11(ctx) => crate::backend::x11::geometry::apply_icccm_size_hints(
+                &mut ctx.core.state.model,
+                &ctx.x11,
+                win,
+                constraints,
+                adjusted,
+            ),
+            WmCtx::Wayland(_) => *adjusted = constraints.constrain(*adjusted),
         }
     }
 

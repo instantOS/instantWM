@@ -9,32 +9,26 @@ use crate::core_state::WmCore;
 use crate::model::WmModel;
 use crate::types::*;
 
-fn is_focusable_on_monitor(
-    model: &WmModel,
-    sel_mon_id: MonitorId,
-    selected: TagMask,
-    win: WindowId,
-) -> bool {
-    model
-        .client_view(win)
-        .is_some_and(|view| view.monitor.id() == sel_mon_id && view.client.is_visible(selected))
+fn is_focusable_on_monitor(monitor: &Monitor, selected: TagMask, win: WindowId) -> bool {
+    monitor
+        .client(win)
+        .is_some_and(|client| client.is_visible(selected))
 }
 
 /// Resolve the focus target on the selected monitor.
 fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<WindowId> {
-    let sel_mon_id = model.selected_monitor_id();
     let mon = model.expect_selected_monitor();
     let selected = mon.visible_tags();
 
     // Use the requested window if it is visible. Otherwise restore the newest
     // eligible focus-history entry, then fall back to persistent z-order.
-    let mut target = win.filter(|&w| is_focusable_on_monitor(model, sel_mon_id, selected, w));
+    let mut target = win.filter(|&w| is_focusable_on_monitor(mon, selected, w));
 
     if target.is_none() {
         // Try focus history first.
-        if let Some(hist_win) = mon.most_recent_focus(selected, |win| {
-            is_focusable_on_monitor(model, sel_mon_id, selected, win)
-        }) {
+        if let Some(hist_win) =
+            mon.most_recent_focus(selected, |win| is_focusable_on_monitor(mon, selected, win))
+        {
             target = Some(hist_win);
         }
 
@@ -156,8 +150,16 @@ fn commit_focus_transition(
 
     let projection = (changed || needs_refocus || force).then(|| {
         core.bar.mark_dirty();
+        // `target` was resolved on the selected monitor by
+        // `resolve_focus_target`, so its owner is known.
         let clear_urgency = target
-            .and_then(|win| core.state.model.client_mut(win))
+            .map(|win| {
+                core.state
+                    .model
+                    .monitor_mut(sel_mon_id)
+                    .and_then(|monitor| monitor.client_mut(win))
+                    .expect("focus target was resolved on the selected monitor")
+            })
             .is_some_and(|client| {
                 let urgent = client.is_urgent;
                 if urgent {
@@ -297,27 +299,45 @@ pub fn apply_hover_focus(
     {
         return;
     }
-    if let Some(win) = hovered_win
-        && let Some(mid) = ctx.core().state.model.monitor_of_client(win)
-        && select_monitor(ctx, mid)
-    {
+    let Some(win) = hovered_win else {
+        if let Some(pointer_pos) = pointer_pos {
+            select_monitor_at_pointer(ctx, pointer_pos);
+        }
+        return;
+    };
+    // Resolve the hovered client once; monitor selection below does not move
+    // clients between monitors or change their placement.
+    let hovered = ctx
+        .core()
+        .state
+        .model
+        .client_view(win)
+        .map(|view| HoveredClient {
+            monitor_id: view.monitor.id(),
+            is_floating: view.client.placement() == ClientPlacement::Floating,
+        });
+    if let Some(hovered) = hovered {
         // After switching monitors, continue with the hovered window so both
         // backends share the same "focus what's under the pointer" behavior.
-    } else if hovered_win.is_none()
-        && let Some(pointer_pos) = pointer_pos
-        && select_monitor_at_pointer(ctx, pointer_pos)
-    {
-        return;
+        select_monitor(ctx, hovered.monitor_id);
     }
 
     if should_hover_focus(
         &ctx.core().state.model,
         &ctx.core().state.config.window,
-        hovered_win,
+        win,
+        hovered,
         entering_root,
     ) {
-        focus(ctx, hovered_win);
+        focus(ctx, Some(win));
     }
+}
+
+/// Facts about a hovered managed client, resolved once per hover event.
+#[derive(Clone, Copy)]
+struct HoveredClient {
+    monitor_id: MonitorId,
+    is_floating: bool,
 }
 
 /// Apply the optional click-to-raise policy after normal client-area focus.
@@ -339,30 +359,29 @@ pub fn raise_floating_on_client_click(ctx: &mut WmCtx, win: WindowId, button: Mo
 
 /// Common hover-focus guard checks shared by both backends.
 ///
-/// Returns `true` when hover focus should proceed for `hovered_win`.
+/// Returns `true` when hover focus should proceed for `win`. `hovered` is
+/// `None` when `win` is not a managed client.
 fn should_hover_focus(
     model: &crate::model::WmModel,
     window: &crate::core_state::WindowConfig,
-    hovered_win: Option<WindowId>,
+    win: WindowId,
+    hovered: Option<HoveredClient>,
     entering_root: bool,
 ) -> bool {
-    let Some(win) = hovered_win else {
-        return false;
-    };
     // Already focused — nothing to do.
     if model.selected_win() == Some(win) {
         return false;
     }
     // Respect the "don't focus floating windows on hover" setting.
-    let hovered_is_floating = model
-        .client(win)
-        .map(|c| c.placement() == ClientPlacement::Floating)
-        .unwrap_or(false);
-    let has_tiling = model.expect_selected_monitor().is_tiling_layout();
-    if !window.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
-        return false;
+    let Some(hovered) = hovered.filter(|hovered| hovered.is_floating) else {
+        return true;
+    };
+    if window.focus_follows_float_mouse || entering_root {
+        return true;
     }
-    true
+    !model
+        .monitor(hovered.monitor_id)
+        .is_some_and(|monitor| monitor.is_tiling_layout())
 }
 
 /// Switch the selected monitor to `monitor_id` and re-focus the target.
@@ -498,8 +517,11 @@ fn get_direction_focus_candidate(
     }
     let mon = model.expect_selected_monitor();
     let source_win = mon.selected?;
-    let source_client = model.client(source_win)?;
-    let source_center = source_client.geo.center();
+    let source_center = mon
+        .client(source_win)
+        .expect("selected window is owned by its monitor")
+        .geo
+        .center();
 
     let selected = mon.visible_tags();
 
@@ -513,30 +535,18 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
     let last_win = last_client_win;
 
-    let last_client = match ctx.core().state.model.client(last_win) {
-        Some(c) => c.clone(),
-        None => return,
+    let Some(view) = ctx.core().state.model.client_view(last_win) else {
+        return;
     };
-
-    if last_client.is_scratchpad() {
-        let name = last_client
-            .scratchpad()
-            .expect("is_scratchpad() implies scratchpad data is present")
-            .name()
-            .to_string();
+    if let Some(scratchpad) = view.client.scratchpad() {
+        let name = scratchpad.name().to_string();
         let _ = crate::floating::scratchpad_show_name(ctx, &name);
         return;
     }
+    let tags = view.client.tags;
+    let last_mon_id = view.monitor.id();
 
-    let tags = last_client.tags;
-    let Some(last_mon_id) = ctx.core().state.model.monitor_of_client(last_win) else {
-        return;
-    };
-
-    let sel_mon_id = ctx.core().state.model.selected_monitor_id();
-    if !ctx.core().state.model.monitors.is_empty() && sel_mon_id != last_mon_id {
-        select_monitor(ctx, last_mon_id);
-    }
+    select_monitor(ctx, last_mon_id);
 
     if let Some(cur) = ctx.core().state.model.selected_win() {
         ctx.core_mut().focus.last_client = cur;
@@ -646,8 +656,11 @@ fn get_wrapping_candidate(model: &crate::model::WmModel, direction: Direction) -
     }
     let mon = model.expect_selected_monitor();
     let source_win = mon.selected?;
-    let source_client = model.client(source_win)?;
-    let source_center = source_client.geo.center();
+    let source_center = mon
+        .client(source_win)
+        .expect("selected window is owned by its monitor")
+        .geo
+        .center();
 
     let selected = mon.visible_tags();
 

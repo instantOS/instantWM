@@ -735,22 +735,15 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .get::<crate::client::LaunchContext>()
             .copied();
         if let Some(win) = self.native.window_id_for_surface(&surface) {
-            let is_currently_visible = {
-                let state = &self.wm.core.state;
-                state
-                    .model
-                    .client_view(win)
-                    .is_some_and(|view| view.client.is_visible(view.monitor.visible_tags()))
-            };
-
             self.native
                 .push_command(super::super::commands::WmCommand::ActivateWindow(win));
             self.native.request_bar_redraw();
 
+            // Visibility is decided by the activation command itself; this
+            // log must not pay for a model resolve.
             log::debug!(
-                "xdg_activation: requested activation for window {:?} (visible={}, app_id: {:?})",
+                "xdg_activation: requested activation for window {:?} (app_id: {:?})",
                 win,
-                is_currently_visible,
                 token_data.app_id
             );
         }

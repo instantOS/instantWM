@@ -21,6 +21,11 @@ fn tag_hover_fill_scheme(colors: &TagColorConfigs) -> ColorScheme {
     *colors.colors_for(SchemeHover::Hover, SchemeTag::Filled)
 }
 
+/// Colour one tag cell.
+///
+/// `focus_client` is the selected monitor's selected client, and only for the
+/// bar of that monitor: [`collect_tag_cells`] resolves it once for the whole
+/// row so a tag never pays a model scan.
 fn tag_scheme(
     model: &crate::model::WmModel,
     monitor: &Monitor,
@@ -28,20 +33,13 @@ fn tag_scheme(
     occupied_tags: TagMask,
     urgent_tags: TagMask,
     is_hover: bool,
+    focus_client: Option<&Client>,
 ) -> ColorScheme {
     let tag_num = tag_index as usize + 1;
     let tag_role = if urgent_tags.contains(tag_num) {
         SchemeTag::Urgent
     } else if occupied_tags.contains(tag_num) {
-        let selected_monitor = model.selected_monitor();
-        let selected_client_has_tag = selected_monitor
-            .and_then(|monitor| monitor.selected)
-            .and_then(|win| model.client(win))
-            .is_some_and(|client| client.tags.contains(tag_num));
-
-        if selected_monitor.is_some_and(|selected| selected.num == monitor.num)
-            && selected_client_has_tag
-        {
+        if focus_client.is_some_and(|client| client.tags.contains(tag_num)) {
             SchemeTag::Focus
         } else if monitor.visible_tags().contains(tag_num) {
             SchemeTag::NoFocus
@@ -239,6 +237,7 @@ fn collect_tag_cells(
     urgent_tags: TagMask,
     gesture: Gesture,
     drag_active: bool,
+    focus_client: Option<&Client>,
 ) -> Vec<TagCellSnapshot> {
     let mut tags = Vec::new();
     let config = &core.state.config;
@@ -257,6 +256,7 @@ fn collect_tag_cells(
             occupied_tags,
             urgent_tags,
             is_hover,
+            focus_client,
         );
         if is_hover && drag_active {
             scheme = tag_hover_fill_scheme(&core.state.model.tags.colors);
@@ -278,9 +278,9 @@ fn collect_title_cells(
 ) -> Vec<TitleCellSnapshot> {
     let mut titles = Vec::new();
     for win in mon.bar_client_order() {
-        let Some(c) = core.state.model.client(win) else {
-            continue;
-        };
+        let c = mon
+            .client(win)
+            .expect("the bar order only lists windows this monitor owns");
         let is_hover = gesture == Gesture::WinTitle(c.win);
         let scheme = window_scheme(
             &core.state.model,
@@ -339,7 +339,12 @@ pub(crate) fn build_monitor_snapshots(
     core: &WmCore,
     external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
-    let selected_monitor_num = core.state.model.expect_selected_monitor().num;
+    let selected_monitor = core.state.model.expect_selected_monitor();
+    let selected_monitor_num = selected_monitor.num;
+    // Only the selected monitor's bar highlights the focused client's tags.
+    let selected_client = selected_monitor
+        .selected
+        .and_then(|win| selected_monitor.client(win));
     let tray_monitor_id =
         crate::systray::monitor(&core.state.model, &core.state.config.systray).map(Monitor::id);
     let show_systray = core.state.config.systray.show;
@@ -378,6 +383,11 @@ pub(crate) fn build_monitor_snapshots(
             stats.urgent_tags,
             gesture,
             bar_hover.drag_active,
+            if is_selected_monitor {
+                selected_client
+            } else {
+                None
+            },
         );
 
         let selected_tags = mon.visible_tags();
@@ -986,6 +996,7 @@ mod tests {
             TagMask::single(1).unwrap(),
             TagMask::single(1).unwrap(),
             false,
+            None,
         );
 
         assert_eq!(

@@ -189,14 +189,15 @@ pub fn begin_card_gesture(
     if !ctx.core().state.model.is_overview_active() || button != crate::types::MouseButton::Left {
         return false;
     }
-    let Some(view) = ctx.core().state.model.client_view(window) else {
-        return false;
-    };
+    // Cards are only ever begun on the selected monitor, so its own lookup
+    // both validates ownership and answers eligibility.
     let Some(monitor) = ctx.core().state.model.selected_monitor() else {
         return false;
     };
-    if view.monitor.id() != monitor.id() || !overview_eligible(view.client, monitor.visible_tags())
-    {
+    let Some(client) = monitor.client(window) else {
+        return false;
+    };
+    if !overview_eligible(client, monitor.visible_tags()) {
         return false;
     }
     let threshold = (monitor.monitor_rect.h / 30).max(1);
@@ -218,10 +219,18 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
             .and_then(|drag| drag.update(root))
     });
     if let Some(close_armed) = transition {
-        let outline = close_armed
-            .then_some(window)
-            .and_then(|window| ctx.core().state.model.client(window))
-            .map(|client| client.geo.with_borders(client.border_width));
+        // The dragged card belongs to the selected monitor; reach it there
+        // instead of scanning every monitor for its outline.
+        let outline = if close_armed {
+            ctx.core()
+                .state
+                .model
+                .selected_monitor()
+                .and_then(|monitor| monitor.client(window))
+                .map(|client| client.geo.with_borders(client.border_width))
+        } else {
+            None
+        };
         ctx.update_close_preview(close_armed.then_some(window), outline);
     }
     true
@@ -282,7 +291,7 @@ fn prepare_overview(model: &crate::model::WmModel) -> Option<OverviewState> {
         .or_else(|| window_order.first().copied());
     let restore_geometry = window_order
         .iter()
-        .filter_map(|win| model.client(*win).map(|client| (*win, client.geo)))
+        .filter_map(|win| monitor.client(*win).map(|client| (*win, client.geo)))
         .collect();
     Some(OverviewState::new(
         all_tags,
@@ -319,21 +328,26 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             // Pointer hover deliberately does not send keyboard focus to cards
             // while overview is open. Commit the overview-owned selection on
             // confirmation, falling back to ordinary focus only when the card
-            // disappeared before the exit transition.
-            let selected_window = state
+            // disappeared before the exit transition. One view lookup per
+            // candidate answers both the ownership check and the tags below.
+            let model = &ctx.core().state.model;
+            let resolved = state
                 .active_window
-                .filter(|win| {
-                    ctx.core().state.model.monitor_of_client(*win) == Some(selected_monitor_id)
+                .and_then(|win| {
+                    let view = model.client_view(win)?;
+                    (view.monitor.id() == selected_monitor_id).then_some((win, view.client.tags))
                 })
-                .or_else(|| ctx.core().state.model.selected_win());
-            let selected_tags = selected_window.and_then(|win| {
-                ctx.core()
-                    .state
-                    .model
-                    .client(win)
-                    .map(|c| c.tags.without_scratchpad())
-                    .filter(|tags| !tags.is_empty())
-            });
+                .or_else(|| {
+                    let win = model.selected_win()?;
+                    Some((win, model.client_view(win)?.client.tags))
+                });
+            let (selected_window, selected_tags) = match resolved {
+                Some((win, tags)) => {
+                    let tags = tags.without_scratchpad();
+                    (Some(win), (!tags.is_empty()).then_some(tags))
+                }
+                None => (None, None),
+            };
             restore_window_geometry(ctx, selected_monitor_id, &state.restore_geometry);
 
             let restore_mask = ctx
@@ -421,13 +435,15 @@ pub fn hover_window(
     }
 
     let monitor_id = core.state.model.selected_monitor_id();
+    // Hover targets are resolved against the selected monitor directly: a
+    // window owned by another monitor simply is not eligible, and the
+    // monitor-local hash lookup beats a scan over every monitor on this
+    // per-motion path.
     let eligible = hovered_window.filter(|win| {
-        let model = &core.state.model;
-        let monitor = model.expect_selected_monitor();
-        model.client_view(*win).is_some_and(|view| {
-            view.monitor.id() == monitor_id
-                && overview_eligible(view.client, monitor.visible_tags())
-        })
+        let monitor = core.state.model.expect_selected_monitor();
+        monitor
+            .client(*win)
+            .is_some_and(|client| overview_eligible(client, monitor.visible_tags()))
     });
 
     let changed = {
@@ -590,7 +606,15 @@ fn restore_window_geometry(
     geometry: &HashMap<WindowId, Rect>,
 ) {
     for (&win, &rect) in geometry {
-        if ctx.core().state.model.monitor_of_client(win) == Some(monitor_id) {
+        // The overview projected one monitor's cards: membership is a
+        // monitor-local lookup rather than a scan per restored window.
+        let owned = ctx
+            .core()
+            .state
+            .model
+            .monitor(monitor_id)
+            .is_some_and(|monitor| monitor.client(win).is_some());
+        if owned {
             ctx.move_resize(win, rect, MoveResizeOptions::immediate());
         }
     }

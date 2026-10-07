@@ -17,17 +17,19 @@ use crate::mouse::constants::OVERLAY_ZONE_WIDTH;
 
 use crate::monitor::{TransferFocus, transfer_client};
 
+/// Snap `position` to the edges of the work area under `root`.
+///
+/// `border_width` is the dragged client's modelled border, resolved by the
+/// caller from the client it already holds; an unmanaged drag target counts
+/// as `0`.
 pub fn snap_window_to_monitor_edges(
     state: &CoreState,
-    window: WindowId,
+    border_width: i32,
     content_size: Size,
     position: &mut Point,
     root: Point,
 ) {
     let snap = state.config.window.snap_threshold;
-    let Some(view) = state.model.client_view(window) else {
-        return;
-    };
     let Some(monitor) = state
         .model
         .monitors
@@ -35,7 +37,6 @@ pub fn snap_window_to_monitor_edges(
     else {
         return;
     };
-    let border_width = view.client.border_width.max(0);
     let outer_size = Size::new(
         content_size.w + border_width * 2,
         content_size.h + border_width * 2,
@@ -72,16 +73,20 @@ impl MoveDropTarget {
     }
 }
 
+/// Resolve the destination of a move whose dragged `client` is already known.
+///
+/// The client's mode decides between tree, edge snap, and free placement, so
+/// callers pass the view they resolved for this sample instead of paying for
+/// a second lookup here.
 pub(crate) fn resolve_move_drop(
     model: &crate::model::WmModel,
-    win: WindowId,
+    client: &Client,
     root: Point,
 ) -> Option<MoveDropTarget> {
     let mon = model
         .monitors
         .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))?;
-    let client = model.client(win)?;
-    if bar_monitor_at(model, root).is_some() {
+    if bar_hovered(mon, root) {
         return Some(MoveDropTarget::Bar(mon.id()));
     }
     if client.mode().is_normal_tiling() && mon.current_layout() == PresentationMode::Tiled {
@@ -104,15 +109,19 @@ pub(crate) fn resolve_move_drop(
     Some(MoveDropTarget::Free(mon.id()))
 }
 
+/// Whether `root` sits on `monitor`'s visible bar.
+fn bar_hovered(monitor: &Monitor, root: Point) -> bool {
+    monitor.bar_visible()
+        && monitor.y_in_bar(root.y)
+        && root.x >= monitor.monitor_rect.x
+        && root.x < monitor.monitor_rect.right()
+}
+
 fn bar_monitor_at(model: &crate::model::WmModel, root: Point) -> Option<&crate::types::Monitor> {
     let monitor = model
         .monitors
         .monitor_intersecting_rect(Rect::new(root.x, root.y, 1, 1))?;
-    (monitor.bar_visible()
-        && monitor.y_in_bar(root.y)
-        && root.x >= monitor.monitor_rect.x
-        && root.x < monitor.monitor_rect.right())
-    .then_some(monitor)
+    bar_hovered(monitor, root).then_some(monitor)
 }
 
 // ── move_mouse helpers ────────────────────────────────────────────────────
@@ -184,16 +193,20 @@ pub fn handle_bar_drop(
     } else {
         TransferFocus::FollowWindow
     };
-    if ctx.core().state.model.monitor_of_client(win) != Some(monitor_id)
-        && transfer_client(ctx, win, monitor_id, focus).is_none()
-    {
+    let already_on_bar_monitor = mon.has_client(win);
+    if !already_on_bar_monitor && transfer_client(ctx, win, monitor_id, focus).is_none() {
         return;
     }
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct the saved floating placement afterwards.
-    let was_floating = match ctx.core().state.model.client(win) {
-        Some(c) => c.placement() == ClientPlacement::Floating,
+    // The tag/tile actions below both only read what is captured here, so
+    // this is the single resolution after the transfer.
+    let (was_floating, is_true_fullscreen) = match ctx.core().state.model.client(win) {
+        Some(c) => (
+            c.placement() == ClientPlacement::Floating,
+            c.mode().is_true_fullscreen(),
+        ),
         None => return,
     };
 
@@ -210,13 +223,7 @@ pub fn handle_bar_drop(
         //
 
         // Don't tile fullscreen windows
-        if !ctx
-            .core()
-            .state
-            .model
-            .client(win)
-            .is_some_and(|c| c.mode().is_true_fullscreen())
-        {
+        if !is_true_fullscreen {
             let _ = set_window_mode(ctx, win, WindowModeRequest::Tiling);
         }
         crate::mouse::drag::tag::apply_window_tag_drop(
@@ -255,30 +262,54 @@ pub fn complete_move_drop(
     free_geometry: Rect,
     modifiers: ModMask,
 ) {
-    let target = resolve_move_drop(&ctx.core().state.model, win, root);
+    // Resolve the dropped client once: the destination policy and the
+    // tiling/border decision below both read it.
+    let resolved = {
+        let model = &ctx.core().state.model;
+        model.client(win).map(|client| {
+            (
+                resolve_move_drop(model, client, root),
+                client.mode().is_normal_tiling(),
+                client.old_border_width,
+            )
+        })
+    };
+    let Some((target, is_normal_tiling, old_border_width)) = resolved else {
+        ctx.update_layout_preview(None);
+        return;
+    };
     if matches!(target, Some(MoveDropTarget::Tree(_))) {
         let _ = crate::layouts::place_tree_at_point(ctx, win, root);
     } else if matches!(target, Some(MoveDropTarget::Bar(_))) {
         handle_bar_drop(ctx, win, grab_start_rect, Some(root), modifiers);
     } else if let Some(target) = target {
         let monitor_id = target.monitor();
-        // A tiled source stayed in its slot during preview. Apply its free
-        // destination geometry only on commit, keeping cancellation lossless.
-        if ctx.core().state.model.monitor_of_client(win) != Some(monitor_id) {
+        // Membership on the destination is a hash lookup, not a scan of every
+        // output. A tiled source stayed in its slot during preview. Apply its
+        // free destination geometry only on commit, keeping cancellation
+        // lossless.
+        let already_on_destination = ctx
+            .core()
+            .state
+            .model
+            .monitor(monitor_id)
+            .is_some_and(|monitor| monitor.has_client(win));
+        if !already_on_destination {
             let _ = transfer_client(ctx, win, monitor_id, TransferFocus::FollowWindow);
         }
-        if let Some(client) = ctx.core().state.model.client(win)
-            && client.mode().is_normal_tiling()
-            && ctx
+        // The transfer cannot change the destination's layout or work area,
+        // and neither can the border/geometry updates below: read both once.
+        let (destination_layout, work) = {
+            let monitor = ctx
                 .core()
                 .state
                 .model
                 .monitor(monitor_id)
-                .unwrap()
-                .current_layout()
-                == PresentationMode::Floating
-        {
-            ctx.set_border(win, client.old_border_width);
+                .expect("drop destination resolved its monitor");
+            (monitor.current_layout(), monitor.work_rect())
+        };
+        if is_normal_tiling && destination_layout == PresentationMode::Floating {
+            ctx.set_border(win, old_border_width);
         }
         ctx.move_resize(
             win,
@@ -286,14 +317,15 @@ pub fn complete_move_drop(
             crate::geometry::MoveResizeOptions::hinted_immediate(false),
         );
         if let MoveDropTarget::Snap(_, edge) = target {
-            let work = ctx
-                .core()
+            // The destination owns the window by now, so the saved placement
+            // reaches it through that monitor's own client map.
+            if let Some(client) = ctx
+                .core_mut()
                 .state
                 .model
-                .monitor(monitor_id)
-                .unwrap()
-                .work_rect();
-            if let Some(client) = ctx.core_mut().state.model.client_mut(win) {
+                .monitor_mut(monitor_id)
+                .and_then(|monitor| monitor.client_mut(win))
+            {
                 client.save_floating_placement(free_geometry, work);
                 client.snap_status = edge;
                 if let Some(rect) = edge.target_rect(client.border_width, work) {
@@ -322,28 +354,32 @@ pub fn promote_to_floating(
     // tiled client's manual-tree membership while still allowing it to move
     // freely in that presentation.
     crate::client::fullscreen::leave_maximized(ctx, win);
+    promote_restored_client(ctx, win, intent)
+}
 
-    let (is_floating, geo, monitor_id) = ctx.core().state.model.client_view(win).map(|view| {
-        (
-            view.client.mode().is_normal_floating(),
-            view.client.geo,
-            view.monitor.id(),
-        )
-    })?;
-
-    if is_floating {
-        return Some((geo, false));
-    }
-
-    // Floating layout presentation lets tiled windows move freely without
+/// The promotion half of [`promote_to_floating`], for a caller that already
+/// ran `crate::client::fullscreen::leave_maximized` for this event.
+pub(crate) fn promote_restored_client(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    intent: FloatingPlacementIntent,
+) -> Option<(Rect, bool)> {
+    // One view decides everything: floating clients keep their geometry, and
+    // tiled clients inside a floating presentation move freely without
     // changing their persistent placement mode, so returning to tiling can
     // restore the manual tree.
-    if let Some(view) = ctx.core().state.model.client_view(win)
-        && view.monitor.current_layout() == PresentationMode::Floating
-        && view.client.mode().is_normal_tiling()
-    {
-        return Some((view.client.geo, false));
-    }
+    let monitor_id = {
+        let view = ctx.core().state.model.client_view(win)?;
+        if view.client.mode().is_normal_floating() {
+            return Some((view.client.geo, false));
+        }
+        if view.monitor.current_layout() == PresentationMode::Floating
+            && view.client.mode().is_normal_tiling()
+        {
+            return Some((view.client.geo, false));
+        }
+        view.monitor.id()
+    };
 
     let restored_geometry = match set_window_mode(ctx, win, WindowModeRequest::Floating(intent)) {
         crate::floating::WindowModeChange::ChangedToFloating { restored_geometry } => {
@@ -517,7 +553,11 @@ mod destination_tests {
             })
             .unwrap();
         assert_eq!(
-            resolve_move_drop(&wm.core.state.model, win, root),
+            resolve_move_drop(
+                &wm.core.state.model,
+                wm.core.state.model.client(win).unwrap(),
+                root
+            ),
             Some(MoveDropTarget::Bar(b))
         );
         handle_bar_drop(
@@ -594,7 +634,11 @@ mod destination_tests {
         let root = Point::new(1599, 300);
         let free = Rect::new(1300, 150, 300, 200);
         assert_eq!(
-            resolve_move_drop(&wm.core.state.model, win, root),
+            resolve_move_drop(
+                &wm.core.state.model,
+                wm.core.state.model.client(win).unwrap(),
+                root
+            ),
             Some(MoveDropTarget::Snap(b, SnapPosition::Right))
         );
         complete_move_drop(&mut wm.test_ctx(), win, free, root, free, ModMask::NONE);

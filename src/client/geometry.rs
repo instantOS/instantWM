@@ -36,16 +36,19 @@ const FIRST_FLOAT_MAX_DENOMINATOR: i32 = 4;
 /// reference work area. First-time transitions use the client's pre-layout
 /// preferred size when available, otherwise its tiled size, capped to 75% of
 /// the work area. Every result is fully contained inside the current work area.
+/// `border_width` is the border the floating placement will use, which may
+/// differ from the current tiled or fullscreen border.
 pub fn resolve_floating_transition(
     client: &Client,
     work_area: Rect,
     intent: FloatingPlacementIntent,
+    border_width: i32,
 ) -> Rect {
     if !work_area.is_valid() {
         return client.geo;
     }
 
-    let border = client.border_width.max(0);
+    let border = border_width.max(0);
     let saved = client.saved_floating_placement();
     let mut size = saved
         .map(|placement| placement.rect.size())
@@ -67,8 +70,8 @@ pub fn resolve_floating_transition(
     let total_h = size.h + 2 * border;
     let position = match intent {
         FloatingPlacementIntent::PreservePointerAnchor(pointer) => {
-            let current_total_w = client.total_width().max(1);
-            let current_total_h = client.total_height().max(1);
+            let current_total_w = client.geo.total_width(border).max(1);
+            let current_total_h = client.geo.total_height(border).max(1);
             let anchor_x =
                 ((pointer.x - client.geo.x) as f64 / current_total_w as f64).clamp(0.0, 1.0);
             let anchor_y =
@@ -305,35 +308,52 @@ fn normalize_spawn_axis(
     Rect::clamp_fully_contained_axis(pos, total_len, bounds_pos, bounds_len)
 }
 
-/// Result of [`apply_size_hints`] indicating whether backend/protocol client
-/// constraints should also be applied to the dimensions.
-pub(crate) struct SizeHintsOutcome {
-    pub should_apply_client_hints: bool,
+/// Size constraints a client advertises: its size hints and aspect bounds.
+///
+/// Owned so a resize can carry them past the model borrow into backend
+/// refinement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ClientSizeConstraints {
+    pub hints: crate::types::SizeHints,
+    pub min_aspect: f32,
+    pub max_aspect: f32,
+    /// Whether `hints` reflect the client's current protocol state. X11
+    /// re-reads stale hints from the server before constraining.
+    pub hints_valid: bool,
 }
 
-pub fn apply_size_hints(
-    model: &WmModel,
+impl ClientSizeConstraints {
+    pub fn of(client: &Client) -> Self {
+        Self {
+            hints: client.size_hints,
+            min_aspect: client.min_aspect,
+            max_aspect: client.max_aspect,
+            hints_valid: client.size_hints_valid,
+        }
+    }
+
+    /// Constrain the size of `rect`, keeping its position.
+    pub fn constrain(&self, rect: Rect) -> Rect {
+        rect.with_size(
+            self.hints
+                .constrain_size(rect.size(), self.min_aspect, self.max_aspect),
+        )
+    }
+}
+
+/// Clamp a proposed geometry to the shared WM bounds before client size hints.
+///
+/// Ensures positive dimensions, keeps the outer rect (`border_width`
+/// included) visible in `work_rect` (or the whole screen when `interact`),
+/// and enforces the bar height as minimum size.
+pub(crate) fn apply_size_hints(
     config: &crate::core_state::EffectiveConfig,
-    derived: &crate::core_state::DerivedState,
-    win: WindowId,
+    display: &crate::core_state::DisplayConfig,
+    border_width: i32,
+    work_rect: Rect,
     rect: &mut Rect,
     interact: bool,
-) -> SizeHintsOutcome {
-    let view = match model.client_view(win) {
-        Some(view) => view,
-        None => {
-            return SizeHintsOutcome {
-                should_apply_client_hints: false,
-            };
-        }
-    };
-    let client = view.client;
-
-    let border_width = client.border_width;
-    let should_apply_hints = config.window.resize_hints
-        || client.mode().is_normal_floating()
-        || is_floating_layout(model, view.monitor);
-
+) {
     // Phase 1: Ensure positive dimensions.
     rect.w = rect.w.max(1);
     rect.h = rect.h.max(1);
@@ -341,27 +361,11 @@ pub fn apply_size_hints(
     // Phase 2: Clamp position to keep window visible.
     let total_w = rect.total_width(border_width);
     let total_h = rect.total_height(border_width);
-    clamp_position_to_bounds(
-        &derived.display,
-        rect,
-        Some(view.monitor.work_rect()),
-        interact,
-        total_w,
-        total_h,
-    );
+    clamp_position_to_bounds(display, rect, Some(work_rect), interact, total_w, total_h);
 
     // Phase 3: Enforce minimum size (bar height).
     let bar_height = config.bar_metrics().height;
     rect.enforce_minimum(bar_height, bar_height);
-
-    SizeHintsOutcome {
-        should_apply_client_hints: should_apply_hints,
-    }
-}
-
-/// Check if the given rect differs from the client's current stored geometry.
-pub(crate) fn size_hints_changed(model: &WmModel, win: WindowId, rect: &Rect) -> bool {
-    model.client(win).map(|c| *rect != c.geo).unwrap_or(false)
 }
 
 /// Clamp window position to keep it within usable screen area.
@@ -381,7 +385,7 @@ fn clamp_position_to_bounds(
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(model: &WmModel, monitor: &Monitor) -> bool {
+pub(crate) fn is_floating_layout(model: &WmModel, monitor: &Monitor) -> bool {
     if model.is_overview_active_on(monitor) {
         return false;
     }
@@ -417,22 +421,15 @@ fn calculate_scaled_geometry(
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
 pub fn scale_client(ctx: &mut WmCtx<'_>, win: WindowId, scale: i32) {
-    let target = {
-        let model = &ctx.core().state.model;
-        let (old_geo, border_width, monitor_rect) = if let Some(view) = model.client_view(win) {
-            (
-                view.client.geo,
-                view.client.border_width,
-                view.monitor.monitor_rect,
-            )
-        } else {
-            let Some(client) = model.client(win) else {
-                return;
-            };
-            (client.geo, client.border_width, client.geo)
-        };
-        calculate_scaled_geometry(monitor_rect, old_geo, border_width, scale)
+    let Some(view) = ctx.core().state.model.client_view(win) else {
+        return;
     };
+    let target = calculate_scaled_geometry(
+        view.monitor.monitor_rect,
+        view.client.geo,
+        view.client.border_width,
+        scale,
+    );
 
     ctx.move_resize(win, target, MoveResizeOptions::hinted_immediate(false));
 }
@@ -495,8 +492,12 @@ mod tests {
         let work = Rect::new(1920, 32, 1600, 868);
         let client = tiled_client(Rect::new(1920, 32, 1600, 868), 2);
 
-        let resolved =
-            resolve_floating_transition(&client, work, FloatingPlacementIntent::RestoreOrCenter);
+        let resolved = resolve_floating_transition(
+            &client,
+            work,
+            FloatingPlacementIntent::RestoreOrCenter,
+            client.border_width,
+        );
 
         assert_eq!(resolved.size(), Size::new(1196, 647));
         let center = outer_rect(resolved, 2).center();
@@ -512,8 +513,12 @@ mod tests {
         let mut client = tiled_client(work, 1);
         client.set_preferred_floating_size(Size::new(800, 600));
 
-        let resolved =
-            resolve_floating_transition(&client, work, FloatingPlacementIntent::RestoreOrCenter);
+        let resolved = resolve_floating_transition(
+            &client,
+            work,
+            FloatingPlacementIntent::RestoreOrCenter,
+            client.border_width,
+        );
 
         assert_eq!(resolved.size(), Size::new(800, 600));
         assert_eq!(outer_rect(resolved, 1).center(), work.center());
@@ -531,6 +536,7 @@ mod tests {
             &client,
             new_work,
             FloatingPlacementIntent::RestoreOrCenter,
+            client.border_width,
         );
 
         assert_eq!(resolved.size(), saved.size());
@@ -547,8 +553,12 @@ mod tests {
             Rect::new(0, 0, 2560, 1440),
         );
 
-        let resolved =
-            resolve_floating_transition(&client, work, FloatingPlacementIntent::RestoreOrCenter);
+        let resolved = resolve_floating_transition(
+            &client,
+            work,
+            FloatingPlacementIntent::RestoreOrCenter,
+            client.border_width,
+        );
 
         assert_eq!(resolved, Rect::new(100, 50, 794, 594));
         assert_eq!(outer_rect(resolved, 3), work);
@@ -565,11 +575,28 @@ mod tests {
             &client,
             work,
             FloatingPlacementIntent::PreservePointerAnchor(pointer),
+            client.border_width,
         );
 
         assert_eq!(resolved, Rect::new(90, 132, 480, 360));
         assert_eq!(pointer.x - resolved.x, 360);
         assert_eq!(pointer.y - resolved.y, 90);
+    }
+
+    #[test]
+    fn floating_transition_uses_the_requested_border_without_mutating_the_client() {
+        let work = Rect::new(0, 0, 1000, 800);
+        let mut client = tiled_client(work, 0);
+        client.old_border_width = 4;
+        client.save_floating_placement(work, work);
+        let resolved = resolve_floating_transition(
+            &client,
+            work,
+            FloatingPlacementIntent::RestoreOrCenter,
+            client.restored_border_width(),
+        );
+        assert_eq!(resolved, Rect::new(0, 0, 992, 792));
+        assert_eq!(client.border_width, 0);
     }
 
     #[test]

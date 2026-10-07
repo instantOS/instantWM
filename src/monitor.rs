@@ -528,16 +528,23 @@ fn rehome_orphaned_clients(
         // Adoption prepends in focus order and attaches at the top of z-order.
         // Reapply the disconnected output's independent bottom-to-top order.
         for win in removed_monitor.z_order {
-            model.raise_client_in_z_order(win);
+            // The call has a side effect, so its result is read before the
+            // assertion: `debug_assert!` does not evaluate in release builds.
+            let owner = model.raise_client_in_z_order(win);
+            debug_assert_eq!(
+                owner,
+                Some(survivor),
+                "re-homed client must belong to its survivor monitor"
+            );
         }
     }
     if let Some(monitor) = model.monitor_mut(survivor) {
         monitor.set_selected_tags(reachable_tags);
-    }
-    if let Some(win) = previous_focus
-        && model.monitor_of_client(win) == Some(survivor)
-    {
-        model.monitor_mut(survivor).unwrap().selected = Some(win);
+        // Restoring the previous focus is the same ownership check, resolved
+        // through the monitor handle already taken above.
+        if previous_focus.is_some_and(|win| monitor.has_client(win)) {
+            monitor.selected = previous_focus;
+        }
     }
 }
 

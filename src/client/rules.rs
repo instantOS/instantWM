@@ -4,8 +4,8 @@ use crate::client::LaunchContext;
 use crate::core_state::CoreState;
 use crate::core_state::WmCore;
 use crate::types::{
-    ClientMode, ClientPlacement, MonitorSelector, Rect, RuleFloat, RuleGeometry, SizeHints,
-    TagMask, WindowId,
+    Client, ClientMode, ClientPlacement, MonitorId, MonitorSelector, Rect, RuleFloat, RuleGeometry,
+    SizeHints, TagMask, WindowId,
 };
 
 /// Properties used for rule matching.
@@ -75,89 +75,113 @@ pub fn apply_initial_rules(
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
 ) -> InitialRuleOutcome {
-    let before = rule_state_snapshot(state, win);
-    let placement = apply_rules_impl(state, win, props, launch_context, RuleApplication::Initial);
+    let Some(before) = state
+        .model
+        .client_view(win)
+        .map(|view| RuleStateSnapshot::capture(view.client, view.monitor.id()))
+    else {
+        return InitialRuleOutcome::default();
+    };
+    let applied = apply_rules_impl(state, win, props, launch_context, RuleApplication::Initial)
+        .expect("client was resolved before rule application");
+    let after = RuleStateSnapshot::capture(
+        owned_client(state, applied.monitor_id, win),
+        applied.monitor_id,
+    );
     InitialRuleOutcome {
-        changed: before != rule_state_snapshot(state, win),
-        placement,
+        changed: before != after,
+        placement: applied.placement,
     }
 }
 
+/// Result of one rule application pass.
+#[derive(Debug, Clone, Copy)]
+struct RulesApplied {
+    placement: InitialRulePlacement,
+    /// Monitor owning the client once rules ran; a monitor rule may move it.
+    monitor_id: MonitorId,
+}
+
+/// Apply rules to `win`; `None` means `win` is not managed.
 fn apply_rules_impl(
     state: &mut CoreState,
     win: WindowId,
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
     application: RuleApplication,
-) -> InitialRulePlacement {
-    let mut placement = InitialRulePlacement::Default;
-
-    // Title and an already-established runtime role survive rule refreshes.
-    if let Some(c) = state.model.client_mut(win) {
-        if !props.title.is_empty() {
-            c.name = props.title.clone();
-        }
-
-        // Scratchpad state is a runtime role assigned after manage. On Wayland
-        // we may see later title/app_id updates that re-run this function; do
-        // not let those rule refreshes retag an existing scratchpad back into
-        // a normal window.
-        if c.is_scratchpad() {
-            return InitialRulePlacement::Default;
-        }
-    }
-
+) -> Option<RulesApplied> {
     // `ins` and the other compositor integrations launch scratchpad terminals
     // with a stable `scratchpad_<name>` class/app-id. Classify that protocol
     // role before clearing inherited tags or running ordinary window rules, so
-    // the client can never occupy a tiling leaf for its first arrange.
-    if application == RuleApplication::Initial
-        && let Some(name) =
+    // the client can never occupy a tiling leaf for its first arrange. A name
+    // already held by another scratchpad is left to the ordinary rules.
+    let new_scratchpad_name = (application == RuleApplication::Initial)
+        .then(|| {
             crate::floating::scratchpad::name_from_window_identity(&props.class, &props.instance)
-                .map(str::to_owned)
-    {
-        let role = state.model.client_view(win).map(|view| {
-            let content = view.monitor.visible_content_rect();
-            (
-                view.monitor.id(),
-                content,
-                view.client.border_width,
-                view.monitor.selected.filter(|&selected| selected != win),
-            )
+        })
+        .flatten()
+        .filter(|name| state.model.scratchpad_find(name).is_none())
+        .map(str::to_owned);
+    let initial_placement = if launch_context.is_some_and(|ctx| ctx.is_floating) {
+        ClientPlacement::Floating
+    } else {
+        ClientPlacement::Tiling
+    };
+
+    let monitor = state.model.client_owner_mut(win)?;
+    let monitor_id = monitor.id();
+    let content = monitor.visible_content_rect();
+    let restore_focus = monitor.selected.filter(|&selected| selected != win);
+    let client = monitor
+        .client_mut(win)
+        .expect("monitor was resolved as the client's owner");
+
+    // Title and an already-established runtime role survive rule refreshes.
+    if !props.title.is_empty() {
+        client.name = props.title.clone();
+    }
+
+    // Scratchpad state is a runtime role assigned after manage. On Wayland we
+    // may see later title/app_id updates that re-run this function; do not
+    // let those rule refreshes retag an existing scratchpad back into a
+    // normal window.
+    if client.is_scratchpad() {
+        return Some(RulesApplied {
+            placement: InitialRulePlacement::Default,
+            monitor_id,
         });
-        if let Some((monitor_id, content, border_width, restore_focus)) = role
-            && state.model.scratchpad_find(&name).is_none()
-            && let Some(client) = state.model.client_mut(win)
-        {
-            // Launcher identity owns this initial role. Generic backend
-            // stickiness is not an ordinary preference to restore later.
-            client.is_sticky = false;
-            let _ = client.promote_to_scratchpad(monitor_id, &name, None, content.w, content.h);
-            if let Ok(rect) =
-                crate::floating::scratchpad::default_regular_scratchpad_rect(content, border_width)
-            {
-                client.geo = rect;
-                client.set_preferred_floating_size(rect.size());
-            }
-            if let Some(scratchpad) = client.scratchpad_mut() {
-                scratchpad.remember_focus(restore_focus);
-            }
-            return InitialRulePlacement::Center;
+    }
+
+    if let Some(name) = new_scratchpad_name {
+        // Launcher identity owns this initial role. Generic backend
+        // stickiness is not an ordinary preference to restore later.
+        client.is_sticky = false;
+        let _ = client.promote_to_scratchpad(monitor_id, &name, None, content.w, content.h);
+        if let Ok(rect) = crate::floating::scratchpad::default_regular_scratchpad_rect(
+            content,
+            client.border_width,
+        ) {
+            client.geo = rect;
+            client.set_preferred_floating_size(rect.size());
         }
+        if let Some(scratchpad) = client.scratchpad_mut() {
+            scratchpad.remember_focus(restore_focus);
+        }
+        return Some(RulesApplied {
+            placement: InitialRulePlacement::Center,
+            monitor_id,
+        });
     }
 
     // --- Initialise fields we are about to set -------------------------------
-    if let Some(c) = state.model.client_mut(win) {
-        let placement = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
-            ClientPlacement::Floating
-        } else {
-            ClientPlacement::Tiling
-        };
-        c.set_placement(placement);
-        c.set_tag_mask(crate::types::TagMask::EMPTY);
-    }
+    client.set_placement(initial_placement);
+    client.set_tag_mask(TagMask::EMPTY);
 
     let tag_mask = state.model.tags.mask();
+    let mut applied = RulesApplied {
+        placement: InitialRulePlacement::Default,
+        monitor_id,
+    };
 
     // Pending tmp rules are tried before config rules, only on initial
     // application (not on property refreshes). On a match the rule is
@@ -181,7 +205,7 @@ fn apply_rules_impl(
             .position(|p| p.rule.matches(&props.class, &props.instance, &props.title));
         if let Some(idx) = matched_idx {
             let entry = state.behavior.pending_tmp_rules.remove(idx);
-            apply_rule(state, win, &entry.rule, &mut placement);
+            apply_rule(state, win, &entry.rule, &mut applied);
             matched_pending = true;
         }
     }
@@ -196,14 +220,23 @@ fn apply_rules_impl(
             .find(|rule| rule.matches(&props.class, &props.instance, &props.title))
             .cloned();
         if let Some(rule) = matched_rule {
-            apply_rule(state, win, &rule, &mut placement);
+            apply_rule(state, win, &rule, &mut applied);
         }
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
-    clamp_client_tags(state, win, tag_mask, launch_context);
+    clamp_client_tags(state, win, applied.monitor_id, tag_mask, launch_context);
 
-    placement
+    Some(applied)
+}
+
+/// Reach `win` through the monitor rule application reported as its owner.
+fn owned_client(state: &CoreState, monitor_id: MonitorId, win: WindowId) -> &Client {
+    state
+        .model
+        .monitor(monitor_id)
+        .and_then(|monitor| monitor.client(win))
+        .expect("rule application reports the client's owning monitor")
 }
 
 /// Refresh rule-derived metadata after a backend property update.
@@ -220,10 +253,11 @@ fn apply_property_change(
     props: &WindowProperties,
 ) -> Option<PropertyUpdateOutcome> {
     let (before, existing_context) = {
-        // The owning monitor is the model's relationship, not the client's, so
-        // it is resolved before the mutable client borrow.
-        let monitor_id = state.model.monitor_of_client(win)?;
-        let client = state.model.client_mut(win)?;
+        let monitor = state.model.client_owner_mut(win)?;
+        let monitor_id = monitor.id();
+        let client = monitor
+            .client_mut(win)
+            .expect("monitor was resolved as the client's owner");
         let before = PropertyStateSnapshot::capture(client, monitor_id);
         if let Some(hints) = props.size_hints {
             client.size_hints = hints;
@@ -239,18 +273,19 @@ fn apply_property_change(
         )
     };
 
-    apply_rules_impl(
+    let applied = apply_rules_impl(
         state,
         win,
         props,
         Some(existing_context),
         RuleApplication::PropertyRefresh,
-    );
+    )
+    .expect("client was resolved before rule application");
 
-    let after = state
-        .model
-        .client_view(win)
-        .map(|view| PropertyStateSnapshot::capture(view.client, view.monitor.id()))?;
+    let after = PropertyStateSnapshot::capture(
+        owned_client(state, applied.monitor_id, win),
+        applied.monitor_id,
+    );
     Some(PropertyUpdateOutcome::between(before, after))
 }
 
@@ -278,6 +313,36 @@ pub fn update_window_properties(
         core.bar.mark_dirty();
     }
     core.state.model.selected_win() != previous_selection
+}
+
+/// Record a backend-reported transient parent and float a client that just
+/// became transient.
+///
+/// Returns the client's monitor so the backend can schedule its layout
+/// follow-up, or `None` when `win` is not managed.
+pub fn update_transient_for(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    win: WindowId,
+    parent: Option<WindowId>,
+) -> Option<crate::types::MonitorId> {
+    let monitor = ctx.core_mut().state.model.client_owner_mut(win)?;
+    let monitor_id = monitor.id();
+    let client = monitor
+        .client_mut(win)
+        .expect("owner was resolved from client membership");
+    let needs_float = parent.is_some() && client.placement() != ClientPlacement::Floating;
+    client.transient_for = parent;
+
+    if needs_float {
+        let _ = crate::floating::set_window_placement_from_policy(
+            ctx,
+            win,
+            crate::floating::WindowModeRequest::Floating(
+                crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+            ),
+        );
+    }
+    Some(monitor_id)
 }
 
 /// Monitor geometry available to rule application.
@@ -347,80 +412,81 @@ fn apply_float_rule(
 /// Used both for the fallback config-rule pass and the leading pending-tmp-rule
 /// pass in [`apply_rules_impl`]. Extracted so the matching-class override,
 /// monitor placement, floating placement and tag assignment use the same code
-/// path regardless of rule origin.
+/// path regardless of rule origin. `applied.monitor_id` must name the client's
+/// owner on entry and is updated when a monitor rule moves it.
 fn apply_rule(
     state: &mut CoreState,
     win: WindowId,
     rule: &crate::types::Rule,
-    placement: &mut InitialRulePlacement,
+    applied: &mut RulesApplied,
 ) {
-    // Special case: Onboard (on-screen keyboard) is always sticky.
-    if rule.class.as_deref() == Some("Onboard")
-        && let Some(c) = state.model.client_mut(win)
-    {
-        c.is_sticky = true;
-    }
+    applied.monitor_id = apply_monitor_rule(state, win, applied.monitor_id, rule);
 
-    apply_monitor_rule(state, win, rule);
-
+    let monitor = state
+        .model
+        .monitor_mut(applied.monitor_id)
+        .expect("rule application reports the client's owning monitor");
     // Derived monitor geometry for the float / geometry rule arms. Both
     // rectangles are the monitor's own; the client's tag mask is still empty
     // here, so nothing about this lookup may depend on it.
-    let geo = {
-        let view = match state.model.client_view(win) {
-            Some(view) => view,
-            None => return,
-        };
-        RuleMonitorGeo {
-            monitor_rect: view.monitor.monitor_rect,
-            work_rect: view.monitor.work_rect(),
-        }
+    let geo = RuleMonitorGeo {
+        monitor_rect: monitor.monitor_rect,
+        work_rect: monitor.work_rect(),
     };
+    let c = monitor
+        .client_mut(win)
+        .expect("rule application reports the client's owning monitor");
 
-    if let Some(c) = state.model.client_mut(win) {
-        // A geometry is a floating placement instruction even when the rule
-        // does not spell out `is_floating`.
-        let effective_float = rule
-            .is_floating
-            .or_else(|| rule.geometry.is_some().then_some(RuleFloat::Float));
-        if let Some(ref float_rule) = effective_float {
-            apply_float_rule(c, float_rule, geo);
-            *placement = match float_rule {
-                RuleFloat::FloatCenter => InitialRulePlacement::Center,
-                RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
-                _ => InitialRulePlacement::Default,
-            };
-        }
-        if let Some(geometry) = rule.geometry {
-            apply_geometry_rule(c, geometry, geo);
-            *placement = InitialRulePlacement::Preserve;
-        }
-        if rule.borderless {
-            c.is_borderless = true;
-            c.border_width = 0;
-            c.old_border_width = 0;
-        }
-        c.update_tag_mask(|tags| tags | rule.tags);
+    // Special case: Onboard (on-screen keyboard) is always sticky.
+    if rule.class.as_deref() == Some("Onboard") {
+        c.is_sticky = true;
     }
+
+    // A geometry is a floating placement instruction even when the rule
+    // does not spell out `is_floating`.
+    let effective_float = rule
+        .is_floating
+        .or_else(|| rule.geometry.is_some().then_some(RuleFloat::Float));
+    if let Some(ref float_rule) = effective_float {
+        apply_float_rule(c, float_rule, geo);
+        applied.placement = match float_rule {
+            RuleFloat::FloatCenter => InitialRulePlacement::Center,
+            RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
+            _ => InitialRulePlacement::Default,
+        };
+    }
+    if let Some(geometry) = rule.geometry {
+        apply_geometry_rule(c, geometry, geo);
+        applied.placement = InitialRulePlacement::Preserve;
+    }
+    if rule.borderless {
+        c.is_borderless = true;
+        c.border_width = 0;
+        c.old_border_width = 0;
+    }
+    c.update_tag_mask(|tags| tags | rule.tags);
 }
 
-/// Move `win` to the monitor named in `rule.monitor`, if any.
-fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types::Rule) {
+/// Move `win` from `current` to the monitor named in `rule.monitor`, if any,
+/// and return the monitor that owns it afterwards.
+fn apply_monitor_rule(
+    state: &mut CoreState,
+    win: WindowId,
+    current: MonitorId,
+    rule: &crate::types::Rule,
+) -> MonitorId {
     if matches!(rule.monitor, MonitorSelector::Any) {
-        return;
+        return current;
     }
 
     let Some(target_mid) = crate::monitor::resolve_monitor_selector(&state.model, &rule.monitor)
     else {
-        return;
+        return current;
     };
 
-    state.model.reassign_client_monitor(win, target_mid);
-    debug_assert_eq!(
-        state.model.monitor_of_client(win),
-        Some(target_mid),
-        "rule target must be a valid managed monitor"
-    );
+    let moved = state.model.reassign_client_monitor(win, target_mid);
+    debug_assert!(moved, "rule target must be a valid managed monitor");
+    if moved { target_mid } else { current }
 }
 
 /// Pin a floating window to an exact rectangle relative to the target
@@ -446,9 +512,24 @@ struct RuleStateSnapshot {
     is_borderless: bool,
     border_width: i32,
     old_border_width: i32,
-    monitor_id: crate::types::MonitorId,
+    monitor_id: MonitorId,
     tags: TagMask,
     geo: Rect,
+}
+
+impl RuleStateSnapshot {
+    fn capture(c: &Client, monitor_id: MonitorId) -> Self {
+        Self {
+            mode: c.mode(),
+            is_sticky: c.is_sticky,
+            is_borderless: c.is_borderless,
+            border_width: c.border_width,
+            old_border_width: c.old_border_width,
+            monitor_id,
+            tags: c.tags,
+            geo: c.geo,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -460,18 +541,9 @@ struct PropertyStateSnapshot {
 }
 
 impl PropertyStateSnapshot {
-    fn capture(c: &crate::types::Client, monitor_id: crate::types::MonitorId) -> Self {
+    fn capture(c: &Client, monitor_id: MonitorId) -> Self {
         Self {
-            rule: RuleStateSnapshot {
-                mode: c.mode(),
-                is_sticky: c.is_sticky,
-                is_borderless: c.is_borderless,
-                border_width: c.border_width,
-                old_border_width: c.old_border_width,
-                monitor_id,
-                tags: c.tags,
-                geo: c.geo,
-            },
+            rule: RuleStateSnapshot::capture(c, monitor_id),
             title: c.name.clone(),
             size_hints: c.size_hints,
             size_hints_valid: c.size_hints_valid,
@@ -482,8 +554,8 @@ impl PropertyStateSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "the outcome reports required layout and bar invalidation"]
 struct PropertyUpdateOutcome {
-    previous_monitor: crate::types::MonitorId,
-    current_monitor: crate::types::MonitorId,
+    previous_monitor: MonitorId,
+    current_monitor: MonitorId,
     layout_changed: bool,
     bar_changed: bool,
 }
@@ -502,45 +574,32 @@ impl PropertyUpdateOutcome {
     }
 }
 
-fn rule_state_snapshot(state: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
-    let view = state.model.client_view(win)?;
-    Some(RuleStateSnapshot {
-        mode: view.client.mode(),
-        is_sticky: view.client.is_sticky,
-        is_borderless: view.client.is_borderless,
-        border_width: view.client.border_width,
-        old_border_width: view.client.old_border_width,
-        monitor_id: view.monitor.id(),
-        tags: view.client.tags,
-        geo: view.client.geo,
-    })
-}
-
-/// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
+/// Clamp `win`'s tag mask to valid bits and fall back to its monitor's active
 /// tags when no rule-assigned tag is currently visible.
 fn clamp_client_tags(
     state: &mut CoreState,
     win: WindowId,
+    monitor_id: MonitorId,
     tag_mask: TagMask,
     launch_context: Option<LaunchContext>,
 ) {
-    let Some(view) = state.model.client_view(win) else {
-        return;
-    };
-    let client_tags = view.client.tags;
-    let monitor_tags = view.monitor.selected_tags();
+    let monitor = state
+        .model
+        .monitor_mut(monitor_id)
+        .expect("rule application reports the client's owning monitor");
+    let monitor_tags = monitor.selected_tags();
+    let client = monitor
+        .client_mut(win)
+        .expect("rule application reports the client's owning monitor");
 
-    let mut final_tags = client_tags & tag_mask;
+    let mut final_tags = client.tags & tag_mask;
     if final_tags.is_empty() {
         final_tags = launch_context
             .map(|ctx| ctx.tags & tag_mask)
             .filter(|tags| !tags.is_empty())
             .unwrap_or(monitor_tags);
     }
-
-    if let Some(c) = state.model.client_mut(win) {
-        c.set_tag_mask(final_tags);
-    }
+    client.set_tag_mask(final_tags);
 }
 
 #[cfg(test)]

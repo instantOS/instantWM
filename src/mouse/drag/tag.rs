@@ -81,7 +81,9 @@ pub(crate) fn apply_window_tag_drop(
     modifiers: ModMask,
 ) {
     match TagDropBehavior::from_modifiers(modifiers) {
-        TagDropBehavior::Move => crate::tags::client_tags::set_client_tag(ctx, win, tag_mask),
+        TagDropBehavior::Move => {
+            let _ = crate::tags::client_tags::set_client_tag(ctx, win, tag_mask);
+        }
         TagDropBehavior::MoveAndFollow => crate::tags::client_tags::follow_tag(ctx, win, tag_mask),
     }
 }

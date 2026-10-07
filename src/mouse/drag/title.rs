@@ -46,28 +46,26 @@ pub fn title_drag_begin(
     click_root: Point,
     suppress_click_action: bool,
 ) -> bool {
-    if btn == MouseButton::Right {
-        let is_true_fullscreen = match ctx.core().state.model.client(win) {
-            Some(c) => c.mode().is_true_fullscreen(),
-            None => return false,
+    // One resolution for every arming fact. The right-button gate runs before
+    // the optional focus below, which changes selection but never a client's
+    // geometry or hidden state.
+    let (drop_restore_geo, was_hidden) = {
+        let Some(client) = ctx.core().state.model.client(win) else {
+            return false;
         };
-        if is_true_fullscreen {
+        if btn == MouseButton::Right && client.mode().is_true_fullscreen() {
             return false;
         }
+        (
+            client.saved_floating_rect().unwrap_or(client.geo),
+            client.is_hidden,
+        )
+    };
+    if btn == MouseButton::Right {
         crate::focus::focus(ctx, Some(win));
     }
 
     let sel = ctx.core().state.model.selected_win();
-    let drop_restore_geo = match ctx.core().state.model.client(win) {
-        Some(c) => c.saved_floating_rect().unwrap_or(c.geo),
-        None => return false,
-    };
-    let was_hidden = ctx
-        .core()
-        .state
-        .model
-        .client(win)
-        .is_some_and(|client| client.is_hidden);
     ctx.transition_pointer_interaction(|drag| {
         drag.arm_title_drag(crate::core_state::ArmedDragStart {
             win,
@@ -104,16 +102,26 @@ fn begin_move_drag(
     input: DragInput,
     start_point: Point,
 ) -> Option<(Rect, Point)> {
-    let client = ctx.core().state.model.client(win)?;
-    if client.is_edge_scratchpad() {
+    // One view decides eligibility, snap restoration, and whether this is a
+    // manual-tree gesture. `reset_snap` below is the only state change before
+    // the geometry is read back for that gesture.
+    let (blocked, snapped, manual) = {
+        let view = ctx.core().state.model.client_view(win)?;
+        (
+            view.client.is_edge_scratchpad(),
+            view.client.snap_status != SnapPosition::None,
+            crate::layouts::manager::uses_manual_tree_pointer_interaction(view),
+        )
+    };
+    if blocked {
         return None;
     }
-    if client.snap_status != SnapPosition::None {
+    if snapped {
         crate::floating::reset_snap(ctx, win);
     }
 
     let position = input.position();
-    if crate::layouts::manager::uses_manual_tree_pointer_interaction(&ctx.core().state.model, win) {
+    if manual {
         let geo = ctx.core().client_geo(win)?;
         Some((geo, start_point))
     } else {
@@ -147,10 +155,13 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     let is_right_click = btn == MouseButton::Right;
 
     if is_right_click {
-        if crate::layouts::manager::uses_manual_tree_pointer_interaction(
-            &ctx.core().state.model,
-            win,
-        ) {
+        if ctx
+            .core()
+            .state
+            .model
+            .client_view(win)
+            .is_some_and(crate::layouts::manager::uses_manual_tree_pointer_interaction)
+        {
             // Bar-title resizing retains its established bottom-right handle;
             // Super+right-drag uses the pointer's quadrant instead.
             let point = if suppress_click_action {

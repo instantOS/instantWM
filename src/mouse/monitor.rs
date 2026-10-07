@@ -9,8 +9,8 @@
 //! ```text
 //! shared move/resize interaction ends
 //!   └─► handle_client_monitor_switch(win)
-//!             └─► reads client.geo
-//!                   └─► handle_monitor_switch(win, &rect)
+//!             └─► resolves client.geo + its owning monitor
+//!                   └─► handle_monitor_switch(win, owner, &rect)
 //!                             ├─► MonitorManager lookup → target monitor id
 //!                             └─► transfer_client(FollowWindow)
 //!                                   ├─► reassigns client
@@ -21,36 +21,33 @@ use crate::contexts::WmCtx;
 use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::*;
 
-/// Check whether `rect` lies on a different monitor than the one currently
-/// owning `c_win` and, if so, migrate the window and update `selmon`.
+/// Check whether `rect` lies on a different monitor than `owner` and, if so,
+/// migrate the window and update `selmon`.
 ///
 /// This is the low-level primitive.  Most call-sites should use
-/// [`handle_client_monitor_switch`] which reads the rect from the client.
+/// [`handle_client_monitor_switch`], which resolves the window's owner for
+/// them.
 ///
 /// # Parameters
 ///
 /// * `ctx` - The mouse context containing monitor state
 /// * `c_win` - The client window to potentially move
+/// * `owner` - The monitor currently holding `c_win`
 /// * `rect` - The window's geometry to check against monitor boundaries
-pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    let core_state = &ctx.core().state;
-    let Some(target) = core_state.model.monitors.monitor_by_rect(*rect) else {
+pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, owner: MonitorId, rect: &Rect) {
+    let Some(target) = ctx.core().state.model.monitors.monitor_by_rect(*rect) else {
         return;
     };
 
-    let Some(current_mon) = core_state.model.monitor_of_client(c_win) else {
-        return;
-    };
-
-    if target.id() == current_mon {
+    if target.id() == owner {
         return;
     }
 
     let _ = transfer_client(ctx, c_win, target.id(), TransferFocus::FollowWindow);
 }
 
-/// Convenience wrapper that reads the client's current geometry and delegates
-/// to [`handle_monitor_switch`].
+/// Convenience wrapper that reads the client's current geometry and its owner
+/// in one resolution, then delegates to [`handle_monitor_switch`].
 ///
 /// Use this after a geometry-driven resize. Move drops resolve their destination
 /// from the pointer explicitly, including tiled moves that keep source geometry.
@@ -60,12 +57,13 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 /// * `ctx` - The mouse context containing client and monitor state
 /// * `c_win` - The client window to check and potentially move
 pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
-    let Some(c) = ctx.core().state.model.client(c_win) else {
+    let Some(view) = ctx.core().state.model.client_view(c_win) else {
         return;
     };
-    let rect = c.geo;
+    let rect = view.client.geo;
+    let owner = view.monitor.id();
 
-    handle_monitor_switch(ctx, c_win, &rect);
+    handle_monitor_switch(ctx, c_win, owner, &rect);
 }
 
 #[cfg(test)]
@@ -113,7 +111,12 @@ mod tests {
             client.geo = Rect::new(100, 100, 400, 300);
         });
 
-        handle_monitor_switch(&mut wm.test_ctx(), win, &Rect::new(1200, 100, 400, 300));
+        handle_monitor_switch(
+            &mut wm.test_ctx(),
+            win,
+            source,
+            &Rect::new(1200, 100, 400, 300),
+        );
 
         assert_eq!(wm.core.state.model.monitor_of_client(win), Some(target));
         assert!(!wm.core.state.model.monitor(source).unwrap().has_client(win));
