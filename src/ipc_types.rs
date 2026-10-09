@@ -64,7 +64,7 @@ pub enum MonitorCommand {
         #[command(flatten)]
         config: MonitorConfig,
     },
-    /// List the available modes for a monitor.
+    /// List available modes for a monitor, or `all` connected physical outputs.
     Modes {
         #[arg(default_value = "focused")]
         identifier: String,

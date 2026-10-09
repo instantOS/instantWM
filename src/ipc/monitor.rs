@@ -223,6 +223,7 @@ fn set_monitor_config(ctx: &mut WmCtx<'_>, identifier: String, patch: MonitorCon
 
 fn list_modes(ctx: &mut WmCtx<'_>, identifier: String) -> Response {
     let display_names: Vec<String> = match identifier.as_str() {
+        "all" => ctx.connected_output_names(),
         "focused" => {
             let name = ctx
                 .core()

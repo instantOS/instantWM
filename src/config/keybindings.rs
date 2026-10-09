@@ -154,6 +154,7 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
         key!(MODKEY, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
         key!(MODKEY, XK_Y => KeyAction::spawn(defaults::APPMENU)),
         key!(MODKEY, XK_X => KeyAction::spawn(&["iswitch"])),
+        key!(MODKEY | SHIFT, XK_P => KeyAction::spawn(&["ins", "display"])),
         key!(MODKEY, XK_A => KeyAction::spawn(&["ins", "assist"])),
         key!(MODKEY, XK_QUESTION => KeyAction::spawn(defaults::KEYHELP)),
         key!(MODKEY | SHIFT, XK_QUESTION => KeyAction::spawn(defaults::KEYHELP)),
@@ -452,6 +453,16 @@ mod tests {
                 KeyAction::Named(NamedAction::Spawn(args)) => Some(args),
                 _ => None,
             })
+    }
+
+    #[test]
+    fn super_shift_p_launches_display_menu_on_both_backends() {
+        for backend in [BackendKind::Wayland, BackendKind::X11] {
+            assert_eq!(
+                default_spawn_args_for(backend, MODKEY | SHIFT, XK_P),
+                Some(vec!["ins".into(), "display".into()]),
+            );
+        }
     }
 
     #[test]
