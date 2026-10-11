@@ -18,6 +18,7 @@ use smithay::utils::{Physical, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandNativeState;
+use crate::backend::wayland::stacking::{OutputScenePolicy, SceneBand};
 use crate::wm::WaylandWm as Wm;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +132,9 @@ pub fn build_shared_scene_elements(
 pub struct CommonSceneElements {
     pub shortcut_recovery: Vec<SolidColorRenderElement>,
     pub overlays: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
+    pub layer_overlay: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
+    pub layer_top: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
+    pub layer_lower: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
     pub bar: Vec<MemoryRenderBufferRenderElement<GlesRenderer>>,
     pub borders: Vec<SolidColorRenderElement>,
 }
@@ -144,7 +148,13 @@ pub fn build_common_scene_elements(
     output: &Output,
 ) -> CommonSceneElements {
     let shared = build_shared_scene_elements(wm, state, cache);
-    build_common_scene_elements_from_shared(state, renderer, output, &shared)
+    build_common_scene_elements_from_shared(
+        state,
+        renderer,
+        output,
+        &shared,
+        OutputScenePolicy::for_output(&wm.core.state, output),
+    )
 }
 
 /// Build the full scene for one output from reusable shared pieces.
@@ -153,6 +163,7 @@ pub fn build_common_scene_elements_from_shared(
     renderer: &mut GlesRenderer,
     output: &Output,
     shared: &SharedSceneElements,
+    policy: OutputScenePolicy,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
@@ -221,6 +232,9 @@ pub fn build_common_scene_elements_from_shared(
 
     CommonSceneElements {
         shortcut_recovery,
+        layer_overlay: layer_render_elements(renderer, output, policy, SceneBand::OverlayLayer),
+        layer_top: layer_render_elements(renderer, output, policy, SceneBand::TopLayer),
+        layer_lower: layer_render_elements(renderer, output, policy, SceneBand::LowerLayers),
         overlays,
         bar,
         borders,
@@ -394,103 +408,62 @@ pub fn remove_duplicate_overlay_elements<E: Element>(
     space_elements.retain(|element| !overlay_ids.iter().any(|id| id == element.id()));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Misc
-// ─────────────────────────────────────────────────────────────────────────────
-
-pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
-    let output_name = output.name();
-    let Some(monitor) = wm
-        .core
-        .state
-        .model
-        .monitors
-        .iter_all()
-        .find(|m| m.name == output_name)
-    else {
-        return false;
+/// Build only window elements. Layer-shell trees are rendered explicitly in
+/// their scene bands, rather than inferred from a prefix of Smithay's mixed list.
+pub(crate) fn window_render_elements(
+    state: &WaylandNativeState,
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    scene: &CommonSceneElements,
+) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
+    let Some(region) = state.space.output_geometry(output) else {
+        return Vec::new();
     };
-    let selected_tags = monitor.visible_tags();
-    monitor
-        .iter_clients()
-        .any(|(_, client)| client.mode().is_true_fullscreen() && client.is_visible(selected_tags))
+    let mut elements = state.space.render_elements_for_region(
+        renderer,
+        &region,
+        output.current_scale().fractional_scale(),
+        1.0,
+    );
+    remove_duplicate_overlay_elements(scene, &mut elements);
+    elements
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Layer shell rendering helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Count the number of render elements in upper layer shells (Overlay/Top).
-///
-/// This is used by both backends to determine how many space render elements
-/// to place before the bar and borders.
-pub fn count_upper_layer_render_elements(renderer: &mut GlesRenderer, output: &Output) -> usize {
-    let layer_map = smithay::desktop::layer_map_for_output(output);
-    let output_scale = output.current_scale().fractional_scale();
-    let mut num_upper = 0;
-
-    for surface in layer_map.layers().rev() {
-        if matches!(
-            surface.layer(),
-            smithay::wayland::shell::wlr_layer::Layer::Background
-                | smithay::wayland::shell::wlr_layer::Layer::Bottom
-        ) {
-            continue;
-        }
-        if let Some(geo) = layer_map.layer_geometry(surface) {
-            let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                smithay::backend::renderer::element::AsRenderElements::render_elements(
+fn layer_render_elements(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    policy: OutputScenePolicy,
+    band: SceneBand,
+) -> Vec<WaylandSurfaceRenderElement<GlesRenderer>> {
+    use smithay::backend::renderer::element::AsRenderElements;
+    let map = smithay::desktop::layer_map_for_output(output);
+    let scale = output.current_scale().fractional_scale();
+    let mut elements = Vec::new();
+    for layer in policy.layers(band) {
+        for surface in map.layers_on(layer).rev() {
+            if let Some(geo) = map.layer_geometry(surface) {
+                elements.extend(AsRenderElements::render_elements(
                     surface,
                     renderer,
-                    geo.loc.to_physical_precise_round(output_scale),
-                    smithay::utils::Scale::from(output_scale),
+                    geo.loc.to_physical_precise_round(scale),
+                    smithay::utils::Scale::from(scale),
                     1.0,
-                );
-            num_upper += elems.len();
+                ));
+            }
         }
     }
-
-    num_upper
+    elements
 }
 
-/// Helper struct to track element counts for pre-allocating the render vector.
-#[derive(Default)]
-pub struct RenderElementCounts {
-    pub shortcut_recovery: usize,
-    pub overlays: usize,
-    pub upper_layers: usize,
-    pub bar: usize,
-    pub borders: usize,
-    pub space: usize,
-}
-
-impl RenderElementCounts {
-    /// Calculate total capacity needed.
-    pub fn total(&self) -> usize {
-        self.shortcut_recovery
-            + self.overlays
-            + self.upper_layers
-            + self.bar
-            + self.borders
-            + self.space
-    }
-}
-
-/// Get the render element counts for a frame.
-///
-/// This helps pre-allocate the render element vector with the right capacity.
-pub fn get_render_element_counts(
-    scene: &CommonSceneElements,
-    space_render_elements_len: usize,
-    num_upper: usize,
-) -> RenderElementCounts {
-    RenderElementCounts {
-        shortcut_recovery: scene.shortcut_recovery.len(),
-        overlays: scene.overlays.len(),
-        upper_layers: num_upper,
-        bar: scene.bar.len(),
-        borders: scene.borders.len(),
-        space: space_render_elements_len.saturating_sub(num_upper),
+impl CommonSceneElements {
+    pub(crate) fn len(&self) -> usize {
+        self.shortcut_recovery.len()
+            + self.overlays.len()
+            + self.layer_overlay.len()
+            + self.layer_top.len()
+            + self.layer_lower.len()
+            + self.bar.len()
+            + self.borders.len()
     }
 }
 

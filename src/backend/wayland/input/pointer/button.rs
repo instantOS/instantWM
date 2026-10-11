@@ -1,5 +1,6 @@
 //! Pointer button handling.
 
+use crate::backend::wayland::stacking::SceneBand;
 use smithay::backend::input::{ButtonState, InputTime};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
@@ -96,14 +97,14 @@ fn handle_button_press(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     button: ButtonPress,
 ) -> bool {
-    // Layer-shell surfaces are compositor-level UI and must win over every
-    // WM-owned pointer region.  In particular, notifications commonly use the
-    // overlay layer and may intentionally cover the built-in bar.  Classifying
-    // the bar/sidebar first would make the WM consume the press even though
-    // pointer motion had already focused the layer surface.
-    if let Some((layer_surface, location)) = state
+    let contents = state
         .native
-        .layer_surface_under_pointer(button.pointer_location)
+        .contents_under_pointer(&state.wm.core.state, button.pointer_location);
+    // Only the layer that won the shared scene hit test may intercept a press.
+    if let Some((layer_surface, location)) = contents
+        .surface
+        .clone()
+        .filter(|(surface, _)| state.native.layer_root_surface(surface).is_some())
     {
         state.dismiss_native_systray_menu();
         focus_layer_button_target(state, pointer_handle, button, layer_surface, location);
@@ -111,13 +112,8 @@ fn handle_button_press(
         return false;
     }
 
-    let clicked_win = state
-        .native
-        .logical_window_under_pointer(&state.wm.core.state, button.pointer_location);
-    if state
-        .native
-        .is_pointer_over_overlay(button.pointer_location)
-    {
+    let clicked_win = contents.hovered_win;
+    if contents.band == crate::backend::wayland::stacking::SceneBand::WindowOverlay {
         if !state
             .active_systray_menu()
             .is_some_and(|active| Some(active.win) == clicked_win)
@@ -238,17 +234,12 @@ fn handle_button_release(
         forward_button(state, pointer_handle, button);
     }
     if let Some(btn) = button.wm_button {
-        let occupied = state
+        let contents = state
             .native
-            .layer_surface_under_pointer(button.pointer_location)
-            .is_some()
-            || state
-                .native
-                .is_pointer_over_overlay(button.pointer_location)
-            || state
-                .native
-                .logical_window_under_pointer(&state.wm.core.state, button.pointer_location)
-                .is_some();
+            .contents_under_pointer(&state.wm.core.state, button.pointer_location);
+        let occupied = contents.surface.is_some()
+            || contents.hovered_win.is_some()
+            || contents.band == SceneBand::WindowOverlay;
         let hover_target = (!occupied)
             .then(|| {
                 crate::mouse::pointer::sidebar_target_at(&state.wm.core.state.model, button.root)

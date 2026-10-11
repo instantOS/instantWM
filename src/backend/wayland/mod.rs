@@ -65,6 +65,7 @@ pub(crate) mod output;
 pub mod render;
 pub mod runtime;
 pub mod session;
+pub(crate) mod stacking;
 pub mod visibility;
 
 use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};

@@ -1238,11 +1238,10 @@ fn render_outputs(
                 continue;
             }
             apply_output_vrr_policy(state, entry);
-            let suppress_upper_layers =
-                crate::backend::wayland::render::scene::output_has_real_fullscreen(
-                    &state.wm,
-                    &state.native.presented_output(&entry.output),
-                );
+            let scene_policy = crate::backend::wayland::stacking::OutputScenePolicy::for_output(
+                &state.wm.core.state,
+                &state.native.presented_output(&entry.output),
+            );
             let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
             let rendered = graphics.with_renderer(|renderer| {
                 render_drm_output(
@@ -1252,7 +1251,7 @@ fn render_outputs(
                     cursor_manager,
                     start_time,
                     shared_scene.clone(),
-                    suppress_upper_layers,
+                    scene_policy,
                 )
             });
 

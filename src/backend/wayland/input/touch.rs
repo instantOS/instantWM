@@ -456,22 +456,18 @@ fn focus_at(
         };
     }
 
-    if let Some((surface, origin)) = state.native.layer_surface_under_pointer(location) {
-        return TouchHit {
-            focus: Some((PointerFocusTarget::WlSurface(surface), origin.to_f64())),
-            hovered_window: None,
-            is_layer: true,
-        };
-    }
-
     let contents = state.native.contents_under_pointer(core_view, location);
+    let is_layer = contents
+        .surface
+        .as_ref()
+        .is_some_and(|(surface, _)| state.native.layer_root_surface(surface).is_some());
     let focus = contents
         .surface
         .map(|(surface, origin)| (PointerFocusTarget::WlSurface(surface), origin.to_f64()));
     TouchHit {
         focus,
         hovered_window: contents.hovered_win,
-        is_layer: false,
+        is_layer,
     }
 }
 

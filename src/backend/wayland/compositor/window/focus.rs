@@ -60,7 +60,8 @@ impl WaylandState {
     ///
     /// The shared focus projection supplies presentation flags and deactivates
     /// the previous window first. Native overlay/grab recovery passes None to
-    /// preserve the already projected protocol flags; it never reads WM state.
+    /// preserve the already projected protocol flags. Visible exclusive shell
+    /// surfaces retain keyboard ownership across WM selection changes.
     ///
     /// It does **not** update `mon.selected`. The WM layer
     /// ([`crate::focus::focus`]) is the single authority for `mon.selected`.
@@ -95,6 +96,11 @@ impl WaylandState {
         // Activate the new window and set keyboard focus
         if let Some(new_window) = focus_window {
             self.set_window_activated(window, true, presentation);
+            // WM selection changes must not steal the seat from a visible
+            // exclusive shell surface (including fullscreen selectors).
+            if self.preserve_layer_keyboard_focus() && self.exclusive_layer_has_keyboard_focus() {
+                return;
+            }
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.native.seat.get_keyboard() {
                 let new_focus = KeyboardFocusTarget::Window(new_window.clone());

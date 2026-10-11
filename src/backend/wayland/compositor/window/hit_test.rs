@@ -4,6 +4,7 @@ use smithay::utils::{Logical, Point};
 
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::backend::wayland::compositor::window::classify::WindowType;
+use crate::backend::wayland::stacking::{OutputScenePolicy, SceneBand};
 use crate::types::WindowId;
 
 #[cfg(test)]
@@ -50,6 +51,7 @@ pub(crate) struct PointerContents {
     /// The WM-logical window under the pointer (uses outer geometry including
     /// borders, so it can differ from the surface hit).
     pub(crate) hovered_win: Option<WindowId>,
+    pub(crate) band: SceneBand,
 }
 
 struct RankedSurfaceHit {
@@ -70,7 +72,8 @@ fn surface_hit_takes_precedence(logical_rank: Option<usize>, surface_rank: usize
 
 impl WaylandNativeState {
     /// Hit-test in the same foreground order used by scene assembly:
-    /// explicit overlays, native popups, layer-shell surfaces, then toplevels.
+    /// layer-shell Overlay, application overlays/popups, Top, bar, windows,
+    /// then Bottom/Background. Hidden Top surfaces cannot receive input.
     ///
     /// Returns both the surface focus and the logical hovered window in one
     /// traversal, avoiding repeated `windows_in_z_order()` allocations.
@@ -100,51 +103,114 @@ impl WaylandNativeState {
         use smithay::desktop::WindowSurfaceType;
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
-        let globals = core_view;
-        // Explicit overlay windows are the first scene bucket. Include their
-        // logical rectangle so transparent decoration/input holes cannot leak
-        // hover focus into a lower window.
-        for (window, typ) in windows {
-            if !typ.is_overlay() {
-                continue;
-            }
-            let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
-            let surface = self.surface_in_window(window, point, WindowSurfaceType::ALL);
-            if surface.is_some() || self.overlay_rect_contains(window, root_x, root_y) {
-                return PointerContents {
-                    surface,
-                    hovered_win: win_id,
-                };
+        // Resolve output geometry and visibility once, then reuse across bands.
+        let outputs: Vec<_> = self
+            .space
+            .outputs()
+            .filter_map(|output| {
+                let geometry = self.space.output_geometry(output)?;
+                geometry.to_f64().contains(point).then(|| {
+                    (
+                        output,
+                        geometry.loc,
+                        OutputScenePolicy::for_output(core_view, output),
+                    )
+                })
+            })
+            .collect();
+        for band in SceneBand::FRONT_TO_BACK {
+            match band {
+                SceneBand::OverlayLayer | SceneBand::TopLayer | SceneBand::LowerLayers => {
+                    if let Some(surface) = self.layer_surface_in_band(&outputs, point, band) {
+                        return PointerContents {
+                            surface: Some(surface),
+                            hovered_win: None,
+                            band,
+                        };
+                    }
+                }
+                SceneBand::WindowOverlay => {
+                    // Application overlays follow layer-shell Overlay. Include their
+                    // logical rectangle so transparent decoration/input holes cannot leak
+                    // hover focus into a lower window.
+                    for (window, typ) in windows {
+                        if !typ.is_overlay() {
+                            continue;
+                        }
+                        let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
+                        let surface = self.surface_in_window(window, point, WindowSurfaceType::ALL);
+                        if surface.is_some() || self.overlay_rect_contains(window, root_x, root_y) {
+                            return PointerContents {
+                                surface,
+                                hovered_win: win_id,
+                                band: SceneBand::WindowOverlay,
+                            };
+                        }
+                    }
+
+                    // Native popups are promoted above ordinary toplevels during render,
+                    // so they must be queried before Top layers and parent windows.
+                    for (window, typ) in windows {
+                        if typ.is_overlay() {
+                            continue;
+                        }
+                        if let Some(surface) = self.surface_in_window(
+                            window,
+                            point,
+                            WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE,
+                        ) {
+                            let hovered_win =
+                                window.user_data().get::<WindowIdMarker>().map(|m| m.id);
+                            return PointerContents {
+                                surface: Some(surface),
+                                hovered_win,
+                                band: SceneBand::WindowOverlay,
+                            };
+                        }
+                    }
+                }
+                SceneBand::Bar => {
+                    if core_view
+                        .model
+                        .monitors
+                        .monitor_intersecting_rect(crate::types::Rect::new(root_x, root_y, 1, 1))
+                        .is_some_and(|monitor| {
+                            (monitor.bar_visible() && monitor.y_in_bar(root_y))
+                                || monitor.bottom_bar_contains_y(root_y)
+                        })
+                    {
+                        return PointerContents {
+                            surface: None,
+                            hovered_win: None,
+                            band,
+                        };
+                    }
+                }
+                SceneBand::Windows => {
+                    let contents = self.window_contents_under_pointer(core_view, point, windows);
+                    if contents.surface.is_some() || contents.hovered_win.is_some() {
+                        return contents;
+                    }
+                }
+                SceneBand::SafetyUi | SceneBand::Borders => {}
             }
         }
-
-        // Native popups are promoted above ordinary toplevels during render,
-        // so they must be queried globally before layers and parent windows.
-        for (window, typ) in windows {
-            if typ.is_overlay() {
-                continue;
-            }
-            if let Some(surface) = self.surface_in_window(
-                window,
-                point,
-                WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE,
-            ) {
-                let hovered_win = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
-                return PointerContents {
-                    surface: Some(surface),
-                    hovered_win,
-                };
-            }
+        PointerContents {
+            surface: None,
+            hovered_win: None,
+            band: SceneBand::LowerLayers,
         }
+    }
 
-        if let Some((surface, loc)) = self.layer_surface_under_pointer(point) {
-            let hovered_win = self.window_id_from_surface(&surface);
-            return PointerContents {
-                surface: Some((surface, loc)),
-                hovered_win,
-            };
-        }
-
+    fn window_contents_under_pointer(
+        &self,
+        globals: &crate::core_state::CoreState,
+        point: Point<f64, Logical>,
+        windows: &[(Window, WindowType)],
+    ) -> PointerContents {
+        use smithay::desktop::WindowSurfaceType;
+        let root = crate::types::Point::from_f64_round(point.x, point.y);
+        let (root_x, root_y) = (root.x, root.y);
         // Ordinary windows retain their Space order. Reconcile client-surface
         // input with compositor-drawn borders so a lower surface cannot be
         // reached through the decoration of a higher window.
@@ -206,6 +272,7 @@ impl WaylandNativeState {
         PointerContents {
             surface,
             hovered_win,
+            band: SceneBand::Windows,
         }
     }
 
@@ -222,39 +289,41 @@ impl WaylandNativeState {
             .map(|(surface, loc)| (surface, loc + surface_origin))
     }
 
-    /// Resolve a WindowId from a surface via its data map.
-    pub(crate) fn window_id_from_surface(
+    pub(crate) fn layer_root_surface(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) -> Option<WindowId> {
-        use smithay::wayland::compositor::with_states;
-        with_states(surface, |states| {
-            states
-                .data_map
-                .get::<WindowIdMarker>()
-                .map(|marker| marker.id)
+    ) -> Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface> {
+        use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
+        self.space.outputs().find_map(|output| {
+            layer_map_for_output(output)
+                .layer_for_surface(surface, WindowSurfaceType::ALL)
+                .map(|layer| layer.wl_surface().clone())
         })
     }
-    /// Get the layer surface under a given point.
-    pub(crate) fn layer_surface_under_pointer(
+
+    fn layer_surface_in_band(
         &self,
+        outputs: &[(
+            &smithay::output::Output,
+            Point<i32, Logical>,
+            OutputScenePolicy,
+        )],
         point: Point<f64, Logical>,
+        band: SceneBand,
     ) -> Option<SurfaceFocus> {
         use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
-
-        let outputs: Vec<_> = self.space.outputs().cloned().collect();
-        for output in outputs.iter().rev() {
-            let Some(output_geo) = self.space.output_geometry(output) else {
-                continue;
-            };
+        for &(output, output_origin, policy) in outputs.iter().rev() {
             let map = layer_map_for_output(output);
-            for layer in map.layers().rev() {
-                let Some(geo) = map.layer_geometry(layer) else {
-                    continue;
-                };
-                let rel = point - output_geo.loc.to_f64() - geo.loc.to_f64();
-                if let Some((surface, loc)) = layer.surface_under(rel, WindowSurfaceType::ALL) {
-                    return Some((surface, loc + geo.loc + output_geo.loc));
+            for layer in policy.layers(band) {
+                for surface in map.layers_on(layer).rev() {
+                    let Some(geo) = map.layer_geometry(surface) else {
+                        continue;
+                    };
+                    let rel = point - output_origin.to_f64() - geo.loc.to_f64();
+                    if let Some((surface, loc)) = surface.surface_under(rel, WindowSurfaceType::ALL)
+                    {
+                        return Some((surface, loc + geo.loc + output_origin));
+                    }
                 }
             }
         }
@@ -271,39 +340,6 @@ impl WaylandNativeState {
             }
         }
         false
-    }
-
-    /// Find the topmost window containing the given logical point within its core geometry.
-    /// Used for WM hit-testing to prevent small surfaces from creating focus holes.
-    pub(crate) fn logical_window_under_pointer(
-        &self,
-        core_view: &crate::core_state::CoreState,
-        point: Point<f64, Logical>,
-    ) -> Option<WindowId> {
-        let root = crate::types::Point::from_f64_round(point.x, point.y);
-        let (root_x, root_y) = (root.x, root.y);
-        let globals = core_view;
-
-        for (window, typ) in self.windows_in_z_order() {
-            if typ.is_overlay() {
-                if self.overlay_rect_contains(window, root_x, root_y) {
-                    // We hit an overlay window. Return its WindowId if it has a marker,
-                    // otherwise return None to prevent falling through to windows behind.
-                    return window.user_data().get::<WindowIdMarker>().map(|m| m.id);
-                }
-            } else {
-                let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
-                    continue;
-                };
-                if let Some(c) = globals.model.client(win_id)
-                    && c.total_rect()
-                        .contains_point(crate::types::Point::new(root_x, root_y))
-                {
-                    return Some(win_id);
-                }
-            }
-        }
-        None
     }
 
     fn overlay_rect_contains(&self, window: &Window, root_x: i32, root_y: i32) -> bool {

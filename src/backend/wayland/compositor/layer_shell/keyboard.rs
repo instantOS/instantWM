@@ -5,10 +5,13 @@
 //! Keep that interpretation here so commit, keyboard, pointer, and touch paths
 //! cannot drift apart.
 
+use crate::backend::wayland::stacking::{OutputScenePolicy, SceneBand};
+use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{SERIAL_COUNTER, Serial};
+use smithay::utils::{IsAlive, SERIAL_COUNTER, Serial};
 use smithay::wayland::compositor::with_states;
+use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer, LayerSurfaceCachedState};
 
 use super::super::{KeyboardFocusTarget, WaylandState};
@@ -35,6 +38,12 @@ impl LayerKeyboardPolicy {
                 interactivity: state.keyboard_interactivity,
             }
         })
+    }
+
+    fn for_mapped_root(surface: &WlSurface) -> Option<Self> {
+        with_renderer_surface_state(surface, |state| state.buffer().is_some())
+            .unwrap_or(false)
+            .then(|| Self::for_root_surface(surface))
     }
 
     /// Whether a compositor-mediated user action may focus the surface.
@@ -65,8 +74,12 @@ impl WaylandState {
     /// Resolve keyboard policy through the mapped layer owner of any surface
     /// in its tree, including popups and subsurfaces.
     pub(crate) fn layer_keyboard_policy(&self, surface: &WlSurface) -> Option<LayerKeyboardPolicy> {
-        self.layer_root_surface(surface)
-            .map(|root| LayerKeyboardPolicy::for_root_surface(&root))
+        self.native.space.outputs().find_map(|output| {
+            let map = layer_map_for_output(output);
+            let owner = map.layer_for_surface(surface, WindowSurfaceType::ALL)?;
+            OutputScenePolicy::for_output(&self.wm.core.state, output).layer_band(owner.layer())?;
+            LayerKeyboardPolicy::for_mapped_root(owner.wl_surface())
+        })
     }
 
     /// Apply keyboard focus to a layer surface according to protocol policy.
@@ -76,34 +89,65 @@ impl WaylandState {
         serial: Serial,
         request: LayerFocusRequest,
     ) -> bool {
-        let Some(root) = self.layer_root_surface(surface) else {
+        let Some(root) = self.native.layer_root_surface(surface) else {
             return false;
         };
-        if !LayerKeyboardPolicy::for_root_surface(&root).allows(request) {
+        let Some(policy) = self.layer_keyboard_policy(&root) else {
+            return false;
+        };
+        if !policy.allows(request) {
             return false;
         }
+        // An exclusive surface in a higher layer owns the seat even when a
+        // lower surface commits or is clicked on another output.
+        if self
+            .topmost_exclusive_layer_surface()
+            .map(|(_, policy)| policy)
+            .is_some_and(|exclusive| {
+                SceneBand::for_layer(exclusive.layer) < SceneBand::for_layer(policy.layer)
+            })
+        {
+            return false;
+        }
+        self.apply_layer_keyboard_focus(root, policy, serial)
+    }
+
+    /// Apply a target whose mapping, priority and interactivity were resolved
+    /// by the caller during this dispatch; no protocol dispatch occurs between.
+    fn apply_layer_keyboard_focus(
+        &mut self,
+        root: WlSurface,
+        policy: LayerKeyboardPolicy,
+        serial: Serial,
+    ) -> bool {
         if self.native.seat.get_keyboard().is_none() {
             return false;
         }
         // Session-lock aware: while locked this re-anchors to the lock
         // surface instead of the layer surface.
-        self.set_keyboard_focus(Some(KeyboardFocusTarget::WlSurface(root)), serial);
+        let target = KeyboardFocusTarget::WlSurface(root);
+        if policy.takes_automatic_focus() {
+            let keyboard = self.native.keyboard.clone();
+            if keyboard
+                .grab_start_data()
+                .is_some_and(|start| start.focus.as_ref().is_some_and(|focus| focus != &target))
+            {
+                keyboard.unset_grab(self);
+            }
+        }
+        self.set_keyboard_focus(Some(target), serial);
         true
     }
 
     /// Whether an upper exclusive layer currently owns the seat keyboard.
     pub(crate) fn exclusive_layer_has_keyboard_focus(&self) -> bool {
-        self.native
-            .seat
-            .get_keyboard()
-            .and_then(|keyboard| keyboard.current_focus())
-            .is_some_and(|focus| {
-                let KeyboardFocusTarget::WlSurface(surface) = focus else {
-                    return false;
-                };
-                self.layer_keyboard_policy(&surface)
-                    .is_some_and(LayerKeyboardPolicy::takes_automatic_focus)
-            })
+        self.focused_layer_keyboard_policy()
+            .is_some_and(LayerKeyboardPolicy::takes_automatic_focus)
+    }
+
+    fn focused_layer_keyboard_policy(&self) -> Option<LayerKeyboardPolicy> {
+        let focus = self.native.seat.get_keyboard()?.current_focus()?;
+        self.layer_keyboard_policy(focus.wl_surface()?.as_ref())
     }
 
     /// Preserve a valid layer focus or recover to the highest-priority
@@ -112,54 +156,91 @@ impl WaylandState {
     /// Returns `false` when no mapped layer surface should retain focus and
     /// the caller should restore the WM-selected window.
     pub(crate) fn preserve_layer_keyboard_focus(&mut self) -> bool {
-        if self.has_mapped_layer_keyboard_focus() {
-            return true;
+        let current = self
+            .focused_layer_keyboard_policy()
+            .filter(|policy| policy.accepts_user_focus());
+        let candidate = self.topmost_exclusive_layer_surface();
+        if let Some((surface, policy)) = candidate {
+            if current.is_some_and(|current| {
+                current.takes_automatic_focus()
+                    && SceneBand::for_layer(current.layer) <= SceneBand::for_layer(policy.layer)
+            }) {
+                return true;
+            }
+            return self.apply_layer_keyboard_focus(surface, policy, SERIAL_COUNTER.next_serial());
         }
-
-        let Some(surface) = self.topmost_exclusive_layer_surface() else {
-            return false;
-        };
-        self.focus_layer_keyboard(
-            &surface,
-            SERIAL_COUNTER.next_serial(),
-            LayerFocusRequest::Automatic,
-        )
+        current.is_some()
     }
 
-    fn has_mapped_layer_keyboard_focus(&self) -> bool {
-        let Some(KeyboardFocusTarget::WlSurface(surface)) = self
+    /// Reconcile mapping, fullscreen/tag visibility and keyboard interactivity.
+    /// A live resource may have stopped being a valid keyboard target.
+    pub(crate) fn reconcile_layer_keyboard_focus(&mut self) {
+        if self.native.is_locked() {
+            return;
+        }
+        let invalid_layer_focus = self
             .native
             .seat
             .get_keyboard()
-            .and_then(|keyboard| keyboard.current_focus())
-        else {
-            return false;
-        };
-
-        self.layer_root_surface(&surface).is_some()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|focus| {
+                let Some(surface) = focus.wl_surface() else {
+                    return false;
+                };
+                self.native.layer_root_surface(surface.as_ref()).is_some()
+                    && !self
+                        .layer_keyboard_policy(surface.as_ref())
+                        .is_some_and(|policy| policy.accepts_user_focus())
+            });
+        if invalid_layer_focus {
+            self.clear_seat_focus();
+        }
+        if !self.preserve_layer_keyboard_focus()
+            && self
+                .native
+                .seat
+                .get_keyboard()
+                .and_then(|keyboard| keyboard.current_focus())
+                .is_none_or(|focus| !focus.alive())
+        {
+            self.restore_focus_after_overlay();
+        }
     }
 
-    fn topmost_exclusive_layer_surface(&self) -> Option<WlSurface> {
-        let outputs: Vec<_> = self.native.space.outputs().cloned().collect();
-        outputs.iter().rev().find_map(|output| {
+    fn topmost_exclusive_layer_surface(&self) -> Option<(WlSurface, LayerKeyboardPolicy)> {
+        let mut candidate = None;
+        // Inspect outputs once. Later outputs win ties, while Overlay always
+        // outranks Top regardless of output insertion order.
+        for output in self.native.space.outputs() {
             let map = layer_map_for_output(output);
-            map.layers_on(Layer::Overlay)
-                .rev()
-                .chain(map.layers_on(Layer::Top).rev())
-                .find(|layer| {
-                    LayerKeyboardPolicy::for_root_surface(layer.wl_surface())
+            for layer in [Layer::Overlay, Layer::Top] {
+                if candidate
+                    .as_ref()
+                    .is_some_and(|(_, policy): &(_, LayerKeyboardPolicy)| {
+                        SceneBand::for_layer(policy.layer) < SceneBand::for_layer(layer)
+                    })
+                {
+                    continue;
+                }
+                if let Some(target) = map.layers_on(layer).rev().find_map(|surface| {
+                    let policy = LayerKeyboardPolicy::for_mapped_root(surface.wl_surface())?;
+                    policy
                         .takes_automatic_focus()
-                })
-                .map(|layer| layer.wl_surface().clone())
-        })
-    }
-
-    fn layer_root_surface(&self, surface: &WlSurface) -> Option<WlSurface> {
-        self.native.space.outputs().find_map(|output| {
-            layer_map_for_output(output)
-                .layer_for_surface(surface, WindowSurfaceType::ALL)
-                .map(|layer| layer.wl_surface().clone())
-        })
+                        .then(|| (surface.wl_surface().clone(), policy))
+                }) {
+                    // Overlay is always visible; only Top needs fullscreen policy.
+                    if layer == Layer::Top
+                        && OutputScenePolicy::for_output(&self.wm.core.state, output)
+                            .layer_band(layer)
+                            .is_none()
+                    {
+                        continue;
+                    }
+                    candidate = Some(target);
+                }
+            }
+        }
+        candidate
     }
 }
 

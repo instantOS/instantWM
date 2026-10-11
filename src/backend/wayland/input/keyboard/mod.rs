@@ -9,8 +9,8 @@ use smithay::wayland::input_method::InputMethodSeat;
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
 use smithay::wayland::seat::WaylandFocus;
 
+use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
-use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::types::Keysym;
 
@@ -80,14 +80,11 @@ fn shortcut_suppression(
                 .keyboard_shortcuts_inhibitor_for_surface(surface.as_ref())
         })
         .is_some_and(|inhibitor| inhibitor.is_active());
-    let exclusive_layer = focus.as_ref().is_some_and(|focus| {
-        let KeyboardFocusTarget::WlSurface(surface) = focus else {
-            return false;
-        };
-        state
-            .layer_keyboard_policy(surface)
-            .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts)
-    });
+    let exclusive_layer = focus
+        .as_ref()
+        .and_then(WaylandFocus::wl_surface)
+        .and_then(|surface| state.layer_keyboard_policy(surface.as_ref()))
+        .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts);
     select_shortcut_suppression(ShortcutContext {
         session_locked: state.native.is_locked(),
         keyboard_grabbed: keyboard.is_grabbed(),

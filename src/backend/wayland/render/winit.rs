@@ -11,8 +11,7 @@ use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::frame::{send_frame_callbacks, update_primary_scanout_output};
 use crate::backend::wayland::render::scene::{
-    SceneCache, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, output_has_real_fullscreen, remove_duplicate_overlay_elements,
+    SceneCache, build_common_scene_elements, window_render_elements,
 };
 use crate::wm::WaylandWm as Wm;
 
@@ -21,7 +20,6 @@ render_elements! {
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
     Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
-    Space=smithay::desktop::space::SpaceRenderElements<GlesRenderer, smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>,
 }
 
 /// Render a frame using the winit backend.
@@ -72,19 +70,8 @@ pub fn render_frame(
         // Shared: build scene elements
         let scene = build_common_scene_elements(wm, state, scene_cache, renderer, output);
 
-        // Shared: get space render elements
-        let mut space_render_elements =
-            smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
-                .expect("space render elements");
-        remove_duplicate_overlay_elements(&scene, &mut space_render_elements);
-
-        // Shared: count upper layer elements
-        let num_upper = count_upper_layer_render_elements(renderer, output);
-        let suppress_upper_layers = output_has_real_fullscreen(wm, output);
-
-        // Shared: get element counts for pre-allocation
-        let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
-        render_elements = Vec::with_capacity(counts.total() + 2);
+        let windows = window_render_elements(state, renderer, output, &scene);
+        render_elements = Vec::with_capacity(scene.len() + windows.len() + 2);
 
         // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
         render_cursor_overlays(
@@ -95,14 +82,7 @@ pub fn render_frame(
         );
 
         // Shared: assemble elements in z-order
-        super::assemble_scene_elements!(
-            WaylandExtras,
-            scene,
-            space_render_elements,
-            num_upper,
-            suppress_upper_layers,
-            render_elements
-        );
+        super::assemble_scene_elements!(WaylandExtras, scene, windows, render_elements);
     }
 
     // Backend-specific: render with damage tracker

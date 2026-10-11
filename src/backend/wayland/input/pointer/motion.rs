@@ -1,5 +1,6 @@
 //! Pointer motion handling.
 
+use crate::backend::wayland::stacking::SceneBand;
 use smithay::backend::input::InputTime;
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{CursorImageStatus, PointerHandle};
@@ -891,6 +892,9 @@ fn dispatch_pointer_motion(
     // frame, which is visible as flicker on Wayland.
     let bar_pos = if state.wm.core.state.interaction.drag.owns_bar_hover() {
         None
+    } else if hit_test.band.above_bar() {
+        crate::bar::clear_hover(&mut state.ctx());
+        None
     } else {
         update_bar_hit_state(state, root, false)
     };
@@ -912,20 +916,11 @@ fn dispatch_pointer_motion(
         let sidebar_target =
             crate::mouse::pointer::sidebar_target_at(&state.wm.core.state.model, root);
         let blocked_by_non_desktop = sidebar_target.is_some()
-            && (state
-                .native
-                .logical_window_under_pointer(&state.wm.core.state, pointer_location)
-                .is_some()
-                || state
-                    .native
-                    .layer_surface_under_pointer(pointer_location)
-                    .is_some()
-                || state.native.is_pointer_over_overlay(pointer_location));
+            && (hit_test.surface.is_some()
+                || hit_test.hovered_win.is_some()
+                || hit_test.band == SceneBand::WindowOverlay);
         let ctx = state.ctx();
         if let WmCtx::Wayland(mut ctx) = ctx {
-            // Layer/overlay hit testing is substantially richer than the
-            // monitor-rectangle sidebar test. Only pay for it inside the edge
-            // strip; ordinary pointer motion must not gain another scene walk.
             let target = if blocked_by_non_desktop {
                 None
             } else {
@@ -944,11 +939,18 @@ fn dispatch_pointer_motion(
 
     if !sidebar_offer_active {
         // Phase 5: Update floating-border and tiled-gap resize offers
-        let suppress_hover_focus = update_hover_resize_state(
-            state,
-            root,
-            state.wm.core.state.interaction.drag.has_capture(),
-        );
+        let suppress_hover_focus = if hit_test.band.above_bar() {
+            // Foreground shell UI and menus also occlude compositor resize
+            // offers; otherwise a selector can inherit a window's resize cursor.
+            clear_hover_offer(&mut state.ctx());
+            true
+        } else {
+            update_hover_resize_state(
+                state,
+                root,
+                state.wm.core.state.interaction.drag.has_capture(),
+            )
+        };
 
         // Phase 6: Update pointer focus based on drag state. An exclusive layer
         // surface (for example slurp) temporarily owns keyboard focus; moving the
@@ -1030,10 +1032,10 @@ fn resolve_pointer_focus_from_hit(
         return (pointer_focus, None);
     }
 
-    // In the bar or guard band, only layer surfaces matter (no window hit testing).
-    if in_bar_band || in_bar_guard_band {
-        let pointer_focus = state.native.layer_surface_under_pointer(pointer_location);
-        return (pointer_focus, None);
+    // The bar/guard blocks lower scene bands, while foreground shell UI
+    // and application menus retain their already resolved focus.
+    if (in_bar_band || in_bar_guard_band) && !contents.band.above_bar() {
+        return (None, None);
     }
 
     (contents.surface.clone(), contents.hovered_win)

@@ -51,6 +51,25 @@ pub(crate) fn handle_pointer_axis(
     let scroll_delta = input.event.vertical.v120.or(input.event.vertical.amount);
     let bar_pos = if state.wm.core.state.interaction.drag.owns_bar_hover() {
         None
+    } else if state
+        .wm
+        .core
+        .state
+        .model
+        .monitors
+        .monitor_intersecting_rect(crate::types::Rect::new(root.x, root.y, 1, 1))
+        .is_some_and(|monitor| {
+            (monitor.bar_visible() && monitor.y_in_bar(root.y))
+                || monitor.bottom_bar_contains_y(root.y)
+        })
+        && state
+            .native
+            .contents_under_pointer(&state.wm.core.state, input.location)
+            .band
+            .above_bar()
+    {
+        crate::bar::clear_hover(&mut state.ctx());
+        None
     } else {
         update_bar_hit_state(state, root, true)
     };

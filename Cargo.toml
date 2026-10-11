@@ -58,6 +58,7 @@ png = "0.18"
 [dev-dependencies]
 tempfile = "3"
 wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
 [patch.crates-io]

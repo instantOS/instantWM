@@ -13,48 +13,55 @@ pub mod mirror;
 pub mod scene;
 pub mod winit;
 
-/// Assemble render elements in front-to-back order from shared scene elements,
-/// as required by Smithay's `OutputDamageTracker`.
-///
-/// Front-to-back order (index 0 = front-most, last index = back-most):
-///   1. Emergency shortcut-recovery indicator
-///   2. Overlays (dmenu, popups)
-///   3. Upper layer shells (Overlay / Top)
-///   4. Status bar (top bar and bottom bar)
-///   5. Window borders
-///   6. Windows and lower layer shells (Bottom / Background)
-///
-/// Smithay's `OutputDamageTracker::render_output` uses this front-to-back list to
-/// perform occlusion culling, then renders elements in reverse (`.rev()`) order
-/// back-to-front onto the framebuffer.
+/// Assemble the shared scene bands in Smithay's front-to-back order.
 macro_rules! assemble_scene_elements {
-    ($target:ident, $scene:expr, $space_elements:expr, $num_upper:expr, $suppress_upper:expr, $elements:expr) => {{
-        // 1. Compositor safety UI must remain visible over every client.
-        for elem in $scene.shortcut_recovery {
-            $elements.push($target::Solid(elem));
-        }
-        // 2. Overlays (dmenu, popups)
-        for elem in $scene.overlays {
-            $elements.push($target::Surface(elem));
-        }
-        // 2. Upper layer shells (Overlay / Top)
-        let mut space_iter = $space_elements.into_iter();
-        for elem in space_iter.by_ref().take($num_upper) {
-            if !$suppress_upper {
-                $elements.push($target::Space(elem));
+    ($target:ident, $scene:expr, $windows:expr, $elements:expr) => {{
+        use crate::backend::wayland::stacking::SceneBand;
+        let mut scene = $scene;
+        let mut windows = $windows;
+        for band in SceneBand::FRONT_TO_BACK {
+            match band {
+                SceneBand::SafetyUi => $elements.extend(
+                    std::mem::take(&mut scene.shortcut_recovery)
+                        .into_iter()
+                        .map($target::Solid),
+                ),
+                SceneBand::OverlayLayer => $elements.extend(
+                    std::mem::take(&mut scene.layer_overlay)
+                        .into_iter()
+                        .map($target::Surface),
+                ),
+                SceneBand::WindowOverlay => $elements.extend(
+                    std::mem::take(&mut scene.overlays)
+                        .into_iter()
+                        .map($target::Surface),
+                ),
+                SceneBand::TopLayer => $elements.extend(
+                    std::mem::take(&mut scene.layer_top)
+                        .into_iter()
+                        .map($target::Surface),
+                ),
+                SceneBand::Bar => $elements.extend(
+                    std::mem::take(&mut scene.bar)
+                        .into_iter()
+                        .map($target::Memory),
+                ),
+                SceneBand::Borders => $elements.extend(
+                    std::mem::take(&mut scene.borders)
+                        .into_iter()
+                        .map($target::Solid),
+                ),
+                SceneBand::Windows => $elements.extend(
+                    std::mem::take(&mut windows)
+                        .into_iter()
+                        .map($target::Surface),
+                ),
+                SceneBand::LowerLayers => $elements.extend(
+                    std::mem::take(&mut scene.layer_lower)
+                        .into_iter()
+                        .map($target::Surface),
+                ),
             }
-        }
-        // 3. Status bar (top bar and bottom bar)
-        for elem in $scene.bar {
-            $elements.push($target::Memory(elem));
-        }
-        // 4. Borders
-        for elem in $scene.borders {
-            $elements.push($target::Solid(elem));
-        }
-        // 5. Windows and lower layer shells (Bottom / Background)
-        for elem in space_iter {
-            $elements.push($target::Space(elem));
         }
     }};
 }
@@ -127,5 +134,75 @@ mod cursor_loc_tests {
         let loc = cursor_surface_loc(Point::from((-1.5, 1.5)), Point::from((0, 0)));
         let expected: Point<i32, Physical> = Point::from((-2, 2));
         assert_eq!(loc, expected);
+    }
+}
+
+#[cfg(test)]
+mod scene_order_tests {
+    // Exercise the actual assembler used by both renderers without a GPU.
+    // Labels stand for already-built render elements from each scene band.
+    struct Scene {
+        shortcut_recovery: Vec<&'static str>,
+        layer_overlay: Vec<&'static str>,
+        overlays: Vec<&'static str>,
+        layer_top: Vec<&'static str>,
+        bar: Vec<&'static str>,
+        borders: Vec<&'static str>,
+        layer_lower: Vec<&'static str>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Element {
+        Surface(&'static str),
+        Solid(&'static str),
+        Memory(&'static str),
+    }
+
+    #[test]
+    fn selector_covers_application_menus_while_windows_cover_lower_shells() {
+        let scene = Scene {
+            shortcut_recovery: vec!["recovery"],
+            layer_overlay: vec!["selector"],
+            overlays: vec!["menu"],
+            layer_top: vec!["panel"],
+            bar: vec!["bar"],
+            borders: vec!["border"],
+            layer_lower: vec!["desktop-widget", "wallpaper"],
+        };
+        let mut elements = Vec::new();
+        assemble_scene_elements!(Element, scene, vec!["window"], elements);
+        assert_eq!(
+            elements,
+            vec![
+                Element::Solid("recovery"),
+                Element::Surface("selector"),
+                Element::Surface("menu"),
+                Element::Surface("panel"),
+                Element::Memory("bar"),
+                Element::Solid("border"),
+                Element::Surface("window"),
+                Element::Surface("desktop-widget"),
+                Element::Surface("wallpaper"),
+            ]
+        );
+    }
+
+    #[test]
+    fn fullscreen_scene_keeps_selector_when_top_and_bar_are_hidden() {
+        let scene = Scene {
+            shortcut_recovery: vec![],
+            layer_overlay: vec!["selector"],
+            overlays: vec![],
+            layer_top: vec![],
+            bar: vec![],
+            borders: vec![],
+            layer_lower: vec![],
+        };
+        let mut elements = Vec::new();
+        assemble_scene_elements!(Element, scene, vec!["fullscreen"], elements);
+        assert_eq!(
+            elements,
+            vec![Element::Surface("selector"), Element::Surface("fullscreen")]
+        );
     }
 }

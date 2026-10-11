@@ -787,18 +787,10 @@ impl WaylandState {
         // without sending an explicit uninhibit request.
         self.native.idle_inhibiting_surfaces.retain(|s| s.alive());
 
-        // Only recover focus when the seat focus is actually missing or dead.
-        // A plain space sync must not steal focus away from a live overlay
-        // surface such as fuzzel/rofi, or from any other valid keyboard target.
-        let seat_focus_needs_recovery = self
-            .native
-            .seat
-            .get_keyboard()
-            .and_then(|k| k.current_focus())
-            .is_none_or(|focus| !focus.alive());
-        if seat_focus_needs_recovery {
-            self.restore_focus_after_overlay();
-        }
+        // Fullscreen/tag changes can hide a live layer surface. Reconcile
+        // shell focus before falling back to the WM selection, while retaining
+        // every other live keyboard target across ordinary space syncs.
+        self.reconcile_layer_keyboard_focus();
 
         let state = &self.wm.core.state;
         let updates: Vec<(WindowId, Rect, i32)> = self

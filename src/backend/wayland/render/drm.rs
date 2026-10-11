@@ -43,9 +43,7 @@ use crate::backend::wayland::render::frame::{
 };
 use crate::backend::wayland::render::mirror::{MirroredElement, mirror_projection};
 use crate::backend::wayland::render::scene::{
-    SharedSceneElements, build_common_scene_elements_from_shared,
-    count_upper_layer_render_elements, get_render_element_counts,
-    remove_duplicate_overlay_elements,
+    SharedSceneElements, build_common_scene_elements_from_shared, window_render_elements,
 };
 use crate::config::config_toml::VrrMode;
 use std::rc::Rc;
@@ -86,7 +84,6 @@ render_elements! {
     Solid=SolidColorRenderElement,
     Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
     Cursor=TextureRenderElement<GlesTexture>,
-    Space=smithay::desktop::space::SpaceRenderElements<GlesRenderer, smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>,
 }
 
 render_elements! {
@@ -102,7 +99,7 @@ render_elements! {
 /// A realized mirror renders its source's scene projected onto its own
 /// framebuffer. Client bookkeeping (frame callbacks, presentation and dmabuf
 /// feedback, primary scanout) follows the source, which is the output the
-/// surfaces are actually on; `suppress_upper_layers` is decided for the
+/// surfaces are actually on; the scene policy is decided for the
 /// source as well.
 pub fn render_drm_output(
     state: &mut WaylandNativeState,
@@ -111,7 +108,7 @@ pub fn render_drm_output(
     cursor_manager: &CursorManager,
     start_time: Instant,
     shared_scene: Option<Rc<SharedSceneElements>>,
-    suppress_upper_layers: bool,
+    scene_policy: crate::backend::wayland::stacking::OutputScenePolicy,
 ) -> RenderOutcome {
     let mirror = mirror_projection(state, &entry.output);
     let (scene_output, scene_rect) = match &mirror {
@@ -154,7 +151,7 @@ pub fn render_drm_output(
         &scene_output,
         cursor_elements,
         shared_scene,
-        suppress_upper_layers,
+        scene_policy,
     );
     let is_mirror = state
         .runtime
@@ -328,7 +325,7 @@ fn build_drm_render_elements(
     output: &Output,
     cursor_elements: Vec<DrmExtras>,
     shared_scene: Option<Rc<SharedSceneElements>>,
-    suppress_upper_layers: bool,
+    scene_policy: crate::backend::wayland::stacking::OutputScenePolicy,
 ) -> Vec<DrmExtras> {
     if state.is_locked() {
         build_locked_drm_render_elements(state, renderer, output, cursor_elements)
@@ -339,7 +336,7 @@ fn build_drm_render_elements(
             output,
             cursor_elements,
             shared_scene,
-            suppress_upper_layers,
+            scene_policy,
         )
     }
 }
@@ -376,31 +373,20 @@ fn build_unlocked_drm_render_elements(
     output: &Output,
     cursor_elements: Vec<DrmExtras>,
     shared_scene: Option<Rc<SharedSceneElements>>,
-    suppress_upper_layers: bool,
+    scene_policy: crate::backend::wayland::stacking::OutputScenePolicy,
 ) -> Vec<DrmExtras> {
     let scene = build_common_scene_elements_from_shared(
         state,
         renderer,
         output,
         &shared_scene.expect("shared scene elements"),
+        scene_policy,
     );
-    let mut space_render_elements =
-        smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
-            .expect("space render elements");
-    remove_duplicate_overlay_elements(&scene, &mut space_render_elements);
-    let num_upper = count_upper_layer_render_elements(renderer, output);
-    let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
-
-    let mut render_elements = Vec::with_capacity(counts.total() + cursor_elements.len());
+    let windows = window_render_elements(state, renderer, output, &scene);
+    let mut render_elements =
+        Vec::with_capacity(scene.len() + windows.len() + cursor_elements.len());
     render_elements.extend(cursor_elements);
-    super::assemble_scene_elements!(
-        DrmExtras,
-        scene,
-        space_render_elements,
-        num_upper,
-        suppress_upper_layers,
-        render_elements
-    );
+    super::assemble_scene_elements!(DrmExtras, scene, windows, render_elements);
     render_elements
 }
 

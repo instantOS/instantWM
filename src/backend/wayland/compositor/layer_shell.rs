@@ -11,12 +11,15 @@ use smithay::{
     },
 };
 
-use super::{focus::KeyboardFocusTarget, state::WaylandState};
+use super::state::WaylandState;
 use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 use crate::types::Rect;
+use smithay::wayland::seat::WaylandFocus;
 use std::collections::HashMap;
 
 mod keyboard;
+#[cfg(test)]
+mod tests;
 pub(crate) use keyboard::{LayerFocusRequest, LayerKeyboardPolicy};
 
 /// Called from `CompositorHandler::commit` when a layer surface commit is detected.
@@ -56,6 +59,7 @@ pub(super) fn handle_layer_commit(
             SERIAL_COUNTER.next_serial(),
             LayerFocusRequest::Automatic,
         );
+        state.reconcile_layer_keyboard_focus();
         // Exclusive zones may have changed on commit, so re-derive each
         // monitor's `available_rect`.
         state
@@ -193,11 +197,10 @@ impl WlrLayerShellHandler for WaylandState {
             .get_keyboard()
             .and_then(|k| k.current_focus())
             .is_some_and(|focus| {
-                if let KeyboardFocusTarget::WlSurface(s) = focus {
-                    s == *wl_surface
-                } else {
-                    false
-                }
+                focus
+                    .wl_surface()
+                    .and_then(|surface| self.native.layer_root_surface(surface.as_ref()))
+                    .is_some_and(|root| root == *wl_surface)
             });
 
         let mut affected_outputs = Vec::new();
