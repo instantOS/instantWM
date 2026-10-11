@@ -54,8 +54,11 @@ fn draw_bar(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig, target: BarSu
     if target.window_id == WindowId::default() {
         return;
     }
-    let snapshots =
-        crate::bar::scene::build_monitor_snapshots(core, core.bar.runtime.external_tray_width);
+    let snapshots = crate::bar::scene::build_monitor_snapshots(
+        core,
+        core.bar.runtime.external_tray_width,
+        crate::bar::scene::BarSnapshotScope::Visible,
+    );
     let Some(snapshot) = snapshots
         .iter()
         .find(|snapshot| snapshot.monitor_id == target.monitor_id)
@@ -75,8 +78,11 @@ pub fn draw_bars(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig) {
             window_id: monitor.bar_win,
         })
         .collect();
-    let snapshots =
-        crate::bar::scene::build_monitor_snapshots(core, core.bar.runtime.external_tray_width);
+    let snapshots = crate::bar::scene::build_monitor_snapshots(
+        core,
+        core.bar.runtime.external_tray_width,
+        crate::bar::scene::BarSnapshotScope::Visible,
+    );
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots
             .iter()

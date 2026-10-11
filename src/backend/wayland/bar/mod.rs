@@ -27,7 +27,7 @@ use self::text::TextRasterizer;
 /// [`BarRasterizer`] on the worker thread. Keeping them out of this type avoids
 /// constructing a second `FontSystem` that never paints anything.
 pub struct WaylandBarRenderer {
-    cached_buffers: Vec<BarBuffer>,
+    cached_buffers: Vec<(crate::types::MonitorId, BarBuffer)>,
     /// Scene the cached buffers depict.
     cached_snapshots: async_render::Snapshots,
     async_runtime: async_render::AsyncBarRenderRuntime,
@@ -162,8 +162,8 @@ pub fn render_bar_buffers(
     core: &mut WmCore,
     renderer: &mut WaylandBarRenderer,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
-    let snapshots = scene::build_monitor_snapshots(core, 0);
-    async_render::poll_result(core, renderer, &snapshots);
+    let snapshots = scene::build_monitor_snapshots(core, 0, scene::BarSnapshotScope::Configured);
+    renderer.poll_result(core, &snapshots);
 
     if *renderer.cached_snapshots == snapshots {
         core.bar.mark_drawn();
@@ -174,7 +174,16 @@ pub fn render_bar_buffers(
     renderer
         .cached_buffers
         .iter()
-        .map(|buffer| (buffer.buffer.clone(), buffer.position))
+        .filter(|(monitor_id, buffer)| {
+            core.state
+                .model
+                .monitor(*monitor_id)
+                .is_some_and(|monitor| {
+                    monitor.bar_visible()
+                        && buffer.position == Point::new(monitor.work_rect().x, monitor.bar_y())
+                })
+        })
+        .map(|(_, buffer)| (buffer.buffer.clone(), buffer.position))
         .collect()
 }
 

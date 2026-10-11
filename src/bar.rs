@@ -344,7 +344,9 @@ pub(crate) fn render_hit_caches_for_test(core: &mut WmCore) {
         fn blit_rgba(&mut self, _destination: Rect, _source_size: Size, _src_rgba: &[u8]) {}
     }
 
-    for snapshot in scene::build_monitor_snapshots(core, 0) {
+    for snapshot in
+        scene::build_monitor_snapshots(core, 0, crate::bar::scene::BarSnapshotScope::Visible)
+    {
         let hit = scene::render_monitor_snapshot(&snapshot, &mut FixedWidthPainter);
         core.bar.replace_hit_cache(snapshot.monitor_id, hit);
     }

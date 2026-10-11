@@ -5,6 +5,7 @@ use smithay::utils::Transform;
 use crate::bar::canvas::Canvas;
 use crate::types::Point;
 
+#[derive(Clone)]
 pub struct BarBuffer {
     pub buffer: MemoryRenderBuffer,
     pub position: Point,
@@ -15,15 +16,6 @@ pub(super) struct RawBarBuffer {
     pub(super) canvas: Canvas,
     /// Where the canvas sits in the global coordinate space.
     pub(super) position: Point,
-}
-
-impl Clone for BarBuffer {
-    fn clone(&self) -> Self {
-        Self {
-            buffer: self.buffer.clone(),
-            position: self.position,
-        }
-    }
 }
 
 impl From<&RawBarBuffer> for BarBuffer {

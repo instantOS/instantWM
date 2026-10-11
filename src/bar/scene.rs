@@ -335,9 +335,17 @@ fn build_systray_snapshot(
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum BarSnapshotScope {
+    Visible,
+    /// Include bars concealed by fullscreen to keep asynchronous caches warm.
+    Configured,
+}
+
 pub(crate) fn build_monitor_snapshots(
     core: &WmCore,
     external_right_width: i32,
+    scope: BarSnapshotScope,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor = core.state.model.expect_selected_monitor();
     let selected_monitor_num = selected_monitor.num;
@@ -367,7 +375,11 @@ pub(crate) fn build_monitor_snapshots(
 
     let mut snapshots = Vec::new();
     for (monitor_id, mon) in core.state.model.monitors_iter() {
-        if !mon.bar_visible() {
+        let include = match scope {
+            BarSnapshotScope::Visible => mon.bar_visible(),
+            BarSnapshotScope::Configured => mon.shows_bar(),
+        };
+        if !include {
             continue;
         }
         let fonts = base_fonts.scaled(mon.ui_scale as f32);
@@ -913,7 +925,7 @@ mod tests {
             bar,
             focus,
         };
-        let snapshots = build_monitor_snapshots(&core, 60);
+        let snapshots = build_monitor_snapshots(&core, 60, BarSnapshotScope::Visible);
         let host = snapshots
             .iter()
             .find(|snapshot| snapshot.monitor_id == ids[0])

@@ -12,7 +12,7 @@ pub(super) type Snapshots = Arc<Vec<MonitorBarSnapshot>>;
 
 struct AsyncBarRenderResult {
     snapshots: Snapshots,
-    buffers: Vec<RawBarBuffer>,
+    buffers: Vec<(MonitorId, RawBarBuffer)>,
     hit_caches: Vec<(MonitorId, MonitorHitCache)>,
 }
 
@@ -141,19 +141,21 @@ impl Drop for AsyncBarRenderRuntime {
     }
 }
 
-pub(super) fn poll_result(
-    core: &mut WmCore,
-    renderer: &mut WaylandBarRenderer,
-    current: &[MonitorBarSnapshot],
-) {
-    let Some(result) = renderer.async_runtime.take_result(current) else {
-        return;
-    };
+impl WaylandBarRenderer {
+    pub(super) fn poll_result(&mut self, core: &mut WmCore, current: &[MonitorBarSnapshot]) {
+        let Some(result) = self.async_runtime.take_result(current) else {
+            return;
+        };
 
-    renderer.cached_buffers = result.buffers.iter().map(|b| b.into()).collect();
-    renderer.cached_snapshots = result.snapshots;
-    for (monitor_id, hit) in result.hit_caches {
-        core.bar.replace_hit_cache(monitor_id, hit);
+        self.cached_buffers = result
+            .buffers
+            .iter()
+            .map(|(monitor_id, buffer)| (*monitor_id, buffer.into()))
+            .collect();
+        self.cached_snapshots = result.snapshots;
+        for (monitor_id, hit) in result.hit_caches {
+            core.bar.replace_hit_cache(monitor_id, hit);
+        }
     }
 }
 
@@ -167,7 +169,7 @@ fn render_snapshots(painter: &mut BarRasterizer, snapshots: Snapshots) -> AsyncB
         let hit = scene::render_monitor_snapshot(mon, painter);
 
         if let Some(raw) = painter.finish_raw() {
-            buffers.push(raw);
+            buffers.push((mon.monitor_id, raw));
         }
         hit_caches.push((mon.monitor_id, hit));
     }
@@ -204,7 +206,7 @@ mod tests {
     }
 
     fn snapshots(core: &WmCore) -> Vec<MonitorBarSnapshot> {
-        scene::build_monitor_snapshots(core, 0)
+        scene::build_monitor_snapshots(core, 0, crate::bar::scene::BarSnapshotScope::Visible)
     }
 
     fn test_wm() -> crate::wm::WaylandWm {
@@ -281,6 +283,82 @@ mod tests {
 
         assert!(**runtime.shared.take_result().unwrap().snapshots == second);
         assert!(runtime.shared.take_result().is_none());
+    }
+
+    #[test]
+    fn fullscreen_keeps_a_ready_bar_without_drawing_it() {
+        let mut wm = test_wm();
+        let monitor = wm.core.state.model.selected_monitor_id();
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor)
+            .unwrap()
+            .bar_default_show = true;
+        let mut client = crate::types::Client::new(crate::types::WindowId(91));
+        client.set_tag_mask(wm.core.state.model.monitor(monitor).unwrap().visible_tags());
+        let win =
+            crate::test_support::add_selected_client(&mut wm.core.state.model, monitor, client);
+        let _ = wm.core.state.model.set_fullscreen(win, true).unwrap();
+        assert!(
+            scene::build_monitor_snapshots(&wm.core, 0, scene::BarSnapshotScope::Visible)
+                .is_empty()
+        );
+        let hidden =
+            scene::build_monitor_snapshots(&wm.core, 0, scene::BarSnapshotScope::Configured);
+        assert_eq!(hidden.len(), 1);
+
+        let mut renderer = WaylandBarRenderer {
+            cached_buffers: Vec::new(),
+            cached_snapshots: Default::default(),
+            async_runtime: runtime_without_worker(),
+        };
+        renderer.async_runtime.request(hidden.clone());
+        let rendered = render_snapshots(&mut BarRasterizer::default(), Arc::new(hidden));
+        renderer.async_runtime.shared.publish_result(rendered);
+        assert!(super::super::render_bar_buffers(&mut wm.core, &mut renderer).is_empty());
+        assert_eq!(renderer.cached_buffers.len(), 1);
+
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor)
+            .unwrap()
+            .set_selected_tags(crate::types::TagMask::single(2).unwrap());
+        assert_eq!(
+            super::super::render_bar_buffers(&mut wm.core, &mut renderer).len(),
+            1
+        );
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor)
+            .unwrap()
+            .set_selected_tags(crate::types::TagMask::single(1).unwrap());
+        assert!(super::super::render_bar_buffers(&mut wm.core, &mut renderer).is_empty());
+
+        // The first frame after leaving fullscreen uses the warm image while
+        // updated title/tag styling is rasterized asynchronously.
+        let _ = wm.core.state.model.set_fullscreen(win, false).unwrap();
+        assert_eq!(
+            super::super::render_bar_buffers(&mut wm.core, &mut renderer).len(),
+            1
+        );
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor)
+            .unwrap()
+            .bar_default_show = false;
+        assert!(super::super::render_bar_buffers(&mut wm.core, &mut renderer).is_empty());
+        // Another output at the same coordinates must not make the hidden
+        // monitor's cached buffer visible.
+        let mut other = crate::types::Monitor::new_with_values();
+        other.set_available_rect(crate::types::Rect::new(0, 0, 800, 600));
+        other.bar_height = 24;
+        other.bar_default_show = true;
+        wm.core.state.model.monitors.push(other);
+        assert!(super::super::render_bar_buffers(&mut wm.core, &mut renderer).is_empty());
     }
 
     #[test]

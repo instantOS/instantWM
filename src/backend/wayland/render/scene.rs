@@ -27,7 +27,7 @@ use crate::wm::WaylandWm as Wm;
 
 /// Build the `MemoryRenderBufferRenderElement` list for the status bar.
 ///
-/// Returns an empty `Vec` when `wm.core.state.config.showbar` is `false`.
+/// Includes bars enabled by each monitor’s effective visibility settings.
 ///
 /// The caller is responsible for adding the returned elements to its own
 /// custom-element list under the appropriate backend-specific wrapper variant
@@ -36,7 +36,12 @@ pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandNativeState,
 ) -> Vec<(MemoryRenderBuffer, crate::types::Point)> {
-    let show_top = wm.core.state.config.bar.show;
+    let show_top = wm
+        .core
+        .state
+        .model
+        .monitors_iter()
+        .any(|(_, m)| m.shows_bar());
     let show_bottom = wm.core.state.config.bar.show_bottom
         || wm
             .core
