@@ -8,18 +8,17 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::input::pointer::CursorIcon;
 use smithay::reexports::calloop::{EventLoop, LoopHandle, LoopSignal};
-use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::mem;
 use std::process::exit;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::backend::output::{
@@ -30,14 +29,16 @@ use crate::backend::wayland::init::drm::init_gpu;
 use crate::backend::wayland::input::apply_pending_warp;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::drm::{
-    CursorManager, ManagedDrmOutputManager, OutputSurfaceEntry, RenderOutcome,
+    CursorManager, DrmDeviceId, OutputSurfaceEntry, OutputTopology, RenderOutcome, ScanoutId,
     build_output_surfaces, create_output_manager, probe_usable_connectors,
     reconcile_output_surfaces, refresh_output_modes, render_drm_output,
 };
 use crate::backend::wayland::render::scene::{SceneCache, build_shared_scene_elements};
 use crate::config::config_toml::CursorConfig;
 
+mod devices;
 mod output_config;
+use devices::{DrmDevices, PRIMARY_DEVICE};
 mod vrr;
 
 use output_config::{process_output_configurations, process_output_power_requests};
@@ -55,18 +56,19 @@ struct DrmLayoutState {
 /// geometry through [`OutputSurfaceEntry`].
 #[derive(Debug, Clone, Copy)]
 struct OutputHitRegion {
-    crtc: crtc::Handle,
+    scanout: ScanoutId,
     rect: crate::types::Rect,
 }
 
 struct DrmLoopState {
     session_active: bool,
     topology_dirty: bool,
-    render_flags: HashMap<crtc::Handle, bool>,
-    taken_render_flags: HashMap<crtc::Handle, bool>,
-    pending_crtcs: HashSet<crtc::Handle>,
-    presentation_scheduler: super::engine::PresentationScheduler<crtc::Handle>,
-    presentation_seq: HashMap<crtc::Handle, u64>,
+    removed_devices: HashSet<libc::dev_t>,
+    render_flags: HashMap<ScanoutId, bool>,
+    taken_render_flags: HashMap<ScanoutId, bool>,
+    pending_crtcs: HashSet<ScanoutId>,
+    presentation_scheduler: super::engine::PresentationScheduler<ScanoutId>,
+    presentation_seq: HashMap<ScanoutId, u64>,
     last_bar_update_seq: u64,
     scene_cache: SceneCache,
 }
@@ -75,18 +77,19 @@ impl DrmLoopState {
     fn new(output_surfaces: &[OutputSurfaceEntry]) -> Self {
         let render_flags = output_surfaces
             .iter()
-            .map(|entry| (entry.crtc, true))
+            .map(|entry| (entry.scanout(), true))
             .collect();
         Self {
             session_active: true,
             topology_dirty: false,
+            removed_devices: HashSet::new(),
             render_flags,
             taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
             presentation_scheduler: super::engine::PresentationScheduler::default(),
             presentation_seq: output_surfaces
                 .iter()
-                .map(|entry| (entry.crtc, 0))
+                .map(|entry| (entry.scanout(), 0))
                 .collect(),
             last_bar_update_seq: 0,
             scene_cache: SceneCache::default(),
@@ -105,7 +108,7 @@ impl DrmLoopState {
         }
     }
 
-    fn mark_dirty(&mut self, crtc: crtc::Handle) {
+    fn mark_dirty(&mut self, crtc: ScanoutId) {
         if let Some(flag) = self.render_flags.get_mut(&crtc) {
             *flag = true;
         }
@@ -126,7 +129,7 @@ impl DrmLoopState {
         }
     }
 
-    fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
+    fn take_render_flags(&mut self) -> HashMap<ScanoutId, bool> {
         let mut taken = mem::take(&mut self.taken_render_flags);
         taken.clear();
         for (&crtc, flag) in &mut self.render_flags {
@@ -142,7 +145,7 @@ impl DrmLoopState {
             .any(|(crtc, &dirty)| dirty && !self.pending_crtcs.contains(crtc))
     }
 
-    fn remove_output(&mut self, crtc: crtc::Handle) {
+    fn remove_output(&mut self, crtc: ScanoutId) {
         self.render_flags.remove(&crtc);
         self.taken_render_flags.remove(&crtc);
         self.pending_crtcs.remove(&crtc);
@@ -150,7 +153,7 @@ impl DrmLoopState {
         self.presentation_scheduler.remove_output(&crtc);
     }
 
-    fn add_output(&mut self, crtc: crtc::Handle) {
+    fn add_output(&mut self, crtc: ScanoutId) {
         self.render_flags.insert(crtc, true);
         self.presentation_seq.entry(crtc).or_insert(0);
     }
@@ -164,20 +167,21 @@ impl DrmLoopState {
 fn outputs_at_pointer(
     regions: &[OutputHitRegion],
     pointer: crate::types::Point,
-) -> impl Iterator<Item = crtc::Handle> + '_ {
+) -> impl Iterator<Item = ScanoutId> + '_ {
     regions
         .iter()
         .filter(move |region| region.rect.contains_point(pointer))
-        .map(|region| region.crtc)
+        .map(|region| region.scanout)
 }
 
 #[derive(Debug, Clone, Copy)]
 enum DrmRuntimeEvent {
     SessionPaused,
     SessionActivated,
-    VBlank(crtc::Handle),
+    VBlank(ScanoutId),
     PointerMoved { old_location: crate::types::Point },
     OutputTopologyChanged,
+    DeviceRemoved(libc::dev_t),
 }
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
@@ -213,16 +217,23 @@ pub fn run() -> ! {
     state.init_drm_syncobj(drm_fd.clone());
 
     let mut cursor_manager = init_cursor_manager(&state.native.cursor_config);
-    let output_manager = Arc::new(Mutex::new(create_output_manager(
-        drm_device,
-        &renderer,
-        &gbm_device,
-    )));
+    let mut output_manager = create_output_manager(drm_device, &renderer, &gbm_device, &gbm_device);
 
     let mut output_surfaces = {
-        let mut manager = output_manager.lock().unwrap();
-        build_output_surfaces(&mut manager, &mut renderer, &mut state.native)
+        build_output_surfaces(
+            &mut output_manager,
+            PRIMARY_DEVICE,
+            &mut renderer,
+            &mut state.native,
+        )
     };
+    let devices = Rc::new(RefCell::new(DrmDevices::new(
+        primary_gpu_path,
+        output_manager,
+        gbm_device,
+        session.clone(),
+        seat_name.clone(),
+    )));
     for entry in &output_surfaces {
         state
             .native
@@ -318,11 +329,26 @@ pub fn run() -> ! {
         &loop_handle,
         notifier,
         &mut libinput_context,
-        Arc::clone(&output_manager),
+        Rc::clone(&devices),
         runtime_event_tx.clone(),
     );
 
-    setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
+    let token = setup_drm_vblank_handler(
+        &loop_handle,
+        drm_notifier,
+        PRIMARY_DEVICE,
+        runtime_event_tx.clone(),
+    )
+    .expect("primary DRM notifier source");
+    devices
+        .borrow_mut()
+        .devices
+        .get_mut(&PRIMARY_DEVICE)
+        .unwrap()
+        .token = Some(token);
+    // Enumerate additional devices at startup, even if udev sent their add
+    // events before the compositor started listening.
+    loop_state.topology_dirty = true;
     setup_udev_hotplug_handler(&loop_handle, &seat_name, runtime_event_tx.clone());
 
     let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut state.wm);
@@ -356,7 +382,7 @@ pub fn run() -> ! {
     initial_render_ping.ping();
 
     let start_time = Instant::now();
-    let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
+    let mut render_failures: HashMap<ScanoutId, u32> = HashMap::new();
 
     crate::runtime::spawn_status_bar(&mut state.wm);
 
@@ -376,7 +402,8 @@ pub fn run() -> ! {
         &input_dimensions,
         &mut loop_state,
         &mut output_surfaces,
-        &output_manager,
+        &devices,
+        &runtime_event_tx,
         &mut cursor_manager,
         &mut ipc_server,
         &mut render_failures,
@@ -463,7 +490,7 @@ fn init_layout_state(
         output_hit_regions: output_surfaces
             .iter()
             .map(|entry| OutputHitRegion {
-                crtc: entry.crtc,
+                scanout: entry.scanout(),
                 rect: entry.rect,
             })
             .collect(),
@@ -502,7 +529,7 @@ fn refresh_drm_layout_state(
         output_hit_regions: active
             .iter()
             .map(|entry| OutputHitRegion {
-                crtc: entry.crtc,
+                scanout: entry.scanout(),
                 rect: entry.rect,
             })
             .collect(),
@@ -514,11 +541,10 @@ fn setup_session_handlers(
     loop_handle: &calloop::LoopHandle<WaylandState>,
     notifier: smithay::backend::session::libseat::LibSeatSessionNotifier,
     libinput_context: &mut Libinput,
-    output_manager: Arc<Mutex<ManagedDrmOutputManager>>,
+    devices: Rc<RefCell<DrmDevices>>,
     runtime_event_tx: mpsc::Sender<DrmRuntimeEvent>,
 ) {
     let mut session_libinput = libinput_context.clone();
-    let session_output_manager = Arc::clone(&output_manager);
 
     loop_handle
         .insert_source(notifier, move |event, _, state| match event {
@@ -528,7 +554,9 @@ fn setup_session_handlers(
                     crate::backend::wayland::input::touch::handle_touch_cancel(state);
                 }
                 session_libinput.suspend();
-                session_output_manager.lock().unwrap().pause();
+                for device in devices.borrow_mut().devices.values_mut() {
+                    device.manager.pause();
+                }
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionPaused);
             }
             SessionEvent::ActivateSession => {
@@ -536,14 +564,13 @@ fn setup_session_handlers(
                 if let Err(err) = session_libinput.resume() {
                     log::error!("failed to resume libinput context: {:?}", err);
                 }
-                if let Err(err) = session_output_manager
-                    .lock()
-                    .unwrap()
-                    .lock()
-                    .activate(false)
-                {
-                    log::error!("failed to reactivate DRM device: {err}");
-                    return;
+                for device in devices.borrow_mut().devices.values_mut() {
+                    if let Err(error) = device.manager.lock().activate(false) {
+                        log::error!(
+                            "failed to reactivate DRM device {}: {error}",
+                            device.path.display()
+                        );
+                    }
                 }
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionActivated);
             }
@@ -555,18 +582,19 @@ fn setup_session_handlers(
 fn setup_drm_vblank_handler(
     loop_handle: &calloop::LoopHandle<WaylandState>,
     drm_notifier: smithay::backend::drm::DrmDeviceNotifier,
+    device: DrmDeviceId,
     runtime_event_tx: mpsc::Sender<DrmRuntimeEvent>,
-) {
+) -> Result<smithay::reexports::calloop::RegistrationToken, anyhow::Error> {
     loop_handle
         .insert_source(drm_notifier, move |event, _metadata, _data| match event {
             DrmEvent::VBlank(crtc) => {
-                let _ = runtime_event_tx.send(DrmRuntimeEvent::VBlank(crtc));
+                let _ = runtime_event_tx.send(DrmRuntimeEvent::VBlank(ScanoutId { device, crtc }));
             }
             DrmEvent::Error(err) => {
                 log::error!("DRM error: {err}");
             }
         })
-        .expect("drm notifier source");
+        .map_err(|error| anyhow::anyhow!("DRM notifier source: {error}"))
 }
 
 /// Wake the DRM runtime whenever udev reports a graphics-device topology
@@ -587,6 +615,9 @@ fn setup_udev_hotplug_handler(
     loop_handle
         .insert_source(backend, move |event, _, _| match event {
             UdevEvent::Added { .. } | UdevEvent::Changed { .. } | UdevEvent::Removed { .. } => {
+                if let UdevEvent::Removed { device_id } = event {
+                    let _ = runtime_event_tx.send(DrmRuntimeEvent::DeviceRemoved(device_id));
+                }
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::OutputTopologyChanged);
                 // Thunderbolt and DisplayPort MST branches enumerate in
                 // stages. Udev does not guarantee that the final connector
@@ -646,10 +677,11 @@ fn run_event_loop(
     input_dimensions: &Rc<Cell<crate::types::Rect>>,
     loop_state: &mut DrmLoopState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
-    output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
+    devices: &Rc<RefCell<DrmDevices>>,
+    runtime_event_tx: &mpsc::Sender<DrmRuntimeEvent>,
     cursor_manager: &mut CursorManager,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
-    render_failures: &mut HashMap<crtc::Handle, u32>,
+    render_failures: &mut HashMap<ScanoutId, u32>,
     start_time: Instant,
     led_state_rx: mpsc::Receiver<smithay::input::keyboard::LedState>,
     runtime_event_rx: mpsc::Receiver<DrmRuntimeEvent>,
@@ -671,17 +703,32 @@ fn run_event_loop(
                 output_surfaces,
                 &monotonic_clock,
             );
+            if loop_state
+                .removed_devices
+                .contains(&devices.borrow().devices[&PRIMARY_DEVICE].devnum)
+            {
+                log::error!("Primary rendering GPU was removed; stopping the DRM session");
+                loop_signal.stop();
+                return;
+            }
             if loop_state.take_topology_change(topology_changed)
                 && reconcile_drm_outputs(
                     state,
                     output_surfaces,
-                    output_manager,
+                    devices,
+                    &loop_handle,
+                    runtime_event_tx,
                     loop_state,
                     layout_state,
                     &shared_input_dimensions,
                 )
             {
                 loop_state.mark_all_dirty();
+                render_failures.retain(|scanout, _| {
+                    output_surfaces
+                        .iter()
+                        .any(|entry| entry.scanout() == *scanout)
+                });
             }
             process_frame_callback_requests(
                 state,
@@ -695,7 +742,7 @@ fn run_event_loop(
                 .filter(|entry| entry.enabled && entry.powered)
             {
                 loop_state.presentation_scheduler.schedule_commit_timing(
-                    entry.crtc,
+                    entry.scanout(),
                     &loop_handle,
                     state,
                     &entry.output,
@@ -715,7 +762,7 @@ fn run_event_loop(
                     process_output_configurations(
                         &mut state.native,
                         output_surfaces,
-                        output_manager,
+                        &mut devices.borrow_mut(),
                         renderer,
                         loop_state,
                     )
@@ -857,10 +904,16 @@ fn process_runtime_events(
                 topology_changed = true;
             }
             DrmRuntimeEvent::VBlank(crtc) => {
+                if !loop_state.render_flags.contains_key(&crtc) {
+                    continue;
+                }
                 loop_state
                     .presentation_scheduler
                     .presentation_completed(crtc, Instant::now());
-                if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
+                if let Some(entry) = output_surfaces
+                    .iter_mut()
+                    .find(|entry| entry.scanout() == crtc)
+                {
                     let Some(surface) = entry.surface.as_mut() else {
                         loop_state.pending_crtcs.remove(&crtc);
                         continue;
@@ -889,6 +942,10 @@ fn process_runtime_events(
                 pointer_moved = true;
             }
             DrmRuntimeEvent::OutputTopologyChanged => topology_changed = true,
+            DrmRuntimeEvent::DeviceRemoved(devnum) => {
+                loop_state.removed_devices.insert(devnum);
+                topology_changed = true;
+            }
         }
     }
     (pointer_moved, topology_changed)
@@ -898,41 +955,67 @@ fn process_runtime_events(
 fn reconcile_drm_outputs(
     state: &mut WaylandState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
-    output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
+    devices: &Rc<RefCell<DrmDevices>>,
+    loop_handle: &LoopHandle<'_, WaylandState>,
+    runtime_event_tx: &mpsc::Sender<DrmRuntimeEvent>,
     loop_state: &mut DrmLoopState,
     layout_state: &mut DrmLayoutState,
     input_dimensions: &Rc<Cell<crate::types::Rect>>,
 ) -> bool {
-    let usable = {
-        let manager = output_manager.lock().unwrap();
-        match probe_usable_connectors(&manager) {
-            Ok(connectors) => connectors,
-            Err(error) => {
-                log::warn!("failed to probe DRM connectors after hot-plug: {error}");
-                return false;
-            }
+    let mut devices = devices.borrow_mut();
+    let changes = match devices.discover(&loop_state.removed_devices) {
+        Ok(changes) => changes,
+        Err(error) => {
+            log::warn!("Cannot enumerate DRM devices after hotplug: {error}");
+            return false;
         }
     };
-
+    let removed_devices = changes.removed;
+    loop_state.removed_devices.clear();
+    let mut snapshots: Vec<_> = devices
+        .devices
+        .iter()
+        .filter(|(id, _)| !removed_devices.contains(id))
+        .filter_map(
+            |(&id, device)| match probe_usable_connectors(&device.manager) {
+                Ok(connectors) => Some((id, connectors)),
+                Err(error) => {
+                    log::warn!(
+                        "failed to probe {} after hotplug: {error}",
+                        device.path.display()
+                    );
+                    None
+                }
+            },
+        )
+        .collect();
     let old_connectors: HashSet<_> = output_surfaces
         .iter()
-        .map(|entry| entry.connector)
+        .map(|entry| (entry.device, entry.connector))
         .collect();
     let mut retained = Vec::with_capacity(output_surfaces.len());
     let mut removed = Vec::new();
     for entry in output_surfaces.drain(..) {
-        if usable.iter().any(|info| info.handle() == entry.connector) {
-            retained.push(entry);
-        } else {
+        // A failed device probe preserves its outputs. Device removal is
+        // authoritative even when its fd can no longer answer connector ioctls.
+        let disconnected = removed_devices.contains(&entry.device)
+            || snapshots
+                .iter()
+                .find(|(id, _)| *id == entry.device)
+                .is_some_and(|(_, usable)| {
+                    !usable.iter().any(|info| info.handle() == entry.connector)
+                });
+        if disconnected {
             removed.push(entry);
+        } else {
+            retained.push(entry);
         }
     }
     *output_surfaces = retained;
     let retained_connectors: HashSet<_> = output_surfaces
         .iter()
-        .map(|entry| entry.connector)
+        .map(|entry| (entry.device, entry.connector))
         .collect();
-
     if !removed.is_empty() {
         state
             .native
@@ -956,7 +1039,7 @@ fn reconcile_drm_outputs(
                 );
             }
             entry.surface.take();
-            loop_state.remove_output(entry.crtc);
+            loop_state.remove_output(entry.scanout());
             state.native.space.unmap_output(&entry.output);
             state.native.set_output_global_enabled(&entry.output, false);
             state.native.fail_pending_captures_for_output(&entry.output);
@@ -969,62 +1052,113 @@ fn reconcile_drm_outputs(
         state.native.drop_unavailable_mirrors();
     }
 
-    let reconciliation = {
-        let mut manager = output_manager.lock().unwrap();
-        let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
-        graphics.with_renderer(|renderer| {
-            reconcile_output_surfaces(
-                &mut manager,
-                renderer,
-                &mut state.native,
-                output_surfaces,
-                &usable,
-                &loop_state.pending_crtcs.iter().copied().collect::<Vec<_>>(),
-            )
-        })
-    };
-    loop_state.topology_dirty |= reconciliation.deferred;
-    let moved = reconciliation.moved;
-    // Clear all old keys before adding new ones: migrations can swap CRTCs.
-    for (old, _) in &moved {
-        loop_state.remove_output(*old);
+    // All surfaces and client references are gone before their device closes.
+    for id in removed_devices {
+        devices.retire(id, loop_handle);
     }
-    for (_, new) in &moved {
-        loop_state.add_output(*new);
-    }
-
-    let mut modes_changed = false;
-    for entry in output_surfaces.iter_mut() {
-        if let Some(info) = usable.iter().find(|info| info.handle() == entry.connector) {
-            modes_changed |= refresh_output_modes(entry, info);
+    for path in changes.added {
+        let initialized = state
+            .graphics
+            .as_mut()
+            .expect("DRM graphics initialized")
+            .with_renderer(|renderer| {
+                devices.add(path.clone(), renderer, loop_handle, runtime_event_tx)
+            });
+        match initialized {
+            Ok(id) => match probe_usable_connectors(devices.manager(id)) {
+                Ok(connectors) => snapshots.push((id, connectors)),
+                Err(error) => log::warn!(
+                    "Cannot probe new scanout device {}: {error}",
+                    path.display()
+                ),
+            },
+            Err(error) => log::warn!(
+                "Cannot initialize scanout device {}: {error:#}",
+                path.display()
+            ),
         }
     }
-
+    let mut moved_any = false;
+    let mut modes_changed = false;
+    for (id, usable) in snapshots {
+        let (mut local, other): (Vec<_>, Vec<_>) = output_surfaces
+            .drain(..)
+            .partition(|entry| entry.device == id);
+        *output_surfaces = other;
+        let in_flight: Vec<_> = loop_state
+            .pending_crtcs
+            .iter()
+            .filter(|scanout| scanout.device == id)
+            .map(|scanout| scanout.crtc)
+            .collect();
+        let occupied_names: Vec<_> = output_surfaces
+            .iter()
+            .map(|entry| entry.output.name())
+            .collect();
+        let reconciliation = state
+            .graphics
+            .as_mut()
+            .expect("DRM graphics initialized")
+            .with_renderer(|renderer| {
+                reconcile_output_surfaces(
+                    devices.manager(id),
+                    renderer,
+                    &mut state.native,
+                    &mut local,
+                    OutputTopology {
+                        device: id,
+                        connectors: &usable,
+                        in_flight: &in_flight,
+                        occupied_names: &occupied_names,
+                    },
+                )
+            });
+        loop_state.topology_dirty |= reconciliation.deferred;
+        moved_any |= !reconciliation.moved.is_empty();
+        for (old, _) in &reconciliation.moved {
+            loop_state.remove_output(ScanoutId {
+                device: id,
+                crtc: *old,
+            });
+        }
+        for (_, new) in &reconciliation.moved {
+            loop_state.add_output(ScanoutId {
+                device: id,
+                crtc: *new,
+            });
+        }
+        for entry in &mut local {
+            if let Some(info) = usable.iter().find(|info| info.handle() == entry.connector) {
+                modes_changed |= refresh_output_modes(entry, info);
+            }
+        }
+        output_surfaces.extend(local);
+    }
     let added: Vec<_> = output_surfaces
         .iter()
-        .filter(|entry| !retained_connectors.contains(&entry.connector))
+        .filter(|entry| !retained_connectors.contains(&(entry.device, entry.connector)))
         .collect();
     for entry in &added {
         state
             .native
             .space
             .map_output(&entry.output, (entry.rect.x, entry.rect.y));
-        loop_state.add_output(entry.crtc);
+        loop_state.add_output(entry.scanout());
     }
     state
         .native
         .output_management_state
         .add_heads::<WaylandState>(added.iter().map(|entry| &entry.output));
-
     let connector_set_unchanged = added.is_empty()
         && old_connectors.len() == output_surfaces.len()
         && output_surfaces
             .iter()
-            .all(|entry| old_connectors.contains(&entry.connector));
-    if connector_set_unchanged && moved.is_empty() && !modes_changed {
+            .all(|entry| old_connectors.contains(&(entry.device, entry.connector)));
+    if connector_set_unchanged && !moved_any && !modes_changed {
         return false;
     }
-
+    // Keep automatic placement stable in device lifetime / connector order.
+    output_surfaces.sort_by_key(|entry| (entry.device, u32::from(entry.connector)));
     compact_drm_automatic_layout(state, output_surfaces);
     refresh_drm_layout_state(state, output_surfaces, layout_state);
     input_dimensions.set(layout_state.layout);
@@ -1140,7 +1274,7 @@ fn process_commit_redraws(
         PendingRenderTargets::Outputs(outputs) => {
             for entry in output_surfaces {
                 if outputs.contains(&entry.output.name()) {
-                    loop_state.mark_dirty(entry.crtc);
+                    loop_state.mark_dirty(entry.scanout());
                 }
             }
         }
@@ -1166,7 +1300,7 @@ fn process_frame_callback_requests(
         };
         if targeted {
             loop_state.presentation_scheduler.arm_callbacks(
-                entry.crtc,
+                entry.scanout(),
                 loop_handle,
                 &entry.output,
                 start_time,
@@ -1193,7 +1327,7 @@ fn process_cursor_warp(
 fn propagate_mirror_render_flags(
     state: &WaylandState,
     output_surfaces: &[OutputSurfaceEntry],
-    render_flags: &mut HashMap<crtc::Handle, bool>,
+    render_flags: &mut HashMap<ScanoutId, bool>,
 ) {
     if state.native.runtime.realized_mirrors.is_empty() {
         return;
@@ -1210,10 +1344,10 @@ fn propagate_mirror_render_flags(
         let source_dirty = output_surfaces
             .iter()
             .find(|candidate| candidate.output.name() == *source)
-            .and_then(|candidate| render_flags.get(&candidate.crtc).copied())
+            .and_then(|candidate| render_flags.get(&candidate.scanout()).copied())
             .unwrap_or(false);
         if source_dirty {
-            render_flags.insert(entry.crtc, true);
+            render_flags.insert(entry.scanout(), true);
         }
     }
 }
@@ -1226,7 +1360,7 @@ fn render_outputs(
     cursor_manager: &CursorManager,
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &mut DrmLoopState,
-    render_failures: &mut HashMap<crtc::Handle, u32>,
+    render_failures: &mut HashMap<ScanoutId, u32>,
     start_time: Instant,
 ) {
     let mut render_flags = loop_state.take_render_flags();
@@ -1237,7 +1371,7 @@ fn render_outputs(
     if session_active {
         let needs_any_render = output_surfaces
             .iter()
-            .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
+            .any(|entry| render_flags.get(&entry.scanout()).copied().unwrap_or(false));
         let shared_scene = if needs_any_render && !state.native.is_locked() {
             Some(build_shared_scene_elements(
                 &mut state.wm,
@@ -1249,15 +1383,15 @@ fn render_outputs(
         };
 
         for entry in output_surfaces.iter_mut() {
-            let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
+            let needs_render = render_flags.get(&entry.scanout()).copied().unwrap_or(false);
             if !needs_render || !entry.enabled || !entry.powered {
                 continue;
             }
             // Don't render if a page flip is already in flight — queue_buffer
             // would fail with EBUSY and leak a swapchain slot.
-            if pending_crtcs.contains(&entry.crtc) {
+            if pending_crtcs.contains(&entry.scanout()) {
                 // Re-mark as dirty so we render after the VBlank arrives.
-                loop_state.mark_dirty(entry.crtc);
+                loop_state.mark_dirty(entry.scanout());
                 continue;
             }
             apply_output_vrr_policy(state, entry);
@@ -1295,37 +1429,37 @@ fn render_outputs(
                     }
                     loop_state
                         .presentation_scheduler
-                        .presentation_submitted(&entry.crtc);
-                    loop_state.pending_crtcs.insert(entry.crtc);
-                    if let Some(failed_frames) = render_failures.remove(&entry.crtc)
+                        .presentation_submitted(&entry.scanout());
+                    loop_state.pending_crtcs.insert(entry.scanout());
+                    if let Some(failed_frames) = render_failures.remove(&entry.scanout())
                         && failed_frames >= 3
                     {
                         log::info!(
                             "DRM render recovered on {:?} after {failed_frames} failed frames",
-                            entry.crtc
+                            entry.scanout()
                         );
                     }
                 }
                 RenderOutcome::EmptyFrame => {
                     loop_state.presentation_scheduler.arm_callbacks(
-                        entry.crtc,
+                        entry.scanout(),
                         loop_handle,
                         &entry.output,
                         start_time,
                     );
-                    render_failures.remove(&entry.crtc);
+                    render_failures.remove(&entry.scanout());
                     if entry.pending_power_on.is_some() {
-                        loop_state.mark_dirty(entry.crtc);
+                        loop_state.mark_dirty(entry.scanout());
                     }
                 }
                 RenderOutcome::Failed => {
-                    let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
+                    let failed_frames = render_failures.entry(entry.scanout()).or_insert(0);
                     *failed_frames += 1;
 
                     if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
                         log::warn!(
                             "DRM render failed on {:?} (consecutive failures: {})",
-                            entry.crtc,
+                            entry.scanout(),
                             *failed_frames
                         );
                     }
@@ -1348,7 +1482,7 @@ fn render_outputs(
                             let _ = surface.with_compositor(|compositor| compositor.clear());
                         }
                     } else {
-                        loop_state.mark_dirty(entry.crtc);
+                        loop_state.mark_dirty(entry.scanout());
                     }
                 }
             }
@@ -1370,13 +1504,16 @@ mod cursor_config_tests {
 }
 #[cfg(test)]
 mod output_layout_tests {
-    use smithay::reexports::drm::control::{crtc, from_u32};
+    use smithay::reexports::drm::control::from_u32;
 
     use super::{OutputHitRegion, output_layout_bounds, output_layout_size, outputs_at_pointer};
     use crate::types::{Point, Rect, Size};
 
-    fn crtc(raw: u32) -> crtc::Handle {
-        from_u32(raw).expect("test CRTC handles are non-zero")
+    fn crtc(raw: u32) -> super::ScanoutId {
+        super::ScanoutId {
+            device: super::PRIMARY_DEVICE,
+            crtc: from_u32(raw).expect("test CRTC handles are non-zero"),
+        }
     }
 
     #[test]
@@ -1440,6 +1577,81 @@ mod output_layout_tests {
     }
 
     #[test]
+    fn equal_crtc_handles_on_distinct_devices_complete_independently() {
+        use super::{
+            DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
+        };
+        use smithay::utils::{Clock, Monotonic};
+        use std::sync::mpsc;
+        let primary = crtc(1);
+        let secondary = super::ScanoutId {
+            device: DrmDeviceId(1),
+            ..primary
+        };
+        let mut runtime = DrmLoopState::new(&[]);
+        for scanout in [primary, secondary] {
+            runtime.add_output(scanout);
+            runtime.pending_crtcs.insert(scanout);
+        }
+        let layout = DrmLayoutState {
+            layout: Rect::new(0, 0, 1, 1),
+            output_hit_regions: vec![],
+        };
+        let (tx, rx) = mpsc::channel();
+        tx.send(DrmRuntimeEvent::VBlank(secondary)).unwrap();
+        process_runtime_events(
+            &rx,
+            &mut runtime,
+            &layout,
+            &mut [],
+            &Clock::<Monotonic>::new(),
+        );
+        assert!(runtime.pending_crtcs.contains(&primary));
+        assert!(!runtime.pending_crtcs.contains(&secondary));
+        assert_eq!(runtime.render_flags.len(), 2);
+        runtime.remove_output(secondary);
+        assert!(runtime.render_flags.contains_key(&primary));
+        assert!(runtime.pending_crtcs.contains(&primary));
+    }
+
+    #[test]
+    fn delayed_completion_from_removed_device_cannot_release_its_replacement() {
+        use super::{
+            DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
+        };
+        use smithay::utils::{Clock, Monotonic};
+        use std::sync::mpsc;
+        let old = super::ScanoutId {
+            device: DrmDeviceId(1),
+            ..crtc(1)
+        };
+        let replacement = super::ScanoutId {
+            device: DrmDeviceId(2),
+            ..old
+        };
+        let mut runtime = DrmLoopState::new(&[]);
+        runtime.add_output(old);
+        runtime.remove_output(old);
+        runtime.add_output(replacement);
+        runtime.pending_crtcs.insert(replacement);
+        let layout = DrmLayoutState {
+            layout: Rect::new(0, 0, 1, 1),
+            output_hit_regions: vec![],
+        };
+        let (tx, rx) = mpsc::channel();
+        tx.send(DrmRuntimeEvent::VBlank(old)).unwrap();
+        process_runtime_events(
+            &rx,
+            &mut runtime,
+            &layout,
+            &mut [],
+            &Clock::<Monotonic>::new(),
+        );
+        assert!(runtime.pending_crtcs.contains(&replacement));
+        assert!(!runtime.render_flags.contains_key(&old));
+    }
+
+    #[test]
     fn removed_output_recovers_the_pointer_even_with_a_gap_in_the_layout() {
         use crate::test_support::MonitorBuilder;
         let (_event_loop, mut state) = crate::test_support::new_compositor();
@@ -1497,15 +1709,15 @@ mod output_layout_tests {
         let bottom = crtc(3);
         let regions = [
             OutputHitRegion {
-                crtc: top_left,
+                scanout: top_left,
                 rect: Rect::new(0, 0, 1920, 1080),
             },
             OutputHitRegion {
-                crtc: top_right,
+                scanout: top_right,
                 rect: Rect::new(1920, 0, 1920, 1080),
             },
             OutputHitRegion {
-                crtc: bottom,
+                scanout: bottom,
                 rect: Rect::new(960, 1080, 1920, 1080),
             },
         ];
@@ -1536,15 +1748,15 @@ mod output_layout_tests {
         let shared_rect = Rect::new(0, 0, 1920, 1080);
         let regions = [
             OutputHitRegion {
-                crtc: first,
+                scanout: first,
                 rect: shared_rect,
             },
             OutputHitRegion {
-                crtc: second,
+                scanout: second,
                 rect: shared_rect,
             },
             OutputHitRegion {
-                crtc: neighbor,
+                scanout: neighbor,
                 rect: Rect::new(1920, 0, 1920, 1080),
             },
         ];

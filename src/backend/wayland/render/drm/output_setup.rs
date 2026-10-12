@@ -2,6 +2,7 @@ use super::*;
 
 pub fn build_output_surfaces(
     output_manager: &mut ManagedDrmOutputManager,
+    device: DrmDeviceId,
     renderer: &mut GlesRenderer,
     state: &mut WaylandNativeState,
 ) -> Vec<OutputSurfaceEntry> {
@@ -13,8 +14,12 @@ pub fn build_output_surfaces(
                 renderer,
                 state,
                 &mut output_surfaces,
-                &connectors,
-                &[],
+                OutputTopology {
+                    device,
+                    connectors: &connectors,
+                    in_flight: &[],
+                    occupied_names: &[],
+                },
             );
         }
         Err(error) => log::warn!("Initial DRM connector probe failed: {error}"),
@@ -29,6 +34,14 @@ pub struct OutputReconciliation {
     pub deferred: bool,
 }
 
+/// A single device's connector snapshot and constraints for reconciliation.
+pub struct OutputTopology<'a> {
+    pub device: DrmDeviceId,
+    pub connectors: &'a [connector::Info],
+    pub in_flight: &'a [crtc::Handle],
+    pub occupied_names: &'a [String],
+}
+
 /// Discover heads, preserving assignments unless moving an existing head is
 /// necessary to admit another. Retire in-flight flips before moving surfaces.
 pub fn reconcile_output_surfaces(
@@ -36,9 +49,14 @@ pub fn reconcile_output_surfaces(
     renderer: &mut GlesRenderer,
     state: &mut WaylandNativeState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
-    connectors: &[connector::Info],
-    in_flight: &[crtc::Handle],
+    topology: OutputTopology<'_>,
 ) -> OutputReconciliation {
+    let OutputTopology {
+        device,
+        connectors,
+        in_flight,
+        occupied_names,
+    } = topology;
     let mut output_x_offset = output_surfaces
         .iter()
         .filter(|entry| state.space.output_geometry(&entry.output).is_some())
@@ -179,9 +197,22 @@ pub fn reconcile_output_surfaces(
             );
             continue;
         };
-        let spec = candidate.assign(crtc);
+        let mut spec = candidate.assign(crtc);
+        // Preserve normal connector names, disambiguating only when another
+        // device already advertises the same name (as niri does).
+        let base = spec.name.clone();
+        let mut suffix = 2;
+        while occupied_names.contains(&spec.name)
+            || output_surfaces
+                .iter()
+                .any(|entry| entry.output.name() == spec.name)
+        {
+            spec.name = format!("{base}-{suffix}");
+            suffix += 1;
+        }
         let Some(entry) = initialize_drm_output_surface(
             output_manager,
+            device,
             renderer,
             state,
             &init_render_elements,
@@ -426,6 +457,7 @@ pub(crate) fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mo
 
 fn initialize_drm_output_surface(
     output_manager: &mut ManagedDrmOutputManager,
+    device: DrmDeviceId,
     renderer: &mut GlesRenderer,
     state: &mut WaylandNativeState,
     init_render_elements: &DrmOutputRenderElements<GlesRenderer, DrmOutputElement>,
@@ -478,6 +510,7 @@ fn initialize_drm_output_surface(
         .set_internal(spec.name.clone().into(), spec.internal);
 
     Some(OutputSurfaceEntry {
+        device,
         crtc: spec.crtc,
         surface: Some(surface),
         connector: spec.connector,
@@ -597,21 +630,36 @@ fn drm_surface_vrr_support(
 pub fn create_output_manager(
     drm_device: DrmDevice,
     renderer: &GlesRenderer,
-    gbm_device: &GbmDevice<DrmDeviceFd>,
+    allocator_device: &GbmDevice<DrmDeviceFd>,
+    scanout_device: &GbmDevice<DrmDeviceFd>,
 ) -> ManagedDrmOutputManager {
+    let cross_device = allocator_device.dev_id().ok() != Some(drm_device.device_id());
     let allocator = GbmAllocator::new(
-        gbm_device.clone(),
+        allocator_device.clone(),
         GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
     );
-    let exporter = GbmFramebufferExporter::new(gbm_device.clone(), NodeFilter::None);
+    let exporter = GbmFramebufferExporter::new(scanout_device.clone(), NodeFilter::None);
     let color_formats: [Fourcc; 2] = [Fourcc::Argb8888, Fourcc::Xrgb8888];
-    let renderer_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+    // Display-only devices cannot consume GPU-specific tiling/compression.
+    // Like niri, render on the primary GPU into linear buffers and let
+    // Smithay's exporter import their DMA-BUFs into the scanout device.
+    let renderer_formats: Vec<_> = if cross_device {
+        renderer
+            .egl_context()
+            .dmabuf_render_formats()
+            .iter()
+            .copied()
+            .filter(|format| format.modifier == smithay::backend::allocator::Modifier::Linear)
+            .collect()
+    } else {
+        renderer.dmabuf_formats().into_iter().collect()
+    };
 
     ManagedDrmOutputManager::new(
         drm_device,
         allocator,
         exporter,
-        Some(gbm_device.clone()),
+        Some(scanout_device.clone()),
         color_formats,
         renderer_formats,
     )

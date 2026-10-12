@@ -10,8 +10,6 @@ use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
-use smithay::reexports::drm::control::Device as ControlDevice;
-use smithay::reexports::drm::control::connector;
 use smithay::reexports::rustix::fs::OFlags;
 use std::path::PathBuf;
 
@@ -55,48 +53,47 @@ fn open_primary_gpu(
     session: &mut LibSeatSession,
     seat_name: &str,
 ) -> (PathBuf, DrmDevice, DrmDeviceNotifier, DrmDeviceFd) {
-    let gpus = smithay::backend::udev::all_gpus(seat_name).unwrap_or_default();
-    let mut primary_gpu_path = None;
-    let mut drm_device = None;
-    let mut drm_notifier = None;
-    let mut drm_fd = None;
+    let mut gpus = smithay::backend::udev::all_gpus(seat_name).expect("enumerate rendering GPUs");
+    let primary = smithay::backend::udev::primary_gpu(seat_name)
+        .ok()
+        .flatten();
+    gpus.sort_by_key(|path| (Some(path) != primary.as_ref(), path.clone()));
 
     for gpu_path in gpus {
-        if let Ok(fd) = session.open(
+        // EVDI is scanout-only and may be card0. Never select it as the
+        // compositor's renderer merely because it has a connected monitor.
+        let render_node = smithay::backend::drm::DrmNode::from_path(&gpu_path)
+            .ok()
+            .and_then(|node| node.node_with_type(smithay::backend::drm::NodeType::Render))
+            .and_then(Result::ok);
+        if render_node.is_none() {
+            continue;
+        }
+        let owned = match session.open(
             &gpu_path,
             OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK,
         ) {
-            let fd = DrmDeviceFd::new(DeviceFd::from(fd));
-            if let Ok((device, notifier)) = DrmDevice::new(fd.clone(), true) {
-                let has_connected = device
-                    .resource_handles()
-                    .map(|res| {
-                        res.connectors().iter().any(|&c| {
-                            device
-                                .get_connector(c, false)
-                                .map(|info| info.state() == connector::State::Connected)
-                                .unwrap_or(false)
-                        })
-                    })
-                    .unwrap_or(false);
-
-                if has_connected || primary_gpu_path.is_none() {
-                    primary_gpu_path = Some(gpu_path);
-                    drm_device = Some(device);
-                    drm_notifier = Some(notifier);
-                    drm_fd = Some(fd);
-                    if has_connected {
-                        break;
-                    }
+            Ok(fd) => fd,
+            Err(error) => {
+                log::warn!("Cannot open rendering GPU {}: {error}", gpu_path.display());
+                continue;
+            }
+        };
+        let fd = DrmDeviceFd::new(DeviceFd::from(owned));
+        match DrmDevice::new(fd.clone(), true) {
+            Ok((device, notifier)) => return (gpu_path, device, notifier, fd),
+            Err(error) => {
+                log::warn!(
+                    "Cannot initialize rendering GPU {}: {error}",
+                    gpu_path.display()
+                );
+                let session_fd = fd.device_fd();
+                drop(fd);
+                if let Ok(fd) = TryInto::<std::os::fd::OwnedFd>::try_into(session_fd) {
+                    let _ = session.close(fd);
                 }
             }
         }
     }
-
-    (
-        primary_gpu_path.expect("no GPU found"),
-        drm_device.expect("failed to open DRM device"),
-        drm_notifier.expect("failed to create DRM notifier"),
-        drm_fd.expect("failed to get DRM FD"),
-    )
+    panic!("no usable DRM rendering GPU found");
 }

@@ -28,7 +28,20 @@ pub struct OutputDmabufFeedback {
     pub scanout: DmabufFeedback,
 }
 
+/// A DRM file's lifetime, not its reusable card number or kernel object IDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DrmDeviceId(pub u64);
+
+/// Kernel object handles are local to a device. The lifetime also rejects
+/// completions queued before a device was unplugged and opened again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ScanoutId {
+    pub device: DrmDeviceId,
+    pub crtc: crtc::Handle,
+}
+
 pub struct OutputSurfaceEntry {
+    pub device: DrmDeviceId,
     pub crtc: crtc::Handle,
     pub surface: Option<
         DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>,
@@ -48,4 +61,13 @@ pub struct OutputSurfaceEntry {
     pub powered: bool,
     /// A power-on request is acknowledged after its first frame is queued.
     pub pending_power_on: Option<RequestId>,
+}
+
+impl OutputSurfaceEntry {
+    pub fn scanout(&self) -> ScanoutId {
+        ScanoutId {
+            device: self.device,
+            crtc: self.crtc,
+        }
+    }
 }

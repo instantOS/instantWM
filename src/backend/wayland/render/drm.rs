@@ -52,17 +52,17 @@ mod capture;
 mod cursor;
 mod output_setup;
 use capture::{submit_drm_capture_requests, take_drm_capture_requests};
-pub(crate) use output_setup::{best_connector_mode, build_output_dmabuf_feedback};
 pub use output_setup::{
-    build_output_surfaces, create_output_manager, probe_usable_connectors,
+    OutputTopology, build_output_surfaces, create_output_manager, probe_usable_connectors,
     reconcile_output_surfaces, refresh_output_modes,
 };
+pub(crate) use output_setup::{best_connector_mode, build_output_dmabuf_feedback};
 
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutput, ManagedDrmOutputManager,
-    OutputDmabufFeedback, OutputSurfaceEntry,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DrmDeviceId, ManagedDrmOutput,
+    ManagedDrmOutputManager, OutputDmabufFeedback, OutputSurfaceEntry, ScanoutId,
 };
 
 pub mod state;

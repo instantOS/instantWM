@@ -2,7 +2,6 @@
 //! requests to the DRM backend.
 
 use smithay::backend::renderer::gles::GlesRenderer;
-use std::sync::{Arc, Mutex};
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
@@ -13,11 +12,11 @@ use crate::backend::output::{
 };
 use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::drm::{
-    ManagedDrmOutputManager, OutputSurfaceEntry, best_connector_mode, build_output_dmabuf_feedback,
+    OutputSurfaceEntry, best_connector_mode, build_output_dmabuf_feedback,
 };
 use crate::config::config_toml::VrrMode;
 
-use super::DrmLoopState;
+use super::{DrmLoopState, devices::DrmDevices};
 
 /// A configured VRR mode expressed as the adaptive-sync policy it implies.
 fn vrr_mode_policy(mode: VrrMode) -> AdaptiveSyncPolicy {
@@ -111,7 +110,7 @@ fn requested_vrr(
 pub(super) fn process_output_configurations(
     state: &mut WaylandNativeState,
     output_surfaces: &mut [OutputSurfaceEntry],
-    output_manager: &Arc<Mutex<ManagedDrmOutputManager>>,
+    devices: &mut DrmDevices,
     renderer: &mut GlesRenderer,
     loop_state: &mut DrmLoopState,
 ) {
@@ -187,7 +186,7 @@ pub(super) fn process_output_configurations(
         if requested.iter().any(|(index, _, _)| {
             loop_state
                 .pending_crtcs
-                .contains(&output_surfaces[*index].crtc)
+                .contains(&output_surfaces[*index].scanout())
         }) {
             state.runtime.output_transactions.requeue(id, pending);
             break;
@@ -219,8 +218,8 @@ pub(super) fn process_output_configurations(
                 // feedback: with_compositor() acquires that same lock for reading.
                 // A match scrutinee temporary would live through its match arms.
                 let initialized = {
-                    let mut manager = output_manager.lock().unwrap();
-                    let result = manager.lock().initialize_output(
+                    let manager = devices.manager(entry.device);
+                    manager.lock().initialize_output(
                         entry.crtc,
                         mode,
                         &[entry.connector],
@@ -228,8 +227,7 @@ pub(super) fn process_output_configurations(
                         None,
                         renderer,
                         &render_elements,
-                    );
-                    result
+                    )
                 };
                 match initialized {
                     Ok(surface) => {
@@ -328,7 +326,9 @@ pub(super) fn process_output_configurations(
                     );
                 }
                 entry.surface.take();
-                loop_state.presentation_scheduler.remove_output(&entry.crtc);
+                loop_state
+                    .presentation_scheduler
+                    .remove_output(&entry.scanout());
                 entry.enabled = false;
                 entry.powered = false;
                 entry.vrr_enabled = false;
@@ -395,7 +395,7 @@ pub(super) fn process_output_power_requests(
             );
             continue;
         }
-        if entry.pending_power_on.is_some() || loop_state.pending_crtcs.contains(&entry.crtc) {
+        if entry.pending_power_on.is_some() || loop_state.pending_crtcs.contains(&entry.scanout()) {
             state.runtime.output_power.requeue(id, request);
             break;
         }
@@ -449,7 +449,7 @@ pub(super) fn process_output_power_requests(
             OutputPowerMode::On => {
                 entry.powered = true;
                 entry.pending_power_on = Some(id);
-                loop_state.mark_dirty(entry.crtc);
+                loop_state.mark_dirty(entry.scanout());
                 // Completion is delayed until render_outputs queues the first
                 // frame, which is the commit that re-enables a cleared CRTC.
             }
@@ -489,7 +489,7 @@ fn power_mirrors_with_source(
             }
         } else {
             // Rendering the next frame re-enables the cleared CRTC.
-            loop_state.mark_dirty(entry.crtc);
+            loop_state.mark_dirty(entry.scanout());
         }
         entry.powered = powered;
         state.runtime.output_power_modes.insert(name, mode);
