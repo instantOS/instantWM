@@ -31,8 +31,8 @@ use crate::backend::wayland::input::apply_pending_warp;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
 use crate::backend::wayland::render::drm::{
     CursorManager, ManagedDrmOutputManager, OutputSurfaceEntry, RenderOutcome,
-    add_new_output_surfaces, build_output_surfaces, create_output_manager, render_drm_output,
-    usable_connector_handles,
+    build_output_surfaces, create_output_manager, probe_usable_connectors,
+    reconcile_output_surfaces, refresh_output_modes, render_drm_output,
 };
 use crate::backend::wayland::render::scene::{SceneCache, build_shared_scene_elements};
 use crate::config::config_toml::CursorConfig;
@@ -905,7 +905,7 @@ fn reconcile_drm_outputs(
 ) -> bool {
     let usable = {
         let manager = output_manager.lock().unwrap();
-        match usable_connector_handles(&manager) {
+        match probe_usable_connectors(&manager) {
             Ok(connectors) => connectors,
             Err(error) => {
                 log::warn!("failed to probe DRM connectors after hot-plug: {error}");
@@ -921,7 +921,7 @@ fn reconcile_drm_outputs(
     let mut retained = Vec::with_capacity(output_surfaces.len());
     let mut removed = Vec::new();
     for entry in output_surfaces.drain(..) {
-        if usable.contains(&entry.connector) {
+        if usable.iter().any(|info| info.handle() == entry.connector) {
             retained.push(entry);
         } else {
             removed.push(entry);
@@ -969,12 +969,35 @@ fn reconcile_drm_outputs(
         state.native.drop_unavailable_mirrors();
     }
 
-    {
+    let reconciliation = {
         let mut manager = output_manager.lock().unwrap();
         let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
         graphics.with_renderer(|renderer| {
-            add_new_output_surfaces(&mut manager, renderer, &mut state.native, output_surfaces)
-        });
+            reconcile_output_surfaces(
+                &mut manager,
+                renderer,
+                &mut state.native,
+                output_surfaces,
+                &usable,
+                &loop_state.pending_crtcs.iter().copied().collect::<Vec<_>>(),
+            )
+        })
+    };
+    loop_state.topology_dirty |= reconciliation.deferred;
+    let moved = reconciliation.moved;
+    // Clear all old keys before adding new ones: migrations can swap CRTCs.
+    for (old, _) in &moved {
+        loop_state.remove_output(*old);
+    }
+    for (_, new) in &moved {
+        loop_state.add_output(*new);
+    }
+
+    let mut modes_changed = false;
+    for entry in output_surfaces.iter_mut() {
+        if let Some(info) = usable.iter().find(|info| info.handle() == entry.connector) {
+            modes_changed |= refresh_output_modes(entry, info);
+        }
     }
 
     let added: Vec<_> = output_surfaces
@@ -998,7 +1021,7 @@ fn reconcile_drm_outputs(
         && output_surfaces
             .iter()
             .all(|entry| old_connectors.contains(&entry.connector));
-    if connector_set_unchanged {
+    if connector_set_unchanged && moved.is_empty() && !modes_changed {
         return false;
     }
 

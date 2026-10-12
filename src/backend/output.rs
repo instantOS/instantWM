@@ -12,6 +12,8 @@ use crate::types::Rect;
 
 mod lid;
 pub use lid::LidOutputPolicy;
+mod allocation;
+pub use allocation::assign_output_resources;
 
 /// Ownership of an output's logical position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +154,26 @@ pub struct OutputHeadConfiguration {
     pub scale: f64,
     /// `None` preserves the backend's current policy.
     pub adaptive_sync: Option<AdaptiveSyncPolicy>,
+}
+
+impl OutputHeadConfiguration {
+    /// Reconcile compositor restoration intent after capabilities change.
+    /// Explicit client transactions should be validated instead of repaired.
+    pub fn reconcile_mode(
+        &mut self,
+        available: &[OutputMode],
+        preferred: Option<OutputMode>,
+    ) -> bool {
+        if self.mode.is_some_and(|mode| available.contains(&mode)) {
+            return false;
+        }
+        let replacement = preferred
+            .filter(|mode| available.contains(mode))
+            .or_else(|| available.first().copied());
+        let changed = self.mode != replacement;
+        self.mode = replacement;
+        changed
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -516,6 +538,30 @@ mod tests {
             scale: 1.0,
             adaptive_sync: Some(AdaptiveSyncPolicy::Disabled),
         }
+    }
+
+    #[test]
+    fn mode_refresh_replaces_only_unavailable_modes_and_preserves_other_settings() {
+        let mut original = head("dock");
+        original.enabled = false;
+        original.scale = 1.5;
+        original.position = Point::new(-1920, 50);
+        let replacement = OutputMode {
+            width: 1280,
+            height: 720,
+            refresh_millihertz: 60_000,
+        };
+        let mut repaired = original.clone();
+        assert!(repaired.reconcile_mode(&[replacement], Some(replacement)));
+        let mut expected = original.clone();
+        expected.mode = Some(replacement);
+        assert_eq!(repaired, expected);
+        let old = original.mode.unwrap();
+        assert!(!original.reconcile_mode(&[old, replacement], Some(replacement)));
+        assert_eq!(original.mode, Some(old));
+        // A stale preferred mode must never reintroduce an unsupported mode.
+        assert!(original.reconcile_mode(&[replacement], Some(old)));
+        assert_eq!(original.mode, Some(replacement));
     }
 
     fn capability(id: &str) -> OutputHeadCapabilities {

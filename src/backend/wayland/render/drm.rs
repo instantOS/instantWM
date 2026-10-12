@@ -52,9 +52,10 @@ mod capture;
 mod cursor;
 mod output_setup;
 use capture::{submit_drm_capture_requests, take_drm_capture_requests};
-pub(crate) use output_setup::build_output_dmabuf_feedback;
+pub(crate) use output_setup::{best_connector_mode, build_output_dmabuf_feedback};
 pub use output_setup::{
-    add_new_output_surfaces, build_output_surfaces, create_output_manager, usable_connector_handles,
+    build_output_surfaces, create_output_manager, probe_usable_connectors,
+    reconcile_output_surfaces, refresh_output_modes,
 };
 
 // Re-export cursor management
@@ -510,30 +511,4 @@ fn build_cursor_elements(
     }
 
     custom_elements
-}
-
-#[cfg(test)]
-mod tests {
-    use super::output_setup::complete_crtc_assignment;
-
-    #[test]
-    fn crtc_matching_backtracks_for_constrained_mst_connector() {
-        // The first connector is flexible; the second can use only CRTC 1.
-        // A first-fit allocator incorrectly consumes 1 for the first output.
-        let assignment = complete_crtc_assignment(&[vec![1, 2], vec![1]], &[]).unwrap();
-        assert_eq!(assignment, vec![2, 1]);
-    }
-
-    #[test]
-    fn crtc_matching_respects_retained_outputs() {
-        assert_eq!(
-            complete_crtc_assignment(&[vec![1, 2], vec![2, 3]], &[1]),
-            Some(vec![2, 3])
-        );
-    }
-
-    #[test]
-    fn crtc_matching_rejects_partial_topologies() {
-        assert_eq!(complete_crtc_assignment(&[vec![1], vec![1]], &[]), None);
-    }
 }

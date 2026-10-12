@@ -6,19 +6,39 @@ pub fn build_output_surfaces(
     state: &mut WaylandNativeState,
 ) -> Vec<OutputSurfaceEntry> {
     let mut output_surfaces: Vec<OutputSurfaceEntry> = Vec::new();
-    add_new_output_surfaces(output_manager, renderer, state, &mut output_surfaces);
+    match probe_usable_connectors(output_manager) {
+        Ok(connectors) => {
+            reconcile_output_surfaces(
+                output_manager,
+                renderer,
+                state,
+                &mut output_surfaces,
+                &connectors,
+                &[],
+            );
+        }
+        Err(error) => log::warn!("Initial DRM connector probe failed: {error}"),
+    }
     output_surfaces
 }
 
-/// Discover and initialize connectors that are not already represented.
-/// Existing entries are deliberately left intact so a hot-plug does not
-/// modeset or reset unaffected outputs.
-pub fn add_new_output_surfaces(
+/// Runtime bookkeeping needed after physical output reconciliation.
+#[derive(Default)]
+pub struct OutputReconciliation {
+    pub moved: Vec<(crtc::Handle, crtc::Handle)>,
+    pub deferred: bool,
+}
+
+/// Discover heads, preserving assignments unless moving an existing head is
+/// necessary to admit another. Retire in-flight flips before moving surfaces.
+pub fn reconcile_output_surfaces(
     output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
     state: &mut WaylandNativeState,
     output_surfaces: &mut Vec<OutputSurfaceEntry>,
-) {
+    connectors: &[connector::Info],
+    in_flight: &[crtc::Handle],
+) -> OutputReconciliation {
     let mut output_x_offset = output_surfaces
         .iter()
         .filter(|entry| state.space.output_geometry(&entry.output).is_some())
@@ -26,44 +46,140 @@ pub fn add_new_output_surfaces(
         .max()
         .unwrap_or(0);
 
-    let res = output_manager
-        .device()
-        .resource_handles()
-        .expect("drm resource_handles");
-    let mut used_crtcs: Vec<crtc::Handle> =
-        output_surfaces.iter().map(|entry| entry.crtc).collect();
+    let res = match output_manager.device().resource_handles() {
+        Ok(resources) => resources,
+        Err(error) => {
+            log::warn!("DRM output discovery failed: {error}");
+            return OutputReconciliation::default();
+        }
+    };
     let existing_connectors: Vec<connector::Handle> = output_surfaces
         .iter()
         .map(|entry| entry.connector)
         .collect();
     let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmOutputElement>::default();
 
-    let mut pending = Vec::new();
-    for &conn_handle in res.connectors() {
-        if existing_connectors.contains(&conn_handle) {
-            continue;
+    // Build every candidate from the same connector snapshot used for removal
+    // and capability refresh. Incomplete encoder reads invalidate the plan.
+    let probed = connectors
+        .iter()
+        .map(|info| drm_output_candidate(output_manager, &res, info))
+        .collect::<std::io::Result<Vec<_>>>();
+    let probed = match probed {
+        Ok(probed) => probed.into_iter().flatten().collect::<Vec<_>>(),
+        Err(error) => {
+            log::warn!("DRM encoder discovery failed: {error}");
+            return OutputReconciliation::default();
         }
-        let Some(candidate) = drm_output_candidate(output_manager, &res, conn_handle) else {
+    };
+    let mut candidates = Vec::new();
+    let mut preferred = Vec::new();
+    for entry in output_surfaces.iter() {
+        // Retain a represented head if the kernel temporarily exposes no
+        // compatible encoder, rather than stealing its current controller.
+        let compatible = probed
+            .iter()
+            .find(|candidate| candidate.connector == entry.connector)
+            .map(|candidate| candidate.crtcs.clone())
+            .unwrap_or_else(|| vec![entry.crtc]);
+        candidates.push(compatible);
+        preferred.push(Some(entry.crtc));
+    }
+    let pending: Vec<_> = probed
+        .into_iter()
+        .filter(|candidate| !existing_connectors.contains(&candidate.connector))
+        .collect();
+    candidates.extend(pending.iter().map(|candidate| candidate.crtcs.clone()));
+    preferred.resize(candidates.len(), None);
+    let assignments = crate::backend::output::assign_output_resources(&candidates, &preferred);
+    if assignments[..output_surfaces.len()]
+        .iter()
+        .any(Option::is_none)
+    {
+        log::warn!(
+            "DRM topology cannot retain all existing heads; keeping the current assignments"
+        );
+        return OutputReconciliation::default();
+    }
+    if output_surfaces
+        .iter()
+        .zip(&assignments)
+        .any(|(entry, assigned)| *assigned != Some(entry.crtc) && in_flight.contains(&entry.crtc))
+    {
+        // Retire the real page flip before replacing a live surface. Otherwise
+        // its delayed event could be mistaken for the new surface's first flip.
+        return OutputReconciliation {
+            moved: Vec::new(),
+            deferred: true,
+        };
+    }
+    let mut moved = Vec::new();
+    // Release all moving surfaces before any new controller is initialized.
+    for (entry, assignment) in output_surfaces.iter_mut().zip(&assignments) {
+        if let Some(crtc) = assignment
+            && entry.crtc != *crtc
+        {
+            log::info!(
+                "Output {}: moving CRTC {:?} -> {:?}",
+                entry.output.name(),
+                entry.crtc,
+                crtc
+            );
+            moved.push((entry.crtc, *crtc));
+            entry.surface.take();
+            entry.dmabuf_feedback = None;
+            entry.crtc = *crtc;
+        }
+    }
+    let migrations_ok = output_surfaces
+        .iter_mut()
+        .filter(|entry| moved.iter().any(|(_, new)| *new == entry.crtc))
+        .all(|entry| {
+            restore_output_surface(output_manager, renderer, entry, &init_render_elements)
+        });
+    if !migrations_ok {
+        // A mathematical matching is not a KMS commit guarantee. Restore every
+        // old assignment before admitting new heads if hardware rejects a move.
+        for entry in output_surfaces.iter_mut() {
+            if moved.iter().any(|(_, new)| *new == entry.crtc) {
+                entry.surface.take();
+            }
+        }
+        for entry in output_surfaces.iter_mut() {
+            if let Some((old, _)) = moved.iter().find(|(_, new)| *new == entry.crtc) {
+                entry.crtc = *old;
+            }
+        }
+        for entry in output_surfaces.iter_mut() {
+            if moved.iter().any(|(old, _)| *old == entry.crtc)
+                && !restore_output_surface(output_manager, renderer, entry, &init_render_elements)
+            {
+                log::error!(
+                    "Output {}: failed to restore controller after rejected migration",
+                    entry.output.name()
+                );
+            }
+        }
+        // Even rollback recreates surfaces: retire the old runtime flip state.
+        return OutputReconciliation {
+            moved: moved.into_iter().map(|(old, _)| (old, old)).collect(),
+            deferred: false,
+        };
+    }
+    let existing_count = output_surfaces.len();
+    for (candidate, assignment) in pending
+        .into_iter()
+        .zip(assignments.into_iter().skip(existing_count))
+    {
+        let Some(crtc) = assignment else {
+            log::warn!(
+                "Output {}: no available CRTC; compatible controllers: {:?}",
+                candidate.name,
+                candidate.crtcs
+            );
             continue;
         };
-        pending.push(candidate);
-    }
-
-    let candidate_crtcs: Vec<Vec<_>> = pending
-        .iter()
-        .map(|candidate| candidate.crtcs.clone())
-        .collect();
-    let Some(assignments) = complete_crtc_assignment(&candidate_crtcs, &used_crtcs) else {
-        log::warn!(
-            "could not find a complete CRTC assignment for {} newly connected outputs",
-            pending.len()
-        );
-        return;
-    };
-
-    for (candidate, crtc) in pending.into_iter().zip(assignments) {
         let spec = candidate.assign(crtc);
-        used_crtcs.push(spec.crtc);
         let Some(entry) = initialize_drm_output_surface(
             output_manager,
             renderer,
@@ -77,24 +193,109 @@ pub fn add_new_output_surfaces(
         output_x_offset += entry.rect.w;
         output_surfaces.push(entry);
     }
+    OutputReconciliation {
+        moved,
+        deferred: false,
+    }
 }
 
-/// Return the connector handles currently capable of producing an output.
-pub fn usable_connector_handles(
+/// Probe a complete connector snapshot. A failed read invalidates the scan;
+/// it is not evidence that an existing display disconnected.
+pub fn probe_usable_connectors(
     output_manager: &ManagedDrmOutputManager,
-) -> std::io::Result<Vec<connector::Handle>> {
+) -> std::io::Result<Vec<connector::Info>> {
     let resources = output_manager.device().resource_handles()?;
-    Ok(resources
-        .connectors()
+    let mut usable = Vec::new();
+    for &connector in resources.connectors() {
+        let info = output_manager.device().get_connector(connector, false)?;
+        if is_usable_connector(&info) {
+            usable.push(info);
+        }
+    }
+    Ok(usable)
+}
+
+/// Refresh capabilities even when the connector handle has not changed.
+/// The policy transaction selects a supported replacement for a vanished mode;
+/// the physical modeset still goes through the normal configuration path.
+pub fn refresh_output_modes(entry: &mut OutputSurfaceEntry, info: &connector::Info) -> bool {
+    let modes: Vec<_> = info
+        .modes()
         .iter()
         .copied()
-        .filter(|connector| {
-            output_manager
-                .device()
-                .get_connector(*connector, false)
-                .is_ok_and(|info| is_usable_connector(&info))
-        })
-        .collect())
+        .map(|mode| (OutputMode::from(mode), mode))
+        .collect();
+    if entry.modes == modes {
+        return false;
+    }
+    log::info!(
+        "Output {}: mode list changed ({} -> {} modes)",
+        entry.output.name(),
+        entry.modes.len(),
+        modes.len()
+    );
+    entry.modes = modes;
+    true
+}
+
+fn restore_output_surface(
+    manager: &mut ManagedDrmOutputManager,
+    renderer: &mut GlesRenderer,
+    entry: &mut OutputSurfaceEntry,
+    elements: &DrmOutputRenderElements<GlesRenderer, DrmOutputElement>,
+) -> bool {
+    if !entry.enabled {
+        return true;
+    }
+    let Some(mode) = entry
+        .modes
+        .iter()
+        .find_map(|(mode, drm)| (Some(*mode) == entry.output.current_mode()).then_some(*drm))
+    else {
+        return false;
+    };
+    let initialized = manager.lock().initialize_output(
+        entry.crtc,
+        mode,
+        &[entry.connector],
+        &entry.output,
+        None,
+        renderer,
+        elements,
+    );
+    match initialized {
+        Ok(surface) => {
+            entry.dmabuf_feedback = build_output_dmabuf_feedback(renderer, &surface);
+            if let Err(error) =
+                surface.with_compositor(|compositor| compositor.use_vrr(entry.vrr_enabled))
+            {
+                log::warn!(
+                    "Output {}: failed to restore adaptive sync: {error}",
+                    entry.output.name()
+                );
+                return false;
+            }
+            if !entry.powered
+                && let Err(error) = surface.with_compositor(|compositor| compositor.clear())
+            {
+                log::warn!(
+                    "Output {}: failed to restore powered-off state: {error}",
+                    entry.output.name()
+                );
+                return false;
+            }
+            entry.surface = Some(surface);
+            true
+        }
+        Err(error) => {
+            log::warn!(
+                "Output {}: CRTC {:?} initialization failed: {error:?}",
+                entry.output.name(),
+                entry.crtc
+            );
+            false
+        }
+    }
 }
 
 struct DrmOutputSpec {
@@ -137,32 +338,41 @@ impl DrmOutputCandidate {
 fn drm_output_candidate(
     output_manager: &ManagedDrmOutputManager,
     resources: &control::ResourceHandles,
-    connector: connector::Handle,
-) -> Option<DrmOutputCandidate> {
-    let conn_info = output_manager
-        .device()
-        .get_connector(connector, false)
-        .ok()?;
-    if !is_usable_connector(&conn_info) {
-        return None;
-    }
-
-    let mode = best_connector_mode(conn_info.modes())?;
-    let crtcs: Vec<_> = conn_info
+    conn_info: &connector::Info,
+) -> std::io::Result<Option<DrmOutputCandidate>> {
+    let connector = conn_info.handle();
+    let Some(mode) = best_connector_mode(conn_info.modes()) else {
+        return Ok(None);
+    };
+    // Use DRM resource order, never randomized HashSet iteration.
+    let encoders: Vec<_> = conn_info
         .encoders()
         .iter()
-        .filter_map(|&encoder| output_manager.device().get_encoder(encoder).ok())
-        .flat_map(|encoder| resources.filter_crtcs(encoder.possible_crtcs()))
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
+        .map(|&encoder| output_manager.device().get_encoder(encoder))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let crtcs: Vec<_> = resources
+        .crtcs()
+        .iter()
+        .copied()
+        .filter(|crtc| {
+            encoders.iter().any(|encoder| {
+                resources
+                    .filter_crtcs(encoder.possible_crtcs())
+                    .contains(crtc)
+            })
+        })
         .collect();
     if crtcs.is_empty() {
-        return None;
+        log::warn!(
+            "Connector {:?}: no compatible display controllers",
+            connector
+        );
+        return Ok(None);
     }
     let (width, height) = mode.size();
     let physical_size = conn_info.size().unwrap_or((0, 0));
 
-    Some(DrmOutputCandidate {
+    Ok(Some(DrmOutputCandidate {
         connector,
         crtcs,
         mode,
@@ -180,7 +390,7 @@ fn drm_output_candidate(
                 | connector::Interface::LVDS
                 | connector::Interface::DSI
         ),
-    })
+    }))
 }
 
 fn is_usable_connector(conn_info: &connector::Info) -> bool {
@@ -191,7 +401,7 @@ fn is_usable_connector(conn_info: &connector::Info) -> bool {
     conn_info.state() == connector::State::Connected && !conn_info.modes().is_empty()
 }
 
-fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
+pub(crate) fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
     modes.iter().copied().max_by(|a, b| {
         let (aw, ah) = a.size();
         let (bw, bh) = b.size();
@@ -201,50 +411,6 @@ fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
             .then_with(|| (aw as u64 * ah as u64).cmp(&(bw as u64 * bh as u64)))
             .then_with(|| a.vrefresh().cmp(&b.vrefresh()))
     })
-}
-
-/// Find a complete output-to-CRTC matching. Greedy allocation is incorrect for
-/// MST docks because an early flexible connector can consume the only CRTC
-/// available to a later constrained connector.
-pub(super) fn complete_crtc_assignment<T>(
-    candidates: &[Vec<T>],
-    unavailable: &[T],
-) -> Option<Vec<T>>
-where
-    T: Copy + Eq,
-{
-    fn search<T>(candidates: &[Vec<T>], assigned: &mut [Option<T>], used: &mut Vec<T>) -> bool
-    where
-        T: Copy + Eq,
-    {
-        let next = (0..candidates.len())
-            .filter(|index| assigned[*index].is_none())
-            .min_by_key(|index| {
-                candidates[*index]
-                    .iter()
-                    .filter(|candidate| !used.contains(candidate))
-                    .count()
-            });
-        let Some(index) = next else { return true };
-        for candidate in candidates[index].iter().copied() {
-            if used.contains(&candidate) {
-                continue;
-            }
-            assigned[index] = Some(candidate);
-            used.push(candidate);
-            if search(candidates, assigned, used) {
-                return true;
-            }
-            used.pop();
-            assigned[index] = None;
-        }
-        false
-    }
-
-    let mut assigned = vec![None; candidates.len()];
-    let mut used = unavailable.to_vec();
-    search(candidates, &mut assigned, &mut used)
-        .then(|| assigned.into_iter().map(Option::unwrap).collect())
 }
 
 fn initialize_drm_output_surface(
@@ -277,6 +443,7 @@ fn initialize_drm_output_surface(
         Ok(surface) => surface,
         Err(error) => {
             log::warn!("Output {}: failed to initialize: {error:?}", spec.name);
+            state.set_output_global_enabled(&output, false);
             return None;
         }
     };

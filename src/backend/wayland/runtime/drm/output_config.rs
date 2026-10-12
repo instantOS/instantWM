@@ -13,7 +13,7 @@ use crate::backend::output::{
 };
 use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::drm::{
-    ManagedDrmOutputManager, OutputSurfaceEntry, build_output_dmabuf_feedback,
+    ManagedDrmOutputManager, OutputSurfaceEntry, best_connector_mode, build_output_dmabuf_feedback,
 };
 use crate::config::config_toml::VrrMode;
 
@@ -125,7 +125,29 @@ pub(super) fn process_output_configurations(
     >::default();
     let capabilities = output_capabilities(output_surfaces);
 
-    while let Some((id, pending)) = state.runtime.output_transactions.take_next_pending() {
+    while let Some((id, mut pending)) = state.runtime.output_transactions.take_next_pending() {
+        // Hardware capability refresh is staged until the normal apply path
+        // commits it. Keep the old logical layout intact while flips are pending.
+        if pending.policy {
+            for head in &mut pending.transaction.heads {
+                if let Some(entry) = output_surfaces
+                    .iter()
+                    .find(|entry| entry.output.name() == head.id.0)
+                {
+                    let modes: Vec<_> = entry.modes.iter().map(|(_, native)| *native).collect();
+                    let preferred = best_connector_mode(&modes)
+                        .map(smithay::output::Mode::from)
+                        .map(Into::into);
+                    if head.reconcile_mode(&transaction_modes(entry), preferred) {
+                        log::info!(
+                            "Output {}: selecting supported mode {:?} after capability change",
+                            head.id.0,
+                            head.mode
+                        );
+                    }
+                }
+            }
+        }
         let effective = state.effective_output_transaction(&pending.transaction, pending.policy);
         if let Err(error) = pending
             .transaction
@@ -279,6 +301,12 @@ pub(super) fn process_output_configurations(
 
         for (index, config, _) in &requested {
             let entry = &mut output_surfaces[*index];
+            let native_modes: Vec<_> = entry.modes.iter().map(|(_, mode)| *mode).collect();
+            if let Some(preferred) = best_connector_mode(&native_modes) {
+                entry
+                    .output
+                    .set_preferred(smithay::output::Mode::from(preferred));
+            }
             let name = entry.output.name();
             let position_source = if pending.policy {
                 state.output_position_source(&name)
