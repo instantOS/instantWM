@@ -193,16 +193,23 @@ pub(super) fn process_output_configurations(
                     changed_modes.push((*index, current_mode));
                 }
             } else {
-                let mut manager = output_manager.lock().unwrap();
-                match manager.lock().initialize_output(
-                    entry.crtc,
-                    mode,
-                    &[entry.connector],
-                    &entry.output,
-                    None,
-                    renderer,
-                    &render_elements,
-                ) {
+                // Release the manager's compositor write lock before building
+                // feedback: with_compositor() acquires that same lock for reading.
+                // A match scrutinee temporary would live through its match arms.
+                let initialized = {
+                    let mut manager = output_manager.lock().unwrap();
+                    let result = manager.lock().initialize_output(
+                        entry.crtc,
+                        mode,
+                        &[entry.connector],
+                        &entry.output,
+                        None,
+                        renderer,
+                        &render_elements,
+                    );
+                    result
+                };
+                match initialized {
                     Ok(surface) => {
                         entry.dmabuf_feedback = build_output_dmabuf_feedback(renderer, &surface);
                         if entry.dmabuf_feedback.is_none() {
