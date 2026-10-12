@@ -207,7 +207,18 @@ pub fn probe_usable_connectors(
     let resources = output_manager.device().resource_handles()?;
     let mut usable = Vec::new();
     for &connector in resources.connectors() {
-        let info = output_manager.device().get_connector(connector, false)?;
+        // Startup and hotplug must refresh status, modes and EDID. Cached
+        // connector information can retain the old dock's connected outputs
+        // and reserve every CRTC before its replacement can be initialized.
+        // This scan is event-driven: do not force-probe from the render loop.
+        let info = match output_manager.device().get_connector(connector, true) {
+            Ok(info) => info,
+            // MST connectors can disappear between enumerating resources and
+            // querying them. ENOENT is an actual removal, unlike other probe
+            // failures, which must leave the previous topology intact.
+            Err(error) if error.raw_os_error() == Some(libc::ENOENT) => continue,
+            Err(error) => return Err(error),
+        };
         if is_usable_connector(&info) {
             usable.push(info);
         }
