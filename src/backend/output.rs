@@ -11,7 +11,9 @@ use crate::types::Point;
 use crate::types::Rect;
 
 mod lid;
-pub use lid::LidOutputPolicy;
+pub use lid::{LidOutput, LidOutputPolicy, LidOutputProjection, OutputConnectorKind};
+mod intent;
+pub use intent::RequestedOutputState;
 mod allocation;
 pub use allocation::assign_output_resources;
 

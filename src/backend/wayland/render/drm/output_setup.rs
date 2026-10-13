@@ -504,10 +504,6 @@ fn initialize_drm_output_surface(
         crate::backend::output::OutputPowerMode::On,
     );
 
-    state
-        .runtime
-        .lid_output_policy
-        .set_internal(spec.name.clone().into(), spec.internal);
     log::info!(
         "Output {} created: device={device:?}, internal={}, enabled=true",
         spec.name,
@@ -596,6 +592,11 @@ fn create_drm_wayland_output(
         },
         out_mode,
         crate::types::Point::new(x_offset, 0),
+        if spec.internal {
+            crate::backend::output::OutputConnectorKind::Internal
+        } else {
+            crate::backend::output::OutputConnectorKind::External
+        },
     );
     for mode in &spec.modes {
         output.add_mode(OutputMode::from(*mode));

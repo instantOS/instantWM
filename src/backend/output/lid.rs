@@ -1,13 +1,24 @@
-//! Laptop display policy, independent of the input and display backends.
-//!
-//! Requested configurations survive temporary lid suppression. Only successful
-//! applies update them; tests and failed commits must not change restoration.
+//! Laptop lid suppression, independent of configuration storage and native APIs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use super::{OutputHeadConfiguration, OutputId, OutputTransaction};
+use super::OutputId;
 
-/// Why the current lid state does or does not suppress built-in panels.
+/// Physical classification supplied by the backend for this output's lifetime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputConnectorKind {
+    Internal,
+    External,
+}
+
+/// Only the facts needed to decide whether a panel should be suppressed.
+pub struct LidOutput {
+    pub id: OutputId,
+    pub connector: OutputConnectorKind,
+    pub enabled: bool,
+    pub has_mode: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LidOutputDecision {
     LidOpen,
@@ -15,11 +26,16 @@ pub enum LidOutputDecision {
     SuppressInternalDisplays,
 }
 
+pub struct LidOutputProjection {
+    pub decision: LidOutputDecision,
+    pub suppressed: HashSet<OutputId>,
+}
+
+/// Owns only observed lid state. Output identity and configuration are supplied
+/// on every evaluation, so hotplug cannot leave stale classification here.
 #[derive(Debug, Default, Clone)]
 pub struct LidOutputPolicy {
     closed: bool,
-    internal: HashSet<OutputId>,
-    requested: HashMap<OutputId, OutputHeadConfiguration>,
 }
 
 impl LidOutputPolicy {
@@ -29,208 +45,127 @@ impl LidOutputPolicy {
         changed
     }
 
-    /// Physical connector classification comes from the active backend.
-    pub fn set_internal(&mut self, id: OutputId, internal: bool) {
-        if internal {
-            self.internal.insert(id);
-        } else {
-            self.internal.remove(&id);
+    /// Keep the last usable display configured for recovery after undocking.
+    /// Native restoration and applying this result belong to the backend.
+    pub fn evaluate(&self, outputs: impl IntoIterator<Item = LidOutput>) -> LidOutputProjection {
+        let mut internal = HashSet::new();
+        let mut usable_external = false;
+        for output in outputs {
+            match output.connector {
+                OutputConnectorKind::Internal if output.enabled => {
+                    internal.insert(output.id);
+                }
+                OutputConnectorKind::External => {
+                    usable_external |= output.enabled && output.has_mode;
+                }
+                _ => {}
+            }
         }
-    }
-
-    pub fn forget(&mut self, id: &OutputId) {
-        self.internal.remove(id);
-        self.requested.remove(id);
-    }
-
-    /// Overlay remembered intent onto currently available physical heads.
-    /// Newly connected heads keep their backend defaults; absent heads stay absent.
-    pub fn requested(&self, current: &OutputTransaction) -> OutputTransaction {
-        OutputTransaction {
-            heads: current
-                .heads
-                .iter()
-                .map(|head| self.requested.get(&head.id).unwrap_or(head).clone())
-                .collect(),
-        }
-    }
-
-    pub fn remember_applied(&mut self, requested: &OutputTransaction) {
-        self.requested = requested
-            .heads
-            .iter()
-            .map(|head| (head.id.clone(), head.clone()))
-            .collect();
-    }
-
-    /// Suppress built-in panels only with a usable external head. Keeping the
-    /// last display configured lets logind retain ownership of suspension and
-    /// allows recovery when a dock is unplugged while the lid remains closed.
-    pub fn decision(&self, requested: &OutputTransaction) -> LidOutputDecision {
-        if !self.closed {
+        let decision = if !self.closed {
             LidOutputDecision::LidOpen
-        } else if requested
-            .heads
-            .iter()
-            .any(|head| head.enabled && head.mode.is_some() && !self.internal.contains(&head.id))
-        {
+        } else if usable_external {
             LidOutputDecision::SuppressInternalDisplays
         } else {
             LidOutputDecision::KeepLastDisplay
+        };
+        if decision != LidOutputDecision::SuppressInternalDisplays {
+            internal.clear();
         }
-    }
-
-    /// Apply the decision without changing remembered user intent.
-    pub fn project(&self, requested: &OutputTransaction) -> OutputTransaction {
-        let mut effective = requested.clone();
-        if self.decision(requested) == LidOutputDecision::SuppressInternalDisplays {
-            for head in &mut effective.heads {
-                if self.internal.contains(&head.id) {
-                    head.enabled = false;
-                }
-            }
+        LidOutputProjection {
+            decision,
+            suppressed: internal,
         }
-        effective
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::output::{OutputMode, OutputTransform};
-    use crate::types::Point;
 
-    fn head(name: &str, enabled: bool) -> OutputHeadConfiguration {
-        OutputHeadConfiguration {
-            id: name.into(),
+    fn panel(enabled: bool) -> LidOutput {
+        LidOutput {
+            id: "panel".into(),
+            connector: OutputConnectorKind::Internal,
             enabled,
-            mode: Some(OutputMode {
-                width: 1920,
-                height: 1080,
-                refresh_millihertz: 60_000,
-            }),
-            position: Point::new(0, 0),
-            transform: OutputTransform::Normal,
-            scale: 1.0,
-            adaptive_sync: None,
+            has_mode: true,
         }
     }
 
-    fn policy() -> LidOutputPolicy {
+    fn dock(enabled: bool, has_mode: bool) -> LidOutput {
+        LidOutput {
+            id: "dock".into(),
+            connector: OutputConnectorKind::External,
+            enabled,
+            has_mode,
+        }
+    }
+
+    #[test]
+    fn closing_and_opening_only_suppresses_enabled_internal_outputs() {
         let mut policy = LidOutputPolicy::default();
-        policy.set_internal("panel".into(), true);
+        assert!(
+            policy
+                .evaluate([panel(true), dock(true, true)])
+                .suppressed
+                .is_empty()
+        );
+        assert!(policy.set_closed(true));
+        assert!(!policy.set_closed(true));
+        let closed = policy.evaluate([panel(true), dock(true, true)]);
+        assert_eq!(closed.decision, LidOutputDecision::SuppressInternalDisplays);
+        assert_eq!(closed.suppressed, HashSet::from(["panel".into()]));
+        assert!(
+            policy
+                .evaluate([panel(false), dock(true, true)])
+                .suppressed
+                .is_empty()
+        );
+        policy.set_closed(false);
+        assert_eq!(
+            policy.evaluate([panel(true), dock(true, true)]).decision,
+            LidOutputDecision::LidOpen
+        );
+    }
+
+    #[test]
+    fn disabled_modeless_or_absent_external_outputs_keep_the_last_display() {
+        let mut policy = LidOutputPolicy::default();
         policy.set_closed(true);
-        policy
-    }
-
-    #[test]
-    fn closed_lid_suppresses_only_internal_panels_and_preserves_settings() {
-        let mut policy = policy();
-        let requested = OutputTransaction {
-            heads: vec![head("panel", true), head("dock", true)],
-        };
-        policy.remember_applied(&requested);
-        let effective = policy.project(&requested);
-        assert_eq!(
-            policy.decision(&requested),
-            LidOutputDecision::SuppressInternalDisplays
-        );
-        assert!(!effective.heads[0].enabled);
-        assert!(effective.heads[1].enabled);
-        assert_eq!(policy.requested(&effective), requested);
-        policy.set_closed(false);
-        assert_eq!(policy.decision(&requested), LidOutputDecision::LidOpen);
-        assert_eq!(policy.project(&policy.requested(&effective)), requested);
-    }
-
-    #[test]
-    fn undocking_and_redocking_while_closed_reprojects_remembered_intent() {
-        let mut policy = policy();
-        let requested = OutputTransaction {
-            heads: vec![head("panel", true), head("dock", true)],
-        };
-        policy.remember_applied(&requested);
-        let effective = policy.project(&requested);
-        policy.forget(&"dock".into());
-        let only_panel = OutputTransaction {
-            heads: vec![effective.heads[0].clone()],
-        };
-        let restored = policy.project(&policy.requested(&only_panel));
-        assert!(restored.heads[0].enabled);
-        policy.remember_applied(&policy.requested(&only_panel));
-        let reconnected = OutputTransaction {
-            heads: vec![restored.heads[0].clone(), head("dock", true)],
-        };
-        assert!(!policy.project(&policy.requested(&reconnected)).heads[0].enabled);
-    }
-
-    #[test]
-    fn manually_disabled_panel_stays_disabled_after_opening() {
-        let mut policy = policy();
-        let requested = OutputTransaction {
-            heads: vec![head("panel", false), head("dock", true)],
-        };
-        policy.remember_applied(&requested);
-        policy.set_closed(false);
-        assert!(!policy.project(&policy.requested(&requested)).heads[0].enabled);
-    }
-
-    #[test]
-    fn recreating_a_panel_while_docked_and_closed_still_suppresses_it() {
-        let mut policy = policy();
-        let requested = OutputTransaction {
-            heads: vec![head("panel", true), head("dock", true)],
-        };
-        policy.remember_applied(&requested);
-
-        // A physical disconnect forgets intent and connector classification.
-        // Discovery must classify the replacement before projecting policy.
-        policy.forget(&"panel".into());
-        policy.set_internal("panel".into(), true);
-        let restored = policy.requested(&requested);
-        assert_eq!(
-            policy.decision(&restored),
-            LidOutputDecision::SuppressInternalDisplays
-        );
-        assert!(!policy.project(&restored).heads[0].enabled);
-
-        // An enable request cannot bypass transient lid suppression either.
-        policy.remember_applied(&restored);
-        assert!(!policy.project(&policy.requested(&restored)).heads[0].enabled);
-        policy.set_closed(false);
-        assert!(policy.project(&policy.requested(&restored)).heads[0].enabled);
-    }
-
-    #[test]
-    fn disabled_or_modeless_external_head_does_not_hide_the_last_display() {
-        let policy = policy();
-        for mut dock in [head("dock", false), head("dock", true)] {
-            if dock.enabled {
-                dock.mode = None;
-            }
-            let requested = OutputTransaction {
-                heads: vec![head("panel", true), dock],
-            };
-            assert!(policy.project(&requested).heads[0].enabled);
-            assert_eq!(
-                policy.decision(&requested),
-                LidOutputDecision::KeepLastDisplay
-            );
+        for outputs in [
+            vec![panel(true)],
+            vec![panel(true), dock(false, true)],
+            vec![panel(true), dock(true, false)],
+        ] {
+            let result = policy.evaluate(outputs);
+            assert_eq!(result.decision, LidOutputDecision::KeepLastDisplay);
+            assert!(result.suppressed.is_empty());
         }
     }
 
     #[test]
-    fn uncommitted_requests_do_not_change_restoration_and_removed_heads_are_forgotten() {
-        let mut policy = policy();
-        let requested = OutputTransaction {
-            heads: vec![head("panel", true), head("dock", true)],
-        };
-        policy.remember_applied(&requested);
-        let mut uncommitted = requested.clone();
-        uncommitted.heads[0].scale = 2.0;
-        let _ = policy.project(&uncommitted);
-        assert_eq!(policy.requested(&uncommitted), requested);
-        policy.forget(&"panel".into());
-        assert_eq!(policy.requested(&uncommitted).heads[0].scale, 2.0);
+    fn hotplug_and_reclassification_use_only_the_supplied_snapshot() {
+        let mut policy = LidOutputPolicy::default();
+        policy.set_closed(true);
+        assert!(policy.evaluate([panel(true)]).suppressed.is_empty());
+        assert!(
+            policy
+                .evaluate([panel(true), dock(true, true)])
+                .suppressed
+                .contains(&"panel".into())
+        );
+        let mut replacement = panel(true);
+        replacement.connector = OutputConnectorKind::External;
+        assert!(
+            policy
+                .evaluate([replacement, dock(true, true)])
+                .suppressed
+                .is_empty()
+        );
+        assert!(
+            policy
+                .evaluate([panel(true), dock(true, true)])
+                .suppressed
+                .contains(&"panel".into())
+        );
     }
 }

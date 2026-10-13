@@ -310,10 +310,7 @@ pub(super) fn process_output_configurations(
                 config.id.0,
                 entry.device,
                 pending.origin,
-                state
-                    .runtime
-                    .lid_output_policy
-                    .decision(&pending.transaction),
+                state.lid_output_projection(&pending.transaction).decision,
                 intent.enabled,
                 config.enabled,
                 entry.enabled
@@ -372,8 +369,8 @@ pub(super) fn process_output_configurations(
         }
         state
             .runtime
-            .lid_output_policy
-            .remember_applied(&pending.transaction);
+            .requested_output_state
+            .commit(&pending.transaction);
         let snapshot = transaction_snapshot(&effective, output_surfaces);
         state
             .runtime

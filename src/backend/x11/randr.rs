@@ -696,52 +696,36 @@ fn lid_suppressed_outputs(
     runtime: &mut crate::backend::x11::X11RuntimeConfig,
     policy: &MonitorPolicy,
 ) -> HashSet<String> {
-    use crate::backend::output::{OutputHeadConfiguration, OutputTransaction, OutputTransform};
+    use crate::backend::output::{LidOutput, OutputConnectorKind};
     let connected = snapshot.connected_names();
     runtime
         .lid_restore
         .retain(|name, _| connected.contains(name));
-    let heads = snapshot
-        .connected()
-        .map(|output| {
-            let internal = is_internal_connector(&output.name);
-            runtime
-                .lid_output_policy
-                .set_internal(output.name.clone().into(), internal);
-            let crtc = snapshot.crtcs.get(&output.info.crtc);
-            let mode = crtc
-                .and_then(|crtc| snapshot.mode(crtc.mode))
-                .or_else(|| output.info.modes.first().and_then(|id| snapshot.mode(*id)));
-            OutputHeadConfiguration {
-                id: output.name.clone().into(),
-                enabled: !policy.is_explicitly_disabled(&output.name)
-                    && (crtc.is_some_and(|c| c.mode != 0)
-                        || runtime.lid_restore.contains_key(&output.name)
-                        || (internal
-                            && policy
-                                .effective(&output.name)
-                                .is_some_and(|c| c.enable != Some(false)))),
-                mode: mode.map(|mode| OutputMode {
-                    width: mode.width.into(),
-                    height: mode.height.into(),
-                    refresh_millihertz: mode_refresh_millihertz(mode).unwrap_or(60_000) as i32,
-                }),
-                position: Point::default(),
-                transform: OutputTransform::Normal,
-                scale: 1.0,
-                adaptive_sync: None,
-            }
-        })
-        .collect();
-    let requested = OutputTransaction { heads };
-    let projected = runtime.lid_output_policy.project(&requested);
-    let suppressed: HashSet<String> = requested
-        .heads
-        .iter()
-        .zip(&projected.heads)
-        .filter(|(before, after)| before.enabled && !after.enabled)
-        .map(|(head, _)| head.id.0.clone())
-        .collect();
+    let heads = snapshot.connected().map(|output| {
+        let internal = is_internal_connector(&output.name);
+        let crtc = snapshot.crtcs.get(&output.info.crtc);
+        let mode = crtc
+            .and_then(|crtc| snapshot.mode(crtc.mode))
+            .or_else(|| output.info.modes.first().and_then(|id| snapshot.mode(*id)));
+        LidOutput {
+            id: output.name.clone().into(),
+            connector: if internal {
+                OutputConnectorKind::Internal
+            } else {
+                OutputConnectorKind::External
+            },
+            enabled: !policy.is_explicitly_disabled(&output.name)
+                && (crtc.is_some_and(|c| c.mode != 0)
+                    || runtime.lid_restore.contains_key(&output.name)
+                    || (internal
+                        && policy
+                            .effective(&output.name)
+                            .is_some_and(|c| c.enable != Some(false)))),
+            has_mode: mode.is_some(),
+        }
+    });
+    let projected = runtime.lid_output_policy.evaluate(heads);
+    let suppressed: HashSet<String> = projected.suppressed.into_iter().map(|id| id.0).collect();
     for name in &suppressed {
         if runtime.lid_restore.contains_key(name) {
             continue;
@@ -822,9 +806,6 @@ pub fn refresh_topology(
         policy,
     );
     runtime.pending_output_enable.extend(candidates);
-    for name in runtime.connected_outputs.difference(&connected) {
-        runtime.lid_output_policy.forget(&name.clone().into());
-    }
     runtime.connected_outputs = connected;
 
     let automatic = configure_new_outputs(&mut randr, policy, &runtime.pending_output_enable);

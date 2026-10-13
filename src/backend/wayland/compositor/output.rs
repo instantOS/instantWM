@@ -291,7 +291,8 @@ impl WaylandNativeState {
         }
     }
 
-    fn current_output_transaction(&self) -> OutputTransaction {
+    /// Snapshot of the state currently published to output clients.
+    fn observed_output_transaction(&self) -> OutputTransaction {
         let heads = self
             .output_management_state
             .outputs()
@@ -317,20 +318,41 @@ impl WaylandNativeState {
                 }
             })
             .collect();
-        let mut requested = self
-            .runtime
+        OutputTransaction { heads }
+    }
+
+    /// Desired configuration, before lid, mirror, and placement projection.
+    fn requested_output_transaction(&self) -> OutputTransaction {
+        self.runtime.requested_output_state.resolve(
+            &self.observed_output_transaction(),
+            self.runtime.output_transactions.latest_pending_apply(),
+        )
+    }
+
+    pub(crate) fn lid_output_projection(
+        &self,
+        requested: &OutputTransaction,
+    ) -> crate::backend::output::LidOutputProjection {
+        use crate::backend::output::{LidOutput, OutputConnectorKind};
+        self.runtime
             .lid_output_policy
-            .requested(&OutputTransaction { heads });
-        if let Some(pending) = self.runtime.output_transactions.latest_pending_apply() {
-            // Pending requests may predate a hotplug. Keep only available heads
-            // and retain defaults for newly connected ones.
-            for head in &mut requested.heads {
-                if let Some(pending_head) = pending.heads.iter().find(|other| other.id == head.id) {
-                    *head = pending_head.clone();
-                }
-            }
-        }
-        requested
+            .evaluate(requested.heads.iter().filter_map(|head| {
+                let output = self
+                    .output_management_state
+                    .outputs()
+                    .iter()
+                    .find(|output| output.name() == head.id.0)?;
+                let connector = *output
+                    .user_data()
+                    .get::<OutputConnectorKind>()
+                    .expect("outputs are classified at creation");
+                Some(LidOutput {
+                    id: head.id.clone(),
+                    connector,
+                    enabled: head.enabled,
+                    has_mode: head.mode.is_some(),
+                })
+            }))
     }
 
     /// Project transient hardware policy without modifying requested settings.
@@ -339,7 +361,13 @@ impl WaylandNativeState {
         requested: &OutputTransaction,
         origin: OutputTransactionOrigin,
     ) -> OutputTransaction {
-        let mut effective = self.runtime.lid_output_policy.project(requested);
+        let suppression = self.lid_output_projection(requested);
+        let mut effective = requested.clone();
+        for head in &mut effective.heads {
+            if suppression.suppressed.contains(&head.id) {
+                head.enabled = false;
+            }
+        }
         effective.apply_mirrors(&self.runtime.mirror_of);
         if origin == OutputTransactionOrigin::Client {
             return effective;
@@ -394,7 +422,7 @@ impl WaylandNativeState {
         &mut self,
         configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
     ) {
-        let mut transaction = self.current_output_transaction();
+        let mut transaction = self.requested_output_transaction();
         let enabled: std::collections::HashSet<String> = transaction
             .heads
             .iter()
@@ -479,6 +507,7 @@ impl WaylandNativeState {
             },
             mode,
             Point::default(),
+            crate::backend::output::OutputConnectorKind::External,
         );
         self.space.map_output(&output, (0, 0));
         self.set_output_vrr_support(name, BackendVrrSupport::Unsupported);
@@ -498,8 +527,12 @@ impl WaylandNativeState {
         physical_properties: PhysicalProperties,
         mode: OutputMode,
         location: Point,
+        connector: crate::backend::output::OutputConnectorKind,
     ) -> Output {
         let output = Output::new(name, physical_properties);
+        output
+            .user_data()
+            .insert_if_missing_threadsafe(|| connector);
         output.change_current_state(
             Some(mode),
             Some(Transform::Normal),
@@ -546,7 +579,7 @@ impl WaylandNativeState {
 
     /// Set the display mode for a display.
     pub fn set_display_mode(&mut self, display: &str, size: Size) {
-        let mut transaction = self.current_output_transaction();
+        let mut transaction = self.requested_output_transaction();
         let Some(output) = self
             .output_management_state
             .outputs()
@@ -582,7 +615,7 @@ impl WaylandNativeState {
         display: &str,
         config: &crate::config::config_toml::MonitorConfig,
     ) {
-        let mut transaction = self.current_output_transaction();
+        let mut transaction = self.requested_output_transaction();
         let known_outputs: Vec<_> = transaction
             .heads
             .iter()
@@ -818,9 +851,30 @@ mod tests {
     fn three_outputs() -> WaylandState {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
         for (index, name) in ["eDP-1", "DP-1", "HDMI-1"].into_iter().enumerate() {
-            let output = state
+            let output = state.native.create_output_global(
+                name.to_owned(),
+                PhysicalProperties {
+                    size: (0, 0).into(),
+                    subpixel: Subpixel::Unknown,
+                    make: "test".into(),
+                    model: "test".into(),
+                    serial_number: "test".into(),
+                },
+                OutputMode {
+                    size: (1920, 1080).into(),
+                    refresh: 60_000,
+                },
+                Point::default(),
+                if name == "eDP-1" {
+                    crate::backend::output::OutputConnectorKind::Internal
+                } else {
+                    crate::backend::output::OutputConnectorKind::External
+                },
+            );
+            state
                 .native
-                .create_output(name, Size::new(1920, 1080), None);
+                .output_management_state
+                .add_heads::<WaylandState>(std::iter::once(&output));
             let location = (index as i32 * 1920, 0).into();
             output.change_current_state(None, None, None, Some(location));
             state.native.space.map_output(&output, location);
@@ -862,8 +916,8 @@ mod tests {
         state
             .native
             .runtime
-            .lid_output_policy
-            .remember_applied(requested);
+            .requested_output_state
+            .commit(requested);
         state.native.apply_output_snapshot(&snapshot);
         effective
     }
@@ -871,12 +925,7 @@ mod tests {
     #[test]
     fn lid_closure_removes_the_panel_compacts_outputs_and_opening_restores_intent() {
         let mut state = three_outputs();
-        state
-            .native
-            .runtime
-            .lid_output_policy
-            .set_internal("eDP-1".into(), true);
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         state.native.runtime.lid_output_policy.set_closed(true);
         let effective = apply_policy(&mut state, &requested);
         assert!(!effective.heads[0].enabled);
@@ -890,10 +939,10 @@ mod tests {
                 .outputs()
                 .all(|output| output.name() != "eDP-1")
         );
-        assert_eq!(state.native.current_output_transaction(), requested);
+        assert_eq!(state.native.requested_output_transaction(), requested);
 
         state.native.runtime.lid_output_policy.set_closed(false);
-        let restored = state.native.current_output_transaction();
+        let restored = state.native.requested_output_transaction();
         assert_eq!(apply_policy(&mut state, &restored), requested);
         assert_eq!(state.native.space.outputs().count(), 3);
     }
@@ -901,11 +950,6 @@ mod tests {
     #[test]
     fn lid_policy_preserves_configured_and_client_managed_positions() {
         let mut state = three_outputs();
-        state
-            .native
-            .runtime
-            .lid_output_policy
-            .set_internal("eDP-1".into(), true);
         state.native.runtime.lid_output_policy.set_closed(true);
         state
             .native
@@ -917,7 +961,7 @@ mod tests {
             .runtime
             .output_position_sources
             .insert("HDMI-1".into(), OutputPositionSource::ClientManaged);
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         let effective = apply_policy(&mut state, &requested);
         assert_eq!(effective.heads[1].position, requested.heads[1].position);
         assert_eq!(effective.heads[2].position, requested.heads[2].position);
@@ -927,13 +971,8 @@ mod tests {
     fn external_mirror_becomes_a_desktop_when_its_internal_source_is_suppressed() {
         let mut state = three_outputs();
         state.native.runtime.mirror_of = mirror_map(&[("DP-1", "eDP-1")]);
-        state
-            .native
-            .runtime
-            .lid_output_policy
-            .set_internal("eDP-1".into(), true);
         state.native.runtime.lid_output_policy.set_closed(true);
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         apply_policy(&mut state, &requested);
         assert!(state.native.runtime.realized_mirrors.is_empty());
         assert!(
@@ -945,7 +984,7 @@ mod tests {
         );
 
         state.native.runtime.lid_output_policy.set_closed(false);
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         apply_policy(&mut state, &requested);
         assert_eq!(
             state
@@ -967,7 +1006,7 @@ mod tests {
         state
             .native
             .create_output("DP-NEW", Size::new(1280, 720), None);
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         assert_eq!(requested.heads.len(), 4);
         assert!(requested.heads.iter().any(|head| head.id.0 == "DP-NEW"));
     }
@@ -975,13 +1014,8 @@ mod tests {
     #[test]
     fn monitor_configuration_can_disable_a_lid_suppressed_panel_permanently() {
         let mut state = three_outputs();
-        state
-            .native
-            .runtime
-            .lid_output_policy
-            .set_internal("eDP-1".into(), true);
         state.native.runtime.lid_output_policy.set_closed(true);
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         apply_policy(&mut state, &requested);
         state.native.set_output_config(
             "eDP-1",
@@ -990,10 +1024,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        let requested = state.native.current_output_transaction();
+        let requested = state.native.requested_output_transaction();
         apply_policy(&mut state, &requested);
         state.native.runtime.lid_output_policy.set_closed(false);
-        assert!(!state.native.current_output_transaction().heads[0].enabled);
+        assert!(!state.native.requested_output_transaction().heads[0].enabled);
     }
 
     #[test]

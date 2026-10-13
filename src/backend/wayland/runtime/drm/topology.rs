@@ -226,7 +226,7 @@ fn retire_disconnected_outputs(
         state
             .native
             .runtime
-            .lid_output_policy
+            .requested_output_state
             .forget(&OutputId(name.clone()));
         if let Some(id) = entry.pending_power_on.take() {
             state.native.runtime.output_power.complete(
