@@ -13,8 +13,8 @@ use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
     AdaptiveSyncPolicy, MonitorModeRequest, OutputHeadConfiguration, OutputId,
     OutputMode as TransactionOutputMode, OutputPlacement, OutputPositionSource, OutputSnapshot,
-    OutputTransaction, OutputTransactionError, OutputTransactionKind, OutputTransform, RequestId,
-    plan_automatic_output_positions, position_after,
+    OutputTransaction, OutputTransactionError, OutputTransactionKind, OutputTransactionOrigin,
+    OutputTransform, RequestId, plan_automatic_output_positions, position_after,
 };
 use crate::backend::wayland::output::{
     MIN_OUTPUT_DIM, clamp_output_size, from_smithay_transform, to_smithay_mode,
@@ -337,11 +337,11 @@ impl WaylandNativeState {
     pub(crate) fn effective_output_transaction(
         &self,
         requested: &OutputTransaction,
-        policy: bool,
+        origin: OutputTransactionOrigin,
     ) -> OutputTransaction {
         let mut effective = self.runtime.lid_output_policy.project(requested);
         effective.apply_mirrors(&self.runtime.mirror_of);
-        if !policy {
+        if origin == OutputTransactionOrigin::Client {
             return effective;
         }
         let enabled: std::collections::HashSet<_> = effective
@@ -844,7 +844,9 @@ mod tests {
 
     /// Exercise the policy/snapshot boundary without owning physical DRM.
     fn apply_policy(state: &mut WaylandState, requested: &OutputTransaction) -> OutputTransaction {
-        let effective = state.native.effective_output_transaction(requested, true);
+        let effective = state
+            .native
+            .effective_output_transaction(requested, OutputTransactionOrigin::CompositorPolicy);
         let snapshot = OutputSnapshot {
             heads: effective
                 .heads

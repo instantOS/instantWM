@@ -414,12 +414,20 @@ impl<P, C> RequestQueue<P, C> {
 pub type OutputPowerQueue =
     RequestQueue<OutputPowerRequest, (OutputId, Result<OutputPowerMode, OutputPowerError>)>;
 
+/// Determines capability repair, placement ownership, and queue coalescing.
+/// Client requests are validated as submitted; compositor policy may adapt to
+/// changed hardware and retains compositor ownership of automatic placement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputTransactionOrigin {
+    Client,
+    CompositorPolicy,
+}
+
 #[derive(Debug, Clone)]
 pub struct OutputTransactionRequest {
     pub kind: OutputTransactionKind,
     pub transaction: OutputTransaction,
-    /// Compositor policy rather than an output-management client request.
-    pub policy: bool,
+    pub origin: OutputTransactionOrigin,
 }
 
 pub type OutputTransactionQueue = RequestQueue<
@@ -441,7 +449,7 @@ impl OutputTransactionQueue {
         self.submit(OutputTransactionRequest {
             kind,
             transaction,
-            policy: false,
+            origin: OutputTransactionOrigin::Client,
         })
     }
 
@@ -450,7 +458,7 @@ impl OutputTransactionQueue {
     pub fn submit_coalescing_apply(&mut self, transaction: OutputTransaction) -> RequestId {
         if let Some((id, pending)) = self.pending.back_mut()
             && pending.kind == OutputTransactionKind::Apply
-            && pending.policy
+            && pending.origin == OutputTransactionOrigin::CompositorPolicy
         {
             pending.transaction = transaction;
             return *id;
@@ -458,7 +466,7 @@ impl OutputTransactionQueue {
         self.submit(OutputTransactionRequest {
             kind: OutputTransactionKind::Apply,
             transaction,
-            policy: true,
+            origin: OutputTransactionOrigin::CompositorPolicy,
         })
     }
 
@@ -583,8 +591,10 @@ mod tests {
         assert_eq!(service.submit_coalescing_apply(transaction()), policy_id);
         service.submit_client(OutputTransactionKind::Apply, transaction());
 
-        assert!(service.take_next_pending().is_some());
-        assert!(service.take_next_pending().is_some());
+        let (_, policy) = service.take_next_pending().unwrap();
+        assert_eq!(policy.origin, OutputTransactionOrigin::CompositorPolicy);
+        let (_, client) = service.take_next_pending().unwrap();
+        assert_eq!(client.origin, OutputTransactionOrigin::Client);
         assert!(service.take_next_pending().is_none());
     }
 

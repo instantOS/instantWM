@@ -252,6 +252,7 @@ pub fn dispatch_libinput_event(
             use smithay::reexports::input::DeviceCapability;
 
             if let Some(closed) = resolve_initial_lid_state(&device, initial_lid_state) {
+                log::info!("Lid switch {} added: closed={closed}", device.sysname());
                 state
                     .native
                     .runtime
@@ -279,6 +280,7 @@ pub fn dispatch_libinput_event(
                 .remove(device.sysname())
                 .is_some()
             {
+                log::info!("Lid switch {} removed", device.sysname());
                 update_lid_state(state);
             }
             let removed_pointer = device.has_capability(DeviceCapability::Pointer);
@@ -308,6 +310,11 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::SwitchToggle { event } => {
             if SwitchToggleEvent::switch(&event) == Some(Switch::Lid) {
+                log::info!(
+                    "Lid switch {} event: closed={}",
+                    event.device().sysname(),
+                    event.state() == SwitchState::On
+                );
                 state.native.runtime.lid_switches.insert(
                     event.device().sysname().to_owned(),
                     event.state() == SwitchState::On,

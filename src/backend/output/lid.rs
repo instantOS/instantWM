@@ -7,6 +7,14 @@ use std::collections::{HashMap, HashSet};
 
 use super::{OutputHeadConfiguration, OutputId, OutputTransaction};
 
+/// Why the current lid state does or does not suppress built-in panels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LidOutputDecision {
+    LidOpen,
+    KeepLastDisplay,
+    SuppressInternalDisplays,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct LidOutputPolicy {
     closed: bool,
@@ -58,13 +66,24 @@ impl LidOutputPolicy {
     /// Suppress built-in panels only with a usable external head. Keeping the
     /// last display configured lets logind retain ownership of suspension and
     /// allows recovery when a dock is unplugged while the lid remains closed.
+    pub fn decision(&self, requested: &OutputTransaction) -> LidOutputDecision {
+        if !self.closed {
+            LidOutputDecision::LidOpen
+        } else if requested
+            .heads
+            .iter()
+            .any(|head| head.enabled && head.mode.is_some() && !self.internal.contains(&head.id))
+        {
+            LidOutputDecision::SuppressInternalDisplays
+        } else {
+            LidOutputDecision::KeepLastDisplay
+        }
+    }
+
+    /// Apply the decision without changing remembered user intent.
     pub fn project(&self, requested: &OutputTransaction) -> OutputTransaction {
         let mut effective = requested.clone();
-        if self.closed
-            && requested.heads.iter().any(|head| {
-                head.enabled && head.mode.is_some() && !self.internal.contains(&head.id)
-            })
-        {
+        if self.decision(requested) == LidOutputDecision::SuppressInternalDisplays {
             for head in &mut effective.heads {
                 if self.internal.contains(&head.id) {
                     head.enabled = false;
@@ -112,10 +131,15 @@ mod tests {
         };
         policy.remember_applied(&requested);
         let effective = policy.project(&requested);
+        assert_eq!(
+            policy.decision(&requested),
+            LidOutputDecision::SuppressInternalDisplays
+        );
         assert!(!effective.heads[0].enabled);
         assert!(effective.heads[1].enabled);
         assert_eq!(policy.requested(&effective), requested);
         policy.set_closed(false);
+        assert_eq!(policy.decision(&requested), LidOutputDecision::LidOpen);
         assert_eq!(policy.project(&policy.requested(&effective)), requested);
     }
 
@@ -152,6 +176,32 @@ mod tests {
     }
 
     #[test]
+    fn recreating_a_panel_while_docked_and_closed_still_suppresses_it() {
+        let mut policy = policy();
+        let requested = OutputTransaction {
+            heads: vec![head("panel", true), head("dock", true)],
+        };
+        policy.remember_applied(&requested);
+
+        // A physical disconnect forgets intent and connector classification.
+        // Discovery must classify the replacement before projecting policy.
+        policy.forget(&"panel".into());
+        policy.set_internal("panel".into(), true);
+        let restored = policy.requested(&requested);
+        assert_eq!(
+            policy.decision(&restored),
+            LidOutputDecision::SuppressInternalDisplays
+        );
+        assert!(!policy.project(&restored).heads[0].enabled);
+
+        // An enable request cannot bypass transient lid suppression either.
+        policy.remember_applied(&restored);
+        assert!(!policy.project(&policy.requested(&restored)).heads[0].enabled);
+        policy.set_closed(false);
+        assert!(policy.project(&policy.requested(&restored)).heads[0].enabled);
+    }
+
+    #[test]
     fn disabled_or_modeless_external_head_does_not_hide_the_last_display() {
         let policy = policy();
         for mut dock in [head("dock", false), head("dock", true)] {
@@ -162,6 +212,10 @@ mod tests {
                 heads: vec![head("panel", true), dock],
             };
             assert!(policy.project(&requested).heads[0].enabled);
+            assert_eq!(
+                policy.decision(&requested),
+                LidOutputDecision::KeepLastDisplay
+            );
         }
     }
 

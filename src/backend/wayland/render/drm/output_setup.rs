@@ -508,6 +508,11 @@ fn initialize_drm_output_surface(
         .runtime
         .lid_output_policy
         .set_internal(spec.name.clone().into(), spec.internal);
+    log::info!(
+        "Output {} created: device={device:?}, internal={}, enabled=true",
+        spec.name,
+        spec.internal
+    );
 
     Some(OutputSurfaceEntry {
         device,

@@ -8,7 +8,7 @@ use crate::backend::output::{
     AdaptiveSyncPolicy, OutputHeadCapabilities, OutputHeadConfiguration, OutputHeadSnapshot,
     OutputId, OutputMode as TransactionOutputMode, OutputPositionSource, OutputPowerError,
     OutputPowerMode, OutputSnapshot, OutputTransaction, OutputTransactionError,
-    OutputTransactionKind,
+    OutputTransactionKind, OutputTransactionOrigin,
 };
 use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::drm::{
@@ -127,7 +127,7 @@ pub(super) fn process_output_configurations(
     while let Some((id, mut pending)) = state.runtime.output_transactions.take_next_pending() {
         // Hardware capability refresh is staged until the normal apply path
         // commits it. Keep the old logical layout intact while flips are pending.
-        if pending.policy {
+        if pending.origin == OutputTransactionOrigin::CompositorPolicy {
             for head in &mut pending.transaction.heads {
                 if let Some(entry) = output_surfaces
                     .iter()
@@ -147,7 +147,7 @@ pub(super) fn process_output_configurations(
                 }
             }
         }
-        let effective = state.effective_output_transaction(&pending.transaction, pending.policy);
+        let effective = state.effective_output_transaction(&pending.transaction, pending.origin);
         if let Err(error) = pending
             .transaction
             .validate(&capabilities)
@@ -299,6 +299,25 @@ pub(super) fn process_output_configurations(
 
         for (index, config, _) in &requested {
             let entry = &mut output_surfaces[*index];
+            let intent = pending
+                .transaction
+                .heads
+                .iter()
+                .find(|head| head.id == config.id)
+                .expect("effective configuration preserves requested heads");
+            log::info!(
+                "Output transaction {id:?}: {} device={:?}, origin={:?}, lid={:?}, requested_enabled={}, effective_enabled={}, previous_enabled={}",
+                config.id.0,
+                entry.device,
+                pending.origin,
+                state
+                    .runtime
+                    .lid_output_policy
+                    .decision(&pending.transaction),
+                intent.enabled,
+                config.enabled,
+                entry.enabled
+            );
             let native_modes: Vec<_> = entry.modes.iter().map(|(_, mode)| *mode).collect();
             if let Some(preferred) = best_connector_mode(&native_modes) {
                 entry
@@ -306,7 +325,7 @@ pub(super) fn process_output_configurations(
                     .set_preferred(smithay::output::Mode::from(preferred));
             }
             let name = entry.output.name();
-            let position_source = if pending.policy {
+            let position_source = if pending.origin == OutputTransactionOrigin::CompositorPolicy {
                 state.output_position_source(&name)
             } else {
                 OutputPositionSource::ClientManaged
