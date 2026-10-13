@@ -2,6 +2,7 @@
 //! requests to the DRM backend.
 
 use smithay::backend::renderer::gles::GlesRenderer;
+use std::collections::HashSet;
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
@@ -12,11 +13,31 @@ use crate::backend::output::{
 };
 use crate::backend::wayland::compositor::WaylandNativeState;
 use crate::backend::wayland::render::drm::{
-    OutputSurfaceEntry, best_connector_mode, build_output_dmabuf_feedback,
+    OutputSurfaceEntry, ScanoutId, best_connector_mode, build_output_dmabuf_feedback,
 };
 use crate::config::config_toml::VrrMode;
 
 use super::{DrmLoopState, devices::DrmDevices};
+
+/// Only devices with native changes need idle controllers. Smithay may adjust
+/// other controllers on that device to meet bandwidth requirements, so wait
+/// for all of its flips, but never for unrelated rendering devices.
+/// States contain (native mode, adaptive sync); None means disabled. Logical
+/// position, scale and transform do not reconfigure the scanout controller.
+fn busy_configuration_output<M: PartialEq>(
+    updates: impl IntoIterator<Item = (ScanoutId, Option<(M, bool)>, Option<(M, bool)>)>,
+    pending: &HashSet<ScanoutId>,
+) -> Option<ScanoutId> {
+    let changing_devices: HashSet<_> = updates
+        .into_iter()
+        .filter_map(|(scanout, current, desired)| (current != desired).then_some(scanout.device))
+        .collect();
+    pending
+        .iter()
+        .copied()
+        .filter(|scanout| changing_devices.contains(&scanout.device))
+        .min_by_key(|scanout| (scanout.device, u32::from(scanout.crtc)))
+}
 
 /// A configured VRR mode expressed as the adaptive-sync policy it implies.
 fn vrr_mode_policy(mode: VrrMode) -> AdaptiveSyncPolicy {
@@ -183,11 +204,26 @@ pub(super) fn process_output_configurations(
                 )
             })
             .collect();
-        if requested.iter().any(|(index, _, _)| {
-            loop_state
-                .pending_crtcs
-                .contains(&output_surfaces[*index].scanout())
-        }) {
+        let blocker = busy_configuration_output(
+            requested.iter().map(|(index, config, mode)| {
+                let entry = &output_surfaces[*index];
+                let current = entry.surface.as_ref().map(|surface| {
+                    surface.with_compositor(|compositor| {
+                        (compositor.current_mode(), compositor.vrr_enabled())
+                    })
+                });
+                let desired = config.enabled.then(|| {
+                    (
+                        mode.expect("enabled configurations were prevalidated"),
+                        requested_vrr(entry, config).1,
+                    )
+                });
+                (entry.scanout(), current, desired)
+            }),
+            &loop_state.pending_crtcs,
+        );
+        if let Some(scanout) = blocker {
+            log::trace!("Output transaction {id:?} waits for page flip on {scanout:?}");
             state.runtime.output_transactions.requeue(id, pending);
             break;
         }
@@ -509,5 +545,90 @@ fn power_mirrors_with_source(
         }
         entry.powered = powered;
         state.runtime.output_power_modes.insert(name, mode);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::wayland::render::drm::DrmDeviceId;
+    use smithay::reexports::drm::control::from_u32;
+
+    fn scanout(device: u64) -> ScanoutId {
+        ScanoutId {
+            device: DrmDeviceId(device),
+            crtc: from_u32(1).unwrap(),
+        }
+    }
+
+    #[test]
+    fn restoring_panel_does_not_wait_for_unchanged_dock_flips() {
+        let panel = scanout(0);
+        let dock_a = scanout(1);
+        let dock_b = scanout(2);
+        // Symbolic mode identities; the production call compares exact native
+        // modes, including timings. Both dock flips can remain pending forever.
+        let pending = HashSet::from([dock_a, dock_b]);
+        let updates = [
+            (panel, None, Some((1, false))),
+            (dock_a, Some((2, false)), Some((2, false))),
+            (dock_b, Some((3, false)), Some((3, false))),
+        ];
+        assert_eq!(busy_configuration_output(updates, &pending), None);
+        assert_eq!(pending, HashSet::from([dock_a, dock_b]));
+    }
+
+    #[test]
+    fn real_controller_changes_still_wait_for_their_own_completion() {
+        let panel = scanout(0);
+        let dock = scanout(1);
+        for desired in [None, Some((2, false)), Some((1, true))] {
+            let updates = [
+                (panel, Some((1, false)), desired),
+                (dock, Some((3, false)), Some((3, false))),
+            ];
+            let mut pending = HashSet::from([panel, dock]);
+            assert_eq!(busy_configuration_output(updates, &pending), Some(panel));
+            // Completion of an unrelated output cannot release this change.
+            pending.remove(&dock);
+            assert_eq!(busy_configuration_output(updates, &pending), Some(panel));
+            pending.remove(&panel);
+            assert_eq!(busy_configuration_output(updates, &pending), None);
+        }
+    }
+
+    #[test]
+    fn two_changed_outputs_require_both_completions() {
+        let first = scanout(0);
+        let second = scanout(1);
+        let updates = [
+            (first, Some((1, false)), None),
+            (second, Some((2, false)), Some((3, false))),
+        ];
+        let mut pending = HashSet::from([first, second]);
+        assert_eq!(busy_configuration_output(updates, &pending), Some(first));
+        pending.remove(&first);
+        assert_eq!(busy_configuration_output(updates, &pending), Some(second));
+        pending.remove(&second);
+        assert_eq!(busy_configuration_output(updates, &pending), None);
+    }
+
+    #[test]
+    fn bandwidth_reconfiguration_waits_for_other_controllers_on_the_same_device() {
+        let first = scanout(0);
+        let second = ScanoutId {
+            crtc: from_u32(2).unwrap(),
+            ..first
+        };
+        let unrelated = scanout(1);
+        let updates = [
+            (first, None, Some((1, false))),
+            (second, Some((2, false)), Some((2, false))),
+            (unrelated, Some((3, false)), Some((3, false))),
+        ];
+        let mut pending = HashSet::from([second, unrelated]);
+        assert_eq!(busy_configuration_output(updates, &pending), Some(second));
+        pending.remove(&second);
+        assert_eq!(busy_configuration_output(updates, &pending), None);
     }
 }
