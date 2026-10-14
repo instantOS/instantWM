@@ -15,7 +15,6 @@ use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::utils::select_dmabuf_feedback;
 use smithay::backend::renderer::element::{Element, Id, RenderElement, RenderElementStates};
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
@@ -29,6 +28,8 @@ use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::{self, connector, crtc};
 use smithay::reexports::wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1;
 use std::fmt;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
@@ -67,6 +68,10 @@ pub use state::{
 
 pub mod state;
 
+/// Set the first time the render path falls back to a synchronous fence
+/// wait, so the fallback is logged once per process instead of every frame.
+static SYNC_WAIT_WARNED: AtomicBool = AtomicBool::new(false);
+
 #[derive(Debug)]
 pub struct DrmFrameMetadata {
     pub presentation_feedback: OutputPresentationFeedback,
@@ -84,7 +89,6 @@ render_elements! {
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
     Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
-    Cursor=TextureRenderElement<GlesTexture>,
 }
 
 render_elements! {
@@ -177,7 +181,6 @@ pub fn render_drm_output(
     };
     let capture_requests = take_drm_capture_requests(state, &entry.output);
 
-    let frame_flags = drm_frame_flags(entry);
     let frame_result = match entry
         .surface
         .as_mut()
@@ -186,7 +189,9 @@ pub fn render_drm_output(
             renderer,
             &render_elements,
             [0.05, 0.05, 0.07, 1.0],
-            frame_flags,
+            // Cursor-plane updates must reach KMS even when content is idle,
+            // including on VRR outputs. Skipping them can freeze the pointer.
+            FrameFlags::DEFAULT,
         ) {
         Ok(result) => result,
         Err(err) => {
@@ -208,10 +213,25 @@ pub fn render_drm_output(
         return RenderOutcome::Failed;
     }
 
+    // KMS can wait for an exported render fence only when Smithay supports
+    // fencing on this surface. Otherwise finish rendering before submission.
+    // An already-signaled sync point needs no blocking wait.
     if frame_result.needs_sync()
         && let PrimaryPlaneElement::Swapchain(primary_swapchain) = &frame_result.primary_element
+        && !primary_swapchain.sync.is_reached()
     {
-        let _ = primary_swapchain.sync.wait();
+        if SYNC_WAIT_WARNED
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            log::warn!(
+                "KMS render synchronization requires a GPU wait on the main loop; \
+                 this can add input latency under heavy GPU load"
+            );
+        }
+        // Interrupted does not establish completion; retry before handing the
+        // buffer to KMS.
+        while primary_swapchain.sync.wait().is_err() {}
     }
 
     let presentation_feedback = if is_mirror {
@@ -391,14 +411,6 @@ fn build_unlocked_drm_render_elements(
     render_elements
 }
 
-fn drm_frame_flags(entry: &OutputSurfaceEntry) -> FrameFlags {
-    let mut frame_flags = FrameFlags::DEFAULT;
-    if entry.vrr_enabled {
-        frame_flags |= FrameFlags::SKIP_CURSOR_ONLY_UPDATES;
-    }
-    frame_flags
-}
-
 fn collect_presentation_feedback(
     state: &WaylandNativeState,
     entry: &OutputSurfaceEntry,
@@ -468,7 +480,7 @@ fn build_cursor_elements(
                 millis,
                 renderer,
             ) {
-                custom_elements.push(DrmExtras::Cursor(cursor_elem));
+                custom_elements.push(DrmExtras::Memory(cursor_elem));
             }
         }
         ResolvedCursor::Surface { surface, hotspot } => {

@@ -6,6 +6,7 @@
 
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmDeviceNotifier};
+use smithay::backend::egl::context::ContextPriority;
 use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Session;
@@ -35,7 +36,12 @@ pub fn init_gpu(
 
     let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
     let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
-    let egl_context = EGLContext::new(&egl_display).expect("EGLContext::new");
+    let egl_context = EGLContext::new_with_priority(&egl_display, ContextPriority::High)
+        .or_else(|err| {
+            log::warn!("High-priority EGL context unavailable ({err}); using default priority");
+            EGLContext::new(&egl_display)
+        })
+        .expect("EGLContext::new");
     let renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
 
     (

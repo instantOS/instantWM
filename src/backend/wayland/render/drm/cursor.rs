@@ -3,7 +3,8 @@
 //! On the DRM backend the compositor must render the cursor itself (there is
 //! no host compositor to delegate to).  `CursorManager` loads xcursor
 //! theme images lazily on demand and caches them for efficient rendering.
-//! Animation is supported for cursor themes that provide animated cursors.
+//! CPU-backed frames expose their pixels to Smithay for hardware cursor planes,
+//! while retaining texture import for software composition. Animation is supported.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -15,8 +16,10 @@ use std::rc::Rc;
 use anyhow::Context;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
-use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+use smithay::backend::renderer::element::memory::{
+    MemoryRenderBuffer, MemoryRenderBufferRenderElement,
+};
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::input::pointer::CursorIcon;
 use smithay::utils::{Physical, Point, Transform};
 use xcursor::CursorTheme;
@@ -27,7 +30,7 @@ use crate::backend::wayland::render::cursor::ResolvedCursor;
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("cursor.rgba");
 
 struct CursorFrame {
-    buffer: TextureBuffer<GlesTexture>,
+    buffer: MemoryRenderBuffer,
     hotspot_x: i32,
     hotspot_y: i32,
 }
@@ -199,77 +202,22 @@ impl CursorManager {
         self.get_cursor(icon, scale).is_animated()
     }
 
-    fn get_cached_frames(
-        &self,
-        renderer: &mut GlesRenderer,
-        icon: CursorIcon,
-        scale: i32,
-    ) -> Rc<Vec<CursorFrame>> {
+    fn get_cached_frames(&self, icon: CursorIcon, scale: i32) -> Rc<Vec<CursorFrame>> {
         let key = (icon, scale);
-        if !self.frame_cache.borrow().contains_key(&key) {
+        Rc::clone(self.frame_cache.borrow_mut().entry(key).or_insert_with(|| {
             let cursor = self.get_cursor(icon, scale);
-            let frames: Vec<CursorFrame> = cursor
-                .frames()
-                .iter()
-                .filter_map(|frame| {
-                    let buf = TextureBuffer::from_memory(
-                        renderer,
-                        &frame.pixels_rgba,
-                        Fourcc::Abgr8888,
-                        (frame.width as i32, frame.height as i32),
-                        false,
-                        1,
-                        Transform::Normal,
-                        None,
-                    )
-                    .ok()?;
-                    Some(CursorFrame {
-                        buffer: buf,
+            Rc::new(
+                cursor
+                    .frames()
+                    .iter()
+                    .map(|frame| CursorFrame {
+                        buffer: cursor_buffer(frame),
                         hotspot_x: frame.xhot as i32,
                         hotspot_y: frame.yhot as i32,
                     })
-                })
-                .collect();
-
-            if frames.is_empty() {
-                let fallback = self.create_fallback_frame(renderer);
-                self.frame_cache
-                    .borrow_mut()
-                    .insert(key, Rc::new(vec![fallback]));
-            } else {
-                self.frame_cache.borrow_mut().insert(key, Rc::new(frames));
-            }
-        }
-
-        Rc::clone(
-            self.frame_cache
-                .borrow()
-                .get(&key)
-                .expect("cursor frame cache must be populated by get_cursor_with_name"),
-        )
-    }
-
-    fn create_fallback_frame(&self, renderer: &mut GlesRenderer) -> CursorFrame {
-        const W: usize = 8;
-        const H: usize = 8;
-        let pixels: Vec<u8> = vec![0xFF; W * H * 4];
-        let buffer = TextureBuffer::from_memory(
-            renderer,
-            &pixels,
-            Fourcc::Abgr8888,
-            (W as i32, H as i32),
-            false,
-            1,
-            Transform::Normal,
-            None,
-        )
-        .expect("create_fallback_frame: from_memory failed");
-
-        CursorFrame {
-            buffer,
-            hotspot_x: 0,
-            hotspot_y: 0,
-        }
+                    .collect(),
+            )
+        }))
     }
 
     pub fn render_element(
@@ -279,7 +227,7 @@ impl CursorManager {
         scale: i32,
         millis: u32,
         renderer: &mut GlesRenderer,
-    ) -> Option<TextureRenderElement<GlesTexture>> {
+    ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
         let icon = match presentation {
             ResolvedCursor::Hidden => return None,
             ResolvedCursor::Named(icon) => *icon,
@@ -290,7 +238,7 @@ impl CursorManager {
         };
 
         let cursor = self.get_cursor(icon, scale);
-        let frames = self.get_cached_frames(renderer, icon, scale);
+        let frames = self.get_cached_frames(icon, scale);
 
         if frames.is_empty() {
             return None;
@@ -304,15 +252,39 @@ impl CursorManager {
         let render_y = pointer_location.y - cursor_frame.hotspot_y as f64;
         let pos: Point<f64, Physical> = Point::from((render_x, render_y));
 
-        Some(TextureRenderElement::from_texture_buffer(
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
             pos,
             &cursor_frame.buffer,
             None,
             None,
             None,
             Kind::Cursor,
-        ))
+        )
+        .map_err(|err| log::warn!("cursor texture import failed: {err}"))
+        .ok()
     }
+}
+
+// KMS cursor buffers use ARGB8888 (BGRA bytes on little-endian machines).
+// xcursor's RGBA bytes need conversion; its pixels_argb vector is empty for
+// the built-in fallback, so use the same conversion for every source.
+fn cursor_buffer(frame: &Image) -> MemoryRenderBuffer {
+    let pixels: Vec<u8> = frame
+        .pixels_rgba
+        .chunks_exact(4)
+        .flat_map(|pixel| {
+            u32::from_be_bytes([pixel[3], pixel[0], pixel[1], pixel[2]]).to_ne_bytes()
+        })
+        .collect();
+    MemoryRenderBuffer::from_slice(
+        &pixels,
+        Fourcc::Argb8888,
+        (frame.width as i32, frame.height as i32),
+        1,
+        Transform::Normal,
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -330,6 +302,39 @@ mod tests {
             pixels_rgba: Vec::new(),
             pixels_argb: Vec::new(),
         }
+    }
+
+    #[test]
+    fn cursor_pixels_preserve_color_alpha_and_fallback() {
+        let mut frame = image(1, 1, 0);
+        frame.pixels_rgba = vec![0x12, 0x34, 0x56, 0x78];
+        let mut buffer = cursor_buffer(&frame);
+        buffer
+            .render()
+            .draw(|pixels| {
+                assert_eq!(pixels, &0x78123456u32.to_ne_bytes());
+                Ok::<_, ()>(Vec::new())
+            })
+            .unwrap();
+
+        let fallback = CursorManager::fallback_cursor();
+        let mut buffer = cursor_buffer(&fallback.frames()[0]);
+        buffer
+            .render()
+            .draw(|pixels| {
+                assert_eq!(pixels.len(), 64 * 64 * 4);
+                for (actual, rgba) in pixels
+                    .chunks_exact(4)
+                    .zip(FALLBACK_CURSOR_DATA.chunks_exact(4))
+                {
+                    assert_eq!(
+                        u32::from_ne_bytes(actual.try_into().unwrap()),
+                        u32::from_be_bytes([rgba[3], rgba[0], rgba[1], rgba[2]])
+                    );
+                }
+                Ok::<_, ()>(Vec::new())
+            })
+            .unwrap();
     }
 
     #[test]
