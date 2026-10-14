@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/instantOS/instantWM/compare/v0.5.2...v0.6.0) - 2026-10-14
+
+### Added
+
+- add ins display binding and IPC helper
+
+### Changed
+
+- more explicit lid policy
+- separate requested output state from lid suppression
+
+### Fixed
+
+- avoid waiting for flips on unchanged DRM devices
+- enable hardware theme cursors and prioritize DRM rendering
+- abort DRM frames when render fence waits fail
+
+### Other
+
+- Merge branch 'main' of https://github.com/instantOS/instantWM
+- Fix Wayland layer stacking and focus above fullscreen windows
+- Keep Wayland bar cache ready across fullscreen transitions
+- Fix DRM output re-enable deadlock when opening laptop lid
+- Reconcile DRM hotplug with deterministic controller allocation
+- Force fresh DRM connector probes after hotplug
+- Support display-only DRM devices alongside the rendering GPU
+- Separate DRM runtime responsibilities into focused modules
+- bump stuff
+- bump
+
 ## [0.5.2](https://github.com/instantOS/instantWM/compare/v0.5.1...v0.5.2) - 2026-10-07
 
 ### Other
