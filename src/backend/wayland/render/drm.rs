@@ -229,9 +229,19 @@ pub fn render_drm_output(
                  this can add input latency under heavy GPU load"
             );
         }
-        // Interrupted does not establish completion; retry before handing the
-        // buffer to KMS.
-        while primary_swapchain.sync.wait().is_err() {}
+        // Smithay maps EGL wait failures to Interrupted, including persistent
+        // errors. Completion is unknown on failure: do not submit this buffer
+        // or retry indefinitely on the main loop. Let the frame scheduler retry
+        // with fresh buffers instead.
+        if let Err(err) = primary_swapchain.sync.wait() {
+            log::warn!("KMS render fence wait failed: {err}");
+            entry
+                .surface
+                .as_mut()
+                .expect("enabled DRM output has a surface")
+                .reset_buffers();
+            return RenderOutcome::Failed;
+        }
     }
 
     let presentation_feedback = if is_mirror {
