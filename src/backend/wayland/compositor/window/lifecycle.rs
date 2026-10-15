@@ -308,10 +308,9 @@ mod tests {
         assert!(!state.native.geometry_sync.contains_key(&win));
         assert!(!state.native.native_commit_may_update_model(
             win,
-            1280,
-            720,
+            crate::types::Size::new(1280, 720),
             Some(Serial::from(17)),
-            true,
+            true
         ));
         assert!(!state.native.geometry_sync.contains_key(&win));
     }

@@ -557,7 +557,7 @@ impl WaylandNativeState {
     }
 
     /// List available display modes for a display.
-    pub fn list_display_modes(&self, display: &str) -> Vec<String> {
+    pub fn list_display_modes(&self, display: &str) -> Vec<crate::types::OutputMode> {
         let mut result = Vec::new();
         if let Some(output) = self
             .output_management_state
@@ -566,12 +566,7 @@ impl WaylandNativeState {
             .find(|o| o.name() == display)
         {
             for mode in output.modes() {
-                result.push(format!(
-                    "{}x{}@{}",
-                    mode.size.w,
-                    mode.size.h,
-                    mode.refresh as f64 / 1000.0
-                ));
+                result.push(crate::backend::wayland::output::from_smithay_mode(mode));
             }
         }
         result

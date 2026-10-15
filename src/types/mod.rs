@@ -73,3 +73,7 @@ pub use window::*;
 // Type-safe tag system (existing module)
 pub mod tag_types;
 pub use tag_types::{MonitorDirection, TagMask, TagSelection};
+
+// Backend-neutral display mode values.
+pub mod output;
+pub use output::{MonitorModeRequest, OutputMode};

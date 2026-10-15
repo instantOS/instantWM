@@ -238,7 +238,7 @@ fn format_window_info(window: &WindowInfo) {
     println!("tags: {}", tags);
     println!(
         "geometry: {}x{}+{}+{}",
-        window.geometry.width, window.geometry.height, window.geometry.x, window.geometry.y
+        window.geometry.w, window.geometry.h, window.geometry.x, window.geometry.y
     );
     println!("border_width: {}", window.border_width);
     println!("state: {}", format_window_state(&window.state));
@@ -520,7 +520,7 @@ fn format_monitor_modes(displays: &[DisplayModes]) {
     for display in displays {
         println!("{}:", display.name);
         for mode in &display.modes {
-            let rate = mode.refresh_mhz as f64 / 1000.0;
+            let rate = mode.refresh_millihertz as f64 / 1000.0;
             println!("  {}x{} @ {:.3}Hz", mode.width, mode.height, rate);
         }
     }

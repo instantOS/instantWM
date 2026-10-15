@@ -194,13 +194,15 @@ pub enum WmCommand {
     },
     /// An X11 client's request to resize a managed window. The WM decides at
     /// dispatch time whether that client may change its logical geometry.
-    RequestX11WindowSize { win: WindowId, w: i32, h: i32 },
+    RequestX11WindowSize {
+        win: WindowId,
+        size: crate::types::Size,
+    },
     /// Observe a native Wayland surface's committed size and the configure it
     /// answered. This is never an X11 client resize request.
     ObserveCommittedSize {
         win: WindowId,
-        w: i32,
-        h: i32,
+        size: crate::types::Size,
         /// Serial of the xdg configure acknowledged by the surface commit this
         /// observation reports. `None` means there is no outstanding xdg
         /// configure transaction.

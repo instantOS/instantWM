@@ -81,8 +81,7 @@ impl WaylandNativeState {
         self.push_command(
             crate::backend::wayland::commands::WmCommand::ObserveCommittedSize {
                 win: window,
-                w: new_w,
-                h: new_h,
+                size: crate::types::Size::new(new_w, new_h),
                 acknowledged_configure: acknowledged,
             },
         );
@@ -104,8 +103,7 @@ impl WaylandNativeState {
     pub(crate) fn native_commit_may_update_model(
         &mut self,
         window: WindowId,
-        new_w: i32,
-        new_h: i32,
+        size: crate::types::Size,
         acknowledged_configure: Option<smithay::utils::Serial>,
         client_size_is_authoritative: bool,
     ) -> bool {
@@ -115,7 +113,7 @@ impl WaylandNativeState {
             return false;
         };
         let decision = sync.observe(
-            crate::types::Size::new(new_w.max(1), new_h.max(1)),
+            crate::types::Size::new(size.w.max(1), size.h.max(1)),
             acknowledged_configure,
             client_size_is_authoritative,
         );
@@ -273,18 +271,16 @@ mod tests {
             .sent(ContentSize::new(1200, 900), Some(Serial::from(11)));
         assert!(!state.native.native_commit_may_update_model(
             win,
-            1920,
-            1080,
+            crate::types::Size::new(1920, 1080),
             Some(Serial::from(10)),
-            true,
+            true
         ));
         assert!(!state.native.take_space_sync_pending());
         assert!(state.native.native_commit_may_update_model(
             win,
-            1198,
-            898,
+            crate::types::Size::new(1198, 898),
             Some(Serial::from(11)),
-            true,
+            true
         ));
         assert_eq!(
             state

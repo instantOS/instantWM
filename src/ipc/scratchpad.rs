@@ -5,7 +5,6 @@ use crate::floating::scratchpad::{
     scratchpad_toggle,
 };
 use crate::ipc_types::{Response, ScratchpadCommand};
-use crate::types::WindowId;
 
 fn message_or_err(result: Result<String, String>) -> Response {
     match result {
@@ -48,17 +47,9 @@ pub fn handle_scratchpad_command(ctx: &mut WmCtx<'_>, cmd: ScratchpadCommand) ->
             window_id,
             status,
             direction,
-        } => message_or_err(scratchpad_create(
-            ctx,
-            &name,
-            window_id.map(WindowId::from),
-            direction,
-            status,
-        )),
-        ScratchpadCommand::Restore { name, window_id } => message_or_err(scratchpad_restore(
-            ctx,
-            name.as_deref(),
-            window_id.map(WindowId::from),
-        )),
+        } => message_or_err(scratchpad_create(ctx, &name, window_id, direction, status)),
+        ScratchpadCommand::Restore { name, window_id } => {
+            message_or_err(scratchpad_restore(ctx, name.as_deref(), window_id))
+        }
     }
 }

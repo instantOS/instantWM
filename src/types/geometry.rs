@@ -87,7 +87,19 @@ impl MonitorPosition {
 }
 
 /// A point representing a coordinate in 2D space.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Hash,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct Point {
     /// X coordinate.
     pub x: i32,
@@ -129,7 +141,19 @@ impl Point {
 }
 
 /// Two-dimensional dimensions without an associated position.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Hash,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct Size {
     /// Width.
     pub w: i32,
@@ -196,7 +220,19 @@ pub(crate) fn scaled_px(value: i32, scale: f64) -> i32 {
 }
 
 /// A rectangle representing window geometry or screen areas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Hash,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct Rect {
     /// X coordinate (horizontal position).
     pub x: i32,

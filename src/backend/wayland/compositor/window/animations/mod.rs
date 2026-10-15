@@ -628,11 +628,12 @@ mod tests {
             .schedule(floating.size());
         // Video redraws before the resize is sent are unsolicited, or may
         // acknowledge the last tiled configure. Neither answers the restore.
-        assert!(
-            !state
-                .native
-                .native_commit_may_update_model(win, 1920, 1080, None, true)
-        );
+        assert!(!state.native.native_commit_may_update_model(
+            win,
+            crate::types::Size::new(1920, 1080),
+            None,
+            true
+        ));
         let tiled_serial = smithay::utils::Serial::from(10);
         state
             .native
@@ -648,10 +649,9 @@ mod tests {
             .schedule(floating.size());
         assert!(!state.native.native_commit_may_update_model(
             win,
-            1920,
-            1080,
+            crate::types::Size::new(1920, 1080),
             Some(tiled_serial),
-            true,
+            true
         ));
         assert_eq!(
             state
@@ -677,19 +677,17 @@ mod tests {
             .sent(floating.size(), Some(restore_serial));
         assert!(!state.native.native_commit_may_update_model(
             win,
-            1920,
-            1080,
+            crate::types::Size::new(1920, 1080),
             Some(tiled_serial),
-            true,
+            true
         ));
         // Once it answers the restore, the client remains free to constrain
         // the suggestion (for example, to its video's aspect ratio).
         assert!(state.native.native_commit_may_update_model(
             win,
-            640,
-            352,
+            crate::types::Size::new(640, 352),
             Some(restore_serial),
-            true,
+            true
         ));
     }
 

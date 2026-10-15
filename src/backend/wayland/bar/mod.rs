@@ -224,7 +224,7 @@ pub fn build_bottom_bar_buffers(core: &mut WmCore) -> Vec<(MemoryRenderBuffer, P
 /// Blend the bar background heavily toward white (~85%) so the handle reads
 /// as a bright, white pill regardless of the bar's theme color.
 fn bottom_bar_indicator_color(background: crate::types::Rgba) -> crate::types::Rgba {
-    let [r, g, b, _] = background.to_rgba8();
+    let [r, g, b, _] = background.to_rgba8().components();
     let blend = |channel: u8| ((channel as u16 * 15 + 255 * 85) / 100) as f32 / 255.0;
     crate::types::Rgba::new(blend(r), blend(g), blend(b), background.a())
 }
@@ -304,7 +304,9 @@ mod tests {
     fn bottom_bar_blend_toward_white_is_not_truncated() {
         let blend = |value: u8| {
             let gray = f32::from(value) / 255.0;
-            bottom_bar_indicator_color(crate::types::Rgba::rgb(gray, gray, gray)).to_rgba8()[0]
+            bottom_bar_indicator_color(crate::types::Rgba::rgb(gray, gray, gray))
+                .to_rgba8()
+                .components()[0]
         };
         assert_eq!(
             blend(18),

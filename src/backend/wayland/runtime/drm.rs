@@ -243,20 +243,7 @@ pub fn run() -> ! {
     // Compositor redraw pings preserve a target set installed by
     // `request_output_render`.  A bare ping (for example, completion of the
     // asynchronous bar worker) falls back to invalidating all outputs.
-    let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("render ping");
-    event_loop
-        .handle()
-        .insert_source(render_ping_source, |_, _, state| {
-            if matches!(
-                state.native.runtime.render_targets,
-                crate::backend::wayland::compositor::PendingRenderTargets::None
-            ) {
-                state.native.runtime.render_targets =
-                    crate::backend::wayland::compositor::PendingRenderTargets::All;
-            }
-        })
-        .expect("render ping source");
-    state.native.runtime.render_ping = Some(render_ping);
+    super::bootstrap::setup_render_ping(&loop_handle, &mut state);
     initial_render_ping.ping();
 
     let start_time = Instant::now();

@@ -7,7 +7,7 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::drag::lifecycle::begin_resize;
-use crate::types::{InteractionSource, ModMask, MouseButton, Point, Rect, WindowId};
+use crate::types::{InteractionSource, ModMask, MouseButton, Point, Rect, Size, WindowId};
 
 fn begin_active_resize(
     ctx: &mut WmCtx<'_>,
@@ -396,21 +396,20 @@ fn apply_resize_drag_motion(
         crate::core_state::ActiveWindowOperation::DirectResize { policy, .. } => policy,
         _ => return,
     };
-    let (new_w, new_h) = match policy {
-        crate::core_state::ResizePolicy::Free => (new_w, new_h),
+    let new_size = match policy {
+        crate::core_state::ResizePolicy::Free => Size::new(new_w, new_h),
         crate::core_state::ResizePolicy::PreserveAspect => {
             crate::mouse::resize::constrain_aspect_size(
                 &ctx.core().state.model,
                 drag.win(),
-                new_w,
-                new_h,
+                Size::new(new_w, new_h),
             )
         }
     };
 
     ctx.move_resize(
         drag.win(),
-        Rect::new(new_x, new_y, new_w, new_h),
+        Rect::from_position_and_size(Point::new(new_x, new_y), new_size),
         MoveResizeOptions::hinted_immediate(true),
     );
 }

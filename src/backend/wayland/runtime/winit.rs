@@ -105,19 +105,7 @@ pub fn run() -> ! {
 
     let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut state.wm);
 
-    let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
-    loop_handle
-        .insert_source(render_ping_source, |_, _, state| {
-            if matches!(
-                state.native.runtime.render_targets,
-                crate::backend::wayland::compositor::PendingRenderTargets::None
-            ) {
-                state.native.runtime.render_targets =
-                    crate::backend::wayland::compositor::PendingRenderTargets::All;
-            }
-        })
-        .expect("render ping source");
-    state.native.runtime.render_ping = Some(render_ping);
+    super::bootstrap::setup_render_ping(&loop_handle, &mut state);
     state.native.request_render();
 
     // ── Winit event source ──────────────────────────────────────────────

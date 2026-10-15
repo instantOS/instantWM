@@ -8,9 +8,9 @@ use crate::types::{Client, MonitorId, MonitorSelector, Rect, WindowId};
 
 pub fn handle_window_command(ctx: &mut WmCtx<'_>, cmd: WindowCommand) -> Response {
     match cmd {
-        WindowCommand::List { window_id } => list_windows(ctx, window_id.map(WindowId::from)),
-        WindowCommand::Info { window_id } => window_info(ctx, window_id.map(WindowId::from)),
-        WindowCommand::Focus { window_id } => focus_window(ctx, window_id.map(WindowId::from)),
+        WindowCommand::List { window_id } => list_windows(ctx, window_id),
+        WindowCommand::Info { window_id } => window_info(ctx, window_id),
+        WindowCommand::Focus { window_id } => focus_window(ctx, window_id),
         WindowCommand::Resize {
             window_id,
             monitor,
@@ -18,13 +18,8 @@ pub fn handle_window_command(ctx: &mut WmCtx<'_>, cmd: WindowCommand) -> Respons
             y,
             width,
             height,
-        } => resize_window(
-            ctx,
-            window_id.map(WindowId::from),
-            monitor,
-            Rect::new(x, y, width, height),
-        ),
-        WindowCommand::Close { window_id } => close_window(ctx, window_id.map(WindowId::from)),
+        } => resize_window(ctx, window_id, monitor, Rect::new(x, y, width, height)),
+        WindowCommand::Close { window_id } => close_window(ctx, window_id),
     }
 }
 

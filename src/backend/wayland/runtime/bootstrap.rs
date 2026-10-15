@@ -70,3 +70,23 @@ pub fn autostart_ipc_status_ping(
         .expect("failed to insert region-selection ping source");
     ipc_server
 }
+
+/// Preserve targeted redraws; bare worker pings invalidate all outputs.
+pub(crate) fn setup_render_ping(
+    loop_handle: &LoopHandle<'static, WaylandState>,
+    state: &mut WaylandState,
+) {
+    use crate::backend::wayland::compositor::PendingRenderTargets;
+    let (ping, source) = calloop::ping::make_ping().expect("render ping");
+    loop_handle
+        .insert_source(source, |_, _, state| {
+            if matches!(
+                state.native.runtime.render_targets,
+                PendingRenderTargets::None
+            ) {
+                state.native.runtime.render_targets = PendingRenderTargets::All;
+            }
+        })
+        .expect("render ping source");
+    state.native.runtime.render_ping = Some(ping);
+}

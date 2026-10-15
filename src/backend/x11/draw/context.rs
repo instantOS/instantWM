@@ -77,7 +77,7 @@ impl Clone for CachedBarScheme {
 /// Keying on the quantized components rather than the raw `f32` bits means
 /// `-0.0` and `0.0` — and every pair that renders to the same pixel — share a
 /// single entry instead of each allocating their own Xft color.
-type BarSchemeKey = [[u8; 4]; 3];
+type BarSchemeKey = [crate::types::Rgba8; 3];
 
 fn bar_scheme_key(scheme: &crate::types::ColorScheme) -> BarSchemeKey {
     [

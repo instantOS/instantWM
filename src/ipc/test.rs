@@ -13,12 +13,12 @@ pub fn handle_test_command(ctx: &mut WmCtx<'_>, command: TestCommand) -> Respons
 
     match command {
         TestCommand::PointerMove { x, y, normalized } => move_pointer(ctx, x, y, normalized),
-        TestCommand::FocusWindow { window_id } => focus_window(ctx, WindowId(window_id)),
-        TestCommand::TagWindow { window_id, tag } => tag_window(ctx, WindowId(window_id), tag),
+        TestCommand::FocusWindow { window_id } => focus_window(ctx, window_id),
+        TestCommand::TagWindow { window_id, tag } => tag_window(ctx, window_id, tag),
         TestCommand::SetWindowFloating {
             window_id,
             floating,
-        } => set_window_floating(ctx, WindowId(window_id), floating),
+        } => set_window_floating(ctx, window_id, floating),
     }
 }
 

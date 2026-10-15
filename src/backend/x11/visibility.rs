@@ -45,10 +45,6 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
     let state = &ctx.core.state;
     let operations =
         visibility_transaction_order(crate::client::visibility::visibility_plan(&state.model));
-    let has_tiling = state
-        .model
-        .monitors_iter()
-        .any(|(_, m)| m.is_tiling_layout());
 
     // A tag switch is one visual transaction. Position every incoming window
     // before parking any outgoing window, and keep other X clients (notably a
@@ -63,7 +59,6 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
         let win = entry.win;
         let geo = entry.rect;
         let is_visible = entry.visible;
-        let mode = entry.mode;
         let _ = ctx.x11_runtime.take_window_animation(win);
 
         if is_visible {
@@ -80,10 +75,7 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
                     .height(height),
             );
 
-            let should_position = mode.is_free_positioned()
-                || mode.is_fake_fullscreen()
-                || (mode.is_normal_tiling() && !has_tiling);
-            if should_position {
+            if entry.position_on_reveal {
                 let mut tmp_ctx = ctx.wm_ctx();
                 tmp_ctx.move_resize(
                     win,
@@ -239,14 +231,14 @@ impl Drop for UnmapEventSuppression<'_> {
 mod tests {
     use super::visibility_transaction_order;
     use crate::client::visibility::VisibilityEntry;
-    use crate::types::{ClientMode, Rect, WindowId};
+    use crate::types::{Rect, WindowId};
 
     fn entry(win: u32, visible: bool) -> VisibilityEntry {
         VisibilityEntry {
             win: WindowId(win),
             rect: Rect::new(0, 0, 100, 100),
             border_width: 1,
-            mode: ClientMode::tiled(),
+            position_on_reveal: false,
             visible,
         }
     }

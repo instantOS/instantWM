@@ -283,7 +283,7 @@ pub(super) struct CrtcChange {
     rotation: randr::Rotation,
     outputs: Vec<randr::Output>,
     /// Bottom-right corner the framebuffer must contain first.
-    extent: Option<(i32, i32)>,
+    extent: Option<Point>,
 }
 
 /// Applies CRTC requests against a snapshot that is refetched only after a
@@ -323,8 +323,8 @@ impl<'a> RandrConfigurator<'a> {
     }
 
     fn apply_change(&mut self, name: &str, change: CrtcChange) {
-        if let Some((right, bottom)) = change.extent {
-            self.grow_framebuffer(right, bottom);
+        if let Some(extent) = change.extent {
+            self.grow_framebuffer(extent.x, extent.y);
         }
         let status = self
             .conn
@@ -538,7 +538,7 @@ fn plan_crtc_change(
         mode: mode.id,
         rotation: randr::Rotation::ROTATE0,
         outputs: vec![output.id],
-        extent: Some((
+        extent: Some(Point::new(
             position.x.saturating_add(i32::from(mode.width)),
             position.y.saturating_add(i32::from(mode.height)),
         )),
@@ -749,7 +749,7 @@ fn lid_suppressed_outputs(
                 mode: crtc.mode,
                 rotation: crtc.rotation,
                 outputs: vec![output.id],
-                extent: Some((
+                extent: Some(Point::new(
                     i32::from(crtc.x) + i32::from(crtc.width),
                     i32::from(crtc.y) + i32::from(crtc.height),
                 )),
@@ -994,7 +994,9 @@ fn mirror_policy_for(
 
     let clone_region = |width: i32, height: i32, position: Point| CrtcRequest {
         enable: true,
-        mode: ModeRequest::Match(MonitorModeRequest::size(width, height)),
+        mode: ModeRequest::Match(MonitorModeRequest::size(crate::types::Size::new(
+            width, height,
+        ))),
         position: Some(MonitorPosition::Absolute(position)),
     };
 
@@ -1619,7 +1621,9 @@ mod refresh_tests {
     fn clone_region(width: i32, height: i32, x: i32, y: i32) -> CrtcRequest {
         CrtcRequest {
             enable: true,
-            mode: ModeRequest::Match(MonitorModeRequest::size(width, height)),
+            mode: ModeRequest::Match(MonitorModeRequest::size(crate::types::Size::new(
+                width, height,
+            ))),
             position: Some(MonitorPosition::Absolute(Point::new(x, y))),
         }
     }

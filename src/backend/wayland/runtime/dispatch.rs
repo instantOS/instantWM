@@ -117,16 +117,15 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(&mut state.ctx(), win, update);
             }
-            WmCommand::RequestX11WindowSize { win, w, h } => {
-                handle_x11_window_size_request(state, win, w, h);
+            WmCommand::RequestX11WindowSize { win, size } => {
+                handle_x11_window_size_request(state, win, size);
             }
             WmCommand::ObserveCommittedSize {
                 win,
-                w,
-                h,
+                size,
                 acknowledged_configure,
             } => {
-                handle_committed_size_observation(state, win, w, h, acknowledged_configure);
+                handle_committed_size_observation(state, win, size, acknowledged_configure);
             }
             WmCommand::SetMaximized { win, maximized } => {
                 handle_set_maximized(state, win, maximized);
@@ -245,8 +244,7 @@ fn handle_update_transient_for(
 fn handle_x11_window_size_request(
     state: &mut WaylandState,
     win: crate::types::WindowId,
-    w: i32,
-    h: i32,
+    size: crate::types::Size,
 ) {
     let Some(client) = state.wm.core.state.model.client(win) else {
         return;
@@ -264,7 +262,7 @@ fn handle_x11_window_size_request(
 
     state.ctx().move_resize(
         win,
-        crate::types::Rect::new(current.x, current.y, w.max(1), h.max(1)),
+        crate::types::Rect::new(current.x, current.y, size.w.max(1), size.h.max(1)),
         crate::geometry::MoveResizeOptions::immediate(),
     );
 }
@@ -272,18 +270,16 @@ fn handle_x11_window_size_request(
 fn handle_committed_size_observation(
     state: &mut WaylandState,
     win: crate::types::WindowId,
-    w: i32,
-    h: i32,
+    size: crate::types::Size,
     acknowledged_configure: Option<smithay::utils::Serial>,
 ) {
     let client = state.wm.core.state.model.client(win);
     let client_size_is_authoritative =
         client.is_some_and(|client| client.client_size_is_authoritative());
-    let committed_rect = client.and_then(|client| committed_window_rect(client, w, h));
+    let committed_rect = client.and_then(|client| committed_window_rect(client, size));
     if !state.native.native_commit_may_update_model(
         win,
-        w,
-        h,
+        size,
         acknowledged_configure,
         client_size_is_authoritative,
     ) {
@@ -298,19 +294,18 @@ fn handle_committed_size_observation(
 /// not change the model.
 fn committed_window_rect(
     client: &crate::types::Client,
-    w: i32,
-    h: i32,
+    size: crate::types::Size,
 ) -> Option<crate::types::Rect> {
     // Tiled, maximized, fullscreen, and scratchpad geometry is owned by the
     // WM. In particular, a native Wayland client may commit a stale startup
     // buffer after layout selected its final size; copying that size back
     // here would overwrite the layout or scratchpad target.
-    (client.client_size_is_authoritative() && (client.geo.w != w || client.geo.h != h)).then_some(
+    (client.client_size_is_authoritative() && client.geo.size() != size).then_some(
         crate::types::Rect {
             x: client.geo.x,
             y: client.geo.y,
-            w,
-            h,
+            w: size.w,
+            h: size.h,
         },
     )
 }
@@ -821,8 +816,7 @@ mod tests {
 
         state.native.push_command(WmCommand::RequestX11WindowSize {
             win,
-            w: 900,
-            h: 700,
+            size: crate::types::Size::new(900, 700),
         });
         state
             .native
@@ -835,8 +829,7 @@ mod tests {
             .reconcile_interactive_resize(&state.wm.core.state, None);
         state.native.push_command(WmCommand::RequestX11WindowSize {
             win,
-            w: 900,
-            h: 700,
+            size: crate::types::Size::new(900, 700),
         });
         drain_command_queue(&mut state);
         assert_eq!(
@@ -854,8 +847,7 @@ mod tests {
             .set_placement(ClientPlacement::Tiling);
         state.native.push_command(WmCommand::RequestX11WindowSize {
             win,
-            w: 1000,
-            h: 800,
+            size: crate::types::Size::new(1000, 800),
         });
         drain_command_queue(&mut state);
         assert_eq!(
@@ -1034,6 +1026,9 @@ mod tests {
         add_client(&mut state.wm.core.state.model, monitor_id, client);
 
         let client = state.wm.core.state.model.client(win).unwrap();
-        assert_eq!(committed_window_rect(client, 1920, 1080), None);
+        assert_eq!(
+            committed_window_rect(client, crate::types::Size::new(1920, 1080)),
+            None
+        );
     }
 }

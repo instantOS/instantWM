@@ -34,7 +34,7 @@ use crate::constants::animation::EMPHASIZED_ANIMATION_MILLIS;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{arrange, sync_z_order};
-use crate::types::{Rect, WindowId};
+use crate::types::WindowId;
 
 // ---------------------------------------------------------------------------
 // Real fullscreen
@@ -52,6 +52,14 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
     let Some(transition) = ctx.core_mut().state.model.set_fullscreen(win, fullscreen) else {
         return;
     };
+    apply_fullscreen_transition(ctx, win, transition);
+}
+
+fn apply_fullscreen_transition(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    transition: crate::client::mode::FullscreenTransition,
+) {
     let monitor_id = transition.monitor_id;
 
     match transition.change {
@@ -72,8 +80,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             ctx.request_bar_geometry_update(monitor_id);
             sync_z_order(ctx);
         }
-        FullscreenChange::Exited { restore_rect } => {
-            ctx.set_client_fullscreen_signal(win, false);
+        FullscreenChange::Exited { restore_rect }
+        | FullscreenChange::FakeEntered { restore_rect } => {
+            ctx.set_client_fullscreen_signal(
+                win,
+                matches!(transition.change, FullscreenChange::FakeEntered { .. }),
+            );
             ctx.apply_exited_fullscreen_effects(win);
             if let Some(rect) = restore_rect {
                 ctx.move_resize(win, rect, MoveResizeOptions::immediate());
@@ -215,65 +227,17 @@ fn apply_maximized_change(
 ///
 /// * Entering fake advertises the fullscreen signal but keeps the window in
 ///   the layout with its border.
-/// * Leaving fake promotes to *real* fullscreen: the window claims the whole
-///   monitor immediately and drops its border. Use the regular fullscreen
+/// * Leaving fake promotes to *real* fullscreen through the regular transition:
+///   the window claims the whole monitor and drops its border. Use the regular fullscreen
 ///   toggle to leave real fullscreen again.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx<'_>) {
-    let core_state = &ctx.core().state;
-    let Some(win) = core_state.model.selected_win() else {
+    let Some(win) = ctx.core().state.model.selected_win() else {
         return;
     };
-    let Some(view) = core_state.model.client_view(win) else {
+    let Some(transition) = ctx.core_mut().state.model.toggle_fake_fullscreen(win) else {
         return;
     };
-    let monitor_id = view.monitor.id();
-    let was_fake = view.client.mode().is_fake_fullscreen();
-    let old_border_width = view.client.old_border_width;
-    let promotion_monitor_rect = was_fake.then_some(view.monitor.monitor_rect);
-
-    // Fake → real promotion: claim the monitor rectangle immediately so the
-    // transition reads as a single step instead of waiting for the layout.
-    if let Some(mon_rect) = promotion_monitor_rect {
-        let border_px = core_state.config.window.border_width_px;
-        ctx.move_resize(
-            win,
-            Rect {
-                x: mon_rect.x + border_px,
-                y: mon_rect.y + border_px,
-                w: mon_rect.w - 2 * border_px,
-                h: mon_rect.h - 2 * border_px,
-            },
-            MoveResizeOptions::immediate(),
-        );
-        ctx.raise_client(win);
-    }
-
-    if let Some(client) = ctx
-        .core_mut()
-        .state
-        .model
-        .monitor_mut(monitor_id)
-        .and_then(|monitor| monitor.client_mut(win))
-    {
-        if was_fake {
-            client.enter_fullscreen();
-        } else {
-            client.enter_fake_fullscreen();
-        }
-        // Real fullscreen strips the border; every other outcome restores
-        // the width saved before fullscreen was entered.
-        client.border_width = if client.mode().is_true_fullscreen() {
-            0
-        } else {
-            old_border_width
-        };
-    }
-
-    // Both real and fake fullscreen advertise the fullscreen signal; fake
-    // fullscreen differs only in remaining part of the layout stack.
-    ctx.set_client_fullscreen_signal(win, true);
-
-    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+    apply_fullscreen_transition(ctx, win, transition);
 }
 
 #[cfg(test)]
@@ -325,7 +289,7 @@ mod tests {
         let client = wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(client.border_width, 0);
-        assert_eq!(client.geo, Rect::new(103, 53, 1194, 794));
+        assert_eq!(client.geo, Rect::new(100, 50, 1200, 800));
 
         toggle_fake_fullscreen(&mut wm.test_ctx());
         let client = wm.core.state.model.client(win).unwrap();

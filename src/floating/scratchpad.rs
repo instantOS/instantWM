@@ -141,7 +141,7 @@ impl EdgeSlideRects {
 pub struct ScratchpadInfo {
     pub name: String,
     pub visible: bool,
-    pub window_id: Option<u32>,
+    pub window_id: Option<WindowId>,
     pub monitor: Option<usize>,
     pub x: Option<i32>,
     pub y: Option<i32>,
@@ -163,7 +163,7 @@ impl ScratchpadInfo {
         Some(Self {
             name: sp.name().to_string(),
             visible: c.is_scratchpad_visible(),
-            window_id: Some(c.win.0),
+            window_id: Some(c.win),
             monitor: Some(monitor_position),
             x: Some(c.geo.x),
             y: Some(c.geo.y),

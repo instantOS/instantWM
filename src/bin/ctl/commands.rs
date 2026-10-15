@@ -277,3 +277,24 @@ impl CommandKind {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use instantwm::ipc_types::WindowCommand;
+    use instantwm::types::WindowId;
+
+    #[test]
+    fn window_cli_parses_typed_ids_without_changing_numeric_syntax() {
+        let cli = Cli::try_parse_from(["instantwmctl", "window", "info", "4294967295"]).unwrap();
+        assert!(matches!(
+            cli.command.into_ipc().unwrap(),
+            IpcCommand::Window(WindowCommand::Info {
+                window_id: Some(WindowId(u32::MAX))
+            })
+        ));
+        for id in ["-1", "4294967296", "invalid"] {
+            assert!(Cli::try_parse_from(["instantwmctl", "window", "info", id]).is_err());
+        }
+    }
+}

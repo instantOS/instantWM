@@ -404,8 +404,7 @@ impl XwmHandler for WaylandState {
             self.native
                 .push_command(super::super::commands::WmCommand::RequestX11WindowSize {
                     win,
-                    w: geo.size.w,
-                    h: geo.size.h,
+                    size: crate::types::Size::new(geo.size.w, geo.size.h),
                 });
             return;
         }

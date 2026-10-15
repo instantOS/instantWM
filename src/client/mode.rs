@@ -64,6 +64,9 @@ pub(crate) enum FullscreenChange {
     Exited {
         restore_rect: Option<Rect>,
     },
+    FakeEntered {
+        restore_rect: Option<Rect>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +83,8 @@ impl FullscreenTransition {
     pub(crate) fn presentation_rect(self) -> Option<Rect> {
         match self.change {
             FullscreenChange::Entered { monitor_rect, .. } => Some(monitor_rect),
-            FullscreenChange::Exited { restore_rect } => restore_rect,
+            FullscreenChange::Exited { restore_rect }
+            | FullscreenChange::FakeEntered { restore_rect } => restore_rect,
             FullscreenChange::Unchanged => None,
         }
     }
@@ -425,6 +429,29 @@ impl WmModel {
         ))
     }
 
+    /// Cycle fake and true fullscreen through the same restore transaction.
+    pub(crate) fn toggle_fake_fullscreen(&mut self, win: WindowId) -> Option<FullscreenTransition> {
+        let monitor = self.client_owner_mut(win)?;
+        if monitor.client(win)?.mode().is_fake_fullscreen() {
+            return Some(set_fullscreen_on(monitor, win, true));
+        }
+        let was_fullscreen = monitor.client(win)?.mode().is_true_fullscreen();
+        let transition = set_fullscreen_on(monitor, win, false);
+        let work_rect = monitor.work_rect();
+        let client = owned_client_mut(monitor, win);
+        if !was_fullscreen && client.mode().is_normal_floating() {
+            client.save_floating_placement(client.geo, work_rect);
+        }
+        client.save_border_width();
+        client.enter_fake_fullscreen();
+        Some(FullscreenTransition {
+            monitor_id: transition.monitor_id,
+            change: FullscreenChange::FakeEntered {
+                restore_rect: transition.presentation_rect(),
+            },
+        })
+    }
+
     /// Interpret an application's maximize/restore control.
     ///
     /// In tiling presentations it controls tiled/floating placement. In the
@@ -513,6 +540,32 @@ mod tests {
         client.set_mode_for_test(mode);
         assert!(model.add_client(monitor_id, client));
         (model, win, monitor_id)
+    }
+
+    #[test]
+    fn fake_fullscreen_cycle_preserves_floating_restore_and_current_border() {
+        let (mut model, win, _) = model_with_client(ClientMode::floating());
+        let original = model.client(win).unwrap().geo;
+        model.client_mut(win).unwrap().border_width = 7;
+        let _ = model.toggle_fake_fullscreen(win).unwrap();
+        assert_eq!(model.client(win).unwrap().border_width, 7);
+        assert_eq!(
+            model.client(win).unwrap().saved_floating_rect(),
+            Some(original)
+        );
+        let entered = model.toggle_fake_fullscreen(win).unwrap();
+        assert_eq!(
+            entered.presentation_rect(),
+            Some(Rect::new(0, 0, 1920, 1080))
+        );
+        model.sync_client_geometry(win, Rect::new(0, 0, 1920, 1080));
+        let fake = model.toggle_fake_fullscreen(win).unwrap();
+        assert_eq!(fake.presentation_rect(), Some(original));
+        assert!(model.client(win).unwrap().mode().is_fake_fullscreen());
+        assert_eq!(model.client(win).unwrap().border_width, 7);
+        let exited = model.set_fullscreen(win, false).unwrap();
+        assert_eq!(exited.presentation_rect(), Some(original));
+        assert!(model.client(win).unwrap().mode().is_normal_floating());
     }
 
     #[test]

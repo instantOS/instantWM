@@ -40,6 +40,10 @@ fn compute_ipc_source_hash() -> String {
     // Hash all files that affect IPC protocol (must match on both client and server)
     let ipc_files = [
         "src/ipc_types.rs",
+        "src/types/geometry.rs",
+        "src/types/output.rs",
+        "src/types/window.rs",
+        "src/floating/scratchpad.rs",
         "src/ipc/mod.rs",
         "src/bin/instantwmctl.rs",
     ];

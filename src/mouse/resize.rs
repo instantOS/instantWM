@@ -47,14 +47,13 @@ pub(crate) fn compute_axis_resize(
 pub(crate) fn constrain_aspect_size(
     model: &crate::model::WmModel,
     win: WindowId,
-    raw_width: i32,
-    raw_height: i32,
-) -> (i32, i32) {
+    raw: Size,
+) -> Size {
     let Some(client) = model.client(win) else {
-        return (raw_width.max(1), raw_height.max(1));
+        return Size::new(raw.w.max(1), raw.h.max(1));
     };
-    let mut width = raw_width.max(1);
-    let mut height = raw_height.max(1);
+    let mut width = raw.w.max(1);
+    let mut height = raw.h.max(1);
     let hints = client.size_hints;
     if hints.min_width > 0 {
         width = width.max(hints.min_width);
@@ -76,7 +75,7 @@ pub(crate) fn constrain_aspect_size(
             height = (width as f32 / client.min_aspect) as i32;
         }
     }
-    (width.max(1), height.max(1))
+    Size::new(width.max(1), height.max(1))
 }
 
 /// Begin resizing `win` using the supplied input position's current quadrant.

@@ -55,23 +55,23 @@ impl Rgba {
 
     /// Convert the components to bytes, clamping them to the normalized range
     /// and rounding to the nearest integer.
-    pub fn to_rgba8(self) -> [u8; 4] {
+    pub fn to_rgba8(self) -> Rgba8 {
         fn component_to_u8(component: f32) -> u8 {
             (component.clamp(0.0, 1.0) * 255.0).round() as u8
         }
 
-        [
+        Rgba8::new(
             component_to_u8(self.r()),
             component_to_u8(self.g()),
             component_to_u8(self.b()),
             component_to_u8(self.a()),
-        ]
+        )
     }
 }
 
 impl std::fmt::Display for Rgba {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [r, g, b, a] = self.to_rgba8();
+        let [r, g, b, a] = self.to_rgba8().components();
         if a == 255 {
             write!(f, "#{:02X}{:02X}{:02X}", r, g, b)
         } else {
@@ -83,7 +83,7 @@ impl std::fmt::Display for Rgba {
 /// Pack the color as `0xRRGGBB`. The alpha component is discarded.
 impl From<Rgba> for u32 {
     fn from(rgba: Rgba) -> Self {
-        let [r, g, b, _] = rgba.to_rgba8();
+        let [r, g, b, _] = rgba.to_rgba8().components();
         let (r, g, b) = (u32::from(r), u32::from(g), u32::from(b));
         (r << 16) | (g << 8) | b
     }
@@ -100,7 +100,7 @@ impl From<Rgba> for u32 {
 /// bitmaps, and compositor surfaces are all 8-bit. The components are always
 /// ordered `[r, g, b, a]` and are never premultiplied — the byte order a
 /// target surface stores them in is that surface's business, not the color's.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Rgba8([u8; 4]);
 
 impl Rgba8 {
@@ -130,7 +130,7 @@ impl Rgba8 {
 impl From<Rgba> for Rgba8 {
     /// Quantize to bytes, clamping components outside the normalized range.
     fn from(rgba: Rgba) -> Self {
-        Self(rgba.to_rgba8())
+        rgba.to_rgba8()
     }
 }
 
@@ -501,7 +501,10 @@ mod tests {
         // `Rgba` clamps and rounds on the way down, and `to_rgba8` is the
         // exact inverse of the `From` impl.
         let floats = Rgba::new(0.0, 0.5, 1.0, 0.25);
-        assert_eq!(Rgba8::from(floats).components(), floats.to_rgba8());
+        assert_eq!(
+            Rgba8::from(floats).components(),
+            floats.to_rgba8().components()
+        );
     }
 
     #[test]
@@ -514,7 +517,7 @@ mod tests {
     #[test]
     fn rgba8_is_clamped_and_rounded() {
         let rgba = Rgba::new(-0.1, 0.5, 1.1, 0.25);
-        assert_eq!(rgba.to_rgba8(), [0, 128, 255, 64]);
+        assert_eq!(rgba.to_rgba8().components(), [0, 128, 255, 64]);
     }
 
     #[test]

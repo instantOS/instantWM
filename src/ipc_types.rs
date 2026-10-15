@@ -3,7 +3,9 @@ pub use crate::config::config_toml::{
     AccelProfile, ColorTheme, MirrorFit, MonitorConfig, ToggleSetting, Transform, VrrMode,
 };
 pub use crate::floating::scratchpad::DEFAULT_SCRATCHPAD_NAME;
-pub use crate::types::{EdgeDirection, KeyboardLayout, MonitorSelector, RuleGeometry, TagMask};
+pub use crate::types::{
+    EdgeDirection, KeyboardLayout, MonitorSelector, RuleGeometry, TagMask, WindowId,
+};
 use bincode::{Decode, Encode};
 use clap::{ArgAction, Subcommand};
 
@@ -126,7 +128,7 @@ pub enum ScratchpadCommand {
         #[arg(default_value = DEFAULT_SCRATCHPAD_NAME)]
         name: String,
         #[arg(long, short = 'w')]
-        window_id: Option<u32>,
+        window_id: Option<WindowId>,
         #[arg(long, default_value = "hidden")]
         status: ScratchpadInitialStatus,
         #[arg(long)]
@@ -140,7 +142,7 @@ pub enum ScratchpadCommand {
         name: Option<String>,
         /// Stable window ID, useful when the scratchpad is hidden.
         #[arg(long, short = 'w')]
-        window_id: Option<u32>,
+        window_id: Option<WindowId>,
     },
 }
 
@@ -274,15 +276,15 @@ pub struct PendingTmpRuleInfo {
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum WindowCommand {
     /// List managed windows.
-    List { window_id: Option<u32> },
+    List { window_id: Option<WindowId> },
     /// Show information about a managed window.
-    Info { window_id: Option<u32> },
+    Info { window_id: Option<WindowId> },
     /// Activate a managed window: switch to its monitor and tags, then focus
     /// and raise it. Hidden (minimized) windows are restored first.
-    Focus { window_id: Option<u32> },
+    Focus { window_id: Option<WindowId> },
     /// Resize and optionally move a managed window.
     Resize {
-        window_id: Option<u32>,
+        window_id: Option<WindowId>,
         /// Monitor whose top-left corner the coordinates are relative to:
         /// output name, layout position, "focused" or "primary".
         #[arg(long, value_name = "MONITOR")]
@@ -297,7 +299,7 @@ pub enum WindowCommand {
         height: i32,
     },
     /// Close a managed window.
-    Close { window_id: Option<u32> },
+    Close { window_id: Option<WindowId> },
 }
 
 /// Unstable commands intended for profiling and automated compositor tests.
@@ -317,12 +319,12 @@ pub enum TestCommand {
         normalized: bool,
     },
     /// Focus a window by its stable IPC id.
-    FocusWindow { window_id: u32 },
+    FocusWindow { window_id: WindowId },
     /// Assign a window to exactly one tag.
-    TagWindow { window_id: u32, tag: u32 },
+    TagWindow { window_id: WindowId, tag: u32 },
     /// Set tiling/floating state without relying on the current focus.
     SetWindowFloating {
-        window_id: u32,
+        window_id: WindowId,
         #[arg(action = ArgAction::Set)]
         floating: bool,
     },
@@ -409,25 +411,6 @@ pub enum IpcCommand {
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct GeometryInfo {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-}
-
-impl From<crate::types::Rect> for GeometryInfo {
-    fn from(rect: crate::types::Rect) -> Self {
-        Self {
-            x: rect.x,
-            y: rect.y,
-            width: rect.w,
-            height: rect.h,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowState {
     pub mode: crate::types::ClientMode,
     pub sticky: bool,
@@ -495,13 +478,13 @@ impl TryFrom<&crate::types::client::Client> for SizeHintsInfo {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowInfo {
-    pub id: u32,
+    pub id: WindowId,
     pub title: String,
     pub protocol: WindowProtocol,
     /// Spatial monitor position used by monitor-switching commands.
     pub monitor_position: usize,
     pub tags: TagMask,
-    pub geometry: GeometryInfo,
+    pub geometry: crate::types::Rect,
     pub border_width: i32,
     pub state: WindowState,
     /// True for the selected window of the selected monitor.
@@ -521,12 +504,12 @@ impl WindowInfo {
         is_focused: bool,
     ) -> Self {
         Self {
-            id: c.win.0,
+            id: c.win,
             title: c.name.clone(),
             protocol,
             monitor_position,
             tags: c.tags & valid_tag_mask,
-            geometry: c.geo.into(),
+            geometry: c.geo,
             border_width: c.border_width,
             state: c.into(),
             is_focused,
@@ -563,39 +546,11 @@ pub struct MonitorInfo {
 
 pub use crate::floating::scratchpad::ScratchpadInfo;
 
-/// A single display mode (resolution + refresh rate).
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct MonitorMode {
-    pub width: u32,
-    pub height: u32,
-    pub refresh_mhz: u32,
-}
-
-impl std::str::FromStr for MonitorMode {
-    type Err = String;
-
-    /// Parse a mode string like "1920x1080@60.000" into a MonitorMode.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let invalid = || format!("invalid monitor mode: {s}");
-        let (res, rate_str) = s.split_once('@').ok_or_else(invalid)?;
-        let (w, h) = res.split_once('x').ok_or_else(invalid)?;
-        let width: u32 = w.parse().map_err(|_| invalid())?;
-        let height: u32 = h.parse().map_err(|_| invalid())?;
-        let rate_hz: f64 = rate_str.parse().map_err(|_| invalid())?;
-        let refresh_mhz = (rate_hz * 1000.0) as u32;
-        Ok(Self {
-            width,
-            height,
-            refresh_mhz,
-        })
-    }
-}
-
 /// Modes for a specific display.
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct DisplayModes {
     pub name: String,
-    pub modes: Vec<MonitorMode>,
+    pub modes: Vec<crate::types::OutputMode>,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -720,5 +675,64 @@ impl Response {
 
     pub fn err(msg: impl Into<String>) -> Self {
         Response::Err(msg.into())
+    }
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+    use crate::types::{Client, OutputMode, Rect};
+
+    #[test]
+    fn typed_window_geometry_and_identity_survive_ipc() {
+        let client = Client {
+            win: WindowId(u32::MAX),
+            geo: Rect::new(-1920, -100, 800, 600),
+            ..Client::default()
+        };
+        let info =
+            WindowInfo::from_client(&client, TagMask::EMPTY, WindowProtocol::Wayland, 0, true);
+        let json = serde_json::to_value(&info).unwrap();
+        assert_eq!(json["id"], u32::MAX);
+        assert_eq!(
+            json["geometry"],
+            serde_json::json!({"x": -1920, "y": -100, "w": 800, "h": 600})
+        );
+        let config = bincode::config::standard();
+        let bytes = bincode::encode_to_vec(Response::WindowInfo(info), config).unwrap();
+        let (response, consumed): (Response, _) =
+            bincode::decode_from_slice(&bytes, config).unwrap();
+        assert_eq!(consumed, bytes.len());
+        let Response::WindowInfo(decoded) = response else {
+            panic!("expected window info")
+        };
+        assert_eq!(decoded.id, client.win);
+        assert_eq!(decoded.geometry, client.geo);
+    }
+
+    #[test]
+    fn display_modes_use_the_shared_value_on_the_wire() {
+        let mode = OutputMode {
+            width: 2560,
+            height: 1440,
+            refresh_millihertz: 59940,
+        };
+        let response = Response::MonitorModes(vec![DisplayModes {
+            name: "DP-1".into(),
+            modes: vec![mode],
+        }]);
+        let config = bincode::config::standard();
+        let bytes = bincode::encode_to_vec(response, config).unwrap();
+        let (response, consumed): (Response, _) =
+            bincode::decode_from_slice(&bytes, config).unwrap();
+        assert_eq!(consumed, bytes.len());
+        let Response::MonitorModes(displays) = response else {
+            panic!("expected monitor modes")
+        };
+        assert_eq!(displays[0].modes[0], mode);
+        assert_eq!(
+            serde_json::to_value(mode).unwrap()["refresh_millihertz"],
+            59940
+        );
     }
 }

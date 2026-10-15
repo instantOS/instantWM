@@ -7,14 +7,14 @@
 
 use crate::contexts::WmCtx;
 use crate::model::WmModel;
-use crate::types::{ClientMode, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VisibilityEntry {
     pub win: WindowId,
     pub rect: Rect,
     pub border_width: i32,
-    pub mode: ClientMode,
+    pub position_on_reveal: bool,
     pub visible: bool,
 }
 
@@ -28,7 +28,9 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
                 win,
                 rect: client.geo,
                 border_width: client.border_width,
-                mode: client.mode(),
+                position_on_reveal: client.mode().is_free_positioned()
+                    || client.mode().is_fake_fullscreen()
+                    || (client.mode().is_normal_tiling() && !mon.is_tiling_layout()),
                 visible: client.is_visible(selected_tags),
             });
         }
@@ -147,6 +149,38 @@ mod tests {
             },
             ..Client::default()
         }
+    }
+
+    #[test]
+    fn reveal_positioning_uses_each_clients_monitor_layout() {
+        let tag = TagMask::single(1).unwrap();
+        let mut model = make_model(
+            &[tag, tag],
+            vec![
+                (0, make_client(WindowId(1), tag, false, false)),
+                (1, make_client(WindowId(2), tag, false, false)),
+            ],
+        );
+        let owner = model.client_view(WindowId(1)).unwrap().monitor.id();
+        model
+            .monitor_mut(owner)
+            .unwrap()
+            .per_tag_state()
+            .presentation = crate::layouts::PresentationMode::Floating;
+        let plan = visibility_plan(&model);
+        assert!(
+            plan.iter()
+                .find(|entry| entry.win == WindowId(1))
+                .unwrap()
+                .position_on_reveal
+        );
+        assert!(
+            !plan
+                .iter()
+                .find(|entry| entry.win == WindowId(2))
+                .unwrap()
+                .position_on_reveal
+        );
     }
 
     #[test]
@@ -280,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn visibility_preserves_geometry_and_mode() {
+    fn visibility_preserves_geometry_and_positioning_policy() {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
         let rect = Rect {
@@ -302,7 +336,7 @@ mod tests {
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].rect, rect);
         assert_eq!(plan[0].border_width, 2);
-        assert_eq!(plan[0].mode, ClientMode::floating());
+        assert!(plan[0].position_on_reveal);
         assert!(plan[0].visible);
     }
 }

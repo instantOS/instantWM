@@ -77,55 +77,7 @@ impl From<&str> for OutputId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OutputMode {
-    pub width: i32,
-    pub height: i32,
-    pub refresh_millihertz: i32,
-}
-
-/// A mode requested by monitor configuration, independent of the output API.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MonitorModeRequest {
-    width: i32,
-    height: i32,
-    refresh_hz: Option<f32>,
-}
-
-impl MonitorModeRequest {
-    /// Any refresh rate at exactly `width`x`height`.
-    pub fn size(width: i32, height: i32) -> Self {
-        Self {
-            width,
-            height,
-            refresh_hz: None,
-        }
-    }
-
-    pub fn parse(resolution: &str, refresh_hz: Option<f32>) -> Option<Self> {
-        let (width, height) = resolution.split_once('x')?;
-        let width = width.parse().ok()?;
-        let height = height.parse().ok()?;
-        (width > 0 && height > 0).then_some(Self {
-            width,
-            height,
-            refresh_hz,
-        })
-    }
-
-    /// Unknown refresh is acceptable only when no rate was requested.
-    pub fn matches(self, width: i32, height: i32, refresh_millihertz: Option<u32>) -> bool {
-        if self.width != width || self.height != height {
-            return false;
-        }
-        match self.refresh_hz {
-            None => true,
-            Some(requested) => refresh_millihertz.is_some_and(|actual| {
-                (f64::from(actual) / 1000.0 - f64::from(requested)).abs() < 0.1
-            }),
-        }
-    }
-}
+pub use crate::types::{MonitorModeRequest, OutputMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OutputTransform {

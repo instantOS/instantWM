@@ -217,8 +217,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     );
     assert!(!state.native.native_commit_may_update_model(
         win,
-        1920,
-        1080,
+        crate::types::Size::new(1920, 1080),
         Some(tiled_serial),
         true
     ));
@@ -243,8 +242,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     let unmaximize_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
     assert!(!state.native.native_commit_may_update_model(
         win,
-        1920,
-        1080,
+        crate::types::Size::new(1920, 1080),
         Some(unmaximize_serial),
         true
     ));
@@ -263,16 +261,16 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     let restore_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
     assert!(!state.native.native_commit_may_update_model(
         win,
-        1920,
-        1080,
+        crate::types::Size::new(1920, 1080),
         Some(tiled_serial),
         true
     ));
-    assert!(
-        state
-            .native
-            .native_commit_may_update_model(win, 640, 352, Some(restore_serial), true)
-    );
+    assert!(state.native.native_commit_may_update_model(
+        win,
+        crate::types::Size::new(640, 352),
+        Some(restore_serial),
+        true
+    ));
     let constrained = Rect::new(floating.x, floating.y, 640, 352);
     state
         .wm
@@ -305,15 +303,13 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     let convergence_serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
     assert!(state.native.native_commit_may_update_model(
         win,
-        640,
-        352,
+        crate::types::Size::new(640, 352),
         Some(convergence_serial),
         true
     ));
     assert!(!state.native.native_commit_may_update_model(
         win,
-        1920,
-        1080,
+        crate::types::Size::new(1920, 1080),
         Some(tiled_serial),
         true
     ));
@@ -424,11 +420,12 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     assert_eq!(client.sizes.len(), configured_count + 1);
     assert_eq!(client.sizes.last(), Some(&(640, 480)));
     let serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(
-        state
-            .native
-            .native_commit_may_update_model(win, 640, 480, Some(serial), true)
-    );
+    assert!(state.native.native_commit_may_update_model(
+        win,
+        crate::types::Size::new(640, 480),
+        Some(serial),
+        true
+    ));
 
     // An animated resize requested while already hidden has no frame timer.
     // Its protocol request must nevertheless progress immediately.
@@ -466,11 +463,12 @@ fn hidden_resizes_dispatch_without_remapping_and_drops_do_not_send_obsolete_inte
     assert_eq!(client.sizes.len(), configured_count + 2);
     assert_eq!(client.sizes.last(), Some(&(480, 360)));
     let serial = smithay::utils::Serial::from(*client.serials.last().unwrap());
-    assert!(
-        state
-            .native
-            .native_commit_may_update_model(win, 480, 360, Some(serial), true)
-    );
+    assert!(state.native.native_commit_may_update_model(
+        win,
+        crate::types::Size::new(480, 360),
+        Some(serial),
+        true
+    ));
 
     state.map_window_in_space(win);
     let obsolete = Rect::new(100, 100, 400, 300);

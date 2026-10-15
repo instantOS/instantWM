@@ -317,7 +317,7 @@ impl TextRasterizer {
         let fonts = self.active_fonts();
         let font_size = fonts.resolved.text_size;
         let font_config_id = fonts.id;
-        let [r, g, b, a] = color.to_rgba8();
+        let [r, g, b, a] = color.to_rgba8().components();
         let cosmic_color = CosmicColor::rgba(r, g, b, a);
         let size = RenderSize {
             width: bounds.w,

@@ -109,28 +109,16 @@ impl<'a> WmCtx<'a> {
         crate::backend::PointerOps::warp_pointer(self, x, y);
     }
 
-    pub fn list_display_modes(&self, display_name: &str) -> Vec<crate::ipc_types::MonitorMode> {
+    pub fn list_display_modes(&self, display_name: &str) -> Vec<crate::types::OutputMode> {
         match self {
-            Self::Wayland(ctx) => {
-                let mode_strings = ctx
-                    .wayland
-                    .with_state_ref(|state| state.native.list_display_modes(display_name));
-                mode_strings.iter().filter_map(|s| s.parse().ok()).collect()
-            }
+            Self::Wayland(ctx) => ctx
+                .wayland
+                .with_state_ref(|state| state.native.list_display_modes(display_name)),
             Self::X11(ctx) => {
                 use x11rb::connection::Connection;
 
                 let root = ctx.x11.conn.setup().roots[ctx.x11.screen_num].root;
                 crate::backend::x11::randr::get_output_modes(ctx.x11.conn, root, display_name)
-                    .into_iter()
-                    .filter_map(|mode| {
-                        Some(crate::ipc_types::MonitorMode {
-                            width: u32::try_from(mode.width).ok()?,
-                            height: u32::try_from(mode.height).ok()?,
-                            refresh_mhz: u32::try_from(mode.refresh_millihertz).ok()?,
-                        })
-                    })
-                    .collect()
             }
         }
     }
