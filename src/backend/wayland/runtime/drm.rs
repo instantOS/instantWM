@@ -78,7 +78,7 @@ pub fn run() -> ! {
 
     state.native.runtime.session = Some(session.clone());
 
-    crate::runtime::init_keyboard_layout(&mut state.ctx());
+    crate::keyboard_layout::init_keyboard_layout(&mut state.ctx());
 
     let (
         primary_gpu_path,

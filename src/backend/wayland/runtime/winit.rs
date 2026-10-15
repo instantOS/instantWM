@@ -61,7 +61,7 @@ pub fn run() -> ! {
         crate::backend::wayland::compositor::new_event_loop_and_state(wm);
     let loop_handle = event_loop.handle();
 
-    crate::runtime::init_keyboard_layout(&mut state.ctx());
+    crate::keyboard_layout::init_keyboard_layout(&mut state.ctx());
 
     let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");

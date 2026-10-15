@@ -74,7 +74,7 @@ fn wm_init(wm: &mut Wm) {
     crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
-    crate::runtime::init_keyboard_layout(&mut wm.x11_ctx());
+    crate::keyboard_layout::init_keyboard_layout(&mut wm.x11_ctx());
     {
         let WmCtx::X11(mut ctx) = wm.x11_ctx() else {
             return;

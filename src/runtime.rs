@@ -170,11 +170,6 @@ pub fn process_ipc_commands(
 
 // ── Startup helpers ─────────────────────────────────────────────────────
 
-/// Initialise the keyboard layout from the WM configuration.
-pub fn init_keyboard_layout(ctx: &mut WmCtx<'_>) {
-    crate::keyboard_layout::init_keyboard_layout(ctx);
-}
-
 /// Spawn the configured status bar command, the auto-detected
 /// `i3status-rs`, or the built-in default (in that order of
 /// precedence).

@@ -16,7 +16,7 @@ pub fn reload_config(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     ctx.core_mut().work.queue_cursor_config_apply();
     ctx.core_mut().bar.mark_dirty();
 
-    crate::runtime::init_keyboard_layout(ctx);
+    crate::keyboard_layout::init_keyboard_layout(ctx);
     if previous_status_command != ctx.core().state.config.status_command {
         ctx.core_mut().start_status_sources();
     }

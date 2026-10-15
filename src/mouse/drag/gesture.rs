@@ -19,16 +19,6 @@ pub fn sidebar_gesture_begin(
     target: SidebarTarget,
     start: Point,
 ) -> bool {
-    begin_sidebar_gesture(ctx, btn, source, target, start)
-}
-
-fn begin_sidebar_gesture(
-    ctx: &mut WmCtx,
-    btn: MouseButton,
-    source: InteractionSource,
-    target: SidebarTarget,
-    start: Point,
-) -> bool {
     if ctx
         .transition_pointer_interaction(|drag| {
             drag.begin(crate::core_state::SidebarVolumeDrag::new(
