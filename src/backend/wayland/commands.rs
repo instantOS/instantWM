@@ -62,9 +62,7 @@ pub(crate) fn apply_fullscreen_geometry(
     win: WindowId,
     transition: crate::client::mode::FullscreenTransition,
 ) {
-    if let Some(rect) = transition.presentation_rect() {
-        state.resize_window(core_view, win, rect);
-    }
+    apply_transition_geometry(core_view, state, win, transition.presentation_rect());
 }
 
 /// Project geometry carried by a synchronous maximize transition.
@@ -74,7 +72,17 @@ pub(crate) fn apply_maximized_geometry(
     win: WindowId,
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
-    if let Some(rect) = transition.presentation_rect() {
+    apply_transition_geometry(core_view, state, win, transition.presentation_rect());
+}
+
+/// Resize `win` to the rectangle its presentation transition prescribes.
+fn apply_transition_geometry(
+    core_view: &crate::core_state::CoreState,
+    state: &mut crate::backend::wayland::compositor::WaylandNativeState,
+    win: WindowId,
+    rect: Option<crate::types::Rect>,
+) {
+    if let Some(rect) = rect {
         state.resize_window(core_view, win, rect);
     }
 }

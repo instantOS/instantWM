@@ -191,11 +191,8 @@ fn resolve_resize_monitor(
 ) -> Result<crate::types::MonitorId, String> {
     match monitor {
         None => Ok(current_monitor_id),
-        Some(MonitorSelector::Any) => Err(
-            "window resize needs a concrete monitor: name, position, \"focused\" or \"primary\""
-                .to_owned(),
-        ),
-        Some(selector) => crate::monitor::resolve_monitor_selector(model, selector)
-            .ok_or_else(|| format!("monitor '{selector}' does not match any connected monitor")),
+        Some(selector) => {
+            crate::monitor::resolve_concrete_monitor(model, selector, "window resize")
+        }
     }
 }

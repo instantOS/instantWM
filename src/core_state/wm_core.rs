@@ -117,18 +117,6 @@ impl WmCore {
         self.work.spawn_animations.insert(win);
     }
 
-    pub fn queue_monitor_config_apply(&mut self) {
-        self.work.queue_monitor_config_apply();
-    }
-
-    pub fn queue_input_config_apply(&mut self) {
-        self.work.queue_input_config_apply();
-    }
-
-    pub fn queue_cursor_config_apply(&mut self) {
-        self.work.queue_cursor_config_apply();
-    }
-
     /// Run a model transaction and record any resulting global-selection
     /// transition. All production mutations that can affect selection cross
     /// this boundary, including indirect removal/reassignment effects.

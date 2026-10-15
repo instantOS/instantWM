@@ -60,16 +60,6 @@ pub const SCRATCHPAD_MASK: u32 = 1 << SCRATCHPAD_TAG;
 pub const SCRATCHPAD_NAME_LEN: usize = 64;
 
 // =============================================================================
-// Mouse/Button Constants
-// =============================================================================
-
-/// Button mask for button events.
-pub const BUTTONMASK: u32 = 1 << 2 | 1 << 3;
-
-/// Mouse event mask (includes button and motion).
-pub const MOUSEMASK: u32 = BUTTONMASK | 1 << 6;
-
-// =============================================================================
 // UI Dimension Constants
 // =============================================================================
 

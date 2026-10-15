@@ -294,7 +294,7 @@ fn hovered_card_is_committed_on_overview_confirmation() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     assert_eq!(
         wm.core
             .state
@@ -316,7 +316,7 @@ fn hovered_card_is_committed_on_overview_confirmation() {
     // focus until the user confirms overview.
     assert_eq!(wm.core.state.model.selected_win(), Some(first));
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
 
     assert_eq!(wm.core.state.model.selected_win(), Some(second));
     assert_eq!(
@@ -337,7 +337,7 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     assert!(begin_card_gesture(
         &mut wm.test_ctx(),
         second,
@@ -378,7 +378,7 @@ fn non_upward_overview_drag_is_consumed_without_selecting() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     assert!(begin_card_gesture(
         &mut wm.test_ctx(),
         second,
@@ -406,7 +406,7 @@ fn close_threshold_projects_and_clears_the_destructive_outline() {
     let win = WindowId(1);
     let mut wm = wm_with_overview_clients(tags, &[(win, tags)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     assert!(begin_card_gesture(
         &mut wm.test_ctx(),
         win,
@@ -450,7 +450,7 @@ fn keyboard_navigation_continues_from_the_hovered_card() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     hover_window(&mut wm.core, Some(second), Some(Point::new(900, 300)));
     assert!(focus_direction(&mut wm.test_ctx(), Direction::Left));
 
@@ -474,7 +474,7 @@ fn layout_action_commits_hovered_card_before_changing_its_tag_layout() {
     let second = WindowId(2);
     let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     hover_window(&mut wm.core, Some(second), Some(Point::new(900, 300)));
     crate::actions::execute_key_action(
         &mut wm.test_ctx(),
@@ -498,7 +498,7 @@ fn explicit_tag_navigation_cancels_the_overview_projection() {
     let tag2 = TagMask::single(2).unwrap();
     let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1), (WindowId(2), tag2)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     crate::actions::execute_key_action(
         &mut wm.test_ctx(),
         &crate::actions::KeyAction::ViewTag { tag_idx: 1 },
@@ -515,7 +515,7 @@ fn visibility_uses_the_projection_while_workspace_state_stays_authoritative() {
     let tag2 = TagMask::single(2).unwrap();
     let mut wm = wm_with_overview_clients(tag1, &[(WindowId(1), tag1), (WindowId(2), tag2)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
 
     let monitor = wm.core.state.model.expect_selected_monitor();
     assert_eq!(monitor.selected_tags(), tag1);
@@ -540,7 +540,7 @@ fn changing_monitors_cancels_the_session_on_its_owner() {
             .build(),
     );
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     assert!(crate::focus::select_monitor(
         &mut wm.test_ctx(),
         second_monitor_id
@@ -568,7 +568,7 @@ fn removing_the_last_card_leaves_overview() {
     let win = WindowId(1);
     let mut wm = wm_with_overview_clients(tags, &[(win, tags)]);
 
-    toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+    toggle_overview(&mut wm.test_ctx());
     assert!(crate::client::lifecycle::remove_managed_client(&mut wm.test_ctx(), win).is_some());
 
     assert!(!wm.core.state.model.is_overview_active());

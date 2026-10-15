@@ -20,9 +20,7 @@ pub use gesture::{
     bottom_bar_gesture_begin, bottom_bar_gesture_finish, sidebar_gesture_begin,
     sidebar_gesture_finish, update_bottom_bar_gesture, update_sidebar_gesture,
 };
-pub use move_drop::{
-    clear_bar_hover, complete_move_drop, snap_window_to_monitor_edges, update_bar_hover_simple,
-};
+pub use move_drop::clear_bar_hover;
 pub use tag::{apply_drag_tag_motion, drag_tag_begin, drag_tag_finish};
 pub use title::{
     DragInput, begin_thresholded_client_drag, handle_window_title_mouse, process_title_drag_motion,
@@ -89,7 +87,7 @@ pub fn drag_move_finish(
 ) {
     debug_assert!(!ctx.core().state.interaction.drag.has_capture());
     clear_bar_hover(ctx);
-    complete_move_drop(ctx, win, grab_start_rect, root, free_geometry, modifiers);
+    move_drop::complete_move_drop(ctx, win, grab_start_rect, root, free_geometry, modifiers);
 }
 
 /// Shared post-resize-drag teardown used by both X11 and Wayland backends.

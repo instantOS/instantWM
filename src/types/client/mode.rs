@@ -136,11 +136,6 @@ impl ClientMode {
     }
 
     #[inline]
-    pub const fn presentation(self) -> ClientPresentation {
-        self.presentation
-    }
-
-    #[inline]
     pub fn is_fullscreen(self) -> bool {
         matches!(self.presentation, ClientPresentation::Fullscreen { .. })
     }
@@ -374,7 +369,7 @@ mod tests {
             ClientMode::tiled().as_maximized(),
         ] {
             let changed = mode.with_placement(ClientPlacement::Floating);
-            assert_eq!(changed.presentation(), mode.presentation());
+            assert_eq!(changed.presentation, mode.presentation);
             assert_eq!(changed.restored(), ClientMode::floating());
         }
     }

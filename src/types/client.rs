@@ -10,9 +10,7 @@ mod scratchpad;
 
 pub use geometry::{FloatingGeometryState, SavedFloatingPlacement};
 pub use iter::{OrderedClients, TiledClientInfo};
-pub use mode::{
-    ClientMode, ClientPlacement, ClientPresentation, FullscreenKind, RestoredPresentation,
-};
+pub use mode::{ClientMode, ClientPlacement};
 pub use scratchpad::ScratchpadData;
 
 use crate::types::geometry::{Rect, SizeHints};

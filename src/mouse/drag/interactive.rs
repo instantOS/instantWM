@@ -273,7 +273,7 @@ fn apply_move_drag_motion(
 ) {
     use crate::mouse::drag::move_drop::{MoveDropTarget, resolve_move_drop};
 
-    let on_bar = crate::mouse::drag::update_bar_hover_simple(ctx, root);
+    let on_bar = crate::mouse::drag::move_drop::update_bar_hover_simple(ctx, root);
 
     // Only manual-tree gestures need a drop preview; floating motion skips it.
     let (manual, drop, border_width, old_border_width) = {
@@ -339,7 +339,7 @@ fn apply_move_drag_motion(
         new_pos.y = mon.bar_y() + mon.bar_height;
     }
 
-    crate::mouse::drag::snap_window_to_monitor_edges(
+    crate::mouse::drag::move_drop::snap_window_to_monitor_edges(
         &ctx.core().state,
         border_width,
         drag.win_start_geo().size(),

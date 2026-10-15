@@ -24,7 +24,6 @@ use std::ptr;
 
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
-use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
 
 use super::color::{AllocScheme, Color, Cursor};
@@ -899,14 +898,6 @@ impl DrawContext {
         width
     }
 
-    /// Like [`fontset_getwidth`] but clamped to at most `n` pixels.
-    pub fn fontset_getwidth_clamp(&mut self, text: &str, n: u32) -> u32 {
-        if self.fonts.is_none() || text.is_empty() || n == 0 {
-            return 0;
-        }
-        min(n, self.fontset_getwidth(text))
-    }
-
     /// Return the advance width (in pixels) of `text` rendered with `font`.
     pub fn font_getexts(&self, font: &Fnt, text: &[u8]) -> u32 {
         if text.is_empty() {
@@ -926,27 +917,6 @@ impl DrawContext {
             );
         }
         ext.x_off as u32
-    }
-
-    /// Return `(advance_width, line_height)` for `text` with `font`.
-    pub fn font_getexts_h(&self, font: &Fnt, text: &[u8]) -> (u32, u32) {
-        if text.is_empty() {
-            return (0, font.h);
-        }
-        if self.display.is_null() {
-            return (0, font.h);
-        }
-        let mut ext = zero_glyph_info();
-        unsafe {
-            XftTextExtentsUtf8(
-                self.display,
-                font.xfont,
-                text.as_ptr(),
-                text.len() as c_int,
-                &mut ext,
-            );
-        }
-        (ext.x_off as u32, font.h)
     }
 }
 

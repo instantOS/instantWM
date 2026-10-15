@@ -179,7 +179,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
         && let Some(btn @ MouseButton::Left) = input.button
         && let Some(target) =
             crate::mouse::pointer::sidebar_target_at(&ctx.core().state.model, input.root)
-        && crate::mouse::sidebar_gesture_begin(ctx, btn, input.source, target, input.root)
+        && crate::mouse::drag::sidebar_gesture_begin(ctx, btn, input.source, target, input.root)
     {
         return PressOutcome::CapturedInteraction { button: btn };
     }
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn overview_active_client_click_captures_interaction() {
         let (mut wm, win, _) = setup_wm();
-        crate::overview::toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+        crate::overview::toggle_overview(&mut wm.test_ctx());
         assert!(wm.core.state.model.is_overview_active());
 
         let input = PressInput {
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn overview_active_root_click_exits_overview_and_consumes() {
         let (mut wm, _, _) = setup_wm();
-        crate::overview::toggle_overview(&mut wm.test_ctx(), TagMask::ALL_BITS);
+        crate::overview::toggle_overview(&mut wm.test_ctx());
         assert!(wm.core.state.model.is_overview_active());
 
         let input = PressInput {

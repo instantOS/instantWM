@@ -1,5 +1,4 @@
 use std::io::ErrorKind;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
@@ -55,15 +54,8 @@ fn missing_aliases(default_dir: &Path) -> Vec<&'static str> {
     REQUIRED_ALIASES
         .iter()
         .copied()
-        .filter(|alias| !is_executable(&default_dir.join(alias)))
+        .filter(|alias| !crate::util::is_executable_file(&default_dir.join(alias)))
         .collect()
-}
-
-fn is_executable(path: &Path) -> bool {
-    match path.metadata() {
-        Ok(metadata) if metadata.is_file() => metadata.permissions().mode() & 0o111 != 0,
-        _ => false,
-    }
 }
 
 #[cfg(test)]

@@ -402,11 +402,6 @@ impl Monitor {
     }
 
     #[inline]
-    pub fn previous_tag_index(&self) -> Option<usize> {
-        self.prev_tag
-    }
-
-    #[inline]
     pub fn is_all_tags_view(&self) -> bool {
         self.selected_tags() == TagMask::all(self.tags.len())
     }
@@ -415,12 +410,6 @@ impl Monitor {
     #[inline]
     pub fn iter_clients(&self) -> OrderedClients<'_> {
         OrderedClients::new(&self.stack, &self.clients)
-    }
-
-    /// Iterate the monitor's persistent z-order.
-    #[inline]
-    pub fn iter_stack(&self) -> OrderedClients<'_> {
-        OrderedClients::new(self.z_order.as_slice(), &self.clients)
     }
 
     /// Return a client this monitor owns.
@@ -556,13 +545,6 @@ impl Monitor {
     /// Check if a point is within this monitor's work area.
     pub fn contains_point(&self, point: Point) -> bool {
         self.work_rect().contains_point(point)
-    }
-
-    /// Calculate the intersection area between a rectangle and this monitor's work area.
-    pub fn intersect_area(&self, rect: &Rect) -> i32 {
-        self.work_rect()
-            .intersection(rect)
-            .map_or(0, |intersection| intersection.w * intersection.h)
     }
 
     /// Get the center point of this monitor's work area.
@@ -804,11 +786,6 @@ impl Monitor {
         false
     }
 
-    /// Get the currently selected client window, if any.
-    pub fn selected_client(&self) -> Option<WindowId> {
-        self.selected
-    }
-
     /// Exchange the focus-list positions of two clients on this monitor.
     ///
     /// Unlike [`Self::move_client_in_stack`] this has no placement
@@ -844,37 +821,9 @@ impl Monitor {
         })
     }
 
-    /// Check if this monitor has a selected client.
-    pub fn has_selection(&self) -> bool {
-        self.selected.is_some()
-    }
-
     /// Set the selected client for this monitor.
     pub fn set_selected(&mut self, win: Option<WindowId>) {
         self.selected = win;
-    }
-
-    /// Find the next tiled client on this monitor starting after `start_win`.
-    pub fn next_tiled(&self, start_win: Option<WindowId>) -> Option<WindowId> {
-        let selected = self.visible_tags();
-
-        let start_idx = if let Some(win) = start_win {
-            self.stack.iter().position(|&w| w == win)
-        } else {
-            None
-        };
-
-        let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
-
-        for &win in self.stack.iter().skip(iter_start) {
-            if let Some(c) = self.clients.get(&win)
-                && c.mode().is_normal_tiling()
-                && c.is_visible(selected)
-            {
-                return Some(win);
-            }
-        }
-        None
     }
 
     /// Check if this monitor shows the bar.
@@ -907,31 +856,6 @@ impl Monitor {
             .unwrap_or_default()
     }
 
-    /// Get the name data for a given tag index (1-based).
-    pub fn tag_name(&self, tag_index: usize) -> Option<&Tag> {
-        tag_index.checked_sub(1).and_then(|i| self.tags.get(i))
-    }
-
-    /// Get the current tag name data for this monitor.
-    pub fn current_tag(&self) -> Option<&Tag> {
-        let idx = self.current_tag_number()?;
-        if idx > 0 && idx <= self.tags.len() {
-            Some(&self.tags[idx - 1])
-        } else {
-            None
-        }
-    }
-
-    /// Get a mutable reference to the current tag name data.
-    pub fn current_tag_mut(&mut self) -> Option<&mut Tag> {
-        let idx = self.current_tag_number()?;
-        if idx > 0 && idx <= self.tags.len() {
-            Some(&mut self.tags[idx - 1])
-        } else {
-            None
-        }
-    }
-
     /// Active layout slot identity for the given tag mask.
     ///
     /// Defaults to master/stack: a tag that never received a layout command
@@ -957,12 +881,6 @@ impl Monitor {
             }
             presentation => presentation.symbol(),
         }
-    }
-
-    /// Get the current layout symbol for this monitor.
-    pub fn layout_symbol(&self) -> String {
-        self.layout_symbol_for_mask(self.selected_tags())
-            .to_string()
     }
 
     /// The layout-cycle entry matching this monitor's full presentation

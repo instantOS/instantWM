@@ -31,10 +31,6 @@ pub mod keysyms;
 pub mod rules;
 pub mod runtime;
 
-// Re-export modifier key constants (used by backend/wayland/input/modifiers.rs via crate::config::*).
-pub use crate::types::{EdgeDirection, SchemeHover, SchemeTag, WindowFocus, WindowRole};
-pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
-
 use crate::types::KeybindOrigin;
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -393,6 +389,7 @@ mod resolution_tests {
     fn user_keybinds_override_generated_defaults() {
         use crate::actions::{KeyAction, NamedAction};
         use crate::config::keybind_config::{ActionSpec, KeybindSpec};
+        use crate::config::keybindings::MODKEY;
         use crate::config::keysyms::XK_RETURN;
 
         let mut user = config_toml::UserConfig::default();

@@ -1,4 +1,4 @@
-//! X11-specific monitor helpers: Xinerama, bar destruction, stacking.
+//! X11-specific monitor helpers: Xinerama, bar destruction.
 
 use crate::backend::{BackendOutputInfo, BackendVrrSupport};
 use crate::contexts::WmCtx;

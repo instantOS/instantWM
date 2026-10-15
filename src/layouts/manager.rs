@@ -10,10 +10,10 @@ pub(crate) use commands::finish_layout_change;
 #[cfg(test)]
 use commands::shifted_master_count;
 pub use commands::{
-    MaximizedStackReorder, apply_tree_preset, cycle_layout_direction, focus_tree_neighbor,
-    inc_master_count_by, promote_tree, reorder_maximized_stack, reset_active_layout, resize_tree,
-    resize_tree_smart, set_layout, swap_bar_titles, swap_tree_neighbor,
-    toggle_floating_presentation, toggle_tiling_maximized,
+    MaximizedStackReorder, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by,
+    promote_tree, reorder_maximized_stack, reset_active_layout, resize_tree, resize_tree_smart,
+    set_layout, swap_bar_titles, swap_tree_neighbor, toggle_floating_presentation,
+    toggle_tiling_maximized,
 };
 #[cfg(test)]
 use pointer::available_tree_resize_direction;
@@ -23,7 +23,6 @@ pub(crate) use pointer::{
     uses_manual_tree_pointer_interaction,
 };
 pub use pointer::{place_tree_at_point, preview_tree_at_point};
-#[cfg(test)]
 #[cfg(test)]
 use z_order::compute_monitor_z_order;
 pub(crate) use z_order::global_z_order;

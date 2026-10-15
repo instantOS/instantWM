@@ -153,16 +153,20 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
             let _ = crate::mouse::drag::apply_active_drag_motion(ctx, event.root);
         }
         Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
-            let _ = crate::mouse::process_title_drag_motion(
+            let _ = crate::mouse::drag::process_title_drag_motion(
                 ctx,
                 match event.source {
-                    InteractionSource::Pointer => crate::mouse::DragInput::Pointer(event.root),
-                    InteractionSource::Touch(_) => crate::mouse::DragInput::Absolute(event.root),
+                    InteractionSource::Pointer => {
+                        crate::mouse::drag::DragInput::Pointer(event.root)
+                    }
+                    InteractionSource::Touch(_) => {
+                        crate::mouse::drag::DragInput::Absolute(event.root)
+                    }
                 },
             );
         }
         Some(CapturedInteraction::Window(WindowDragState::Reordering(..))) => {
-            let _ = crate::mouse::process_title_reorder_motion(ctx, event.root);
+            let _ = crate::mouse::drag::process_title_reorder_motion(ctx, event.root);
         }
         Some(CapturedInteraction::Tag(_)) => {
             ctx.transition_pointer_interaction(|drag| {
@@ -170,13 +174,13 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
                     .expect("tag capture remained active")
                     .last_motion = Some((event.root, event.modifiers));
             });
-            let _ = crate::mouse::apply_drag_tag_motion(ctx, event.root);
+            let _ = crate::mouse::drag::apply_drag_tag_motion(ctx, event.root);
         }
         Some(CapturedInteraction::SidebarVolume(_)) => {
-            crate::mouse::update_sidebar_gesture(ctx, event.root.y);
+            crate::mouse::drag::update_sidebar_gesture(ctx, event.root.y);
         }
         Some(CapturedInteraction::BottomBar(_)) => {
-            crate::mouse::update_bottom_bar_gesture(ctx, event.root);
+            crate::mouse::drag::update_bottom_bar_gesture(ctx, event.root);
         }
         Some(CapturedInteraction::RegionSelection(_)) => {
             // Motion only needs to stay WM-owned until the release; the tool
@@ -205,19 +209,20 @@ fn finish(
             let _ = crate::mouse::drag::active_drag_finish(ctx, button, event.modifiers);
         }
         Some(CapturedInteraction::Window(WindowDragState::Armed(_))) => {
-            crate::mouse::title_drag_finish(ctx);
+            crate::mouse::drag::title_drag_finish(ctx);
         }
         Some(CapturedInteraction::Window(WindowDragState::Reordering(..))) => {
-            crate::mouse::title_reorder_finish(ctx);
+            crate::mouse::drag::title_reorder_finish(ctx);
         }
         Some(CapturedInteraction::Tag(_)) => {
-            crate::mouse::drag_tag_finish(ctx, event.modifiers);
+            crate::mouse::drag::drag_tag_finish(ctx, event.modifiers);
         }
         Some(CapturedInteraction::SidebarVolume(_)) => {
-            let _ = crate::mouse::sidebar_gesture_finish(ctx, button, event.sidebar_hover);
+            let _ = crate::mouse::drag::sidebar_gesture_finish(ctx, button, event.sidebar_hover);
         }
         Some(CapturedInteraction::BottomBar(_)) => {
-            let _ = crate::mouse::bottom_bar_gesture_finish(ctx, button, event.root, time_msec);
+            let _ =
+                crate::mouse::drag::bottom_bar_gesture_finish(ctx, button, event.root, time_msec);
         }
         Some(CapturedInteraction::RegionSelection(_)) => {
             // The tool starts from the shared tick, not here: the backend still

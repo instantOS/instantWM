@@ -1,5 +1,5 @@
 use crate::layouts::LayoutCommand;
-use crate::types::{FocusFollowsMouseMode, MonitorDirection, StackDirection, ToggleAction};
+use crate::types::{MonitorDirection, StackDirection, ToggleAction};
 
 /// Typed arguments of a named action, parsed once from their textual form
 /// (config arrays, `instantwmctl action NAME ARGS...`) and rendered back for
@@ -45,12 +45,7 @@ macro_rules! value_enum_arg {
     )+};
 }
 
-value_enum_arg!(
-    ToggleAction,
-    MonitorDirection,
-    StackDirection,
-    FocusFollowsMouseMode
-);
+value_enum_arg!(ToggleAction, MonitorDirection, StackDirection);
 
 impl ArgValue for String {
     fn parse_value(value: &str) -> Result<Self, String> {
@@ -142,14 +137,7 @@ macro_rules! single_value_args {
     )+};
 }
 
-single_value_args!(
-    String,
-    u32,
-    LayoutCommand,
-    MonitorDirection,
-    StackDirection,
-    FocusFollowsMouseMode
-);
+single_value_args!(String, u32, LayoutCommand, MonitorDirection, StackDirection);
 
 impl<T: ArgValue> ActionArgs for Option<T> {
     fn parse(args: &[String]) -> Result<Self, String> {

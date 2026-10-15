@@ -328,6 +328,25 @@ pub fn resolve_monitor_selector(
     }
 }
 
+/// Resolve a selector that must name one connected monitor.
+///
+/// IPC commands use this when `Any` or an unmatched selector is a user error
+/// rather than a silent no-op. `context` names the command in the message
+/// (e.g. `"monitor switch"`, `"window resize"`).
+pub fn resolve_concrete_monitor(
+    model: &crate::model::WmModel,
+    selector: &MonitorSelector,
+    context: &str,
+) -> Result<crate::types::MonitorId, String> {
+    if matches!(selector, MonitorSelector::Any) {
+        return Err(format!(
+            "{context} needs a concrete monitor: name, position, \"focused\" or \"primary\""
+        ));
+    }
+    resolve_monitor_selector(model, selector)
+        .ok_or_else(|| format!("monitor '{selector}' does not match any connected monitor"))
+}
+
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
     let c_win = match ctx.core().state.model.selected_win() {
         Some(w) => w,

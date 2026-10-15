@@ -547,15 +547,6 @@ impl WaylandNativeState {
         output
     }
 
-    /// List all connected displays, including mirror heads.
-    pub fn list_displays(&self) -> Vec<String> {
-        self.output_management_state
-            .outputs()
-            .iter()
-            .map(Output::name)
-            .collect()
-    }
-
     /// List available display modes for a display.
     pub fn list_display_modes(&self, display: &str) -> Vec<crate::types::OutputMode> {
         let mut result = Vec::new();
@@ -570,38 +561,6 @@ impl WaylandNativeState {
             }
         }
         result
-    }
-
-    /// Set the display mode for a display.
-    pub fn set_display_mode(&mut self, display: &str, size: Size) {
-        let mut transaction = self.requested_output_transaction();
-        let Some(output) = self
-            .output_management_state
-            .outputs()
-            .iter()
-            .find(|output| output.name() == display)
-        else {
-            return;
-        };
-        let Some(mode) = output
-            .modes()
-            .into_iter()
-            .find(|mode| mode.size.w == size.w && mode.size.h == size.h)
-        else {
-            return;
-        };
-        if let Some(head) = transaction
-            .heads
-            .iter_mut()
-            .find(|head| head.id.0 == display)
-        {
-            head.mode = Some(TransactionOutputMode {
-                width: mode.size.w,
-                height: mode.size.h,
-                refresh_millihertz: mode.refresh,
-            });
-            self.queue_output_transaction(transaction);
-        }
     }
 
     /// Configure an output based on MonitorConfig.

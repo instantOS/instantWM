@@ -1,7 +1,7 @@
 use crate::config::config_toml::MonitorConfig;
 use crate::contexts::WmCtx;
 use crate::ipc_types::{MonitorCommand, Response};
-use crate::monitor::{focus_monitor, resolve_monitor_selector};
+use crate::monitor::focus_monitor;
 use crate::output_mirror::{MirrorConfigError, MirrorMap};
 use crate::types::{MonitorDirection, MonitorSelector};
 use std::collections::HashMap;
@@ -76,22 +76,19 @@ fn list_monitors(ctx: &mut WmCtx<'_>) -> Response {
 }
 
 fn switch_monitor(ctx: &mut WmCtx<'_>, selector: MonitorSelector) -> Response {
-    if matches!(selector, MonitorSelector::Any) {
-        return Response::err(
-            "monitor switch needs a concrete monitor: name, position, \"focused\" or \"primary\"",
-        );
-    }
-    match resolve_monitor_selector(&ctx.core().state.model, &selector) {
-        Some(target) => {
+    match crate::monitor::resolve_concrete_monitor(
+        &ctx.core().state.model,
+        &selector,
+        "monitor switch",
+    ) {
+        Ok(target) => {
             let changed = crate::focus::select_monitor(ctx, target);
             if changed {
                 crate::mouse::warp::warp_pointer_to_monitor(ctx, target);
             }
             Response::ok()
         }
-        None => Response::err(format!(
-            "monitor '{selector}' does not match any connected monitor"
-        )),
+        Err(error) => Response::err(error),
     }
 }
 

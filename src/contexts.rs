@@ -452,7 +452,7 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(ctx) => {
                 crate::backend::x11::fullscreen::remove_border(&ctx.x11, win);
-                ctx.x11.configure_window_geometry(win, monitor_rect);
+                ctx.x11.resize_window(win, monitor_rect);
                 ctx.x11.raise_window_visual_only(win);
             }
             WmCtx::Wayland(_) => {}
@@ -671,24 +671,6 @@ impl<'a> WmCtx<'a> {
                 adjusted,
             ),
             WmCtx::Wayland(_) => *adjusted = constraints.constrain(*adjusted),
-        }
-    }
-
-    /// Repaint a client's border with the scheme implied by its mode and
-    /// focus state.
-    ///
-    /// X11 owns server-side borders and must push colors explicitly;
-    /// Wayland renders borders during its frame pass from model state.
-    pub fn refresh_client_border_color(&mut self, win: WindowId, focused: bool) {
-        match self {
-            WmCtx::X11(ctx) => crate::backend::x11::focus::refresh_border_color(
-                &ctx.core.state,
-                &ctx.x11,
-                ctx.x11_runtime,
-                win,
-                focused,
-            ),
-            WmCtx::Wayland(_) => {}
         }
     }
 

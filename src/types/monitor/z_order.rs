@@ -21,11 +21,6 @@ impl ClientZOrder {
         self.bottom_to_top.push(win);
     }
 
-    pub fn attach_bottom(&mut self, win: WindowId) {
-        self.remove(win);
-        self.bottom_to_top.insert(0, win);
-    }
-
     pub fn remove(&mut self, win: WindowId) -> bool {
         let old_len = self.bottom_to_top.len();
         self.bottom_to_top.retain(|&w| w != win);
@@ -37,14 +32,6 @@ impl ClientZOrder {
             return false;
         }
         self.bottom_to_top.push(win);
-        true
-    }
-
-    pub fn lower(&mut self, win: WindowId) -> bool {
-        if !self.remove(win) {
-            return false;
-        }
-        self.bottom_to_top.insert(0, win);
         true
     }
 

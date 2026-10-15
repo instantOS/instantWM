@@ -113,15 +113,6 @@ impl TagMask {
         }
     }
 
-    /// Get the index of the highest set bit (1-indexed), if any.
-    pub fn last_tag(&self) -> Option<usize> {
-        if self.0 == 0 {
-            None
-        } else {
-            Some(32 - self.0.leading_zeros() as usize)
-        }
-    }
-
     /// Iterate over all set tag indices (1-indexed).
     pub fn iter(&self) -> TagIter {
         TagIter { bits: self.0 }
@@ -137,11 +128,6 @@ impl TagMask {
     /// Use this to check if a client is on the scratchpad.
     pub fn is_scratchpad_only(self) -> bool {
         self.0 == SCRATCHPAD_MASK
-    }
-
-    /// Returns true if this mask contains the scratchpad tag (possibly with other tags).
-    pub fn contains_scratchpad(self) -> bool {
-        self.0 & SCRATCHPAD_MASK != 0
     }
 
     /// Returns this mask with the scratchpad bit excluded.

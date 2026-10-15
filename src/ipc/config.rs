@@ -3,12 +3,13 @@
 //! Thin transport shim: the reflection-by-name reads/writes and their
 //! validation live in [`crate::config::runtime`], shared with the
 //! `config_set`/`config_toggle` named actions, and this module only applies
-//! the returned [`ConfigEffect`] with a borrowed [`WmCtx`].
+//! the returned [`crate::config::runtime::ConfigEffect`] with a borrowed
+//! [`WmCtx`].
 //!
 //! **Persistence:** edits made through this command live in the running
 //! WM only — `reload` reloads from disk and discards them.
 
-use crate::config::runtime::{self, ConfigEffect};
+use crate::config::runtime;
 use crate::contexts::WmCtx;
 use crate::ipc_types::{ConfigCommand, Response};
 
@@ -21,7 +22,7 @@ pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Respons
         ConfigCommand::Set { key, value } => {
             match runtime::set_runtime_field(&mut ctx.core_mut().state, &key, value) {
                 Ok(effect) => {
-                    apply_effect(ctx, effect);
+                    crate::actions::apply_config_effect(ctx, effect);
                     Response::ok()
                 }
                 Err(error) => Response::err(error),
@@ -30,7 +31,7 @@ pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Respons
         ConfigCommand::Toggle { key } => {
             match runtime::toggle_runtime_field(&mut ctx.core_mut().state, &key) {
                 Ok((effect, value)) => {
-                    apply_effect(ctx, effect);
+                    crate::actions::apply_config_effect(ctx, effect);
                     Response::ConfigValue(value)
                 }
                 Err(error) => Response::err(error),
@@ -43,15 +44,6 @@ pub fn handle_config_command(ctx: &mut WmCtx<'_>, cmd: ConfigCommand) -> Respons
             }
         }
     }
-}
-
-/// Apply the follow-up work a config edit requires.
-///
-/// A `WmCtx` is borrowed purely to run [`crate::actions::apply_config_effect`],
-/// the single applier shared with the `config_set`/`config_toggle` actions, so
-/// IPC edits and keybind edits cannot drift.
-fn apply_effect(ctx: &mut WmCtx<'_>, effect: ConfigEffect) {
-    crate::actions::apply_config_effect(ctx, effect);
 }
 
 #[cfg(test)]

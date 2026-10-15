@@ -2,8 +2,6 @@
 //! configuration is built.
 
 use std::env;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use crate::backend::BackendKind;
@@ -68,25 +66,18 @@ pub fn command_exists(command: &str) -> bool {
         {
             let rel = command.strip_prefix("~/").unwrap_or(command);
             let expanded = Path::new(&home).join(rel);
-            if is_executable(&expanded) {
+            if crate::util::is_executable_file(&expanded) {
                 return true;
             }
         }
-        return is_executable(Path::new(command));
+        return crate::util::is_executable_file(Path::new(command));
     }
 
     let Some(path) = env::var_os("PATH") else {
         return false;
     };
 
-    env::split_paths(&path).any(|dir| is_executable(&dir.join(command)))
-}
-
-fn is_executable(path: &Path) -> bool {
-    match fs::metadata(path) {
-        Ok(metadata) if metadata.is_file() => metadata.permissions().mode() & 0o111 != 0,
-        _ => false,
-    }
+    env::split_paths(&path).any(|dir| crate::util::is_executable_file(&dir.join(command)))
 }
 
 #[cfg(test)]

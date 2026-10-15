@@ -68,7 +68,7 @@ pub mod session;
 pub(crate) mod stacking;
 pub mod visibility;
 
-use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
+use crate::backend::{OutputOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -337,16 +337,6 @@ impl WindowOps for crate::contexts::WmCtxWayland<'_> {
 
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         self.wayland.window_protocol(window)
-    }
-}
-
-impl PointerOps for WaylandBackend<'_> {
-    fn pointer_location(&self) -> Option<Point> {
-        WaylandBackend::pointer_location(self)
-    }
-
-    fn warp_pointer(&mut self, x: f64, y: f64) {
-        WaylandBackend::warp_pointer(self, x, y);
     }
 }
 

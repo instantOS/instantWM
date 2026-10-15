@@ -176,22 +176,11 @@ pub(crate) fn signal_process_group(pgid: i32, signal: libc::c_int) -> bool {
     unsafe { libc::kill(-pgid, signal) == 0 }
 }
 
-/// Helper macro for ignoring X11 errors in non-critical operations.
-/// Logs the error at warn level but continues execution.
-#[macro_export]
-macro_rules! x11_ignore {
-    ($expr:expr) => {
-        if let Err(e) = $expr {
-            log::warn!("X11 operation ignored: {}", e);
-        }
-    };
-}
-
-/// Helper macro for X11 operations that should log errors but not fail.
-/// This replaces the `let _ = conn.operation()` anti-pattern with proper logging.
-#[macro_export]
-macro_rules! x11_ok {
-    ($expr:expr) => {
-        $expr.ok()
-    };
+/// Whether `path` points at an executable file.
+pub(crate) fn is_executable_file(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    match path.metadata() {
+        Ok(metadata) if metadata.is_file() => metadata.permissions().mode() & 0o111 != 0,
+        _ => false,
+    }
 }

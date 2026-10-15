@@ -9,8 +9,8 @@
 //! ```ignore
 //! use crate::backend::wayland::compositor::WaylandState;
 //!
-//! let event_loop = calloop::EventLoop::try_new().unwrap();
-//! let state = WaylandState::new(&event_loop.handle());
+//! let display = Display::new().unwrap();
+//! let state = WaylandState::new(display, &event_loop.handle(), wm);
 //! // insert sources, run loop…
 //! ```
 //!

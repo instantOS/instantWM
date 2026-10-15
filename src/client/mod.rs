@@ -9,11 +9,13 @@
 //! |-----------------|-------------------------------------------------------------|
 //! | `geometry`      | Resize, size-hint enforcement, dimension helpers            |
 //! | `visibility`    | Show / hide / show_hide, WM_STATE queries                   |
-//! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
+//! | `focus`         | Backend-neutral selection transitions and focus state       |
 //! | `fullscreen`    | Real and fake fullscreen transitions                        |
 //! | `close`         | Guarded close funnel for client termination                 |
-//! | `lifecycle`     | shared client creation/removal and launch-context policy       |
+//! | `lifecycle`     | shared client creation/removal and launch-context policy    |
 //! | `layout_ops`    | zoom (promote to master)                                    |
+//! | `mode`          | Placement / presentation projections for a client           |
+//! | `rules`         | Initial window rules and property application               |
 
 // ---------------------------------------------------------------------------
 // Sub-modules
@@ -50,8 +52,8 @@ pub use geometry::sane_floating_spawn_rect;
 pub use visibility::{hide, hide_for_user, show_window};
 
 // -- Focus / input -----------------------------------------------------------
-// X11-specific focus functions live in `client::focus` and are called
-// directly via `crate::client::focus::*` rather than re-exported here.
+// Backend-neutral focus state lives in `client::focus`; backend-specific
+// focus commands live under `crate::backend::*`.
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::set_fullscreen;

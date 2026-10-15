@@ -81,7 +81,7 @@ pub enum ButtonAction {
     ToggleSelectedClientClickedTag,
     ClientMoveDrag,
     ResizeSelectedAspect,
-    KillSelectedClient,
+    CloseSelectedClient,
     ToggleLockSelectedClient,
     ReorderSelected {
         direction: crate::types::StackDirection,

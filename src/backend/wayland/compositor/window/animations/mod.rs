@@ -521,15 +521,6 @@ impl WaylandNativeState {
         }
     }
 
-    /// Cancel all in-flight window animations, snapping each mapped window
-    /// to its animation target position.
-    pub fn cancel_all_window_animations(&mut self, core_view: &crate::core_state::CoreState) {
-        let active_windows: Vec<WindowId> = self.window_animations.keys().copied().collect();
-        for win in active_windows {
-            self.cancel_window_animation(core_view, win);
-        }
-    }
-
     /// Check if there are active window animations.
     pub fn has_active_window_animations(&self) -> bool {
         self.window_animations

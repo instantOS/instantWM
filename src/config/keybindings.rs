@@ -1,4 +1,4 @@
-//! Keyboard bindings: normal keys (`default_keybinds`) and prefix-mode keys (`get_desktop_keybinds`).
+//! Keyboard bindings: normal keys (`default_keybinds`) and desktop (no client focused) keys (`get_desktop_keybinds`).
 
 use crate::actions::{KeyAction, NamedAction};
 use crate::backend::BackendKind;

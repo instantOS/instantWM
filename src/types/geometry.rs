@@ -133,11 +133,6 @@ impl Point {
     pub fn manhattan_distance(&self, other: &Point) -> i32 {
         self.abs_diff_x(other) + self.abs_diff_y(other)
     }
-
-    /// Calculate a weighted distance used for directional focus scoring.
-    pub fn weighted_distance(&self, other: &Point, weight_x: i32, weight_y: i32) -> i32 {
-        self.abs_diff_x(other) * weight_x + self.abs_diff_y(other) * weight_y
-    }
 }
 
 /// Two-dimensional dimensions without an associated position.
@@ -408,17 +403,6 @@ impl Rect {
     #[inline]
     pub fn total_height(&self, border_width: i32) -> i32 {
         self.h + 2 * border_width
-    }
-
-    /// Create a new Rect with adjusted position.
-    #[inline]
-    pub fn with_position(&self, position: Point) -> Self {
-        Self {
-            x: position.x,
-            y: position.y,
-            w: self.w,
-            h: self.h,
-        }
     }
 
     /// Create a new Rect with adjusted size.

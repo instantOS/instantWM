@@ -1,7 +1,6 @@
 use crate::bar::SystrayHitSlot;
 use crate::bar::paint::{BarPainter, SchemeColor, draw_hover_accent};
-#[allow(unused_imports)]
-use crate::systray::{MenuAction, MenuToggle, MenuView};
+use crate::systray::MenuView;
 use crate::types::color::Rgba;
 use crate::types::{ColorScheme, Rect};
 
@@ -129,7 +128,7 @@ fn draw_separator_entry(
 mod tests {
     use super::*;
     use crate::bar::paint::{HOVER_INDICATOR_HEIGHT, fill_color};
-    use crate::systray::{MenuAction, MenuEntry};
+    use crate::systray::{MenuAction, MenuEntry, MenuToggle};
 
     #[derive(Default)]
     struct RecordingPainter {

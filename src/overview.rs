@@ -386,7 +386,7 @@ fn commit_overview_tags(monitor: &mut Monitor, target_mask: TagMask) {
     }
 }
 
-pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
+pub fn toggle_overview(ctx: &mut WmCtx<'_>) {
     if ctx.core().state.model.is_overview_active() {
         exit_overview(ctx, ExitMode::ToSelectedWindow);
         return;
@@ -406,7 +406,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     ctx.set_current_mode(crate::core_state::ActiveWmMode::Overview);
 }
 
-pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
+pub fn cancel_overview(ctx: &mut WmCtx<'_>) {
     if !ctx.core().state.model.is_overview_active() {
         return;
     }

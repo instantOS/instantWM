@@ -32,10 +32,10 @@ pub(crate) fn apply_config_effect(
         }
         // `request_bar_update` is the backend-agnostic "mark dirty".
         ConfigEffect::BarUpdate => ctx.request_bar_update(),
-        ConfigEffect::Input => ctx.core_mut().queue_input_config_apply(),
-        ConfigEffect::Monitors => ctx.core_mut().queue_monitor_config_apply(),
+        ConfigEffect::Input => ctx.core_mut().work.queue_input_config_apply(),
+        ConfigEffect::Monitors => ctx.core_mut().work.queue_monitor_config_apply(),
         ConfigEffect::Cursor => {
-            ctx.core_mut().queue_cursor_config_apply();
+            ctx.core_mut().work.queue_cursor_config_apply();
             ctx.request_bar_update();
         }
     }

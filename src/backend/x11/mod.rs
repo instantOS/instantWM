@@ -23,8 +23,7 @@ pub struct XlibDisplay(pub *mut c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
-/// X11-specific runtime configuration.
-/// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.
+/// X11-specific runtime configuration, owned only by X11 backend state.
 #[derive(Clone)]
 pub struct X11RuntimeConfig {
     pub wmatom: WmAtoms,
@@ -317,22 +316,6 @@ impl<'a> X11BackendRef<'a> {
         let _ = self.conn.configure_window(
             x11_win,
             &ConfigureWindowAux::new().border_width(width.max(0) as u32),
-        );
-    }
-
-    /// Position and resize a window without the shared geometry policy.
-    ///
-    /// This is intentionally X11-only: the Wayland compositor owns surface
-    /// geometry and must not expose a fake equivalent.
-    pub fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new()
-                .x(rect.x)
-                .y(rect.y)
-                .width(rect.w.max(1) as u32)
-                .height(rect.h.max(1) as u32),
         );
     }
 }

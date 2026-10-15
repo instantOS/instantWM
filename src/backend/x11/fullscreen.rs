@@ -15,18 +15,13 @@ pub fn set_fullscreen_atoms(
     win: WindowId,
     fullscreen: bool,
 ) {
-    let x11_win: Window = win.into();
-    let wm_state = x11_runtime.netatom.wm_state;
-    let fullscreen_atom = x11_runtime.netatom.wm_fullscreen;
-    let [mut state] = get_atom_props(x11.conn, x11_win, [wm_state]);
-    if fullscreen {
-        if !state.contains(&fullscreen_atom) {
-            state.push(fullscreen_atom);
-        }
-    } else {
-        state.retain(|&a| a != fullscreen_atom);
-    }
-    write_net_wm_state_atoms(x11.conn, x11_win, wm_state, &state);
+    update_wm_state_atoms(
+        x11,
+        x11_runtime,
+        win,
+        &[x11_runtime.netatom.wm_fullscreen],
+        fullscreen,
+    );
 }
 
 /// Add or remove both EWMH maximized atoms for `win`.
@@ -36,15 +31,31 @@ pub fn set_maximized_atoms(
     win: WindowId,
     maximized: bool,
 ) {
+    update_wm_state_atoms(
+        x11,
+        x11_runtime,
+        win,
+        &[
+            x11_runtime.netatom.wm_maximized_vert,
+            x11_runtime.netatom.wm_maximized_horz,
+        ],
+        maximized,
+    );
+}
+
+/// Add `atoms` to or remove them from the window's `_NET_WM_STATE` list.
+fn update_wm_state_atoms(
+    x11: &X11BackendRef<'_>,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+    atoms: &[Atom],
+    present: bool,
+) {
     let x11_win: Window = win.into();
     let wm_state = x11_runtime.netatom.wm_state;
-    let atoms = [
-        x11_runtime.netatom.wm_maximized_vert,
-        x11_runtime.netatom.wm_maximized_horz,
-    ];
     let [mut state] = get_atom_props(x11.conn, x11_win, [wm_state]);
-    if maximized {
-        for atom in atoms {
+    if present {
+        for &atom in atoms {
             if !state.contains(&atom) {
                 state.push(atom);
             }

@@ -165,7 +165,7 @@ fn execute_button_action_inner(
                 resize_aspect_mouse(ctx, win, arg.btn, arg.source);
             }
         }
-        ButtonAction::KillSelectedClient => {
+        ButtonAction::CloseSelectedClient => {
             if let Some(win) = button_target_client(&ctx.core().state.model, &arg) {
                 close_client(ctx, win);
             }
