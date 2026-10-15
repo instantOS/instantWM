@@ -62,6 +62,15 @@ impl WmModel {
             .find_map(|monitor| monitor.client_mut(win))
     }
 
+    /// Whether `win` is a close target: a managed, unlocked client.
+    ///
+    /// Locked windows refuse every close request (keybindings, bar buttons,
+    /// IPC, foreign-toplevel) and unmanaged windows have no client policy to
+    /// apply, so both are rejected here rather than at each caller.
+    pub fn client_is_closable(&self, win: WindowId) -> bool {
+        self.client(win).is_some_and(|client| !client.is_locked)
+    }
+
     /// Return the monitor that owns `win`, mutably.
     ///
     /// This is the single-scan entry point for monitor-scoped client
@@ -570,6 +579,40 @@ mod tests {
         assert_eq!(model.monitor_of_client(win), Some(monitor_id));
         assert!(model.client_view(WindowId(8)).is_none());
         assert_eq!(model.monitor_of_client(WindowId(8)), None);
+    }
+
+    #[test]
+    fn managed_unlocked_clients_are_closable() {
+        let mut model = WmModel::new();
+        let monitor_id = push_monitor(&mut model);
+        let win = add_client(&mut model, monitor_id, Client::default());
+
+        assert!(model.client_is_closable(win));
+    }
+
+    #[test]
+    fn locked_clients_refuse_close_through_the_funnel() {
+        let mut model = WmModel::new();
+        let monitor_id = push_monitor(&mut model);
+        let win = add_client(
+            &mut model,
+            monitor_id,
+            Client {
+                is_locked: true,
+                ..Client::default()
+            },
+        );
+
+        assert!(!model.client_is_closable(win));
+    }
+
+    #[test]
+    fn unmanaged_windows_refuse_close() {
+        let mut model = WmModel::new();
+        let monitor_id = push_monitor(&mut model);
+        let _ = add_client(&mut model, monitor_id, Client::default());
+
+        assert!(!model.client_is_closable(WindowId(3)));
     }
 
     #[test]

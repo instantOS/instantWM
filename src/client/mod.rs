@@ -11,7 +11,7 @@
 //! | `visibility`    | Show / hide / show_hide, WM_STATE queries                   |
 //! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
 //! | `fullscreen`    | Real and fake fullscreen transitions                        |
-//! | `kill`          | Graceful and forceful window termination                    |
+//! | `close`         | Guarded close funnel for client termination                 |
 //! | `lifecycle`     | shared client creation/removal and launch-context policy       |
 //! | `layout_ops`    | zoom (promote to master)                                    |
 
@@ -19,10 +19,10 @@
 // Sub-modules
 // ---------------------------------------------------------------------------
 
+pub mod close;
 pub mod focus;
 pub mod fullscreen;
 pub mod geometry;
-pub mod kill;
 pub mod layout_ops;
 pub mod lifecycle;
 pub mod mode;
@@ -56,8 +56,8 @@ pub use visibility::{hide, hide_for_user, show_window};
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::set_fullscreen;
 
-// -- Kill --------------------------------------------------------------------
-pub use kill::{close_win, kill_client, shut_kill};
+// -- Close -------------------------------------------------------------------
+pub use close::close_client;
 
 // -- Lifecycle ---------------------------------------------------------------
 pub use lifecycle::{

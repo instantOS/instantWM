@@ -140,7 +140,7 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
         key!(MODKEY | SHIFT | CONTROL | MOD1, XK_TAB => KeyAction::named(NamedAction::ModeToggle("desktop".into()))),
         key!(MODKEY | CONTROL, XK_H => KeyAction::named(NamedAction::Hide)),
         key!(MODKEY | CONTROL | MOD1, XK_H => KeyAction::named(NamedAction::UnhideAll)),
-        key!(MODKEY, XK_Q => KeyAction::named(NamedAction::ShutKill)),
+        key!(MODKEY, XK_Q => KeyAction::named(NamedAction::CloseOrPowerOff)),
         key!(MOD1, XK_F4 => KeyAction::named(NamedAction::Kill)),
         key!(MODKEY | SHIFT | CONTROL, XK_Q => KeyAction::named(NamedAction::Quit)),
         key!(MODKEY, XK_F2 => KeyAction::named(NamedAction::ModeToggle("prefix".into()))),

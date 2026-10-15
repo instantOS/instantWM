@@ -149,7 +149,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                 let mut ctx = state.ctx();
                 // Same funnel as IPC and keybindings: a locked window refuses
                 // to close, no matter which client asks.
-                crate::client::close_win(&mut ctx, win);
+                crate::client::close_client(&mut ctx, win);
             }
             WmCommand::ShowScratchpad(name) => {
                 let mut ctx = state.ctx();

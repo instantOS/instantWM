@@ -65,7 +65,7 @@ fn close_window(ctx: &mut WmCtx<'_>, parsed_id: Option<WindowId>) -> Response {
     let Some(win) = target else {
         return Response::err("no target window");
     };
-    crate::client::close_win(ctx, win);
+    crate::client::close_client(ctx, win);
     Response::ok()
 }
 

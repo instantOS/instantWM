@@ -1,6 +1,7 @@
 use crate::layouts::ArrangeAnimation;
 use std::collections::HashMap;
 
+use crate::client::close_client;
 use crate::config::ModeConfig;
 use crate::config::config_toml::{HorizontalEdge, VerticalEdge};
 use crate::contexts::WmCtx;
@@ -243,6 +244,31 @@ pub(super) fn with_selected_win(
 ) {
     if let Some(win) = ctx.core().state.model.selected_win() {
         f(ctx, win);
+    }
+}
+
+/// Close the selected window, or shut the session down when its monitor is
+/// empty.
+///
+/// Backs the power key (`shut_kill`): on an empty monitor it must not be a
+/// no-op, and with windows present it must not power the machine off. Hidden
+/// windows count as clients, so a monitor holding only minimized windows
+/// still closes instead of shutting down. A monitor with clients but no
+/// selection (all hidden) is deliberately a no-op rather than a shutdown.
+pub(super) fn close_or_power_off(ctx: &mut WmCtx<'_>) {
+    let selected = ctx.core().state.model.selected_win();
+    let has_clients = !ctx
+        .core()
+        .state
+        .model
+        .expect_selected_monitor()
+        .clients()
+        .is_empty();
+
+    if !has_clients {
+        let _ = crate::util::spawn(ctx, &["instantshutdown"]);
+    } else if let Some(win) = selected {
+        close_client(ctx, win);
     }
 }
 

@@ -68,7 +68,7 @@ pub struct Client {
     pub is_urgent: bool,
     /// Whether the window should never receive focus.
     pub never_focus: bool,
-    /// Whether the window is locked (can't be closed accidentally).
+    /// Whether the window refuses every close request until unlocked.
     pub is_locked: bool,
     /// Whether the window is sticky (visible on all tags).
     pub is_sticky: bool,

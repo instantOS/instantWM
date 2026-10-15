@@ -8,13 +8,14 @@ use super::apply_config_effect;
 use args::ActionArgs;
 pub use args::ConfigAssignment;
 use behavior::{
-    DEFAULT_GAP_STEP, adjust_gaps, edge_scratchpad_set_direction, focus_horizontal, focus_vertical,
-    key_resize_or_tree, move_horizontal, move_vertical, validate_mode_name, with_selected_win,
+    DEFAULT_GAP_STEP, adjust_gaps, close_or_power_off, edge_scratchpad_set_direction,
+    focus_horizontal, focus_vertical, key_resize_or_tree, move_horizontal, move_vertical,
+    validate_mode_name, with_selected_win,
 };
 
 use crate::actions::ActionInfo;
 use crate::client::fullscreen::toggle_fake_fullscreen;
-use crate::client::{kill_client, shut_kill, zoom};
+use crate::client::{close_client, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::scratchpad::DEFAULT_SCRATCHPAD_NAME;
 use crate::floating::{
@@ -150,8 +151,8 @@ impl NamedAction {
 
 define_named_actions!(
     Zoom => { name: "zoom", doc: "zoom client into master area", run: |ctx| { zoom(ctx); } },
-    Kill => { name: "kill", doc: "close focused window gracefully", run: |ctx| { with_selected_win(ctx, kill_client); } },
-    ShutKill => { name: "shut_kill", doc: "force kill focused window", run: |ctx| { shut_kill(ctx); } },
+    Kill => { name: "kill", doc: "close focused window gracefully", run: |ctx| { with_selected_win(ctx, close_client); } },
+    CloseOrPowerOff => { name: "shut_kill", doc: "close focused window, or shut down when its monitor is empty", run: |ctx| { close_or_power_off(ctx); } },
     Quit => { name: "quit", doc: "quit instantwm", run: |ctx| { ctx.core_mut().quit(); } },
     FocusNext => { name: "focus_next", overview: Preserve, doc: "focus next window in stack", run: |ctx| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", overview: Preserve, doc: "focus previous window in stack", run: |ctx| { focus_stack(ctx, StackDirection::Previous); } },

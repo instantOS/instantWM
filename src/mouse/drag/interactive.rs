@@ -140,7 +140,7 @@ pub fn hover_drag_begin(
         // projection before asking the backend to close the target so an
         // asynchronous unmap cannot leave hover ownership behind.
         crate::mouse::clear_hover_offer(ctx);
-        crate::client::kill::close_win(ctx, target.win);
+        crate::client::close_client(ctx, target.win);
         return true;
     }
     if btn != MouseButton::Left && btn != MouseButton::Right {

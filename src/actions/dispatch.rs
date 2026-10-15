@@ -1,5 +1,5 @@
 use crate::actions::{ButtonAction, KeyAction};
-use crate::client::{close_win, kill_client};
+use crate::client::close_client;
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
@@ -125,7 +125,7 @@ fn execute_button_action_inner(
             let Some(crate::types::BarPosition::WinTitle(win)) = arg.bar_position() else {
                 return;
             };
-            close_win(ctx, win);
+            close_client(ctx, win);
         }
         ButtonAction::DragTagBegin => {
             if let Some(pos) = arg.bar_position() {
@@ -167,7 +167,7 @@ fn execute_button_action_inner(
         }
         ButtonAction::KillSelectedClient => {
             if let Some(win) = button_target_client(&ctx.core().state.model, &arg) {
-                kill_client(ctx, win);
+                close_client(ctx, win);
             }
         }
         ButtonAction::ToggleLockSelectedClient => {

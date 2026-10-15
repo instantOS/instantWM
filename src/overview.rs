@@ -252,9 +252,9 @@ pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::Mou
             exit_overview(ctx, ExitMode::ToSelectedWindow);
         }
         crate::core_state::OverviewCardAction::Close(window) => {
-            // Match Super+Q exactly: request the client's graceful close and
-            // remain in overview while other cards are still available.
-            crate::client::kill_client(ctx, window);
+            // Match the close keybindings: request the client's graceful close
+            // and remain in overview while other cards are still available.
+            crate::client::close_client(ctx, window);
         }
         crate::core_state::OverviewCardAction::Cancel => {}
     }
