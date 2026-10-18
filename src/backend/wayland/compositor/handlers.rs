@@ -518,6 +518,9 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         self.native.idle_inhibiting_surfaces.insert(surface);
+        // The notifier owns the idle timers, so every set change has to be
+        // mirrored into it; tracking the surfaces alone inhibits nothing.
+        self.sync_idle_inhibitors();
         log::debug!("idle inhibited for surface");
     }
 
@@ -526,6 +529,7 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         self.native.idle_inhibiting_surfaces.remove(&surface);
+        self.sync_idle_inhibitors();
         log::debug!("idle uninhibited for surface");
     }
 }

@@ -762,6 +762,28 @@ impl WaylandState {
         }
     }
 
+    /// Mirror the idle-inhibitor set into the idle notifier.
+    ///
+    /// The notifier owns the timers behind `ext_idle_notifier_v1`, so an
+    /// inhibitor that never reaches it would have no effect: clients such as
+    /// swayidle would still see the session go idle and lock it mid-playback.
+    pub(crate) fn sync_idle_inhibitors(&mut self) {
+        let inhibited = !self.native.idle_inhibiting_surfaces.is_empty();
+        self.native
+            .idle_notify_manager_state
+            .set_is_inhibited(inhibited);
+    }
+
+    /// Drop inhibitors whose surface is gone and refresh the notifier.
+    ///
+    /// Clients need not destroy their inhibitor before crashing, so a dead
+    /// surface has to stop inhibiting; otherwise a crashed video player would
+    /// leave the session unable to go idle again.
+    pub(crate) fn purge_idle_inhibitors(&mut self) {
+        self.native.idle_inhibiting_surfaces.retain(|s| s.alive());
+        self.sync_idle_inhibitors();
+    }
+
     /// Project the shared model into the Smithay space.
     pub fn sync_space(&mut self) {
         let dead_windows: Vec<WindowId> = self
@@ -787,7 +809,7 @@ impl WaylandState {
         // Purge surfaces whose underlying resource is gone, so the HashSet
         // does not grow unbounded when clients crash or destroy surfaces
         // without sending an explicit uninhibit request.
-        self.native.idle_inhibiting_surfaces.retain(|s| s.alive());
+        self.purge_idle_inhibitors();
 
         // Fullscreen/tag changes can hide a live layer surface. Reconcile
         // shell focus before falling back to the WM selection, while retaining
