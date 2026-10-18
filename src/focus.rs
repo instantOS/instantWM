@@ -149,7 +149,7 @@ fn commit_focus_transition(
     }
 
     let projection = (changed || needs_refocus || force).then(|| {
-        core.bar.mark_dirty();
+        core.bar.invalidate_content();
         // `target` was resolved on the selected monitor by
         // `resolve_focus_target`, so its owner is known.
         let clear_urgency = target
@@ -253,8 +253,10 @@ fn focus_impl(
             effects.z_order_monitor
         }
     };
-    if let Some(monitor_id) = z_order_monitor {
-        ctx.request_bar_geometry_update(monitor_id);
+    if z_order_monitor.is_some() {
+        ctx.core_mut()
+            .bar
+            .invalidate(crate::bar::BarChange::Presentation);
         crate::layouts::sync_z_order(ctx);
     }
 }

@@ -8,7 +8,7 @@ fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     crate::focus::focus(ctx, None);
     // Tag selection is itself bar-visible state. Do not rely on focus or
     // client layout work to invalidate the bar: an empty tag has neither.
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
@@ -425,6 +425,6 @@ pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Optio
     let selmon_id = commit_view_selection(&mut state.model.monitors, new_mask)?;
     ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
     Some(selmon_id)
 }

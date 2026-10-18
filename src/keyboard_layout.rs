@@ -12,15 +12,13 @@
 //! `set_keyboard_layouts`, `set_swapescape`, `init_keyboard_layout`,
 //! `add_keyboard_layout` and `remove_keyboard_layout` all route through
 //! `set_keyboard_layout`, which reaches `WmCtx::apply_keyboard_layout`. There is
-//! no function in this module that takes a `WmCtx` it does not need, and the one
-//! that needs no context at all (`get_all_keyboard_layouts`, which shells out to
-//! `localectl`) already takes none. Narrowing any of these signatures to
-//! `CoreState` would compile-fail on the keymap install, or worse, silently drop
-//! the re-apply and leave the keymap out of sync with the stored state.
+//! no function in this module that takes a `WmCtx` it does not need.
+//! Installed-layout discovery is a client-local command.
 
 use crate::contexts::WmCtx;
 use crate::types::KeyboardLayout;
 use crate::types::input::StackDirection;
+#[cfg(test)]
 use std::process::Command;
 
 /// Switch to the configured layout at `index`.
@@ -134,32 +132,6 @@ pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
     if !ctx.core().state.interaction.keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
-    }
-}
-
-/// Get all available XKB layouts from the system.
-///
-/// Runs `localectl list-x11-keymap-layouts` to get the list.
-/// Returns an empty list if the command fails.
-pub fn get_all_keyboard_layouts() -> Vec<String> {
-    let output = Command::new("localectl")
-        .arg("list-x11-keymap-layouts")
-        .output();
-
-    match output {
-        Ok(output) => {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout
-                    .lines()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            } else {
-                Vec::new()
-            }
-        }
-        Err(_) => Vec::new(),
     }
 }
 

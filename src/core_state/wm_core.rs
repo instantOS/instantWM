@@ -38,7 +38,7 @@ impl WmCore {
         self.configure_tray_icons();
         let changed = self.bar.systray_host.poll();
         if changed {
-            self.bar.mark_dirty();
+            self.bar.invalidate_content();
         }
         changed
     }

@@ -41,7 +41,6 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
     ctx.apply_visibility_plan();
     if let Some(id) = monitor_id {
         arrange_monitor(ctx, id, animated);
-        ctx.request_bar_geometry_update(id);
     } else {
         let monitor_ids: Vec<MonitorId> = ctx
             .core()
@@ -53,10 +52,12 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
             .collect();
         for id in monitor_ids {
             arrange_monitor(ctx, id, animated);
-            ctx.request_bar_geometry_update(id);
         }
     }
 
+    ctx.core_mut()
+        .bar
+        .invalidate(crate::bar::BarChange::Presentation);
     flush_pending_spawn_animations(ctx, monitor_id, animated);
     super::z_order::sync_z_order(ctx);
 

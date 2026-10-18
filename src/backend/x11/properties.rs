@@ -36,7 +36,6 @@ pub fn set_client_state(
         x11_runtime.wmatom.state,
         &data,
     );
-    let _ = conn.flush();
 }
 
 /// Mirror a client's tags, owning monitor, and desktop into its X11

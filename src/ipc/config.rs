@@ -371,11 +371,22 @@ mod tests {
     #[test]
     fn font_roles_roundtrip_and_invalid_sizes_are_rejected() {
         let mut wm = test_wm();
+        let monitor = crate::test_support::push_monitor(&mut wm.core.state.model);
+        wm.core.work.layout.clear();
         assert!(matches!(
             wm.with_ctx(|wm| do_set(wm, "fonts.icon_size", "18")),
             Response::Ok
         ));
         assert_eq!(wm.core.state.config.fonts.icon_size, 18.0);
+        assert!(wm.core.work.layout.is_pending());
+        assert_eq!(
+            wm.core.bar.take_pending_change(),
+            Some(crate::bar::BarChange::Appearance)
+        );
+        assert_eq!(
+            wm.core.state.model.monitor(monitor).unwrap().bar_height,
+            wm.core.state.config.bar_metrics().height
+        );
         assert!(matches!(
             wm.with_ctx(|wm| do_get(wm, "fonts.icon_size")),
             Response::ConfigValue(value) if value == "18.0"

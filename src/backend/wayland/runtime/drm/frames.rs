@@ -136,9 +136,12 @@ pub(super) fn render_outputs(
     let pending_crtcs = loop_state.pending_crtcs.clone();
 
     if session_active {
-        let needs_any_render = output_surfaces
-            .iter()
-            .any(|entry| render_flags.get(&entry.scanout()).copied().unwrap_or(false));
+        let needs_any_render = output_surfaces.iter().any(|entry| {
+            entry.enabled
+                && entry.powered
+                && !pending_crtcs.contains(&entry.scanout())
+                && render_flags.get(&entry.scanout()).copied().unwrap_or(false)
+        });
         let shared_scene = if needs_any_render && !state.native.is_locked() {
             Some(build_shared_scene_elements(
                 &mut state.wm,

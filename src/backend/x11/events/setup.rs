@@ -76,7 +76,10 @@ pub fn setup_root(wm: &mut Wm) {
         mask |= EventMask::POINTER_MOTION;
     }
 
-    let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
+    data.x11_runtime
+        .subscriptions
+        .select(conn, root, mask)
+        .expect("failed to subscribe to X11 root events");
     // Root ConfigureNotify is not an output-topology notification: a connector
     // may appear, disappear, or change its CRTC without resizing the root
     // framebuffer. Subscribe to RandR's authoritative event stream as well.

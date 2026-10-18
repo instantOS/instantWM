@@ -205,7 +205,7 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         } else {
             ctx.core_mut().bar.hover.clear();
         }
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
     }
     true
 }
@@ -272,7 +272,7 @@ fn finish_tag_release_presentation(
     } else {
         ctx.core_mut().bar.hover.clear();
     }
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
 }
 
 #[cfg(test)]

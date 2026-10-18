@@ -307,7 +307,7 @@ fn begin_bar_reorder(ctx: &mut WmCtx, win: WindowId, monitor_id: MonitorId) -> b
         .bar
         .hover
         .set(monitor_id, Gesture::WinTitle(win), true);
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
     true
 }
 
@@ -341,7 +341,7 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
                     .bar
                     .hover
                     .set(monitor_id, Gesture::WinTitle(win), true);
-                ctx.request_bar_update();
+                ctx.core_mut().bar.invalidate_content();
             }
             true
         }
@@ -366,7 +366,7 @@ fn convert_reorder_to_move(
         // the interaction instead of leaving the capture dangling.
         ctx.transition_pointer_interaction(|drag| drag.finish_reordering());
         ctx.core_mut().bar.hover.clear();
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
         return false;
     };
     if ctx
@@ -378,7 +378,7 @@ fn convert_reorder_to_move(
     // The reorder's gesture highlight no longer applies once the interaction
     // became an ordinary move drag; hover updates resume on the next motion.
     ctx.core_mut().bar.hover.clear();
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
     true
 }
 
@@ -405,7 +405,7 @@ pub fn title_reorder_finish(ctx: &mut WmCtx) {
     } else {
         ctx.core_mut().bar.hover.clear();
     }
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
 }
 
 /// Finish a title drag interaction (button release without exceeding the

@@ -21,7 +21,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
     ctx.update_ewmh_desktop_props();
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
 }
 
 fn rename_visible_tags(
@@ -62,7 +62,7 @@ pub fn reset_name_tag(ctx: &mut WmCtx) {
     let state = &mut ctx.core_mut().state;
     reset_tag_names(&mut state.model, &state.config.tag_template);
     ctx.update_ewmh_desktop_props();
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
 }
 
 fn reset_tag_names(model: &mut crate::model::WmModel, configured: &[crate::types::Tag]) {

@@ -277,6 +277,7 @@ pub fn run() -> ! {
         runtime_event_rx,
     );
 
+    state.wm.backend.wallpaper.shutdown();
     crate::startup::autostart::shutdown_autostart();
     crate::backend::wayland::session::stop_graphical_session_target();
     exit(0);

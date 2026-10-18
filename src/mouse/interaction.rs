@@ -252,7 +252,7 @@ fn cancel_capture(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> bool {
     if cancelled_interactive || cancelled_other {
         ctx.core_mut().bar.hover.clear();
         ctx.update_layout_preview(None);
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
         true
     } else {
         false

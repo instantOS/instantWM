@@ -33,7 +33,7 @@ pub fn set_theme(ctx: &mut WmCtx<'_>, theme: ColorTheme) -> Response {
     ctx.core_mut().state.model.tags.colors = colors.tag.clone();
     ctx.core_mut().state.config.colors = colors;
     ctx.core_mut().state.config.theme = theme;
-    crate::actions::apply_config_effect(ctx, ConfigEffect::Recolor);
+    crate::actions::apply_config_effect(ctx, ConfigEffect::Bar(crate::bar::BarChange::Appearance));
     Response::ok()
 }
 
@@ -49,12 +49,21 @@ mod tests {
     #[test]
     fn set_theme_recolors_both_color_stores_and_records_it() {
         let mut wm = test_wm();
+        wm.core.work.layout.clear();
         assert!(matches!(
             wm.with_ctx(|wm| set_theme(wm, ColorTheme::Nord)),
             Response::Ok
         ));
 
         assert_eq!(wm.core.state.config.theme, ColorTheme::Nord);
+        assert!(
+            !wm.core.work.layout.is_pending(),
+            "color changes do not affect layout"
+        );
+        assert_eq!(
+            wm.core.bar.take_pending_change(),
+            Some(crate::bar::BarChange::Appearance)
+        );
         // Tag colours live in `model.tags.colors`…
         let nord = crate::config::appearance::ColorConfig::from(ColorTheme::Nord);
         assert_eq!(

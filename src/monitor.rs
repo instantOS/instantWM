@@ -373,7 +373,7 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
     ctx.apply_monitor_configs(&policy);
     ctx.core_mut().state.derived.monitor_policy = policy;
     // Per-output tag slots are resolved at bar render time.
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
     refresh_monitor_layout(ctx);
 }
 
@@ -468,7 +468,9 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
         return;
     }
     ctx.core_mut().queue_layout_for_all_monitors();
-    ctx.core_mut().bar.mark_dirty();
+    ctx.core_mut()
+        .bar
+        .invalidate(crate::bar::BarChange::Presentation);
     let target_monitor_id = ctx
         .pointer_location()
         .and_then(|ptr| ctx.core().state.model.monitors.monitor_at_pointer(ptr))
@@ -606,23 +608,12 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         )
     });
     changed |= reconciliation.changed;
-    let added_monitors = reconciliation.added_monitors;
 
     for bar_win in reconciliation.removed_bar_windows {
         ctx.destroy_monitor_bar_window(bar_win);
     }
 
     notify_monitor_layout_changed(ctx, changed);
-
-    // A freshly built monitor starts without backend bar resources, and no
-    // other step on the topology path creates them: reconciling here is what
-    // makes a runtime hot-plug show a bar instead of an empty strip. It runs
-    // after the layout notification so bar geometry and the systray reservation
-    // use the post-change selection. Existing windows are only re-synced, and
-    // the Wayland branch is a no-op because its bars render from the model.
-    if added_monitors {
-        ctx.refresh_bar_content();
-    }
 
     if ctx.core().state.model.selected_win() != previous_focus {
         refresh_focus_after_selection(ctx, previous_focus, None);
@@ -633,9 +624,6 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
 #[derive(Debug)]
 struct MonitorReconciliation {
     changed: bool,
-    /// A monitor was constructed instead of matched, so it carries no backend
-    /// bar resources yet.
-    added_monitors: bool,
     removed_bar_windows: Vec<WindowId>,
 }
 
@@ -643,8 +631,8 @@ struct MonitorReconciliation {
 ///
 /// This operation owns stable-ID reuse, new-monitor construction, and client
 /// rehoming. It reports backend resources that the orchestration layer must
-/// destroy and monitors it constructed (which still need theirs created)
-/// rather than performing backend I/O while mutating the model.
+/// destroy rather than performing backend I/O while mutating the model.
+/// Any topology change invalidates the complete bar presentation.
 fn reconcile_monitor_model(
     model: &mut crate::model::WmModel,
     outputs: &[BackendOutputInfo],
@@ -656,7 +644,6 @@ fn reconcile_monitor_model(
     debug_assert_eq!(outputs.len(), metrics.len());
     debug_assert_eq!(outputs.len(), policies.len());
     let mut changed = model.monitors.len() != outputs.len();
-    let mut added_monitors = false;
     let previous_focus = model.selected_win();
 
     // Drain old monitors into a pool. They keep their stable ids + workspace
@@ -678,7 +665,6 @@ fn reconcile_monitor_model(
             }
             None => {
                 changed = true;
-                added_monitors = true;
                 let id = model.monitors.allocate_id();
                 let mut m = Monitor::new_with_values();
                 m.show_bottom_bar = show_bottom_bar;
@@ -717,7 +703,6 @@ fn reconcile_monitor_model(
 
     MonitorReconciliation {
         changed,
-        added_monitors,
         removed_bar_windows,
     }
 }
@@ -738,8 +723,8 @@ fn scaled_monitor_ui_metrics(config: &EffectiveConfig, scale: f64) -> MonitorUiM
 /// copy for its output's UI scale. Output topology sync does this as part of
 /// reconciling monitors; this
 /// entry point covers the paths that change the base without touching
-/// topology — `config set` and a full config reload, both of which funnel
-/// through [`WmCtx::reinit_bar_resources`](crate::wm::WaylandWmCtx::reinit_bar_resources).
+/// topology. Both runtime configuration edits and reloads apply these metrics
+/// before scheduling layout and invalidating the native bar appearance.
 ///
 /// Layout deliberately does *not* substitute for this: `arrange` reads bar
 /// geometry, and the unscaled global is never a valid value for a scaled
@@ -831,7 +816,6 @@ mod tests {
         );
 
         assert!(result.changed);
-        assert!(!result.added_monitors);
         assert_eq!(
             result.removed_bar_windows,
             [removed_bar, removed_bottom_bar]
@@ -1014,7 +998,6 @@ mod tests {
         );
 
         assert!(result.changed);
-        assert!(result.added_monitors, "the new output built a monitor");
         assert!(result.removed_bar_windows.is_empty());
         assert_eq!(model.monitors.len(), 2);
         assert_eq!(model.monitor(retained).unwrap().name, "eDP-1");
@@ -1027,7 +1010,7 @@ mod tests {
     }
 
     #[test]
-    fn geometry_only_reconciliation_does_not_flag_added_monitors() {
+    fn geometry_only_reconciliation_preserves_bar_windows() {
         let mut model = crate::model::WmModel::new();
         let retained = model
             .monitors
@@ -1063,7 +1046,6 @@ mod tests {
         // Only the geometry moved: the monitor keeps its identity and its bar
         // window, so the caller must not rebuild bar resources.
         assert!(result.changed);
-        assert!(!result.added_monitors);
         assert!(result.removed_bar_windows.is_empty());
         assert_eq!(model.monitors.first(), Some(retained));
         assert_eq!(model.monitor(retained).unwrap().bar_win, bar_win);

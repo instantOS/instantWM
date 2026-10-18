@@ -31,14 +31,12 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> 
     let mut command = Command::new(primary_cmd);
     command.args(argv.iter().skip(1).map(|s| s.as_ref()));
     let metadata = prepare_spawn_command(ctx, &mut command);
-    let reap_child = !ctx.backend_kind().reaps_children_via_signals();
 
     match command.spawn() {
         Ok(child) => Ok(record_spawned_child(
             &mut ctx.core_mut().state.pending_launches,
             child,
             metadata,
-            reap_child,
         )),
         Err(e) => {
             if e.kind() == std::io::ErrorKind::NotFound && is_lockscreen_cmd(primary_cmd) {
@@ -61,7 +59,6 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> 
                                 &mut ctx.core_mut().state.pending_launches,
                                 child,
                                 fallback_meta,
-                                reap_child,
                             );
                             return Ok(pid);
                         }
@@ -110,7 +107,6 @@ pub(crate) fn record_spawned_child(
     pending_launches: &mut VecDeque<PendingLaunch>,
     child: Child,
     metadata: SpawnLaunchMetadata,
-    reap_child: bool,
 ) -> u32 {
     let pid = child.id();
     record_pending_launch(
@@ -124,9 +120,7 @@ pub(crate) fn record_spawned_child(
     // does not reap it. Wait off the compositor thread so short-lived scripts
     // cannot accumulate as zombies and long-lived applications cannot block
     // the event loop.
-    if reap_child {
-        reap_child_async(child);
-    }
+    reap_child_async(child);
     pid
 }
 

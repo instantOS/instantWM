@@ -8,6 +8,14 @@ use instantwm::layouts::LayoutCommand;
 use instantwm::types::MonitorDirection;
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum KeyboardAction {
+    /// List installed XKB layouts on this host without contacting the compositor.
+    Available,
+    #[command(flatten)]
+    Remote(KeyboardCommand),
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum LayoutAction {
     /// List every layout, marking the selected monitor's active one.
     List,
@@ -156,7 +164,7 @@ pub enum CommandKind {
     /// Manage keyboard layouts and input settings.
     Keyboard {
         #[command(subcommand)]
-        action: KeyboardCommand,
+        action: KeyboardAction,
     },
     /// Manage scratchpad windows.
     Scratchpad {
@@ -213,11 +221,14 @@ fn run(action: NamedAction) -> IpcCommand {
 
 impl CommandKind {
     /// The IPC request for this command, or the command itself when the
-    /// client handles it alone (`action --list`, `config default`, test paths
-    /// and waits).
+    /// client handles it alone (host keyboard layouts, action/config listings,
+    /// test paths and waits).
     pub fn into_ipc(self) -> Result<IpcCommand, Box<Self>> {
         Ok(match self {
             Self::Action { list: true, .. }
+            | Self::Keyboard {
+                action: KeyboardAction::Available,
+            }
             | Self::Config {
                 action: ConfigAction::Default,
             }
@@ -256,7 +267,9 @@ impl CommandKind {
             Self::Theme { name: None, .. } => IpcCommand::GetTheme,
             Self::Border { width } => run(NamedAction::SetBorder(width)),
             Self::PendingTmpRule { action } => IpcCommand::PendingTmpRule(action),
-            Self::Keyboard { action } => IpcCommand::Keyboard(action),
+            Self::Keyboard {
+                action: KeyboardAction::Remote(command),
+            } => IpcCommand::Keyboard(command),
             Self::Scratchpad { action } => IpcCommand::Scratchpad(action),
             Self::Mouse { action } => IpcCommand::Input(action),
             Self::Mode { action } => match action {

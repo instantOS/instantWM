@@ -10,10 +10,7 @@ pub fn handle_keyboard_command(ctx: &mut WmCtx<'_>, cmd: KeyboardCommand) -> Res
             let status = core_state.interaction.keyboard_layout.status();
             Response::Message(status)
         }
-        KeyboardCommand::List { all: true } => {
-            Response::Message(keyboard_layout::get_all_keyboard_layouts().join("\n"))
-        }
-        KeyboardCommand::List { all: false } => {
+        KeyboardCommand::List => {
             let state = &core_state.interaction.keyboard_layout;
             let layouts: Vec<KeyboardLayoutInfo> = state
                 .layouts

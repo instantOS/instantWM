@@ -24,8 +24,20 @@ pub struct BarRuntime {
     pub external_tray_width: i32,
 }
 
+/// The strongest stale part of the bar projection. Higher changes include
+/// the work of lower changes, so bursts coalesce without preserving event order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BarChange {
+    Content,
+    /// Native surface existence, geometry, visibility and tray reservation.
+    Presentation,
+    /// Fonts, colors and other backend drawing configuration.
+    Appearance,
+}
+
 #[derive(Default)]
 pub struct BarState {
+    pending_change: Option<BarChange>,
     bar_update_seq: u64,
     last_drawn_seq: u64,
     /// Per-monitor hit-test geometry built during bar rendering.
@@ -125,9 +137,21 @@ pub struct MonitorHitCache {
 }
 
 impl BarState {
-    /// Bump the backend-agnostic bar invalidation sequence.
-    pub fn mark_dirty(&mut self) {
+    /// Record stale derived state; reconciliation always reads the latest model.
+    pub fn invalidate(&mut self, change: BarChange) {
+        self.pending_change = Some(
+            self.pending_change
+                .map_or(change, |pending| pending.max(change)),
+        );
         self.bar_update_seq = self.bar_update_seq.wrapping_add(1);
+    }
+
+    pub fn invalidate_content(&mut self) {
+        self.invalidate(BarChange::Content);
+    }
+
+    pub(crate) fn take_pending_change(&mut self) -> Option<BarChange> {
+        self.pending_change.take()
     }
 
     /// Current bar invalidation sequence.
@@ -168,7 +192,7 @@ impl BarState {
 
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core_mut().bar.hover.clear() {
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
     }
 }
 
@@ -240,7 +264,7 @@ pub fn update_hover(
 
     if reset_start_menu && pos == BarPosition::StartMenu {
         ctx.core_mut().bar.hover.clear();
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
     }
 
     let gesture = if pos == BarPosition::StatusText && ctx.core().bar.runtime.status_click_events {
@@ -251,7 +275,7 @@ pub fn update_hover(
         pos.to_gesture()
     };
     if ctx.core_mut().bar.hover.set(monitor_id, gesture, false) {
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
     }
 
     Some(pos)
@@ -357,6 +381,26 @@ mod tests {
     use super::{BarHoverState, BarState, MonitorHitCache};
     use crate::bar::status::StatusClickTarget;
     use crate::types::{Gesture, MonitorId, Point, Rect};
+
+    #[test]
+    fn invalidations_coalesce_without_losing_later_content_changes() {
+        use super::BarChange;
+        let mut bar = BarState::default();
+        bar.invalidate_content();
+        bar.invalidate(BarChange::Appearance);
+        bar.invalidate(BarChange::Presentation);
+        bar.invalidate_content();
+        assert_eq!(bar.take_pending_change(), Some(BarChange::Appearance));
+        assert_eq!(bar.take_pending_change(), None);
+        // Consuming projection work does not claim async pixels are finished.
+        assert!(bar.needs_redraw());
+        bar.mark_drawn();
+        let drawn = bar.update_seq();
+        bar.invalidate_content();
+        assert_ne!(bar.update_seq(), drawn);
+        assert!(bar.needs_redraw());
+        assert_eq!(bar.take_pending_change(), Some(BarChange::Content));
+    }
 
     #[test]
     fn hover_is_only_visible_on_its_own_monitor() {

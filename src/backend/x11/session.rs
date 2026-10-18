@@ -122,3 +122,12 @@ mod tests {
         assert!(SESSION_VARS.contains(&"XDG_SESSION_TYPE"));
     }
 }
+
+/// Launch the X11 wallpaper setter and give its child to the shared reaper.
+pub(crate) fn set_wallpaper(path: &str) -> std::io::Result<()> {
+    Command::new("feh")
+        .arg("--bg-fill")
+        .arg(path)
+        .spawn()
+        .map(crate::util::reap_child_async)
+}

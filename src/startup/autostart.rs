@@ -23,7 +23,10 @@ pub fn run_autostart() {
     use std::os::unix::process::CommandExt;
     command.process_group(0);
     match command.spawn() {
-        Ok(child) => AUTOSTART_PGID.store(child.id(), Ordering::Release),
+        Ok(child) => {
+            AUTOSTART_PGID.store(child.id(), Ordering::Release);
+            crate::util::reap_child_async(child);
+        }
         Err(err) if err.kind() == ErrorKind::NotFound => {
             eprintln!("instantwm: 'ins' command not found, please install ins from instantCLI");
         }
@@ -63,7 +66,7 @@ pub fn run_exec_commands(commands: &[String]) {
             .stderr(std::process::Stdio::null())
             .spawn()
         {
-            Ok(_) => {}
+            Ok(child) => crate::util::reap_child_async(child),
             Err(e) => {
                 eprintln!("instantwm: exec failed for '{}': {}", cmd, e);
             }

@@ -141,11 +141,11 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
 
     if let Some((monitor_id, new_gesture)) = bar_hit {
         if ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true) {
-            ctx.request_bar_update();
+            ctx.core_mut().bar.invalidate_content();
         }
     } else if was_on_bar {
         ctx.core_mut().bar.hover.clear();
-        ctx.request_bar_update();
+        ctx.core_mut().bar.invalidate_content();
     }
 
     on_bar
@@ -156,7 +156,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
 /// Called once the drag loop exits so that hover state is always cleaned up.
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.core_mut().bar.hover.clear();
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
 }
 
 /// Handle a drop onto the bar: tile the window, optionally moving it to the

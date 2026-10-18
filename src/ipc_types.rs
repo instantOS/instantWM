@@ -166,11 +166,7 @@ pub enum ScratchpadInitialStatus {
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize, Subcommand)]
 pub enum KeyboardCommand {
     /// List configured keyboard layouts.
-    List {
-        /// List every layout known to XKB instead.
-        #[arg(long)]
-        all: bool,
-    },
+    List,
     /// Show the active keyboard layout.
     Status,
     /// Select the next keyboard layout.

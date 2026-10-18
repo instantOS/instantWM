@@ -123,12 +123,9 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let _ = conn.flush();
 
-    crate::backend::x11::bar::sync_top_bar_surfaces(
-        ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
-        ctx.xembed_tray,
-    );
+    ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
+    // Finish native embedding geometry before notifying the newly docked client.
+    ctx.wm_ctx().reconcile_bars();
     crate::backend::x11::systray::send_xembed_message(
         &ctx.x11,
         ctx.x11_runtime,

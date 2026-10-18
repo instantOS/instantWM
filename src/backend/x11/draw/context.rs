@@ -34,13 +34,13 @@ use super::ffi::{
     PICT_STANDARD_ARGB32, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreateImage,
     XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen,
     XDefaultVisual, XDestroyImage, XDrawArc, XDrawRectangle, XFillArc, XFillPolygon,
-    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMoveResizeWindow,
-    XOpenDisplay, XPutImage, XRenderColor, XRenderComposite, XRenderCreatePicture,
-    XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture, XSetForeground,
-    XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue,
-    XftColorFree, XftDraw, XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose,
-    XftFontMatch, XftFontOpenName, XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8,
-    XlibGc, Z_PIXMAP,
+    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMapWindow,
+    XMoveResizeWindow, XOpenDisplay, XPutImage, XRenderColor, XRenderComposite,
+    XRenderCreatePicture, XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture,
+    XSetForeground, XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName,
+    XftColorAllocValue, XftColorFree, XftDraw, XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8,
+    XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern, XftInit, XftResult,
+    XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
 };
 use super::font::Fnt;
 
@@ -386,6 +386,34 @@ impl DrawContext {
         self.h = h;
     }
 
+    /// Submit geometry and mapping on the painting connection so later copies
+    /// cannot run against an old size or an unmapped target.
+    pub fn present_window(&self, window: Window, bounds: WmRect) {
+        if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
+            return;
+        }
+        unsafe {
+            XMoveResizeWindow(
+                self.display,
+                window.into(),
+                bounds.x,
+                bounds.y,
+                bounds.w as u32,
+                bounds.h as u32,
+            );
+            XMapWindow(self.display, window.into());
+        }
+    }
+
+    /// Commit geometry even when hidden bars have no snapshot to paint.
+    pub fn flush(&self) {
+        if !self.display.is_null() {
+            unsafe {
+                XFlush(self.display);
+            }
+        }
+    }
+
     /// Blit a region of the off-screen pixmap to `window`.
     pub fn map(&self, window: Window, bounds: WmRect) {
         if self.display.is_null()
@@ -409,35 +437,6 @@ impl DrawContext {
                 bounds.y,
             );
             let _ = XFlush(self.display);
-        }
-    }
-
-    /// Queue geometry for an Xlib-owned presentation target.
-    ///
-    /// The owner must call [`Self::flush`] at its transaction boundary. This
-    /// keeps geometry batching explicit without relying on a later draw.
-    pub fn queue_move_resize_window(&self, window: Window, bounds: WmRect) {
-        if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
-            return;
-        }
-        unsafe {
-            let _ = XMoveResizeWindow(
-                self.display,
-                window,
-                bounds.x,
-                bounds.y,
-                bounds.w as u32,
-                bounds.h as u32,
-            );
-        }
-    }
-
-    /// Commit queued Xlib presentation requests without blocking for a reply.
-    pub fn flush(&self) {
-        if !self.display.is_null() {
-            unsafe {
-                let _ = XFlush(self.display);
-            }
         }
     }
 
@@ -1079,6 +1078,59 @@ mod cache_tests {
     use super::*;
     use crate::types::ColorScheme;
     use crate::types::Rgba;
+
+    #[test]
+    #[ignore = "requires a dedicated Xvfb display"]
+    fn presentation_resizes_and_maps_before_copying_pixels() {
+        use x11rb::connection::Connection;
+        use x11rb::protocol::xproto::{ConnectionExt, CreateWindowAux, ImageFormat, WindowClass};
+        let (conn, screen) = x11rb::connect(None).unwrap();
+        let root = conn.setup().roots[screen].root;
+        let window = conn.generate_id().unwrap();
+        conn.create_window(
+            0,
+            window,
+            root,
+            0,
+            0,
+            1,
+            1,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            0,
+            &CreateWindowAux::new(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        let mut ctx = DrawContext::new(None).unwrap();
+        ctx.resize(80, 40);
+        let white = Rgba::rgb(1.0, 1.0, 1.0);
+        ctx.set_bar_scheme(&ColorScheme {
+            foreground: white,
+            background: white,
+            detail: white,
+        });
+        let bounds = WmRect::new(0, 0, 80, 40);
+        ctx.rect(bounds, true, false);
+        ctx.present_window(window, bounds);
+        ctx.map(window, bounds);
+        // Wait for the painting connection only after the copy. This must
+        // also complete its preceding resize and map, without an expose redraw.
+        unsafe extern "C" {
+            fn XSync(display: *mut libc::c_void, discard: c_int) -> c_int;
+        }
+        unsafe {
+            XSync(ctx.display, 0);
+        }
+        let pixel = conn
+            .get_image(ImageFormat::Z_PIXMAP, window, 79, 39, 1, 1, u32::MAX)
+            .unwrap()
+            .reply()
+            .unwrap();
+        assert_eq!(&pixel.data[..3], &[255, 255, 255]);
+        conn.destroy_window(window).unwrap().check().unwrap();
+    }
 
     #[test]
     #[ignore = "requires a dedicated Xvfb display"]

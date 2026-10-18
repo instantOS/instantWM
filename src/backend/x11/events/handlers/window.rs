@@ -95,12 +95,7 @@ pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
             event_win,
             requested_size,
         );
-        crate::backend::x11::bar::sync_top_bar_surfaces(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
+        ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
     } else if let Some(client) = ctx.core.state.model.client(event_win) {
         let (geo, border_width) = (client.geo, client.border_width);
         crate::backend::x11::focus::configure(&ctx.x11, event_win, geo, border_width);
@@ -125,12 +120,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         // Remove tray-owned state before recomputing the paired tray/bar
         // geometry so the destroyed icon no longer reserves a cell.
         crate::backend::x11::systray::remove_systray_icon(ctx.xembed_tray.as_mut(), event_win);
-        crate::backend::x11::bar::sync_top_bar_surfaces(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
+        ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
     } else if ctx.core.state.model.client(event_win).is_some() {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
@@ -146,7 +136,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
     if let Some(monitor) = ctx.core.state.model.monitors.find_monitor_for(event_win)
         && event_win == monitor.bar_win
     {
-        ctx.core.bar.mark_dirty();
+        ctx.core.bar.invalidate_content();
     }
 }
 
@@ -172,12 +162,7 @@ pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
     if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
-        crate::backend::x11::bar::sync_top_bar_surfaces(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
+        ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
         return;
     };
 
@@ -207,12 +192,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 Some(e),
             );
         }
-        crate::backend::x11::bar::sync_top_bar_surfaces(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
+        ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
         return;
     };
 
@@ -237,7 +217,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
                 crate::backend::x11::update_wm_hints(ctx, event_win);
-                ctx.core.bar.mark_dirty();
+                ctx.core.bar.invalidate_content();
             }
             x if x == u32::from(AtomEnum::WM_TRANSIENT_FOR) => {
                 let parent =
@@ -283,12 +263,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
             event_win,
             crate::types::Size::new(e.width as i32, e.height as i32),
         );
-        crate::backend::x11::bar::sync_top_bar_surfaces(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
+        ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
     };
 }
 
@@ -297,12 +272,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     if crate::backend::x11::systray::is_systray_icon(ctx.xembed_tray.as_ref(), event_win) {
         // XEmbed icons remain owned by the tray while unmapped. Recompute the
         // paired tray/bar geometry; mapped state comes from _XEMBED_INFO.
-        crate::backend::x11::bar::sync_top_bar_surfaces(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
+        ctx.core.bar.invalidate(crate::bar::BarChange::Presentation);
     } else if ctx.core.state.model.client(event_win).is_some() {
         if e.response_type & 0x80 != 0 {
             crate::backend::x11::set_client_state(

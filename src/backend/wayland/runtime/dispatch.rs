@@ -168,7 +168,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                 state.native.request_space_sync();
             }
             WmCommand::RequestBarRedraw => {
-                state.wm.core.bar.mark_dirty();
+                state.wm.core.bar.invalidate_content();
             }
             WmCommand::RestoreFocus => {
                 handle_focus_window(&mut state.ctx(), None);
@@ -176,7 +176,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
             WmCommand::SyncLayerExclusiveZones => {
                 if crate::backend::wayland::compositor::layer_shell::apply_available_rects(state) {
                     state.wm.core.work.layout.mark_all_urgent();
-                    state.wm.core.bar.mark_dirty();
+                    state.wm.core.bar.invalidate_content();
                     state.native.request_render();
                 }
             }
@@ -237,7 +237,9 @@ fn handle_update_transient_for(
         return;
     };
     ctx.core_mut().queue_layout_for_monitor(monitor_id);
-    ctx.request_bar_geometry_update(monitor_id);
+    ctx.core_mut()
+        .bar
+        .invalidate(crate::bar::BarChange::Presentation);
     crate::layouts::sync_z_order(ctx);
 }
 
@@ -742,7 +744,7 @@ fn handle_update_xwayland_policy(
                 .queue_layout_for_monitor(outcome.monitor_id());
         }
         if outcome.bar_changed() {
-            ctx.request_bar_update();
+            ctx.core_mut().bar.invalidate_content();
         }
     }
 }

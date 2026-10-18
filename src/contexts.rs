@@ -21,7 +21,7 @@ use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
-use crate::types::{ModMask, MonitorId, Rect, WindowId, XEmbedTray};
+use crate::types::{ModMask, Rect, WindowId, XEmbedTray};
 use std::time::{Duration, Instant};
 
 pub struct WmCtxX11<'a> {
@@ -123,8 +123,13 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
-        self.backend_kind().set_wallpaper(path)
+    pub fn set_wallpaper(&mut self, path: &str) -> std::io::Result<()> {
+        match self {
+            Self::X11(_) => crate::backend::x11::session::set_wallpaper(path),
+            Self::Wayland(ctx) => ctx
+                .wayland
+                .with_state(|state| state.wm.backend.wallpaper.set(path)),
+        }
     }
 
     // This is the backend-dispatch boundary, not a second API for core fields.
@@ -317,13 +322,15 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        let Some(monitor_id) = self.core_mut().state.model.raise_client_in_z_order(win) else {
+        let Some(_) = self.core_mut().state.model.raise_client_in_z_order(win) else {
             return;
         };
         // Reapply the complete policy projection rather than visually raising
         // just this surface, which could place an ordinary window over a
         // protected transient dialog until the next layout pass.
-        self.request_bar_geometry_update(monitor_id);
+        self.core_mut()
+            .bar
+            .invalidate(crate::bar::BarChange::Presentation);
         crate::layouts::sync_z_order(self);
     }
 
@@ -710,46 +717,6 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Reconcile the backend's complete top-bar projection after visibility,
-    /// selection, tray, or monitor geometry changes.
-    pub fn refresh_top_bars(&mut self) {
-        match self {
-            WmCtx::X11(ctx) => {
-                crate::backend::x11::bar::sync_top_bar_surfaces(
-                    ctx.core,
-                    &ctx.x11,
-                    ctx.x11_runtime,
-                    ctx.xembed_tray,
-                );
-            }
-            WmCtx::Wayland(ctx) => {
-                ctx.wayland.state.wm.core.bar.mark_dirty();
-                ctx.wayland.request_render();
-            }
-        }
-    }
-
-    /// Refresh one monitor's bottom-bar projection.
-    pub fn refresh_monitor_bottom_bar(&mut self, monitor_id: MonitorId) {
-        match self {
-            WmCtx::X11(ctx) => {
-                if let Some(monitor) = ctx.core.state.model.monitor(monitor_id) {
-                    crate::backend::x11::bar::resize_bottom_bar_win(
-                        &ctx.core.state,
-                        &ctx.x11,
-                        &*ctx.x11_runtime,
-                        monitor,
-                    );
-                }
-                ctx.core.bar.mark_dirty();
-            }
-            WmCtx::Wayland(ctx) => {
-                ctx.wayland.state.wm.core.bar.mark_dirty();
-                ctx.wayland.request_render();
-            }
-        }
-    }
-
     /// Destroy backend bar windows owned by a removed monitor.
     ///
     /// X11 bar windows are real server resources; Wayland bars are
@@ -764,17 +731,24 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Redraw bars that were marked dirty since the last pass.
-    ///
-    /// The Wayland compositor re-renders through frame callbacks and its
-    /// async bar worker; only X11 draws eagerly here.
-    pub fn redraw_bars_if_dirty(&mut self) {
-        if !self.core().bar.needs_redraw() {
-            return;
-        }
+    /// Project accumulated bar changes once, after shared state and layout work.
+    /// Startup and XEmbed docking also call this at their protocol boundary.
+    pub fn reconcile_bars(&mut self) {
         match self {
-            WmCtx::X11(ctx) => crate::backend::x11::bar::draw_bars(ctx.core, ctx.x11_runtime),
-            WmCtx::Wayland(_) => {}
+            WmCtx::X11(ctx) => crate::backend::x11::bar::reconcile_bars(ctx),
+            WmCtx::Wayland(ctx) => {
+                if ctx
+                    .wayland
+                    .state
+                    .wm
+                    .core
+                    .bar
+                    .take_pending_change()
+                    .is_some()
+                {
+                    ctx.wayland.request_render();
+                }
+            }
         }
     }
 
@@ -785,69 +759,6 @@ impl<'a> WmCtx<'a> {
         if let WmCtx::X11(ctx) = self {
             crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
         }
-    }
-
-    /// Push current bar content to backend-owned surfaces after config or
-    /// layout changes. Wayland re-renders from the shared snapshot.
-    pub fn refresh_bar_content(&mut self) {
-        match self {
-            WmCtx::X11(ctx) => crate::backend::x11::bar::reconcile_bar_windows(
-                ctx.core,
-                &ctx.x11,
-                ctx.x11_runtime,
-                ctx.xembed_tray,
-            ),
-            WmCtx::Wayland(_) => {}
-        }
-    }
-
-    /// Republish the parsed status line through backend-owned bar surfaces.
-    pub fn refresh_status_content(&mut self) {
-        match self {
-            WmCtx::X11(ctx) => crate::backend::x11::bar::update_status(ctx.core, ctx.x11_runtime),
-            WmCtx::Wayland(_) => {}
-        }
-    }
-
-    /// Backend-agnostic bar refresh request.
-    ///
-    /// - X11: marks the bar dirty; the normal calloop tick redraws it.
-    /// - Wayland: marks bar cache as dirty; next frame re-renders.
-    pub fn request_bar_update(&mut self) {
-        match self {
-            WmCtx::X11(ctx_x11) => {
-                ctx_x11.core.bar.mark_dirty();
-            }
-            WmCtx::Wayland(ctx_wayland) => {
-                ctx_wayland.wayland.state.wm.core.bar.mark_dirty();
-                ctx_wayland.wayland.request_render();
-            }
-        }
-    }
-
-    /// Refresh bar rendering and synchronize backend-owned bar geometry for
-    /// one monitor. Tag changes use this because bar visibility is per-tag.
-    pub fn request_bar_geometry_update(&mut self, monitor_id: MonitorId) {
-        self.refresh_top_bars();
-        self.refresh_monitor_bottom_bar(monitor_id);
-    }
-
-    /// Rebuild backend bar resources (X11 draw context, cursors, schemes)
-    /// and re-project bar metrics onto every monitor.
-    ///
-    /// Single owner of that choreography: full reloads ([`crate::reload`])
-    /// and incremental config edits — from IPC or the `config_set` /
-    /// `config_toggle` actions — all funnel through here, so they cannot
-    /// drift. When adding a backend re-init step for bar resources, add it
-    /// here rather than at a call site.
-    pub fn reinit_bar_resources(&mut self) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::startup::init_drw_and_schemes_impl(
-                &mut *ctx.x11_runtime,
-                &ctx.core.state.config,
-            );
-        }
-        crate::monitor::resync_monitor_ui_metrics(&mut self.core_mut().state);
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<crate::core_state::ActiveWmMode>) {
@@ -876,7 +787,7 @@ impl<'a> WmCtx<'a> {
             self.update_layout_preview(None);
             self.end_modal_keyboard();
         }
-        self.request_bar_update();
+        self.core_mut().bar.invalidate_content();
         self.refresh_key_grabs();
         previous_mode
     }
