@@ -14,11 +14,10 @@ use crate::backend::output::{
     AdaptiveSyncPolicy, MonitorModeRequest, OutputHeadConfiguration, OutputId,
     OutputMode as TransactionOutputMode, OutputPlacement, OutputPositionSource, OutputSnapshot,
     OutputTransaction, OutputTransactionError, OutputTransactionKind, OutputTransactionOrigin,
-    OutputTransform, RequestId, plan_automatic_output_positions, position_after,
+    RequestId, plan_automatic_output_positions, position_after,
 };
 use crate::backend::wayland::output::{
-    MIN_OUTPUT_DIM, clamp_output_size, from_smithay_transform, to_smithay_mode,
-    to_smithay_transform,
+    clamp_output_size, from_smithay_transform, to_smithay_mode, to_smithay_transform,
 };
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
@@ -27,41 +26,6 @@ use super::protocols::output_management::OutputManagementOutputState;
 use super::state::WaylandState;
 
 struct OutputGlobal(Mutex<Option<GlobalId>>);
-
-//BOZO: should this be a method?
-fn logical_output_size(configuration: &OutputHeadConfiguration) -> Size {
-    let mode = configuration.mode.unwrap_or(TransactionOutputMode {
-        width: MIN_OUTPUT_DIM,
-        height: MIN_OUTPUT_DIM,
-        refresh_millihertz: 60_000,
-    });
-    let (width, height) = if matches!(
-        configuration.transform,
-        OutputTransform::Rotate90
-            | OutputTransform::Rotate270
-            | OutputTransform::Flipped90
-            | OutputTransform::Flipped270
-    ) {
-        (mode.height, mode.width)
-    } else {
-        (mode.width, mode.height)
-    };
-    let scale = if configuration.scale.is_finite() && configuration.scale > 0.0 {
-        configuration.scale
-    } else {
-        1.0
-    };
-    Size::new(
-        (f64::from(width) / scale).round() as i32,
-        (f64::from(height) / scale).round() as i32,
-    )
-}
-
-//BOZO: is this lacking docs? What is a head?
-fn head_rect(head: &OutputHeadConfiguration) -> Rect {
-    let size = logical_output_size(head);
-    Rect::new(head.position.x, head.position.y, size.w, size.h)
-}
 
 /// Pairs an applied snapshot realizes: both heads enabled, and the mirror
 /// already pinned to its source's scale. A snapshot from a transaction
@@ -390,7 +354,7 @@ impl WaylandNativeState {
             .filter(|head| head.enabled && !mirrors.contains(head.id.0.as_str()))
             .map(|head| OutputPlacement {
                 id: head.id.0.clone(),
-                rect: head_rect(head),
+                rect: head.logical_rect(),
                 source: self.output_position_source(&head.id.0),
             })
             .collect();
@@ -447,7 +411,7 @@ impl WaylandNativeState {
                 .heads
                 .iter()
                 .filter(|head| head.enabled && head.id.0 != name && !mirrors.contains(&head.id.0))
-                .map(head_rect)
+                .map(OutputHeadConfiguration::logical_rect)
                 .collect();
             let Some(head) = transaction.heads.iter_mut().find(|head| head.id.0 == name) else {
                 continue;
@@ -467,7 +431,7 @@ impl WaylandNativeState {
             .filter(|head| head.enabled && !mirrors.contains(&head.id.0))
             .map(|head| OutputPlacement {
                 id: head.id.0.clone(),
-                rect: head_rect(head),
+                rect: head.logical_rect(),
                 source: self.output_position_source(&head.id.0),
             })
             .collect();
@@ -573,13 +537,7 @@ impl WaylandNativeState {
         let known_outputs: Vec<_> = transaction
             .heads
             .iter()
-            .map(|head| {
-                let size = logical_output_size(head);
-                (
-                    head.id.0.clone(),
-                    Rect::new(head.position.x, head.position.y, size.w, size.h),
-                )
-            })
+            .map(|head| (head.id.0.clone(), head.logical_rect()))
             .collect();
 
         let outputs = self.output_management_state.outputs().to_vec();
@@ -630,9 +588,8 @@ impl WaylandNativeState {
 
             if let Some(ref pos) = config.position
                 && let Some(position) = MonitorPosition::parse(pos).and_then(|p| {
-                    let size = logical_output_size(head);
                     p.resolve(
-                        size,
+                        head.logical_size(),
                         known_outputs
                             .iter()
                             .map(|(name, rect)| (name.as_str(), *rect)),
@@ -748,8 +705,9 @@ impl WaylandNativeState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::output::OutputTransform;
 
-    fn configuration(transform: OutputTransform, scale: f64) -> OutputHeadConfiguration {
+    fn configuration(scale: f64) -> OutputHeadConfiguration {
         OutputHeadConfiguration {
             id: "test".into(),
             enabled: true,
@@ -759,18 +717,10 @@ mod tests {
                 refresh_millihertz: 60_000,
             }),
             position: Point::default(),
-            transform,
+            transform: OutputTransform::Normal,
             scale,
             adaptive_sync: None,
         }
-    }
-
-    #[test]
-    fn transaction_geometry_uses_logical_scaled_dimensions() {
-        assert_eq!(
-            logical_output_size(&configuration(OutputTransform::Normal, 1.5)),
-            Size::new(1280, 720)
-        );
     }
 
     fn mirror_map(pairs: &[(&str, &str)]) -> crate::output_mirror::MirrorMap {
@@ -790,7 +740,7 @@ mod tests {
                         configuration: OutputHeadConfiguration {
                             id: (*name).into(),
                             enabled: *enabled,
-                            ..configuration(OutputTransform::Normal, *scale)
+                            ..configuration(*scale)
                         },
                         modes: Vec::new(),
                         adaptive_sync_policy: AdaptiveSyncPolicy::Disabled,
@@ -1103,17 +1053,5 @@ mod tests {
         state.native.queue_output_policy_projection(&configs);
 
         assert_eq!(pending_head(&state, "DP-1").scale, 1.25);
-    }
-
-    #[test]
-    fn transaction_geometry_swaps_rotated_dimensions() {
-        assert_eq!(
-            logical_output_size(&configuration(OutputTransform::Rotate90, 2.0)),
-            Size::new(540, 960)
-        );
-        assert_eq!(
-            logical_output_size(&configuration(OutputTransform::Flipped270, 1.0)),
-            Size::new(1080, 1920)
-        );
     }
 }

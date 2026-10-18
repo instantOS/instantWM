@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::types::Point;
 use crate::types::Rect;
+use crate::types::Size;
 
 mod lid;
 pub use lid::{LidOutput, LidOutputPolicy, LidOutputProjection, OutputConnectorKind};
@@ -91,6 +92,16 @@ pub enum OutputTransform {
     Flipped270,
 }
 
+impl OutputTransform {
+    /// Whether this orientation swaps width and height.
+    pub const fn swaps_dimensions(self) -> bool {
+        matches!(
+            self,
+            Self::Rotate90 | Self::Rotate270 | Self::Flipped90 | Self::Flipped270
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AdaptiveSyncPolicy {
     Disabled,
@@ -98,6 +109,12 @@ pub enum AdaptiveSyncPolicy {
     Automatic,
 }
 
+/// Desired state of one output *head*.
+///
+/// A head is one output device (monitor or connector) as the backend sees it;
+/// the name comes from output-management protocols such as
+/// `zwlr_output_head_v1`, and X11 outputs are heads in the same sense. One
+/// transaction carries the desired state of every known head.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutputHeadConfiguration {
     pub id: OutputId,
@@ -128,6 +145,37 @@ impl OutputHeadConfiguration {
         self.mode = replacement;
         changed
     }
+
+    /// Extent of the head's region in logical pixels: its mode's size, swapped
+    /// for 90°/270° orientations and divided by its scale.
+    ///
+    /// A head without a selected mode covers no area. Only disabled heads may
+    /// lack one; validation requires a mode from every enabled head.
+    pub fn logical_size(&self) -> Size {
+        let Some(mode) = self.mode else {
+            return Size::default();
+        };
+        let (width, height) = if self.transform.swaps_dimensions() {
+            (mode.height, mode.width)
+        } else {
+            (mode.width, mode.height)
+        };
+        let scale = if self.scale.is_finite() && self.scale > 0.0 {
+            self.scale
+        } else {
+            1.0
+        };
+        Size::new(
+            (f64::from(width) / scale).round() as i32,
+            (f64::from(height) / scale).round() as i32,
+        )
+    }
+
+    /// The head's region in the global logical layout: its configured position
+    /// and [`Self::logical_size`].
+    pub fn logical_rect(&self) -> Rect {
+        Rect::from_position_and_size(self.position, self.logical_size())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,11 +184,14 @@ pub enum OutputTransactionKind {
     Apply,
 }
 
+/// Complete desired configuration: one head entry per available output.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutputTransaction {
     pub heads: Vec<OutputHeadConfiguration>,
 }
 
+/// Hardware capabilities of one head: its selectable modes and whether the
+/// backend supports adaptive sync on it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputHeadCapabilities {
     pub id: OutputId,
@@ -148,6 +199,8 @@ pub struct OutputHeadCapabilities {
     pub adaptive_sync: bool,
 }
 
+/// Authoritative state of one head after the backend applied a transaction:
+/// the resulting configuration plus what the hardware offers and uses.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutputHeadSnapshot {
     pub configuration: OutputHeadConfiguration,
@@ -524,6 +577,33 @@ mod tests {
         // A stale preferred mode must never reintroduce an unsupported mode.
         assert!(original.reconcile_mode(&[replacement], Some(old)));
         assert_eq!(original.mode, Some(replacement));
+    }
+
+    #[test]
+    fn logical_geometry_applies_scale_and_rotation() {
+        let mut configured = head("panel");
+        configured.position = Point::new(100, -50);
+        configured.scale = 1.5;
+        assert_eq!(configured.logical_size(), Size::new(1280, 720));
+        assert_eq!(configured.logical_rect(), Rect::new(100, -50, 1280, 720));
+
+        configured.transform = OutputTransform::Rotate90;
+        configured.scale = 2.0;
+        assert_eq!(configured.logical_size(), Size::new(540, 960));
+
+        configured.transform = OutputTransform::Flipped270;
+        configured.scale = 1.0;
+        assert_eq!(configured.logical_size(), Size::new(1080, 1920));
+    }
+
+    #[test]
+    fn a_head_without_a_mode_covers_no_area() {
+        let mut configured = head("dock");
+        configured.enabled = false;
+        configured.mode = None;
+        configured.position = Point::new(1920, 0);
+        assert_eq!(configured.logical_size(), Size::default());
+        assert_eq!(configured.logical_rect(), Rect::new(1920, 0, 0, 0));
     }
 
     fn capability(id: &str) -> OutputHeadCapabilities {
