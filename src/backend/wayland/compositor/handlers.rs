@@ -28,6 +28,7 @@ use smithay::{
         shm::ShmHandler,
         text_input::TextInputActivation,
         virtual_keyboard::{VirtualKeyboardBackend, VirtualKeyboardHandler},
+        virtual_pointer::{VirtualPointerBackend, VirtualPointerHandler},
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
         xwayland_shell::XWaylandShellHandler,
     },
@@ -40,7 +41,7 @@ use super::{
     state::{WaylandClientState, WaylandState},
 };
 
-use crate::backend::wayland::input::handle_virtual_keyboard_event;
+use crate::backend::wayland::input::{handle_virtual_keyboard_event, handle_virtual_pointer_event};
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
@@ -705,6 +706,16 @@ impl DrmSyncobjHandler for WaylandState {
 impl VirtualKeyboardHandler for WaylandState {
     fn process_virtual_keyboard_event(&mut self, event: InputEvent<VirtualKeyboardBackend>) {
         handle_virtual_keyboard_event(self, event);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// zwlr_virtual_pointer_v1 handler
+// ---------------------------------------------------------------------------
+
+impl VirtualPointerHandler for WaylandState {
+    fn process_virtual_pointer_event(&mut self, event: InputEvent<VirtualPointerBackend>) {
+        handle_virtual_pointer_event(self, event);
     }
 }
 

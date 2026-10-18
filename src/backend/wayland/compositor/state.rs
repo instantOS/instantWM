@@ -62,6 +62,7 @@ use smithay::{
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
+        virtual_pointer::VirtualPointerManagerState,
         xdg_activation::XdgActivationState,
         xdg_foreign::XdgForeignState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
@@ -184,6 +185,7 @@ pub struct WaylandNativeState {
     pub tablet_manager_state: TabletManagerState,
     pub viewporter_state: ViewporterState,
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
+    pub virtual_pointer_manager_state: VirtualPointerManagerState,
     pub text_input_manager_state: TextInputManagerState,
     pub input_method_manager_state: InputMethodManagerState,
     pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
@@ -545,6 +547,8 @@ impl WaylandState {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let virtual_keyboard_manager_state =
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
+        let virtual_pointer_manager_state =
+            VirtualPointerManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_manager_state = TextInputManagerState::new::<Self>(&dh);
         let input_method_manager_state = InputMethodManagerState::new::<Self, _>(&dh, |_| true);
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
@@ -615,6 +619,7 @@ impl WaylandState {
                 tablet_manager_state,
                 viewporter_state,
                 virtual_keyboard_manager_state,
+                virtual_pointer_manager_state,
                 text_input_manager_state,
                 input_method_manager_state,
                 keyboard_shortcuts_inhibit_state,

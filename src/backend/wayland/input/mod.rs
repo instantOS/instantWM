@@ -17,6 +17,7 @@ pub mod touch;
 // Re-export public APIs
 pub use keyboard::{handle_keyboard, handle_virtual_keyboard_event};
 pub use modifiers::modifiers_to_x11_mask;
+pub use pointer::handle_virtual_pointer_event;
 
 use crate::backend::wayland::output::clamp_output_size;
 use crate::monitor::refresh_monitor_layout;

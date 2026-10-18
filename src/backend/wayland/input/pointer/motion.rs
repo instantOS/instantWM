@@ -91,7 +91,7 @@ impl MotionEvent {
 /// This is the origin-aware equivalent of `derived.display` / `total_size`,
 /// which only track `max(x+w), max(y+h)` and silently drop negative layouts.
 /// Returns `None` when no output is mapped (tests, early startup).
-fn layout_bounds_from_space(state: &WaylandState) -> Option<Rectangle<i32, Logical>> {
+pub(super) fn layout_bounds_from_space(state: &WaylandState) -> Option<Rectangle<i32, Logical>> {
     state
         .native
         .space
