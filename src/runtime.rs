@@ -46,7 +46,7 @@ pub struct TickResult {
 /// 3. IPC command dispatch
 /// 4. monitor configuration work
 /// 5. layout work
-/// 6. dirty-bar redraw (backend-routed)
+/// 6. accumulated bar reconciliation (backend-routed)
 pub fn event_loop_tick_with_options(
     ctx: &mut WmCtx<'_>,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
@@ -54,7 +54,7 @@ pub fn event_loop_tick_with_options(
 ) -> TickResult {
     let systray_updated = ctx.core_mut().poll_systray();
     if crate::systray::instantmenu::drive_instantmenu_menu(ctx.core_mut()) {
-        ctx.core_mut().bar.mark_dirty();
+        ctx.core_mut().bar.invalidate_content();
     }
     let status_handled = ctx.core_mut().bar.drain_status_updates();
     // A finished region selection may resize a window, so it drains before
@@ -66,7 +66,7 @@ pub fn event_loop_tick_with_options(
 
     {
         let _ = crate::mouse::interaction::reconcile_capture(ctx);
-        ctx.redraw_bars_if_dirty();
+        ctx.reconcile_bars();
     }
     TickResult {
         ipc_handled: ipc_handled || status_handled || region_selection_applied,
@@ -322,6 +322,31 @@ mod tests {
     use crate::types::MonitorId;
 
     use std::time::Duration;
+
+    #[test]
+    fn empty_desktop_reconciles_bars_while_layout_is_deferred() {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        let monitor = crate::test_support::push_monitor(&mut wm.core.state.model);
+        wm.core.work.layout.mark_monitor(monitor);
+        wm.core.bar.invalidate(crate::bar::BarChange::Appearance);
+        let result = wm.with_ctx(|ctx| {
+            super::event_loop_tick_with_options(
+                ctx,
+                &mut None,
+                TickOptions {
+                    defer_layout_while_animations_active: true,
+                    animations_active: true,
+                },
+            )
+        });
+        assert!(!result.layout_applied);
+        assert!(wm.core.work.layout.is_pending());
+        assert_eq!(wm.core.bar.take_pending_change(), None);
+        assert!(
+            wm.core.bar.needs_redraw(),
+            "Wayland painting completes asynchronously"
+        );
+    }
 
     #[test]
     fn animation_interval_tracks_refresh_rate() {

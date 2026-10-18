@@ -310,7 +310,7 @@ pub fn update_window_properties(
         core.queue_layout_for_monitor(outcome.current_monitor);
     }
     if outcome.bar_changed {
-        core.bar.mark_dirty();
+        core.bar.invalidate_content();
     }
     core.state.model.selected_win() != previous_selection
 }

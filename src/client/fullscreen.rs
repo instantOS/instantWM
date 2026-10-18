@@ -77,7 +77,9 @@ fn apply_fullscreen_transition(
                 );
             }
             ctx.apply_entered_fullscreen_effects(win, monitor_rect);
-            ctx.request_bar_geometry_update(monitor_id);
+            ctx.core_mut()
+                .bar
+                .invalidate(crate::bar::BarChange::Presentation);
             sync_z_order(ctx);
         }
         FullscreenChange::Exited { restore_rect }

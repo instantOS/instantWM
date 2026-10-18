@@ -14,37 +14,27 @@
 //! **Persistence:** edits made through this module live in the running WM
 //! only — `reload` reloads from disk and discards them.
 
+use crate::bar::BarChange;
 use crate::core_state::CoreState;
 use crate::types::Monitor;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
-/// Follow-up work a config edit requires.
-///
-/// Each applier lives with its caller: the IPC handler applies effects with
-/// a full [`crate::wm::WaylandWm`], the named actions with a
-/// [`crate::contexts::WmCtx`]. Values are backend-agnostic so both can.
+/// Shared policy updates or backend projections required by a validated edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigEffect {
-    /// Nothing beyond the state write.
     None,
-    /// Full bar config change: sync per-monitor bar state, rebuild bar
-    /// resources, redraw, re-arrange.
-    Bar,
-    /// An explicit bar visibility write also clears per-view overrides.
-    BarVisibility,
-    /// Redraw the bar and re-arrange windows.
-    Rearrange,
-    /// Rebuild bar resources (colours/fonts), redraw, re-arrange.
-    Recolor,
-    /// Request a bar redraw.
-    BarUpdate,
-    /// Re-apply input device configuration.
+    /// Update monitor bar policy and metrics before scheduling layout.
+    BarPolicy {
+        clear_visibility_overrides: bool,
+    },
+    Layout,
+    /// Update shared font metrics before scheduling layout and appearance.
+    Fonts,
+    Bar(BarChange),
     Input,
-    /// Re-apply monitor configuration.
     Monitors,
-    /// Re-apply cursor configuration and refresh the bar.
     Cursor,
 }
 
@@ -112,16 +102,23 @@ impl RuntimeConfigSection {
     /// The follow-up work an edit to this section requires.
     fn effect(self, field: &str) -> ConfigEffect {
         match self {
-            Self::Bar if field == "show" => ConfigEffect::BarVisibility,
-            Self::Bar if field == "tag_slots" => ConfigEffect::BarUpdate,
-            Self::Bar => ConfigEffect::Bar,
-            Self::Window | Self::Layout => ConfigEffect::Rearrange,
-            Self::Colors | Self::Fonts => ConfigEffect::Recolor,
-            // `request_bar_update` is the backend-agnostic "mark dirty".
-            Self::Systray | Self::Tags => ConfigEffect::BarUpdate,
+            Self::Bar if field == "show" => ConfigEffect::BarPolicy {
+                clear_visibility_overrides: true,
+            },
+            Self::Bar if field == "tag_slots" => ConfigEffect::Bar(BarChange::Content),
+            Self::Bar => ConfigEffect::BarPolicy {
+                clear_visibility_overrides: false,
+            },
+            Self::Window | Self::Layout => ConfigEffect::Layout,
+            Self::Colors => ConfigEffect::Bar(BarChange::Appearance),
+            Self::Fonts => ConfigEffect::Fonts,
+            Self::Systray => ConfigEffect::Bar(BarChange::Presentation),
+            Self::Tags => ConfigEffect::Bar(BarChange::Content),
             Self::Cursor => ConfigEffect::Cursor,
             Self::Input => ConfigEffect::Input,
-            Self::Monitors if field.ends_with(".tag_slots") => ConfigEffect::BarUpdate,
+            Self::Monitors if field.ends_with(".tag_slots") => {
+                ConfigEffect::Bar(BarChange::Content)
+            }
             Self::Monitors => ConfigEffect::Monitors,
             // Focus policy is read fresh on every key press, so a write only
             // has to land in the config.

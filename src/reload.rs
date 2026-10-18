@@ -14,28 +14,22 @@ pub fn reload_config(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     ctx.core_mut().work.queue_monitor_config_apply();
     ctx.core_mut().work.queue_input_config_apply();
     ctx.core_mut().work.queue_cursor_config_apply();
-    ctx.core_mut().bar.mark_dirty();
 
     crate::keyboard_layout::init_keyboard_layout(ctx);
     if previous_status_command != ctx.core().state.config.status_command {
         ctx.core_mut().start_status_sources();
     }
 
-    // Backend-owned bar resources must track the new config (X11 DrawContext
-    // rebuild and per-monitor bar metric resync). The choreography is owned by
-    // `WmCtx::reinit_bar_resources` so runtime updates and full reloads cannot drift.
-    ctx.reinit_bar_resources();
+    // Layout reads the scaled metrics immediately. Native resources and bar
+    // surfaces are projected once after the tick's monitor/layout work.
+    crate::monitor::resync_monitor_ui_metrics(&mut ctx.core_mut().state);
+    ctx.core_mut()
+        .bar
+        .invalidate(crate::bar::BarChange::Appearance);
 
-    // Per-backend config projection: X11 re-renders bars/status from the new
-    // DrawContext and refreshes its passive grabs; Wayland needs nothing
-    // beyond `reinit_bar_resources` above.
-    {
-        ctx.refresh_bar_content();
-        ctx.refresh_status_content();
-        ctx.update_ewmh_desktop_props();
-        ctx.refresh_key_grabs();
-        crate::focus::focus(ctx, None);
-    }
+    ctx.update_ewmh_desktop_props();
+    ctx.refresh_key_grabs();
+    crate::focus::focus(ctx, None);
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
     crate::startup::autostart::run_exec_commands(&ctx.core().state.config.exec);

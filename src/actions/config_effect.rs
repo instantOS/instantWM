@@ -1,5 +1,4 @@
 use crate::contexts::WmCtx;
-use crate::layouts::ArrangeAnimation;
 
 /// Apply the follow-up work a runtime-config edit requires.
 ///
@@ -12,31 +11,33 @@ pub(crate) fn apply_config_effect(
     use crate::config::runtime::{ConfigEffect, sync_bar_config_to_monitors};
     match effect {
         ConfigEffect::None => {}
-        ConfigEffect::Bar | ConfigEffect::BarVisibility => {
-            sync_bar_config_to_monitors(
-                &mut ctx.core_mut().state,
-                effect == ConfigEffect::BarVisibility,
-            );
-            ctx.reinit_bar_resources();
-            ctx.request_bar_update();
-            crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
+        ConfigEffect::BarPolicy {
+            clear_visibility_overrides,
+        } => {
+            sync_bar_config_to_monitors(&mut ctx.core_mut().state, clear_visibility_overrides);
+            crate::monitor::resync_monitor_ui_metrics(&mut ctx.core_mut().state);
+            ctx.core_mut()
+                .bar
+                .invalidate(crate::bar::BarChange::Presentation);
+            ctx.core_mut().queue_layout_for_all_monitors_urgent();
         }
-        ConfigEffect::Rearrange => {
-            ctx.request_bar_update();
-            crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
+        ConfigEffect::Layout => {
+            ctx.core_mut().bar.invalidate_content();
+            ctx.core_mut().queue_layout_for_all_monitors_urgent();
         }
-        ConfigEffect::Recolor => {
-            ctx.reinit_bar_resources();
-            ctx.request_bar_update();
-            crate::layouts::manager::arrange(ctx, None, ArrangeAnimation::Configured);
+        ConfigEffect::Fonts => {
+            crate::monitor::resync_monitor_ui_metrics(&mut ctx.core_mut().state);
+            ctx.core_mut()
+                .bar
+                .invalidate(crate::bar::BarChange::Appearance);
+            ctx.core_mut().queue_layout_for_all_monitors_urgent();
         }
-        // `request_bar_update` is the backend-agnostic "mark dirty".
-        ConfigEffect::BarUpdate => ctx.request_bar_update(),
+        ConfigEffect::Bar(change) => ctx.core_mut().bar.invalidate(change),
         ConfigEffect::Input => ctx.core_mut().work.queue_input_config_apply(),
         ConfigEffect::Monitors => ctx.core_mut().work.queue_monitor_config_apply(),
         ConfigEffect::Cursor => {
             ctx.core_mut().work.queue_cursor_config_apply();
-            ctx.request_bar_update();
+            ctx.core_mut().bar.invalidate_content();
         }
     }
 }

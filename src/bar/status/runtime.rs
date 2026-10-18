@@ -28,7 +28,7 @@ impl crate::bar::BarState {
         }
         runtime.status = update.blocks;
         runtime.status_click_events = update.click_events;
-        self.mark_dirty();
+        self.invalidate_content();
         true
     }
 }

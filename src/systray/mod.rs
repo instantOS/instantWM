@@ -69,7 +69,7 @@ pub(crate) fn close_menu(core: &mut WmCore) -> bool {
     if let Some(runtime) = core.bar.systray_host.runtime.as_ref() {
         runtime.close_menu(session_id);
     }
-    core.bar.mark_dirty();
+    core.bar.invalidate_content();
     true
 }
 
@@ -130,7 +130,7 @@ pub(crate) fn press_icon(core: &mut WmCore, idx: usize, button: MouseButton, roo
     if let Some(session_id) = runtime.dispatch_click_item(service, path, button, root)
         && core.bar.systray_host.menu.begin(session_id)
     {
-        core.bar.mark_dirty();
+        core.bar.invalidate_content();
     }
 }
 

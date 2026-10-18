@@ -32,7 +32,7 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
 }
 
 pub fn unhide_all(ctx: &mut WmCtx) {
@@ -82,7 +82,9 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         ctx.core().state.model.selected_monitor_id()
     };
 
-    ctx.refresh_top_bars();
+    ctx.core_mut()
+        .bar
+        .invalidate(crate::bar::BarChange::Presentation);
 
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_idx);
 }
@@ -111,9 +113,10 @@ pub fn set_bottom_bar_shown(ctx: &mut WmCtx, shown: bool) {
         monitor.show_bottom_bar = shown;
     }
 
+    ctx.core_mut()
+        .bar
+        .invalidate(crate::bar::BarChange::Presentation);
     for monitor_id in changed_monitors {
-        ctx.refresh_monitor_bottom_bar(monitor_id);
-
         ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
     }
 }

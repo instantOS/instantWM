@@ -61,7 +61,7 @@ pub(crate) fn remove_managed_client(
 
     crate::focus::refresh_focus_after_selection(ctx, previous_focus, None);
     crate::layouts::arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
-    ctx.request_bar_update();
+    ctx.core_mut().bar.invalidate_content();
     ctx.sync_client_list();
     Some(removed)
 }

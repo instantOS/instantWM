@@ -215,7 +215,6 @@ fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, monitor_id: MonitorId, was_hi
     }
 
     arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
-    ctx.request_bar_geometry_update(monitor_id);
     crate::layouts::sync_z_order(ctx);
 }
 

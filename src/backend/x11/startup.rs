@@ -75,17 +75,12 @@ fn wm_init(wm: &mut Wm) {
 
     // After atoms + drw exist, we can verify tag naming and create bars.
     crate::keyboard_layout::init_keyboard_layout(&mut wm.x11_ctx());
+    wm.core.bar.invalidate(crate::bar::BarChange::Presentation);
+    wm.x11_ctx().reconcile_bars();
     {
         let WmCtx::X11(mut ctx) = wm.x11_ctx() else {
             return;
         };
-        crate::backend::x11::bar::reconcile_bar_windows(
-            ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray,
-        );
-        crate::backend::x11::bar::update_status(ctx.core, ctx.x11_runtime);
         if !crate::backend::x11::keyboard::refresh_keyboard_mapping(&ctx.x11, ctx.x11_runtime) {
             log::warn!("initial X11 keyboard mapping read failed; retrying once");
             assert!(
@@ -248,7 +243,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 ///
 /// Takes only the X11 runtime and the effective config so both the startup
 /// path ([`init_drw_and_schemes`]) and
-/// [`WmCtx::reinit_bar_resources`] share it.
+/// bar appearance reconciliation share it.
 pub fn init_drw_and_schemes_impl(
     x11_runtime: &mut X11RuntimeConfig,
     config: &crate::core_state::EffectiveConfig,

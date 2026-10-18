@@ -346,7 +346,6 @@ pub(super) fn sync_xembed_tray(
     let tray_x = tray_right - manager_width as i32;
 
     core.bar.runtime.external_tray_width = reserved_width as i32;
-    core.bar.mark_dirty();
 
     let conn = x11.conn;
 

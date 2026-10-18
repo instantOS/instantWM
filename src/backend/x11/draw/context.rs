@@ -34,13 +34,12 @@ use super::ffi::{
     PICT_STANDARD_ARGB32, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreateImage,
     XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen,
     XDefaultVisual, XDestroyImage, XDrawArc, XDrawRectangle, XFillArc, XFillPolygon,
-    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMoveResizeWindow,
-    XOpenDisplay, XPutImage, XRenderColor, XRenderComposite, XRenderCreatePicture,
-    XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture, XSetForeground,
-    XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue,
-    XftColorFree, XftDraw, XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose,
-    XftFontMatch, XftFontOpenName, XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8,
-    XlibGc, Z_PIXMAP,
+    XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay, XPutImage,
+    XRenderColor, XRenderComposite, XRenderCreatePicture, XRenderFindStandardFormat,
+    XRenderFindVisualFormat, XRenderFreePicture, XSetForeground, XSetLineAttributes, XftCharExists,
+    XftColor, XftColorAllocName, XftColorAllocValue, XftColorFree, XftDraw, XftDrawCreate,
+    XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName,
+    XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
 };
 use super::font::Fnt;
 
@@ -409,35 +408,6 @@ impl DrawContext {
                 bounds.y,
             );
             let _ = XFlush(self.display);
-        }
-    }
-
-    /// Queue geometry for an Xlib-owned presentation target.
-    ///
-    /// The owner must call [`Self::flush`] at its transaction boundary. This
-    /// keeps geometry batching explicit without relying on a later draw.
-    pub fn queue_move_resize_window(&self, window: Window, bounds: WmRect) {
-        if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
-            return;
-        }
-        unsafe {
-            let _ = XMoveResizeWindow(
-                self.display,
-                window,
-                bounds.x,
-                bounds.y,
-                bounds.w as u32,
-                bounds.h as u32,
-            );
-        }
-    }
-
-    /// Commit queued Xlib presentation requests without blocking for a reply.
-    pub fn flush(&self) {
-        if !self.display.is_null() {
-            unsafe {
-                let _ = XFlush(self.display);
-            }
         }
     }
 
