@@ -2,12 +2,18 @@
 
 pub(crate) mod recovery;
 
+#[cfg(test)]
+mod virtual_keyboard_tests;
+
 use crate::contexts::WmCtx;
-use smithay::backend::input::{InputBackend, KeyboardKeyEvent};
-use smithay::input::keyboard::{FilterResult, KeyboardHandle};
+use smithay::backend::input::{Event, InputBackend, InputEvent, KeyboardKeyEvent};
+use smithay::input::keyboard::{FilterResult, KeyboardHandle, KeyboardSource};
 use smithay::wayland::input_method::InputMethodSeat;
 use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
 use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::virtual_keyboard::{
+    VirtualKeyboardBackend, VirtualKeyboardDevice, VirtualKeyboardSpecialEvent,
+};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
@@ -116,10 +122,24 @@ pub fn vt_switch_target(
     None
 }
 
-/// Handle keyboard events.
+/// Handle keyboard events from a physical keyboard.
 pub fn handle_keyboard<B: InputBackend>(
     state: &mut WaylandState,
     keyboard_handle: &KeyboardHandle<WaylandState>,
+    event: impl KeyboardKeyEvent<B>,
+) {
+    handle_keyboard_from_source(state, keyboard_handle, KeyboardSource::MAIN, event);
+}
+
+/// Handle keyboard events attributed to a specific xkb input source.
+///
+/// Physical devices share [`KeyboardSource::MAIN`]; every virtual keyboard
+/// carries its own source, so a keycode held through one device is not released
+/// by another device releasing the same code.
+fn handle_keyboard_from_source<B: InputBackend>(
+    state: &mut WaylandState,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    source: KeyboardSource,
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
@@ -131,19 +151,21 @@ pub fn handle_keyboard<B: InputBackend>(
     let suppression = shortcut_suppression(state, keyboard_handle);
     let key_code = event.key_code();
     let key_state = event.state();
-    // Smithay 73f2570's input_from_source drops the keyboard lock before
-    // invoking this filter. Borrow its `data` directly for shared WM actions;
-    // no pointer bridge or second compositor borrow is needed. Run actions
-    // before forwarding, since they can change focus and interception.
+    let time = event.time();
+    // Smithay drops the keyboard lock before invoking this filter, so `data`
+    // borrows the compositor directly for shared WM actions; no pointer bridge
+    // or second compositor borrow is needed. Run actions before forwarding,
+    // since they can change focus and interception.
     // Do not move this work into SeatHandler::focus_changed: that callback
-    // runs with the keyboard lock held. input_intercept/input_forward also
-    // loses input_from_source's is_transition handling for multiple sources.
-    keyboard_handle.input(
+    // runs with the keyboard lock held. `input_intercept` reports event pairs
+    // that are not a transition for this source (a keycode already held or
+    // released on it, or held elsewhere) as absorbed, so no binding runs and
+    // nothing is forwarded twice.
+    let intercepted = keyboard_handle.input_intercept(
+        source,
         state,
         key_code,
         key_state,
-        serial,
-        event.time(),
         |data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
                 if data.release_shortcut_recovery_key(key_code) {
@@ -244,6 +266,99 @@ pub fn handle_keyboard<B: InputBackend>(
             FilterResult::Forward
         },
     );
+    let Some((filter_result, mods_changed)) = intercepted else {
+        return;
+    };
+    if matches!(filter_result, FilterResult::Forward) {
+        keyboard_handle.input_forward(state, key_code, key_state, serial, time, mods_changed);
+    }
+}
+
+/// Handle an event from a `zwp_virtual_keyboard_v1` device.
+///
+/// A virtual keyboard is an ordinary input device with its own keymap and
+/// key-tracking source, so its keys take the same path as physical ones with
+/// two differences: the keymap it sent has to be activated before its keycodes
+/// mean anything, and a client that holds the keyboard grab and forwards keys
+/// through its own virtual keyboard must not have those keys delivered back
+/// into that grab.
+///
+/// These events are client-generated, so they deliberately do not count as
+/// user activity: a synthetic key from `wtype` must not keep a screen awake.
+pub fn handle_virtual_keyboard_event(
+    state: &mut WaylandState,
+    event: InputEvent<VirtualKeyboardBackend>,
+) {
+    match event {
+        // The device becomes usable with its first keymap request; later
+        // requests replace it.
+        InputEvent::DeviceAdded { device }
+        | InputEvent::Special(VirtualKeyboardSpecialEvent::KeymapChanged { device }) => {
+            activate_virtual_keyboard_keymap(state, &device);
+        }
+        InputEvent::Keyboard { event } => {
+            let device = Event::device(&event);
+            let keyboard = state.native.keyboard.clone();
+            // An input method holds a keyboard grab and forwards every key it
+            // did not handle through its own virtual keyboard. Delivering those
+            // into the grab hands them back to their sender, so they bypass
+            // both the grab and this compositor's filter: the key already ran
+            // through both on its way to the grab client.
+            let sender_holds_grab = device.client().is_some_and(|client| {
+                state.native.seat.input_method().keyboard_grab_client() == Some(client)
+            });
+            if sender_holds_grab {
+                keyboard.input_forward_bypassing_grab(
+                    state,
+                    event.key_code(),
+                    event.state(),
+                    SERIAL_COUNTER.next_serial(),
+                    event.time(),
+                    true,
+                );
+                return;
+            }
+            handle_keyboard_from_source(state, &keyboard, device.source(), event);
+        }
+        InputEvent::Special(VirtualKeyboardSpecialEvent::Modifiers {
+            mods_depressed,
+            mods_latched,
+            mods_locked,
+            group,
+            ..
+        }) => {
+            let keyboard = state.native.keyboard.clone();
+            keyboard.with_xkb_state(state, |mut context| {
+                context.set_modifier_mask(mods_depressed, mods_latched, mods_locked, group);
+            });
+        }
+        // Keys the device still held were released as ordinary key events
+        // before this one. What remains is the seat keymap: if the device
+        // installed one, put the compositor's layout back, which also rebuilds
+        // the xkb state and clears the masks it applied through `modifiers`.
+        //
+        // A device that sent `no_keymap` never replaced the seat keymap, and
+        // its masks are left alone: they are absolute and shared with the
+        // physical keyboard, so clearing them would drop modifiers the virtual
+        // keyboard did not set.
+        InputEvent::DeviceRemoved { device } if device.keymap().is_some() => {
+            state.restore_keyboard_layout();
+        }
+        _ => {}
+    }
+}
+
+/// Activate the keymap a virtual keyboard sent so its keycodes resolve.
+fn activate_virtual_keyboard_keymap(state: &mut WaylandState, device: &VirtualKeyboardDevice) {
+    // `no_keymap` means the client sends keycodes for the seat keymap, so there
+    // is nothing to activate.
+    let Some(keymap) = device.keymap() else {
+        return;
+    };
+    let keyboard = state.native.keyboard.clone();
+    if let Err(err) = keyboard.set_keymap_from_string(state, keymap.to_string()) {
+        log::warn!("Failed to activate virtual keyboard keymap: {err}");
+    }
 }
 
 #[cfg(test)]

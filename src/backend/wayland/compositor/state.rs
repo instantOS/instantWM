@@ -845,6 +845,26 @@ impl WaylandState {
             .map_err(|e| format!("failed to apply Wayland keyboard layout: {e}"))
     }
 
+    /// Re-install the compositor's configured keyboard layout.
+    ///
+    /// Used after something else replaced the seat keymap, e.g. a virtual
+    /// keyboard with a keymap of its own that is now gone: without this,
+    /// physical keycodes keep resolving through the client's keymap.
+    pub(crate) fn restore_keyboard_layout(&mut self) {
+        let layouts = &self.wm.core.state.interaction.keyboard_layout;
+        if layouts.is_empty() {
+            // Nothing is configured, so the seat belongs on the default xkb
+            // config it was created with.
+            let keyboard = self.native.keyboard.clone();
+            if let Err(err) = keyboard.set_xkb_config(self, XkbConfig::default()) {
+                log::warn!("Failed to restore the default keyboard layout: {err}");
+            }
+            return;
+        }
+        let current = layouts.current;
+        crate::keyboard_layout::set_keyboard_layout(&mut self.ctx(), current);
+    }
+
     /// Flush pending data to clients.
     pub fn flush(&mut self) {
         self.native.space.refresh();

@@ -1,4 +1,5 @@
 use smithay::{
+    backend::input::InputEvent,
     backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::PopupKind,
@@ -25,6 +26,8 @@ use smithay::{
         pointer_warp::PointerWarpHandler,
         seat::WaylandFocus,
         shm::ShmHandler,
+        text_input::TextInputActivation,
+        virtual_keyboard::{VirtualKeyboardBackend, VirtualKeyboardHandler},
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
         xwayland_shell::XWaylandShellHandler,
     },
@@ -36,6 +39,8 @@ use super::{
     focus::KeyboardFocusTarget,
     state::{WaylandClientState, WaylandState},
 };
+
+use crate::backend::wayland::input::handle_virtual_keyboard_event;
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
@@ -688,6 +693,25 @@ impl DrmSyncobjHandler for WaylandState {
         self.native.drm_syncobj_state.as_mut()
     }
 }
+
+// ---------------------------------------------------------------------------
+// zwp_virtual_keyboard_v1 handler
+// ---------------------------------------------------------------------------
+
+impl VirtualKeyboardHandler for WaylandState {
+    fn process_virtual_keyboard_event(&mut self, event: InputEvent<VirtualKeyboardBackend>) {
+        handle_virtual_keyboard_event(self, event);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// zwp_text_input_v3
+// ---------------------------------------------------------------------------
+
+/// Required by the `zwp_text_input_v3` dispatch. No compositor-side policy
+/// hangs off activation yet; the hooks are the single place a future IME
+/// indicator would observe text input state.
+impl TextInputActivation for WaylandState {}
 
 impl InputMethodHandler for WaylandState {
     fn new_popup(&mut self, surface: PopupSurface) {

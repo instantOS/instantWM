@@ -27,7 +27,7 @@ dirs = "6.0"
 xcursor = "0.3"
 
 # Wayland compositor support via Smithay
-smithay = { version = "0.7.0", git = "https://github.com/Smithay/smithay.git", rev = "73f2570c095de0b2636ae57d091164ee994edc90", default-features = false, features = [
+smithay = { version = "0.7.0", git = "https://github.com/Smithay/smithay.git", rev = "023b78b1c5a05ca512767cacc07efca55fae8be4", default-features = false, features = [
     "backend_winit",
     "backend_drm",
     "backend_gbm",
@@ -58,12 +58,9 @@ png = "0.18"
 [dev-dependencies]
 tempfile = "3"
 wayland-client = "0.31"
+wayland-protocols-misc = { version = "0.3", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
-
-[patch.crates-io]
-# Force calloop 0.14.4 for all transitive dependencies that require 0.13.0
-calloop = { git = "https://github.com/Smithay/calloop.git", tag = "v0.14.4" }
 
 [profile.release]
 opt-level = 3
