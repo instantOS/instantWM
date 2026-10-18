@@ -787,6 +787,53 @@ mod tests {
     use crate::wm::WaylandWm as Wm;
 
     #[test]
+    fn transient_parent_updates_reach_managed_dialogs_and_can_be_cleared() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let monitor = push_monitor_with(&mut state.wm.core.state.model, |monitor| {
+            monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+        });
+        let parent = WindowId(90);
+        let dialog = WindowId(91);
+        for win in [parent, dialog] {
+            add_client(
+                &mut state.wm.core.state.model,
+                monitor,
+                Client {
+                    win,
+                    geo: Rect::new(100, 100, 800, 600),
+                    mode: ClientMode::floating(),
+                    ..Client::default()
+                },
+            );
+        }
+        state.native.push_command(WmCommand::UpdateTransientFor {
+            win: dialog,
+            parent: Some(parent),
+        });
+        drain_command_queue(&mut state);
+        assert_eq!(
+            state
+                .wm
+                .core
+                .state
+                .model
+                .client(dialog)
+                .unwrap()
+                .transient_for,
+            Some(parent)
+        );
+
+        state.native.push_command(WmCommand::UpdateTransientFor {
+            win: dialog,
+            parent: None,
+        });
+        drain_command_queue(&mut state);
+        let client = state.wm.core.state.model.client(dialog).unwrap();
+        assert_eq!(client.transient_for, None);
+        assert_eq!(client.placement(), ClientPlacement::Floating);
+    }
+
+    #[test]
     fn only_the_last_consecutive_motion_updates_an_active_drag() {
         assert!(!should_update_active_drag(true, true));
         assert!(should_update_active_drag(true, false));

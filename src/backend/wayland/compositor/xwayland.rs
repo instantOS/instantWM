@@ -471,6 +471,14 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::Opacity
             | WmWindowProperty::FrameExtents => {
                 apply_surface_policy(self, win, &window);
+                if matches!(property, WmWindowProperty::TransientFor) {
+                    let parent = window
+                        .is_transient_for()
+                        .and_then(|parent| self.native.window_id_for_x11_window(parent));
+                    self.native.push_command(
+                        super::super::commands::WmCommand::UpdateTransientFor { win, parent },
+                    );
+                }
                 if matches!(
                     property,
                     WmWindowProperty::TransientFor | WmWindowProperty::WindowType
