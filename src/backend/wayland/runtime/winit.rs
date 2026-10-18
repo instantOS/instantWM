@@ -113,6 +113,7 @@ pub fn run() -> ! {
     // events (input, resize, close) wake the event loop immediately
     // instead of requiring periodic polling.
     let kb = keyboard_handle.clone();
+    let pointer = pointer_handle.clone();
     loop_handle
         .insert_source(winit_loop, move |event, _, state| match event {
             WinitEvent::Resized { size, .. } => {
@@ -126,7 +127,7 @@ pub fn run() -> ! {
                 state.native.runtime.pending_winit_resize = usable_window_size(size);
             }
             WinitEvent::Input(event) => {
-                dispatch_winit_input(state, &kb, event);
+                dispatch_winit_input(state, &kb, &pointer, event);
             }
             WinitEvent::CloseRequested => {
                 state.native.runtime.winit_close_requested = true;
@@ -311,12 +312,27 @@ fn process_output_configurations(state: &mut WaylandState, output: &smithay::out
 }
 
 /// Dispatch a winit input event, pushing commands for deferred processing.
+///
+/// Gestures are the exception: they are forwarded to the seat right away, the
+/// same way the libinput path forwards them, because they carry no state the
+/// WM needs to see first.
 fn dispatch_winit_input(
     state: &mut WaylandState,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
+    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     event: InputEvent<smithay::backend::winit::WinitInput>,
 ) {
-    use smithay::backend::input::{PointerAxisEvent, PointerButtonEvent, PointerMotionEvent};
+    use smithay::backend::input::{
+        GestureBeginEvent as GestureBeginTrait, GestureEndEvent as GestureEndTrait,
+        GesturePinchUpdateEvent as GesturePinchUpdateTrait, PointerAxisEvent, PointerButtonEvent,
+        PointerMotionEvent,
+    };
+    use smithay::backend::winit::WinitInput;
+    use smithay::input::pointer::{
+        GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
+        GesturePinchUpdateEvent,
+    };
+    use smithay::utils::SERIAL_COUNTER;
 
     state.notify_activity();
     match event {
@@ -343,7 +359,6 @@ fn dispatch_winit_input(
                 }));
         }
         InputEvent::PointerMotion { event: motion } => {
-            use smithay::backend::winit::WinitInput;
             state
                 .native
                 .push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
@@ -382,6 +397,52 @@ fn dispatch_winit_input(
                     },
                     time: axis.time(),
                 }));
+        }
+        InputEvent::GesturePinchBegin { event } => {
+            let smithay_event = GesturePinchBeginEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: Event::<WinitInput>::time(&event),
+                fingers: GestureBeginTrait::fingers(&event),
+            };
+            pointer_handle.gesture_pinch_begin(state, &smithay_event);
+            pointer_handle.frame(state);
+        }
+        InputEvent::GesturePinchUpdate { event } => {
+            let smithay_event = GesturePinchUpdateEvent {
+                time: Event::<WinitInput>::time(&event),
+                delta: GesturePinchUpdateTrait::delta(&event),
+                scale: GesturePinchUpdateTrait::scale(&event),
+                rotation: GesturePinchUpdateTrait::rotation(&event),
+            };
+            pointer_handle.gesture_pinch_update(state, &smithay_event);
+            pointer_handle.frame(state);
+        }
+        InputEvent::GesturePinchEnd { event } => {
+            let smithay_event = GesturePinchEndEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: Event::<WinitInput>::time(&event),
+                cancelled: GestureEndTrait::cancelled(&event),
+            };
+            pointer_handle.gesture_pinch_end(state, &smithay_event);
+            pointer_handle.frame(state);
+        }
+        InputEvent::GestureHoldBegin { event } => {
+            let smithay_event = GestureHoldBeginEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: Event::<WinitInput>::time(&event),
+                fingers: GestureBeginTrait::fingers(&event),
+            };
+            pointer_handle.gesture_hold_begin(state, &smithay_event);
+            pointer_handle.frame(state);
+        }
+        InputEvent::GestureHoldEnd { event } => {
+            let smithay_event = GestureHoldEndEvent {
+                serial: SERIAL_COUNTER.next_serial(),
+                time: Event::<WinitInput>::time(&event),
+                cancelled: GestureEndTrait::cancelled(&event),
+            };
+            pointer_handle.gesture_hold_end(state, &smithay_event);
+            pointer_handle.frame(state);
         }
         InputEvent::TouchDown { event } => {
             let Some(position) = normalized_winit_touch_position(
