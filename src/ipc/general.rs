@@ -3,7 +3,7 @@ use crate::ipc_types::Response;
 
 pub fn set_wallpaper(ctx: &mut WmCtx<'_>, path: String) -> Response {
     match ctx.set_wallpaper(&path) {
-        Ok(()) => Response::Message(format!("Wallpaper set to {}", path)),
+        Ok(()) => Response::Message(format!("Wallpaper request accepted for {}", path)),
         Err(e) => Response::err(format!("Failed to set wallpaper: {}", e)),
     }
 }

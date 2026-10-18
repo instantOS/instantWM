@@ -1,7 +1,7 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::commands::{ConfigAction, TestAction};
+use ctl::commands::{ConfigAction, KeyboardAction, TestAction};
 use ctl::format::print_json;
 use ctl::{Cli, CommandKind, format_response};
 use instantwm::ipc_types::{IpcCommand, Response, TestCommand, WindowCommand};
@@ -49,6 +49,33 @@ fn run_local(command: CommandKind, json: bool, ignore_version: bool) -> Result<(
                 print_json(&actions);
             } else {
                 print!("{}", instantwm::actions::format_action_list(&actions));
+            }
+            Ok(())
+        }
+        CommandKind::Keyboard {
+            action: KeyboardAction::Available,
+        } => {
+            let output = std::process::Command::new("localectl")
+                .arg("list-x11-keymap-layouts")
+                .output()
+                .map_err(|error| format!("failed to list installed keyboard layouts: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "localectl exited with {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+            let layouts: Vec<_> = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect();
+            if json {
+                print_json(&layouts);
+            } else {
+                println!("{}", layouts.join("\n"));
             }
             Ok(())
         }
@@ -311,9 +338,19 @@ mod tests {
     }
 
     #[test]
+    fn configured_keyboard_layouts_are_queried_through_ipc() {
+        assert!(matches!(
+            ipc(&["keyboard", "list"]),
+            IpcCommand::Keyboard(instantwm::ipc_types::KeyboardCommand::List)
+        ));
+        assert!(Cli::try_parse_from(["instantwmctl", "keyboard", "list", "--all"]).is_err());
+    }
+
+    #[test]
     fn client_side_commands_are_not_sent() {
         for argv in [
             &["action", "--list"][..],
+            &["keyboard", "available"],
             &["config", "default"],
             &["test", "pointer-path", "0,0", "1,1"],
             &["test", "wait-windows", "2"],

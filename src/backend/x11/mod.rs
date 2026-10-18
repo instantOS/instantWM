@@ -24,7 +24,6 @@ unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
 /// X11-specific runtime configuration, owned only by X11 backend state.
-#[derive(Clone)]
 pub struct X11RuntimeConfig {
     pub wmatom: WmAtoms,
     pub netatom: NetAtoms,
@@ -39,6 +38,8 @@ pub struct X11RuntimeConfig {
     /// Server keyboard mapping, refreshed on `MappingNotify`.
     pub keyboard_mapping: X11KeyboardMapping,
     pub root: Window,
+    /// Event subscriptions owned by this connection for roots and managed clients.
+    pub(crate) subscriptions: subscriptions::EventSubscriptions,
     /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
     pub wm_check_win: Window,
     pub xlibdisplay: XlibDisplay,
@@ -98,6 +99,7 @@ impl Default for X11RuntimeConfig {
             xi2_touch_grabs: false,
             keyboard_mapping: X11KeyboardMapping::default(),
             root: 0,
+            subscriptions: subscriptions::EventSubscriptions::default(),
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             draw: None,
@@ -291,6 +293,7 @@ pub mod properties;
 pub mod randr;
 pub mod session;
 pub mod startup;
+pub(crate) mod subscriptions;
 pub mod systray;
 pub mod visibility;
 

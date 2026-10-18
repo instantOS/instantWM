@@ -55,8 +55,6 @@ pub fn run() {
 }
 
 fn wm_init(wm: &mut Wm) {
-    setup_signal_handlers();
-
     let (screen, root) = {
         let (conn, screen_num) = (&wm.backend.conn, wm.backend.screen_num);
         let screen = conn.setup().roots[screen_num].clone();
@@ -118,15 +116,6 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
     if let Some(snapshot) = crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, root) {
         data.x11_runtime.connected_outputs = snapshot.connected_names();
         data.x11_runtime.active_outputs = snapshot.active_names();
-    }
-}
-
-fn setup_signal_handlers() {
-    unsafe {
-        let mut sa: libc::sigaction = std::mem::zeroed();
-        libc::sigemptyset(&mut sa.sa_mask);
-        sa.sa_flags = libc::SA_NOCLDSTOP | libc::SA_NOCLDWAIT | libc::SA_RESTART;
-        libc::sigaction(libc::SIGCHLD, &sa, std::ptr::null_mut());
     }
 }
 

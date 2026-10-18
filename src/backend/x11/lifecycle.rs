@@ -89,7 +89,10 @@ pub fn manage(
     };
     // Subscribe before taking cached snapshots so a concurrent property
     // mutation always produces an invalidation event after the snapshot.
-    subscribe_manage_events(&ctx.x11, window);
+    if let Err(error) = subscribe_manage_events(&ctx.x11, ctx.x11_runtime, window) {
+        log::error!("cannot manage {window:?}: event subscription failed: {error}");
+        return;
+    }
     client.is_hidden =
         crate::backend::x11::visibility::get_state(&ctx.x11, ctx.x11_runtime.wmatom.state, window)
             == crate::backend::x11::constants::WM_STATE_ICONIC;
@@ -264,16 +267,17 @@ fn read_launch_context(
     crate::client::take_pending_launch(pending_launches, pid, startup_id.as_deref())
 }
 
-fn subscribe_manage_events(x11: &X11BackendRef, window: WindowId) {
+fn subscribe_manage_events(
+    x11: &X11BackendRef,
+    runtime: &mut X11RuntimeConfig,
+    window: WindowId,
+) -> Result<(), x11rb::errors::ConnectionError> {
     let mask = EventMask::ENTER_WINDOW
         | EventMask::FOCUS_CHANGE
         | EventMask::PROPERTY_CHANGE
         | EventMask::STRUCTURE_NOTIFY;
     let x11_window: Window = window.into();
-    let _ = x11.conn.change_window_attributes(
-        x11_window,
-        &ChangeWindowAttributesAux::new().event_mask(mask),
-    );
+    runtime.subscriptions.select(x11.conn, x11_window, mask)
 }
 
 fn initialize_floating_state(
@@ -321,10 +325,9 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
                     &ConfigureWindowAux::new().border_width(border_width),
                 );
             }
-            let _ = ctx.x11.conn.change_window_attributes(
-                x11_window,
-                &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
-            );
+            ctx.x11_runtime
+                .subscriptions
+                .release(ctx.x11.conn, x11_window, false);
             ungrab_client_buttons(&ctx.x11, ctx.x11_runtime, window);
             let _ = ctx
                 .x11
@@ -335,6 +338,11 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
         }
     }
 
+    if destroyed {
+        ctx.x11_runtime
+            .subscriptions
+            .release(ctx.x11.conn, window.into(), true);
+    }
     let mut tmp = ctx.wm_ctx();
     crate::client::lifecycle::remove_managed_client(&mut tmp, window);
 }

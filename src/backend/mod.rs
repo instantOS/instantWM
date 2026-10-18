@@ -44,41 +44,6 @@ pub enum BackendKind {
 }
 
 impl BackendKind {
-    /// Apply a desktop wallpaper by spawning the platform's setter tool.
-    ///
-    /// Wayland compositors have no root pixmap, so sessions delegate to
-    /// swaybg (restarting it if one is already running). X11 uses feh.
-    /// Fire-and-forget: the child outlives the call either way.
-    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
-        match self {
-            Self::X11 => Command::new("feh")
-                .arg("--bg-fill")
-                .arg(path)
-                .spawn()
-                .map(|_| ()),
-            Self::Wayland => {
-                let _ = Command::new("killall").arg("swaybg").status();
-                let spawned = Command::new("swaybg")
-                    .arg("-i")
-                    .arg(path)
-                    .arg("-m")
-                    .arg("fill")
-                    .spawn();
-                // Wayland has no SIGCHLD handler, so the replacement swaybg
-                // must be handed to the dedicated reaper thread (see
-                // [`BackendKind::reaps_children_via_signals`]) instead of
-                // accumulating as a zombie on every wallpaper change.
-                match spawned {
-                    Ok(child) if !self.reaps_children_via_signals() => {
-                        crate::util::reap_child_async(child);
-                        Ok(())
-                    }
-                    result => result.map(|_| ()),
-                }
-            }
-        }
-    }
-
     /// External tool that lets the user drag out a screen rectangle, used by
     /// the `draw_window` action.
     ///
@@ -93,14 +58,6 @@ impl BackendKind {
             Self::X11 => Some(Command::new("instantslop")),
             Self::Wayland => Some(Command::new("slurp")),
         }
-    }
-
-    /// Whether this backend reaps child processes via a SIGCHLD handler on
-    /// its main-loop thread (`backend/x11/startup.rs`). Backends without one
-    /// must hand spawned children to the dedicated reaper thread instead,
-    /// or short-lived scripts accumulate as zombies.
-    pub fn reaps_children_via_signals(self) -> bool {
-        matches!(self, Self::X11)
     }
 }
 
@@ -225,6 +182,7 @@ pub struct X11BackendData {
 #[derive(Default)]
 pub struct WaylandBackendData {
     pub bar_renderer: crate::backend::wayland::bar::WaylandBarRenderer,
+    pub(crate) wallpaper: wayland::wallpaper::WallpaperProcess,
 }
 
 /// Backend identity is fixed by the runtime owner type.

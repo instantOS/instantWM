@@ -67,6 +67,7 @@ pub mod runtime;
 pub mod session;
 pub(crate) mod stacking;
 pub mod visibility;
+pub(crate) mod wallpaper;
 
 use crate::backend::{OutputOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};

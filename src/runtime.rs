@@ -438,6 +438,24 @@ mod tests {
         conn.map_window(xid).unwrap().check().unwrap();
         let mut wm = crate::wm::X11Wm::new(crate::backend::X11BackendData::new(conn, screen));
         wm.backend.x11_runtime.root = root;
+        wm.backend
+            .x11_runtime
+            .subscriptions
+            .select(
+                &wm.backend.conn,
+                root,
+                x11rb::protocol::xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+            )
+            .unwrap();
+        wm.backend
+            .x11_runtime
+            .subscriptions
+            .select(
+                &wm.backend.conn,
+                xid,
+                x11rb::protocol::xproto::EventMask::STRUCTURE_NOTIFY,
+            )
+            .unwrap();
         let monitor = wm.core.state.model.monitors.push(
             MonitorBuilder::new()
                 .monitor_rect(Rect::new(0, 0, 1920, 1080))

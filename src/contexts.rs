@@ -123,8 +123,13 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn set_wallpaper(&self, path: &str) -> std::io::Result<()> {
-        self.backend_kind().set_wallpaper(path)
+    pub fn set_wallpaper(&mut self, path: &str) -> std::io::Result<()> {
+        match self {
+            Self::X11(_) => crate::backend::x11::session::set_wallpaper(path),
+            Self::Wayland(ctx) => ctx
+                .wayland
+                .with_state(|state| state.wm.backend.wallpaper.set(path)),
+        }
     }
 
     // This is the backend-dispatch boundary, not a second API for core fields.

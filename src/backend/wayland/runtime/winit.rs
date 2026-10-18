@@ -262,6 +262,7 @@ pub fn run() -> ! {
             }
         })
         .expect("wayland event loop run");
+    state.wm.backend.wallpaper.shutdown();
     crate::startup::autostart::shutdown_autostart();
     exit(0);
 }

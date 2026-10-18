@@ -7,7 +7,6 @@ use crate::constants::animation::DECORATIVE_SHOW_ANIMATION_MILLIS;
 use crate::contexts::WmCtxX11;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Rect, WindowId};
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -124,7 +123,6 @@ pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     let x11_win: Window = win.into();
     let _ = ctx.x11.conn.map_window(x11_win);
-    let _ = ctx.x11.conn.flush();
 
     set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_NORMAL);
 
@@ -132,7 +130,6 @@ pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
-    let _ = ctx.x11.conn.flush();
 
     ctx.wm_ctx().move_resize(
         win,
@@ -150,81 +147,14 @@ pub fn hide(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let x11_win: Window = win.into();
 
     let _grab = crate::backend::x11::ServerGrab::new(ctx.x11.conn);
-    let _event_suppression = UnmapEventSuppression::new(ctx.x11.conn, root, x11_win);
+    let _event_suppression = ctx
+        .x11_runtime
+        .subscriptions
+        .suppress_unmap(ctx.x11.conn, root, x11_win)
+        .expect("minimizing requires owned root and client event subscriptions");
 
     let _ = ctx.x11.conn.unmap_window(x11_win);
-    let _ = ctx.x11.conn.flush();
     set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_ICONIC);
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-struct UnmapEventSuppression<'a> {
-    conn: &'a x11rb::rust_connection::RustConnection,
-    root: Window,
-    win: Window,
-    root_mask: Option<EventMask>,
-    window_mask: Option<EventMask>,
-}
-
-impl<'a> UnmapEventSuppression<'a> {
-    fn new(conn: &'a x11rb::rust_connection::RustConnection, root: Window, win: Window) -> Self {
-        // Both masks are independent. Send both requests before waiting so
-        // minimizing only needs one query batch while the server is grabbed.
-        let root_attributes = conn.get_window_attributes(root);
-        let window_attributes = conn.get_window_attributes(win);
-        let root_mask = root_attributes
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-            .map(|attrs| attrs.your_event_mask);
-        let window_mask = window_attributes
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-            .map(|attrs| attrs.your_event_mask);
-
-        if let Some(mask) = root_mask {
-            let suppressed = EventMask::from(mask.bits() & !EventMask::SUBSTRUCTURE_NOTIFY.bits());
-            let _ = conn.change_window_attributes(
-                root,
-                &ChangeWindowAttributesAux::new().event_mask(suppressed),
-            );
-        }
-        if let Some(mask) = window_mask {
-            let suppressed = EventMask::from(mask.bits() & !EventMask::STRUCTURE_NOTIFY.bits());
-            let _ = conn.change_window_attributes(
-                win,
-                &ChangeWindowAttributesAux::new().event_mask(suppressed),
-            );
-        }
-
-        Self {
-            conn,
-            root,
-            win,
-            root_mask,
-            window_mask,
-        }
-    }
-}
-
-impl Drop for UnmapEventSuppression<'_> {
-    fn drop(&mut self) {
-        if let Some(mask) = self.root_mask {
-            let _ = self.conn.change_window_attributes(
-                self.root,
-                &ChangeWindowAttributesAux::new().event_mask(mask),
-            );
-        }
-        if let Some(mask) = self.window_mask {
-            let _ = self.conn.change_window_attributes(
-                self.win,
-                &ChangeWindowAttributesAux::new().event_mask(mask),
-            );
-        }
-        let _ = self.conn.flush();
-    }
 }
 
 #[cfg(test)]
@@ -232,6 +162,141 @@ mod tests {
     use super::visibility_transaction_order;
     use crate::client::visibility::VisibilityEntry;
     use crate::types::{Rect, WindowId};
+
+    #[test]
+    #[ignore = "requires a dedicated Xvfb display"]
+    fn minimize_suppresses_our_notifications_and_restores_owned_masks() {
+        use super::*;
+        use x11rb::connection::Connection;
+        use x11rb::protocol::Event;
+
+        let (conn, screen) = x11rb::connect(None).unwrap();
+        let root = conn.setup().roots[screen].root;
+        let win = conn.generate_id().unwrap();
+        conn.create_window(
+            0,
+            win,
+            root,
+            0,
+            0,
+            100,
+            100,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            0,
+            &CreateWindowAux::new(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
+        let root_mask = EventMask::SUBSTRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE;
+        let window_mask =
+            EventMask::STRUCTURE_NOTIFY | EventMask::FOCUS_CHANGE | EventMask::PROPERTY_CHANGE;
+        runtime
+            .subscriptions
+            .select(&conn, root, root_mask)
+            .unwrap();
+        assert!(
+            runtime
+                .subscriptions
+                .suppress_unmap(&conn, root, win)
+                .is_err()
+        );
+        // Resolving a missing client must not temporarily alter the root.
+        assert_eq!(
+            conn.get_window_attributes(root)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .your_event_mask,
+            root_mask
+        );
+        runtime
+            .subscriptions
+            .select(&conn, win, window_mask)
+            .unwrap();
+        conn.map_window(win).unwrap().check().unwrap();
+        conn.get_input_focus().unwrap().reply().unwrap();
+        while conn.poll_for_event().unwrap().is_some() {}
+
+        let (observer, _) = x11rb::connect(None).unwrap();
+        observer
+            .change_window_attributes(
+                win,
+                &ChangeWindowAttributesAux::new().event_mask(EventMask::STRUCTURE_NOTIFY),
+            )
+            .unwrap()
+            .check()
+            .unwrap();
+        {
+            let _grab = crate::backend::x11::ServerGrab::new(&conn);
+            let _suppression = runtime
+                .subscriptions
+                .suppress_unmap(&conn, root, win)
+                .unwrap();
+            conn.unmap_window(win).unwrap();
+        }
+        assert_eq!(
+            conn.get_window_attributes(root)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .your_event_mask,
+            root_mask
+        );
+        assert_eq!(
+            conn.get_window_attributes(win)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .your_event_mask,
+            window_mask
+        );
+        while let Some(event) = conn.poll_for_event().unwrap() {
+            assert!(!matches!(event, Event::UnmapNotify(_)));
+        }
+        observer.get_input_focus().unwrap().reply().unwrap();
+        assert!(matches!(
+            observer.poll_for_event().unwrap(),
+            Some(Event::UnmapNotify(_))
+        ));
+
+        // Subscriptions still deliver later application-driven unmaps.
+        conn.map_window(win).unwrap().check().unwrap();
+        while conn.poll_for_event().unwrap().is_some() {}
+        conn.unmap_window(win).unwrap().check().unwrap();
+        assert!(matches!(
+            conn.poll_for_event().unwrap(),
+            Some(Event::UnmapNotify(_))
+        ));
+        runtime.subscriptions.release(&conn, win, false);
+        assert!(
+            runtime
+                .subscriptions
+                .suppress_unmap(&conn, root, win)
+                .is_err()
+        );
+        runtime
+            .subscriptions
+            .select(&conn, win, EventMask::NO_EVENT)
+            .unwrap();
+        {
+            let _grab = crate::backend::x11::ServerGrab::new(&conn);
+            let _suppression = runtime
+                .subscriptions
+                .suppress_unmap(&conn, root, win)
+                .unwrap();
+        }
+        assert_eq!(
+            conn.get_window_attributes(win)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .your_event_mask,
+            EventMask::NO_EVENT
+        );
+    }
 
     fn entry(win: u32, visible: bool) -> VisibilityEntry {
         VisibilityEntry {
