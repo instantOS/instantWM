@@ -4,7 +4,7 @@
 //! Nothing here is meant to be used directly outside of the `draw` module —
 //! consumers should go through the safe wrappers in the parent module.
 
-use std::os::raw::{c_char, c_int, c_ulong};
+use std::os::raw::{c_char, c_int, c_uint, c_ulong, c_void};
 
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
@@ -182,6 +182,15 @@ unsafe extern "C" {
         mode: c_int,
     );
 
+    pub fn XMoveResizeWindow(
+        display: *mut c_void,
+        window: c_ulong,
+        x: c_int,
+        y: c_int,
+        width: c_uint,
+        height: c_uint,
+    ) -> c_int;
+    pub fn XMapWindow(display: *mut c_void, window: c_ulong) -> c_int;
     pub fn XCopyArea(
         display: *mut libc::c_void,
         src: Drawable,

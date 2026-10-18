@@ -43,6 +43,7 @@ pub struct X11RuntimeConfig {
     pub wm_check_win: Window,
     pub xlibdisplay: XlibDisplay,
     pub draw: Option<DrawContext>,
+    pub(crate) bottom_bar_projections: HashMap<WindowId, bar::BottomBarProjection>,
     /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
     pub border_scheme: BorderScheme,
     /// X11 color scheme for status bar.
@@ -100,6 +101,7 @@ impl Default for X11RuntimeConfig {
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             draw: None,
+            bottom_bar_projections: HashMap::new(),
             border_scheme: BorderScheme::default(),
             status_scheme: AllocScheme::default(),
             cursors: [const { None }; 10],

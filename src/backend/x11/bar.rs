@@ -13,6 +13,15 @@ struct BarSurfaceTarget {
     window_id: WindowId,
 }
 
+/// Last submitted bottom-strip state, keyed by native window identity.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BottomBarProjection {
+    bounds: Rect,
+    indicator_window: WindowId,
+    indicator: Rect,
+    background: u32,
+}
+
 fn paint_bar_snapshot(
     core: &mut WmCore,
     x11_runtime: &mut X11RuntimeConfig,
@@ -70,7 +79,7 @@ fn draw_bars(core: &mut WmCore, x11_runtime: &mut X11RuntimeConfig) {
 
 fn sync_monitor_bar_window(
     core: &WmCore,
-    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
     monitor: &Monitor,
     tray_monitor_id: Option<MonitorId>,
     tray_width: u32,
@@ -85,15 +94,9 @@ fn sync_monitor_bar_window(
 
     let x11_bar_win: Window = monitor.bar_win.into();
     let bounds = Rect::new(monitor.work_rect().x, monitor.bar_y(), w as i32, bar_height);
-    let _ = x11.conn.configure_window(
-        x11_bar_win,
-        &x11rb::protocol::xproto::ConfigureWindowAux::new()
-            .x(bounds.x)
-            .y(bounds.y)
-            .width(bounds.w as u32)
-            .height(bounds.h as u32),
-    );
-    let _ = x11.conn.map_window(x11_bar_win);
+    if let Some(draw) = x11_runtime.draw.as_ref() {
+        draw.present_window(x11_bar_win, bounds);
+    }
 }
 
 /// Commit the complete native top-bar projection.
@@ -120,7 +123,10 @@ fn sync_top_bar_surfaces(
         0
     };
     for (_, monitor) in core.state.model.monitors_iter() {
-        sync_monitor_bar_window(core, x11, monitor, tray_monitor_id, tray_width);
+        sync_monitor_bar_window(core, x11_runtime, monitor, tray_monitor_id, tray_width);
+    }
+    if let Some(draw) = x11_runtime.draw.as_ref() {
+        draw.flush();
     }
     crate::backend::x11::systray::sync_xembed_tray(core, x11, x11_runtime, systray);
     let _ = x11.conn.flush();
@@ -200,10 +206,11 @@ fn create_missing_bar_windows(
     state: &mut crate::core_state::CoreState,
     x11: &X11BackendRef,
     root: Window,
-) {
+) -> bool {
     use x11rb::protocol::xproto::EventMask;
     let background = state.config.colors.status.background.into();
     let mut created_top_bars = false;
+    let mut created_bottom_bars = false;
     for (_, monitor) in state.model.monitors_iter_mut() {
         if monitor.bar_win == WindowId::default() {
             monitor.bar_win = create_bar_window(
@@ -215,6 +222,7 @@ fn create_missing_bar_windows(
             created_top_bars = true;
         }
         if monitor.bottom_bar_win == WindowId::default() {
+            created_bottom_bars = true;
             // Bottom strip presses propagate to the root for WM hit testing.
             monitor.bottom_bar_win = create_bar_window(x11, root, background, EventMask::NO_EVENT);
             monitor.bottom_bar_indicator_win = create_bar_window(
@@ -231,21 +239,49 @@ fn create_missing_bar_windows(
     if created_top_bars && let Ok(cookie) = x11.conn.get_input_focus() {
         let _ = cookie.reply();
     }
+    created_top_bars || created_bottom_bars
 }
 
 /// Reconcile all native bar windows with the shared monitor model.
 fn reconcile_bar_windows(
     core: &mut WmCore,
     x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
+    x11_runtime: &mut X11RuntimeConfig,
     systray: &mut Option<XEmbedTray>,
-) {
-    create_missing_bar_windows(&mut core.state, x11, x11_runtime.root);
+) -> bool {
+    let created = create_missing_bar_windows(&mut core.state, x11, x11_runtime.root);
     for (_, monitor) in core.state.model.monitors_iter() {
-        resize_bottom_bar_win(&core.state, x11, monitor);
+        let projection = BottomBarProjection {
+            bounds: Rect::new(
+                monitor.work_rect().x,
+                monitor.bottom_bar_y(),
+                monitor.work_rect().w,
+                monitor.bottom_bar_height,
+            ),
+            indicator_window: monitor.bottom_bar_indicator_win,
+            indicator: monitor.bottom_bar_indicator_rect(),
+            background: core.state.config.colors.status.background.into(),
+        };
+        if x11_runtime
+            .bottom_bar_projections
+            .get(&monitor.bottom_bar_win)
+            != Some(&projection)
+        {
+            resize_bottom_bar_win(&core.state, x11, monitor);
+            x11_runtime
+                .bottom_bar_projections
+                .insert(monitor.bottom_bar_win, projection);
+        }
     }
 
+    x11_runtime.bottom_bar_projections.retain(|window, _| {
+        core.state
+            .model
+            .monitors_iter()
+            .any(|(_, monitor)| monitor.bottom_bar_win == *window)
+    });
     sync_top_bar_surfaces(core, x11, x11_runtime, systray);
+    created
 }
 
 /// The only X11 bar projection boundary. Appearance also owns native border
@@ -278,11 +314,13 @@ pub fn reconcile_bars(ctx: &mut crate::contexts::WmCtxX11<'_>) {
         }
     }
     if change >= BarChange::Presentation {
-        reconcile_bar_windows(ctx.core, &ctx.x11, ctx.x11_runtime, ctx.xembed_tray);
+        let created = reconcile_bar_windows(ctx.core, &ctx.x11, ctx.x11_runtime, ctx.xembed_tray);
         // Newly created windows were absent from earlier stacking projections.
         // Surface/tray synchronization must finish before restoring WM layers.
-        ctx.x11
-            .apply_z_order(&crate::layouts::global_z_order(&ctx.core.state.model));
+        if created {
+            ctx.x11
+                .apply_z_order(&crate::layouts::global_z_order(&ctx.core.state.model));
+        }
         let _ = ctx.x11.conn.flush();
     }
     draw_bars(ctx.core, ctx.x11_runtime);
@@ -301,6 +339,14 @@ mod tests {
         wm: &crate::wm::X11Wm,
         window: WindowId,
     ) -> x11rb::protocol::xproto::GetGeometryReply {
+        // Geometry is submitted asynchronously on the painting connection.
+        // Complete it before observing the server from the x11rb connection.
+        unsafe extern "C" {
+            fn XSync(display: *mut libc::c_void, discard: libc::c_int) -> libc::c_int;
+        }
+        unsafe {
+            XSync(wm.backend.x11_runtime.xlibdisplay.0, 0);
+        }
         wm.backend
             .conn
             .get_geometry(window.into())
@@ -436,5 +482,32 @@ mod tests {
             bar_index < floating_index,
             "new bars belong below floating clients"
         );
+
+        // An unchanged presentation must not configure bottom strips or
+        // restack clients that the focus/layout path already positioned.
+        for window in [floating, u32::from(bottom)] {
+            wm.backend
+                .conn
+                .change_window_attributes(
+                    window,
+                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                        .event_mask(x11rb::protocol::xproto::EventMask::STRUCTURE_NOTIFY),
+                )
+                .unwrap()
+                .check()
+                .unwrap();
+        }
+        while wm.backend.conn.poll_for_event().unwrap().is_some() {}
+        wm.core.bar.invalidate(BarChange::Presentation);
+        wm.x11_ctx().reconcile_bars();
+        wm.backend.conn.get_input_focus().unwrap().reply().unwrap();
+        while let Some(event) = wm.backend.conn.poll_for_event().unwrap() {
+            if let x11rb::protocol::Event::ConfigureNotify(event) = event {
+                assert!(
+                    event.window != floating && event.window != u32::from(bottom),
+                    "unchanged presentation should not configure existing clients or bottom strips"
+                );
+            }
+        }
     }
 }
