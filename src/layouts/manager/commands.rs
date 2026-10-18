@@ -6,25 +6,18 @@ use crate::types::{Monitor, StackDirection, WindowId};
 
 use super::arrange::arrange;
 
-/// Whether keyboard tree commands may edit the manual tree.
+/// Whether keyboard commands may address the manual tree.
 ///
-/// Maximized presentation hides tree geometry behind a uniform stack, so a
-/// resize, swap, or promote there would mutate an invisible layout. Pointer
-/// interaction enforces the same rule via `manual_tree_interaction_allowed`.
-/// Maximized's own order commands (`reorder_maximized_stack`,
-/// maximized `swap_bar_titles`) are exempt on purpose: they are its native
-/// way of editing the underlying tree.
-//BOZO: should this be inlined?
+/// Tiled presentation shows the tree, so edit commands (resize, swap,
+/// promote) act on what the user sees and directional focus follows its
+/// topology. Maximized and floating presentation hide it behind their own
+/// models, where an edit would mutate an invisible tree. Pointer interaction
+/// enforces the same rule via `uses_manual_tree_pointer_interaction`.
+/// Maximized's own order commands (`reorder_maximized_stack`, maximized
+/// `swap_bar_titles`) are exempt on purpose: they are its native way of
+/// editing the underlying tree.
 fn tree_commands_allowed(monitor: &Monitor) -> bool {
     monitor.current_layout() == PresentationMode::Tiled
-}
-
-//BOZO: is this confusing to understand? Should it be a method on something instead?
-fn tree_preset_changes_allowed(interaction: &crate::core_state::InteractionState) -> bool {
-    !interaction
-        .drag
-        .active_interaction()
-        .is_some_and(|drag| drag.operation().is_tree_resize())
 }
 
 /// Result of trying to reorder the selected maximized-stack entry.
@@ -90,7 +83,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
 /// inherently safe — unbound keys cancel it before any command runs.
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
     let core_state = &ctx.core().state;
-    if !tree_preset_changes_allowed(&core_state.interaction) {
+    if core_state.interaction.drag.is_tree_resize_dragging() {
         return;
     }
 
@@ -144,7 +137,16 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
     finish_layout_change(ctx);
 }
 
-//BOZO: does this reinvent the directional candidate code? Are directional candidates even still needed?
+/// Focus the selected client's tree-topology neighbour in `side`.
+///
+/// Tiled topology decides before screen geometry: inside nested splits
+/// several candidates can look plausible from distances alone, and the tree
+/// resolves the one a tiled user means. Returning `false` does not mean
+/// there is no window in `side`: the caller falls back to the geometric
+/// candidate ([`crate::focus::direction_focus`]), which is also the only
+/// model that sees floating clients.
+///
+/// Returns whether focus moved.
 pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     let neighbor = {
         let monitor = ctx.core().state.model.expect_selected_monitor();
@@ -553,8 +555,9 @@ pub fn reset_active_layout(ctx: &mut WmCtx<'_>) {
 pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let core_state = &ctx.core().state;
     // Applying the new count rebuilds the master-stack preset. Reject the
-    // command before touching per-tag state when that rebuild is unsafe.
-    if !tree_preset_changes_allowed(&core_state.interaction) {
+    // command before touching per-tag state when a pointer tree resize is
+    // still replaying its origin snapshot.
+    if core_state.interaction.drag.is_tree_resize_dragging() {
         return;
     }
     let window_count = core_state

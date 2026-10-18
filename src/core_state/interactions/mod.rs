@@ -244,6 +244,16 @@ impl PointerInteractionState {
         }
     }
 
+    /// Whether the active window drag is resizing a tree seam.
+    ///
+    /// A live tree resize replays an origin snapshot of the tree on every
+    /// motion event, so keyboard commands must not rewrite the tree, or the
+    /// preset slot it belongs to, underneath it.
+    pub(crate) fn is_tree_resize_dragging(&self) -> bool {
+        self.active_interaction()
+            .is_some_and(|drag| drag.operation().is_tree_resize())
+    }
+
     pub fn armed_interaction(&self) -> Option<&ArmedWindowDrag> {
         match self.capture.as_ref() {
             Some(CapturedInteraction::Window(WindowDragState::Armed(drag))) => Some(drag),
