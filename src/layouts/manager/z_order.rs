@@ -17,6 +17,7 @@ struct StackLayers {
     bars: Vec<WindowId>,
     floating: Vec<WindowId>,
     fullscreen: Vec<WindowId>,
+    above: Vec<WindowId>,
     transients: Vec<WindowId>,
     overview: Vec<WindowId>,
 }
@@ -27,6 +28,7 @@ impl StackLayers {
             .into_iter()
             .chain(self.bars)
             .chain(self.floating)
+            .chain(self.above)
             .chain(self.fullscreen)
             .chain(self.transients)
             .chain(self.overview)
@@ -51,6 +53,7 @@ pub(crate) fn global_z_order(model: &crate::model::WmModel) -> Vec<WindowId> {
         layers.bars.extend(local.bars);
         layers.floating.extend(local.floating);
         layers.fullscreen.extend(local.fullscreen);
+        layers.above.extend(local.above);
         layers.transients.extend(local.transients);
     }
     // Transient relationships can cross monitor ownership boundaries.
@@ -102,6 +105,7 @@ fn monitor_stack_layers(monitor: &Monitor) -> StackLayers {
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
     let mut transient_stack = Vec::new();
+    let mut above_stack = Vec::new();
     for win in monitor.z_order().iter_bottom_to_top() {
         if let Some(c) = monitor.client(win)
             && c.is_visible(selected_tags)
@@ -114,6 +118,8 @@ fn monitor_stack_layers(monitor: &Monitor) -> StackLayers {
             let mode = c.mode();
             if mode.is_true_fullscreen() {
                 fullscreen_stack.push(win);
+            } else if c.keep_above {
+                above_stack.push(win);
             } else if mode.placement() == crate::types::ClientPlacement::Floating
                 || mode.is_maximized()
             {
@@ -161,8 +167,8 @@ fn monitor_stack_layers(monitor: &Monitor) -> StackLayers {
     }
 
     // Final z-order: tiled clients, bar, ordinary floating clients,
-    // fullscreen clients, then transient dialogs. Focus never changes the
-    // order within the floating layer. Keeping transients in the protected top
+    // above clients, fullscreen clients, then transient dialogs. Focus never
+    // changes the order within the floating layer. Keeping transients in the protected top
     // layer prevents a modal dialog from disappearing while its parent remains
     // blocked waiting for a response.
     let bars = [bar_win, bottom_bar_win]
@@ -174,6 +180,7 @@ fn monitor_stack_layers(monitor: &Monitor) -> StackLayers {
         bars,
         floating: floating_stack,
         fullscreen: fullscreen_stack,
+        above: above_stack,
         transients: transient_stack.into_iter().map(|(_, win)| win).collect(),
         overview: Vec::new(),
     }

@@ -570,12 +570,15 @@ fn apply_wayland_surface_policy(
         client.is_fixed_size = true;
     }
 
+    client.keep_above = element
+        .and_then(|element| element.x11_surface())
+        .is_some_and(|surface| surface.is_above());
+
     let should_float = element.is_some_and(|element| {
         if let Some(toplevel) = element.toplevel() {
             wl_state.xdg_toplevel_wants_floating(toplevel)
         } else if let Some(x11) = element.x11_surface() {
             parent.is_some()
-                || x11.is_above()
                 || client.is_fixed_size
                 || crate::backend::x11::policy::should_float_for_x11_type(x11.window_type())
         } else {
@@ -740,6 +743,7 @@ fn handle_update_xwayland_policy(
         }
         crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
         if outcome.layout_changed() {
+            crate::layouts::sync_z_order(ctx);
             ctx.core_mut()
                 .queue_layout_for_monitor(outcome.monitor_id());
         }
@@ -1012,7 +1016,7 @@ mod tests {
     }
 
     #[test]
-    fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
+    fn xwayland_above_policy_preserves_fullscreen_restore_placement() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
         state.wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_monitor(&mut state.wm.core.state.model);
@@ -1043,9 +1047,9 @@ mod tests {
 
         let client = state.wm.core.state.model.client(win).unwrap();
         assert!(client.mode().is_true_fullscreen());
-        assert_eq!(client.placement(), ClientPlacement::Floating);
-        assert_eq!(client.mode().restored(), ClientMode::floating());
-        assert_eq!(client.saved_floating_rect(), Some(geo));
+        assert_eq!(client.placement(), ClientPlacement::Tiling);
+        assert_eq!(client.mode().restored(), ClientMode::tiled());
+        assert!(client.keep_above);
         assert!(state.wm.core.work.layout.is_pending());
         assert_ne!(state.wm.core.bar.update_seq(), bar_seq);
 

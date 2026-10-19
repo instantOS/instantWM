@@ -119,7 +119,7 @@ fn evdi_scanout_from_primary_gpu() {
     // Exercise the production scene/cursor path, DPMS and logical
     // disable/re-enable, not just the allocator's initial solid frame.
     state.native.space.map_output(&entry.output, (0, 0));
-    let cursor = crate::backend::wayland::render::drm::CursorManager::new("default", 24);
+    let cursor = crate::backend::wayland::render::cursor_theme::CursorManager::new("default", 24);
     let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
         GlesRenderer,
         DrmOutputElement,

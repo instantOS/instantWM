@@ -50,7 +50,6 @@ use crate::config::config_toml::VrrMode;
 use std::rc::Rc;
 
 mod capture;
-mod cursor;
 mod output_setup;
 use capture::{submit_drm_capture_requests, take_drm_capture_requests};
 pub use output_setup::{
@@ -59,8 +58,7 @@ pub use output_setup::{
 };
 pub(crate) use output_setup::{best_connector_mode, build_output_dmabuf_feedback};
 
-// Re-export cursor management
-pub use cursor::CursorManager;
+use super::cursor_theme::CursorManager;
 pub use state::{
     DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DrmDeviceId, ManagedDrmOutput,
     ManagedDrmOutputManager, OutputDmabufFeedback, OutputSurfaceEntry, ScanoutId,

@@ -1,4 +1,4 @@
-//! Cursor loading and rendering for the standalone DRM/KMS backend.
+//! Shared cursor theme loading and standalone cursor rendering.
 //!
 //! On the DRM backend the compositor must render the cursor itself (there is
 //! no host compositor to delegate to).  `CursorManager` loads xcursor
@@ -27,7 +27,7 @@ use xcursor::parser::{Image, parse_xcursor};
 
 use crate::backend::wayland::render::cursor::ResolvedCursor;
 
-static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("cursor.rgba");
+static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("drm/cursor.rgba");
 
 struct CursorFrame {
     buffer: MemoryRenderBuffer,
@@ -94,22 +94,57 @@ type CursorFrameCache = HashMap<(CursorIcon, i32), Rc<Vec<CursorFrame>>>;
 
 pub struct CursorManager {
     theme: CursorTheme,
+    theme_name: String,
     size: u8,
     named_cursor_cache: RefCell<XCursorCache>,
     frame_cache: RefCell<CursorFrameCache>,
 }
 
 impl CursorManager {
+    pub(crate) fn from_environment(config: &crate::config::config_toml::CursorConfig) -> Self {
+        let theme = env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
+        let size = env::var("XCURSOR_SIZE")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(config.size);
+        Self::new(&theme, size.clamp(1, u8::MAX as u32) as u8)
+    }
+
     pub fn new(theme: &str, size: u8) -> Self {
         Self::ensure_env(theme, size);
 
+        let theme_name = theme;
         let theme = CursorTheme::load(theme);
 
         Self {
             theme,
+            theme_name: theme_name.to_owned(),
             size,
             named_cursor_cache: Default::default(),
             frame_cache: Default::default(),
+        }
+    }
+
+    /// Project the same default image and toolkit theme into the X server.
+    /// Client-owned cursors remain owned by the application.
+    pub(crate) fn configure_xwayland(&self, xwm: &mut smithay::xwayland::X11Wm) {
+        let cursor = self.get_cursor(CursorIcon::Default, 1);
+        let frame = cursor.frame(0).1;
+        if let Err(error) = xwm.set_cursor(
+            &frame.pixels_rgba,
+            (frame.width as u16, frame.height as u16).into(),
+            (frame.xhot as u16, frame.yhot as u16).into(),
+        ) {
+            log::warn!("failed to set XWayland default cursor: {error}");
+        }
+        if let Err(error) = xwm.set_xsettings(
+            [
+                ("Gtk/CursorThemeName".into(), self.theme_name.clone().into()),
+                ("Gtk/CursorThemeSize".into(), i32::from(self.size).into()),
+            ]
+            .into_iter(),
+        ) {
+            log::warn!("failed to set XWayland cursor settings: {error}");
         }
     }
 
@@ -123,6 +158,7 @@ impl CursorManager {
     pub fn reload(&mut self, theme: &str, size: u8) {
         Self::ensure_env(theme, size);
         self.theme = CursorTheme::load(theme);
+        self.theme_name = theme.to_owned();
         self.size = size;
         self.named_cursor_cache.get_mut().clear();
         self.frame_cache.get_mut().clear();

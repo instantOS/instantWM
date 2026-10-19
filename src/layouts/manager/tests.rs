@@ -529,6 +529,29 @@ fn monitor_without_a_bar_window_is_not_projected_as_window_zero() {
 }
 
 #[test]
+fn keep_above_stacking_preserves_selection_and_transient_ancestry() {
+    let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
+    for win in [WindowId(1), WindowId(2), WindowId(3)] {
+        monitor
+            .client_mut(win)
+            .unwrap()
+            .set_placement(ClientPlacement::Floating);
+    }
+    monitor.client_mut(WindowId(1)).unwrap().keep_above = true;
+    monitor.client_mut(WindowId(3)).unwrap().transient_for = Some(WindowId(1));
+    assert_eq!(
+        compute_monitor_z_order(&monitor),
+        vec![WindowId(99), WindowId(2), WindowId(1), WindowId(3)]
+    );
+    assert_eq!(monitor.selected, Some(WindowId(2)));
+    monitor.client_mut(WindowId(1)).unwrap().keep_above = false;
+    assert_eq!(
+        compute_monitor_z_order(&monitor),
+        vec![WindowId(99), WindowId(1), WindowId(2), WindowId(3)]
+    );
+}
+
+#[test]
 fn transient_dialogs_stay_above_ordinary_windows_and_nested_children() {
     let mut monitor = monitor_with_order(
         &[WindowId(1), WindowId(3), WindowId(4), WindowId(2)],

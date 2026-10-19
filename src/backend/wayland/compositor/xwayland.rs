@@ -558,6 +558,28 @@ impl XwmHandler for WaylandState {
             });
     }
 
+    fn modal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
+        let _ = window.set_modal(true);
+    }
+
+    fn unmodal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
+        let _ = window.set_modal(false);
+    }
+
+    fn above_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
+        let _ = window.set_above(true);
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
+            apply_surface_policy(self, win, &window);
+        }
+    }
+
+    fn unabove_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
+        let _ = window.set_above(false);
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
+            apply_surface_policy(self, win, &window);
+        }
+    }
+
     fn minimize_request(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,

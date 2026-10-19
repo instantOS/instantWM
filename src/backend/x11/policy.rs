@@ -53,6 +53,7 @@ impl XWaylandPolicyOutcome {
 struct PolicyState {
     mode: ClientMode,
     hidden: bool,
+    keep_above: bool,
     urgent: bool,
     fixed_size: bool,
     size_hints: SizeHints,
@@ -65,6 +66,7 @@ impl PolicyState {
         Self {
             mode: client.mode(),
             hidden: client.is_hidden,
+            keep_above: client.keep_above,
             urgent: client.is_urgent,
             fixed_size: client.is_fixed_size,
             size_hints: client.size_hints,
@@ -91,7 +93,6 @@ pub(crate) fn apply_xwayland_policy(
 ) -> Option<XWaylandPolicyOutcome> {
     let view = model.client_view(win)?;
     let monitor_id = view.monitor.id();
-    let work_area = view.monitor.work_rect();
     let before = PolicyState::capture(view.client);
 
     // Fullscreen owns mode, border, and floating-restore geometry as one model
@@ -127,14 +128,12 @@ pub(crate) fn apply_xwayland_policy(
         apply_wm_hints_to_client(client, update.hints);
         apply_size_hints_to_client(client, update.size_hints);
         client.is_hidden = update.is_hidden;
+        client.keep_above = update.is_above;
 
-        if update.is_above && client.placement() != crate::types::ClientPlacement::Floating {
-            client.save_floating_placement(client.geo, work_area);
-            client.set_placement(crate::types::ClientPlacement::Floating);
-        }
         PolicyState::capture(client)
     };
-    let layout_changed = before.mode != after.mode
+    let layout_changed = before.keep_above != after.keep_above
+        || before.mode != after.mode
         || before.hidden != after.hidden
         || before.fixed_size != after.fixed_size
         || before.size_hints != after.size_hints
@@ -223,6 +222,35 @@ mod tests {
     use crate::model::WmModel;
     use crate::test_support::{MonitorBuilder, add_client};
     use crate::types::{Client, ClientPlacement, Rect, WindowId};
+
+    #[test]
+    fn keep_above_changes_schedule_stacking_without_changing_input_hints() {
+        let mut model = WmModel::default();
+        let monitor = model.monitors.push(MonitorBuilder::new().build());
+        let win = WindowId(90);
+        let client = Client::new(win);
+        add_client(&mut model, monitor, client);
+        for above in [true, false] {
+            let outcome = apply_xwayland_policy(
+                &mut model,
+                win,
+                XWaylandPolicyUpdate {
+                    hints: None,
+                    size_hints: None,
+                    is_fullscreen: false,
+                    is_maximized: false,
+                    is_hidden: false,
+                    is_above: above,
+                },
+            )
+            .unwrap();
+            assert!(outcome.layout_changed());
+            let client = model.client(win).unwrap();
+            assert_eq!(client.keep_above, above);
+            assert!(!client.never_focus);
+            assert_eq!(client.placement(), ClientPlacement::Tiling);
+        }
+    }
 
     #[test]
     fn xwayland_policy_uses_authoritative_fullscreen_geometry_restore() {
