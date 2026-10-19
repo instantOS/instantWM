@@ -42,6 +42,9 @@ pub mod window;
 mod xdg_shell;
 mod xwayland;
 
+#[cfg(test)]
+mod idle_inhibit_tests;
+
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use render::PendingRenderTargets;
 pub(crate) use state::TOUCH_POINTER_BUTTON_CODE;

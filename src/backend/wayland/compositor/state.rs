@@ -62,6 +62,7 @@ use smithay::{
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
+        virtual_pointer::VirtualPointerManagerState,
         xdg_activation::XdgActivationState,
         xdg_foreign::XdgForeignState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
@@ -184,6 +185,7 @@ pub struct WaylandNativeState {
     pub tablet_manager_state: TabletManagerState,
     pub viewporter_state: ViewporterState,
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
+    pub virtual_pointer_manager_state: VirtualPointerManagerState,
     pub text_input_manager_state: TextInputManagerState,
     pub input_method_manager_state: InputMethodManagerState,
     pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
@@ -545,6 +547,8 @@ impl WaylandState {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let virtual_keyboard_manager_state =
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
+        let virtual_pointer_manager_state =
+            VirtualPointerManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_manager_state = TextInputManagerState::new::<Self>(&dh);
         let input_method_manager_state = InputMethodManagerState::new::<Self, _>(&dh, |_| true);
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
@@ -615,6 +619,7 @@ impl WaylandState {
                 tablet_manager_state,
                 viewporter_state,
                 virtual_keyboard_manager_state,
+                virtual_pointer_manager_state,
                 text_input_manager_state,
                 input_method_manager_state,
                 keyboard_shortcuts_inhibit_state,
@@ -762,6 +767,28 @@ impl WaylandState {
         }
     }
 
+    /// Mirror the idle-inhibitor set into the idle notifier.
+    ///
+    /// The notifier owns the timers behind `ext_idle_notifier_v1`, so an
+    /// inhibitor that never reaches it would have no effect: clients such as
+    /// swayidle would still see the session go idle and lock it mid-playback.
+    pub(crate) fn sync_idle_inhibitors(&mut self) {
+        let inhibited = !self.native.idle_inhibiting_surfaces.is_empty();
+        self.native
+            .idle_notify_manager_state
+            .set_is_inhibited(inhibited);
+    }
+
+    /// Drop inhibitors whose surface is gone and refresh the notifier.
+    ///
+    /// Clients need not destroy their inhibitor before crashing, so a dead
+    /// surface has to stop inhibiting; otherwise a crashed video player would
+    /// leave the session unable to go idle again.
+    pub(crate) fn purge_idle_inhibitors(&mut self) {
+        self.native.idle_inhibiting_surfaces.retain(|s| s.alive());
+        self.sync_idle_inhibitors();
+    }
+
     /// Project the shared model into the Smithay space.
     pub fn sync_space(&mut self) {
         let dead_windows: Vec<WindowId> = self
@@ -787,7 +814,7 @@ impl WaylandState {
         // Purge surfaces whose underlying resource is gone, so the HashSet
         // does not grow unbounded when clients crash or destroy surfaces
         // without sending an explicit uninhibit request.
-        self.native.idle_inhibiting_surfaces.retain(|s| s.alive());
+        self.purge_idle_inhibitors();
 
         // Fullscreen/tag changes can hide a live layer surface. Reconcile
         // shell focus before falling back to the WM selection, while retaining
@@ -843,6 +870,26 @@ impl WaylandState {
         keyboard
             .set_xkb_config(self, config)
             .map_err(|e| format!("failed to apply Wayland keyboard layout: {e}"))
+    }
+
+    /// Re-install the compositor's configured keyboard layout.
+    ///
+    /// Used after something else replaced the seat keymap, e.g. a virtual
+    /// keyboard with a keymap of its own that is now gone: without this,
+    /// physical keycodes keep resolving through the client's keymap.
+    pub(crate) fn restore_keyboard_layout(&mut self) {
+        let layouts = &self.wm.core.state.interaction.keyboard_layout;
+        if layouts.is_empty() {
+            // Nothing is configured, so the seat belongs on the default xkb
+            // config it was created with.
+            let keyboard = self.native.keyboard.clone();
+            if let Err(err) = keyboard.set_xkb_config(self, XkbConfig::default()) {
+                log::warn!("Failed to restore the default keyboard layout: {err}");
+            }
+            return;
+        }
+        let current = layouts.current;
+        crate::keyboard_layout::set_keyboard_layout(&mut self.ctx(), current);
     }
 
     /// Flush pending data to clients.

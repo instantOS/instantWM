@@ -1,4 +1,5 @@
 use smithay::{
+    backend::input::InputEvent,
     backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::PopupKind,
@@ -25,6 +26,9 @@ use smithay::{
         pointer_warp::PointerWarpHandler,
         seat::WaylandFocus,
         shm::ShmHandler,
+        text_input::TextInputActivation,
+        virtual_keyboard::{VirtualKeyboardBackend, VirtualKeyboardHandler},
+        virtual_pointer::{VirtualPointerBackend, VirtualPointerHandler},
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
         xwayland_shell::XWaylandShellHandler,
     },
@@ -36,6 +40,8 @@ use super::{
     focus::KeyboardFocusTarget,
     state::{WaylandClientState, WaylandState},
 };
+
+use crate::backend::wayland::input::{handle_virtual_keyboard_event, handle_virtual_pointer_event};
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
@@ -513,6 +519,9 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         self.native.idle_inhibiting_surfaces.insert(surface);
+        // The notifier owns the idle timers, so every set change has to be
+        // mirrored into it; tracking the surfaces alone inhibits nothing.
+        self.sync_idle_inhibitors();
         log::debug!("idle inhibited for surface");
     }
 
@@ -521,6 +530,7 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         self.native.idle_inhibiting_surfaces.remove(&surface);
+        self.sync_idle_inhibitors();
         log::debug!("idle uninhibited for surface");
     }
 }
@@ -688,6 +698,35 @@ impl DrmSyncobjHandler for WaylandState {
         self.native.drm_syncobj_state.as_mut()
     }
 }
+
+// ---------------------------------------------------------------------------
+// zwp_virtual_keyboard_v1 handler
+// ---------------------------------------------------------------------------
+
+impl VirtualKeyboardHandler for WaylandState {
+    fn process_virtual_keyboard_event(&mut self, event: InputEvent<VirtualKeyboardBackend>) {
+        handle_virtual_keyboard_event(self, event);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// zwlr_virtual_pointer_v1 handler
+// ---------------------------------------------------------------------------
+
+impl VirtualPointerHandler for WaylandState {
+    fn process_virtual_pointer_event(&mut self, event: InputEvent<VirtualPointerBackend>) {
+        handle_virtual_pointer_event(self, event);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// zwp_text_input_v3
+// ---------------------------------------------------------------------------
+
+/// Required by the `zwp_text_input_v3` dispatch. No compositor-side policy
+/// hangs off activation yet; the hooks are the single place a future IME
+/// indicator would observe text input state.
+impl TextInputActivation for WaylandState {}
 
 impl InputMethodHandler for WaylandState {
     fn new_popup(&mut self, surface: PopupSurface) {
