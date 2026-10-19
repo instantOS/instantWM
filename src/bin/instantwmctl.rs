@@ -44,8 +44,8 @@ fn main() {
 fn run_local(command: CommandKind, json: bool, ignore_version: bool) -> Result<(), String> {
     match command {
         CommandKind::Layout {
-            action: LayoutAction::Menu,
-        } => ctl::layout_menu::run(ignore_version),
+            action: LayoutAction::Menu { anchor },
+        } => ctl::layout_menu::run(ignore_version, anchor),
         CommandKind::Action { .. } => {
             let actions = instantwm::actions::action_infos();
             if json {
@@ -355,6 +355,17 @@ mod tests {
         for argv in [
             &["action", "--list"][..],
             &["keyboard", "available"],
+            &["layout", "menu"],
+            &[
+                "layout",
+                "menu",
+                "--monitor",
+                "1",
+                "--x-offset",
+                "135",
+                "--y-offset",
+                "30",
+            ],
             &["config", "default"],
             &["test", "pointer-path", "0,0", "1,1"],
             &["test", "wait-windows", "2"],

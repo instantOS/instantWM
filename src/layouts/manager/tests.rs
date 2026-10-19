@@ -2002,3 +2002,75 @@ fn global_stack_preserves_overview_card_order_across_monitors() {
         vec![WindowId(3), WindowId(2), WindowId(1)]
     );
 }
+
+#[test]
+fn resetting_an_inactive_layout_rebuilds_it_and_preserves_the_outgoing_arrangement() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+    crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
+    let stock_grid = slot_tree_bounds(&wm, monitor_id);
+    assert!(
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right, keyboard_config())
+    );
+    assert_ne!(slot_tree_bounds(&wm, monitor_id), stock_grid);
+    crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Tile);
+    assert!(
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right, keyboard_config())
+    );
+    let edited_tile = slot_tree_bounds(&wm, monitor_id);
+
+    crate::layouts::reset_layout_to(&mut wm.test_ctx(), LayoutCommand::Grid).unwrap();
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), stock_grid);
+    assert_eq!(
+        wm.core
+            .state
+            .model
+            .monitor(monitor_id)
+            .unwrap()
+            .current_layout_command(),
+        LayoutCommand::Grid
+    );
+    crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Tile);
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), edited_tile);
+}
+
+#[test]
+fn resetting_a_named_layout_drops_a_lens_and_rejects_presentations() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let (mut wm, monitor_id) = slotted_wm(&windows);
+    crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Grid);
+    let stock = slot_tree_bounds(&wm, monitor_id);
+    assert!(
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right, keyboard_config())
+    );
+    crate::layouts::set_layout(&mut wm.test_ctx(), LayoutCommand::Maximized);
+    crate::layouts::reset_layout_to(&mut wm.test_ctx(), LayoutCommand::Grid).unwrap();
+    assert_eq!(slot_tree_bounds(&wm, monitor_id), stock);
+    assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+    for presentation in [LayoutCommand::Floating, LayoutCommand::Maximized] {
+        assert!(crate::layouts::reset_layout_to(&mut wm.test_ctx(), presentation).is_err());
+        assert_eq!(slot_tree_bounds(&wm, monitor_id), stock);
+        assert_eq!(slot_presentation(&wm, monitor_id), PresentationMode::Tiled);
+    }
+}

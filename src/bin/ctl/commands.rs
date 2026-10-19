@@ -18,7 +18,10 @@ pub enum KeyboardAction {
 #[derive(Debug, Clone, Subcommand)]
 pub enum LayoutAction {
     /// Choose a remembered layout or reset the arrangement using instantMENU.
-    Menu,
+    Menu {
+        #[command(flatten)]
+        anchor: super::layout_menu::MenuAnchor,
+    },
     /// Reset the active layout to its preset geometry.
     Reset,
     /// List every layout, marking the selected monitor's active one.
@@ -230,7 +233,7 @@ impl CommandKind {
     pub fn into_ipc(self) -> Result<IpcCommand, Box<Self>> {
         Ok(match self {
             Self::Layout {
-                action: LayoutAction::Menu,
+                action: LayoutAction::Menu { .. },
             }
             | Self::Action { list: true, .. }
             | Self::Keyboard {
@@ -261,7 +264,7 @@ impl CommandKind {
             Self::SendMon { direction } => run(NamedAction::SendMon(direction)),
             Self::FollowMon { direction } => run(NamedAction::FollowMon(direction)),
             Self::Layout { action } => match action {
-                LayoutAction::Menu => unreachable!("layout menu is handled locally"),
+                LayoutAction::Menu { .. } => unreachable!("layout menu is handled locally"),
                 LayoutAction::Reset => run(NamedAction::ResetLayout),
                 LayoutAction::List => IpcCommand::LayoutList,
                 LayoutAction::Status => IpcCommand::LayoutStatus,

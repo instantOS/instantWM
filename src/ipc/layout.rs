@@ -100,7 +100,7 @@ mod tests {
             panic!("expected a layout status");
         };
         assert_eq!(status.layout.name, "grid");
-        assert_eq!(status.layout.symbol, "#");
+        assert_eq!(status.layout.symbol, "\u{f0570}");
         assert_eq!(status.presentation, "tiled");
         assert!(status.layout.is_active);
     }

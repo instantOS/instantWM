@@ -30,9 +30,9 @@ use crate::layouts::tree::Side;
 use crate::layouts::{
     LayoutCommand, begin_tree_placement, center_keyboard_tree_placement,
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
-    inc_master_count_by, reset_active_layout, resize_keyboard_tree_placement, resize_tree_smart,
-    set_layout, step_keyboard_tree_placement, swap_keyboard_tree_placement, swap_tree_neighbor,
-    toggle_floating_presentation, toggle_tiling_maximized,
+    inc_master_count_by, reset_active_layout, reset_layout_to, resize_keyboard_tree_placement,
+    resize_tree_smart, set_layout, step_keyboard_tree_placement, swap_keyboard_tree_placement,
+    swap_tree_neighbor, toggle_floating_presentation, toggle_tiling_maximized,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
@@ -258,7 +258,9 @@ define_named_actions!(
     KeyboardLayout(String) => { name: "keyboard_layout", overview: Preserve, doc: "set keyboard layout, e.g. us(intl)", run: |ctx, layout| { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, layout); } },
     SetMode(String) => { name: "set_mode", doc: "set WM mode (sway-like modes)", run: |ctx, mode| { validate_mode_name(&ctx.core().state.config.bindings.modes, mode)?; ctx.set_current_mode(mode.clone()); } },
     Spawn(Vec<String>) => { name: "spawn", overview: Preserve, doc: "spawn a command without shell expansion", run: |ctx, argv| { spawn(ctx, argv)?; } },
+    LayoutMenu => { name: "layout_menu", overview: Preserve, doc: "open the layout chooser below the bar button", run: |ctx| { crate::bar::layout_menu::open(ctx)?; } },
     SetLayout(LayoutCommand) => { name: "set_layout", doc: "set layout", run: |ctx, layout| { set_layout(ctx, *layout); } },
+    ResetLayoutTo(LayoutCommand) => { name: "reset_layout_to", doc: "activate a tiling layout and reset its arrangement", run: |ctx, layout| { reset_layout_to(ctx, *layout)?; } },
     ResetLayout => { name: "reset_layout", doc: "reset the active layout to stock geometry", run: |ctx| { reset_active_layout(ctx); } },
     FocusStack(StackDirection) => { name: "focus_stack", overview: Preserve, doc: "focus stack direction", run: |ctx, direction| { focus_stack(ctx, *direction); } },
     ViewTag(u32) => { name: "view_tag", overview: Cancel, doc: "view a tag by its 1-based number", run: |ctx, number| {

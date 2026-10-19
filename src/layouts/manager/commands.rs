@@ -82,6 +82,20 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
 /// the drag clobber the freshly restored slot. Keyboard placement mode is
 /// inherently safe — unbound keys cancel it before any command runs.
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
+    activate_tree_preset(ctx, preset, false);
+}
+
+/// Activate a named tiling layout and rebuild its stock geometry in one
+/// operation, including when its remembered tree is currently hidden.
+pub fn reset_layout_to(ctx: &mut WmCtx<'_>, layout: LayoutCommand) -> Result<(), String> {
+    let preset = layout
+        .tree_preset()
+        .ok_or("only tiling layouts have an arrangement to reset")?;
+    activate_tree_preset(ctx, preset, true);
+    Ok(())
+}
+
+fn activate_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset, reset: bool) {
     let core_state = &ctx.core().state;
     if core_state.interaction.drag.is_tree_resize_dragging() {
         return;
@@ -127,6 +141,11 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
             state.layout_tree = stored;
             // The restored slot's force-insertion era ended when it was left.
             state.layout_tree.clear_insertion_provenance();
+            if reset {
+                state
+                    .layout_tree
+                    .apply_preset(preset, &windows, master_count);
+            }
         } else {
             state
                 .layout_tree

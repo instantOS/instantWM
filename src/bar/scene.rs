@@ -451,7 +451,7 @@ pub(crate) fn build_monitor_snapshots(
             horizontal_padding: mon.horizontal_padding,
             gesture,
             layout_symbol: if core.state.model.is_overview_active_on(mon) {
-                "OVR".to_string()
+                "\u{f056e}".to_string() // md-view-dashboard
             } else {
                 mon.layout_symbol_for_mask(selected_tags).to_string()
             },

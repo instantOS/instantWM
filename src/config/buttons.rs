@@ -34,7 +34,7 @@ pub fn get_buttons() -> Vec<Button> {
     use ButtonTarget::{ClientWin, Root};
 
     vec![
-        btn!(LayoutSymbol, ModMask::NONE, button:MouseButton::Left => ButtonAction::spawn(&["instantwmctl", "layout", "menu"])),
+        btn!(LayoutSymbol, ModMask::NONE, button:MouseButton::Left => ButtonAction::named(NamedAction::LayoutMenu)),
         btn!(LayoutSymbol, ModMask::NONE, button:MouseButton::Right => ButtonAction::named(NamedAction::CycleLayoutNext)),
         btn!(LayoutSymbol, ModMask::NONE, button:MouseButton::Middle => ButtonAction::named(NamedAction::ResetLayout)),
         btn!(WinTitle(WindowId(0)), ModMask::NONE, button:MouseButton::Left => ButtonAction::WindowTitleMouseHandler),

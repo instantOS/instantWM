@@ -1,5 +1,6 @@
 pub mod canvas;
 pub mod image;
+pub(crate) mod layout_menu;
 pub(crate) mod model;
 pub mod paint;
 pub(crate) mod policy;

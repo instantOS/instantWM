@@ -32,11 +32,11 @@
 //! over the active slot's tree and never modify it.
 //!
 //! ```text
-//! Tile        "[]"   master/stack tiling
-//! Grid        "#"    square grid
-//! Floating    "-"    free floating (no tiling)
-//! Maximized   "[M]"  focused full-work-area tiled stack
-//! BottomStack "TTT"  master row over a side-by-side stack
+//! Tile          master/stack tiling
+//! Grid          square grid
+//! Floating      free floating (no tiling)
+//! Maximized     focused full-work-area tiled stack
+//! BottomStack   master row over a side-by-side stack
 //! ```
 //!
 //! ## Public API surface
@@ -86,9 +86,9 @@ impl PresentationMode {
 
     pub const fn symbol(self) -> &'static str {
         match self {
-            Self::Tiled => "[]",
-            Self::Floating => "-",
-            Self::Maximized => "[M]",
+            Self::Tiled => LayoutCommand::Tile.symbol(),
+            Self::Floating => LayoutCommand::Floating.symbol(),
+            Self::Maximized => LayoutCommand::Maximized.symbol(),
         }
     }
 }
@@ -139,16 +139,16 @@ pub struct ArrangePlan {
     clap::ValueEnum,
 )]
 pub enum LayoutCommand {
-    /// Classic master/stack tiling (`+`).
+    /// Classic master/stack tiling.
     #[default]
     Tile,
-    /// Square grid layout (`#`).
+    /// Square grid layout.
     Grid,
-    /// Free floating layout (`-`).
+    /// Free floating layout.
     Floating,
-    /// Maximized tiled stack (`[M]`). The underlying manual tree is preserved.
+    /// Maximized tiled stack. The underlying manual tree is preserved.
     Maximized,
-    /// Bottom-stack layout (`TTT`).
+    /// Bottom-stack layout.
     BottomStack,
 }
 
@@ -211,13 +211,13 @@ impl LayoutCommand {
         Self::from_str(name).ok()
     }
 
-    pub fn symbol(self) -> &'static str {
+    pub const fn symbol(self) -> &'static str {
         match self {
-            Self::Tile => "[]",
-            Self::Grid => "#",
-            Self::Floating => "-",
-            Self::Maximized => "[M]",
-            Self::BottomStack => "TTT",
+            Self::Tile => "\u{f056d}",        // md-view-column
+            Self::Grid => "\u{f0570}",        // md-view-grid
+            Self::Floating => "\u{f2d2}",     // fa-window-restore
+            Self::Maximized => "\u{f2d0}",    // fa-window-maximize
+            Self::BottomStack => "\u{f10a9}", // md-dock-bottom
         }
     }
 
@@ -268,8 +268,8 @@ pub(crate) use manager::global_z_order;
 pub use manager::{
     ArrangeAnimation, MaximizedStackReorder, arrange, cycle_layout_direction, focus_tree_neighbor,
     inc_master_count_by, place_tree_at_point, preview_tree_at_point, promote_tree,
-    reorder_maximized_stack, reset_active_layout, resize_tree, resize_tree_smart, set_layout,
-    swap_bar_titles, swap_tree_neighbor, sync_z_order, toggle_floating_presentation,
+    reorder_maximized_stack, reset_active_layout, reset_layout_to, resize_tree, resize_tree_smart,
+    set_layout, swap_bar_titles, swap_tree_neighbor, sync_z_order, toggle_floating_presentation,
     toggle_tiling_maximized,
 };
 
