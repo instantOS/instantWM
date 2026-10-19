@@ -1,7 +1,7 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::commands::{ConfigAction, KeyboardAction, TestAction};
+use ctl::commands::{ConfigAction, KeyboardAction, LayoutAction, TestAction};
 use ctl::format::print_json;
 use ctl::{Cli, CommandKind, format_response};
 use instantwm::ipc_types::{IpcCommand, Response, TestCommand, WindowCommand};
@@ -43,6 +43,9 @@ fn main() {
 /// trips (which must not block the compositor's event loop).
 fn run_local(command: CommandKind, json: bool, ignore_version: bool) -> Result<(), String> {
     match command {
+        CommandKind::Layout {
+            action: LayoutAction::Menu,
+        } => ctl::layout_menu::run(ignore_version),
         CommandKind::Action { .. } => {
             let actions = instantwm::actions::action_infos();
             if json {
@@ -279,6 +282,7 @@ mod tests {
     fn convenience_commands_compile_to_canonical_actions() {
         for (argv, name, args) in [
             (&["layout", "set", "grid"][..], "set_layout", &["grid"][..]),
+            (&["layout", "reset"][..], "reset_layout", &[][..]),
             (&["mode", "set", "resize"], "set_mode", &["resize"]),
             (&["tag", "view", "4"], "view_tag", &["4"]),
             (&["follow-mon", "prev"], "follow_mon", &["prev"]),
