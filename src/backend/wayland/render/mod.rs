@@ -7,6 +7,7 @@
 
 pub mod borders;
 pub mod cursor;
+pub mod cursor_theme;
 pub mod drm;
 pub mod frame;
 pub mod mirror;

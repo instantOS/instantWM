@@ -74,6 +74,8 @@ pub struct Client {
     pub is_borderless: bool,
     /// Whether the window is minimized/hidden.
     pub is_hidden: bool,
+    /// Keep above ordinary windows without changing input ownership.
+    pub keep_above: bool,
     /// Current snap position.
     pub snap_status: SnapPosition,
     /// Authoritative optional scratchpad role.

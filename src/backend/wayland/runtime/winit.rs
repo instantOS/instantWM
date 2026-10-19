@@ -176,6 +176,18 @@ pub fn run() -> ! {
             // pending bit so it doesn't remain queued forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
             state.wm.core.work.input_config = false;
+            if state.wm.core.work.cursor_config {
+                state.wm.core.work.cursor_config = false;
+                let config = state.wm.core.state.config.cursor.clone();
+                let manager = crate::backend::wayland::render::cursor_theme::CursorManager::new(
+                    &config.theme,
+                    config.size.clamp(1, u8::MAX as u32) as u8,
+                );
+                if let Some(xwm) = state.native.xwm.as_mut() {
+                    manager.configure_xwayland(xwm);
+                }
+                state.native.cursor_config = config;
+            }
 
             super::engine::process_animations_and_request_render(state);
             presentation_scheduler.schedule_commit_timing(

@@ -9,8 +9,9 @@ use super::{scheduling::DrmLoopState, vrr::apply_output_vrr_policy};
 use crate::backend::output::{OutputId, OutputPowerError, OutputPowerMode};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::input::apply_pending_warp;
+use crate::backend::wayland::render::cursor_theme::CursorManager;
 use crate::backend::wayland::render::drm::{
-    CursorManager, OutputSurfaceEntry, RenderOutcome, ScanoutId, render_drm_output,
+    OutputSurfaceEntry, RenderOutcome, ScanoutId, render_drm_output,
 };
 use crate::backend::wayland::render::scene::build_shared_scene_elements;
 

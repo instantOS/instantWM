@@ -95,9 +95,6 @@ impl WaylandNativeState {
             if super::x11::is_launcher_x11_surface(x11) {
                 return WindowType::Launcher;
             }
-            if x11.is_above() {
-                return WindowType::Overlay;
-            }
         }
 
         WindowType::Normal

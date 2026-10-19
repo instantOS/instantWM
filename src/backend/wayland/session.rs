@@ -267,7 +267,12 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                         x11_socket,
                         client.clone(),
                     ) {
-                        Ok(wm) => data.native.xwm = Some(wm),
+                        Ok(mut wm) => {
+                            crate::backend::wayland::render::cursor_theme::CursorManager::from_environment(
+                                &data.native.cursor_config,
+                            ).configure_xwayland(&mut wm);
+                            data.native.xwm = Some(wm);
+                        }
                         Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
                     }
                 }

@@ -13,7 +13,6 @@ use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_pre
 use smithay::utils::{Clock, Monotonic};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::env;
 use std::mem;
 use std::process::exit;
 use std::rc::Rc;
@@ -23,11 +22,10 @@ use std::time::{Duration, Instant};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::init::drm::init_gpu;
 use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
+use crate::backend::wayland::render::cursor_theme::CursorManager;
 use crate::backend::wayland::render::drm::{
-    CursorManager, DrmDeviceId, OutputSurfaceEntry, ScanoutId, build_output_surfaces,
-    create_output_manager,
+    DrmDeviceId, OutputSurfaceEntry, ScanoutId, build_output_surfaces, create_output_manager,
 };
-use crate::config::config_toml::CursorConfig;
 
 mod devices;
 mod frames;
@@ -94,7 +92,7 @@ pub fn run() -> ! {
 
     state.init_drm_syncobj(drm_fd.clone());
 
-    let mut cursor_manager = init_cursor_manager(&state.native.cursor_config);
+    let mut cursor_manager = CursorManager::from_environment(&state.native.cursor_config);
     let mut output_manager = create_output_manager(drm_device, &renderer, &gbm_device, &gbm_device);
 
     let mut output_surfaces = {
@@ -281,16 +279,6 @@ pub fn run() -> ! {
     crate::startup::autostart::shutdown_autostart();
     crate::backend::wayland::session::stop_graphical_session_target();
     exit(0);
-}
-
-/// Initialize cursor manager from environment or defaults.
-fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
-    let cursor_theme = env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
-    let configured_size = env::var("XCURSOR_SIZE")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(config.size);
-    CursorManager::new(&cursor_theme, cursor_size(configured_size))
 }
 
 fn cursor_size(size: u32) -> u8 {
@@ -579,6 +567,9 @@ fn run_event_loop(
                 let cursor = &state.wm.core.state.config.cursor;
                 cursor_manager.reload(&cursor.theme, cursor_size(cursor.size));
                 state.native.cursor_config = cursor.clone();
+                if let Some(xwm) = state.native.xwm.as_mut() {
+                    cursor_manager.configure_xwayland(xwm);
+                }
                 loop_state.mark_all_dirty();
             }
 
