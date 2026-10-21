@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/instantOS/instantWM/compare/v0.6.0...v0.7.0) - 2026-10-21
+
+### Added
+
+- bump Smithay and implement virtual keyboard support
+- support zwlr_virtual_pointer_v1
+- forward host gestures from the winit backend
+- init layout menu
+- anchor layout chooser with per-layout reset actions
+
+### Changed
+
+- unify backend policies and shared domain types
+- remove dead code
+- remove forwarding functions
+- unify bar invalidation and backend reconciliation
+- move head geometry onto OutputHeadConfiguration
+- reduce compositor stalls and own helper lifecycles
+- move tree thingy to method
+
+### Fixed
+
+- simplify window closing
+- keep XWayland modal dialogs managed
+- order X11 bar painting and avoid redundant reconciliation
+- make idle inhibitors reach the idle notifier
+- separate XWayland stacking from input focus
+
+### Other
+
+- update
+- Merge branch 'main' of ufr:~/stuff/instantWM into dev
+- Merge branch 'dev' of ufr:~/stuff/instantWM into dev
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- Merge branch 'dev' of ufr3:~/stuff/instantWM into dev
+
 ## [0.6.0](https://github.com/instantOS/instantWM/compare/v0.5.2...v0.6.0) - 2026-10-14
 
 ### Added
