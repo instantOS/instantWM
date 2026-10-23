@@ -68,7 +68,9 @@ pub fn autostart_ipc_status_ping(
     loop_handle
         .insert_source(slop_ping_source, |_, _, _| {})
         .expect("failed to insert region-selection ping source");
-    wm.core.bar.layout_menu.wake = crate::runtime::make_wake_ping(loop_handle);
+    crate::bar::layout_menu::install(loop_handle.clone(), &mut wm.core.bar.layout_menu, |state| {
+        state.ctx()
+    });
     ipc_server
 }
 

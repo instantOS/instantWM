@@ -1,15 +1,17 @@
-//! WM-owned layout chooser. Only child I/O runs on a worker; state and
-//! actions stay on the event loop, shared by X11 and Wayland.
-use std::io::Write;
+//! WM-owned layout chooser. The event loop watches the presenter only while
+//! it is open; its stdout callback applies the choice without per-tick polling.
+use std::fs::File;
+use std::io::{self, Read, Write};
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex, mpsc};
+use std::process::{Child, Command, Stdio};
 
 use crate::actions::{KeyAction, NamedAction};
 use crate::contexts::WmCtx;
 use crate::layouts::LayoutCommand;
 use crate::types::{Key, Modifier, Monitor, MonitorId, TagMask};
-use calloop::ping::Ping;
+use calloop::generic::Generic;
+use calloop::{Interest, LoopHandle, Mode, PostAction, RegistrationToken};
 
 struct Choice {
     value: String,
@@ -247,40 +249,34 @@ impl MenuContext {
     }
 }
 
-struct Outcome {
-    generation: u64,
-    context: MenuContext,
-    action: Option<NamedAction>,
-}
+type WatchOutput = dyn Fn(File, u64, MenuContext, Vec<Choice>) -> Result<RegistrationToken, String>;
 
+#[derive(Default)]
 pub(crate) struct LayoutMenuHost {
-    sender: mpsc::Sender<Outcome>,
-    outcomes: mpsc::Receiver<Outcome>,
-    pub(crate) wake: Option<Ping>,
+    watch: Option<Box<WatchOutput>>,
+    remove: Option<Box<dyn Fn(RegistrationToken)>>,
+    source: Option<RegistrationToken>,
     generation: u64,
-    child_pgid: Arc<Mutex<Option<i32>>>,
-}
-
-impl Default for LayoutMenuHost {
-    fn default() -> Self {
-        let (sender, outcomes) = mpsc::channel();
-        Self {
-            sender,
-            outcomes,
-            wake: None,
-            generation: 0,
-            child_pgid: Arc::default(),
-        }
-    }
+    child: Option<Child>,
 }
 
 impl LayoutMenuHost {
     fn cancel(&mut self) {
         self.generation = self.generation.wrapping_add(1);
-        if let Ok(mut slot) = self.child_pgid.lock()
-            && let Some(pgid) = slot.take()
+        if let Some(token) = self.source.take()
+            && let Some(remove) = &self.remove
         {
-            crate::util::signal_process_group(pgid, libc::SIGTERM);
+            remove(token);
+        }
+        if let Some(mut child) = self.child.take() {
+            // Keep the child unreaped until after signalling, so its pid cannot
+            // be reused for an unrelated process group.
+            if let Ok(pgid) = i32::try_from(child.id()) {
+                crate::util::signal_process_group(pgid, libc::SIGTERM);
+            } else {
+                let _ = child.kill();
+            }
+            crate::util::reap_child_async(child);
         }
     }
 }
@@ -288,6 +284,75 @@ impl LayoutMenuHost {
 impl Drop for LayoutMenuHost {
     fn drop(&mut self) {
         self.cancel();
+    }
+}
+
+/// Backend wiring supplies only access to its shared context. Sources are
+/// installed on demand and removed after a choice, dismissal, or cancellation.
+pub(crate) fn install<T: 'static>(
+    handle: LoopHandle<'static, T>,
+    host: &mut LayoutMenuHost,
+    context: for<'a> fn(&'a mut T) -> WmCtx<'a>,
+) {
+    let remove_handle = handle.clone();
+    host.remove = Some(Box::new(move |token| remove_handle.remove(token)));
+    host.watch = Some(Box::new(
+        move |output, generation, menu_context, entries| {
+            let mut buffer = Vec::new();
+            handle
+                .insert_source(
+                    Generic::new(output, Interest::READ, Mode::Level),
+                    move |_, output, state| {
+                        let answer = match read_answer(&mut &**output, &mut buffer) {
+                            Ok(None) => return Ok(PostAction::Continue),
+                            Ok(Some(answer)) => answer,
+                            Err(error) => {
+                                log::debug!("layout chooser output: {error}");
+                                String::new()
+                            }
+                        };
+                        finish(
+                            &mut context(state),
+                            generation,
+                            menu_context,
+                            selected_action(&entries, answer.trim_end()),
+                        );
+                        Ok(PostAction::Remove)
+                    },
+                )
+                .map_err(|error| format!("failed to watch layout chooser: {error}"))
+        },
+    ));
+}
+
+/// Read a bounded, nonblocking single-line response. Empty EOF is dismissal.
+fn read_answer(output: &mut impl Read, buffer: &mut Vec<u8>) -> io::Result<Option<String>> {
+    let mut chunk = [0; 128];
+    loop {
+        match output.read(&mut chunk) {
+            Ok(0) => {
+                return String::from_utf8(std::mem::take(buffer))
+                    .map(Some)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
+            }
+            Ok(count) => {
+                buffer.extend_from_slice(&chunk[..count]);
+                if buffer.len() > 128 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "layout chooser response too long",
+                    ));
+                }
+                if let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
+                    return String::from_utf8(buffer[..end].to_vec())
+                        .map(Some)
+                        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(None),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
     }
 }
 
@@ -331,6 +396,9 @@ fn start_menu(
     context: MenuContext,
     entries: Vec<Choice>,
 ) -> Result<(), String> {
+    if host.watch.is_none() {
+        return Err("layout chooser event source is not configured".into());
+    }
     let input = entries
         .iter()
         .map(Choice::line)
@@ -338,94 +406,66 @@ fn start_menu(
         .join("\n")
         + "\n";
     host.cancel();
-    let generation = host.generation;
-    let mut child = command
+    let child = command
         .spawn()
         .map_err(|error| format!("failed to open layout chooser: {error}"))?;
-    let pgid = match i32::try_from(child.id()) {
-        Ok(pgid) => pgid,
-        Err(error) => {
-            let _ = child.kill();
-            crate::util::reap_child_async(child);
-            return Err(error.to_string());
+    host.child = Some(child);
+    let result = (|| {
+        let child = host.child.as_mut().unwrap();
+        let output = child.stdout.take().expect("piped stdout");
+        let output = File::from(OwnedFd::from(output));
+        // Preserve existing descriptor flags when enabling nonblocking reads.
+        let fd = output.as_raw_fd();
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            return Err(io::Error::last_os_error().to_string());
         }
-    };
-    if let Ok(mut slot) = host.child_pgid.lock() {
-        *slot = Some(pgid);
-    }
-    let sender = host.sender.clone();
-    let wake = host.wake.clone();
-    let pgid_slot = Arc::clone(&host.child_pgid);
-    // Retain ownership until the worker has started, so a thread creation
-    // failure can still kill and reap the child.
-    let handoff = Arc::new(Mutex::new(Some(child)));
-    let worker_child = Arc::clone(&handoff);
-    let worker = std::thread::Builder::new()
-        .name("instantwm-layout-menu".into())
-        .spawn(move || {
-            let mut child = worker_child.lock().unwrap().take().unwrap();
-            let write_result = child
-                .stdin
-                .take()
-                .expect("piped stdin")
-                .write_all(input.as_bytes());
-            let action = child
-                .wait_with_output()
-                .ok()
-                .filter(|output| output.status.success() && write_result.is_ok())
-                .and_then(|output| String::from_utf8(output.stdout).ok())
-                .and_then(|answer| selected_action(&entries, answer.trim_end()));
-            if let Ok(mut slot) = pgid_slot.lock()
-                && *slot == Some(pgid)
-            {
-                *slot = None;
-            }
-            let _ = sender.send(Outcome {
-                generation,
-                context,
-                action,
-            });
-            if let Some(wake) = wake {
-                wake.ping();
-            }
-        });
-    if let Err(error) = worker {
+        // Eight bounded menu rows fit in an empty pipe. Close stdin immediately
+        // after writing so instantMENU can finish reading its entries.
+        child
+            .stdin
+            .take()
+            .expect("piped stdin")
+            .write_all(input.as_bytes())
+            .map_err(|error| format!("failed to populate layout chooser: {error}"))?;
+        host.source = Some(host.watch.as_ref().unwrap()(
+            output,
+            host.generation,
+            context,
+            entries,
+        )?);
+        Ok(())
+    })();
+    if result.is_err() {
         host.cancel();
-        if let Some(child) = handoff.lock().unwrap().take() {
-            crate::util::reap_child_async(child);
-        }
-        return Err(format!("failed to start layout chooser worker: {error}"));
     }
-    Ok(())
+    result
 }
 
-pub(crate) fn drain(ctx: &mut WmCtx<'_>) -> bool {
-    let mut applied = false;
-    loop {
-        let Ok(outcome) = ctx.core_mut().bar.layout_menu.outcomes.try_recv() else {
-            break;
-        };
-        let core = ctx.core();
-        let monitor = core.state.model.expect_selected_monitor();
-        if outcome.generation != core.bar.layout_menu.generation
-            || outcome.context != MenuContext::from_monitor(monitor)
-        {
-            continue;
-        }
-        let Some(action) = outcome.action else {
-            continue;
-        };
-        if matches!(action, NamedAction::SetLayout(layout) if layout == monitor.current_layout_command())
-        {
-            continue;
-        }
-        if let Err(error) = action.execute(ctx) {
-            log::warn!("layout chooser: {error}");
-        } else {
-            applied = true;
-        }
+fn finish(ctx: &mut WmCtx<'_>, generation: u64, context: MenuContext, action: Option<NamedAction>) {
+    let host = &mut ctx.core_mut().bar.layout_menu;
+    if generation != host.generation {
+        return;
     }
-    applied
+    // The callback removes its own source with PostAction::Remove.
+    host.source = None;
+    // A complete stdout value is the presenter's selection. Reaping is separate
+    // so process shutdown can never delay the event-loop callback.
+    if let Some(child) = host.child.take() {
+        crate::util::reap_child_async(child);
+    }
+    let monitor = ctx.core().state.model.expect_selected_monitor();
+    if context != MenuContext::from_monitor(monitor) {
+        return;
+    }
+    let Some(action) = action else { return };
+    if matches!(action, NamedAction::SetLayout(layout) if layout == monitor.current_layout_command())
+    {
+        return;
+    }
+    if let Err(error) = action.execute(ctx) {
+        log::warn!("layout chooser: {error}");
+    }
 }
 
 #[cfg(test)]
@@ -448,6 +488,12 @@ mod tests {
     #[test]
     fn presenter_receives_shortcuts_and_returns_an_action_without_ipc() {
         let mut wm = wm_with_monitor();
+        let mut event_loop = calloop::EventLoop::try_new().unwrap();
+        install(
+            event_loop.handle(),
+            &mut wm.core.bar.layout_menu,
+            |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
+        );
         let monitor = wm.core.state.model.expect_selected_monitor();
         let context = MenuContext::from_monitor(monitor);
         let active = monitor.current_layout_command();
@@ -460,20 +506,11 @@ mod tests {
         command.args(["-c", r#"input=$(cat); case "$input" in *shortcut=super-c*) printf 'floating\n';; *) exit 1;; esac"#])
             .stdin(Stdio::piped()).stdout(Stdio::piped()).process_group(0);
         start_menu(&mut wm.core.bar.layout_menu, command, context, entries).unwrap();
-        let outcome = wm
-            .core
-            .bar
-            .layout_menu
-            .outcomes
-            .recv_timeout(std::time::Duration::from_secs(5))
+        event_loop
+            .dispatch(std::time::Duration::from_secs(5), &mut wm)
             .unwrap();
-        assert_eq!(
-            outcome.action,
-            Some(NamedAction::SetLayout(LayoutCommand::Floating))
-        );
-        assert_eq!(*wm.core.bar.layout_menu.child_pgid.lock().unwrap(), None);
-        wm.core.bar.layout_menu.sender.send(outcome).unwrap();
-        assert!(wm.with_ctx(drain));
+        assert!(wm.core.bar.layout_menu.source.is_none());
+        assert!(wm.core.bar.layout_menu.child.is_none());
         assert_eq!(
             wm.core
                 .state
@@ -490,34 +527,34 @@ mod tests {
         let monitor = wm.core.state.model.expect_selected_monitor();
         let context = MenuContext::from_monitor(monitor);
         let active = monitor.current_layout_command();
-        let host = &mut wm.core.bar.layout_menu;
-        host.cancel();
+        wm.core.bar.layout_menu.cancel();
+        let current_generation = wm.core.bar.layout_menu.generation;
         for (generation, context) in [
-            (host.generation - 1, context),
+            (current_generation - 1, context),
             (
-                host.generation,
+                current_generation,
                 MenuContext {
                     tags: TagMask::single(2).unwrap(),
                     ..context
                 },
             ),
             (
-                host.generation,
+                current_generation,
                 MenuContext {
                     monitor: MonitorId::from_raw(context.monitor.get() + 1),
                     ..context
                 },
             ),
         ] {
-            host.sender
-                .send(Outcome {
+            wm.with_ctx(|ctx| {
+                finish(
+                    ctx,
                     generation,
                     context,
-                    action: Some(NamedAction::SetLayout(LayoutCommand::Floating)),
-                })
-                .unwrap();
+                    Some(NamedAction::SetLayout(LayoutCommand::Floating)),
+                )
+            });
         }
-        assert!(!wm.with_ctx(drain));
         assert_eq!(
             wm.core
                 .state
@@ -529,8 +566,14 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_terminates_and_reaps_the_presenter() {
+    fn cancellation_removes_the_source_and_releases_the_child() {
         let mut wm = wm_with_monitor();
+        let mut event_loop = calloop::EventLoop::try_new().unwrap();
+        install(
+            event_loop.handle(),
+            &mut wm.core.bar.layout_menu,
+            |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
+        );
         let monitor = wm.core.state.model.expect_selected_monitor();
         let context = MenuContext::from_monitor(monitor);
         let mut command = Command::new("sh");
@@ -542,13 +585,69 @@ mod tests {
         let host = &mut wm.core.bar.layout_menu;
         start_menu(host, command, context, choices(LayoutCommand::Tile)).unwrap();
         host.cancel();
-        let outcome = host
-            .outcomes
-            .recv_timeout(std::time::Duration::from_secs(5))
+        assert!(host.source.is_none());
+        assert!(host.child.is_none());
+        // Removing the source also closes the pipe. No menu callback should
+        // remain registered after cancellation.
+        event_loop
+            .dispatch(std::time::Duration::ZERO, &mut wm)
             .unwrap();
-        assert_eq!(outcome.action, None);
-        assert_ne!(outcome.generation, host.generation);
-        assert_eq!(*host.child_pgid.lock().unwrap(), None);
+    }
+
+    #[test]
+    fn partial_output_waits_for_readiness_without_blocking() {
+        let (mut output, mut writer) = std::os::unix::net::UnixStream::pair().unwrap();
+        output.set_nonblocking(true).unwrap();
+        let mut buffer = Vec::new();
+        writer.write_all(b"flo").unwrap();
+        assert_eq!(read_answer(&mut output, &mut buffer).unwrap(), None);
+        writer.write_all(b"ating\n").unwrap();
+        assert_eq!(
+            read_answer(&mut output, &mut buffer).unwrap(),
+            Some("floating".into())
+        );
+    }
+
+    #[test]
+    fn dismissal_and_unknown_output_remove_the_source_without_changing_layout() {
+        for script in ["cat >/dev/null", "cat >/dev/null; printf 'unknown\\n'"] {
+            let mut wm = wm_with_monitor();
+            let mut event_loop = calloop::EventLoop::try_new().unwrap();
+            install(
+                event_loop.handle(),
+                &mut wm.core.bar.layout_menu,
+                |wm: &mut crate::test_support::TestWm| wm.test_ctx(),
+            );
+            let monitor = wm.core.state.model.expect_selected_monitor();
+            let context = MenuContext::from_monitor(monitor);
+            let active = monitor.current_layout_command();
+            let mut command = Command::new("sh");
+            command
+                .args(["-c", script])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .process_group(0);
+            start_menu(
+                &mut wm.core.bar.layout_menu,
+                command,
+                context,
+                choices(active),
+            )
+            .unwrap();
+            event_loop
+                .dispatch(std::time::Duration::from_secs(5), &mut wm)
+                .unwrap();
+            assert!(wm.core.bar.layout_menu.source.is_none());
+            assert!(wm.core.bar.layout_menu.child.is_none());
+            assert_eq!(
+                wm.core
+                    .state
+                    .model
+                    .expect_selected_monitor()
+                    .current_layout_command(),
+                active
+            );
+        }
     }
 
     #[test]

@@ -61,7 +61,6 @@ pub fn event_loop_tick_with_options(
     // pending work to let the same tick apply the resulting layout.
     let region_selection_applied = crate::mouse::slop::drain_region_selection(ctx);
     let ipc_handled = process_ipc_commands(ipc_server, ctx);
-    let layout_menu_applied = crate::bar::layout_menu::drain(ctx);
     let work = process_pending_work(ctx, options);
     crate::bar::status::sync_visibility(ctx.core_mut());
 
@@ -70,10 +69,7 @@ pub fn event_loop_tick_with_options(
         ctx.reconcile_bars();
     }
     TickResult {
-        ipc_handled: ipc_handled
-            || status_handled
-            || region_selection_applied
-            || layout_menu_applied,
+        ipc_handled: ipc_handled || status_handled || region_selection_applied,
         monitor_config_applied: work.monitor_config_applied,
         layout_applied: work.layout_applied,
         systray_updated,
