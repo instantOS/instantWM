@@ -8,7 +8,6 @@ pub mod actions;
 mod animation;
 mod backend;
 mod bar;
-pub use bar::layout_menu::LayoutMenuContext;
 mod client;
 pub mod config;
 mod constants;

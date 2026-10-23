@@ -1,7 +1,7 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::commands::{ConfigAction, KeyboardAction, LayoutAction, TestAction};
+use ctl::commands::{ConfigAction, KeyboardAction, TestAction};
 use ctl::format::print_json;
 use ctl::{Cli, CommandKind, format_response};
 use instantwm::ipc_types::{IpcCommand, Response, TestCommand, WindowCommand};
@@ -43,9 +43,6 @@ fn main() {
 /// trips (which must not block the compositor's event loop).
 fn run_local(command: CommandKind, json: bool, ignore_version: bool) -> Result<(), String> {
     match command {
-        CommandKind::Layout {
-            action: LayoutAction::Menu { anchor },
-        } => ctl::layout_menu::run(ignore_version, anchor),
         CommandKind::Action { .. } => {
             let actions = instantwm::actions::action_infos();
             if json {
@@ -283,6 +280,7 @@ mod tests {
         for (argv, name, args) in [
             (&["layout", "set", "grid"][..], "set_layout", &["grid"][..]),
             (&["layout", "reset"][..], "reset_layout", &[][..]),
+            (&["layout", "menu"][..], "layout_menu", &[][..]),
             (&["mode", "set", "resize"], "set_mode", &["resize"]),
             (&["tag", "view", "4"], "view_tag", &["4"]),
             (&["follow-mon", "prev"], "follow_mon", &["prev"]),
@@ -355,17 +353,6 @@ mod tests {
         for argv in [
             &["action", "--list"][..],
             &["keyboard", "available"],
-            &["layout", "menu"],
-            &[
-                "layout",
-                "menu",
-                "--monitor",
-                "1",
-                "--x-offset",
-                "135",
-                "--y-offset",
-                "30",
-            ],
             &["config", "default"],
             &["test", "pointer-path", "0,0", "1,1"],
             &["test", "wait-windows", "2"],

@@ -18,10 +18,7 @@ pub enum KeyboardAction {
 #[derive(Debug, Clone, Subcommand)]
 pub enum LayoutAction {
     /// Choose a remembered layout or reset the arrangement using instantMENU.
-    Menu {
-        #[command(flatten)]
-        anchor: super::layout_menu::MenuAnchor,
-    },
+    Menu,
     /// Reset the active layout to its preset geometry.
     Reset,
     /// List every layout, marking the selected monitor's active one.
@@ -232,10 +229,7 @@ impl CommandKind {
     /// test paths and waits).
     pub fn into_ipc(self) -> Result<IpcCommand, Box<Self>> {
         Ok(match self {
-            Self::Layout {
-                action: LayoutAction::Menu { .. },
-            }
-            | Self::Action { list: true, .. }
+            Self::Action { list: true, .. }
             | Self::Keyboard {
                 action: KeyboardAction::Available,
             }
@@ -264,7 +258,7 @@ impl CommandKind {
             Self::SendMon { direction } => run(NamedAction::SendMon(direction)),
             Self::FollowMon { direction } => run(NamedAction::FollowMon(direction)),
             Self::Layout { action } => match action {
-                LayoutAction::Menu { .. } => unreachable!("layout menu is handled locally"),
+                LayoutAction::Menu => run(NamedAction::LayoutMenu),
                 LayoutAction::Reset => run(NamedAction::ResetLayout),
                 LayoutAction::List => IpcCommand::LayoutList,
                 LayoutAction::Status => IpcCommand::LayoutStatus,
@@ -308,6 +302,22 @@ mod tests {
     use super::*;
     use instantwm::ipc_types::WindowCommand;
     use instantwm::types::WindowId;
+
+    #[test]
+    fn layout_menu_commands_use_the_same_named_action() {
+        for args in [
+            ["instantwmctl", "layout", "menu"],
+            ["instantwmctl", "action", "layout_menu"],
+        ] {
+            let command = Cli::try_parse_from(args)
+                .unwrap()
+                .command
+                .into_ipc()
+                .unwrap();
+            assert!(matches!(command, IpcCommand::RunAction { name, args }
+                if name == "layout_menu" && args.is_empty()));
+        }
+    }
 
     #[test]
     fn window_cli_parses_typed_ids_without_changing_numeric_syntax() {
