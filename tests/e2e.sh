@@ -140,7 +140,7 @@ while read -r id; do
 import json, sys
 window = json.load(sys.stdin)
 geometry = window["geometry"]
-print(window["id"], geometry["x"], geometry["y"], geometry["width"], geometry["height"])
+print(window["id"], geometry["x"], geometry["y"], geometry["w"], geometry["h"])
 ' >>"$E2E_TMP/geometries.txt"
 done <"$E2E_TMP/ids-new.txt"
 

@@ -150,8 +150,8 @@ def main():
                     if client["state"]["mode"]["placement"] == "Tiling":
                         ctl("action", "toggle_floating")
                     initial = geometry(window)
-                    x = initial["x"] + initial["width"] // 2
-                    y = initial["y"] + initial["height"] // 2
+                    x = initial["x"] + initial["w"] // 2
+                    y = initial["y"] + initial["h"] // 2
                     run("xdotool", "mousemove", str(x), str(y), "keydown", "Super_L", "mousedown", "1")
                     # Keep the pointer moving while polling for engagement: a
                     # busy WM can process the press after the first follow-up
@@ -271,8 +271,8 @@ def main():
                          "release victim removed")
                 sink_geo = geometry(sink_id)
                 run("xdotool", "mousemove",
-                    str(sink_geo["x"] + sink_geo["width"] // 2),
-                    str(sink_geo["y"] + sink_geo["height"] // 2))
+                    str(sink_geo["x"] + sink_geo["w"] // 2),
+                    str(sink_geo["y"] + sink_geo["h"] // 2))
                 release()
                 # Prove the watcher is live with an ordinary post-grab click;
                 # only the quarantined initiating button must be absent.
