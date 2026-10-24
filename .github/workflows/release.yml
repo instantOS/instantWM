@@ -96,17 +96,8 @@ jobs:
             artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz
             artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz.sha256
   cross-compile:
-    # Cross-compile for ARM (aarch64 + armv7), one job per target. The musl
-    # target used to be built here too, but smithay/wayland/X11 pull in a
-    # large number of native -sys crates (libudev, libdrm, libgbm, libegl,
-    # libgl, libinput, libseat, libwayland, libxkbcommon, libfontconfig,
-    # libfreetype, libx11, ...), and Ubuntu doesn't ship :musl variants of
-    # those packages. Bringing musl back will require either a dedicated
-    # cross-rs image that builds those libs against musl, or a sysroot-based
-    # approach (e.g. via Alpine in a chroot).
-    # Unlike the old multi-arch setup this never co-installs two
-    # architectures into one dpkg database, so per-mirror publish timing can no
-    # longer make the build unsatisfiable (see install-deps-ubuntu.sh).
+    # GNU ARM cross builds use Ubuntu sysroots. The apk job builds musl
+    # natively on Alpine, including the required native graphics libraries.
     name: Cross-compile ${{ matrix.target }}
     runs-on: ubuntu-26.04
     timeout-minutes: 360
@@ -290,6 +281,67 @@ jobs:
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-deb
           path: artifacts/
+  apk:
+    name: Build Alpine package (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    needs: metadata
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Cache Alpine Cargo dependencies and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/apk-cargo
+            target/apk-build
+          key: alpine-3.24-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'packaging/alpine/APKBUILD.in') }}
+          restore-keys: alpine-3.24-${{ matrix.arch }}-
+      - name: Build native Alpine package
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e EXPECTED_ARCH \
+            -e CARGO_HOME=/work/target/apk-cargo \
+            -e APK_CARGO_TARGET_DIR=/work/target/apk-build \
+            -e CARGO_BUILD_JOBS=2 alpine:3.24 sh -ec '
+              test "$(apk --print-arch)" = "$EXPECTED_ARCH"
+              apk add --update-cache abuild
+              SUDO= abuild-keygen -a -n -i
+              ./utils/build_apk.sh
+            '
+      - name: Smoke test Alpine installation
+        run: |
+          docker run --rm -v "$PWD/target/apk:/packages:ro" alpine:3.24 sh -ec '
+            cd /packages
+            sha256sum -c ./*.apk.sha256
+            apk add --no-cache --allow-untrusted ./*.apk
+            instantwm --help > /dev/null
+            instantwmctl --help > /dev/null
+            command -v dbus-run-session
+            command -v setxkbmap
+            test -x /usr/bin/startinstantos
+            test -x /usr/bin/instantwm-debug
+            test -f /usr/share/xsessions/instantwm.desktop
+            test -f /usr/share/wayland-sessions/instantwm-wayland.desktop
+            test -f /usr/share/xdg-desktop-portal/instantwm-portals.conf
+          '
+      - name: Upload Alpine package
+        uses: actions/upload-artifact@v7
+        with:
+          name: instantwm-${{ needs.metadata.outputs.version }}-apk-${{ matrix.arch }}
+          path: |
+            target/apk/*.apk
+            target/apk/*.apk.sha256
   release:
     name: Publish GitHub release
     runs-on: ubuntu-26.04
@@ -301,6 +353,7 @@ jobs:
       - cross-compile
       - pkgbuild
       - deb
+      - apk
     permissions:
       contents: write
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
