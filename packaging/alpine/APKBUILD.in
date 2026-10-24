@@ -1,0 +1,50 @@
+# Maintainer: instantOS <hello@instantos.io>
+pkgname=instantwm
+pkgdesc="Hybrid tiling window manager for X11 and Wayland"
+depends="bash dbus setxkbmap font-dejavu libxcb libxcursor libxkbcommon mesa-egl mesa-gbm mesa-gl mesa-gles libseat wayland-libs-client"
+makedepends="cargo rust build-base pkgconf git libx11-dev libxinerama-dev libxft-dev
+	libxrender-dev fontconfig-dev freetype-dev libxcb-dev libxkbcommon-dev
+	libxcursor-dev libinput-dev eudev-dev mesa-dev libdrm-dev wayland-dev libseat-dev"
+pkgver=@VERSION@
+pkgrel=0
+url="https://instantos.io"
+arch="x86_64 aarch64"
+license="MIT"
+options="!check !strip"
+source="source.tar.gz"
+builddir="$srcdir"
+_cargo_profile=${APK_BUILD_PROFILE:-release}
+_cargo_target=${APK_CARGO_TARGET_DIR:-$builddir/target}
+case "$_cargo_profile" in
+dev) _cargo_output=debug ;;
+release) _cargo_output=release ;;
+*)
+	printf 'unsupported APK_BUILD_PROFILE: %s\n' "$_cargo_profile" >&2
+	return 1
+	;;
+esac
+
+build() {
+	export CARGO_TARGET_DIR="$_cargo_target"
+	# These programs link Alpine's graphics libraries dynamically.
+	export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=-crt-static"
+	cargo build --locked --profile "$_cargo_profile" --bin instantwm --bin instantwmctl
+}
+
+package() {
+	install -Dm755 "$_cargo_target/$_cargo_output/instantwm" "$pkgdir/usr/bin/instantwm"
+	install -Dm755 "$_cargo_target/$_cargo_output/instantwmctl" "$pkgdir/usr/bin/instantwmctl"
+	install -Dm755 scripts/startinstantos "$pkgdir/usr/bin/startinstantos"
+	install -Dm755 scripts/instantwm-debug.sh "$pkgdir/usr/bin/instantwm-debug"
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/instantwm/LICENSE"
+	install -Dm644 README.md "$pkgdir/usr/share/doc/instantwm/README.md"
+	install -Dm644 utils/instantwm-x11.desktop "$pkgdir/usr/share/xsessions/instantwm.desktop"
+	install -Dm644 utils/instantwm-wayland.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-wayland.desktop"
+	install -Dm644 utils/instantwm-wayland-debug.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-debug.desktop"
+	install -Dm644 resources/instantwm-portals.conf "$pkgdir/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+	install -Dm644 resources/instantwm-session.target "$pkgdir/usr/lib/systemd/user/instantwm-session.target"
+	if [ -f instantwm.1 ]; then
+		install -Dm644 instantwm.1 "$pkgdir/usr/share/man/man1/instantwm.1"
+		gzip -9 "$pkgdir/usr/share/man/man1/instantwm.1"
+	fi
+}
