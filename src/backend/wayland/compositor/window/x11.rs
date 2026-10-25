@@ -21,24 +21,44 @@ fn unmanaged_overlay_policy(
     window_type: Option<smithay::xwayland::xwm::WmWindowType>,
     launcher: bool,
 ) -> bool {
-    override_redirect
-        || launcher
-        || matches!(
-            window_type,
-            Some(
-                smithay::xwayland::xwm::WmWindowType::DropdownMenu
-                    | smithay::xwayland::xwm::WmWindowType::Menu
-                    | smithay::xwayland::xwm::WmWindowType::PopupMenu
-                    | smithay::xwayland::xwm::WmWindowType::Tooltip
-                    | smithay::xwayland::xwm::WmWindowType::Notification
-            )
+    override_redirect || launcher || is_overlay_window_type(window_type)
+}
+
+pub(super) fn is_overlay_window_type(
+    window_type: Option<smithay::xwayland::xwm::WmWindowType>,
+) -> bool {
+    matches!(
+        window_type,
+        Some(
+            smithay::xwayland::xwm::WmWindowType::DropdownMenu
+                | smithay::xwayland::xwm::WmWindowType::Menu
+                | smithay::xwayland::xwm::WmWindowType::PopupMenu
+                | smithay::xwayland::xwm::WmWindowType::Tooltip
+                | smithay::xwayland::xwm::WmWindowType::Notification
         )
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::unmanaged_overlay_policy;
+    use super::{is_launcher_name, unmanaged_overlay_policy};
     use smithay::xwayland::xwm::WmWindowType;
+
+    #[test]
+    fn launcher_matching_preserves_ascii_case_and_substring_semantics() {
+        for name in [
+            "dmenu",
+            "DMenu",
+            "InstantMenu",
+            "prefix-INSTANTMENU-suffix",
+            "αDMENUβ",
+        ] {
+            assert!(is_launcher_name(name), "{name}");
+        }
+        for name in ["", "instantWM", "d menu", "DMEN", "Wine game"] {
+            assert!(!is_launcher_name(name), "{name}");
+        }
+    }
 
     #[test]
     fn dialogs_and_ordinary_windows_use_managed_focus_and_parent_tracking() {
@@ -77,13 +97,17 @@ mod tests {
 
 /// Check if an X11 surface is a launcher (dmenu, instantmenu, etc.)
 pub(crate) fn is_launcher_x11_surface(x11: &smithay::xwayland::X11Surface) -> bool {
-    let class = x11.class().to_ascii_lowercase();
-    let instance = x11.instance().to_ascii_lowercase();
-    let title = x11.title().to_ascii_lowercase();
-    class.contains("dmenu")
-        || class.contains("instantmenu")
-        || instance.contains("dmenu")
-        || instance.contains("instantmenu")
-        || title.contains("dmenu")
-        || title.contains("instantmenu")
+    is_launcher_name(&x11.class())
+        || is_launcher_name(&x11.instance())
+        || is_launcher_name(&x11.title())
+}
+
+fn is_launcher_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes
+        .windows(b"dmenu".len())
+        .any(|part| part.eq_ignore_ascii_case(b"dmenu"))
+        || bytes
+            .windows(b"instantmenu".len())
+            .any(|part| part.eq_ignore_ascii_case(b"instantmenu"))
 }

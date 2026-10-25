@@ -61,10 +61,7 @@ fn compute_output_vrr_target(state: &WaylandState, entry: &OutputSurfaceEntry) -
                 || state.native.has_window_animations_on_output(&entry.output)
                 || state.native.has_active_layout_preview_animation()
                 || has_pending_screencopy_for_output(state, &output_name)
-                || !state
-                    .native
-                    .overlay_windows_for_render(&entry.output)
-                    .is_empty()
+                || state.native.has_overlay_windows_for_render(&entry.output)
                 || !matches!(
                     state.native.cursor_image_status,
                     smithay::input::pointer::CursorImageStatus::Named(_)

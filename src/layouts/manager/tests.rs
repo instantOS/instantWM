@@ -1,5 +1,5 @@
 use super::{
-    available_tree_resize_direction, compute_monitor_z_order, pointer_tree_gap_resize_start,
+    available_tree_resize_direction, compute_monitor_z_order, pointer_tree_gap_resize_target,
     shifted_master_count,
 };
 use crate::config::config_toml::LayoutConfig;
@@ -129,12 +129,14 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
         )
     };
 
+    let (target, direction) = pointer_tree_gap_resize_target(&wm.core.state, gap)
+        .unwrap_or_else(|| panic!("first={first_geo:?} second={second_geo:?} gap={gap:?}"));
+    let drag =
+        super::pointer_tree_resize_start(wm.core.state.model.client_view(target).unwrap(), gap)
+            .expect("the offered seam must also accept an actual drag");
+    assert_eq!(drag.direction, direction);
     assert!(
-        pointer_tree_gap_resize_start(&wm.core.state, gap).is_some(),
-        "first={first_geo:?} second={second_geo:?} gap={gap:?}"
-    );
-    assert!(
-        pointer_tree_gap_resize_start(&wm.core.state, Point::new(10, first_geo.center().y))
+        pointer_tree_gap_resize_target(&wm.core.state, Point::new(10, first_geo.center().y))
             .is_none(),
         "the configured outer gap must retain root/desktop behavior"
     );

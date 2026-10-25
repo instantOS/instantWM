@@ -32,6 +32,19 @@ pub(crate) fn pointer_tree_resize_start(
     view: ClientView<'_>,
     point: crate::types::Point,
 ) -> Option<PointerTreeResizeStart> {
+    let direction = pointer_tree_resize_direction(view, point)?;
+    Some(PointerTreeResizeStart {
+        direction,
+        origin: std::sync::Arc::new(view.monitor.per_tag()?.layout_tree.clone()),
+    })
+}
+
+/// Passive hover needs only the seam direction. Capture the tree only when a
+/// button press starts a drag, via `pointer_tree_resize_start`.
+fn pointer_tree_resize_direction(
+    view: ClientView<'_>,
+    point: crate::types::Point,
+) -> Option<crate::types::ResizeDirection> {
     if !uses_manual_tree_pointer_interaction(view) {
         return None;
     }
@@ -43,7 +56,7 @@ pub(crate) fn pointer_tree_resize_start(
     let bottom = tree.can_resize_side(window, crate::layouts::tree::Side::Bottom);
     let hit = view.client.geo.local_point(point);
     let requested = crate::types::ResizeDirection::from_hit(view.client.geo.size(), hit);
-    let direction = available_tree_resize_direction(
+    available_tree_resize_direction(
         requested,
         left,
         right,
@@ -51,19 +64,15 @@ pub(crate) fn pointer_tree_resize_start(
         bottom,
         hit,
         view.client.geo.size(),
-    )?;
-    Some(PointerTreeResizeStart {
-        direction,
-        origin: std::sync::Arc::new(tree.clone()),
-    })
+    )
 }
 
 /// Resolve an adjustable tiled-tree seam from a pointer position in an inner
 /// gap. Outer gaps deliberately do not count: they retain desktop semantics.
-pub(crate) fn pointer_tree_gap_resize_start(
+pub(crate) fn pointer_tree_gap_resize_target(
     state: &crate::core_state::CoreState,
     point: crate::types::Point,
-) -> Option<(WindowId, PointerTreeResizeStart)> {
+) -> Option<(WindowId, crate::types::ResizeDirection)> {
     let model = &state.model;
     let monitor = model
         .monitors
@@ -102,14 +111,14 @@ pub(crate) fn pointer_tree_gap_resize_start(
         return None;
     }
 
-    pointer_tree_resize_start(
+    pointer_tree_resize_direction(
         ClientView {
             client: monitor.client(win)?,
             monitor,
         },
         point,
     )
-    .map(|resize| (win, resize))
+    .map(|direction| (win, direction))
 }
 
 /// Whether pointer movement/resizing should edit the persistent layout tree.
