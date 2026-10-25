@@ -1,5 +1,6 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
+use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::session::Event as SessionEvent;
@@ -93,7 +94,10 @@ pub fn run() -> ! {
     state.init_drm_syncobj(drm_fd.clone());
 
     let mut cursor_manager = CursorManager::from_environment(&state.native.cursor_config);
-    let mut output_manager = create_output_manager(drm_device, &renderer, &gbm_device, &gbm_device);
+    // The scanout device may be a different GPU from the render device (split
+    // setups).  Open its own GBM handle for framebuffer import/export.
+    let scanout_gbm = GbmDevice::new(drm_fd.clone()).expect("scanout GbmDevice::new");
+    let mut output_manager = create_output_manager(drm_device, &renderer, &gbm_device, &scanout_gbm);
 
     let mut output_surfaces = {
         build_output_surfaces(
