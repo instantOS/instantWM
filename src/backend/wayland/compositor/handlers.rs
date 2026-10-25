@@ -478,6 +478,16 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
             return;
         }
         if let Some(keyboard) = seat.get_keyboard() {
+            // XWayland may deliver a delayed grab after the user selected a
+            // different window. Such a grab redirects the next key back to its
+            // owner, even though the compositor still reports the new focus.
+            let focused = keyboard
+                .current_focus()
+                .and_then(|focus| focus.wl_surface().map(|surface| surface.into_owned()));
+            if focused.as_ref() != Some(&surface) {
+                log::debug!("denied XWayland keyboard grab from an unfocused surface");
+                return;
+            }
             keyboard.set_grab(self, grab, smithay::utils::SERIAL_COUNTER.next_serial());
         }
     }

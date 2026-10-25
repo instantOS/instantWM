@@ -75,7 +75,16 @@ fn shortcut_suppression(
     state: &WaylandState,
     keyboard: &KeyboardHandle<WaylandState>,
 ) -> Option<ShortcutSuppression> {
-    let focus = keyboard.current_focus();
+    let session_locked = state.native.is_locked();
+    let keyboard_grabbed = !session_locked && keyboard.is_grabbed();
+    let input_method_grabbed =
+        keyboard_grabbed && state.native.seat.input_method().keyboard_grabbed();
+    // Lower-priority surface policy cannot change a lock/grab decision.
+    let focus = if session_locked || (keyboard_grabbed && !input_method_grabbed) {
+        None
+    } else {
+        keyboard.current_focus()
+    };
     let focused_surface_inhibited = focus
         .as_ref()
         .and_then(WaylandFocus::wl_surface)
@@ -86,15 +95,16 @@ fn shortcut_suppression(
                 .keyboard_shortcuts_inhibitor_for_surface(surface.as_ref())
         })
         .is_some_and(|inhibitor| inhibitor.is_active());
-    let exclusive_layer = focus
-        .as_ref()
-        .and_then(WaylandFocus::wl_surface)
-        .and_then(|surface| state.layer_keyboard_policy(surface.as_ref()))
-        .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts);
+    let exclusive_layer = !focused_surface_inhibited
+        && focus
+            .as_ref()
+            .and_then(WaylandFocus::wl_surface)
+            .and_then(|surface| state.layer_keyboard_policy(surface.as_ref()))
+            .is_some_and(LayerKeyboardPolicy::suppresses_wm_shortcuts);
     select_shortcut_suppression(ShortcutContext {
-        session_locked: state.native.is_locked(),
-        keyboard_grabbed: keyboard.is_grabbed(),
-        input_method_grabbed: state.native.seat.input_method().keyboard_grabbed(),
+        session_locked,
+        keyboard_grabbed,
+        input_method_grabbed,
         focused_surface_inhibited,
         exclusive_layer,
     })
@@ -148,7 +158,6 @@ fn handle_keyboard_from_source<B: InputBackend>(
     if state.native.is_locked() {
         state.set_keyboard_focus(None, serial);
     }
-    let suppression = shortcut_suppression(state, keyboard_handle);
     let key_code = event.key_code();
     let key_state = event.state();
     let time = event.time();
@@ -205,6 +214,7 @@ fn handle_keyboard_from_source<B: InputBackend>(
                 data.cancel_shortcut_recovery();
             }
 
+            let suppression = shortcut_suppression(data, keyboard_handle);
             if matches!(
                 suppression,
                 Some(ShortcutSuppression::KeyboardGrab | ShortcutSuppression::SurfaceInhibitor)

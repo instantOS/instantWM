@@ -46,10 +46,12 @@ impl WaylandNativeState {
         #[cfg(test)]
         super::hit_test::record_pointer_hit_snapshot();
 
-        self.windows_in_z_order()
-            .into_iter()
-            .map(|(window, typ)| (window.clone(), typ))
-            .collect()
+        collect_in_scene_order(
+            self.space
+                .elements()
+                .rev()
+                .map(|window| (window.clone(), self.classify_window(window))),
+        )
     }
 }
 
@@ -64,55 +66,81 @@ impl WaylandNativeState {
             return WindowType::Dying;
         }
 
-        // Check for unmanaged X11 overlay
-        if let Some(x11) = window.x11_surface()
-            && super::x11::is_unmanaged_x11_overlay(x11)
-        {
+        // Inspect launcher metadata once. It takes precedence over both
+        // override-redirect and the map-time overlay marker.
+        if let Some(x11) = window.x11_surface() {
             if super::x11::is_launcher_x11_surface(x11) {
                 return WindowType::Launcher;
             }
             if x11.is_override_redirect() {
                 return WindowType::Unmanaged;
             }
-            return WindowType::Overlay;
+            if super::x11::is_overlay_window_type(x11.window_type()) {
+                return WindowType::Overlay;
+            }
         }
-
-        // Check window marker for overlay classification
-        if let Some(marker) = window.user_data().get::<WindowIdMarker>()
-            && marker.is_overlay
+        if window
+            .user_data()
+            .get::<WindowIdMarker>()
+            .is_some_and(|marker| marker.is_overlay)
         {
-            // Check if it's a launcher by title/class
-            if let Some(x11) = window.x11_surface()
-                && super::x11::is_launcher_x11_surface(x11)
-            {
-                return WindowType::Launcher;
-            }
-            return WindowType::Overlay;
+            WindowType::Overlay
+        } else {
+            WindowType::Normal
         }
-
-        // Check X11 surface properties
-        if let Some(x11) = window.x11_surface() {
-            if super::x11::is_launcher_x11_surface(x11) {
-                return WindowType::Launcher;
-            }
-        }
-
-        WindowType::Normal
     }
+
     /// Iterator over windows in z-order (top-to-bottom), along with their type.
     ///
     /// This follows the render-order defined in `assemble_scene_elements!`:
     /// 1. Overlays and Launchers
     /// 2. Others (Normal, Unmanaged)
     pub fn windows_in_z_order(&self) -> Vec<(&Window, WindowType)> {
-        let mut windows: Vec<(&Window, WindowType)> = self
-            .space
-            .elements()
-            .rev()
-            .map(|w| (w, self.classify_window(w)))
-            .collect();
+        collect_in_scene_order(
+            self.space
+                .elements()
+                .rev()
+                .map(|window| (window, self.classify_window(window))),
+        )
+    }
+}
 
-        windows.sort_by_key(|(_, typ)| if typ.is_overlay() { 0 } else { 1 });
-        windows
+/// Preserve Space order within each foreground/ordinary group. Borrowed render
+/// views and owned input snapshots each collect directly into one vector.
+fn collect_in_scene_order<T>(
+    windows: impl Iterator<Item = (T, WindowType)>,
+) -> Vec<(T, WindowType)> {
+    let mut windows: Vec<_> = windows.collect();
+    windows.sort_by_key(|(_, typ)| !typ.is_overlay());
+    windows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WindowType, collect_in_scene_order};
+
+    #[test]
+    fn foreground_partition_preserves_stacking_within_both_groups() {
+        use WindowType::*;
+        let windows = [
+            (1, Normal),
+            (2, Overlay),
+            (3, Unmanaged),
+            (4, Normal),
+            (5, Launcher),
+            (6, Dying),
+        ];
+        let ordered = collect_in_scene_order(windows.into_iter());
+        assert_eq!(
+            ordered,
+            [
+                (2, Overlay),
+                (3, Unmanaged),
+                (5, Launcher),
+                (1, Normal),
+                (4, Normal),
+                (6, Dying)
+            ]
+        );
     }
 }

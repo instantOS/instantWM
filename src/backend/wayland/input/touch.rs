@@ -188,9 +188,8 @@ pub fn handle_touch_down(
         state.native.runtime.pointer_location = location;
 
         let pointer = state.native.pointer.clone();
-        crate::backend::wayland::input::pointer::motion::dispatch_smithay_pointer_motion(
+        pointer.motion(
             state,
-            &pointer,
             hit.focus,
             &smithay::input::pointer::MotionEvent {
                 location,
@@ -229,9 +228,8 @@ pub fn handle_touch_motion(
         let hit = focus_at(state, &state.wm.core.state, location);
         let serial = SERIAL_COUNTER.next_serial();
         let pointer = state.native.pointer.clone();
-        crate::backend::wayland::input::pointer::motion::dispatch_smithay_pointer_motion(
+        pointer.motion(
             state,
-            &pointer,
             hit.focus.clone(),
             &smithay::input::pointer::MotionEvent {
                 location,

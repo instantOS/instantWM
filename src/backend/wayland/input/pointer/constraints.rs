@@ -1,7 +1,6 @@
 //! Pointer-lock and confinement resolution for pointer motion.
 
 use smithay::input::pointer::PointerHandle;
-use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::RegionAttributes;
@@ -31,6 +30,9 @@ impl ActivePointerConstraint {
         let Some((surface, surface_loc)) = current_surface else {
             return Self::default();
         };
+        // Activation happens only in the focused target's enter/motion hooks
+        // (or a focus-checked protocol request). Smithay deactivates on leave,
+        // so active constraints already imply pointer ownership.
         let mut resolved = Self::None;
         with_pointer_constraint(surface, pointer, |constraint| {
             let Some(constraint) = constraint else {
@@ -85,20 +87,21 @@ impl ActivePointerConstraint {
     }
 }
 
-pub(super) fn activate_under(
+/// Called only from PointerTarget enter/motion, after delivering the event.
+/// Smithay already holds the pointer lock and has selected the receiving
+/// surface. Use its surface-local coordinates; never query the pointer handle
+/// here, which would acquire that same lock again.
+pub(crate) fn activate_for_focus(
     pointer: &PointerHandle<WaylandState>,
-    current_surface: Option<&SurfaceFocus>,
-    pointer_location: Point<f64, Logical>,
+    surface: &WlSurface,
+    surface_location: Point<f64, Logical>,
 ) {
-    let Some((surface, surface_loc)) = current_surface else {
-        return;
-    };
     with_pointer_constraint(surface, pointer, |constraint| {
         let Some(constraint) = constraint else {
             return;
         };
         if !constraint.is_active()
-            && pointer_is_in_region(&constraint, pointer_location, *surface_loc)
+            && pointer_is_in_region(&constraint, surface_location, Point::from((0, 0)))
         {
             constraint.activate();
         }
@@ -121,12 +124,11 @@ fn pointer_is_in_region(
 /// focus: Smithay delivers relative motion through its pointer focus, so
 /// activating against a stale or absent focus (games create constraints
 /// around fullscreen transitions) strands the lock — the client is locked
-/// while receiving no pointer stream at all. niri enforces the same
-/// invariant: refresh focus, then activate only if the focus belongs to the
-/// constrained client and the pointer sits inside the constraint region.
+/// while receiving no pointer stream at all. Activate only if the focus is the
+/// constrained surface and the pointer sits inside the constraint region.
 ///
-/// When this gate declines, the pointer-motion path (`activate_under`)
-/// activates the constraint on a later event once focus and hover agree.
+/// When this gate declines, the focused target's enter/motion hooks
+/// activate the constraint on a later event once focus and hover agree.
 pub(crate) fn new_constraint_should_activate(
     pointer_focus: Option<&WlSurface>,
     constraint_region: Option<&RegionAttributes>,
@@ -137,7 +139,7 @@ pub(crate) fn new_constraint_should_activate(
     let Some(focus) = pointer_focus else {
         return false;
     };
-    if !focus.id().same_client_as(&surface.id()) {
+    if focus != surface {
         return false;
     }
     let Some(surface_origin) = surface_origin else {
@@ -169,22 +171,6 @@ mod tests {
             let surface = null_surface(&state);
             assert!(!new_constraint_should_activate(
                 None,
-                None,
-                Point::from((0.0, 0.0)),
-                &surface,
-                Some(Point::from((0.0, 0.0))),
-            ));
-        }
-
-        #[test]
-        fn a_lock_for_another_client_must_not_activate() {
-            // The null focus surface belongs to no client, so it can never
-            // match the constrained surface's client.
-            let (_event_loop, state) = new_compositor();
-            let surface = null_surface(&state);
-            let focus = null_surface(&state);
-            assert!(!new_constraint_should_activate(
-                Some(&focus),
                 None,
                 Point::from((0.0, 0.0)),
                 &surface,

@@ -1,6 +1,5 @@
 use smithay::utils::IsAlive;
 use smithay::utils::SERIAL_COUNTER;
-use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
@@ -10,8 +9,8 @@ use crate::types::WindowId;
 
 use crate::backend::wayland::commands::WmCommand;
 
-fn grab_focus_conflicts<T: PartialEq>(grab_focus: Option<&T>, new_focus: &T) -> bool {
-    grab_focus.is_some_and(|grab_focus| grab_focus != new_focus)
+fn grab_focus_conflicts<T: PartialEq>(grab_focus: Option<&T>, new_focus: Option<&T>) -> bool {
+    grab_focus.is_some_and(|grab_focus| Some(grab_focus) != new_focus)
 }
 
 impl WaylandState {
@@ -37,6 +36,25 @@ impl WaylandState {
         target: Option<KeyboardFocusTarget>,
         serial: smithay::utils::Serial,
     ) {
+        self.apply_keyboard_focus(target, serial, false);
+    }
+
+    /// Popup navigation stays inside an existing grab until its replacement is
+    /// installed. Ordinary WM focus requests instead cancel conflicting grabs.
+    pub(crate) fn set_popup_keyboard_focus(
+        &mut self,
+        target: Option<KeyboardFocusTarget>,
+        serial: smithay::utils::Serial,
+    ) {
+        self.apply_keyboard_focus(target, serial, true);
+    }
+
+    fn apply_keyboard_focus(
+        &mut self,
+        target: Option<KeyboardFocusTarget>,
+        serial: smithay::utils::Serial,
+        preserve_grab: bool,
+    ) {
         let effective = if self.native.is_locked() {
             self.locked_keyboard_focus()
         } else {
@@ -45,7 +63,13 @@ impl WaylandState {
         if let Some(keyboard) = self.native.seat.get_keyboard() {
             // A grab can ignore set_focus or redirect the next key event to
             // its own client. No pre-lock grab may survive into the lock.
-            if self.native.is_locked() && keyboard.is_grabbed() {
+            let conflicts = !preserve_grab
+                && keyboard
+                    .with_grab(|_, grab| {
+                        grab_focus_conflicts(grab.start_data().focus.as_ref(), effective.as_ref())
+                    })
+                    .unwrap_or(false);
+            if (self.native.is_locked() && keyboard.is_grabbed()) || conflicts {
                 keyboard.unset_grab(self);
             }
             keyboard.set_focus(self, effective, serial);
@@ -94,7 +118,7 @@ impl WaylandState {
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
         // Activate the new window and set keyboard focus
-        if let Some(new_window) = focus_window {
+        if focus_window.is_some() {
             self.set_window_activated(window, true, presentation);
             // WM selection changes must not steal the seat from a visible
             // exclusive shell surface (including fullscreen selectors).
@@ -102,23 +126,7 @@ impl WaylandState {
                 return;
             }
             // Set keyboard focus on the Smithay seat
-            if let Some(keyboard) = self.native.seat.get_keyboard() {
-                let new_focus = KeyboardFocusTarget::Window(new_window.clone());
-
-                // Popup keyboard grabs intentionally reject focus changes while
-                // they are active. If the WM selects another window, leaving the
-                // grab installed would make the selected window and the actual
-                // key-event target disagree. Cancel grabs anchored to a different
-                // focus before applying the compositor-authoritative focus change.
-                // Grabs without an anchored focus (notably input-method grabs) and
-                // grabs belonging to this same window are left alone.
-                let grab_conflicts = keyboard
-                    .grab_start_data()
-                    .is_some_and(|start| grab_focus_conflicts(start.focus.as_ref(), &new_focus));
-                if grab_conflicts {
-                    log::debug!("set_focus: cancelling keyboard grab anchored to another focus");
-                    keyboard.unset_grab(self);
-                }
+            if self.native.seat.get_keyboard().is_some() {
                 self.set_keyboard_focus(focus, serial);
             } else {
                 log::warn!(
@@ -127,39 +135,8 @@ impl WaylandState {
                 );
             }
 
-            // Re-activate pointer constraints if they exist for this window.
-            // This ensures games (including those using subsurfaces) regain
-            // mouse locks after being Alt-Tabbed.
-            if let Some(surface) = new_window.wl_surface() {
-                let pointer = self.native.seat.get_pointer();
-                if let Some(pointer) = pointer {
-                    // Walk the entire surface tree to handle constraints on subsurfaces.
-                    // We collect the surfaces first to avoid potential deadlocks from
-                    // nested surface/constraint lock acquisition.
-                    let mut surfaces = Vec::new();
-                    smithay::wayland::compositor::with_surface_tree_downward(
-                        surface.as_ref(),
-                        (),
-                        |_, _, _| smithay::wayland::compositor::TraversalAction::DoChildren(()),
-                        |s, _, _| {
-                            surfaces.push(s.clone());
-                        },
-                        |_, _, _| true,
-                    );
-
-                    for s in surfaces {
-                        smithay::wayland::pointer_constraints::with_pointer_constraint(
-                            &s,
-                            &pointer,
-                            |constraint| {
-                                if let Some(constraint) = constraint {
-                                    constraint.activate();
-                                }
-                            },
-                        );
-                    }
-                }
-            }
+            // Pointer constraints belong to pointer focus. The pointer transaction
+            // restores them after delivering enter, never from keyboard selection.
         }
     }
 
@@ -281,16 +258,21 @@ mod tests {
 
     #[test]
     fn anchored_grab_conflicts_with_a_different_focus() {
-        assert!(grab_focus_conflicts(Some(&1), &2));
+        assert!(grab_focus_conflicts(Some(&1), Some(&2)));
     }
 
     #[test]
     fn grab_on_same_focus_does_not_conflict() {
-        assert!(!grab_focus_conflicts(Some(&1), &1));
+        assert!(!grab_focus_conflicts(Some(&1), Some(&1)));
+    }
+
+    #[test]
+    fn clearing_focus_conflicts_with_an_anchored_grab() {
+        assert!(grab_focus_conflicts(Some(&1), None));
     }
 
     #[test]
     fn unanchored_grab_does_not_conflict() {
-        assert!(!grab_focus_conflicts(None::<&u8>, &1));
+        assert!(!grab_focus_conflicts(None::<&u8>, Some(&1)));
     }
 }

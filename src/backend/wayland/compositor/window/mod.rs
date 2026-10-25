@@ -1,7 +1,7 @@
 use crate::backend::wayland::compositor::WaylandNativeState;
 use smithay::desktop::Window;
 use smithay::output::Output;
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use crate::backend::wayland::compositor::WindowIdMarker;
 use crate::types::{Rect, WindowId};
@@ -197,36 +197,33 @@ impl WaylandNativeState {
             border_width,
         ))
     }
-    /// Collect all overlay/unmanaged windows (dmenu, override-redirect popups,
-    /// etc.) that should be rendered above the bar but below the cursor.
-    ///
-    /// Returns each window with its output-local logical render origin.
-    ///
-    /// A Space location addresses the window geometry, while rendering starts
-    /// at the surface-tree origin. Keeping this conversion here gives explicit
-    /// overlays the same coordinate semantics as Smithay's normal Space path.
-    pub fn overlay_windows_for_render(
-        &self,
-        output: &Output,
-    ) -> Vec<(Window, Point<i32, smithay::utils::Logical>)> {
+    /// VRR needs only presence, so avoid constructing and sorting a render list.
+    pub fn has_overlay_windows_for_render(&self, output: &Output) -> bool {
         let Some(output_rect) = self.space.output_geometry(output) else {
-            return Vec::new();
+            return false;
         };
+        self.space.elements().any(|window| {
+            self.classify_window(window).is_overlay()
+                && self
+                    .overlay_window_render_origin(window, output_rect)
+                    .is_some()
+        })
+    }
 
-        self.windows_in_z_order()
-            .into_iter()
-            .filter(|(_, typ)| typ.is_overlay())
-            .filter_map(|(w, _)| {
-                let loc = self.space.element_location(w)?;
-                let mut window_rect = w.bbox_with_popups();
-                window_rect.loc += loc - w.geometry().loc;
-                if !output_rect.overlaps(window_rect) {
-                    return None;
-                }
-                let render_origin = loc - w.geometry().loc - output_rect.loc;
-                Some((w.clone(), render_origin))
-            })
-            .collect()
+    /// A Space location addresses window geometry; surface rendering begins at
+    /// the surface-tree origin. Only overlays overlapping this output qualify.
+    pub(crate) fn overlay_window_render_origin(
+        &self,
+        window: &Window,
+        output_rect: Rectangle<i32, Logical>,
+    ) -> Option<Point<i32, Logical>> {
+        let loc = self.space.element_location(window)?;
+        let mut window_rect = window.bbox_with_popups();
+        let surface_origin = loc - window.geometry().loc;
+        window_rect.loc += surface_origin;
+        output_rect
+            .overlaps(window_rect)
+            .then_some(surface_origin - output_rect.loc)
     }
 }
 

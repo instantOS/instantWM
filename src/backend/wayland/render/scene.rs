@@ -12,12 +12,13 @@ use smithay::backend::renderer::element::surface::{
 };
 use smithay::backend::renderer::element::{Element, Id};
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::desktop::PopupManager;
+use smithay::desktop::{PopupManager, Window};
 use smithay::output::Output;
 use smithay::utils::{Physical, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandNativeState;
+use crate::backend::wayland::compositor::window::WindowType;
 use crate::backend::wayland::stacking::{OutputScenePolicy, SceneBand};
 use crate::wm::WaylandWm as Wm;
 
@@ -176,10 +177,20 @@ pub fn build_common_scene_elements_from_shared(
     let render_scale = smithay::utils::Scale::from(output_scale);
     let output_rect = state.space.output_geometry(output);
     let mut overlays = Vec::new();
-    for (window, logical_loc) in state.overlay_windows_for_render(output) {
+    // Reuse one classification/order snapshot for explicit overlays and popups.
+    let windows = state.windows_in_z_order();
+    for &(window, typ) in &windows {
+        if !typ.is_overlay() {
+            continue;
+        }
+        let Some(logical_loc) =
+            output_rect.and_then(|rect| state.overlay_window_render_origin(window, rect))
+        else {
+            continue;
+        };
         let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
             AsRenderElements::render_elements(
-                &window,
+                window,
                 renderer,
                 logical_loc.to_physical_precise_round(output_scale),
                 render_scale,
@@ -187,7 +198,14 @@ pub fn build_common_scene_elements_from_shared(
             );
         overlays.extend(elems);
     }
-    append_native_popup_elements(state, renderer, output, output_scale, &mut overlays);
+    append_native_popup_elements(
+        state,
+        renderer,
+        output,
+        output_scale,
+        &windows,
+        &mut overlays,
+    );
 
     let mut bar = Vec::new();
     for (buffer, position) in shared.bar_buffers.iter() {
@@ -361,6 +379,7 @@ fn append_native_popup_elements(
     renderer: &mut GlesRenderer,
     output: &Output,
     output_scale: f64,
+    windows: &[(&Window, WindowType)],
     overlays: &mut Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
 ) {
     let Some(output_rect) = state.space.output_geometry(output) else {
@@ -368,7 +387,7 @@ fn append_native_popup_elements(
     };
     let scale = smithay::utils::Scale::from(output_scale);
 
-    for (window, window_type) in state.windows_in_z_order() {
+    for &(window, window_type) in windows {
         // Explicit overlay windows are already rendered in full above.
         if window_type.is_overlay() {
             continue;

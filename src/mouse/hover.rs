@@ -80,10 +80,10 @@ pub fn update_resize_offer_at(ctx: &mut WmCtx, root: Point) -> Option<WindowId> 
         offer_hover_resize(ctx, target);
         return Some(target.win);
     }
-    if let Some((win, resize)) =
-        crate::layouts::manager::pointer_tree_gap_resize_start(&ctx.core().state, root)
+    if let Some((win, direction)) =
+        crate::layouts::manager::pointer_tree_gap_resize_target(&ctx.core().state, root)
     {
-        offer_tree_resize(ctx, win, resize.direction);
+        offer_tree_resize(ctx, win, direction);
         return Some(win);
     }
     clear_hover_offer(ctx);

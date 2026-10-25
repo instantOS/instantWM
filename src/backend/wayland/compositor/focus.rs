@@ -555,7 +555,12 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.with_surface(|surface| {
-            smithay::input::pointer::PointerTarget::enter(surface, seat, data, event)
+            smithay::input::pointer::PointerTarget::enter(surface, seat, data, event);
+            crate::backend::wayland::input::pointer::activate_for_focus(
+                &data.native.pointer,
+                surface,
+                event.location,
+            );
         });
     }
 
@@ -566,7 +571,12 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.with_surface(|surface| {
-            smithay::input::pointer::PointerTarget::motion(surface, seat, data, event)
+            smithay::input::pointer::PointerTarget::motion(surface, seat, data, event);
+            crate::backend::wayland::input::pointer::activate_for_focus(
+                &data.native.pointer,
+                surface,
+                event.location,
+            );
         });
     }
 
