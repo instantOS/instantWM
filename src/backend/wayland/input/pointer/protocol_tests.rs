@@ -20,8 +20,8 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::time::Duration;
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_output, wl_pointer, wl_region, wl_registry, wl_seat,
+    wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
@@ -121,6 +121,7 @@ impl Dispatch<zwp_relative_pointer_v1::ZwpRelativePointerV1, ()> for ClientEvent
 }
 delegate_noop!(ClientEvents: ignore wl_compositor::WlCompositor);
 delegate_noop!(ClientEvents: ignore wl_surface::WlSurface);
+delegate_noop!(ClientEvents: ignore wl_region::WlRegion);
 delegate_noop!(ClientEvents: ignore wl_shm::WlShm);
 delegate_noop!(ClientEvents: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(ClientEvents: ignore wl_buffer::WlBuffer);
@@ -612,5 +613,170 @@ fn a_hidden_game_cursor_does_not_leak_into_a_floating_window() {
     assert_eq!(
         f.state.native.cursor_image_status,
         CursorImageStatus::default_named()
+    );
+}
+
+impl Fixture {
+    fn button(&mut self, state: smithay::backend::input::ButtonState) {
+        let pointer = self.state.native.pointer.clone();
+        pointer.button(
+            &mut self.state,
+            &smithay::input::pointer::ButtonEvent {
+                button: 0x110,
+                state,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: InputTime::now(),
+            },
+        );
+        pointer.frame(&mut self.state);
+        self.pump();
+        self.pump();
+    }
+}
+
+#[test]
+fn relative_motion_preserves_focus_when_a_pointer_grab_restores_it() {
+    use smithay::backend::input::ButtonState;
+
+    let mut f = Fixture::new(1);
+    let (_, surface) = f.window();
+    f.state.native.runtime.pointer_location = Point::from((100.0, 100.0));
+    f.refresh();
+    let _lock = f.lock(&surface, zwp_pointer_constraints_v1::Lifetime::Persistent);
+    f.button(ButtonState::Pressed);
+    f.relative();
+    let pointer = f.state.native.pointer.clone();
+    pointer.unset_grab(&mut f.state, SERIAL_COUNTER.next_serial(), InputTime::now());
+    f.button(ButtonState::Released);
+    assert!(f.state.native.pointer.current_focus().is_some());
+    assert_eq!(f.events.unlocks, 0);
+    let location = f.state.native.runtime.pointer_location;
+    let before = f.events.relative;
+    f.relative();
+    assert_eq!(f.state.native.runtime.pointer_location, location);
+    assert_eq!(f.events.relative, before + 1);
+}
+
+#[test]
+fn pointer_grab_activates_a_constraint_only_when_its_owner_receives_enter() {
+    use smithay::backend::input::ButtonState;
+
+    let mut f = Fixture::new(1);
+    let (first, _) = f.window();
+    f.state.native.runtime.pointer_location = Point::from((100.0, 100.0));
+    f.refresh();
+    f.button(ButtonState::Pressed);
+    let (second, surface) = f.window();
+    f.state
+        .native
+        .space
+        .raise_element(&f.state.native.find_window(second).unwrap().clone(), false);
+    let _lock = f.lock(&surface, zwp_pointer_constraints_v1::Lifetime::Persistent);
+    f.relative();
+    assert_eq!(f.events.enters, 1);
+    assert_eq!(f.events.locks, 0);
+    assert_eq!(
+        f.state.native.pointer.current_focus().unwrap().wl_surface(),
+        f.state.native.find_window(first).unwrap().wl_surface()
+    );
+
+    // Restoring focus on grab cancellation delivers enter internally, outside
+    // the WM motion path. Activate at that boundary without another device event.
+    let pointer = f.state.native.pointer.clone();
+    pointer.unset_grab(&mut f.state, SERIAL_COUNTER.next_serial(), InputTime::now());
+    f.button(ButtonState::Released);
+    assert_eq!(f.events.enters, 2);
+    assert_eq!(f.events.locks, 1);
+    assert_eq!(
+        f.state.native.pointer.current_focus().unwrap().wl_surface(),
+        f.state.native.find_window(second).unwrap().wl_surface()
+    );
+}
+
+#[test]
+fn pointer_callbacks_activate_constraints_using_surface_local_coordinates() {
+    let mut f = Fixture::new(1);
+    let (win, surface) = f.window();
+    let window = f.state.native.find_window(win).unwrap().clone();
+    let root = window.wl_surface().unwrap().into_owned();
+    f.state.native.space.map_element(window, (50, 50), false);
+    f.state.wm.core.state.model.client_mut(win).unwrap().geo = Rect::new(50, 50, 200, 200);
+    let region = f.compositor.create_region(&f.queue.handle(), ());
+    region.add(10, 10, 20, 20);
+    let _lock = f.constraints.lock_pointer(
+        &surface,
+        &f.pointer,
+        Some(&region),
+        zwp_pointer_constraints_v1::Lifetime::Persistent,
+        &f.queue.handle(),
+        (),
+    );
+    f.pump();
+    assert_eq!(f.events.locks, 0);
+    let pointer = f.state.native.pointer.clone();
+    // Invoke Smithay directly: touch, buttons, and grab release also use this
+    // route without traversing the normal WM motion transaction.
+    pointer.motion(
+        &mut f.state,
+        Some((
+            crate::backend::wayland::compositor::PointerFocusTarget::WlSurface(root.clone()),
+            Point::from((50.0, 50.0)),
+        )),
+        &smithay::input::pointer::MotionEvent {
+            location: Point::from((90.0, 90.0)),
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::now(),
+        },
+    );
+    f.pump();
+    assert_eq!(f.events.enters, 1);
+    assert_eq!(f.events.locks, 0);
+    pointer.motion(
+        &mut f.state,
+        Some((
+            crate::backend::wayland::compositor::PointerFocusTarget::WlSurface(root),
+            Point::from((50.0, 50.0)),
+        )),
+        &smithay::input::pointer::MotionEvent {
+            location: Point::from((65.0, 65.0)),
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::now(),
+        },
+    );
+    pointer.frame(&mut f.state);
+    f.pump();
+    assert_eq!(f.events.enters, 1);
+    assert_eq!(f.events.locks, 1);
+}
+
+#[test]
+fn relative_motion_keeps_bar_focus_exclusion_when_a_grab_restores_focus() {
+    let mut f = Fixture::new(1);
+    let _ = f.window();
+    f.state.native.runtime.pointer_location = Point::from((100.0, 100.0));
+    f.refresh();
+    let monitor = f
+        .state
+        .wm
+        .core
+        .state
+        .model
+        .monitor_mut(f.outputs[0].2)
+        .unwrap();
+    monitor.bar_default_show = true;
+    monitor.bar_height = 30;
+    f.motion(PointerMotionCommand::Relative {
+        dx: 0.0,
+        dy: -90.0,
+        dx_unaccel: 0.0,
+        dy_unaccel: -90.0,
+        time: InputTime::now(),
+    });
+    assert!(f.state.native.pointer.current_focus().is_none());
+    let pointer = f.state.native.pointer.clone();
+    pointer.unset_grab(&mut f.state, SERIAL_COUNTER.next_serial(), InputTime::now());
+    assert!(
+        pointer.current_focus().is_none(),
+        "relative motion must retain the resolved target, including compositor exclusions"
     );
 }

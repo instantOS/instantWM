@@ -12,9 +12,7 @@ use crate::backend::wayland::compositor::window::hit_test::{PointerContents, Sur
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::backend::wayland::input::bar::update_bar_hit_state;
 use crate::backend::wayland::input::modifiers_to_x11_mask;
-use crate::backend::wayland::input::pointer::constraints::{
-    ActivePointerConstraint, activate_under,
-};
+use crate::backend::wayland::input::pointer::constraints::ActivePointerConstraint;
 use crate::backend::wayland::input::pointer::drag::active_drag_window;
 use crate::contexts::WmCtx;
 use crate::mouse::{clear_hover_offer, set_sidebar_offer};
@@ -641,7 +639,7 @@ fn handle_pointer_motion(
     );
 
     if constraint.is_locked() {
-        dispatch_relative_motion(state, pointer_handle, event);
+        dispatch_relative_motion(state, pointer_handle, current_hit.surface.clone(), event);
         pointer_handle.frame(state);
         return PointerMotionCache {
             current_hit,
@@ -657,7 +655,7 @@ fn handle_pointer_motion(
     );
 
     if !constraint.allows_motion_to(candidate_hit.surface.as_ref(), final_location) {
-        dispatch_relative_motion(state, pointer_handle, event);
+        dispatch_relative_motion(state, pointer_handle, current_hit.surface.clone(), event);
         pointer_handle.frame(state);
         return PointerMotionCache {
             current_hit,
@@ -693,18 +691,17 @@ fn handle_pointer_motion(
         candidate_hit
     };
 
-    dispatch_pointer_motion(
+    let relative_focus = dispatch_pointer_motion(
         state,
         handles,
         &final_hit,
-        event.time(),
+        event,
         source.hover_focus_trigger(),
         update_active_drag,
     );
     // Enter must precede activation and relative motion: Smithay routes relative
     // events to its existing focus, ignoring the supplied hit-test target.
-    activate_under(pointer_handle, final_hit.surface.as_ref(), final_location);
-    dispatch_relative_motion(state, pointer_handle, event);
+    dispatch_relative_motion(state, pointer_handle, relative_focus, event);
     pointer_handle.frame(state);
     PointerMotionCache {
         current_hit: final_hit,
@@ -715,6 +712,7 @@ fn handle_pointer_motion(
 fn dispatch_relative_motion(
     state: &mut WaylandState,
     pointer: &PointerHandle<WaylandState>,
+    surface: Option<SurfaceFocus>,
     event: MotionEvent,
 ) {
     if let MotionEvent::Relative {
@@ -725,9 +723,13 @@ fn dispatch_relative_motion(
         time,
     } = event
     {
+        // Smithay also saves this target as pending focus for grab release.
+        // Passing None would clear focus when a grab restores its pending target.
+        let focus =
+            surface.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
         pointer.relative_motion(
             state,
-            None,
+            focus,
             &smithay::input::pointer::RelativeMotionEvent {
                 delta: (dx, dy).into(),
                 delta_unaccel: (dx_unaccel, dy_unaccel).into(),
@@ -756,10 +758,11 @@ fn dispatch_pointer_motion(
     state: &mut WaylandState,
     handles: PointerHandles<'_>,
     hit_test: &PointerContents,
-    time: InputTime,
+    event: MotionEvent,
     hover_focus_trigger: crate::types::HoverFocusTrigger,
     update_active_drag: bool,
-) {
+) -> Option<SurfaceFocus> {
+    let time = event.time();
     let PointerHandles {
         pointer: pointer_handle,
         keyboard: keyboard_handle,
@@ -785,7 +788,7 @@ fn dispatch_pointer_motion(
         time,
         update_active_drag,
     ) {
-        return;
+        return pointer_focus;
     }
 
     // Phase 4: Handle bar interaction (early return path)
@@ -808,7 +811,7 @@ fn dispatch_pointer_motion(
         bar_pos,
         time,
     ) {
-        return;
+        return pointer_focus;
     }
 
     // A global sidebar offer suppresses ordinary hover/focus policy, but it
@@ -875,6 +878,11 @@ fn dispatch_pointer_motion(
         handle_wm_drag_motion(state, keyboard_handle, root);
     }
 
+    // Preserve the same resolved target for relative motion, including bar
+    // guards and session-lock routing. Absolute events need no extra clone.
+    let relative_focus = matches!(event, MotionEvent::Relative { .. })
+        .then(|| pointer_focus.clone())
+        .flatten();
     // Phase 8: Dispatch final motion event to Smithay
     let focus =
         pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
@@ -886,6 +894,7 @@ fn dispatch_pointer_motion(
         time,
     };
     pointer_handle.motion(state, focus, &motion);
+    relative_focus
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

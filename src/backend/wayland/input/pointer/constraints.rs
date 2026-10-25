@@ -5,7 +5,6 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::RegionAttributes;
 use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
-use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::window::hit_test::SurfaceFocus;
@@ -31,14 +30,9 @@ impl ActivePointerConstraint {
         let Some((surface, surface_loc)) = current_surface else {
             return Self::default();
         };
-        if pointer
-            .current_focus()
-            .and_then(|focus| focus.wl_surface().map(|s| s.into_owned()))
-            .as_ref()
-            != Some(surface)
-        {
-            return Self::None;
-        }
+        // Activation happens only in the focused target's enter/motion hooks
+        // (or a focus-checked protocol request). Smithay deactivates on leave,
+        // so active constraints already imply pointer ownership.
         let mut resolved = Self::None;
         with_pointer_constraint(surface, pointer, |constraint| {
             let Some(constraint) = constraint else {
@@ -93,28 +87,21 @@ impl ActivePointerConstraint {
     }
 }
 
-pub(super) fn activate_under(
+/// Called only from PointerTarget enter/motion, after delivering the event.
+/// Smithay already holds the pointer lock and has selected the receiving
+/// surface. Use its surface-local coordinates; never query the pointer handle
+/// here, which would acquire that same lock again.
+pub(crate) fn activate_for_focus(
     pointer: &PointerHandle<WaylandState>,
-    current_surface: Option<&SurfaceFocus>,
-    pointer_location: Point<f64, Logical>,
+    surface: &WlSurface,
+    surface_location: Point<f64, Logical>,
 ) {
-    let Some((surface, surface_loc)) = current_surface else {
-        return;
-    };
-    if pointer
-        .current_focus()
-        .and_then(|focus| focus.wl_surface().map(|s| s.into_owned()))
-        .as_ref()
-        != Some(surface)
-    {
-        return;
-    }
     with_pointer_constraint(surface, pointer, |constraint| {
         let Some(constraint) = constraint else {
             return;
         };
         if !constraint.is_active()
-            && pointer_is_in_region(&constraint, pointer_location, *surface_loc)
+            && pointer_is_in_region(&constraint, surface_location, Point::from((0, 0)))
         {
             constraint.activate();
         }
@@ -140,8 +127,8 @@ fn pointer_is_in_region(
 /// while receiving no pointer stream at all. Activate only if the focus is the
 /// constrained surface and the pointer sits inside the constraint region.
 ///
-/// When this gate declines, the pointer-motion path (`activate_under`)
-/// activates the constraint on a later event once focus and hover agree.
+/// When this gate declines, the focused target's enter/motion hooks
+/// activate the constraint on a later event once focus and hover agree.
 pub(crate) fn new_constraint_should_activate(
     pointer_focus: Option<&WlSurface>,
     constraint_region: Option<&RegionAttributes>,

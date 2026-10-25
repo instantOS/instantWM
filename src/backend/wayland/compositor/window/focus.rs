@@ -63,10 +63,13 @@ impl WaylandState {
         if let Some(keyboard) = self.native.seat.get_keyboard() {
             // A grab can ignore set_focus or redirect the next key event to
             // its own client. No pre-lock grab may survive into the lock.
-            let conflicts = keyboard.grab_start_data().is_some_and(|start| {
-                grab_focus_conflicts(start.focus.as_ref(), effective.as_ref())
-            });
-            if (self.native.is_locked() && keyboard.is_grabbed()) || (!preserve_grab && conflicts) {
+            let conflicts = !preserve_grab
+                && keyboard
+                    .with_grab(|_, grab| {
+                        grab_focus_conflicts(grab.start_data().focus.as_ref(), effective.as_ref())
+                    })
+                    .unwrap_or(false);
+            if (self.native.is_locked() && keyboard.is_grabbed()) || conflicts {
                 keyboard.unset_grab(self);
             }
             keyboard.set_focus(self, effective, serial);
