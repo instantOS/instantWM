@@ -151,17 +151,33 @@ fn open_scanout_gpu(
             }
         };
         let fd = DrmDeviceFd::new(DeviceFd::from(owned));
-        match DrmDevice::new(fd.clone(), true) {
-            Ok((device, notifier)) => return (gpu_path, device, notifier, fd),
-            Err(error) => {
-                log::warn!(
-                    "Cannot initialize scanout GPU {}: {error}",
-                    gpu_path.display()
-                );
-                let session_fd = fd.device_fd();
-                drop(fd);
-                if let Ok(fd) = TryInto::<std::os::fd::OwnedFd>::try_into(session_fd) {
-                    let _ = session.close(fd);
+        // Prefer disabling connectors for a clean slate, but fall back to
+        // keeping the current state when we lack DRM master (common on an
+        // unprivileged tty session where the disable commit is rejected).
+        let mut disable_connectors = true;
+        loop {
+            match DrmDevice::new(fd.clone(), disable_connectors) {
+                Ok((device, notifier)) => return (gpu_path, device, notifier, fd),
+                Err(error) => {
+                    if disable_connectors {
+                        log::warn!(
+                            "Cannot reset scanout GPU {} with connectors disabled ({error}); \
+                             retrying without disabling connectors",
+                            gpu_path.display()
+                        );
+                        disable_connectors = false;
+                        continue;
+                    }
+                    log::warn!(
+                        "Cannot initialize scanout GPU {}: {error}",
+                        gpu_path.display()
+                    );
+                    let session_fd = fd.device_fd();
+                    drop(fd);
+                    if let Ok(fd) = TryInto::<std::os::fd::OwnedFd>::try_into(session_fd) {
+                        let _ = session.close(fd);
+                    }
+                    break;
                 }
             }
         }

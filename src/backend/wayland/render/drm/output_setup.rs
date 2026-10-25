@@ -349,6 +349,7 @@ struct DrmOutputSpec {
     pixel_size: crate::types::Size,
     physical_size: crate::types::Size,
     name: String,
+    transform: crate::backend::output::OutputTransform,
 }
 
 struct DrmOutputCandidate {
@@ -360,6 +361,7 @@ struct DrmOutputCandidate {
     pixel_size: crate::types::Size,
     physical_size: crate::types::Size,
     name: String,
+    transform: crate::backend::output::OutputTransform,
 }
 
 impl DrmOutputCandidate {
@@ -373,6 +375,7 @@ impl DrmOutputCandidate {
             pixel_size: self.pixel_size,
             physical_size: self.physical_size,
             name: self.name,
+            transform: self.transform,
         }
     }
 }
@@ -414,6 +417,8 @@ fn drm_output_candidate(
     let (width, height) = mode.size();
     let physical_size = conn_info.size().unwrap_or((0, 0));
 
+    let transform = panel_orientation_transform(output_manager.device(), connector);
+
     Ok(Some(DrmOutputCandidate {
         connector,
         crtcs,
@@ -432,7 +437,49 @@ fn drm_output_candidate(
                 | connector::Interface::LVDS
                 | connector::Interface::DSI
         ),
+        transform,
     }))
+}
+
+/// Read the DRM connector's "panel orientation" property and map it to an
+/// output transform.  Many tablets/phones mount their panel rotated, and the
+/// kernel exposes this through the `panel orientation` connector property.
+/// Without applying it the compositor presents a sideways image.
+fn panel_orientation_transform(
+    device: &impl smithay::reexports::drm::control::Device,
+    connector: connector::Handle,
+) -> crate::backend::output::OutputTransform {
+    use crate::backend::output::OutputTransform;
+    let Ok(props) = device.get_properties(connector) else {
+        return OutputTransform::Normal;
+    };
+    for (id, raw) in props.into_iter() {
+        let Ok(info) = device.get_property(id) else {
+            continue;
+        };
+        let Ok(name) = info.name().to_str() else {
+            continue;
+        };
+        if name != "panel orientation" {
+            continue;
+        }
+        if let smithay::reexports::drm::control::property::ValueType::Enum(enums) =
+            info.value_type()
+        {
+            if let Some(ev) = enums.get_value_from_raw_value(raw) {
+                let enum_name = ev.name().to_str().unwrap_or("");
+                return match enum_name {
+                    "Upside Down" => OutputTransform::Rotate180,
+                    // instantWM's rendering expects the inverse of wlroots' mapping
+                    // for this panel: "Left Side Up" needs 90°, not 270°.
+                    "Left Side Up" => OutputTransform::Rotate90,
+                    "Right Side Up" => OutputTransform::Rotate270,
+                    _ => OutputTransform::Normal,
+                };
+            }
+        }
+    }
+    OutputTransform::Normal
 }
 
 fn is_usable_connector(conn_info: &connector::Info) -> bool {
@@ -598,6 +645,17 @@ fn create_drm_wayland_output(
             crate::backend::output::OutputConnectorKind::External
         },
     );
+    // Honour the panel's physical orientation (common on tablets/phones) so
+    // the compositor presents an upright image instead of a sideways one.
+    if spec.transform != crate::backend::output::OutputTransform::Normal {
+        use crate::backend::wayland::output::to_smithay_transform;
+        output.change_current_state(
+            None,
+            Some(to_smithay_transform(spec.transform)),
+            None,
+            None,
+        );
+    }
     for mode in &spec.modes {
         output.add_mode(OutputMode::from(*mode));
     }
