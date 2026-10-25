@@ -34,6 +34,17 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TARGET_DIR="$PROJECT_DIR/target/$BUILD_TYPE"
 
 # Build command differs: debug is default (no flag), release needs --release
+# On musl targets the Rust toolchain defaults to static CRT linking, but the
+# system libraries (libX11, libseat, libgbm, ...) are only available as
+# dynamic libraries on distributions such as Alpine/postmarketOS.  Prefer
+# dynamic linking there unless the caller already set RUSTFLAGS.
+if [[ -z "${RUSTFLAGS:-}" ]]; then
+    TARGET_TRIPLE="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
+    if [[ "$TARGET_TRIPLE" == *musl* ]]; then
+        export RUSTFLAGS="-C target-feature=-crt-static"
+    fi
+fi
+
 BUILD_CMD=(cargo build --manifest-path "$PROJECT_DIR/Cargo.toml")
 if [[ "$BUILD_TYPE" == "release" ]]; then
     BUILD_CMD+=(--release)
