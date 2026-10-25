@@ -210,11 +210,12 @@ fn touch_mapping_for_device(
     }
 
     // `LIBINPUT_OUTPUT_NAME` is an optional udev hint. Honour it when the
-    // hardware/administrator provides one; otherwise use the complete layout.
+    // hardware/administrator provides one; otherwise follow a sole output's
+    // transform automatically, falling back to the layout for multiple outputs.
     device
         .output_name()
         .map(|name| TouchMappingTarget::Output(name.into_owned()))
-        .unwrap_or(TouchMappingTarget::Layout)
+        .unwrap_or(TouchMappingTarget::Automatic)
 }
 
 fn normalized_touch_position<B, E>(event: &E) -> Option<NormalizedTouchPosition>

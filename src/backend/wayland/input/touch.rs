@@ -21,6 +21,9 @@ use crate::types::{ModMask, MouseButton};
 /// Coordinate space used for an absolute touch device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TouchMappingTarget {
+    /// Follow the sole active output, including its transform. With multiple
+    /// outputs, fall back to the complete layout until a device is mapped.
+    Automatic,
     /// Map normalized coordinates across the bounding rectangle of all active
     /// outputs.
     Layout,
@@ -396,6 +399,23 @@ fn event_location(
 ) -> Option<Point<f64, Logical>> {
     let normalized = position.as_point();
     match mapping {
+        TouchMappingTarget::Automatic => {
+            let mut outputs = state.native.space.outputs();
+            let output = outputs.next()?;
+            if outputs.next().is_none() {
+                let geometry = state.native.space.output_geometry(output)?;
+                Some(map_normalized_to_output(
+                    normalized,
+                    geometry,
+                    output.current_transform(),
+                ))
+            } else {
+                Some(map_normalized_to_layout(
+                    normalized,
+                    active_layout_bounds(state)?,
+                ))
+            }
+        }
         TouchMappingTarget::Layout => {
             let bounds = active_layout_bounds(state)?;
             Some(map_normalized_to_layout(normalized, bounds))
@@ -537,6 +557,49 @@ mod tests {
         assert_eq!(
             TouchMappingTarget::configured("eDP-1"),
             TouchMappingTarget::Output("eDP-1".into())
+        );
+    }
+
+    #[test]
+    fn automatic_mapping_follows_rotated_output_but_explicit_layout_does_not() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let output = state
+            .native
+            .create_output("panel", crate::types::Size::new(1920, 1080), None);
+        output.change_current_state(None, Some(Transform::_90), None, None);
+        state.native.space.map_output(&output, (100, 200));
+        let position = NormalizedTouchPosition::new(0.25, 0.75).unwrap();
+
+        assert_eq!(
+            event_location(&state, position, &TouchMappingTarget::Automatic),
+            Some(Point::from((370.0, 680.0)))
+        );
+        assert_eq!(
+            event_location(&state, position, &TouchMappingTarget::Layout),
+            Some(Point::from((370.0, 1640.0)))
+        );
+        assert_eq!(
+            event_location(&state, position, &TouchMappingTarget::Automatic),
+            event_location(
+                &state,
+                position,
+                &TouchMappingTarget::Output("panel".into())
+            )
+        );
+
+        let external =
+            state
+                .native
+                .create_output("external", crate::types::Size::new(1920, 1080), None);
+        state.native.space.map_output(&external, (1180, 200));
+        assert_eq!(
+            event_location(&state, position, &TouchMappingTarget::Automatic),
+            event_location(&state, position, &TouchMappingTarget::Layout)
+        );
+        state.native.space.unmap_output(&external);
+        assert_eq!(
+            event_location(&state, position, &TouchMappingTarget::Automatic),
+            Some(Point::from((370.0, 680.0)))
         );
     }
 
