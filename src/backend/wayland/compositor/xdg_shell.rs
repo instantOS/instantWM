@@ -514,7 +514,7 @@ impl XdgShellHandler for WaylandState {
                 grab.ungrab(PopupUngrabStrategy::All);
                 return;
             }
-            self.set_keyboard_focus(grab.current_grab(), serial);
+            self.set_popup_keyboard_focus(grab.current_grab(), serial);
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
         if let Some(pointer) = self.native.seat.get_pointer() {

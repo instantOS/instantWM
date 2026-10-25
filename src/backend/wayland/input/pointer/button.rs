@@ -214,12 +214,7 @@ fn focus_layer_button_target(
         serial: button.serial,
         time: button.time,
     };
-    crate::backend::wayland::input::pointer::motion::dispatch_smithay_pointer_motion(
-        state,
-        pointer_handle,
-        focus,
-        &motion,
-    );
+    pointer_handle.motion(state, focus, &motion);
     pointer_handle.frame(state);
 }
 

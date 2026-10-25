@@ -1,11 +1,11 @@
 //! Pointer-lock and confinement resolution for pointer motion.
 
 use smithay::input::pointer::PointerHandle;
-use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::RegionAttributes;
 use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::window::hit_test::SurfaceFocus;
@@ -31,6 +31,14 @@ impl ActivePointerConstraint {
         let Some((surface, surface_loc)) = current_surface else {
             return Self::default();
         };
+        if pointer
+            .current_focus()
+            .and_then(|focus| focus.wl_surface().map(|s| s.into_owned()))
+            .as_ref()
+            != Some(surface)
+        {
+            return Self::None;
+        }
         let mut resolved = Self::None;
         with_pointer_constraint(surface, pointer, |constraint| {
             let Some(constraint) = constraint else {
@@ -93,6 +101,14 @@ pub(super) fn activate_under(
     let Some((surface, surface_loc)) = current_surface else {
         return;
     };
+    if pointer
+        .current_focus()
+        .and_then(|focus| focus.wl_surface().map(|s| s.into_owned()))
+        .as_ref()
+        != Some(surface)
+    {
+        return;
+    }
     with_pointer_constraint(surface, pointer, |constraint| {
         let Some(constraint) = constraint else {
             return;
@@ -121,9 +137,8 @@ fn pointer_is_in_region(
 /// focus: Smithay delivers relative motion through its pointer focus, so
 /// activating against a stale or absent focus (games create constraints
 /// around fullscreen transitions) strands the lock — the client is locked
-/// while receiving no pointer stream at all. niri enforces the same
-/// invariant: refresh focus, then activate only if the focus belongs to the
-/// constrained client and the pointer sits inside the constraint region.
+/// while receiving no pointer stream at all. Activate only if the focus is the
+/// constrained surface and the pointer sits inside the constraint region.
 ///
 /// When this gate declines, the pointer-motion path (`activate_under`)
 /// activates the constraint on a later event once focus and hover agree.
@@ -137,7 +152,7 @@ pub(crate) fn new_constraint_should_activate(
     let Some(focus) = pointer_focus else {
         return false;
     };
-    if !focus.id().same_client_as(&surface.id()) {
+    if focus != surface {
         return false;
     }
     let Some(surface_origin) = surface_origin else {
@@ -169,22 +184,6 @@ mod tests {
             let surface = null_surface(&state);
             assert!(!new_constraint_should_activate(
                 None,
-                None,
-                Point::from((0.0, 0.0)),
-                &surface,
-                Some(Point::from((0.0, 0.0))),
-            ));
-        }
-
-        #[test]
-        fn a_lock_for_another_client_must_not_activate() {
-            // The null focus surface belongs to no client, so it can never
-            // match the constrained surface's client.
-            let (_event_loop, state) = new_compositor();
-            let surface = null_surface(&state);
-            let focus = null_surface(&state);
-            assert!(!new_constraint_should_activate(
-                Some(&focus),
                 None,
                 Point::from((0.0, 0.0)),
                 &surface,

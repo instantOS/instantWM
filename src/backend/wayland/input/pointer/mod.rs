@@ -18,3 +18,6 @@ mod virtual_pointer_tests;
 
 pub(crate) use constraints::new_constraint_should_activate;
 pub use virtual_pointer::handle_virtual_pointer_event;
+
+#[cfg(test)]
+mod protocol_tests;
