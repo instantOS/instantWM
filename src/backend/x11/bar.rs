@@ -17,6 +17,7 @@ struct BarSurfaceTarget {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BottomBarProjection {
     bounds: Rect,
+    visible: bool,
     indicator_window: WindowId,
     indicator: Rect,
     background: u32,
@@ -95,7 +96,7 @@ fn sync_monitor_bar_window(
     let x11_bar_win: Window = monitor.bar_win.into();
     let bounds = Rect::new(monitor.work_rect().x, monitor.bar_y(), w as i32, bar_height);
     if let Some(draw) = x11_runtime.draw.as_ref() {
-        draw.present_window(x11_bar_win, bounds);
+        draw.present_window(x11_bar_win, bounds, monitor.bar_visible());
     }
 }
 
@@ -132,12 +133,23 @@ fn sync_top_bar_surfaces(
     let _ = x11.conn.flush();
 }
 
-/// Move/resize the bottom bar window to its current monitor strip and re-apply
-/// its background color. `m.bottom_bar_y()` slides the window off-screen when
-/// the bar is hidden, so this doubles as the show/hide operation.
+/// Apply bottom-strip geometry, appearance and explicit visibility.
 fn resize_bottom_bar_win(globals: &crate::core_state::CoreState, x11: &X11BackendRef, m: &Monitor) {
     let bottom_win: Window = m.bottom_bar_win.into();
     if bottom_win == 0 {
+        return;
+    }
+    let bounds = Rect::new(
+        m.work_rect().x,
+        m.bottom_bar_y(),
+        m.work_rect().w,
+        m.bottom_bar_height,
+    );
+    let visible = m.bottom_bar_visible() && bounds.size().is_positive();
+    if !visible {
+        let _ = x11.conn.unmap_window(bottom_win);
+    }
+    if !bounds.size().is_positive() {
         return;
     }
     let status_bg: u32 = globals.config.colors.status.background.into();
@@ -167,7 +179,9 @@ fn resize_bottom_bar_win(globals: &crate::core_state::CoreState, x11: &X11Backen
                 .height(indicator.h as u32),
         );
     }
-    let _ = x11.conn.map_window(bottom_win);
+    if visible {
+        let _ = x11.conn.map_window(bottom_win);
+    }
 }
 
 /// Allocate an unmapped surface. Its geometry and visibility are applied by
@@ -252,6 +266,7 @@ fn reconcile_bar_windows(
     let created = create_missing_bar_windows(&mut core.state, x11, x11_runtime.root);
     for (_, monitor) in core.state.model.monitors_iter() {
         let projection = BottomBarProjection {
+            visible: monitor.bottom_bar_visible(),
             bounds: Rect::new(
                 monitor.work_rect().x,
                 monitor.bottom_bar_y(),
@@ -409,8 +424,20 @@ mod tests {
         assert!(!result.layout_applied, "there are no clients to arrange");
         let top_geo = geometry(&wm, top);
         let bottom_geo = geometry(&wm, bottom);
-        assert!(top_geo.y < 0);
-        assert!(bottom_geo.y >= 600);
+        assert_eq!(top_geo.y, 0);
+        assert!(bottom_geo.y < 600);
+        for window in [top, bottom] {
+            assert_eq!(
+                wm.backend
+                    .conn
+                    .get_window_attributes(window.into())
+                    .unwrap()
+                    .reply()
+                    .unwrap()
+                    .map_state,
+                x11rb::protocol::xproto::MapState::UNMAPPED,
+            );
+        }
 
         // An appearance change updates geometry without replacing bar windows.
         wm.core.state.config.fonts.text_size = 32.0;

@@ -223,15 +223,22 @@ pub(super) fn sync_xembed_tray(
         return;
     }
 
-    let (tray_right, bar_y, bar_win) = {
+    let (tray_right, bar_y, bar_win, bar_visible) = {
         let mon = match crate::systray::monitor(&core.state.model, &core.state.config.systray) {
             Some(mon) => mon,
-            None => return,
+            None => {
+                core.bar.runtime.external_tray_width = 0;
+                if let Some(tray) = systray.as_ref() {
+                    let _ = x11.conn.unmap_window(Window::from(tray.win));
+                }
+                return;
+            }
         };
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
             mon.bar_y(),
             mon.bar_win,
+            mon.bar_visible(),
         )
     };
 
@@ -277,7 +284,6 @@ pub(super) fn sync_xembed_tray(
             AtomEnum::CARDINAL,
             &[SYSTEM_TRAY_ORIENTATION_HORIZONTAL],
         );
-        let _ = conn.map_window(systray_win);
         let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
 
         // Announce the new selection owner to tray clients.
@@ -360,7 +366,13 @@ pub(super) fn sync_xembed_tray(
             .stack_mode(StackMode::ABOVE),
     );
 
-    let _ = conn.map_window(x11_systray_win);
+    // Keep selection ownership and embedded clients alive while hiding the
+    // parent. A hidden bar must not leak onto an adjacent output.
+    if bar_visible {
+        let _ = conn.map_window(x11_systray_win);
+    } else {
+        let _ = conn.unmap_window(x11_systray_win);
+    }
 }
 
 pub fn is_systray_icon(systray: Option<&XEmbedTray>, win: WindowId) -> bool {

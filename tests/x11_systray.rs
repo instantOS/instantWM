@@ -64,11 +64,32 @@ impl Item {
 #[test]
 #[ignore = "requires private Xvfb/Xephyr and dbus-daemon servers"]
 fn mixed_tray_monitor_switch_and_pinning() {
+    check_tray_on_monitors((800, 0));
+}
+
+#[test]
+#[ignore = "requires private Xvfb/Xephyr and dbus-daemon servers"]
+fn stacked_monitors_hide_and_restore_bars_and_tray() {
+    check_tray_on_monitors((0, 600));
+}
+
+fn check_tray_on_monitors(second_origin: (i16, i16)) {
+    let (second_x, second_y) = second_origin;
+    let vertical = second_y != 0;
+    let second_origin_arg = format!("{second_x},{second_y}");
     let dir = tempfile::tempdir().unwrap();
     let (_host, host_display) = server(
         dir.path(),
         "host-display",
-        Command::new("Xvfb").args(["-screen", "0", "1600x600x24"]),
+        Command::new("Xvfb").args([
+            "-screen",
+            "0",
+            if vertical {
+                "800x1200x24"
+            } else {
+                "1600x600x24"
+            },
+        ]),
     );
     let (_server, display) = server(
         dir.path(),
@@ -79,7 +100,7 @@ fn mixed_tray_monitor_switch_and_pinning() {
             "-screen",
             "800x600",
             "-origin",
-            "800,0",
+            &second_origin_arg,
             "-screen",
             "800x600",
             "+xinerama",
@@ -116,7 +137,7 @@ fn mixed_tray_monitor_switch_and_pinning() {
     let config = dir.path().join("config/instantwm");
     std::fs::create_dir_all(&config).unwrap();
 
-    for pinning in [0, 1] {
+    for pinning in [0, if vertical { 2 } else { 1 }] {
         std::fs::write(
             config.join("config.toml"),
             format!("[systray]\npinning = {pinning}\n"),
@@ -153,7 +174,8 @@ fn mixed_tray_monitor_switch_and_pinning() {
             2,
             "need disjoint monitors: {monitors}"
         );
-        assert_eq!(monitors[1]["x"], 800);
+        assert_eq!(monitors[1]["x"], second_x);
+        assert_eq!(monitors[1]["y"], second_y);
         let manager = wait("tray manager", || {
             let win = conn
                 .get_selection_owner(selection)
@@ -220,11 +242,12 @@ fn mixed_tray_monitor_switch_and_pinning() {
         for target in [0usize, 1, 0, 1] {
             let name = monitors[target]["name"].as_str().unwrap();
             assert!(ctl(&["monitor", "switch", name]).status.success());
-            let host = if pinning == 0 { target } else { 0 };
-            let host_x = (host * 800) as i16;
+            let host = if pinning == 0 { target } else { pinning - 1 };
+            let host_x = host as i16 * second_x;
+            let host_y = host as i16 * second_y;
             wait("legacy tray follows the intended monitor", || {
                 let geo = conn.get_geometry(manager).ok()?.reply().ok()?;
-                (geo.x + geo.width as i16 == host_x + 800).then_some(())
+                (geo.x + geo.width as i16 == host_x + 800 && geo.y == host_y).then_some(())
             });
             println!("pinning={pinning}, selected monitor={target}, tray monitor={host}");
             let geo = conn.get_geometry(manager).unwrap().reply().unwrap();
@@ -237,7 +260,7 @@ fn mixed_tray_monitor_switch_and_pinning() {
                         ImageFormat::Z_PIXMAP,
                         root,
                         sample_x,
-                        (geo.height / 2) as i16,
+                        host_y + (geo.height / 2) as i16,
                         1,
                         1,
                         u32::MAX,
@@ -258,7 +281,8 @@ fn mixed_tray_monitor_switch_and_pinning() {
                     "every mapped legacy icon must be visible"
                 );
             }
-            let other_x = ((1 - host) * 800) as i16;
+            let other_x = (1 - host) as i16 * second_x;
+            let other_y = (1 - host) as i16 * second_y;
             let old_icon_x = other_x + 800 - geo.width as i16 - (geo.height / 2) as i16;
             wait("old tray location has no stale SNI icon", || {
                 let old_icon = conn
@@ -266,7 +290,7 @@ fn mixed_tray_monitor_switch_and_pinning() {
                         ImageFormat::Z_PIXMAP,
                         root,
                         old_icon_x,
-                        (geo.height / 2) as i16,
+                        other_y + (geo.height / 2) as i16,
                         1,
                         1,
                         u32::MAX,
@@ -281,13 +305,16 @@ fn mixed_tray_monitor_switch_and_pinning() {
                 bars.iter().any(|win| {
                     let geo = conn.get_geometry(*win).unwrap().reply().unwrap();
                     geo.x == other_x
-                        && geo.y == 0
+                        && geo.y == other_y
                         && geo.width == 800
                         && geo.height > 1
                         && geo.height < 100
                 }),
                 "the other bar must regain its full width"
             );
+        }
+        if vertical {
+            check_stacked_bar_visibility(&conn, root, manager, selection, &icons, &ctl);
         }
         let full_width = conn.get_geometry(manager).unwrap().reply().unwrap().width;
         conn.change_property32(PropMode::REPLACE, icons[0], info, info, &[0, 0])
@@ -336,4 +363,162 @@ fn mixed_tray_monitor_switch_and_pinning() {
                 .then_some(())
         });
     }
+}
+
+/// Observe server mapping, not just coordinates: hiding must work even when
+/// another output occupies the pixels above or below the owning monitor.
+fn check_stacked_bar_visibility(
+    conn: &x11rb::rust_connection::RustConnection,
+    root: Window,
+    manager: Window,
+    selection: Atom,
+    icons: &[Window],
+    ctl: &impl Fn(&[&str]) -> std::process::Output,
+) {
+    let run = |args: &[&str]| {
+        let output = ctl(args);
+        assert!(output.status.success(), "{args:?}: {output:?}");
+    };
+    let map_state = |win| {
+        conn.get_window_attributes(win)
+            .unwrap()
+            .reply()
+            .unwrap()
+            .map_state
+    };
+    let geometry = |win| conn.get_geometry(win).unwrap().reply().unwrap();
+    // The switching exercise ends on the lower output. Its top bar and the
+    // upper output's bottom strip are the two windows that used to spill.
+    let windows = conn.query_tree(root).unwrap().reply().unwrap().children;
+    let top = *windows
+        .iter()
+        .find(|win| {
+            let geo = geometry(**win);
+            **win != manager
+                && geo.x == 0
+                && geo.y == 600
+                && geo.width > 400
+                && geo.height > 1
+                && geo.height < 100
+        })
+        .expect("lower top bar");
+    run(&["action", "toggle_bottom_bar", "on"]);
+    let bottom = wait("upper bottom strip", || {
+        windows.iter().copied().find(|win| {
+            let geo = geometry(*win);
+            geo.x == 0
+                && geo.y > 500
+                && geo.y < 600
+                && geo.width == 800
+                && map_state(*win) == MapState::VIEWABLE
+        })
+    });
+    let assert_owner = || {
+        assert_eq!(
+            conn.get_selection_owner(selection)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .owner,
+            manager
+        );
+        let children = conn.query_tree(manager).unwrap().reply().unwrap().children;
+        assert!(
+            icons.iter().all(|win| children.contains(win)),
+            "docked clients must survive hiding"
+        );
+    };
+    for _ in 0..2 {
+        run(&["action", "toggle_bar"]);
+        run(&["action", "toggle_bottom_bar", "off"]);
+        wait("hidden bars and tray unmapped", || {
+            [top, bottom, manager]
+                .iter()
+                .all(|win| map_state(*win) == MapState::UNMAPPED)
+                .then_some(())
+        });
+        assert_owner();
+        for icon in icons {
+            assert_eq!(map_state(*icon), MapState::UNVIEWABLE);
+        }
+        run(&["action", "toggle_bar"]);
+        run(&["action", "toggle_bottom_bar", "on"]);
+        wait("bars and tray restored", || {
+            [top, bottom, manager]
+                .iter()
+                .all(|win| map_state(*win) == MapState::VIEWABLE)
+                .then_some(())
+        });
+        assert_eq!(geometry(manager).y, 600);
+        assert_eq!(geometry(top).y, 600);
+        assert_owner();
+        for icon in icons {
+            assert_eq!(map_state(*icon), MapState::VIEWABLE);
+        }
+    }
+
+    // Fullscreen uses the same visibility policy, including the bottom strip.
+    let lower_bottom = *windows
+        .iter()
+        .find(|win| {
+            let geo = geometry(**win);
+            geo.x == 0 && geo.y > 1100 && geo.y < 1200 && geo.width == 800
+        })
+        .expect("lower bottom strip");
+    let atom = |name: &[u8]| conn.intern_atom(false, name).unwrap().reply().unwrap().atom;
+    let state = atom(b"_NET_WM_STATE");
+    let fullscreen = atom(b"_NET_WM_STATE_FULLSCREEN");
+    let client = conn.generate_id().unwrap();
+    conn.create_window(
+        x11rb::COPY_FROM_PARENT as u8,
+        client,
+        root,
+        100,
+        700,
+        200,
+        100,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        0,
+        &CreateWindowAux::new(),
+    )
+    .unwrap();
+    conn.change_property32(
+        PropMode::REPLACE,
+        client,
+        state,
+        AtomEnum::ATOM,
+        &[fullscreen],
+    )
+    .unwrap();
+    conn.map_window(client).unwrap();
+    conn.flush().unwrap();
+    wait("fullscreen hides owning monitor bars and tray", || {
+        [top, lower_bottom, manager]
+            .iter()
+            .all(|win| map_state(*win) == MapState::UNMAPPED)
+            .then_some(())
+    });
+    assert_eq!(map_state(bottom), MapState::VIEWABLE);
+    assert_owner();
+    conn.send_event(
+        false,
+        root,
+        EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+        ClientMessageEvent::new(32, client, state, [0, fullscreen, 0, 1, 0]),
+    )
+    .unwrap();
+    conn.flush().unwrap();
+    wait("leaving fullscreen restores bars and tray", || {
+        [top, lower_bottom, manager]
+            .iter()
+            .all(|win| map_state(*win) == MapState::VIEWABLE)
+            .then_some(())
+    });
+    assert_owner();
+    for icon in icons {
+        assert_eq!(map_state(*icon), MapState::VIEWABLE);
+    }
+    conn.destroy_window(client).unwrap();
+    conn.flush().unwrap();
 }

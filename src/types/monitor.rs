@@ -221,15 +221,10 @@ impl Monitor {
     }
 
     /// Bottom bar Y position (root space), bottom-aligned inside
-    /// `available_rect`. When hidden, the strip sits just below the monitor so
-    /// the X11 window can stay mapped without overlapping any content.
+    /// `available_rect`. Visibility is independent of geometry.
     pub fn bottom_bar_y(&self) -> i32 {
         let safe_bh = self.bottom_bar_height.min(self.available_rect.h.max(0));
-        if self.shows_bottom_bar() {
-            self.available_rect.bottom() - safe_bh
-        } else {
-            self.available_rect.bottom()
-        }
+        self.available_rect.bottom() - safe_bh
     }
 
     /// Check whether a root-space y-coordinate falls within the bottom bar's
@@ -917,15 +912,9 @@ impl Monitor {
 
     /// Bar Y position (vertical position of the status bar).
     ///
-    /// Derived from `available_rect`, `bar_height` and `shows_bar()`
-    /// so it can never fall out of sync with the monitor's real geometry.
+    /// Anchored to `available_rect`, independently of visibility.
     pub fn bar_y(&self) -> i32 {
-        let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
-        if self.shows_bar() {
-            self.available_rect.y
-        } else {
-            self.available_rect.y - safe_bh
-        }
+        self.available_rect.y
     }
 
     /// Work area geometry (excluding bar and exclusive layer surfaces).

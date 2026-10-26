@@ -37,7 +37,7 @@ use super::ffi::{
     XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMapWindow,
     XMoveResizeWindow, XOpenDisplay, XPutImage, XRenderColor, XRenderComposite,
     XRenderCreatePicture, XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture,
-    XSetForeground, XSetLineAttributes, XftCharExists, XftColor, XftColorAllocName,
+    XSetForeground, XSetLineAttributes, XUnmapWindow, XftCharExists, XftColor, XftColorAllocName,
     XftColorAllocValue, XftColorFree, XftDraw, XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8,
     XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern, XftInit, XftResult,
     XftTextExtentsUtf8, XlibGc, Z_PIXMAP,
@@ -386,13 +386,19 @@ impl DrawContext {
         self.h = h;
     }
 
-    /// Submit geometry and mapping on the painting connection so later copies
-    /// cannot run against an old size or an unmapped target.
-    pub fn present_window(&self, window: Window, bounds: WmRect) {
-        if self.display.is_null() || window == 0 || !bounds.size().is_positive() {
+    /// Submit geometry and visibility on the painting connection so later
+    /// copies cannot run against an old size or an unmapped target.
+    pub fn present_window(&self, window: Window, bounds: WmRect, visible: bool) {
+        if self.display.is_null() || window == 0 {
             return;
         }
         unsafe {
+            if !visible || !bounds.size().is_positive() {
+                XUnmapWindow(self.display, window.into());
+            }
+            if !bounds.size().is_positive() {
+                return;
+            }
             XMoveResizeWindow(
                 self.display,
                 window.into(),
@@ -401,11 +407,13 @@ impl DrawContext {
                 bounds.w as u32,
                 bounds.h as u32,
             );
-            XMapWindow(self.display, window.into());
+            if visible {
+                XMapWindow(self.display, window.into());
+            }
         }
     }
 
-    /// Commit geometry even when hidden bars have no snapshot to paint.
+    /// Commit presentation even when hidden bars have no snapshot to paint.
     pub fn flush(&self) {
         if !self.display.is_null() {
             unsafe {
@@ -1113,7 +1121,7 @@ mod cache_tests {
         });
         let bounds = WmRect::new(0, 0, 80, 40);
         ctx.rect(bounds, true, false);
-        ctx.present_window(window, bounds);
+        ctx.present_window(window, bounds, true);
         ctx.map(window, bounds);
         // Wait for the painting connection only after the copy. This must
         // also complete its preceding resize and map, without an expose redraw.

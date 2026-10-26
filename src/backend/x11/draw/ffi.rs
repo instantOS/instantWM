@@ -191,6 +191,7 @@ unsafe extern "C" {
         height: c_uint,
     ) -> c_int;
     pub fn XMapWindow(display: *mut c_void, window: c_ulong) -> c_int;
+    pub fn XUnmapWindow(display: *mut c_void, window: c_ulong) -> c_int;
     pub fn XCopyArea(
         display: *mut libc::c_void,
         src: Drawable,
