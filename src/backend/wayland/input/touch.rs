@@ -522,10 +522,13 @@ fn map_normalized_to_layout(
     normalized: Point<f64, Logical>,
     bounds: Rectangle<i32, Logical>,
 ) -> Point<f64, Logical> {
-    Point::from((
-        bounds.loc.x as f64 + normalized.x * bounds.size.w as f64,
-        bounds.loc.y as f64 + normalized.y * bounds.size.h as f64,
-    ))
+    confine_touch_to_bounds(
+        Point::from((
+            bounds.loc.x as f64 + normalized.x * bounds.size.w as f64,
+            bounds.loc.y as f64 + normalized.y * bounds.size.h as f64,
+        )),
+        bounds,
+    )
 }
 
 fn map_normalized_to_output(
@@ -541,7 +544,29 @@ fn map_normalized_to_output(
         normalized.x * untransformed_size.w as f64,
         normalized.y * untransformed_size.h as f64,
     ));
-    transform.transform_point_in(point, &untransformed_size.to_f64()) + geometry.loc.to_f64()
+    confine_touch_to_bounds(
+        transform.transform_point_in(point, &untransformed_size.to_f64()) + geometry.loc.to_f64(),
+        geometry,
+    )
+}
+
+/// Normalized endpoints and output transforms can put contacts on the exclusive
+/// bottom/right boundary. Keep the final position within the last logical pixel
+/// so rounding for WM hit testing cannot put an edge touch outside its output.
+fn confine_touch_to_bounds(
+    point: Point<f64, Logical>,
+    bounds: Rectangle<i32, Logical>,
+) -> Point<f64, Logical> {
+    let left = f64::from(bounds.loc.x);
+    let top = f64::from(bounds.loc.y);
+    Point::from((
+        point
+            .x
+            .clamp(left, left + f64::from((bounds.size.w - 1).max(0))),
+        point
+            .y
+            .clamp(top, top + f64::from((bounds.size.h - 1).max(0))),
+    ))
 }
 
 #[cfg(test)]
@@ -691,5 +716,109 @@ mod tests {
     fn compositor_seat_advertises_native_touch() {
         let (_event_loop, state) = crate::test_support::new_compositor();
         assert!(state.native.seat.get_touch().is_some());
+    }
+
+    #[test]
+    fn edge_contacts_stay_inside_after_transform_and_wm_rounding() {
+        let transforms = [
+            Transform::Normal,
+            Transform::_90,
+            Transform::_180,
+            Transform::_270,
+            Transform::Flipped,
+            Transform::Flipped90,
+            Transform::Flipped180,
+            Transform::Flipped270,
+        ];
+        // Include negative origins: rounding a negative half-pixel can cross
+        // the exclusive boundary just as it can for a positive coordinate.
+        for origin in [(40, -20), (-1200, -800)] {
+            let geometry = Rectangle::new(origin.into(), (1200, 800).into());
+            for x in [0.0, 0.0001, 0.5, 0.9999, 1.0] {
+                for y in [0.0, 0.0001, 0.5, 0.9999, 1.0] {
+                    let normalized = Point::from((x, y));
+                    for location in std::iter::once(map_normalized_to_layout(normalized, geometry))
+                        .chain(transforms.map(|transform| {
+                            map_normalized_to_output(normalized, geometry, transform)
+                        }))
+                    {
+                        assert!(geometry.to_f64().contains(location));
+                        let root = root_point(location);
+                        assert!(geometry.contains(Point::from((root.x, root.y))));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bottom_edge_touch_captures_and_updates_the_bottom_bar_gesture() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        state
+            .native
+            .create_output("panel", crate::types::Size::new(1200, 800), None);
+        let mut monitor = crate::types::Monitor::new_with_values();
+        monitor.monitor_rect = crate::types::Rect::new(0, 0, 1200, 800);
+        monitor.set_available_rect(monitor.monitor_rect);
+        monitor.show_bottom_bar = true;
+        monitor.bottom_bar_height = 12;
+        state.wm.core.state.model.monitors.push(monitor);
+
+        let slot = TouchSlot::from(Some(0));
+        let time = InputTime::now();
+        handle_touch_down(
+            &mut state,
+            TouchPointEvent {
+                slot,
+                position: NormalizedTouchPosition::new(0.5, 1.0).unwrap(),
+                time,
+            },
+            &TouchMappingTarget::Automatic,
+        );
+        assert_eq!(state.native.runtime.wm_gesture_touch_slot, Some(slot));
+        assert!(
+            state
+                .wm
+                .core
+                .state
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .is_some()
+        );
+
+        handle_touch_motion(
+            &mut state,
+            TouchPointEvent {
+                slot,
+                position: NormalizedTouchPosition::new(0.5, 0.8).unwrap(),
+                time,
+            },
+            &TouchMappingTarget::Automatic,
+        );
+        assert_eq!(
+            state
+                .wm
+                .core
+                .state
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .unwrap()
+                .latched_direction(),
+            Some(crate::core_state::SwipeDirection::Up)
+        );
+        handle_touch_up(&mut state, slot, time);
+        assert_eq!(state.native.runtime.wm_gesture_touch_slot, None);
+        assert!(
+            state
+                .wm
+                .core
+                .state
+                .interaction
+                .drag
+                .captured::<crate::core_state::BottomBarDrag>()
+                .is_none()
+        );
     }
 }
