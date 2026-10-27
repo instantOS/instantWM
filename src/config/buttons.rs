@@ -49,7 +49,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollUp => ButtonAction::ScaleSelected { percent: 110 }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollDown => ButtonAction::ScaleSelected { percent: 90 }),
         btn!(StatusText, ModMask::NONE, button:MouseButton::Left => ButtonAction::spawn(defaults::APPMENU)),
-        btn!(StatusText, ModMask::NONE, button:MouseButton::Middle => ButtonAction::spawn(&["kitty"])),
+        btn!(StatusText, ModMask::NONE, button:MouseButton::Middle => ButtonAction::named(NamedAction::Terminal)),
         btn!(StatusText, ModMask::NONE, button:MouseButton::Right => ButtonAction::spawn(ROFI_WINDOW_SWITCH)),
         btn!(StatusText, ModMask::NONE, button:MouseButton::ScrollUp => ButtonAction::spawn(media::UP_VOL)),
         btn!(StatusText, ModMask::NONE, button:MouseButton::ScrollDown => ButtonAction::spawn(media::DOWN_VOL)),

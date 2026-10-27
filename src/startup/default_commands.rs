@@ -13,7 +13,7 @@ const REQUIRED_ALIASES: &[&str] = &[
     "systemmonitor",
 ];
 
-pub(super) fn ensure_default_command_aliases() {
+pub(crate) fn ensure_default_command_aliases() {
     let Some(home) = dirs::home_dir() else {
         eprintln!("instantwm: cannot determine home directory for default application aliases");
         return;

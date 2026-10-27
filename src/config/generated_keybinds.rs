@@ -6,7 +6,6 @@ use std::path::Path;
 
 use crate::backend::BackendKind;
 
-const TERMINAL_CANDIDATES: &[&str] = &["kitty", "ghostty", "wezterm", "xterm", "st"];
 const WAYLAND_LOCKSCREEN_CANDIDATES: &[&str] = &[
     "hyprlock",
     "swaylock",
@@ -37,16 +36,6 @@ pub fn resolve_lockscreen_command(backend: BackendKind) -> &'static str {
     };
 
     first_installed_command(candidates, command_exists).unwrap_or(default_script)
-}
-
-/// Terminal bound to Super+Return.
-pub fn resolve_terminal_command() -> &'static str {
-    let default_script = ".config/instantos/default/terminal";
-    if command_exists(default_script) {
-        return default_script;
-    }
-
-    first_installed_command(TERMINAL_CANDIDATES, command_exists).unwrap_or(TERMINAL_CANDIDATES[0])
 }
 
 fn first_installed_command(

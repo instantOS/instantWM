@@ -187,6 +187,9 @@ pub fn spawn_status_bar<B: crate::backend::BackendState>(wm: &mut Wm<B>) {
 /// from [`autostart_ipc_status_ping`], while X11 calls it from
 /// [`late_init_x11`].
 pub fn run_startup_commands<B: crate::backend::BackendState>(wm: &Wm<B>) {
+    // Display variables are now published, so setup can select a terminal for
+    // the actual session, including foot on a fresh Wayland-only installation.
+    crate::startup::default_commands::ensure_default_command_aliases();
     crate::startup::autostart::run_autostart();
     crate::startup::autostart::run_exec_commands(&wm.core.state.config.exec_once);
     crate::startup::autostart::run_exec_commands(&wm.core.state.config.exec);

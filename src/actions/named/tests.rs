@@ -161,6 +161,9 @@ fn actions_parse_typed_arguments_once() {
 fn rendered_arguments_parse_back_to_the_same_action() {
     for action in [
         NamedAction::Spawn(vec!["printf".into(), "hello world".into()]),
+        NamedAction::Terminal,
+        NamedAction::TerminalFileManager,
+        NamedAction::TerminalExec(vec!["printf".into(), "hello world".into()]),
         NamedAction::FocusMon(crate::types::MonitorDirection::Prev),
         NamedAction::ConfigSet(ConfigAssignment {
             key: "window.focus_follows_mouse".into(),

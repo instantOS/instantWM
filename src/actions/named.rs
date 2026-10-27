@@ -257,6 +257,13 @@ define_named_actions!(
     PrevKeyboardLayout => { name: "prev_keyboard_layout", overview: Preserve, doc: "cycle to previous keyboard layout", run: |ctx| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
     KeyboardLayout(String) => { name: "keyboard_layout", overview: Preserve, doc: "set keyboard layout, e.g. us(intl)", run: |ctx, layout| { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, layout); } },
     SetMode(String) => { name: "set_mode", doc: "set WM mode (sway-like modes)", run: |ctx, mode| { validate_mode_name(&ctx.core().state.config.bindings.modes, mode)?; ctx.set_current_mode(mode.clone()); } },
+    Terminal => { name: "terminal", overview: Preserve, doc: "open the configured terminal with native fallback", run: |ctx| { crate::util::spawn_terminal(ctx, instantos_terminal::Launcher::default())?; } },
+    TerminalFileManager => { name: "terminal_file_manager", overview: Preserve, doc: "open the configured terminal file manager", run: |ctx| {
+        let home = dirs::home_dir().ok_or("cannot determine the default file manager path without a home directory")?;
+        let program = home.join(".config/instantos/default/termfilemanager");
+        crate::util::spawn_terminal(ctx, instantos_terminal::Launcher::new(program))?;
+    } },
+    TerminalExec(Vec<String>) => { name: "terminal_exec", overview: Preserve, doc: "run a command in the configured terminal without shell expansion", run: |ctx, argv| { let (program, args) = argv.split_first().ok_or("terminal_exec requires a command")?; crate::util::spawn_terminal(ctx, instantos_terminal::Launcher::new(program).args(args))?; } },
     Spawn(Vec<String>) => { name: "spawn", overview: Preserve, doc: "spawn a command without shell expansion", run: |ctx, argv| { spawn(ctx, argv)?; } },
     LayoutMenu => { name: "layout_menu", overview: Preserve, doc: "open the layout chooser below the bar button", run: |ctx| { crate::bar::layout_menu::open(ctx)?; } },
     SetLayout(LayoutCommand) => { name: "set_layout", doc: "set layout", run: |ctx, layout| { set_layout(ctx, *layout); } },

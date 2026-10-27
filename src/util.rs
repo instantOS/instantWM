@@ -21,6 +21,25 @@ fn is_lockscreen_cmd(cmd: &str) -> bool {
         || cmd == "instantlock"
 }
 
+/// Launch a terminal natively while retaining activation tracking and child reaping.
+pub fn spawn_terminal(
+    ctx: &mut WmCtx,
+    launcher: instantos_terminal::Launcher,
+) -> Result<u32, String> {
+    let (child, metadata) = launcher
+        .spawn_with(|command| prepare_spawn_command(ctx, command))
+        .map_err(|error| {
+            let message = format!("failed to launch terminal: {error}");
+            log::error!("instantwm: {message}");
+            message
+        })?;
+    Ok(record_spawned_child(
+        &mut ctx.core_mut().state.pending_launches,
+        child,
+        metadata,
+    ))
+}
+
 /// Spawn a command directly and return its process id.
 pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) -> Result<u32, String> {
     if argv.is_empty() {

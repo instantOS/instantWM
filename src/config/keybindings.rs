@@ -3,9 +3,7 @@
 use crate::actions::{KeyAction, NamedAction};
 use crate::backend::BackendKind;
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, screenshot};
-use crate::config::generated_keybinds::{
-    backend_launcher, resolve_lockscreen_command, resolve_terminal_command,
-};
+use crate::config::generated_keybinds::{backend_launcher, resolve_lockscreen_command};
 use crate::layouts::LayoutCommand;
 use crate::types::{Key, KeybindOrigin, ModMask, Modifier, MonitorDirection};
 
@@ -144,14 +142,14 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
         key!(MOD1, XK_F4 => KeyAction::named(NamedAction::Kill)),
         key!(MODKEY | SHIFT | CONTROL, XK_Q => KeyAction::named(NamedAction::Quit)),
         key!(MODKEY, XK_F2 => KeyAction::named(NamedAction::ModeToggle("prefix".into()))),
-        key!(MODKEY, XK_RETURN => KeyAction::spawn(&[resolve_terminal_command()])),
+        key!(MODKEY, XK_RETURN => KeyAction::named(NamedAction::Terminal)),
         key!(MODKEY, XK_SPACE => KeyAction::spawn(&[backend_launcher(backend)])),
         key!(MODKEY | CONTROL, XK_SPACE => KeyAction::spawn(menu::RUN)),
         key!(MODKEY, XK_V => KeyAction::spawn(menu::CLIP)),
         key!(MODKEY | MOD1, XK_MINUS => KeyAction::spawn(menu::ST)),
         key!(MODKEY | SHIFT, XK_V => KeyAction::spawn(menu::QUICK)),
         key!(MODKEY, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
-        key!(MODKEY, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
+        key!(MODKEY, XK_R => KeyAction::named(NamedAction::TerminalFileManager)),
         key!(MODKEY, XK_Y => KeyAction::spawn(defaults::APPMENU)),
         key!(MODKEY, XK_X => KeyAction::spawn(&["iswitch"])),
         key!(MODKEY | SHIFT, XK_P => KeyAction::spawn(&["ins", "display"])),
@@ -191,8 +189,8 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
 
 pub fn get_desktop_keybinds() -> Vec<Key> {
     vec![
-        key!(ModMask::NONE, XK_RETURN => KeyAction::spawn(defaults::TERMINAL)),
-        key!(ModMask::NONE, XK_R => KeyAction::spawn(defaults::TERM_FILEMANAGER)),
+        key!(ModMask::NONE, XK_RETURN => KeyAction::named(NamedAction::Terminal)),
+        key!(ModMask::NONE, XK_R => KeyAction::named(NamedAction::TerminalFileManager)),
         key!(ModMask::NONE, XK_E => KeyAction::spawn(defaults::EDITOR)),
         key!(ModMask::NONE, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
         key!(ModMask::NONE, XK_SPACE => KeyAction::spawn(defaults::APPMENU)),
@@ -432,7 +430,13 @@ mod tests {
         );
         for backend in [BackendKind::X11, BackendKind::Wayland] {
             assert!(default_spawn_args_for(backend, MODKEY | CONTROL, XK_L).is_some());
-            assert!(default_spawn_args_for(backend, MODKEY, XK_RETURN).is_some());
+            assert!(
+                default_keybinds(backend)
+                    .into_iter()
+                    .any(|key| key.mod_mask == MODKEY
+                        && key.keysym == XK_RETURN
+                        && matches!(key.action, KeyAction::Named(NamedAction::Terminal)))
+            );
             let chords = default_keybinds(backend)
                 .iter()
                 .filter(|key| key.mod_mask == MODKEY && key.keysym == XK_RETURN)
@@ -525,22 +529,14 @@ mod tests {
     }
 
     #[test]
-    fn super_r_launches_terminal_file_manager_through_default_aliases() {
-        let spawn_args = default_keybinds(BackendKind::Wayland)
+    fn super_r_launches_terminal_file_manager_through_native_terminal_action() {
+        let action = default_keybinds(BackendKind::Wayland)
             .into_iter()
             .find(|key| key.mod_mask == MODKEY && key.keysym == XK_R)
-            .and_then(|key| match key.action {
-                KeyAction::Named(NamedAction::Spawn(args)) => Some(args),
-                _ => None,
-            });
-
-        assert_eq!(
-            spawn_args,
-            Some(vec![
-                ".config/instantos/default/terminal".to_string(),
-                "-e".to_string(),
-                ".config/instantos/default/termfilemanager".to_string(),
-            ])
-        );
+            .map(|key| key.action);
+        assert!(matches!(
+            action,
+            Some(KeyAction::Named(NamedAction::TerminalFileManager))
+        ));
     }
 }
