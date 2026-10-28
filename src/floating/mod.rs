@@ -6,11 +6,9 @@
 //! - [`state`]   — save/restore float geometry & border width; set_window_mode;
 //!   toggle/set/change floating state; internal client-maximize transitions
 //! - [`movement`] — keyboard move, resize, center window, scale client
-//! - [`batch`]   — distribute floating clients
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
 //!   with optional edge-anchored positioning
 
-mod batch;
 mod movement;
 pub mod scratchpad;
 mod snap;
@@ -25,10 +23,6 @@ pub(crate) use snap::reset_snap;
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
 pub use movement::{center_window, key_move, key_resize};
-
-// ── batch ────────────────────────────────────────────────────────────────────
-
-pub use batch::distribute_clients;
 
 // ── state ────────────────────────────────────────────────────────────────────
 
