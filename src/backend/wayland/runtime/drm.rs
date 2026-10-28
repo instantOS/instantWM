@@ -97,7 +97,8 @@ pub fn run() -> ! {
     // The scanout device may be a different GPU from the render device (split
     // setups).  Open its own GBM handle for framebuffer import/export.
     let scanout_gbm = GbmDevice::new(drm_fd.clone()).expect("scanout GbmDevice::new");
-    let mut output_manager = create_output_manager(drm_device, &renderer, &gbm_device, &scanout_gbm);
+    let mut output_manager =
+        create_output_manager(drm_device, &renderer, &gbm_device, &scanout_gbm);
 
     let mut output_surfaces = {
         build_output_surfaces(
