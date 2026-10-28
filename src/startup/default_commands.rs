@@ -6,7 +6,6 @@ const REQUIRED_ALIASES: &[&str] = &[
     "terminal",
     "termfilemanager",
     "filemanager",
-    "appmenu",
     "lockscreen",
     "browser",
     "editor",

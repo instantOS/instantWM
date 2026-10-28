@@ -17,10 +17,10 @@ const WAYLAND_LOCKSCREEN_CANDIDATES: &[&str] = &[
 const X11_LOCKSCREEN_CANDIDATES: &[&str] = &["slock", "instantlock", "i3lock", "xlock"];
 
 /// Application launcher bound to Super+Space.
-pub fn backend_launcher(backend: BackendKind) -> &'static str {
+pub fn backend_launcher(backend: BackendKind) -> &'static [&'static str] {
     match backend {
-        BackendKind::Wayland => "fuzzel",
-        BackendKind::X11 => "instantmenu_smartrun",
+        BackendKind::Wayland => &["fuzzel"],
+        BackendKind::X11 => &["ins", "launch"],
     }
 }
 
