@@ -143,14 +143,14 @@ pub fn default_keybinds(backend: BackendKind) -> Vec<Key> {
         key!(MODKEY | SHIFT | CONTROL, XK_Q => KeyAction::named(NamedAction::Quit)),
         key!(MODKEY, XK_F2 => KeyAction::named(NamedAction::ModeToggle("prefix".into()))),
         key!(MODKEY, XK_RETURN => KeyAction::named(NamedAction::Terminal)),
-        key!(MODKEY, XK_SPACE => KeyAction::spawn(&[backend_launcher(backend)])),
+        key!(MODKEY, XK_SPACE => KeyAction::spawn(backend_launcher(backend))),
         key!(MODKEY | CONTROL, XK_SPACE => KeyAction::spawn(menu::RUN)),
         key!(MODKEY, XK_V => KeyAction::spawn(menu::CLIP)),
-        key!(MODKEY | MOD1, XK_MINUS => KeyAction::spawn(menu::ST)),
+        key!(MODKEY | MOD1, XK_MINUS => KeyAction::spawn(menu::TERMINAL)),
         key!(MODKEY | SHIFT, XK_V => KeyAction::spawn(menu::QUICK)),
         key!(MODKEY, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
         key!(MODKEY, XK_R => KeyAction::named(NamedAction::TerminalFileManager)),
-        key!(MODKEY, XK_Y => KeyAction::spawn(defaults::APPMENU)),
+        key!(MODKEY, XK_Y => KeyAction::spawn(menu::LAUNCH)),
         key!(MODKEY, XK_X => KeyAction::spawn(&["iswitch"])),
         key!(MODKEY | SHIFT, XK_P => KeyAction::spawn(&["ins", "display"])),
         key!(MODKEY, XK_A => KeyAction::spawn(&["ins", "assist"])),
@@ -193,8 +193,8 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
         key!(ModMask::NONE, XK_R => KeyAction::named(NamedAction::TerminalFileManager)),
         key!(ModMask::NONE, XK_E => KeyAction::spawn(defaults::EDITOR)),
         key!(ModMask::NONE, XK_N => KeyAction::spawn(defaults::FILEMANAGER)),
-        key!(ModMask::NONE, XK_SPACE => KeyAction::spawn(defaults::APPMENU)),
-        key!(ModMask::NONE, XK_Y => KeyAction::spawn(menu::SMART)),
+        key!(ModMask::NONE, XK_SPACE => KeyAction::spawn(menu::LAUNCH)),
+        key!(ModMask::NONE, XK_Y => KeyAction::spawn(menu::LAUNCH)),
         key!(ModMask::NONE, XK_F => KeyAction::spawn(defaults::BROWSER)),
         key!(ModMask::NONE, XK_TAB => KeyAction::spawn(ROFI_WINDOW_SWITCH)),
         key!(ModMask::NONE, XK_PLUS => KeyAction::spawn(media::UP_VOL)),
@@ -419,10 +419,28 @@ mod tests {
     }
 
     #[test]
+    fn application_shortcuts_use_ins_launch_without_default_aliases() {
+        for backend in [BackendKind::X11, BackendKind::Wayland] {
+            assert_eq!(
+                default_spawn_args_for(backend, MODKEY, XK_Y),
+                Some(vec!["ins".into(), "launch".into()])
+            );
+        }
+        let action = get_desktop_keybinds()
+            .into_iter()
+            .find(|key| key.keysym == XK_SPACE)
+            .unwrap()
+            .action;
+        assert!(
+            matches!(action, KeyAction::Named(NamedAction::Spawn(args)) if args == ["ins", "launch"])
+        );
+    }
+
+    #[test]
     fn system_dependent_spawn_defaults_are_resolved_into_the_table() {
         assert_eq!(
             default_spawn_args_for(BackendKind::X11, MODKEY, XK_SPACE),
-            Some(vec!["instantmenu_smartrun".to_string()])
+            Some(vec!["ins".to_string(), "launch".to_string()])
         );
         assert_eq!(
             default_spawn_args_for(BackendKind::Wayland, MODKEY, XK_SPACE),

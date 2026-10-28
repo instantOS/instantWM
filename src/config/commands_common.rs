@@ -3,7 +3,6 @@
 /// instantOS default application paths.
 pub mod defaults {
     pub const FILEMANAGER: &[&str] = &[".config/instantos/default/filemanager"];
-    pub const APPMENU: &[&str] = &[".config/instantos/default/appmenu"];
     pub const LOCKSCREEN: &[&str] = &[".config/instantos/default/lockscreen"];
     pub const BROWSER: &[&str] = &[".config/instantos/default/browser"];
     pub const EDITOR: &[&str] = &[".config/instantos/default/editor"];
@@ -52,8 +51,8 @@ pub const ROFI_WINDOW_SWITCH: &[&str] = &[
 /// Shortcuts for common instantmenu variants.
 pub mod menu {
     pub const RUN: &[&str] = &["instantmenu_run"];
-    pub const SMART: &[&str] = &["instantmenu_smartrun"];
-    pub const ST: &[&str] = &["instantmenu_run_st"];
+    pub const LAUNCH: &[&str] = &["ins", "launch"];
+    pub const TERMINAL: &[&str] = &["ins", "launch", "--terminal"];
     pub const CLIP: &[&str] = &["ins", "clip", "--gui"];
     pub const QUICK: &[&str] = &["quickmenu"];
 }
