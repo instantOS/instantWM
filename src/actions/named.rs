@@ -19,9 +19,9 @@ use crate::client::{close_client, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::scratchpad::DEFAULT_SCRATCHPAD_NAME;
 use crate::floating::{
-    DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    scratchpad_create, scratchpad_hide_name, scratchpad_restore, scratchpad_show_name,
-    scratchpad_toggle, toggle_floating,
+    DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, edge_scratchpad_create, scratchpad_create,
+    scratchpad_hide_name, scratchpad_restore, scratchpad_show_name, scratchpad_toggle,
+    toggle_floating,
 };
 use crate::focus::{focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -38,6 +38,7 @@ use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
 use crate::overview::ActionTransition;
 use crate::overview::{cancel_overview, toggle_overview};
+use crate::tags::client_tags::distribute_clients;
 use crate::tags::{
     follow_view, last_view, move_client_follow_view, send_to_monitor, shift_tag, shift_view,
     win_view,
@@ -172,7 +173,7 @@ define_named_actions!(
     IncGaps(Option<i32>) => { name: "inc_gaps", doc: "increase tiled inner and outer gaps", run: |ctx, delta| { adjust_gaps(ctx, delta.unwrap_or(DEFAULT_GAP_STEP)); } },
     DecGaps(Option<i32>) => { name: "dec_gaps", doc: "decrease tiled inner and outer gaps", run: |ctx, delta| { adjust_gaps(ctx, -delta.unwrap_or(DEFAULT_GAP_STEP)); } },
     CenterWindow => { name: "center_window", doc: "center focused window", run: |ctx| { with_selected_win(ctx, center_window); } },
-    DistributeClients => { name: "distribute_clients", doc: "distribute windows evenly", run: |ctx| { distribute_clients(ctx); } },
+    DistributeClients => { name: "distribute_clients", doc: "distribute windows on the selected monitor evenly across tags", run: |ctx| { distribute_clients(ctx); } },
     KeyResizeUp => { name: "key_resize_up", doc: "grow a tiled window vertically or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Top, VerticalDirection::Up.into()); } },
     KeyResizeDown => { name: "key_resize_down", doc: "shrink a tiled window vertically or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Bottom, VerticalDirection::Down.into()); } },
     KeyResizeLeft => { name: "key_resize_left", doc: "shrink a tiled window horizontally or resize a floating window", run: |ctx| { key_resize_or_tree(ctx, Side::Left, HorizontalDirection::Left.into()); } },

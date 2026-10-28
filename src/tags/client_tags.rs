@@ -3,6 +3,51 @@
 use crate::contexts::WmCtx;
 use crate::types::{MonitorId, TagMask, WindowId};
 
+/// Spread ordinary windows on the selected monitor round-robin across all
+/// configured tags, starting at tag 1. Include hidden windows and windows on
+/// other tags, but leave scratchpads and other monitors alone.
+pub fn distribute_clients(ctx: &mut WmCtx) {
+    let model = &ctx.core().state.model;
+    let tag_count = model.tags.mask().count() as usize;
+    if tag_count == 0 {
+        return;
+    }
+    let Some(monitor) = model.selected_monitor() else {
+        return;
+    };
+    let monitor_id = monitor.id();
+    // Snapshot the order before focus changes can reorder the monitor's list.
+    let windows: Vec<_> = monitor
+        .iter_clients()
+        .filter(|(_, client)| !client.is_scratchpad())
+        .map(|(win, _)| win)
+        .collect();
+    if windows.is_empty() {
+        return;
+    }
+
+    let monitor = ctx
+        .core_mut()
+        .state
+        .model
+        .monitor_mut(monitor_id)
+        .expect("selected monitor was resolved above");
+    for (index, &win) in windows.iter().enumerate() {
+        let tags = TagMask::from_index(index % tag_count).unwrap();
+        let client = monitor
+            .client_mut(win)
+            .expect("window collected from this monitor in the same pass");
+        client.is_sticky = false;
+        client.set_tag_mask(tags);
+        monitor.record_focus(tags, win);
+    }
+    for win in windows {
+        ctx.sync_client_tag_props(win);
+    }
+    crate::focus::focus(ctx, None);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+}
+
 /// The resolved facts a tag assignment needs about its client.
 #[derive(Clone, Copy)]
 struct TagTarget {
@@ -158,11 +203,191 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
 
 #[cfg(test)]
 mod tests {
-    use super::set_client_tag;
+    use super::{distribute_clients, set_client_tag};
+    use crate::actions::{KeyAction, NamedAction};
+    use crate::backend::BackendKind;
+    use crate::config::keybindings::{CONTROL, MODKEY, default_keybinds};
+    use crate::config::keysyms::XK_D;
     use crate::test_support::TestWm as Wm;
 
-    use crate::test_support::{add_client, add_selected_client};
-    use crate::types::{Client, ClientPlacement, Monitor, TagMask, WindowId};
+    use crate::test_support::{MonitorBuilder, add_client, add_selected_client};
+    use crate::types::{
+        Client, ClientMode, ClientPlacement, Monitor, MonitorId, Rect, SnapPosition, TagMask,
+        WindowId,
+    };
+
+    fn distribution_wm(tag_count: usize) -> (Wm, MonitorId) {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        wm.core.state.model.tags.num_tags = tag_count;
+        let monitor_id = wm.core.state.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1200, 800))
+                .bar(0, false)
+                .tag_count(tag_count)
+                .selected_tags(TagMask::single(1).unwrap())
+                .build(),
+        );
+        wm.core.state.model.monitors.set_selected(monitor_id);
+        (wm, monitor_id)
+    }
+
+    #[test]
+    fn distribute_wraps_across_configured_tags_for_all_ordinary_windows() {
+        for tag_count in [1, 3, 9, 12] {
+            let (mut wm, monitor_id) = distribution_wm(tag_count);
+            for id in 1..=(2 * tag_count + 1) as u32 {
+                let mut client = Client {
+                    win: WindowId(id),
+                    tags: TagMask::all(tag_count),
+                    geo: Rect::new(10, 20, 200, 100),
+                    is_hidden: id == 1,
+                    is_sticky: id == 2,
+                    is_fixed_size: id == 3,
+                    snap_status: if id == 4 {
+                        SnapPosition::Left
+                    } else {
+                        SnapPosition::None
+                    },
+                    ..Client::default()
+                };
+                client.set_mode_for_test(match id % 3 {
+                    0 => ClientMode::floating(),
+                    1 => ClientMode::tiled().as_fullscreen(),
+                    _ => ClientMode::tiled(),
+                });
+                add_client(&mut wm.core.state.model, monitor_id, client);
+            }
+            let before: Vec<_> = wm
+                .core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .iter_clients()
+                .map(|(win, c)| (win, c.clone()))
+                .collect();
+
+            distribute_clients(&mut wm.test_ctx());
+
+            for (index, (win, original)) in before.iter().enumerate() {
+                let client = wm.core.state.model.client(*win).unwrap();
+                assert_eq!(client.tags, TagMask::from_index(index % tag_count).unwrap());
+                assert!(!client.is_sticky);
+                assert_eq!(client.is_hidden, original.is_hidden);
+                assert_eq!(client.mode(), original.mode());
+                assert_eq!(client.geo, original.geo);
+                assert_eq!(client.snap_status, original.snap_status);
+            }
+        }
+    }
+
+    #[test]
+    fn distribute_shortcut_skips_scratchpads_and_other_monitors_and_repairs_focus() {
+        let (mut wm, monitor_id) = distribution_wm(3);
+        for id in 1..=4 {
+            add_selected_client(
+                &mut wm.core.state.model,
+                monitor_id,
+                Client {
+                    win: WindowId(id),
+                    tags: TagMask::single(3).unwrap(),
+                    ..Client::default()
+                },
+            );
+        }
+        wm.core
+            .state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .set_selected_tags(TagMask::single(3).unwrap());
+        // Order is [4, 3, 2, 1]; window 4 will leave the selected tag.
+        for (id, direction, hidden) in [
+            (10, None, false),
+            (11, Some(crate::types::EdgeDirection::Top), true),
+        ] {
+            let mut client = Client::new(WindowId(id));
+            client
+                .promote_to_scratchpad(monitor_id, "test", direction, 1200, 800)
+                .unwrap();
+            client.is_hidden = hidden;
+            add_client(&mut wm.core.state.model, monitor_id, client);
+        }
+        let other = wm.core.state.model.monitors.push(Monitor::default());
+        add_selected_client(
+            &mut wm.core.state.model,
+            other,
+            Client {
+                win: WindowId(20),
+                tags: TagMask::single(2).unwrap(),
+                ..Client::default()
+            },
+        );
+
+        for backend in [BackendKind::X11, BackendKind::Wayland] {
+            let binding = default_keybinds(backend)
+                .into_iter()
+                .find(|key| key.mod_mask == MODKEY | CONTROL && key.keysym == XK_D)
+                .unwrap();
+            assert!(matches!(
+                binding.action,
+                KeyAction::Named(NamedAction::DistributeClients)
+            ));
+        }
+        crate::actions::execute_key_action(
+            &mut wm.test_ctx(),
+            &KeyAction::named(NamedAction::DistributeClients),
+        );
+
+        for (win, tag) in [(4, 1), (3, 2), (2, 3), (1, 1)] {
+            assert_eq!(
+                wm.core.state.model.client(WindowId(win)).unwrap().tags,
+                TagMask::single(tag).unwrap()
+            );
+        }
+        for (id, hidden) in [(10, false), (11, true)] {
+            let client = wm.core.state.model.client(WindowId(id)).unwrap();
+            assert!(client.is_scratchpad());
+            assert_eq!(client.tags, TagMask::SCRATCHPAD);
+            assert_eq!(client.is_hidden, hidden);
+        }
+        assert_eq!(
+            wm.core.state.model.client(WindowId(20)).unwrap().tags,
+            TagMask::single(2).unwrap()
+        );
+        assert_eq!(
+            wm.core.state.model.monitor(other).unwrap().selected,
+            Some(WindowId(20))
+        );
+        // A shown scratchpad may retain focus; in every case focus must be visible.
+        let selected = wm.core.state.model.selected_win().unwrap();
+        assert_ne!(selected, WindowId(4));
+        assert!(
+            wm.core
+                .state
+                .model
+                .client_is_visible_on_selected_monitor(selected)
+        );
+        assert_eq!(
+            wm.core
+                .state
+                .model
+                .monitor(monitor_id)
+                .unwrap()
+                .selected_tags(),
+            TagMask::single(3).unwrap()
+        );
+    }
+
+    #[test]
+    fn distribute_handles_empty_state() {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        distribute_clients(&mut wm.test_ctx());
+        let (mut wm, _) = distribution_wm(3);
+        distribute_clients(&mut wm.test_ctx());
+        wm.core.state.model.tags.num_tags = 0;
+        distribute_clients(&mut wm.test_ctx());
+    }
 
     #[test]
     fn assigning_a_tag_explicitly_restores_a_scratchpad() {
