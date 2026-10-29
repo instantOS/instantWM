@@ -2,6 +2,7 @@
 
 use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
+use crate::tags::client_tags::TagTransferMode;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,8 +30,11 @@ enum TagReleaseAction {
         tags: TagMask,
         modifiers: ModMask,
     },
-    TagAll {
-        tags: TagMask,
+    TransferTags {
+        monitor_id: MonitorId,
+        source: TagMask,
+        target: TagMask,
+        mode: TagTransferMode,
         follow: bool,
     },
 }
@@ -42,20 +46,30 @@ fn resolve_tag_release(
     modifiers: ModMask,
 ) -> TagReleaseAction {
     if drag.dragging {
-        let (Some(win), Some(tags)) = (selected_window, final_tag) else {
+        let Some(tags) = final_tag else {
             return TagReleaseAction::None;
         };
-        if modifiers.contains(Modifier::Control) {
-            TagReleaseAction::TagAll {
-                tags,
+        let mode = if modifiers.contains(Modifier::Shift) {
+            Some(TagTransferMode::Swap)
+        } else if modifiers.contains(Modifier::Control) {
+            Some(TagTransferMode::Move)
+        } else {
+            None
+        };
+        if let Some(mode) = mode {
+            TagReleaseAction::TransferTags {
+                monitor_id: drag.monitor_id,
+                source: drag.initial_tag,
+                target: tags,
+                mode,
                 follow: modifiers.contains(Modifier::Alt),
             }
         } else {
-            TagReleaseAction::DropWindow {
+            selected_window.map_or(TagReleaseAction::None, |win| TagReleaseAction::DropWindow {
                 win,
                 tags,
                 modifiers,
-            }
+            })
         }
     } else if modifiers.contains(Modifier::Alt) {
         selected_window.map_or(TagReleaseAction::View(drag.initial_tag), |win| {
@@ -162,11 +176,6 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         return true;
     }
     if !was_dragging {
-        // A tag can still be clicked when there is no selected window, but
-        // there is no meaningful object to drag.
-        if selected_on_monitor(&ctx.core().state.model.monitors, monitor_id).is_none() {
-            return true;
-        }
         ctx.transition_pointer_interaction(|state| {
             state
                 .captured_mut::<crate::core_state::TagDragState>()
@@ -211,6 +220,8 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 }
 
 /// Finish a tag click or drag using the modifiers held at release time.
+/// Ctrl moves all windows from the dragged tag; Shift swaps its windows with
+/// the destination (taking precedence over Ctrl). Alt follows the destination.
 pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: ModMask) {
     let Some(button) = ctx
         .core()
@@ -248,10 +259,17 @@ fn apply_tag_release(ctx: &mut WmCtx<'_>, action: TagReleaseAction) {
             tags,
             modifiers,
         } => apply_window_tag_drop(ctx, win, tags, modifiers),
-        TagReleaseAction::TagAll { tags, follow } => {
-            crate::tags::client_tags::tag_all(ctx, tags);
+        TagReleaseAction::TransferTags {
+            monitor_id,
+            source,
+            target,
+            mode,
+            follow,
+        } => {
+            crate::tags::client_tags::transfer_tag_clients(ctx, monitor_id, source, target, mode);
             if follow {
-                crate::tags::view::view_tags(ctx, tags);
+                crate::focus::select_monitor(ctx, monitor_id);
+                crate::tags::view::view_tags(ctx, target);
             }
         }
     }
@@ -278,6 +296,7 @@ fn finish_tag_release_presentation(
 #[cfg(test)]
 mod tests {
     use super::{TagDropBehavior, TagReleaseAction, resolve_tag_release};
+    use crate::tags::client_tags::TagTransferMode;
     use crate::types::{
         InteractionSource, ModMask, Modifier, MonitorId, MouseButton, Point, TagMask, WindowId,
     };
@@ -320,6 +339,51 @@ mod tests {
     }
 
     #[test]
+    fn bulk_drag_does_not_require_focus_and_shift_takes_precedence() {
+        let initial = TagMask::single(1).unwrap();
+        let target = TagMask::single(2).unwrap();
+        for (modifiers, mode) in [
+            (vec![Modifier::Control], TagTransferMode::Move),
+            (vec![Modifier::Shift], TagTransferMode::Swap),
+            (
+                vec![Modifier::Shift, Modifier::Control],
+                TagTransferMode::Swap,
+            ),
+        ] {
+            assert_eq!(
+                resolve_tag_release(
+                    &drag(true, initial),
+                    None,
+                    Some(target),
+                    ModMask::from_modifiers(modifiers),
+                ),
+                TagReleaseAction::TransferTags {
+                    monitor_id: MonitorId::from_raw(1),
+                    source: initial,
+                    target,
+                    mode,
+                    follow: false,
+                }
+            );
+        }
+        assert_eq!(
+            resolve_tag_release(&drag(true, initial), None, Some(target), ModMask::NONE),
+            TagReleaseAction::None
+        );
+        for modifier in [Modifier::Shift, Modifier::Control] {
+            assert_eq!(
+                resolve_tag_release(
+                    &drag(false, initial),
+                    None,
+                    Some(target),
+                    ModMask::from_modifiers([modifier]),
+                ),
+                TagReleaseAction::View(initial)
+            );
+        }
+    }
+
+    #[test]
     fn release_policy_is_resolved_without_wm_state_or_backend_effects() {
         let initial = TagMask::single(1).unwrap();
         let target = TagMask::single(2).unwrap();
@@ -336,8 +400,11 @@ mod tests {
                 Some(target),
                 ModMask::from_modifiers([Modifier::Alt, Modifier::Control])
             ),
-            TagReleaseAction::TagAll {
-                tags: target,
+            TagReleaseAction::TransferTags {
+                monitor_id: MonitorId::from_raw(1),
+                source: initial,
+                target,
+                mode: TagTransferMode::Move,
                 follow: true,
             }
         );

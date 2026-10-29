@@ -122,51 +122,65 @@ fn apply_client_tags(
     Some(monitor_id)
 }
 
-pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.core_mut().state.model.selected_monitor_id();
-    let tagmask = ctx.core().state.model.tags.mask();
-    let effective_mask = mask & tagmask;
-    if effective_mask.is_empty() {
+/// Bulk operations on the ordinary windows belonging to a tag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TagTransferMode {
+    Move,
+    Swap,
+}
+
+/// Move or exchange tag membership on one monitor without switching its view.
+/// Hidden windows participate; scratchpads and unrelated tag memberships stay put.
+pub(crate) fn transfer_tag_clients(
+    ctx: &mut WmCtx,
+    monitor_id: MonitorId,
+    source: TagMask,
+    target: TagMask,
+    mode: TagTransferMode,
+) {
+    let model = &ctx.core().state.model;
+    let valid = model.tags.mask();
+    let source = source & valid;
+    let target = target & valid;
+    if !source.is_single() || !target.is_single() || source == target {
         return;
     }
-
-    let current_tag = ctx
-        .core()
-        .state
-        .model
-        .expect_selected_monitor()
-        .current_tag_number();
-    let Some(current_tag) = current_tag else {
+    let Some(monitor) = model.monitor(monitor_id) else {
         return;
     };
-    let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
-
-    let clients_on_tag: Vec<_> = ctx
-        .core()
-        .state
-        .model
-        .expect_selected_monitor()
+    let changes: Vec<_> = monitor
         .iter_clients()
-        .filter(|(_, c)| c.tags.intersects(current_tag_mask))
-        .map(|(win, _)| win)
+        .filter(|(_, client)| !client.is_scratchpad())
+        .filter_map(|(win, client)| {
+            let tags = client.tags;
+            let on_source = tags.intersects(source);
+            let on_target = tags.intersects(target);
+            let new_tags = match mode {
+                TagTransferMode::Move if on_source => (tags & !source) | target,
+                TagTransferMode::Swap if on_source != on_target => tags ^ source ^ target,
+                _ => return None,
+            };
+            Some((win, new_tags))
+        })
         .collect();
-
-    let monitor = ctx
-        .core_mut()
-        .state
-        .model
-        .monitor_mut(selmon_id)
-        .expect("selected monitor resolved above");
-    for win in clients_on_tag {
-        let client = monitor
-            .client_mut(win)
-            .expect("client collected from this monitor in the same pass");
-        client.is_sticky = false;
-        client.set_tag_mask(effective_mask);
+    if changes.is_empty() {
+        return;
     }
-
-    crate::focus::focus(ctx, None);
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
+    let monitor = ctx.core_mut().state.model.monitor_mut(monitor_id).unwrap();
+    for &(win, tags) in &changes {
+        let client = monitor.client_mut(win).unwrap();
+        client.is_sticky = false;
+        client.set_tag_mask(tags);
+        monitor.record_focus(tags, win);
+    }
+    for (win, _) in changes {
+        ctx.sync_client_tag_props(win);
+    }
+    if ctx.core().state.model.selected_monitor_id() == monitor_id {
+        crate::focus::focus(ctx, None);
+    }
+    ctx.core_mut().bar.invalidate_content();
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
 /// Assign `win` to `mask` and switch its monitor's view there.
@@ -229,6 +243,124 @@ mod tests {
         );
         wm.core.state.model.monitors.set_selected(monitor_id);
         (wm, monitor_id)
+    }
+
+    #[test]
+    fn bulk_tag_transfer_moves_or_swaps_membership_without_changing_the_view() {
+        use super::{TagTransferMode, transfer_tag_clients};
+        let source = TagMask::single(2).unwrap();
+        let target = TagMask::single(3).unwrap();
+        let unrelated = TagMask::single(1).unwrap();
+        for mode in [TagTransferMode::Move, TagTransferMode::Swap] {
+            let (mut wm, monitor_id) = distribution_wm(3);
+            for (id, tags) in [
+                (1, source),
+                (2, source),
+                (3, target),
+                (4, source | unrelated),
+                (5, source | target),
+                (6, unrelated),
+                (7, TagMask::SCRATCHPAD),
+            ] {
+                let mut client = Client {
+                    win: WindowId(id),
+                    tags,
+                    is_hidden: id == 2,
+                    ..Client::default()
+                };
+                if id == 7 {
+                    client
+                        .promote_to_scratchpad(monitor_id, "test", None, 1200, 800)
+                        .unwrap();
+                }
+                add_client(&mut wm.core.state.model, monitor_id, client);
+            }
+            let other = wm.core.state.model.monitors.push(Monitor::default());
+            add_client(
+                &mut wm.core.state.model,
+                other,
+                Client {
+                    win: WindowId(8),
+                    tags: source,
+                    ..Client::default()
+                },
+            );
+            transfer_tag_clients(&mut wm.test_ctx(), monitor_id, source, target, mode);
+            for (id, expected) in [
+                (1, target),
+                (2, target),
+                (
+                    3,
+                    if mode == TagTransferMode::Swap {
+                        source
+                    } else {
+                        target
+                    },
+                ),
+                (4, target | unrelated),
+                (
+                    5,
+                    if mode == TagTransferMode::Swap {
+                        source | target
+                    } else {
+                        target
+                    },
+                ),
+                (6, unrelated),
+                (7, TagMask::SCRATCHPAD),
+                (8, source),
+            ] {
+                assert_eq!(
+                    wm.core.state.model.client(WindowId(id)).unwrap().tags,
+                    expected
+                );
+            }
+            assert!(wm.core.state.model.client(WindowId(2)).unwrap().is_hidden);
+            assert_eq!(
+                wm.core
+                    .state
+                    .model
+                    .monitor(monitor_id)
+                    .unwrap()
+                    .selected_tags(),
+                unrelated
+            );
+        }
+    }
+
+    #[test]
+    fn swapping_into_an_empty_tag_and_dropping_on_the_same_tag() {
+        use super::{TagTransferMode, transfer_tag_clients};
+        let (mut wm, monitor_id) = distribution_wm(3);
+        let source = TagMask::single(1).unwrap();
+        let target = TagMask::single(2).unwrap();
+        add_client(
+            &mut wm.core.state.model,
+            monitor_id,
+            Client {
+                win: WindowId(1),
+                tags: target,
+                ..Client::default()
+            },
+        );
+        transfer_tag_clients(
+            &mut wm.test_ctx(),
+            monitor_id,
+            source,
+            target,
+            TagTransferMode::Swap,
+        );
+        assert_eq!(
+            wm.core.state.model.client(WindowId(1)).unwrap().tags,
+            source
+        );
+        for mode in [TagTransferMode::Move, TagTransferMode::Swap] {
+            transfer_tag_clients(&mut wm.test_ctx(), monitor_id, source, source, mode);
+            assert_eq!(
+                wm.core.state.model.client(WindowId(1)).unwrap().tags,
+                source
+            );
+        }
     }
 
     #[test]
