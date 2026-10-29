@@ -44,6 +44,7 @@ depends=(
     'systemd'
     'xdg-desktop-portal-wlr'
 )
+optdepends=('instantmenu: global shortcut approval and configuration dialogs' 'xdg-desktop-portal: application global shortcuts')
 source=(
     "$_pkgname-$pkgver.tar.gz"
     "$_pkgname-x86_64-unknown-linux-gnu-v$pkgver.tgz"
@@ -66,5 +67,6 @@ package() {
     install -Dm755 scripts/instantwm-debug.sh "$pkgdir/usr/bin/instantwm-debug"
 
     install -Dm644 resources/instantwm-portals.conf "$pkgdir/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+    install -Dm644 resources/instantwm.portal "$pkgdir/usr/share/xdg-desktop-portal/portals/instantwm.portal"
     install -Dm644 resources/instantwm-session.target "$pkgdir/usr/lib/systemd/user/instantwm-session.target"
 }

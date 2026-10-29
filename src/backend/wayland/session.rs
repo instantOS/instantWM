@@ -209,7 +209,6 @@ pub fn setup_socket(
     apply_session_env(&socket_name);
     import_env_into_dbus_activation();
     reset_portal_services();
-    start_graphical_session_target();
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {

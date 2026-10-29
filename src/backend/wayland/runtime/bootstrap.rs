@@ -42,12 +42,21 @@ pub fn setup_listen_socket(
     // The compositor claims items' native menu toplevels by PID, so it hands
     // the worker its request slot; see `WaylandState::take_expected_systray_menu_toplevel`.
     let wake = crate::runtime::make_wake_ping(loop_handle);
+    {
+        let core = &mut state.wm.core.state;
+        core.shortcuts
+            .sync(&core.config.bindings, crate::types::ModMask::NONE);
+        core.shortcuts.start(wake.clone());
+    }
     state.wm.start_systray(
         Some(std::sync::Arc::clone(
             &state.native.runtime.pending_systray_menu,
         )),
         wake,
     );
+    // Session services may immediately ask for GlobalShortcuts. Export the
+    // backend before starting the target so the frontend discovers version 2.
+    crate::backend::wayland::session::start_graphical_session_target();
 }
 
 /// Startup commands, IPC listener registration, and status-bar ping source.

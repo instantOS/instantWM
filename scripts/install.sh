@@ -99,6 +99,7 @@ $SUPERTOOL rm -f "${DESTDIR}${PREFIX}/bin/instantwm-wayland" "${DESTDIR}/usr/bin
 
 # Portal routing for Wayland screen sharing/screenshot support
 $SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-portals.conf" "${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+$SUPERTOOL install -Dm644 "$PROJECT_DIR/resources/instantwm.portal" "${DESTDIR}/usr/share/xdg-desktop-portal/portals/instantwm.portal"
 
 # Graphical-session lifecycle anchor for Wayland user services
 $SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-session.target" "${DESTDIR}/usr/lib/systemd/user/instantwm-session.target"

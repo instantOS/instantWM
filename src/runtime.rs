@@ -52,6 +52,10 @@ pub fn event_loop_tick_with_options(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     options: TickOptions,
 ) -> TickResult {
+    if ctx.core_mut().state.shortcuts.take_changed() {
+        ctx.refresh_key_grabs();
+    }
+    ctx.core().state.shortcuts.validated();
     let systray_updated = ctx.core_mut().poll_systray();
     if crate::systray::instantmenu::drive_instantmenu_menu(ctx.core_mut()) {
         ctx.core_mut().bar.invalidate_content();
@@ -204,6 +208,15 @@ pub fn run_startup_commands<B: crate::backend::BackendState>(wm: &Wm<B>) {
 /// can receive a wake ping; see `backend::x11::events::run`.
 pub fn late_init_x11(wm: &mut crate::wm::X11Wm) -> Option<crate::ipc::IpcServer> {
     let ipc_server = crate::ipc::IpcServer::bind().ok();
+    if crate::backend::x11::keyboard::enable_detectable_repeat(&wm.backend.conn) {
+        let state = &mut wm.core.state;
+        state
+            .shortcuts
+            .sync(&state.config.bindings, wm.backend.x11_runtime.numlockmask);
+        state.shortcuts.start(None);
+    } else {
+        log::error!("global shortcuts: X11 server does not support detectable key repeat");
+    }
     run_startup_commands(wm);
     spawn_status_bar(wm);
     ipc_server

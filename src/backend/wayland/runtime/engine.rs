@@ -234,6 +234,7 @@ pub(crate) fn event_loop_tick_and_request_render(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) {
     super::dispatch::drain_command_queue(state);
+    crate::backend::wayland::input::keyboard::reconcile_global_shortcuts(state);
     crate::backend::wayland::compositor::protocols::ext_workspace::refresh(
         &state.wm.core.state,
         &mut state.native,

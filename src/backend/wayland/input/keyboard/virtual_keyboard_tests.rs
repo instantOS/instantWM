@@ -236,3 +236,34 @@ fn a_virtual_keyboard_keymap_replaces_the_seat_keymap_and_is_restored_when_gone(
         "the configured layout has to be back once the virtual keyboard is gone"
     );
 }
+
+#[test]
+fn portal_shortcuts_receive_one_pair_when_modifiers_are_released_first() {
+    let mut fixture = Fixture::new();
+    fixture
+        .state
+        .wm
+        .core
+        .state
+        .shortcuts
+        .register_test_shortcut("CTRL+ALT+space");
+    let keyboard = fixture.virtual_keyboard();
+    fixture.send_keymap(&keyboard, "us");
+    // zwp_virtual_keyboard uses evdev codes; Smithay owns xkb's +8 offset.
+    for (time, key, state) in [
+        (1, 29, 1),
+        (2, 56, 1),
+        (3, 57, 1),
+        (4, 57, 1),
+        (5, 29, 0),
+        (6, 56, 0),
+        (7, 57, 0),
+    ] {
+        keyboard.key(time, key, state);
+        fixture.pump();
+    }
+    assert_eq!(
+        fixture.state.wm.core.state.shortcuts.test_key_events(),
+        vec![true, false]
+    );
+}
