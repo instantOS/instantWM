@@ -127,7 +127,12 @@ pub(crate) fn apply_xwayland_policy(
             .expect("mode transitions keep the client on its owner monitor");
         apply_wm_hints_to_client(client, update.hints);
         apply_size_hints_to_client(client, update.size_hints);
-        client.is_hidden = update.is_hidden;
+        // Scratchpad visibility belongs to explicit show/hide transitions.
+        // XWayland's mapped window can remain non-iconic while parked, so an
+        // unrelated WM_HINTS update must not reveal it in the model.
+        if !client.is_scratchpad() {
+            client.is_hidden = update.is_hidden;
+        }
         client.keep_above = update.is_above;
 
         PolicyState::capture(client)
@@ -222,6 +227,47 @@ mod tests {
     use crate::model::WmModel;
     use crate::test_support::{MonitorBuilder, add_client};
     use crate::types::{Client, ClientPlacement, Rect, WindowId};
+
+    #[test]
+    fn urgency_refresh_preserves_scratchpad_visibility() {
+        let mut model = WmModel::default();
+        let monitor = model.monitors.push(MonitorBuilder::new().build());
+        let win = WindowId(91);
+        let mut client = Client::new(win);
+        client
+            .promote_to_scratchpad(
+                monitor,
+                "overlay",
+                Some(crate::types::EdgeDirection::Top),
+                1920,
+                1080,
+            )
+            .unwrap();
+        add_client(&mut model, monitor, client);
+        for hidden in [true, false] {
+            model.client_mut(win).unwrap().is_hidden = hidden;
+            let outcome = apply_xwayland_policy(
+                &mut model,
+                win,
+                XWaylandPolicyUpdate {
+                    hints: Some(x11rb::properties::WmHints {
+                        urgent: true,
+                        ..Default::default()
+                    }),
+                    size_hints: None,
+                    is_fullscreen: false,
+                    is_maximized: false,
+                    is_hidden: !hidden,
+                    is_above: false,
+                },
+            )
+            .unwrap();
+            let client = model.client(win).unwrap();
+            assert_eq!(client.is_hidden, hidden);
+            assert!(client.is_urgent);
+            assert!(!outcome.layout_changed());
+        }
+    }
 
     #[test]
     fn keep_above_changes_schedule_stacking_without_changing_input_hints() {

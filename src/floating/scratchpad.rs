@@ -511,7 +511,7 @@ pub fn scratchpad_resize_name(
         )?
     };
 
-    ctx.move_resize(win, rect, MoveResizeOptions::immediate());
+    ctx.move_resize(win, rect, MoveResizeOptions::immediate().with_size_hints());
     Ok(format!(
         "resized scratchpad '{}' to {}% x {}%",
         name, width_percent, height_percent
@@ -585,7 +585,19 @@ fn show_scratchpad_window_with_options(
             .expect("validated target monitor must exist while showing scratchpad")
             .visible_content_rect();
 
-        let slide = EdgeSlideRects::new(content_rect, dir, state.size);
+        // Promotion starts edge scratchpads at one third of the monitor.
+        // Respect the app's minimum before computing both slide endpoints;
+        // constraining the offscreen move itself would pull it back onscreen.
+        let constraints = crate::client::geometry::ClientSizeConstraints::of(
+            ctx.core()
+                .state
+                .model
+                .client(found)
+                .expect("validated scratchpad"),
+        );
+        let mut requested = Rect::new(0, 0, state.size.w, state.size.h);
+        ctx.refine_size_hints(found, true, &constraints, &mut requested);
+        let slide = EdgeSlideRects::new(content_rect, dir, requested.size());
 
         // A reversed slide-out is still mapped mid-flight; re-parking it
         // off-screen first would make the window jump. The animate_to below

@@ -119,13 +119,16 @@ impl WaylandNativeState {
         element: &smithay::desktop::Window,
         target: Rect,
     ) {
-        let Some(size) = self
+        let size = self
             .geometry_sync
             .get(&window_id)
-            .and_then(|sync| sync.scheduled_size())
-        else {
+            .and_then(|sync| sync.scheduled_size());
+        // X11 needs position-only configures too: otherwise a completed
+        // slide leaves its input window at the old (possibly offscreen) origin.
+        if size.is_none() && element.x11_surface().is_none() {
             return;
-        };
+        }
+        let size = size.unwrap_or_else(|| crate::types::Size::new(target.w, target.h));
         self.configure_window_geometry(
             core_view,
             window_id,

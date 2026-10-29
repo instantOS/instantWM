@@ -350,3 +350,42 @@ fn transferring_during_slide_out_preserves_pending_hide() {
     super::finish_scratchpad_hides(&mut wm.test_ctx(), &[win]);
     assert!(wm.core.state.model.client(win).unwrap().is_hidden);
 }
+
+#[test]
+fn showing_edge_scratchpad_respects_application_minimum_size() {
+    let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+    let monitor_id = wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1920, 1080))
+            .build(),
+    );
+    wm.core.state.model.monitors.set_selected(monitor_id);
+    for direction in [
+        EdgeDirection::Top,
+        EdgeDirection::Bottom,
+        EdgeDirection::Left,
+        EdgeDirection::Right,
+    ] {
+        let win = WindowId(92);
+        let mut client = Client::new(win);
+        client
+            .promote_to_scratchpad(monitor_id, "edge", Some(direction), 1920, 1080)
+            .unwrap();
+        client.size_hints.min_width = 800;
+        client.size_hints.min_height = 600;
+        client.is_hidden = true;
+        wm.core.state.model.add_client(monitor_id, client);
+        show_scratchpad_window_with_options(
+            &mut wm.test_ctx(),
+            win,
+            ScratchpadShowOptions {
+                monitor_id,
+                focus: false,
+                warp_pointer: false,
+            },
+        )
+        .unwrap();
+        let rect = wm.core.state.model.client(win).unwrap().geo;
+        assert!(rect.w >= 800 && rect.h >= 600, "{direction:?}: {rect:?}");
+    }
+}

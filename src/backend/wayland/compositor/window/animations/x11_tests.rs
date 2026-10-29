@@ -128,4 +128,23 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
         (actual.x, actual.y, actual.width, actual.height),
         (400, 250, 640, 480)
     );
+
+    // A position-only slide must also move the X input window when it lands.
+    let shown = Rect::new(20, 0, initial.w, initial.h);
+    state.wm.core.state.config.animations.enabled = true;
+    state.wm.core.state.model.sync_client_geometry(win, shown);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
+        win,
+        shown,
+        0,
+        super::WindowMoveMode::AnimateFrom {
+            from: moved,
+            duration: std::time::Duration::ZERO,
+        },
+    );
+    state.native.tick_animations(&state.wm.core.state);
+    assert!(!state.native.has_active_window_animations());
+    let actual = conn.get_geometry(xwindow).unwrap().reply().unwrap();
+    assert_eq!((actual.x, actual.y), (20, 0));
 }
