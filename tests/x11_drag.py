@@ -82,6 +82,10 @@ def main():
                         line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
                     )
 
+                def map_state(window):
+                    result = run("xwininfo", "-id", str(window))
+                    return re.search(r"Map State:\s+(\w+)", result.stdout).group(1)
+
                 root_tree = run("xwininfo", "-root", "-tree").stdout
                 root_children = [
                     int(match.group(1), 16)
@@ -113,18 +117,27 @@ def main():
                     and int(root_geometry[window]["WIDTH"]) <= bar_height
                 )
 
+                for window in (bar, tray):
+                    wait_for(lambda: map_state(window) == "IsViewable",
+                             "bar/tray initially visible")
+
+                # Hidden surfaces are unmapped in place so they cannot leak
+                # onto an adjacent monitor. Off-screen geometry is not the
+                # visibility contract for either the bar or its XEmbed tray.
                 ctl("action", "toggle_bar")
                 wait_for(
-                    lambda: int(x_geometry(bar)["Y"]) == -int(x_geometry(bar)["HEIGHT"]),
-                    "top bar moved off-screen",
+                    lambda: map_state(bar) == "IsUnMapped",
+                    "top bar unmapped",
                 )
                 wait_for(
-                    lambda: int(x_geometry(tray)["Y"]) == -int(x_geometry(tray)["HEIGHT"]),
-                    "XEmbed tray moved off-screen with the bar",
+                    lambda: map_state(tray) == "IsUnMapped",
+                    "XEmbed tray unmapped with the bar",
                 )
                 ctl("action", "toggle_bar")
-                wait_for(lambda: int(x_geometry(bar)["Y"]) == 0, "top bar restored")
-                wait_for(lambda: int(x_geometry(tray)["Y"]) == 0, "XEmbed tray restored")
+                wait_for(lambda: map_state(bar) == "IsViewable"
+                         and int(x_geometry(bar)["Y"]) == 0, "top bar restored")
+                wait_for(lambda: map_state(tray) == "IsViewable"
+                         and int(x_geometry(tray)["Y"]) == 0, "XEmbed tray restored")
                 print("PASS: bar toggle synchronizes X11 bar and tray windows")
 
                 def spawn(name, during_capture=False):

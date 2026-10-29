@@ -308,7 +308,9 @@ impl CursorManager {
 fn cursor_buffer(frame: &Image) -> MemoryRenderBuffer {
     let pixels: Vec<u8> = frame
         .pixels_rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|pixel| {
             u32::from_be_bytes([pixel[3], pixel[0], pixel[1], pixel[2]]).to_ne_bytes()
         })
