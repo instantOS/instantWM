@@ -132,21 +132,12 @@ pub fn vt_switch_target(
     None
 }
 
-/// Handle keyboard events from a physical keyboard.
-pub fn handle_keyboard<B: InputBackend>(
-    state: &mut WaylandState,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl KeyboardKeyEvent<B>,
-) {
-    handle_keyboard_from_source(state, keyboard_handle, KeyboardSource::MAIN, event);
-}
-
 /// Handle keyboard events attributed to a specific xkb input source.
 ///
 /// Physical devices share [`KeyboardSource::MAIN`]; every virtual keyboard
 /// carries its own source, so a keycode held through one device is not released
 /// by another device releasing the same code.
-fn handle_keyboard_from_source<B: InputBackend>(
+pub fn handle_keyboard<B: InputBackend>(
     state: &mut WaylandState,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     source: KeyboardSource,
@@ -328,7 +319,7 @@ pub fn handle_virtual_keyboard_event(
                 );
                 return;
             }
-            handle_keyboard_from_source(state, &keyboard, device.source(), event);
+            handle_keyboard(state, &keyboard, device.source(), event);
         }
         InputEvent::Special(VirtualKeyboardSpecialEvent::Modifiers {
             mods_depressed,

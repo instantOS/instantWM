@@ -11,6 +11,7 @@ use smithay::backend::input::{
     GestureSwipeUpdateEvent as GestureSwipeUpdateTrait,
 };
 use smithay::backend::libinput::LibinputInputBackend;
+use smithay::input::keyboard::KeyboardSource;
 use smithay::input::pointer::{
     GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
     GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
@@ -326,7 +327,12 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::Keyboard { event } => {
             // Keep keyboard synchronous for now
-            handle_keyboard::<LibinputInputBackend>(state, &keyboard_handle, event);
+            handle_keyboard::<LibinputInputBackend>(
+                state,
+                &keyboard_handle,
+                KeyboardSource::MAIN,
+                event,
+            );
             LibinputEventOutcome::Activity
         }
         InputEvent::PointerMotion { event } => {

@@ -340,6 +340,7 @@ fn dispatch_winit_input(
         PointerMotionEvent,
     };
     use smithay::backend::winit::WinitInput;
+    use smithay::input::keyboard::KeyboardSource;
     use smithay::input::pointer::{
         GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
         GesturePinchUpdateEvent,
@@ -353,7 +354,7 @@ fn dispatch_winit_input(
             // The source has exclusive root access for this input event.
             // Shared actions reborrow the owned core before seat callbacks.
             {
-                handle_keyboard(state, keyboard_handle, event);
+                handle_keyboard(state, keyboard_handle, KeyboardSource::MAIN, event);
             }
         }
         InputEvent::PointerMotionAbsolute { event: motion } => {
