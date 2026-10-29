@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/instantOS/instantWM/compare/v0.7.0...v0.7.1) - 2026-10-27
+
+### Changed
+
+- remove redundant work from input and rendering paths
+
+### Fixed
+
+- fix builds on postmarket os
+- fix startup on multi gpu hybrid tablet thingy
+- switching away from and to games
+- enforce pointer constraints at focus dispatch boundaries
+- monitor rotation on tablets
+- touch on rotated screens
+- touch screen bounds
+
+### Other
+
+- Merge branch 'dev' of https://github.com/instantOS/instantWM
+- Fix X11 bar and tray visibility on stacked monitors
+- Use shared terminal launcher for default actions
+
 ## [0.7.0](https://github.com/instantOS/instantWM/compare/v0.6.0...v0.7.0) - 2026-10-24
 
 ### Added

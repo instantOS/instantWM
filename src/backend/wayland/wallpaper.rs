@@ -174,12 +174,12 @@ fn run_worker(requests: &Mutex<Requests>, mut wake: UnixStream) -> io::Result<()
             return Err(error);
         }
         // Reap an exited helper before processing a replacement request.
-        if fds[1].revents != 0 {
-            if let Some(mut child) = current.take() {
-                let status = child.child.wait()?;
-                if !status.success() {
-                    log::warn!("wallpaper helper exited with {status}");
-                }
+        if fds[1].revents != 0
+            && let Some(mut child) = current.take()
+        {
+            let status = child.child.wait()?;
+            if !status.success() {
+                log::warn!("wallpaper helper exited with {status}");
             }
         }
         if fds[0].revents != 0 {

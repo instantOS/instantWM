@@ -465,18 +465,17 @@ fn panel_orientation_transform(
         }
         if let smithay::reexports::drm::control::property::ValueType::Enum(enums) =
             info.value_type()
+            && let Some(ev) = enums.get_value_from_raw_value(raw)
         {
-            if let Some(ev) = enums.get_value_from_raw_value(raw) {
-                let enum_name = ev.name().to_str().unwrap_or("");
-                return match enum_name {
-                    "Upside Down" => OutputTransform::Rotate180,
-                    // instantWM's rendering expects the inverse of wlroots' mapping
-                    // for this panel: "Left Side Up" needs 90°, not 270°.
-                    "Left Side Up" => OutputTransform::Rotate90,
-                    "Right Side Up" => OutputTransform::Rotate270,
-                    _ => OutputTransform::Normal,
-                };
-            }
+            let enum_name = ev.name().to_str().unwrap_or("");
+            return match enum_name {
+                "Upside Down" => OutputTransform::Rotate180,
+                // instantWM's rendering expects the inverse of wlroots' mapping
+                // for this panel: "Left Side Up" needs 90°, not 270°.
+                "Left Side Up" => OutputTransform::Rotate90,
+                "Right Side Up" => OutputTransform::Rotate270,
+                _ => OutputTransform::Normal,
+            };
         }
     }
     OutputTransform::Normal
@@ -649,12 +648,7 @@ fn create_drm_wayland_output(
     // the compositor presents an upright image instead of a sideways one.
     if spec.transform != crate::backend::output::OutputTransform::Normal {
         use crate::backend::wayland::output::to_smithay_transform;
-        output.change_current_state(
-            None,
-            Some(to_smithay_transform(spec.transform)),
-            None,
-            None,
-        );
+        output.change_current_state(None, Some(to_smithay_transform(spec.transform)), None, None);
     }
     for mode in &spec.modes {
         output.add_mode(OutputMode::from(*mode));
