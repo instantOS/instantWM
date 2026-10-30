@@ -141,8 +141,8 @@ impl WmModel {
     /// Re-home a client that previously held another monitor's selection,
     /// restoring that selection on its new monitor.
     ///
-    /// Output removal uses this so unplugging a monitor does not silently drop
-    /// which of its windows the user was focused on.
+    /// Callers choose whether to restore selection; output removal preserves
+    /// the destination's selection instead.
     pub(crate) fn readopt_client(
         &mut self,
         monitor_id: MonitorId,
