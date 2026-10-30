@@ -756,6 +756,9 @@ impl<'a> WmCtx<'a> {
     ///
     /// X11 relies on passive grabs; Wayland always sees keys first.
     pub fn refresh_key_grabs(&mut self) {
+        let numlock = self.numlock_mask();
+        let state = &mut self.core_mut().state;
+        state.shortcuts.sync(&state.config.bindings, numlock);
         if let WmCtx::X11(ctx) = self {
             crate::backend::x11::keyboard::grab_keys(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
         }
@@ -778,6 +781,7 @@ impl<'a> WmCtx<'a> {
         if previous_mode == next_mode {
             return previous_mode;
         }
+        self.core().state.shortcuts.suspend();
 
         crate::overview::handle_mode_transition(self, &previous_mode, &next_mode, overview_exit);
         if matches!(

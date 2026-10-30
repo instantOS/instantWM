@@ -66,7 +66,8 @@ pub fn setup_root(wm: &mut Wm) {
         | EventMask::STRUCTURE_NOTIFY
         | EventMask::PROPERTY_CHANGE
         | EventMask::KEY_PRESS
-        | EventMask::KEY_RELEASE;
+        | EventMask::KEY_RELEASE
+        | EventMask::FOCUS_CHANGE;
 
     // XI2 raw motion is delivered independently of the event masks selected
     // by applications. Core motion on the root is only a compatibility

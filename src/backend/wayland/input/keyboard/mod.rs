@@ -168,6 +168,13 @@ pub fn handle_keyboard<B: InputBackend>(
         key_state,
         |data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
+                if data.wm.core.state.shortcuts.release(u32::from(key_code)) {
+                    data.native
+                        .runtime
+                        .intercepted_key_releases
+                        .remove(&key_code);
+                    return FilterResult::Intercept(());
+                }
                 if data.release_shortcut_recovery_key(key_code) {
                     data.native
                         .runtime
@@ -206,6 +213,9 @@ pub fn handle_keyboard<B: InputBackend>(
             }
 
             let suppression = shortcut_suppression(data, keyboard_handle);
+            if suppression.is_some() {
+                data.wm.core.state.shortcuts.suspend();
+            }
             if matches!(
                 suppression,
                 Some(ShortcutSuppression::KeyboardGrab | ShortcutSuppression::SurfaceInhibitor)
@@ -251,6 +261,20 @@ pub fn handle_keyboard<B: InputBackend>(
             }
             if suppression.is_none() {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
+                if matches!(
+                    data.wm.core.state.behavior.current_mode,
+                    crate::core_state::ActiveWmMode::Default
+                ) && data.wm.core.state.shortcuts.press(
+                    u32::from(key_code),
+                    raw_keysym,
+                    mod_mask,
+                ) {
+                    data.native
+                        .runtime
+                        .intercepted_key_releases
+                        .insert(key_code);
+                    return FilterResult::Intercept(());
+                }
                 let ctx = data.ctx();
                 let WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
@@ -359,6 +383,14 @@ fn activate_virtual_keyboard_keymap(state: &mut WaylandState, device: &VirtualKe
     let keyboard = state.native.keyboard.clone();
     if let Err(err) = keyboard.set_keymap_from_string(state, keymap.to_string()) {
         log::warn!("Failed to activate virtual keyboard keymap: {err}");
+    }
+}
+
+/// A focus/protocol change can suppress shortcuts without producing a key
+/// event. Stop held actions immediately on the next compositor dispatch.
+pub(crate) fn reconcile_global_shortcuts(state: &WaylandState) {
+    if shortcut_suppression(state, &state.native.keyboard).is_some() {
+        state.wm.core.state.shortcuts.suspend();
     }
 }
 

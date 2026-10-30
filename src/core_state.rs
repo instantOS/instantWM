@@ -402,6 +402,7 @@ pub struct InteractionState {
 /// a single borrow boundary without mixing backend resources into core state.
 #[derive(Default)]
 pub struct CoreState {
+    pub(crate) shortcuts: crate::shortcuts::Shortcuts,
     pub model: WmModel,
     pub config: EffectiveConfig,
     pub derived: DerivedState,

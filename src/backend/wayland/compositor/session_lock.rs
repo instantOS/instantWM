@@ -63,6 +63,7 @@ impl SessionLockHandler for WaylandState {
 
     fn lock(&mut self, confirmation: SessionLocker) {
         log::info!("session lock requested");
+        self.wm.core.state.shortcuts.suspend();
 
         if let SessionLockState::Locked(ref lock) = self.native.lock_state
             && lock.is_alive()

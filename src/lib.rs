@@ -31,6 +31,7 @@ mod output_mirror;
 mod overview;
 pub mod reload;
 mod runtime;
+mod shortcuts;
 pub mod startup;
 mod systray;
 mod tags;

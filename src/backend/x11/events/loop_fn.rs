@@ -87,7 +87,9 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     // ── StatusNotifier worker ───────────────────────────────────────────
     // Items position their own menus under X11, so no native-menu slot is
     // provided; the wake ping makes icon changes render while idle.
-    wm.start_systray(None, crate::runtime::make_wake_ping(&loop_handle));
+    let wake = crate::runtime::make_wake_ping(&loop_handle);
+    wm.core.state.shortcuts.set_wake(wake.clone());
+    wm.start_systray(None, wake);
 
     // ── Animation timer (on-demand, not persistent) ─────────────────────
     let anim_guard = AnimationTimerGuard::new();
@@ -347,7 +349,17 @@ pub(crate) fn dispatch_event_in_context(
         x11rb::protocol::Event::DestroyNotify(e) => handlers::destroy_notify(ctx, e),
         x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(ctx, e),
         x11rb::protocol::Event::Expose(e) => handlers::expose(ctx, e),
+        x11rb::protocol::Event::FocusOut(e)
+            if e.mode == x11rb::protocol::xproto::NotifyMode::GRAB =>
+        {
+            ctx.core.state.shortcuts.suspend();
+        }
+        x11rb::protocol::Event::FocusIn(e)
+            if e.mode != x11rb::protocol::xproto::NotifyMode::NORMAL => {}
         x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(ctx, e),
+        x11rb::protocol::Event::KeyRelease(e) => {
+            ctx.core.state.shortcuts.release(u32::from(e.detail));
+        }
         x11rb::protocol::Event::KeyPress(e) => crate::backend::x11::keyboard::key_press(ctx, e),
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(ctx, e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(ctx, e),
