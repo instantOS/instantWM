@@ -53,7 +53,7 @@ impl Dialog {
                 "--width",
                 "auto",
                 "--lines",
-                "8",
+                &entries.lines().count().clamp(1, 14).to_string(),
                 "--placeholder",
                 &clean(prompt),
             ])
@@ -149,6 +149,34 @@ fn clean(text: &str) -> String {
         .collect()
 }
 
+/// Context rows use `heading`, which instantMENU skips during selection.
+/// Keep chords in labels: `shortcut=` would register menu accelerators.
+fn approval_entries(app: &str, shortcuts: &[Shortcut]) -> String {
+    let mut entries = format!(
+        "{{heading blue icon=mdkeyboard}} {}\n\
+         {{heading fade}} These shortcuts work while other applications are focused\n\
+         {{heading}} Permission\n\
+         {{green icon=mdcheck value=allow}} Allow these global shortcuts\n\
+         {{icon=mdclose value=cancel}} Cancel\n\
+         {{heading blue}} Bindings — select to edit\n",
+        clean(app),
+    );
+    if shortcuts.is_empty() {
+        entries.push_str("{heading fade} No shortcuts requested\n");
+    }
+    for (index, shortcut) in shortcuts.iter().enumerate() {
+        let (style, trigger) = shortcut.trigger.map_or_else(
+            || ("fade icon=mdkeyboardoff", "Disabled".into()),
+            |trigger| ("icon=mdkeyboard", trigger.text()),
+        );
+        entries.push_str(&format!(
+            "{{{style} value=edit{index}}} {}: {trigger}\n",
+            clean(&shortcut.description),
+        ));
+    }
+    entries
+}
+
 /// Return a complete user-approved set. Nothing becomes active until the final
 /// confirmation; closing any menu leaves the previous bindings untouched.
 pub(super) fn configure(
@@ -176,20 +204,9 @@ pub(super) fn configure(
         app
     };
     loop {
-        let mut entries =
-            String::from("{value=allow} Allow these global shortcuts\n{value=cancel} Cancel\n");
-        for (index, shortcut) in shortcuts.iter().enumerate() {
-            let trigger = shortcut
-                .trigger
-                .map_or_else(|| "Disabled".into(), Trigger::text);
-            entries.push_str(&format!(
-                "{{value=edit{index}}} {}: {}\n",
-                clean(&shortcut.description),
-                trigger
-            ));
-        }
+        let entries = approval_entries(app, &shortcuts);
         let answer = dialog.menu(
-            &format!("{app} — global shortcuts (select an action to edit)"),
+            "Global shortcuts — select a binding to edit",
             &entries,
             None,
         )?;
@@ -208,7 +225,7 @@ pub(super) fn configure(
                 drop(registry);
                 dialog.menu(
                     "A shortcut is already in use. Edit it before allowing.",
-                    "{value=ok} Back\n",
+                    "{heading yellow icon=mdinformation} Resolve conflicting bindings before allowing\n{icon=mdarrowleft value=ok} Back to shortcuts\n",
                     None,
                 )?;
                 continue;
@@ -259,10 +276,64 @@ pub(super) fn configure(
                     break;
                 }
                 Err(error) => {
-                    dialog.menu(&error, "{value=ok} Try again\n", None)?;
+                    dialog.menu(
+                        &error,
+                        "{heading yellow icon=mdinformation} Binding could not be saved\n{icon=mdrefresh value=ok} Try again\n",
+                        None,
+                    )?;
                     input = text;
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_context_is_inert_but_disabled_bindings_remain_editable() {
+        let entries = approval_entries(
+            "test.app\n{value=allow}",
+            &[
+                Shortcut {
+                    id: "one".into(),
+                    description: "Talk\n{heading}".into(),
+                    preferred: None,
+                    trigger: Some(Trigger::parse("CTRL+space").unwrap()),
+                },
+                Shortcut {
+                    id: "two".into(),
+                    description: "Muted action".into(),
+                    preferred: None,
+                    trigger: None,
+                },
+            ],
+        );
+        assert_eq!(entries.lines().count(), 8);
+        let headings: Vec<_> = entries
+            .lines()
+            .filter(|line| line.starts_with("{heading"))
+            .collect();
+        assert_eq!(headings.len(), 4);
+        for heading in headings {
+            let metadata = heading.split_once('}').unwrap().0;
+            assert!(!metadata.contains("value="));
+        }
+        assert!(entries.contains("{icon=mdkeyboard value=edit0} Talkheading: CTRL+space\n"));
+        assert!(entries.contains("{fade icon=mdkeyboardoff value=edit1} Muted action: Disabled\n"));
+        assert!(!entries.contains("shortcut="));
+        assert_eq!(
+            entries.matches("{green icon=mdcheck value=allow}").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn empty_requests_have_an_explanatory_heading() {
+        assert!(
+            approval_entries("test.app", &[]).ends_with("{heading fade} No shortcuts requested\n")
+        );
     }
 }
