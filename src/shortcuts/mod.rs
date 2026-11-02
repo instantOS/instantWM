@@ -7,7 +7,9 @@ mod tests;
 mod ui;
 
 use crate::types::{Keysym, ModMask, Modifier};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::Instant;
@@ -105,6 +107,7 @@ struct Session {
     owner: String,
     shortcuts: Vec<Shortcut>,
     bound: bool,
+    generation: u64,
     dialog: Option<Arc<ui::Dialog>>,
 }
 
@@ -129,17 +132,18 @@ enum Event {
 struct Registry {
     sessions: BTreeMap<String, Session>,
     reserved: HashSet<Trigger>,
-    active: HashMap<u32, Activation>,
     revision: u64,
 }
 
 struct Shared {
     registry: Mutex<Registry>,
+    revision: AtomicU64,
     tx: mpsc::Sender<Event>,
     wake: Mutex<Option<calloop::ping::Ping>>,
     epoch: Instant,
     store: Mutex<store::Store>,
     ui: Mutex<()>,
+    validation_pending: AtomicBool,
     validation: Mutex<Vec<(u64, tokio::sync::oneshot::Sender<()>)>>,
     presenter: std::path::PathBuf,
 }
@@ -147,6 +151,7 @@ struct Shared {
 impl Shared {
     fn changed(&self, registry: &mut Registry) {
         registry.revision = registry.revision.wrapping_add(1);
+        self.revision.store(registry.revision, Ordering::Release);
         if let Some(wake) = self.wake.lock().unwrap().as_ref() {
             wake.ping();
         }
@@ -161,41 +166,19 @@ impl Shared {
         });
     }
 
-    fn deactivate(&self, registry: &mut Registry) {
-        let activations: HashSet<_> = registry
-            .active
-            .drain()
-            .map(|(_, activation)| activation)
-            .collect();
-        for activation in activations {
-            self.emit(activation, false);
-        }
-    }
-
-    fn deactivate_session(&self, registry: &mut Registry, path: &str) {
-        let keys: Vec<_> = registry
-            .active
-            .iter()
-            .filter(|(_, a)| a.session == path)
-            .map(|(k, _)| *k)
-            .collect();
-        let activations: HashSet<_> = keys
-            .into_iter()
-            .filter_map(|key| registry.active.remove(&key))
-            .collect();
-        for activation in activations {
-            self.emit(activation, false);
-        }
-    }
-
     fn remove_session(&self, path: &str) {
-        let mut registry = self.registry.lock().unwrap();
-        if let Some(session) = registry.sessions.remove(path) {
-            if let Some(dialog) = session.dialog {
-                dialog.cancel();
-            }
-            self.deactivate_session(&mut registry, path);
+        let dialog = {
+            let mut registry = self.registry.lock().unwrap();
+            let Some(session) = registry.sessions.remove(path) else {
+                return;
+            };
             self.changed(&mut registry);
+            session.dialog
+        };
+        // Process creation and teardown share the dialog's child mutex. Never
+        // wait for that mutex while holding the input registry.
+        if let Some(dialog) = dialog {
+            dialog.cancel();
         }
     }
 
@@ -209,11 +192,27 @@ impl Shared {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Binding {
+    activation: Activation,
+    generation: u64,
+}
+
+/// Owned by the compositor thread. Portal workers only mutate the registry;
+/// ordinary input performs an atomic revision check and a local hash lookup.
+#[derive(Default)]
+struct InputState {
+    revision: u64,
+    bindings: HashMap<Trigger, Binding>,
+    active: HashMap<u32, (Trigger, Binding)>,
+}
+
 pub(crate) struct Shortcuts {
     shared: Arc<Shared>,
     rx: Option<mpsc::Receiver<Event>>,
     worker: Option<JoinHandle<()>>,
     seen_revision: u64,
+    input: RefCell<InputState>,
 }
 
 impl Default for Shortcuts {
@@ -222,17 +221,20 @@ impl Default for Shortcuts {
         Self {
             shared: Arc::new(Shared {
                 registry: Mutex::new(Registry::default()),
+                revision: AtomicU64::new(0),
                 tx,
                 wake: Mutex::new(None),
                 epoch: Instant::now(),
                 store: Mutex::new(store::Store::default()),
                 ui: Mutex::new(()),
+                validation_pending: AtomicBool::new(false),
                 validation: Mutex::new(Vec::new()),
                 presenter: "instantmenu".into(),
             }),
             rx: Some(rx),
             worker: None,
             seen_revision: 0,
+            input: RefCell::new(InputState::default()),
         }
     }
 }
@@ -277,11 +279,12 @@ impl Shortcuts {
     /// Synchronize conflicts after configuration reloads and withdraw bindings
     /// newly claimed by WM policy. The next portal list reflects the change.
     pub fn sync(&mut self, bindings: &crate::core_state::BindingConfig, numlock: ModMask) -> bool {
+        // Application shortcuts are suspended outside default mode. Only
+        // tables that can run in default mode need to reserve their chords.
         let reserved: HashSet<_> = bindings
             .keys
             .iter()
             .chain(&bindings.desktop_keybinds)
-            .chain(bindings.modes.values().flat_map(|mode| &mode.keybinds))
             .map(|key| Trigger {
                 key: key.keysym.for_binding(),
                 mods: key.mod_mask.cleaned(numlock),
@@ -289,7 +292,6 @@ impl Shortcuts {
             .collect();
         let mut registry = self.shared.registry.lock().unwrap();
         if reserved != registry.reserved {
-            self.shared.deactivate(&mut registry);
             for (path, session) in &mut registry.sessions {
                 let mut withdrawn = false;
                 for shortcut in &mut session.shortcuts {
@@ -310,18 +312,72 @@ impl Shortcuts {
         }
         let changed = self.seen_revision != registry.revision;
         self.seen_revision = registry.revision;
+        drop(registry);
+        self.reconcile();
         changed
     }
 
-    pub fn take_changed(&mut self) -> bool {
-        let revision = self.shared.registry.lock().unwrap().revision;
-        let changed = self.seen_revision != revision;
-        self.seen_revision = revision;
-        changed
+    pub fn take_changed(&self) -> bool {
+        self.reconcile();
+        self.seen_revision != self.shared.revision.load(Ordering::Acquire)
+    }
+
+    fn reconcile(&self) {
+        if self.input.borrow().revision == self.shared.revision.load(Ordering::Acquire) {
+            return;
+        }
+        let (revision, bindings) = {
+            let registry = self.shared.registry.lock().unwrap();
+            let bindings = registry
+                .sessions
+                .iter()
+                .flat_map(|(path, session)| {
+                    session.shortcuts.iter().filter_map(|shortcut| {
+                        shortcut
+                            .trigger
+                            .filter(|trigger| !registry.reserved.contains(trigger))
+                            .map(|trigger| {
+                                (
+                                    trigger,
+                                    Binding {
+                                        activation: Activation {
+                                            session: path.clone(),
+                                            id: shortcut.id.clone(),
+                                        },
+                                        generation: session.generation,
+                                    },
+                                )
+                            })
+                    })
+                })
+                .collect();
+            (registry.revision, bindings)
+        };
+        let mut input = self.input.borrow_mut();
+        input.bindings = bindings;
+        let InputState {
+            bindings, active, ..
+        } = &mut *input;
+        let mut stopped = HashSet::new();
+        active.retain(|_, (trigger, binding)| {
+            let keep = bindings.get(trigger) == Some(binding);
+            if !keep {
+                stopped.insert(binding.activation.clone());
+            }
+            keep
+        });
+        for activation in stopped {
+            self.shared.emit(activation, false);
+        }
+        input.revision = revision;
     }
 
     /// Complete native registration before replying to a portal bind request.
     pub fn validated(&self) {
+        if !self.shared.validation_pending.load(Ordering::Acquire) {
+            return;
+        }
+        self.reconcile();
         let mut pending = self.shared.validation.lock().unwrap();
         let mut newer = Vec::new();
         for (revision, waiter) in pending.drain(..) {
@@ -331,11 +387,15 @@ impl Shortcuts {
                 newer.push((revision, waiter));
             }
         }
+        self.shared
+            .validation_pending
+            .store(!newer.is_empty(), Ordering::Release);
         *pending = newer;
     }
 
     pub fn reject_trigger(&self, trigger: Trigger) {
         let mut registry = self.shared.registry.lock().unwrap();
+        let mut any_changed = false;
         for (path, session) in &mut registry.sessions {
             let mut changed = false;
             for shortcut in &mut session.shortcuts {
@@ -345,65 +405,54 @@ impl Shortcuts {
                 }
             }
             if changed {
+                any_changed = true;
                 let _ = self.shared.tx.send(Event::Changed(path.clone()));
             }
+        }
+        if any_changed {
+            self.shared.changed(&mut registry);
         }
     }
 
     pub fn triggers(&self) -> Vec<Trigger> {
-        self.shared
-            .registry
-            .lock()
-            .unwrap()
-            .sessions
-            .values()
-            .flat_map(|session| {
-                session
-                    .shortcuts
-                    .iter()
-                    .filter_map(|shortcut| shortcut.trigger)
-            })
-            .collect()
+        self.reconcile();
+        self.input.borrow().bindings.keys().copied().collect()
     }
 
     pub fn press(&self, keycode: u32, key: Keysym, mods: ModMask) -> bool {
-        let mut registry = self.shared.registry.lock().unwrap();
-        if registry.active.contains_key(&keycode) {
+        self.reconcile();
+        let mut input = self.input.borrow_mut();
+        if input.active.contains_key(&keycode) {
             return true;
         }
         let trigger = Trigger {
             key: key.for_binding(),
             mods,
         };
-        if registry.reserved.contains(&trigger) {
+        let Some(binding) = input.bindings.get(&trigger).cloned() else {
             return false;
+        };
+        if !input
+            .active
+            .values()
+            .any(|(_, active)| active.activation == binding.activation)
+        {
+            self.shared.emit(binding.activation.clone(), true);
         }
-        let activation = registry.sessions.iter().find_map(|(path, session)| {
-            session
-                .shortcuts
-                .iter()
-                .find(|shortcut| shortcut.trigger == Some(trigger))
-                .map(|shortcut| Activation {
-                    session: path.clone(),
-                    id: shortcut.id.clone(),
-                })
-        });
-        if let Some(activation) = activation {
-            if !registry.active.values().any(|active| *active == activation) {
-                self.shared.emit(activation.clone(), true);
-            }
-            registry.active.insert(keycode, activation);
-            true
-        } else {
-            false
-        }
+        input.active.insert(keycode, (trigger, binding));
+        true
     }
 
     pub fn release(&self, keycode: u32) -> bool {
-        let mut registry = self.shared.registry.lock().unwrap();
-        if let Some(activation) = registry.active.remove(&keycode) {
-            if !registry.active.values().any(|active| *active == activation) {
-                self.shared.emit(activation, false);
+        self.reconcile();
+        let mut input = self.input.borrow_mut();
+        if let Some((_, binding)) = input.active.remove(&keycode) {
+            if !input
+                .active
+                .values()
+                .any(|(_, active)| active.activation == binding.activation)
+            {
+                self.shared.emit(binding.activation, false);
             }
             true
         } else {
@@ -411,14 +460,27 @@ impl Shortcuts {
         }
     }
 
+    pub fn has_active(&self) -> bool {
+        !self.input.borrow().active.is_empty()
+    }
+
     pub fn suspend(&self) {
-        self.shared
-            .deactivate(&mut self.shared.registry.lock().unwrap());
+        let activations: HashSet<_> = self
+            .input
+            .borrow_mut()
+            .active
+            .drain()
+            .map(|(_, (_, binding))| binding.activation)
+            .collect();
+        for activation in activations {
+            self.shared.emit(activation, false);
+        }
     }
 }
 
 impl Drop for Shortcuts {
     fn drop(&mut self) {
+        self.suspend();
         let paths: Vec<_> = self
             .shared
             .registry

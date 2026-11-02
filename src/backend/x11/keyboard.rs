@@ -45,27 +45,73 @@ fn layout_command(
     command
 }
 
-fn grab_keys_for_key<C: Connection>(
-    conn: &C,
-    root: Window,
-    modifiers: &[ModMask],
-    key: &Key,
-    keycode: u8,
-) {
-    for &lock_variation in modifiers {
-        let _ = grab_key(
-            conn,
-            false,
-            root,
-            XModMask::from((key.mod_mask | lock_variation).bits()),
-            keycode,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-        );
-    }
+type NativeGrab = (u8, u16);
+
+/// Successful application grabs are retained across focus changes. WM grabs
+/// track their scope but remain unchecked and retried on each refresh.
+#[derive(Default)]
+pub(crate) struct KeyGrabs {
+    installed: std::collections::HashSet<NativeGrab>,
+    portal: std::collections::HashSet<NativeGrab>,
 }
 
-/// Grab all X11 keybindings for the current config.
+#[derive(Default)]
+struct GrabPlan {
+    wm: std::collections::HashSet<NativeGrab>,
+    portal:
+        std::collections::HashMap<crate::shortcuts::Trigger, std::collections::HashSet<NativeGrab>>,
+}
+
+fn plan_grabs(
+    mapping: &crate::backend::x11::X11KeyboardMapping,
+    numlock: ModMask,
+    bindings: &[&Key],
+    triggers: &[crate::shortcuts::Trigger],
+) -> GrabPlan {
+    let caps = ModMask::from_modifier(Modifier::CapsLock);
+    let locks = [ModMask::NONE, caps, numlock, numlock | caps];
+    let mut plan = GrabPlan::default();
+    // Keep empty entries: a valid keysym absent from the keyboard mapping is
+    // an unavailable shortcut, rather than a successful registration.
+    for trigger in triggers {
+        plan.portal.insert(*trigger, Default::default());
+    }
+    if mapping.keysyms_per_keycode == 0 {
+        return plan;
+    }
+    for (offset, symbols) in mapping
+        .keysyms
+        .chunks(usize::from(mapping.keysyms_per_keycode))
+        .enumerate()
+    {
+        let Some(code) = usize::from(mapping.min_keycode)
+            .checked_add(offset)
+            .and_then(|code| u8::try_from(code).ok())
+        else {
+            break;
+        };
+        let key = symbols[0].for_binding();
+        if key == Keysym::NONE {
+            continue;
+        }
+        for binding in bindings.iter().filter(|binding| binding.keysym == key) {
+            for lock in locks {
+                plan.wm.insert((code, (binding.mod_mask | lock).bits()));
+            }
+        }
+        for (trigger, grabs) in &mut plan.portal {
+            if trigger.key == key {
+                for lock in locks {
+                    grabs.insert((code, (trigger.mods | lock).bits()));
+                }
+            }
+        }
+    }
+    plan
+}
+
+/// Update only changed X11 keybindings. Unchanged portal grabs never require
+/// another server round trip when focus or desktop-binding scope changes.
 pub fn grab_keys(
     globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
@@ -73,90 +119,93 @@ pub fn grab_keys(
 ) {
     let conn = x11.conn;
     let root = x11_runtime.root;
-    let numlockmask = x11_runtime.numlockmask;
+    if x11_runtime.keyboard_mapping.keysyms.is_empty() {
+        return;
+    }
     let bindings = crate::keyboard::passive_bindings(
         &globals.config.bindings,
         globals.model.selected_win(),
         &globals.behavior.current_mode,
     );
-
-    // Never discard working passive grabs when a refresh failed and no
-    // replacement mapping is available.
-    if x11_runtime.keyboard_mapping.keysyms.is_empty() {
-        return;
-    }
-
-    let _ = ungrab_key(conn, 0, root, XModMask::ANY);
-
-    let (keycode_min, keycode_max): (u8, u8) = (conn.setup().min_keycode, conn.setup().max_keycode);
-
-    // A passive grab is keyed on an exact modifier state, so a binding that
-    // should also fire with Caps Lock or Num Lock held needs one grab per
-    // combination of those sticky modifiers. `Modifier::CapsLock` is bit 1, the
-    // same position as x11rb's `ModMask::LOCK`.
-    let caps_lock = ModMask::from_modifier(Modifier::CapsLock);
-    let modifiers: [ModMask; 4] = [
-        ModMask::NONE,
-        caps_lock,
-        numlockmask,
-        numlockmask | caps_lock,
-    ];
-
-    for keycode in keycode_min..=keycode_max {
-        let keysym = x11_runtime.keyboard_mapping.keysym(keycode, 0);
-        if keysym == Keysym::NONE {
-            continue;
-        }
-
-        for key in &bindings {
-            if keysym.for_binding() == key.keysym {
-                grab_keys_for_key(conn, root, &modifiers, key, keycode);
-            }
-        }
-    }
-
-    if matches!(
+    let triggers = if matches!(
         globals.behavior.current_mode,
         crate::core_state::ActiveWmMode::Default
     ) {
-        let mut pending = Vec::new();
-        let mut grabs = Vec::new();
-        let mut failed = std::collections::HashSet::new();
-        for trigger in globals.shortcuts.triggers() {
-            for code in keycode_min..=keycode_max {
-                if x11_runtime.keyboard_mapping.keysym(code, 0).for_binding() != trigger.key {
-                    continue;
+        globals.shortcuts.triggers()
+    } else {
+        Vec::new()
+    };
+    let plan = plan_grabs(
+        &x11_runtime.keyboard_mapping,
+        x11_runtime.numlockmask,
+        &bindings,
+        &triggers,
+    );
+    let desired: std::collections::HashSet<_> = plan
+        .wm
+        .iter()
+        .copied()
+        .chain(plan.portal.values().flatten().copied())
+        .collect();
+    let mut previous = x11_runtime.key_grabs.borrow_mut();
+    for &(code, mods) in previous.installed.difference(&desired) {
+        let _ = conn.ungrab_key(code, root, XModMask::from(mods));
+    }
+    // WM requests are unchecked, so they may previously have failed because
+    // another client owned the chord. Keep retrying them as before.
+    for &(code, mods) in &plan.wm {
+        let _ = conn.grab_key(
+            false,
+            root,
+            XModMask::from(mods),
+            code,
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+        );
+    }
+    let mut pending = Vec::new();
+    let mut failed = std::collections::HashSet::new();
+    for (&trigger, grabs) in &plan.portal {
+        if grabs.is_empty() {
+            failed.insert(trigger);
+        }
+        for &(code, mods) in grabs.difference(&previous.portal) {
+            match conn.grab_key(
+                false,
+                root,
+                XModMask::from(mods),
+                code,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+            ) {
+                Ok(cookie) => pending.push((trigger, cookie)),
+                Err(_) => {
+                    failed.insert(trigger);
                 }
-                for lock in modifiers {
-                    let mask = XModMask::from((trigger.mods | lock).bits());
-                    grabs.push((trigger, code, mask));
-                    match conn.grab_key(false, root, mask, code, GrabMode::ASYNC, GrabMode::ASYNC) {
-                        Ok(cookie) => pending.push((trigger, cookie)),
-                        Err(_) => {
-                            failed.insert(trigger);
-                        }
-                    }
-                }
             }
-        }
-        // Resolve the latest request first, so the server processes the entire
-        // batch before checking earlier errors. Focus changes must not cost a
-        // round trip for every application shortcut and lock variation.
-        for (trigger, cookie) in pending.into_iter().rev() {
-            if cookie.check().is_err() {
-                failed.insert(trigger);
-            }
-        }
-        for (trigger, code, mask) in grabs {
-            if failed.contains(&trigger) {
-                let _ = conn.ungrab_key(code, root, mask);
-            }
-        }
-        for trigger in failed {
-            log::warn!("global shortcuts: X11 could not grab {}", trigger.text());
-            globals.shortcuts.reject_trigger(trigger);
         }
     }
+    // Checking the last request first batches all new grabs into one round trip.
+    for (trigger, cookie) in pending.into_iter().rev() {
+        if cookie.check().is_err() {
+            failed.insert(trigger);
+        }
+    }
+    let mut portal = std::collections::HashSet::new();
+    for (trigger, grabs) in plan.portal {
+        if failed.contains(&trigger) {
+            for (code, mods) in grabs.difference(&plan.wm) {
+                let _ = conn.ungrab_key(*code, root, XModMask::from(*mods));
+            }
+            log::warn!("global shortcuts: X11 could not grab {}", trigger.text());
+            globals.shortcuts.reject_trigger(trigger);
+        } else {
+            portal.extend(grabs);
+        }
+    }
+    previous.installed = plan.wm;
+    previous.installed.extend(&portal);
+    previous.portal = portal;
     let _ = conn.flush();
 }
 
@@ -424,8 +473,53 @@ pub(crate) fn enable_detectable_repeat(conn: &impl Connection) -> bool {
 
 #[cfg(test)]
 mod mapping_tests {
+    use super::plan_grabs;
     use crate::backend::x11::X11KeyboardMapping;
-    use crate::types::Keysym;
+    use crate::shortcuts::Trigger;
+    use crate::types::{Keysym, ModMask, Modifier};
+
+    #[test]
+    fn grab_plan_keeps_unavailable_symbols_for_native_rejection() {
+        let mapping = X11KeyboardMapping {
+            min_keycode: 8,
+            keysyms_per_keycode: 2,
+            keysyms: vec![
+                Keysym::from_name("equal").unwrap(),
+                Keysym::from_name("plus").unwrap(),
+            ],
+        };
+        let unavailable = Trigger::parse("CTRL+plus").unwrap();
+        let available = Trigger::parse("CTRL+equal").unwrap();
+        let plan = plan_grabs(&mapping, ModMask::NONE, &[], &[unavailable, available]);
+        assert!(plan.portal[&unavailable].is_empty());
+        assert_eq!(plan.portal[&available].len(), 2);
+        assert!(plan.portal[&available].contains(&(8, available.mods.bits())));
+    }
+
+    #[test]
+    fn grab_plan_handles_multiple_keycodes_and_sticky_locks() {
+        let key = Keysym::from_name("space").unwrap();
+        let mapping = X11KeyboardMapping {
+            min_keycode: 8,
+            keysyms_per_keycode: 1,
+            keysyms: vec![key, Keysym::NONE, key],
+        };
+        let trigger = Trigger::parse("CTRL+space").unwrap();
+        let numlock = ModMask::new(16);
+        let plan = plan_grabs(&mapping, numlock, &[], &[trigger]);
+        let grabs = &plan.portal[&trigger];
+        assert_eq!(grabs.len(), 8);
+        for code in [8, 10] {
+            for locks in [
+                ModMask::NONE,
+                ModMask::from_modifier(Modifier::CapsLock),
+                numlock,
+                numlock | ModMask::from_modifier(Modifier::CapsLock),
+            ] {
+                assert!(grabs.contains(&(code, (trigger.mods | locks).bits())));
+            }
+        }
+    }
 
     #[test]
     fn layout_command_clears_previous_variant_and_options() {

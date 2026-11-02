@@ -389,7 +389,9 @@ fn activate_virtual_keyboard_keymap(state: &mut WaylandState, device: &VirtualKe
 /// A focus/protocol change can suppress shortcuts without producing a key
 /// event. Stop held actions immediately on the next compositor dispatch.
 pub(crate) fn reconcile_global_shortcuts(state: &WaylandState) {
-    if shortcut_suppression(state, &state.native.keyboard).is_some() {
+    if state.wm.core.state.shortcuts.has_active()
+        && shortcut_suppression(state, &state.native.keyboard).is_some()
+    {
         state.wm.core.state.shortcuts.suspend();
     }
 }

@@ -289,6 +289,48 @@ pub(super) fn configure(
 }
 
 #[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use crate::shortcuts::{Session, Shortcuts};
+    use std::sync::Arc;
+
+    #[test]
+    fn cancelling_a_busy_dialog_releases_the_registry_before_waiting() {
+        let shortcuts = Shortcuts::default();
+        let dialog = Arc::new(Dialog::new("unused".into()));
+        shortcuts.shared.registry.lock().unwrap().sessions.insert(
+            "session".into(),
+            Session {
+                app: String::new(),
+                owner: String::new(),
+                shortcuts: Vec::new(),
+                bound: false,
+                generation: 0,
+                dialog: Some(dialog.clone()),
+            },
+        );
+        // Model a child spawn/wait holding the process slot while another
+        // thread closes its portal session.
+        let child = dialog.child.lock().unwrap();
+        let shared = shortcuts.shared.clone();
+        let task = std::thread::spawn(move || shared.remove_session("session"));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !dialog.cancelled() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        let cancelled = dialog.cancelled();
+        let registry_available = shortcuts.shared.registry.try_lock().is_ok();
+        drop(child);
+        task.join().unwrap();
+        assert!(cancelled, "session closure did not start cancellation");
+        assert!(
+            registry_available,
+            "cancellation held the input registry while waiting for its child"
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
