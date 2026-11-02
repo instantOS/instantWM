@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2](https://github.com/instantOS/instantWM/compare/v0.7.1...v0.7.2) - 2026-11-02
+
+### Changed
+
+- fold the keyboard source into handle_keyboard
+
+### Fixed
+
+- stale test
+- better looking shortcuts portal
+- keep global shortcut dispatch off the shared registry
+
+### Other
+
+- Merge branch 'main' of https://github.com/instantOS/instantWM
+- Add bulk move and swap modifiers to tag dragging
+- Fix scratchpad urgency visibility, XWayland input, and minimum sizing
+- Merge branch 'main' of ufr:~/stuff/instantWM into dev
+- Merge branch 'main' into dev
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- Add GlobalShortcuts portal support for Wayland and X11
+- cargo update
+
 ## [0.7.1](https://github.com/instantOS/instantWM/compare/v0.7.0...v0.7.1) - 2026-10-27
 
 ### Changed
