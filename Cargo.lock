@@ -1152,7 +1152,7 @@ source = "git+https://github.com/instantOS/instantOS-libs#2a52be94397b315d71882f
 
 [[package]]
 name = "instantwm"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "bincode",
