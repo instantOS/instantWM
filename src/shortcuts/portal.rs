@@ -156,6 +156,7 @@ impl Portal {
                     owner,
                     shortcuts: Vec::new(),
                     bound: false,
+                    generation: 0,
                     dialog: None,
                 },
             );
@@ -399,9 +400,10 @@ impl Portal {
                 }) {
                     return Ok((2, Dict::new()));
                 }
-                self.shared.deactivate_session(&mut registry, path.as_str());
+                let generation = registry.revision.wrapping_add(1);
                 let session = registry.sessions.get_mut(path.as_str()).unwrap();
                 session.shortcuts = shortcuts.clone();
+                session.generation = generation;
                 let app = session.app.clone();
                 self.shared.changed(&mut registry);
                 self.shared
@@ -409,6 +411,9 @@ impl Portal {
                     .lock()
                     .unwrap()
                     .push((registry.revision, validation_tx));
+                self.shared
+                    .validation_pending
+                    .store(true, Ordering::Release);
                 Some((app, shortcuts, registry.revision))
             } else {
                 None

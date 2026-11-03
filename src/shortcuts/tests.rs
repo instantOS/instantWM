@@ -22,16 +22,19 @@ fn shortcut(id: &str, trigger: &str) -> Shortcut {
     }
 }
 fn insert(shortcuts: &Shortcuts, path: &str, actions: Vec<Shortcut>) {
-    shortcuts.shared.registry.lock().unwrap().sessions.insert(
+    let mut registry = shortcuts.shared.registry.lock().unwrap();
+    registry.sessions.insert(
         path.into(),
         Session {
             app: "test.app".into(),
             owner: "owner".into(),
             shortcuts: actions,
             bound: true,
+            generation: 0,
             dialog: None,
         },
     );
+    shortcuts.shared.changed(&mut registry);
 }
 
 #[test]
@@ -108,10 +111,10 @@ fn closing_sessions_and_locking_stop_held_actions() {
     ));
     shortcuts.shared.remove_session("first");
     assert!(!shortcuts.release(65));
-    assert_eq!(shortcuts.shared.registry.lock().unwrap().active.len(), 1);
+    assert_eq!(shortcuts.input.borrow().active.len(), 1);
     shortcuts.suspend();
     assert!(!shortcuts.release(66));
-    assert!(shortcuts.shared.registry.lock().unwrap().active.is_empty());
+    assert!(shortcuts.input.borrow().active.is_empty());
     let events: Vec<_> = shortcuts.rx.as_ref().unwrap().try_iter().collect();
     assert_eq!(
         events
@@ -530,12 +533,98 @@ fn two_physical_keys_for_one_action_have_one_activation_pair() {
     assert!(shortcuts.press(65, trigger.key, trigger.mods));
     assert!(shortcuts.press(66, trigger.key, trigger.mods));
     assert!(shortcuts.release(65));
-    assert_eq!(shortcuts.shared.registry.lock().unwrap().active.len(), 1);
+    assert_eq!(shortcuts.input.borrow().active.len(), 1);
     assert!(shortcuts.release(66));
     let events: Vec<_> = shortcuts.rx.as_ref().unwrap().try_iter().collect();
     assert_eq!(events.len(), 2);
     assert!(matches!(events[0], Event::Key { pressed: true, .. }));
     assert!(matches!(events[1], Event::Key { pressed: false, .. }));
+}
+
+#[test]
+fn cached_input_does_not_wait_for_portal_registry_access() {
+    let shortcuts = Shortcuts::default();
+    insert(&shortcuts, "session", vec![shortcut("talk", "CTRL+space")]);
+    let trigger = shortcuts.triggers()[0];
+    let shared = shortcuts.shared.clone();
+    let registry = shared.registry.lock().unwrap();
+    let (tx, rx) = mpsc::channel();
+    let task = std::thread::spawn(move || {
+        assert!(shortcuts.press(65, trigger.key, trigger.mods));
+        assert!(!shortcuts.press(66, Keysym::from_name("F12").unwrap(), ModMask::NONE));
+        assert!(shortcuts.release(65));
+        shortcuts.suspend();
+        tx.send(()).unwrap();
+        // Return ownership so Drop does not try closing sessions under the lock.
+        shortcuts
+    });
+    let result = rx.recv_timeout(Duration::from_secs(2));
+    drop(registry);
+    let shortcuts = task.join().unwrap();
+    result.expect("ordinary input waited for the portal registry");
+    assert_eq!(shortcuts.test_key_events(), vec![true, false]);
+}
+
+#[test]
+fn reconfiguring_a_held_shortcut_stops_it_even_if_the_trigger_is_unchanged() {
+    let shortcuts = Shortcuts::default();
+    insert(&shortcuts, "session", vec![shortcut("talk", "CTRL+space")]);
+    let trigger = shortcuts.triggers()[0];
+    assert!(shortcuts.press(65, trigger.key, trigger.mods));
+    {
+        let mut registry = shortcuts.shared.registry.lock().unwrap();
+        registry.sessions.get_mut("session").unwrap().generation += 1;
+        shortcuts.shared.changed(&mut registry);
+    }
+    // A compositor tick reconciles mutations even without another key event.
+    shortcuts.take_changed();
+    assert_eq!(shortcuts.test_key_events(), vec![true, false]);
+    assert!(!shortcuts.release(65));
+    assert!(shortcuts.press(65, trigger.key, trigger.mods));
+    assert!(shortcuts.release(65));
+    assert_eq!(shortcuts.test_key_events(), vec![true, false]);
+}
+
+#[test]
+fn native_rejection_withdraws_cached_and_held_shortcuts() {
+    let shortcuts = Shortcuts::default();
+    insert(&shortcuts, "session", vec![shortcut("talk", "CTRL+space")]);
+    let trigger = shortcuts.triggers()[0];
+    assert!(shortcuts.press(65, trigger.key, trigger.mods));
+    shortcuts.reject_trigger(trigger);
+    assert!(shortcuts.triggers().is_empty());
+    assert_eq!(shortcuts.test_key_events(), vec![true, false]);
+    assert!(!shortcuts.press(65, trigger.key, trigger.mods));
+}
+
+#[test]
+fn inactive_mode_bindings_do_not_reserve_default_mode_shortcuts() {
+    let mut shortcuts = Shortcuts::default();
+    insert(&shortcuts, "session", vec![shortcut("talk", "CTRL+space")]);
+    let trigger = shortcuts.triggers()[0];
+    let mut bindings = crate::core_state::BindingConfig::default();
+    let key = crate::types::Key {
+        keysym: trigger.key,
+        mod_mask: trigger.mods,
+        action: crate::actions::KeyAction::named(crate::actions::NamedAction::Quit),
+        origin: crate::types::KeybindOrigin::User,
+    };
+    bindings.modes.insert(
+        "custom".into(),
+        crate::config::ModeConfig {
+            description: None,
+            transient: false,
+            keybinds: vec![key.clone()],
+        },
+    );
+    shortcuts.sync(&bindings, ModMask::NONE);
+    assert_eq!(shortcuts.triggers(), vec![trigger]);
+    assert!(shortcuts.press(65, trigger.key, trigger.mods));
+    // Desktop bindings can run in default mode and must still take priority.
+    bindings.desktop_keybinds.push(key);
+    shortcuts.sync(&bindings, ModMask::NONE);
+    assert!(shortcuts.triggers().is_empty());
+    assert_eq!(shortcuts.test_key_events(), vec![true, false]);
 }
 
 #[test]
@@ -568,6 +657,10 @@ fn native_registration_acknowledgement_cannot_race_a_later_binding() {
             .lock()
             .unwrap()
             .push((registry.revision, tx));
+        shortcuts
+            .shared
+            .validation_pending
+            .store(true, Ordering::Release);
     }
     shortcuts.validated();
     assert!(matches!(
@@ -609,6 +702,7 @@ fn x11_native_shortcut_grabs_release_pairing_and_conflict_detection() {
     let root = conn.setup().roots[screen].root;
     let mut wm = crate::wm::X11Wm::new(crate::backend::X11BackendData::new(conn, screen));
     wm.backend.x11_runtime.root = root;
+    wm.core.state.config.bindings = crate::core_state::BindingConfig::default();
     assert!(crate::backend::x11::keyboard::enable_detectable_repeat(
         &wm.backend.conn
     ));
@@ -644,6 +738,15 @@ fn x11_native_shortcut_grabs_release_pairing_and_conflict_detection() {
     };
     let (ctrl, alt, space) = (codes("Control_L"), codes("Alt_L"), codes("space"));
     wm.x11_ctx().refresh_key_grabs();
+    let before = wm.backend.conn.get_input_focus().unwrap();
+    let sequence = before.sequence_number();
+    before.reply().unwrap();
+    // A forced refresh with identical bindings sends no new grab requests or
+    // synchronous checks; only this test's next query advances the sequence.
+    wm.x11_ctx().refresh_key_grabs();
+    let after = wm.backend.conn.get_input_focus().unwrap();
+    assert_eq!(after.sequence_number(), sequence + 1);
+    after.reply().unwrap();
     let (injector, _) = x11rb::connect(None).unwrap();
     for (kind, code) in [
         (xproto::KEY_PRESS_EVENT, ctrl),
@@ -681,12 +784,8 @@ fn x11_native_shortcut_grabs_release_pairing_and_conflict_detection() {
         }
     }
     assert_eq!(wm.core.state.shortcuts.test_key_events(), vec![true, false]);
-    wm.backend
-        .conn
-        .ungrab_key(0, root, xproto::ModMask::ANY)
-        .unwrap()
-        .check()
-        .unwrap();
+    wm.core.state.shortcuts.shared.remove_session("test");
+    wm.x11_ctx().refresh_key_grabs();
     injector
         .grab_key(
             false,
@@ -699,6 +798,22 @@ fn x11_native_shortcut_grabs_release_pairing_and_conflict_detection() {
         .unwrap()
         .check()
         .unwrap();
+    wm.core
+        .state
+        .shortcuts
+        .register_test_shortcut("CTRL+ALT+space");
+    wm.x11_ctx().refresh_key_grabs();
+    assert!(wm.core.state.shortcuts.triggers().is_empty());
+    let unavailable = Trigger::parse("CTRL+F35").unwrap();
+    assert!(
+        (wm.backend.conn.setup().min_keycode..=wm.backend.conn.setup().max_keycode).all(|code| wm
+            .backend
+            .x11_runtime
+            .keyboard_mapping
+            .keysym(code, 0)
+            != unavailable.key)
+    );
+    wm.core.state.shortcuts.register_test_shortcut("CTRL+F35");
     wm.x11_ctx().refresh_key_grabs();
     assert!(wm.core.state.shortcuts.triggers().is_empty());
 }

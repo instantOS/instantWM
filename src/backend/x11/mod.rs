@@ -37,6 +37,7 @@ pub struct X11RuntimeConfig {
     pub xi2_touch_grabs: bool,
     /// Server keyboard mapping, refreshed on `MappingNotify`.
     pub keyboard_mapping: X11KeyboardMapping,
+    pub(crate) key_grabs: std::cell::RefCell<keyboard::KeyGrabs>,
     pub root: Window,
     /// Event subscriptions owned by this connection for roots and managed clients.
     pub(crate) subscriptions: subscriptions::EventSubscriptions,
@@ -98,6 +99,7 @@ impl Default for X11RuntimeConfig {
             numlockmask: ModMask::NONE,
             xi2_touch_grabs: false,
             keyboard_mapping: X11KeyboardMapping::default(),
+            key_grabs: Default::default(),
             root: 0,
             subscriptions: subscriptions::EventSubscriptions::default(),
             wm_check_win: 0,
