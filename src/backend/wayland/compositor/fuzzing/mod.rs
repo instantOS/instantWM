@@ -136,6 +136,11 @@ struct Peer {
     windows: Vec<Option<Window>>,
     reading: bool,
     expected_error: bool,
+    /// Set by ops that intentionally push this connection past protocol
+    /// limits (event bursts, oversized messages). A later disconnect is a
+    /// correct server response, not a harness failure, and may surface only
+    /// once subsequent writes overflow the buffer, so it never resets.
+    kill_ok: bool,
     dead: bool,
     sync: u64,
 }
@@ -187,6 +192,7 @@ impl Peer {
             windows: (0..WINDOWS).map(|_| None).collect(),
             reading: true,
             expected_error: false,
+            kill_ok: false,
             dead: false,
             sync: 1,
         }
@@ -199,7 +205,10 @@ impl Peer {
         if let Err(error) = self.conn.flush() {
             if !matches!(&error, wayland_client::backend::WaylandError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
             {
-                assert!(self.expected_error, "valid client write failed: {error}");
+                assert!(
+                    self.expected_error || self.kill_ok,
+                    "valid client write failed: {error}"
+                );
                 self.dead = true;
                 return;
             }
@@ -207,8 +216,9 @@ impl Peer {
         if self.reading {
             if let Err(error) = read_events(&self.conn, &mut self.queue, &mut self.events) {
                 assert!(
-                    self.expected_error,
-                    "{} unexpectedly disconnected: {error}", self.tag
+                    self.expected_error || self.kill_ok,
+                    "{} unexpectedly disconnected: {error}",
+                    self.tag
                 );
                 self.dead = true;
             }
@@ -270,6 +280,25 @@ impl Peer {
                 self.events.acknowledged[slot] = true;
             }
         }
+    }
+
+    /// Queue server-generated event traffic toward this peer without needing
+    /// its cooperation. Probes outgoing backpressure: a stalled reader may
+    /// legitimately be killed past the compositor's queue limit.
+    fn event_burst(&mut self, kib: u16) {
+        if self.dead {
+            return;
+        }
+        // libwayland answers wl_display.sync by itself: every request queues
+        // a 24-byte callback.done + display.delete_id pair for the client.
+        let replies = (1 + usize::from(kib) % 2048) * 1024 / 24;
+        for _ in 0..replies {
+            self.conn.display().sync(&self.queue.handle(), self.sync);
+            self.sync += 1;
+        }
+        // WouldBlock is expected once the socket or queue limit is hit; the
+        // remainder stays buffered and drains during pump().
+        let _ = self.conn.flush();
     }
 }
 
@@ -344,13 +373,21 @@ impl Harness {
         wm.core.state.model.monitors.restore(vec![monitor]);
         let (mut loop_, mut state) =
             crate::backend::wayland::compositor::new_event_loop_and_state(wm);
+        // `WaylandState::new` already attempted this; the return value records
+        // whether libwayland supports the raised limit, so tests know whether
+        // a stalled sub-limit peer is expected to survive.
+        let queue_sizing =
+            super::buffer::set_default_max_buffer_size(&state.native.display_handle, 1024 * 1024);
         let witness = Peer::connect("witness", &mut loop_, &mut state);
         let mut harness = Self {
             loop_,
             state,
             peers: (0..CLIENTS).map(|_| None).collect(),
             witness,
-            report: Report::default(),
+            report: Report {
+                queue_sizing,
+                ..Report::default()
+            },
         };
         harness.witness.create(0);
         harness.pump();
@@ -467,7 +504,11 @@ impl Harness {
             {
                 self.peers[c] = None;
                 self.pump();
-                self.peers[c] = Some(Peer::connect(PEER_TAGS[c], &mut self.loop_, &mut self.state));
+                self.peers[c] = Some(Peer::connect(
+                    PEER_TAGS[c],
+                    &mut self.loop_,
+                    &mut self.state,
+                ));
             }
             // Server-side actions resolve the actual protocol surface, not a
             // fabricated model ID, and use the normal shared policy funnels.
@@ -500,6 +541,13 @@ impl Harness {
                 Op::HoldAcks(true) => peer.events.hold_acks = true,
                 Op::HoldAcks(false) => peer.resume_acks(),
                 Op::StopReading(stop) => peer.reading = !stop,
+                Op::EventBurst(kib) => {
+                    // Probing outgoing backpressure may legitimately kill the
+                    // peer: even a sub-limit burst can cross the queue limit
+                    // when earlier events are still queued.
+                    peer.kill_ok = true;
+                    peer.event_burst(*kib);
+                }
                 Op::Focus => {
                     if let Some(win) = win {
                         crate::focus::focus(&mut self.state.ctx(), Some(win));
@@ -563,6 +611,18 @@ impl Harness {
                                     w.surface.frame(&peer.queue.handle(), 0);
                                     w.surface.commit();
                                 }
+                            }
+                            Op::OversizedTitle(length) => {
+                                // A single legal request above the fixed
+                                // 4096-byte input buffer can never parse:
+                                // the server must reject this peer while the
+                                // witness and other peers keep running. The
+                                // disconnect may only surface once later
+                                // writes overflow the buffer, so kill_ok
+                                // tolerates it for the rest of the session.
+                                peer.kill_ok = true;
+                                w.top
+                                    .set_title("Z".repeat(4096 + usize::from(*length % 2048)));
                             }
                             Op::InvalidAck => {
                                 peer.expected_error = true;

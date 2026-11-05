@@ -1,0 +1,138 @@
+{
+    "actions": [
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "create"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "commit"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "stop_reading",
+                "value": true
+            },
+            "dispatch": true
+        },
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "event_burst",
+                "value": 2047
+            },
+            "dispatch": true
+        },
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "pump"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 1,
+            "window": 1,
+            "op": {
+                "kind": "create"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 1,
+            "window": 1,
+            "op": {
+                "kind": "commit"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 1,
+            "window": 1,
+            "op": {
+                "kind": "stop_reading",
+                "value": true
+            },
+            "dispatch": true
+        },
+        {
+            "client": 1,
+            "window": 1,
+            "op": {
+                "kind": "event_burst",
+                "value": 64
+            },
+            "dispatch": true
+        },
+        {
+            "client": 1,
+            "window": 1,
+            "op": {
+                "kind": "stop_reading",
+                "value": false
+            },
+            "dispatch": true
+        },
+        {
+            "client": 2,
+            "window": 2,
+            "op": {
+                "kind": "create"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 2,
+            "window": 2,
+            "op": {
+                "kind": "commit"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 2,
+            "window": 2,
+            "op": {
+                "kind": "oversized_title",
+                "value": 1024
+            },
+            "dispatch": true
+        },
+        {
+            "client": 2,
+            "window": 2,
+            "op": {
+                "kind": "commit"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "create"
+            },
+            "dispatch": true
+        },
+        {
+            "client": 0,
+            "window": 0,
+            "op": {
+                "kind": "commit"
+            },
+            "dispatch": true
+        }
+    ]
+}

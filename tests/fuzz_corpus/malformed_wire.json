@@ -46,6 +46,33 @@
       "dispatch": true
     },
     {
+      "client": 2,
+      "window": 5,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 5
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 6
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 7
+      },
+      "dispatch": true
+    },
+    {
       "client": 0,
       "window": 0,
       "op": {
