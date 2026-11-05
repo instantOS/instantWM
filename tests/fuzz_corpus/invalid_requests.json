@@ -1,0 +1,60 @@
+{
+  "actions": [
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "invalid_ack"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "invalid_geometry"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "duplicate_role"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 3,
+      "op": {
+        "kind": "pump"
+      },
+      "dispatch": true
+    }
+  ]
+}

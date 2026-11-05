@@ -1,0 +1,20 @@
+{
+  "actions": [
+    {
+      "client": 106,
+      "window": 30,
+      "op": {
+        "kind": "unmap"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 178,
+      "window": 126,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    }
+  ]
+}

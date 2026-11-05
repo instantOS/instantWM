@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Exercise XWayland dialogs, hung-client close and crash cleanup in a nested WM.
 
-Requires a Wayland session, XWayland, libX11, and the debug instantwm binaries.
+Requires a Wayland session (or any X server with --host-x11), XWayland, libX11,
+and the debug instantwm binaries. Headless CI form:
+  xvfb-run -a python3 tests/xwayland_dialogs.py --host-x11 --hostile-case tests/fuzz_corpus/lifecycle_smoke.json
 Run with python3 tests/xwayland_dialogs.py. No application crash is required.
 Use --check-idle-cursor-updates to additionally exercise the pending upstream
 Smithay flush fix; the currently pinned upstream revision can fail that check.
@@ -15,6 +17,7 @@ from pathlib import Path
 import signal
 import struct
 import subprocess
+import traceback
 import sys
 import tempfile
 import time
@@ -44,6 +47,10 @@ def client(directory):
                                      C.c_int, C.c_void_p, C.c_int]),
         "XStoreName": (C.c_int, [display, window, C.c_char_p]),
         "XMapWindow": (C.c_int, [display, window]),
+        "XDestroyWindow": (C.c_int, [display, window]),
+        "XUnmapWindow": (C.c_int, [display, window]),
+        "XResizeWindow": (C.c_int, [display, window, C.c_uint, C.c_uint]),
+        "XClearWindow": (C.c_int, [display, window]),
         "XSetTransientForHint": (C.c_int, [display, window, window]),
         "XSetWMProtocols": (C.c_int, [display, window, C.POINTER(window), C.c_int]),
         "XSync": (C.c_int, [display, C.c_int]),
@@ -92,7 +99,86 @@ def client(directory):
     x.XMapWindow(d, main)
     x.XMapWindow(d, dialog)
 
+    attack_done, attack_result = False, None
+    # Op kinds the X11 replay can express; anything else arriving in a
+    # corpus is reported as skipped in the snapshot, never silently no-oped.
+    modelable = {"create", "disconnect", "destroy", "unmap", "commit",
+                 "geometry", "title", "parent", "fullscreen", "maximize",
+                 "frame_burst"}
+
+    def hostile_case(case):
+        # Scratch windows leave the original parent/dialog available as the
+        # healthy recovery probe. Preserve request batching from the trace.
+        scratch = [None] * 6
+        applied, skipped = 0, {}
+        try:
+            for action in case["actions"]:
+                slot = action["window"] % len(scratch)
+                op = action["op"]
+                kind, value = op["kind"], op.get("value")
+                if kind not in modelable:
+                    skipped[kind] = skipped.get(kind, 0) + 1
+                    continue
+                applied += 1
+                w = scratch[slot]
+                if kind == "create":
+                    if w:
+                        x.XDestroyWindow(d, w)
+                    w = x.XCreateSimpleWindow(d, root, 40, 40, 160, 120, 0, 0, 0xffffff)
+                    scratch[slot] = w
+                    x.XStoreName(d, w, f"iwm-hostile-{slot}".encode())
+                    x.XSetWMProtocols(d, w, protocols, len(protocols))
+                    x.XMapWindow(d, w)
+                elif kind in ("disconnect", "destroy") and w:
+                    x.XDestroyWindow(d, w)
+                    scratch[slot] = None
+                elif kind == "unmap" and w:
+                    x.XUnmapWindow(d, w)
+                elif kind == "commit" and w:
+                    x.XMapWindow(d, w)
+                elif kind == "geometry" and w:
+                    x.XResizeWindow(d, w, 1 + value[0] % 1024, 1 + value[1] % 1024)
+                elif kind == "title" and w:
+                    # Keep the forwarded set_title under wayland-backend's
+                    # fixed 4096-byte client input buffer (8-byte header +
+                    # length + text + NUL); 4000 matches the Rust harness
+                    # ceiling in compositor/fuzzing/mod.rs.
+                    x.XStoreName(d, w, ("Z" * (value % 4000)).encode())
+                elif kind == "parent" and w and value is not None:
+                    parent = value % len(scratch)
+                    if parent < slot and scratch[parent]:
+                        x.XSetTransientForHint(d, w, scratch[parent])
+                        atoms(w, "_NET_WM_WINDOW_TYPE", ["_NET_WM_WINDOW_TYPE_DIALOG"])
+                elif kind in ("fullscreen", "maximize") and w:
+                    names = []
+                    if value:
+                        names = (["_NET_WM_STATE_FULLSCREEN"] if kind == "fullscreen" else
+                                 ["_NET_WM_STATE_MAXIMIZED_VERT", "_NET_WM_STATE_MAXIMIZED_HORZ"])
+                    atoms(w, "_NET_WM_STATE", names)
+                elif kind == "frame_burst" and w:
+                    for _ in range(1 + value % 64):
+                        x.XClearWindow(d, w)
+                if action["dispatch"]:
+                    x.XSync(d, False)
+        finally:
+            for w in scratch:
+                if w:
+                    x.XDestroyWindow(d, w)
+            x.XSync(d, False)
+        return {"applied": applied, "skipped": skipped}
+
     while True:
+        attack = directory / "attack.json"
+        if attack.exists():
+            case = json.loads(attack.read_text())
+            attack.unlink()
+            try:
+                attack_result = hostile_case(case)
+            except Exception:
+                # A glitch in the replay harness itself must not kill this
+                # process: it is also the liveness probe the test waits on.
+                traceback.print_exc()
+            attack_done = True
         x.XSync(d, False)
         focus, revert = window(), C.c_int()
         x.XGetInputFocus(d, C.byref(focus), C.byref(revert))
@@ -129,7 +215,7 @@ def client(directory):
         image = fixes.XFixesGetCursorImage(d)
         cursor_size = [image.contents.width, image.contents.height]
         x.XFree(image)
-        snapshot = {"cursor_size": cursor_size, "pid": os.getpid(), "display": os.environ["DISPLAY"], "focus": focus.value,
+        snapshot = {"attack_done": attack_done, "attack_result": attack_result, "cursor_size": cursor_size, "pid": os.getpid(), "display": os.environ["DISPLAY"], "focus": focus.value,
                     "dialog": dialog, "settings": settings}
         temporary = directory / "snapshot.tmp"
         temporary.write_text(json.dumps(snapshot))
@@ -137,8 +223,9 @@ def client(directory):
         time.sleep(0.025)
 
 
-def run(check_idle_cursor_updates=False, host_x11=False):
-    assert os.environ.get("WAYLAND_DISPLAY"), "run inside a Wayland session"
+def run(check_idle_cursor_updates=False, host_x11=False, hostile_case=None):
+    assert host_x11 or os.environ.get("WAYLAND_DISPLAY"), \
+        "run inside a Wayland session, or pass --host-x11 under any X server (e.g. xvfb-run)"
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="instantwm-dialogs-") as tmp:
         directory = Path(tmp)
@@ -192,6 +279,28 @@ def run(check_idle_cursor_updates=False, host_x11=False):
             wait_for(lambda: snapshot().get("focus") == snapshot().get("dialog"),
                      "actual X11 input focus follows compositor focus")
             print("XWayland modal/above focus, X11 input focus and initial cursor settings: PASS")
+            if hostile_case:
+                case = json.loads(hostile_case.read_text())
+                expected = len(case["actions"])
+                assert expected <= 512, "hostile case exceeds action limit"
+                # Atomic replace: the client polls this file every ~25 ms,
+                # so a torn write would crash it with a JSONDecodeError.
+                temporary = directory / "attack.tmp"
+                temporary.write_text(json.dumps(case))
+                temporary.replace(directory / "attack.json")
+                wait_for(lambda: snapshot().get("attack_done"), "hostile X11 action sequence")
+                result = snapshot().get("attack_result")
+                assert result is not None, "hostile replay harness crashed mid-sequence"
+                assert result["applied"] + sum(result["skipped"].values()) == expected, \
+                    f"hostile replay applied {result['applied']} of {expected} actions"
+                wait_for(lambda: len(ctl("window", "list") or []) == 2,
+                         "scratch windows removed after hostile X11 sequence")
+                assert ctl("status") is not None
+                skipped = ", ".join(f"{kind} x{count}"
+                                    for kind, count in sorted(result["skipped"].items()))
+                print(f"Hostile X11 lifecycle, geometry, metadata and transient requests: "
+                      f"PASS ({result['applied']}/{expected} actions applied, "
+                      f"skipped kinds: {skipped or 'none'})")
             if check_idle_cursor_updates:
                 time.sleep(1)  # drain focus events that could flush unrelated updates
                 initial_cursor = snapshot()["cursor_size"]
@@ -260,9 +369,12 @@ if __name__ == "__main__":
     parser.add_argument("--check-idle-cursor-updates", action="store_true",
                         help="also check the pending upstream Smithay flush fix")
     parser.add_argument("--host-x11", action="store_true",
-                        help="host the nested compositor through the session's XWayland")
+                        help="host the nested compositor on any X server instead "
+                             "of the Wayland session (session XWayland, or Xvfb)")
+    parser.add_argument("--hostile-case", type=Path,
+                        help="also replay shared fuzz actions against scratch X11 windows")
     args = parser.parse_args()
     if args.client:
         client(args.client)
     else:
-        run(args.check_idle_cursor_updates, args.host_x11)
+        run(args.check_idle_cursor_updates, args.host_x11, args.hostile_case)

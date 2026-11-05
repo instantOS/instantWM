@@ -29,6 +29,8 @@
 mod buffer;
 mod capture_common;
 mod focus;
+#[cfg(any(test, feature = "fuzzing"))]
+pub(crate) mod fuzzing;
 pub(crate) mod graphics;
 mod handlers;
 pub(crate) mod image_capture;

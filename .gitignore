@@ -11,6 +11,10 @@ compile_commands.json
 /rust/target
 /tags
 target
+/fuzz/artifacts/
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/Cargo.lock
 # Cross-compilation sysroots built by scripts/ci/install-deps-ubuntu.sh
 sysroot
 

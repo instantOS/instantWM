@@ -1,0 +1,260 @@
+{
+  "actions": [
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 2,
+      "op": {
+        "kind": "parent",
+        "value": 1
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 3,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 3,
+      "op": {
+        "kind": "parent"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 3,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "title",
+        "value": 4095
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "title",
+        "value": 0
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "geometry",
+        "value": [
+          1023,
+          1023
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "constraints",
+        "value": [
+          127,
+          127
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "fullscreen",
+        "value": true
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "fullscreen",
+        "value": false
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "maximize",
+        "value": true
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "maximize",
+        "value": false
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "minimize"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "focus"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "unmap"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "frame_burst",
+        "value": 63
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "destroy"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "disconnect"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "connect"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 1,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 2,
+      "op": {
+        "kind": "destroy"
+      },
+      "dispatch": true
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "actions": [
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 0
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 1,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 1
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 2,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 2
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 3,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 3
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 4,
+      "op": {
+        "kind": "malformed_wire",
+        "value": 4
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    }
+  ]
+}

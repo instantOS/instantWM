@@ -1,0 +1,124 @@
+{
+  "actions": [
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "destroy"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "destroy"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "unmap"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": false
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 1,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 0,
+      "op": {
+        "kind": "destroy"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 0,
+      "op": {
+        "kind": "focus"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 0,
+      "op": {
+        "kind": "create"
+      },
+      "dispatch": true
+    },
+    {
+      "client": 2,
+      "window": 0,
+      "op": {
+        "kind": "commit"
+      },
+      "dispatch": true
+    }
+  ]
+}

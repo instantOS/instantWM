@@ -1,0 +1,23 @@
+[package]
+name = "instantwm-fuzz-targets"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+instantwm = { path = "..", features = ["fuzzing"] }
+
+[[bin]]
+name = "wayland_actions"
+path = "fuzz_targets/wayland_actions.rs"
+test = false
+doc = false
+bench = false
+
+# A separate workspace keeps the fuzz runtime out of normal builds.
+[workspace]
+members = ["."]

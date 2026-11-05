@@ -9,6 +9,15 @@ keywords = ["window-manager", "x11", "wayland", "tiling"]
 categories = ["gui"]
 publish = false
 
+[features]
+# Test-only protocol clients and replay entry point; absent from normal builds.
+fuzzing = ["dep:wayland-client", "dep:wayland-protocols"]
+
+[[bin]]
+name = "instantwm-fuzz"
+path = "src/bin/instantwm-fuzz.rs"
+required-features = ["fuzzing"]
+
 [dependencies]
 x11rb = { version = "0.13", features = ["cursor", "randr", "xinerama", "xinput", "xkb", "shm", "render", "composite", "damage", "dpms", "dri2", "dri3", "glx", "present", "record", "res", "sync", "xf86dri", "xf86vidmode", "xfixes", "xprint", "xselinux", "xtest", "xv", "xvmc", "allow-unsafe-code", "dl-libxcb"] }
 libc = "0.2"
@@ -53,6 +62,8 @@ serde_json = "1.0"
 resvg = { version = "0.48.1", default-features = false }
 png = "0.18"
 instantos-terminal = { version = "0.1.0", git = "https://github.com/instantOS/instantOS-libs" }
+wayland-client = { version = "0.31", optional = true }
+wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
 
 [build-dependencies]
 

@@ -14,6 +14,9 @@ mod constants;
 mod contexts;
 mod geometry;
 
+#[cfg(any(test, feature = "fuzzing"))]
+pub mod fuzzing;
+
 mod core_state;
 mod floating;
 mod focus;
