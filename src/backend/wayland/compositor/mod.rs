@@ -26,6 +26,7 @@
 //! The delegation macro MUST be called at module level (not inside an `impl`
 //! block). It wires Smithay's internal message routing to the handler traits.
 
+mod buffer;
 mod capture_common;
 mod focus;
 pub(crate) mod graphics;
@@ -44,6 +45,9 @@ mod xwayland;
 
 #[cfg(test)]
 mod idle_inhibit_tests;
+
+#[cfg(test)]
+mod buffer_tests;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use render::PendingRenderTargets;

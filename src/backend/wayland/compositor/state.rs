@@ -493,6 +493,10 @@ impl WaylandState {
         wm: Wm,
     ) -> Self {
         let dh = display.handle();
+        // libwayland's 4 KiB default disconnects temporarily slow clients
+        // during event bursts. Losing XWayland also takes every X11 app down.
+        // Keep a bounded queue while allowing clients time to drain it.
+        super::buffer::set_default_max_buffer_size(&dh, 1024 * 1024);
         let cursor_config = wm.core.state.config.cursor.clone();
 
         // Insert the Wayland display as a calloop source so that protocol
