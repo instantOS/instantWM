@@ -391,10 +391,15 @@ fn handle_map_window(
         return;
     }
 
-    let element = wl_state.native.find_window(win).cloned();
+    // X11 map/unmap/destroy events can all arrive in one dispatch batch.
+    // Teardown removes native tracking immediately, before this queued map
+    // runs. Do not resurrect a dead surface in the model and arrange/focus it.
+    let Some(element) = wl_state.native.find_window(win).cloned() else {
+        return;
+    };
     let launch_context = take_wayland_launch_context(
         state,
-        element.as_ref(),
+        Some(&element),
         launch_pid,
         launch_startup_id.as_deref(),
     );
@@ -418,12 +423,12 @@ fn handle_map_window(
         .placement
         .position_is_explicit(initial_position_is_explicit);
 
-    apply_wayland_surface_policy(state, &mut wl_state.native, element.as_ref(), win, parent);
-    apply_initial_surface_presentation(state, element.as_ref(), win);
+    apply_wayland_surface_policy(state, &mut wl_state.native, Some(&element), win, parent);
+    apply_initial_surface_presentation(state, Some(&element), win);
     position_new_wayland_floating_window(
         state,
         &mut wl_state.native,
-        element.as_ref(),
+        Some(&element),
         win,
         parent,
         position_is_explicit,
@@ -791,6 +796,28 @@ mod tests {
     use crate::test_support::{add_client, push_monitor, push_monitor_with};
     use crate::types::{Client, ClientMode, ClientPlacement, Rect, WindowId};
     use crate::wm::WaylandWm as Wm;
+
+    #[test]
+    fn queued_map_does_not_manage_a_surface_destroyed_in_the_same_batch() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        push_monitor(&mut state.wm.core.state.model);
+        let win = WindowId(90);
+        state.native.push_command(WmCommand::MapWindow(
+            crate::backend::wayland::commands::MapWindowParams {
+                win,
+                properties: crate::client::WindowProperties::default(),
+                initial_geo: Some(Rect::new(100, 100, 800, 600)),
+                initial_position_is_explicit: false,
+                launch_pid: None,
+                launch_startup_id: None,
+                x11_hints: None,
+                x11_size_hints: None,
+                parent: None,
+            },
+        ));
+        drain_command_queue(&mut state);
+        assert!(state.wm.core.state.model.client(win).is_none());
+    }
 
     #[test]
     fn transient_parent_updates_reach_managed_dialogs_and_can_be_cleared() {

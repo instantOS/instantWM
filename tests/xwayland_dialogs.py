@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise real XWayland focus and cursor settings in an isolated nested WM.
+"""Exercise XWayland dialogs, hung-client close and crash cleanup in a nested WM.
 
 Requires a Wayland session, XWayland, libX11, and the debug instantwm binaries.
 Run with python3 tests/xwayland_dialogs.py. No application crash is required.
@@ -45,6 +45,7 @@ def client(directory):
         "XStoreName": (C.c_int, [display, window, C.c_char_p]),
         "XMapWindow": (C.c_int, [display, window]),
         "XSetTransientForHint": (C.c_int, [display, window, window]),
+        "XSetWMProtocols": (C.c_int, [display, window, C.POINTER(window), C.c_int]),
         "XSync": (C.c_int, [display, C.c_int]),
         "XGetInputFocus": (C.c_int, [display, C.POINTER(window), C.POINTER(C.c_int)]),
         "XGetSelectionOwner": (window, [display, window]),
@@ -83,6 +84,11 @@ def client(directory):
     atoms(dialog, "_NET_WM_WINDOW_TYPE", ["_NET_WM_WINDOW_TYPE_DIALOG"])
     atoms(dialog, "_NET_WM_STATE", ["_NET_WM_STATE_ABOVE", "_NET_WM_STATE_MODAL"])
     x.XSetTransientForHint(d, dialog, main)
+    # Advertise graceful close, but deliberately never handle it. Stopping this
+    # process below then models an application hung in its event/render loop.
+    protocols = (window * 1)(atom("WM_DELETE_WINDOW"))
+    for w in (main, dialog):
+        x.XSetWMProtocols(d, w, protocols, len(protocols))
     x.XMapWindow(d, main)
     x.XMapWindow(d, dialog)
 
@@ -131,7 +137,7 @@ def client(directory):
         time.sleep(0.025)
 
 
-def run(check_idle_cursor_updates=False):
+def run(check_idle_cursor_updates=False, host_x11=False):
     assert os.environ.get("WAYLAND_DISPLAY"), "run inside a Wayland session"
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="instantwm-dialogs-") as tmp:
@@ -140,11 +146,18 @@ def run(check_idle_cursor_updates=False):
                    INSTANTWM_SOCKET=str(directory / "wm.sock"), INSTANTWM_TEST="1",
                    INSTANTWM_AUTOSTART="0", XCURSOR_THEME="Adwaita", XCURSOR_SIZE="24",
                    XDG_CONFIG_HOME=str(directory / "config"))
+        config_dir = directory / "config" / "instantwm"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text("")
         log = (directory / "wm.log").open("w+")
+        wm_env = dict(env)
+        if host_x11:
+            wm_env.pop("WAYLAND_DISPLAY", None)
         wm = subprocess.Popen([root / "target/debug/instantwm", "--backend", "nested"],
-                              env=env, stdout=log, stderr=log, start_new_session=True)
+                              env=wm_env, stdout=log, stderr=log, start_new_session=True)
 
         def ctl(*args):
+            assert wm.poll() is None, f"nested compositor exited with {wm.returncode}"
             result = subprocess.run([root / "target/debug/instantwmctl", "--json", *map(str, args)],
                                     env=env, capture_output=True, text=True, timeout=5)
             if result.returncode:
@@ -188,6 +201,39 @@ def run(check_idle_cursor_updates=False):
                 wait_for(lambda: snapshot().get("cursor_size") != initial_cursor,
                          "default X11 cursor image changes while idle")
                 print("Idle XWayland cursor image and settings reload: PASS")
+
+            # Close requests must not wait for the app, including when repeated
+            # while a modal dialog is focused. IPC uses the same close funnel
+            # as Super+Q, but targets only this isolated test application.
+            pid = snapshot()["pid"]
+            os.kill(pid, signal.SIGSTOP)
+            slowest = 0
+            for _ in range(30):
+                started = time.monotonic()
+                assert ctl("window", "close", dialog["id"]) is not None
+                assert ctl("test", "pointer-move", 5, 5) is not None
+                assert ctl("status") is not None
+                slowest = max(slowest, time.monotonic() - started)
+            assert len(ctl("window", "list")) == 2, "hung client must remain managed"
+            print(f"Hung XWayland client, repeated close and pointer commands: PASS "
+                  f"(slowest round trip {slowest:.3f}s)")
+
+            # A crash destroys both the parent and modal dialog together.
+            os.kill(pid, signal.SIGKILL)
+            wait_for(lambda: ctl("window", "list") == [], "crashed client's windows removed")
+            assert ctl("test", "pointer-move", 10, 10) is not None
+            assert ctl("status") is not None
+
+            # XWayland and the compositor must still accept and focus clients
+            # after cleanup, rather than only retaining an empty IPC model.
+            (directory / "snapshot.json").unlink(missing_ok=True)
+            assert ctl("spawn", "--", sys.executable, str(Path(__file__).resolve()),
+                       "--client", tmp) is not None
+            wait_for(lambda: len(ctl("window", "list") or []) == 2,
+                     "new windows managed after crash")
+            wait_for(lambda: snapshot().get("focus") == snapshot().get("dialog")
+                     and snapshot().get("dialog"), "new dialog receives X11 input focus")
+            print("XWayland crash cleanup and subsequent client focus: PASS")
         except BaseException:
             log.seek(0)
             print(log.read(), file=sys.stderr)
@@ -195,6 +241,7 @@ def run(check_idle_cursor_updates=False):
         finally:
             if pid := snapshot().get("pid"):
                 try:
+                    os.kill(pid, signal.SIGCONT)
                     os.kill(pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
@@ -212,8 +259,10 @@ if __name__ == "__main__":
     parser.add_argument("--client", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--check-idle-cursor-updates", action="store_true",
                         help="also check the pending upstream Smithay flush fix")
+    parser.add_argument("--host-x11", action="store_true",
+                        help="host the nested compositor through the session's XWayland")
     args = parser.parse_args()
     if args.client:
         client(args.client)
     else:
-        run(args.check_idle_cursor_updates)
+        run(args.check_idle_cursor_updates, args.host_x11)
