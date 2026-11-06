@@ -24,8 +24,7 @@ use smithay::{
 
 use super::WaylandState;
 
-// Re-exported so the render backends keep using the shared implementation.
-pub(crate) use super::capture_common::monotonic_timestamp;
+use super::capture_common::monotonic_timestamp;
 
 pub struct PendingImageCapture {
     pub output: Output,
@@ -33,6 +32,21 @@ pub struct PendingImageCapture {
     pub transform: Transform,
     pub size: smithay::utils::Size<i32, BufferCoords>,
     pub frame: Frame,
+}
+
+impl PendingImageCapture {
+    /// Complete a full-buffer copy, including the damage metadata used by
+    /// portals and browsers to decide whether the image has changed.
+    pub(crate) fn success(self) {
+        // The pinned Smithay implementation sends no damage events for `None`,
+        // despite documenting it as full damage. We copy the whole image, so
+        // explicitly advertise that region on every frame, including the first.
+        self.frame.success(
+            self.transform,
+            Some(vec![Rectangle::from_size(self.size)]),
+            monotonic_timestamp(),
+        );
+    }
 }
 
 impl ImageCaptureSourceHandler for WaylandState {
@@ -238,10 +252,10 @@ pub fn submit_image_captures(
             continue;
         }
 
-        capture.frame.success(
-            capture.transform,
-            None::<Vec<Rectangle<i32, BufferCoords>>>,
-            monotonic_timestamp(),
-        );
+        capture.success();
     }
 }
+
+#[cfg(test)]
+#[path = "image_capture_tests.rs"]
+mod tests;

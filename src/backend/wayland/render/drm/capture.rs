@@ -198,11 +198,7 @@ fn submit_dmabuf_image_captures<B, F>(
         ) {
             Ok(sync) => {
                 let _ = renderer.wait(&sync);
-                capture.frame.success(
-                    capture.transform,
-                    None::<Vec<Rectangle<i32, BufferCoords>>>,
-                    crate::backend::wayland::compositor::image_capture::monotonic_timestamp(),
-                );
+                capture.success();
             }
             Err(err) => {
                 log::warn!("image-capture direct dmabuf blit failed: {:?}", err);
