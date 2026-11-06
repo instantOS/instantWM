@@ -1,0 +1,100 @@
+{
+  "actions": [
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          1,
+          0
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          1,
+          1
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          1,
+          4660
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          1,
+          65535
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          8,
+          0
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          8,
+          1
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          8,
+          4660
+        ]
+      },
+      "dispatch": true
+    },
+    {
+      "client": 0,
+      "window": 0,
+      "op": {
+        "kind": "raw_global",
+        "value": [
+          8,
+          65535
+        ]
+      },
+      "dispatch": true
+    }
+  ]
+}

@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_ACTIONS: usize = 512;
+/// Extended byte format. Unprefixed artifacts retain the original 25-op decoder.
+pub const BYTE_FORMAT_V1: &[u8] = b"IWMF\x01";
 pub const CLIENTS: usize = 3;
 pub const WINDOWS: usize = 6;
 /// Connection tags handed to `Peer::connect`, stable across reconnects.
@@ -57,6 +59,10 @@ pub enum Op {
     /// One legal set_title exceeding the fixed 4096-byte client input
     /// buffer, which the server must reject without harming other peers.
     OversizedTitle(u16),
+    /// Bind one registry global on a fresh raw connection. The u8 selects the
+    /// global by discovery order; the u16 seeds up to three protocol-aware or arbitrary
+    /// requests. Protocol errors are expected; a server panic is not.
+    RawGlobal(u8, u16),
     Pump,
 }
 
@@ -69,12 +75,16 @@ pub struct Scenario {
 impl Scenario {
     /// Stable, bounded byte-to-action mapping shared by libFuzzer and replay.
     pub fn from_bytes(data: &[u8]) -> Self {
+        let (data, extended) = match data.strip_prefix(BYTE_FORMAT_V1) {
+            Some(data) => (data, true),
+            None => (data, false),
+        };
         let actions = data
             .chunks_exact(6)
             .take(MAX_ACTIONS)
             .map(|b| {
                 let n = u16::from_le_bytes([b[3], b[4]]);
-                let op = match b[0] % 25 {
+                let op = match b[0] % if extended { 26 } else { 25 } {
                     0 => Op::Connect,
                     1 => Op::Disconnect,
                     2 => Op::Create,
@@ -99,6 +109,7 @@ impl Scenario {
                     21 => Op::MalformedWire(b[3]),
                     22 => Op::EventBurst(n),
                     23 => Op::OversizedTitle(n),
+                    24 if extended => Op::RawGlobal(b[1], n),
                     _ => Op::Pump,
                 };
                 Action {
@@ -112,10 +123,23 @@ impl Scenario {
         Self { actions }
     }
 
-    /// A portable PRNG makes seeds stable across Rust versions/platforms.
+    /// Generate an extended-format campaign using a portable PRNG.
     pub fn seeded(seed: u64, steps: usize) -> Self {
+        Self::seeded_format(seed, steps, true)
+    }
+
+    /// Reproduce seed numbers recorded before the extended action format.
+    pub fn seeded_legacy(seed: u64, steps: usize) -> Self {
+        Self::seeded_format(seed, steps, false)
+    }
+
+    fn seeded_format(seed: u64, steps: usize, extended: bool) -> Self {
         let mut state = seed;
-        let mut bytes = Vec::with_capacity(steps.min(MAX_ACTIONS) * 6);
+        let mut bytes = if extended {
+            BYTE_FORMAT_V1.to_vec()
+        } else {
+            Vec::new()
+        };
         for _ in 0..steps.min(MAX_ACTIONS) * 6 {
             state = state.wrapping_add(0x9e3779b97f4a7c15);
             let mut z = state;
@@ -136,6 +160,10 @@ pub struct Report {
     pub max_roundtrip_micros: u128,
     /// Whether libwayland supports the raised outgoing event queue limit.
     pub queue_sizing: bool,
+    pub raw_global_binds: usize,
+    pub raw_requests: usize,
+    pub raw_structured_requests: usize,
+    pub raw_child_requests: usize,
 }
 
 /// Executes actual client/server protocols and production policy dispatch.
@@ -151,6 +179,36 @@ pub fn run(scenario: &Scenario) -> Report {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn byte_artifacts_keep_the_legacy_decoder() {
+        for opcode in 0..=255u8 {
+            let scenario = Scenario::from_bytes(&[opcode, 0, 0, 0, 0, 1]);
+            let canonical = Scenario::from_bytes(&[opcode % 25, 0, 0, 0, 0, 1]);
+            assert_eq!(scenario, canonical);
+            assert!(!matches!(scenario.actions[0].op, Op::RawGlobal(..)));
+        }
+        assert_eq!(
+            Scenario::from_bytes(&[24, 0, 0, 0, 0, 1]).actions[0].op,
+            Op::Pump
+        );
+        assert_eq!(
+            Scenario::from_bytes(&[25, 0, 0, 0, 0, 1]).actions[0].op,
+            Op::Connect
+        );
+        let legacy = Scenario::seeded_legacy(42, MAX_ACTIONS + 100);
+        assert_eq!(legacy.actions.len(), MAX_ACTIONS);
+        assert!(
+            legacy
+                .actions
+                .iter()
+                .all(|action| !matches!(action.op, Op::RawGlobal(..)))
+        );
+        let seed = include_bytes!("../../fuzz/seeds/wayland_actions/raw_global");
+        let scenario = Scenario::from_bytes(seed);
+        assert_eq!(scenario.actions[0].op, Op::RawGlobal(1, 0));
+        assert_eq!(scenario.actions[1].op, Op::RawGlobal(8, u16::MAX));
+    }
 
     #[test]
     fn generated_scenarios_are_bounded_and_replayable() {

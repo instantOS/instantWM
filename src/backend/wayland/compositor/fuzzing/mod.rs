@@ -497,6 +497,28 @@ impl Harness {
             let mut raw = wire::malformed(&mut self.state, variant);
             self.heartbeat();
             wire::check(&mut raw, &self.state);
+        } else if let Op::RawGlobal(selector, seed) = &action.op {
+            let mut raw = wire::raw_start(&mut self.state);
+            self.heartbeat();
+            let interface = wire::raw_bind(&mut raw, *selector);
+            self.heartbeat();
+            wire::raw_bound(&mut raw, &self.state, &interface);
+            self.report.raw_global_binds += 1;
+            let mut next_id = 6;
+            for step in 0..3 {
+                let Some(request) =
+                    wire::raw_request(&mut raw, &self.state, *seed, step, &mut next_id)
+                else {
+                    break;
+                };
+                self.report.raw_requests += 1;
+                self.report.raw_structured_requests += usize::from(request.structured);
+                self.report.raw_child_requests += usize::from(request.child);
+                self.heartbeat();
+                wire::raw_finish(&mut raw, &self.state, request.marker);
+            }
+            drop(raw);
+            self.pump();
         } else {
             if self.peers[c]
                 .as_ref()
@@ -729,16 +751,20 @@ impl Harness {
             Some(win),
             "recovery focus failed"
         );
-        assert!(
-            self.state
-                .native
-                .seat
-                .get_keyboard()
-                .unwrap()
-                .current_focus()
-                .is_some(),
-            "seat focus was lost"
-        );
+        let focus = self
+            .state
+            .native
+            .seat
+            .get_keyboard()
+            .unwrap()
+            .current_focus();
+        if self.state.native.is_locked() {
+            // A raw client can legitimately acquire a session lock. Client
+            // death must preserve that lock and keep recovery windows unfocused.
+            assert!(focus.is_none(), "keyboard focus escaped the session lock");
+        } else {
+            assert!(focus.is_some(), "seat focus was lost");
+        }
         self.heartbeat();
         self.report
     }

@@ -11,6 +11,9 @@ struct Args {
     seed: u64,
     #[arg(long, default_value_t = 128)]
     steps: usize,
+    /// Decode --seed using the historical action format (before RawGlobal).
+    #[arg(long, conflicts_with_all = ["replay", "bytes"])]
+    legacy_seed: bool,
     /// Replay an exact JSON action sequence.
     #[arg(long, conflicts_with = "bytes")]
     replay: Option<PathBuf>,
@@ -39,7 +42,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.steps > MAX_ACTIONS {
             return Err(format!("--steps exceeds {MAX_ACTIONS}").into());
         }
-        Scenario::seeded(args.seed, args.steps)
+        if args.legacy_seed {
+            Scenario::seeded_legacy(args.seed, args.steps)
+        } else {
+            Scenario::seeded(args.seed, args.steps)
+        }
     };
     if scenario.actions.len() > MAX_ACTIONS {
         return Err("too many actions".into());
