@@ -36,7 +36,7 @@ dirs = "6.0"
 xcursor = "0.3"
 
 # Wayland compositor support via Smithay
-smithay = { version = "0.7.0", git = "https://github.com/Smithay/smithay.git", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = [
+smithay = { version = "0.7.0", git = "https://github.com/paperbenni/smithay.git", rev = "e4f9c6aad1d475faf574985610f3a7a3a87143e5", default-features = false, features = [
     "backend_winit",
     "backend_drm",
     "backend_gbm",

@@ -2060,7 +2060,7 @@ checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 [[package]]
 name = "smithay"
 version = "0.7.0"
-source = "git+https://github.com/Smithay/smithay.git?rev=65aa86fa5236e41775c313408102a5d5c2d1e2ca#65aa86fa5236e41775c313408102a5d5c2d1e2ca"
+source = "git+https://github.com/paperbenni/smithay.git?rev=e4f9c6aad1d475faf574985610f3a7a3a87143e5#e4f9c6aad1d475faf574985610f3a7a3a87143e5"
 dependencies = [
  "appendlist",
  "bitflags",

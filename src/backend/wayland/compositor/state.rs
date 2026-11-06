@@ -218,6 +218,7 @@ pub struct WaylandNativeState {
     // -- XWayland --
     pub xwm: Option<X11Wm>,
     pub xdisplay: Option<u32>,
+    pub(crate) xwayland_session: Option<crate::backend::wayland::session::xwayland::XWaylandSession>,
 
     // -- Internal state --
     pub(super) next_window_id: u32,
@@ -647,6 +648,7 @@ impl WaylandState {
                 cursor_icon_override: None,
                 xwm: None,
                 xdisplay: None,
+                xwayland_session: None,
                 next_window_id: 1,
                 pending_commit_clients: Vec::new(),
                 geometry_sync: HashMap::new(),

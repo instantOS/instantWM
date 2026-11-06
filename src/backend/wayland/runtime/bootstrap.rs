@@ -32,13 +32,13 @@ pub fn attach_gles_renderer_and_protocols(
     state.init_screencopy_manager();
 }
 
-/// Listening socket, XWayland spawn, and StatusNotifier systray thread — shared by both runtimes.
+/// Listening socket, on-demand XWayland reservation, and StatusNotifier systray thread — shared by both runtimes.
 pub fn setup_listen_socket(
     loop_handle: &LoopHandle<'static, WaylandState>,
     state: &mut WaylandState,
 ) {
     let _socket_name = crate::backend::wayland::session::setup_socket(loop_handle, state);
-    crate::backend::wayland::session::spawn_xwayland(state, loop_handle);
+    crate::backend::wayland::session::xwayland::setup(state);
     // The compositor claims items' native menu toplevels by PID, so it hands
     // the worker its request slot; see `WaylandState::take_expected_systray_menu_toplevel`.
     let wake = crate::runtime::make_wake_ping(loop_handle);

@@ -45,10 +45,10 @@
 //!
 //! ## XWayland
 //!
-//! XWayland is started asynchronously.  `XWayland::spawn()` returns a
-//! calloop source; when `XWaylandEvent::Ready` fires we create an `X11Wm`
-//! and store it in `WaylandState::xwm`.  The `XwmHandler` trait bridges
-//! X11 window events into our WM logic.
+//! The session reserves an X11 display and watches its sockets without starting
+//! a server. A connection starts XWayland asynchronously; its ready event creates
+//! the `X11Wm`. Idle exit or failure rearms the same sockets for the next client.
+//! The `XwmHandler` trait bridges X11 window events into our shared WM logic.
 //!
 //! ## Rendering
 //!

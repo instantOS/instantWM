@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use smithay::reexports::calloop::LoopHandle;
 use smithay::wayland::socket::ListeningSocketSource;
-use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
+pub(crate) mod xwayland;
 
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 
@@ -226,68 +226,6 @@ pub fn setup_socket(
 // ─────────────────────────────────────────────────────────────────────────────
 // XWayland
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Spawn XWayland and wire its calloop source into the event loop.
-///
-/// On success, `DISPLAY` is immediately set to the pre-assigned display number
-/// so that any autostart processes that check the environment see it right away.
-/// The definitive `DISPLAY` value is set again inside the `XWaylandEvent::Ready`
-/// callback once XWayland confirms its display number.
-///
-/// Errors are logged and silently swallowed: a missing XWayland is non-fatal
-/// (pure Wayland clients still work).
-pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, WaylandState>) {
-    // Preserve session settings such as GPU driver selection and cursor theme.
-    match XWayland::spawn_with_inherited_env(
-        &state.native.display_handle,
-        None,
-        std::iter::empty::<(String, String)>(),
-        std::iter::empty::<String>(),
-        true,
-        Stdio::null(),
-        Stdio::null(),
-        |_| (),
-    ) {
-        Ok((xwayland, client)) => {
-            unsafe { env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
-            import_env_into_dbus_activation();
-            let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
-            {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => {
-                    data.native.xdisplay = Some(display_number);
-                    unsafe { env::set_var("DISPLAY", format!(":{display_number}")) };
-                    import_env_into_dbus_activation();
-                    match X11Wm::start_wm(
-                        handle_for_wm.clone(),
-                        &data.native.display_handle,
-                        x11_socket,
-                        client.clone(),
-                    ) {
-                        Ok(mut wm) => {
-                            crate::backend::wayland::render::cursor_theme::CursorManager::from_environment(
-                                &data.native.cursor_config,
-                            ).configure_xwayland(&mut wm);
-                            data.native.xwm = Some(wm);
-                        }
-                        Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
-                    }
-                }
-                XWaylandEvent::Error => {
-                    log::error!("XWayland failed to start");
-                }
-            }) {
-                log::error!("failed to insert XWayland source: {err}");
-            }
-        }
-        Err(err) => {
-            log::warn!("failed to spawn XWayland: {err}");
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

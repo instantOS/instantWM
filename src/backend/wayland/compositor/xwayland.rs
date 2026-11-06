@@ -733,8 +733,29 @@ impl XwmHandler for WaylandState {
         }
     }
 
-    fn disconnected(&mut self, _xwm: smithay::xwayland::xwm::XwmId) {
-        self.native.xwm = None;
-        self.native.xdisplay = None;
+    fn disconnected(&mut self, xwm: smithay::xwayland::xwm::XwmId) {
+        crate::backend::wayland::session::xwayland::disconnected(self, xwm);
+    }
+}
+
+impl WaylandState {
+    /// Include hidden managed windows as well as untracked override-redirect
+    /// surfaces: server death must not leave either in the compositor model.
+    pub(crate) fn cleanup_xwayland_windows(&mut self, id: smithay::xwayland::xwm::XwmId) {
+        let mut seen = std::collections::HashSet::new();
+        let windows: Vec<_> = self
+            .native
+            .window_index
+            .values()
+            .chain(self.native.space.elements())
+            .filter_map(|window| window.x11_surface().cloned())
+            .filter(|window| seen.insert(window.window_id()))
+            .collect();
+        for window in windows {
+            XwmHandler::destroyed_window(self, id, window);
+        }
+        for target in [SelectionTarget::Clipboard, SelectionTarget::Primary] {
+            XwmHandler::cleared_selection(self, id, target);
+        }
     }
 }
