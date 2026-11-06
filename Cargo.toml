@@ -19,7 +19,7 @@ path = "src/bin/instantwm-fuzz.rs"
 required-features = ["fuzzing"]
 
 [dependencies]
-x11rb = { version = "0.13", features = ["cursor", "randr", "xinerama", "xinput", "xkb", "shm", "render", "composite", "damage", "dpms", "dri2", "dri3", "glx", "present", "record", "res", "sync", "xf86dri", "xf86vidmode", "xfixes", "xprint", "xselinux", "xtest", "xv", "xvmc", "allow-unsafe-code", "dl-libxcb"] }
+x11rb = { version = "0.14", features = ["cursor", "randr", "xinerama", "xinput", "xkb", "shm", "render", "composite", "damage", "dpms", "dri2", "dri3", "glx", "present", "record", "res", "sync", "xf86dri", "xf86vidmode", "xfixes", "xprint", "xselinux", "xtest", "xv", "xvmc", "allow-unsafe-code", "dl-libxcb"] }
 libc = "0.2"
 fontconfig = "0.10"
 freetype = "0.7"
@@ -36,7 +36,7 @@ dirs = "6.0"
 xcursor = "0.3"
 
 # Wayland compositor support via Smithay
-smithay = { version = "0.7.0", git = "https://github.com/Smithay/smithay.git", rev = "023b78b1c5a05ca512767cacc07efca55fae8be4", default-features = false, features = [
+smithay = { version = "0.7.0", git = "https://github.com/Smithay/smithay.git", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = [
     "backend_winit",
     "backend_drm",
     "backend_gbm",

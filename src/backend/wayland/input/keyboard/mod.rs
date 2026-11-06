@@ -381,7 +381,7 @@ fn activate_virtual_keyboard_keymap(state: &mut WaylandState, device: &VirtualKe
         return;
     };
     let keyboard = state.native.keyboard.clone();
-    if let Err(err) = keyboard.set_keymap_from_string(state, keymap.to_string()) {
+    if let Err(err) = keyboard.set_keymap_from_keymap_file(state, keymap) {
         log::warn!("Failed to activate virtual keyboard keymap: {err}");
     }
 }

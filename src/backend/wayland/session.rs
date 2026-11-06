@@ -237,7 +237,8 @@ pub fn setup_socket(
 /// Errors are logged and silently swallowed: a missing XWayland is non-fatal
 /// (pure Wayland clients still work).
 pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, WaylandState>) {
-    match XWayland::spawn(
+    // Preserve session settings such as GPU driver selection and cursor theme.
+    match XWayland::spawn_with_inherited_env(
         &state.native.display_handle,
         None,
         std::iter::empty::<(String, String)>(),

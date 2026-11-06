@@ -98,12 +98,20 @@ pub fn init_gpu(
 
     let gbm_device = GbmDevice::new(render_fd.clone()).expect("GbmDevice::new");
     let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
-    let egl_context = EGLContext::new_with_priority(&egl_display, ContextPriority::High)
+    let egl_context = EGLContext::new_with_priority(&egl_display, ContextPriority::RealTime)
+        .or_else(|err| {
+            log::warn!("Realtime EGL context unavailable ({err}); using high priority");
+            EGLContext::new_with_priority(&egl_display, ContextPriority::High)
+        })
         .or_else(|err| {
             log::warn!("High-priority EGL context unavailable ({err}); using default priority");
             EGLContext::new(&egl_display)
         })
         .expect("EGLContext::new");
+    log::info!(
+        "EGL context priority: {:?}",
+        egl_context.get_context_priority()
+    );
     let renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
 
     (
