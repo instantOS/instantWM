@@ -65,6 +65,10 @@ pub struct X11RuntimeConfig {
     pub layout_preview_target: Option<WindowId>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
+    /// Current animation frame interval, derived from the fastest active
+    /// CRTC. Refreshed whenever RandR policy is applied so mode switches and
+    /// hotplugs take effect without restarting the WM.
+    pub animation_frame_interval: std::time::Duration,
     /// Border widths to restore when X11 windows leave WM management.
     pub original_border_widths: HashMap<WindowId, u32>,
     /// Cached WM_PROTOCOLS for managed clients, refreshed on PropertyNotify.
@@ -116,6 +120,7 @@ impl Default for X11RuntimeConfig {
             layout_preview_style: crate::types::InteractionOutlineStyle::Layout,
             layout_preview_target: None,
             window_animations: crate::animation::WindowAnimations::new(),
+            animation_frame_interval: crate::runtime::animation_frame_interval(None),
             original_border_widths: HashMap::new(),
             client_protocols: HashMap::new(),
             connected_outputs: HashSet::new(),
@@ -177,6 +182,33 @@ mod protocol_cache_tests {
     }
 }
 
+#[cfg(test)]
+mod animation_timing_tests {
+    use super::X11RuntimeConfig;
+    use std::time::Duration;
+
+    #[test]
+    fn active_refresh_updates_the_animation_interval() {
+        let mut runtime = X11RuntimeConfig::default();
+        assert_eq!(runtime.animation_frame_interval, Duration::from_millis(16));
+
+        runtime.set_active_refresh_millihertz(Some(144_000));
+        assert_eq!(
+            runtime.animation_frame_interval,
+            Duration::from_nanos(6_944_444)
+        );
+
+        runtime.set_active_refresh_millihertz(Some(60_000));
+        assert_eq!(
+            runtime.animation_frame_interval,
+            Duration::from_nanos(16_666_666)
+        );
+
+        runtime.set_active_refresh_millihertz(None);
+        assert_eq!(runtime.animation_frame_interval, Duration::from_millis(16));
+    }
+}
+
 impl X11KeyboardMapping {
     /// The keysym a keycode produces at `index`, or [`Keysym::NONE`] when the
     /// server reports no symbol there.
@@ -217,6 +249,12 @@ pub(crate) struct ActivePointerGrab {
 }
 
 impl X11RuntimeConfig {
+    /// Replace the animation cadence after the active CRTC set changes.
+    pub(crate) fn set_active_refresh_millihertz(&mut self, refresh_millihertz: Option<u32>) {
+        self.animation_frame_interval =
+            crate::runtime::animation_frame_interval(refresh_millihertz);
+    }
+
     #[inline]
     pub(crate) fn insert_or_replace_window_animation(
         &mut self,

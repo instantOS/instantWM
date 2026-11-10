@@ -264,7 +264,8 @@ pub fn register_ipc_source<'loop_handle, T: 'static>(
 /// Tracks whether an animation timer is currently armed. When the timer fires
 /// and no animations remain it auto-drops; this flag is then cleared so a new
 /// timer can be armed on the next animation start. Backends may select a frame
-/// interval, while the default API retains the 16 ms fallback used by DRM.
+/// interval, including one that changes between ticks, while the default API
+/// retains the 16 ms fallback used by DRM.
 #[derive(Clone)]
 pub struct AnimationTimerGuard {
     active: Rc<Cell<bool>>,
@@ -304,18 +305,36 @@ impl AnimationTimerGuard {
         handle: &calloop::LoopHandle<'loop_handle, T>,
         on_tick: impl Fn(&mut T) -> bool + 'static,
     ) {
+        self.ensure_armed_with_dynamic_interval(has_animations, interval, handle, move |data| {
+            on_tick(data).then_some(interval)
+        });
+    }
+
+    /// Arm the timer and let each tick choose the next interval.
+    ///
+    /// `on_tick` returns `Some(interval)` to keep running at that cadence, or
+    /// `None` when no animations remain. This lets a backend follow a refresh
+    /// rate that changes while the timer is armed, such as an X11 mode switch
+    /// or monitor hotplug.
+    pub fn ensure_armed_with_dynamic_interval<'loop_handle, T: 'static>(
+        &self,
+        has_animations: bool,
+        initial_interval: Duration,
+        handle: &calloop::LoopHandle<'loop_handle, T>,
+        on_tick: impl Fn(&mut T) -> Option<Duration> + 'static,
+    ) {
         if !has_animations || self.active.get() {
             return;
         }
         self.active.set(true);
         let flag = Rc::clone(&self.active);
-        let _ = handle.insert_source(Timer::from_duration(interval), move |_, _, data| {
-            let still_active = on_tick(data);
-            if still_active {
-                TimeoutAction::ToDuration(interval)
-            } else {
-                flag.set(false);
-                TimeoutAction::Drop
+        let _ = handle.insert_source(Timer::from_duration(initial_interval), move |_, _, data| {
+            match on_tick(data) {
+                Some(interval) => TimeoutAction::ToDuration(interval),
+                None => {
+                    flag.set(false);
+                    TimeoutAction::Drop
+                }
             }
         });
     }

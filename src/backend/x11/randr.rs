@@ -201,15 +201,17 @@ impl RandrSnapshot {
         modes
     }
 
-    /// The fastest refresh rate any CRTC currently scans out.
+    /// The fastest refresh rate any connected output currently scans out.
     ///
     /// X11 has one geometry-update stream for all outputs, so pacing it for
     /// the fastest active output avoids undersampling animations on
     /// mixed-refresh desktops.
     pub fn max_active_refresh_millihertz(&self) -> Option<u32> {
-        self.crtcs
-            .values()
-            .filter_map(|crtc| mode_refresh_millihertz(self.mode(crtc.mode)?))
+        self.active()
+            .filter_map(|(output, _)| {
+                let crtc = self.crtcs.get(&output.info.crtc)?;
+                mode_refresh_millihertz(self.mode(crtc.mode)?)
+            })
             .max()
     }
 }
@@ -636,6 +638,9 @@ fn apply_policy(
         );
     }
     randr.fit_framebuffer();
+    // The active CRTC set (and therefore the fastest scanout rate) may have
+    // changed. Keep animation pacing in sync for the next timer tick.
+    runtime.set_active_refresh_millihertz(randr.snapshot().max_active_refresh_millihertz());
 }
 
 /// Overlay transient suppression without changing the user's monitor policy.
@@ -1342,6 +1347,23 @@ mod refresh_tests {
         for name in ["DP-1", "HDMI-1", "eDPfake", "LVDSfake"] {
             assert!(!super::is_internal_connector(name));
         }
+    }
+
+    #[test]
+    fn max_active_refresh_uses_the_fastest_connected_scanout() {
+        let mut snapshot = lid_snapshot(true, true);
+        assert_eq!(snapshot.max_active_refresh_millihertz(), Some(60_000));
+
+        snapshot
+            .modes
+            .push(test_mode(2, 2560, 1440, 585_953_280, 2720, 1496));
+        snapshot.crtcs.get_mut(&2).unwrap().mode = 2;
+        assert_eq!(snapshot.max_active_refresh_millihertz(), Some(144_000));
+
+        // A CRTC with no connected output no longer contributes, even if it
+        // still reports a mode.
+        snapshot.outputs[1].info.connection = x11rb::protocol::randr::Connection::DISCONNECTED;
+        assert_eq!(snapshot.max_active_refresh_millihertz(), Some(60_000));
     }
 
     #[test]

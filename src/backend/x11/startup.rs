@@ -116,6 +116,8 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
     if let Some(snapshot) = crate::backend::x11::randr::RandrSnapshot::fetch(&data.conn, root) {
         data.x11_runtime.connected_outputs = snapshot.connected_names();
         data.x11_runtime.active_outputs = snapshot.active_names();
+        data.x11_runtime
+            .set_active_refresh_millihertz(snapshot.max_active_refresh_millihertz());
     }
 }
 
