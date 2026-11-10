@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/instantOS/instantWM/compare/v0.7.1...v0.8.0) - 2026-11-10
+
+### Added
+
+- add hostile-client fuzzing infrastructure
+- update Smithay and adopt current APIs
+- activate Xwayland on demand and recover after exit
+
+### Changed
+
+- fold the keyboard source into handle_keyboard
+
+### Fixed
+
+- stale test
+- better looking shortcuts portal
+- keep global shortcut dispatch off the shared registry
+- tolerate Wayland event bursts from slow clients
+- ignore queued maps for destroyed Wayland backend windows
+- report damage for captured frames
+
+### Other
+
+- Merge branch 'main' of https://github.com/instantOS/instantWM
+- Add bulk move and swap modifiers to tag dragging
+- Fix scratchpad urgency visibility, XWayland input, and minimum sizing
+- Merge branch 'main' of ufr:~/stuff/instantWM into dev
+- Merge branch 'main' into dev
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- Add GlobalShortcuts portal support for Wayland and X11
+- fix unplugging monitors causing window pile ups
+- cargo update
+- cover slow-client overflow and malformed frames
+- bump stuff
+- Expand raw Wayland protocol fuzzing with verified request sequences
+- move IPC stuff to shared crate
+- fix x modal focus bug
+
 ## [0.7.1](https://github.com/instantOS/instantWM/compare/v0.7.0...v0.7.1) - 2026-10-27
 
 ### Changed
