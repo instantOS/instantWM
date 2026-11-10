@@ -19,7 +19,7 @@ path = "src/bin/instantwm-fuzz.rs"
 required-features = ["fuzzing"]
 
 [dependencies]
-instantos-ipc = { version = "0.1.0", path = "../instantOS-libs/crates/instantos-ipc", features = ["clap"] }
+instantos-ipc = { version = "0.1.0", git = "https://github.com/instantOS/instantOS-libs", features = ["clap"] }
 x11rb = { version = "0.14", features = ["cursor", "randr", "xinerama", "xinput", "xkb", "shm", "render", "composite", "damage", "dpms", "dri2", "dri3", "glx", "present", "record", "res", "sync", "xf86dri", "xf86vidmode", "xfixes", "xprint", "xselinux", "xtest", "xv", "xvmc", "allow-unsafe-code", "dl-libxcb"] }
 libc = "0.2"
 fontconfig = "0.10"
@@ -67,7 +67,7 @@ wayland-client = { version = "0.31", optional = true }
 wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
 
 [build-dependencies]
-instantos-ipc = { version = "0.1.0", path = "../instantOS-libs/crates/instantos-ipc" }
+instantos-ipc = { version = "0.1.0", git = "https://github.com/instantOS/instantOS-libs" }
 
 [dev-dependencies]
 tempfile = "3"

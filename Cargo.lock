@@ -1024,6 +1024,7 @@ checksum = "36eee07d8e02bd95bf52b2e642cf13d33701b94c6e4b04fbf1d1fb07e9cb19e7"
 [[package]]
 name = "instantos-ipc"
 version = "0.1.0"
+source = "git+https://github.com/instantOS/instantOS-libs#dc1dec5afef616efc30cb2a63a8ff15583419882"
 dependencies = [
  "bincode",
  "clap",
@@ -1033,7 +1034,7 @@ dependencies = [
 [[package]]
 name = "instantos-terminal"
 version = "0.1.0"
-source = "git+https://github.com/instantOS/instantOS-libs#2a52be94397b315d71882f502bce193ca3155273"
+source = "git+https://github.com/instantOS/instantOS-libs#dc1dec5afef616efc30cb2a63a8ff15583419882"
 
 [[package]]
 name = "instantwm"
