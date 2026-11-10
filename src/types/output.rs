@@ -2,39 +2,11 @@
 
 use super::Size;
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    bincode::Encode,
-    bincode::Decode,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-pub struct OutputMode {
-    pub width: i32,
-    pub height: i32,
-    pub refresh_millihertz: i32,
-}
+pub use instantos_ipc::OutputMode;
+use instantos_ipc::refresh_hz_to_millihertz;
 
-/// Dimensions accepted by both configuration and IPC, bounded by compositor geometry.
-pub(crate) fn parse_mode_dimensions(resolution: &str) -> Option<Size> {
-    let (width, height) = resolution.split_once('x')?;
-    let width: i32 = width.parse().ok()?;
-    let height: i32 = height.parse().ok()?;
-    Size::new(width, height)
-        .is_positive()
-        .then_some(Size::new(width, height))
-}
-
-/// Validate and round Hz to the millihertz used by output protocols.
-pub(crate) fn refresh_hz_to_millihertz(rate: f64) -> Option<i32> {
-    let millihertz = (rate * 1000.0).round();
-    (rate.is_finite() && millihertz >= 1.0 && millihertz <= f64::from(i32::MAX))
-        .then_some(millihertz as i32)
+fn parse_mode_dimensions(resolution: &str) -> Option<Size> {
+    instantos_ipc::parse_mode_dimensions(resolution).map(|(w, h)| Size::new(w, h))
 }
 
 /// A mode requested by monitor configuration, independent of the output API.
@@ -72,24 +44,6 @@ impl MonitorModeRequest {
                 (f64::from(actual) / 1000.0 - f64::from(requested)).abs() < 0.1
             }),
         }
-    }
-}
-
-impl std::str::FromStr for OutputMode {
-    type Err = String;
-
-    /// Parse a mode string like "1920x1080@60.000" into an OutputMode.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let invalid = || format!("invalid monitor mode: {s}");
-        let (res, rate_str) = s.split_once('@').ok_or_else(invalid)?;
-        let size = parse_mode_dimensions(res).ok_or_else(invalid)?;
-        let rate_hz: f64 = rate_str.parse().map_err(|_| invalid())?;
-        let refresh_millihertz = refresh_hz_to_millihertz(rate_hz).ok_or_else(invalid)?;
-        Ok(Self {
-            width: size.w,
-            height: size.h,
-            refresh_millihertz,
-        })
     }
 }
 

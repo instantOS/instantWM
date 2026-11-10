@@ -36,6 +36,7 @@ fn main() {
 /// This ensures any change to IPC-related code results in a different version.
 fn compute_ipc_source_hash() -> String {
     let mut hasher = DefaultHasher::new();
+    instantos_ipc::SCHEMA_SOURCE.hash(&mut hasher);
 
     // Hash all files that affect IPC protocol (must match on both client and server)
     let ipc_files = [

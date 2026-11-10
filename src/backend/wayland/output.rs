@@ -37,12 +37,6 @@ pub(crate) fn from_smithay_mode(mode: Mode) -> OutputMode {
     }
 }
 
-impl From<Mode> for OutputMode {
-    fn from(mode: Mode) -> Self {
-        from_smithay_mode(mode)
-    }
-}
-
 pub(crate) fn to_smithay_transform(transform: OutputTransform) -> Transform {
     match transform {
         OutputTransform::Normal => Transform::Normal,
@@ -100,7 +94,7 @@ mod tests {
             refresh_millihertz: 144_000,
         };
         assert_eq!(from_smithay_mode(to_smithay_mode(mode)), mode);
-        assert_eq!(OutputMode::from(to_smithay_mode(mode)), mode);
+        assert_eq!(from_smithay_mode(to_smithay_mode(mode)), mode);
     }
 
     #[test]

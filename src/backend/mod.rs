@@ -14,14 +14,7 @@ use crate::types::{Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 use std::process::Command;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Encode, Decode,
-)]
-pub enum BackendVrrSupport {
-    Unsupported,
-    RequiresModeset,
-    Supported,
-}
+pub use instantos_ipc::VrrSupport as BackendVrrSupport;
 
 /// One region of the logical desktop as presented by the backend.
 #[derive(Debug, Clone)]

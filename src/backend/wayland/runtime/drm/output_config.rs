@@ -12,6 +12,7 @@ use crate::backend::output::{
     OutputTransactionKind, OutputTransactionOrigin,
 };
 use crate::backend::wayland::compositor::WaylandNativeState;
+use crate::backend::wayland::output::from_smithay_mode;
 use crate::backend::wayland::render::drm::{
     OutputSurfaceEntry, ScanoutId, best_connector_mode, build_output_dmabuf_feedback,
 };
@@ -157,7 +158,7 @@ pub(super) fn process_output_configurations(
                     let modes: Vec<_> = entry.modes.iter().map(|(_, native)| *native).collect();
                     let preferred = best_connector_mode(&modes)
                         .map(smithay::output::Mode::from)
-                        .map(Into::into);
+                        .map(from_smithay_mode);
                     if head.reconcile_mode(&transaction_modes(entry), preferred) {
                         log::info!(
                             "Output {}: selecting supported mode {:?} after capability change",

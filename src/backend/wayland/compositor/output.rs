@@ -17,7 +17,8 @@ use crate::backend::output::{
     RequestId, plan_automatic_output_positions, position_after,
 };
 use crate::backend::wayland::output::{
-    clamp_output_size, from_smithay_transform, to_smithay_mode, to_smithay_transform,
+    clamp_output_size, from_smithay_mode, from_smithay_transform, to_smithay_mode,
+    to_smithay_transform,
 };
 use crate::config::config_toml::VrrMode;
 use crate::types::{MonitorPosition, Point, Rect, Size};
@@ -270,7 +271,7 @@ impl WaylandNativeState {
                 OutputHeadConfiguration {
                     id: OutputId(output.name()),
                     enabled: output_state.is_none_or(OutputManagementOutputState::enabled),
-                    mode: output.current_mode().map(Into::into),
+                    mode: output.current_mode().map(from_smithay_mode),
                     position: Point::new(output.current_location().x, output.current_location().y),
                     transform: from_smithay_transform(output.current_transform()),
                     scale: output.current_scale().fractional_scale(),

@@ -647,26 +647,7 @@ impl From<Transform> for crate::backend::output::OutputTransform {
     }
 }
 
-#[derive(
-    Debug,
-    Deserialize,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Default,
-    Encode,
-    Decode,
-    clap::ValueEnum,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum VrrMode {
-    #[default]
-    Off,
-    Auto,
-    On,
-}
+pub use instantos_ipc::VrrMode;
 
 /// How a mirrored output fits its source's content when the aspect ratios
 /// differ: letterbox bars ([`MirrorFit::Contain`]) or crop to fill

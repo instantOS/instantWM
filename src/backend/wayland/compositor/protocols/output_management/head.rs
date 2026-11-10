@@ -17,7 +17,7 @@ pub struct OutputModeData {
 }
 
 pub(super) fn transaction_mode(mode: Mode) -> TransactionOutputMode {
-    mode.into()
+    crate::backend::wayland::output::from_smithay_mode(mode)
 }
 
 /// Create a `zwlr_output_head_v1` resource for `output` on `instance` and

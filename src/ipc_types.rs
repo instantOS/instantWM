@@ -515,39 +515,9 @@ impl WindowInfo {
     }
 }
 
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct MonitorInfo {
-    /// Stable identifier, distinct from display ordering.
-    pub id: u64,
-    /// Current spatial position in the monitor list.
-    pub position: usize,
-    /// Backend-assigned monitor number retained for diagnostics.
-    pub backend_index: i32,
-    pub name: String,
-    pub width: i32,
-    pub height: i32,
-    pub x: i32,
-    pub y: i32,
-    pub is_selected: bool,
-    pub vrr_support: crate::backend::BackendVrrSupport,
-    pub vrr_mode: Option<VrrMode>,
-    pub vrr_enabled: bool,
-    /// Other physical outputs presenting this logical monitor: realized
-    /// mirrors and clones set up by other tools.
-    pub mirrors: Vec<String>,
-    /// Mirror declarations targeting this logical monitor, including heads
-    /// that are disconnected or whose output configuration has not applied.
-    pub requested_mirrors: Vec<String>,
-}
+pub use instantos_ipc::{DisplayModes, MonitorInfo};
 
 pub use crate::floating::scratchpad::ScratchpadInfo;
-
-/// Modes for a specific display.
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct DisplayModes {
-    pub name: String,
-    pub modes: Vec<crate::types::OutputMode>,
-}
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct ModeInfo {
