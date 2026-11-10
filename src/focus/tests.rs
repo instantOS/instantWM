@@ -766,3 +766,69 @@ fn unchanged_focus_leaves_urgency_untouched_until_projection_is_required() {
     assert!(!core.state.model.client(WindowId(1)).unwrap().is_urgent);
     assert!(backend.clear_urgency.get());
 }
+
+#[test]
+fn modal_focus_follows_nested_dialogs_but_leaves_other_apps_alone() {
+    let mut model = crate::model::WmModel::default();
+    let monitor = push_monitor(&mut model);
+    let tags = TagMask::single(1).unwrap();
+    model.monitor_mut(monitor).unwrap().set_selected_tags(tags);
+    for (id, parent) in [(1, None), (2, Some(1)), (3, Some(2)), (4, None)] {
+        add_client(
+            &mut model,
+            monitor,
+            Client {
+                win: WindowId(id),
+                transient_for: parent.map(WindowId),
+                tags,
+                ..Client::default()
+            },
+        );
+    }
+    let modal = |win| [WindowId(2), WindowId(3)].contains(&win);
+    assert_eq!(
+        super::resolve_modal_focus(&model, WindowId(1), modal),
+        WindowId(3)
+    );
+    assert_eq!(
+        super::resolve_modal_focus(&model, WindowId(2), modal),
+        WindowId(3)
+    );
+    assert_eq!(
+        super::resolve_modal_focus(&model, WindowId(4), modal),
+        WindowId(4)
+    );
+    assert_eq!(
+        super::resolve_modal_focus(&model, WindowId(1), |_| false),
+        WindowId(1)
+    );
+
+    // A hidden modal must not trap focus on a surface that cannot receive input.
+    model
+        .monitor_mut(monitor)
+        .unwrap()
+        .client_mut(WindowId(2))
+        .unwrap()
+        .is_hidden = true;
+    assert_eq!(
+        super::resolve_modal_focus(&model, WindowId(1), modal),
+        WindowId(1)
+    );
+    model
+        .monitor_mut(monitor)
+        .unwrap()
+        .client_mut(WindowId(2))
+        .unwrap()
+        .is_hidden = false;
+    // Malformed ancestry must terminate without revisiting the requested target.
+    model
+        .monitor_mut(monitor)
+        .unwrap()
+        .client_mut(WindowId(1))
+        .unwrap()
+        .transient_for = Some(WindowId(3));
+    assert_eq!(
+        super::resolve_modal_focus(&model, WindowId(1), |_| true),
+        WindowId(3)
+    );
+}

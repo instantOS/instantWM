@@ -269,6 +269,18 @@ def run(check_idle_cursor_updates=False, host_x11=False, hostile_case=None):
                      "initial XWayland cursor settings")
             time.sleep(0.5)  # settle spawn animations before using final IPC geometry
             assert ctl("test", "focus-window", main["id"]) is not None
+            wait_for(lambda: any(w["id"] == dialog["id"] and w["is_focused"]
+                                 for w in ctl("window", "list") or []),
+                     "parent focus redirects to its modal dialog")
+            wait_for(lambda: snapshot().get("focus") == snapshot().get("dialog"),
+                     "parent activation keeps actual X11 focus on the modal dialog")
+            rect = main["geometry"]
+            # The dialog is centered over its parent, leaving this corner
+            # exposed. Focus-follows-mouse must not reactivate the blocked parent.
+            ctl("test", "pointer-move", rect["x"] + 10, rect["y"] + 10)
+            assert ctl("status") is not None
+            assert any(w["id"] == dialog["id"] and w["is_focused"]
+                       for w in ctl("window", "list")), "parent hover stole modal focus"
             ctl("test", "pointer-move", 5, 5)
             dialog = next(w for w in ctl("window", "list") if w["id"] == dialog["id"])
             rect = dialog["geometry"]

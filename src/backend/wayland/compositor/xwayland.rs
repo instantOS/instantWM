@@ -560,10 +560,12 @@ impl XwmHandler for WaylandState {
 
     fn modal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
         let _ = window.set_modal(true);
+        self.restore_focus_after_overlay();
     }
 
     fn unmodal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
         let _ = window.set_modal(false);
+        self.restore_focus_after_overlay();
     }
 
     fn above_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
