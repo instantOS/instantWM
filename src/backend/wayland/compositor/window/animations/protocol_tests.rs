@@ -1075,3 +1075,181 @@ fn arranging_either_monitor_keeps_spanning_floats_above_all_tiles() {
         assert!(position(floating) > position(right_tile));
     }
 }
+
+/// Commit an shm buffer of `size` on the test client's surface and pump.
+///
+/// A bufferless surface reports a 0x0 geometry, which makes the anchor
+/// heuristic pick the near edge. Committing a real buffer gives the animation
+/// the size the window is actually presented with.
+fn commit_shm_buffer(
+    event_loop: &mut smithay::reexports::calloop::EventLoop<'static, WaylandState>,
+    state: &mut WaylandState,
+    conn: &Connection,
+    queue: &mut EventQueue<NativeClient>,
+    client: &mut NativeClient,
+    size: (i32, i32),
+) {
+    use std::os::fd::AsFd;
+    let (w, h) = size;
+    let registry = conn.display().get_registry(&queue.handle(), ());
+    let shm_global = client
+        .globals
+        .iter()
+        .find(|(_, name)| name == "wl_shm")
+        .unwrap()
+        .0;
+    let shm: wl_shm::WlShm = registry.bind(shm_global, 1, &queue.handle(), ());
+    let len = w * h * 4;
+    let file = tempfile::tempfile().unwrap();
+    file.set_len(len as u64).unwrap();
+    let pool = shm.create_pool(file.as_fd(), len, &queue.handle(), ());
+    let buffer = pool.create_buffer(
+        0,
+        w,
+        h,
+        w * 4,
+        wl_shm::Format::Argb8888,
+        &queue.handle(),
+        (),
+    );
+    let surface = client.surface.as_ref().unwrap();
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    pump(event_loop, state, conn, queue, client);
+    // pump() services surface commits; the geometry observation they queue is
+    // a WM command and needs the production dispatch path.
+    crate::backend::wayland::runtime::dispatch::drain_command_queue(state);
+}
+
+/// A layout-owned window whose client answers a configure with a different
+/// size still completes its resize transaction.
+///
+/// The transaction belongs to `WindowGeometrySync`: it settles when the client
+/// acknowledges the configure, not when the committed size happens to equal the
+/// animation's original target. Tiled windows never feed a constrained commit
+/// back into the model, so an animation that waited for an exact size match
+/// would stay resident for the lifetime of the window.
+#[test]
+fn tiled_constrained_commit_settles_and_releases_the_animation() {
+    check_tiled_constrained_commit(false);
+}
+
+#[test]
+fn tiled_constrained_commit_before_completion_preserves_the_same_anchor() {
+    check_tiled_constrained_commit(true);
+}
+
+fn check_tiled_constrained_commit(reply_before_completion: bool) {
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
+
+    state.wm.core.state.config.animations.enabled = true;
+    let monitor = state.wm.core.state.model.monitors.push(
+        MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1920, 1080))
+            .build(),
+    );
+    let initial = Rect::new(100, 100, 800, 600);
+    add_client(
+        &mut state.wm.core.state.model,
+        monitor,
+        Client {
+            win,
+            geo: initial,
+            mode: ClientMode::tiled(),
+            ..Client::default()
+        },
+    );
+    state.map_window_in_space(win);
+    state
+        .native
+        .resize_window(&state.wm.core.state, win, initial);
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+    commit_shm_buffer(
+        &mut event_loop,
+        &mut state,
+        &conn,
+        &mut queue,
+        &mut client,
+        (initial.w, initial.h),
+    );
+    assert_eq!(
+        state.native.find_window(win).unwrap().geometry().size,
+        (initial.w, initial.h).into()
+    );
+
+    // Layout-owned geometry: a committed size never becomes model geometry,
+    // so nothing re-targets the animation after a constrained reply.
+    assert!(
+        !state
+            .wm
+            .core
+            .state
+            .model
+            .client(win)
+            .unwrap()
+            .client_size_is_authoritative()
+    );
+
+    // Grow to the right so the far edge travels farther and x anchors Far.
+    let target = Rect::new(100, 100, 1000, 600);
+    state.wm.core.state.model.sync_client_geometry(win, target);
+    state.native.set_window_target_rect(
+        &state.wm.core.state,
+        win,
+        target,
+        state.wm.core.state.model.client(win).unwrap().border_width,
+        super::WindowMoveMode::AnimateFrom {
+            from: initial,
+            duration: Duration::ZERO,
+        },
+    );
+
+    if reply_before_completion {
+        // Dispatch as a mid-transition tick would, leaving the frame timer
+        // active until after the reply. No wall-clock timing is needed.
+        let element = state.native.find_window(win).unwrap().clone();
+        state
+            .native
+            .dispatch_window_resize(&state.wm.core.state, win, &element, target);
+    } else {
+        // The timer completes before the client replies. Retain the anchor
+        // without keeping the frame loop alive.
+        state.native.tick_animations(&state.wm.core.state);
+        assert!(state.native.animation_targets_outer_rect(win, target));
+        assert!(!state.native.window_has_active_animation(win));
+        assert!(!state.native.has_active_window_animations());
+    }
+    assert!(!state.native.geometry_sync.get(&win).unwrap().is_settled());
+
+    // Deliver the configure, then commit the size the client actually renders.
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+    commit_shm_buffer(
+        &mut event_loop,
+        &mut state,
+        &conn,
+        &mut queue,
+        &mut client,
+        (960, 600),
+    );
+
+    if reply_before_completion {
+        assert!(state.native.window_has_active_animation(win));
+        state.native.tick_animations(&state.wm.core.state);
+    }
+
+    // The acknowledgement settled the transaction even though the size does
+    // not match the target, and that releases the animation.
+    assert!(state.native.geometry_sync.get(&win).unwrap().is_settled());
+    assert!(
+        !state.native.animation_targets_outer_rect(win, target),
+        "a settled resize transaction must release the animation"
+    );
+    let border = state.wm.core.state.model.client(win).unwrap().border_width;
+    let element = state.native.find_window(win).unwrap();
+    assert_eq!(
+        state.native.space.element_location(element),
+        Some((target.x + border + target.w - 960, target.y + border).into()),
+        "the final far edge must not depend on when the client replies"
+    );
+}

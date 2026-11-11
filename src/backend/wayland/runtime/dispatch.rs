@@ -279,12 +279,17 @@ fn handle_committed_size_observation(
     let client_size_is_authoritative =
         client.is_some_and(|client| client.client_size_is_authoritative());
     let committed_rect = client.and_then(|client| committed_window_rect(client, size));
-    if !state.native.native_commit_may_update_model(
+    let accepted = state.native.native_commit_may_update_model(
         win,
         size,
         acknowledged_configure,
         client_size_is_authoritative,
-    ) {
+    );
+    // The observation above settles the configure this commit answers. Release
+    // a completed animation now that its resize transaction is over, even when
+    // the client answered with a size the WM did not request.
+    state.native.finish_settled_animation(win);
+    if !accepted {
         return;
     }
     if let Some(rect) = committed_rect {

@@ -44,6 +44,20 @@ impl WindowGeometrySync {
         self.scheduled
     }
 
+    /// Whether the resize transaction is over: nothing left to dispatch and
+    /// no configure still awaiting the client's acknowledgement.
+    ///
+    /// This is the protocol definition of "the resize finished". A client that
+    /// acknowledges a configure with a different size has still settled the
+    /// transaction; the committed size is then whatever the client can render,
+    /// not a condition the animation may wait for.
+    pub(in crate::backend::wayland::compositor) fn is_settled(&self) -> bool {
+        self.scheduled.is_none()
+            && self
+                .configured
+                .is_none_or(|configure| configure.acknowledged)
+    }
+
     pub fn configured_size(&self) -> Option<Size> {
         self.configured.map(|configure| configure.size)
     }

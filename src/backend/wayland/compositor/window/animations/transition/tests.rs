@@ -563,7 +563,7 @@ fn one_sided_shrink_follows_the_moving_near_edge() {
 }
 
 #[test]
-fn far_anchored_completion_waits_for_the_target_committed_size() {
+fn far_anchored_completion_releases_the_frame_loop_without_a_size_match() {
     let start = Instant::now();
     let mut animation = WaylandWindowAnimation::new(
         WindowAnimation {
@@ -579,13 +579,14 @@ fn far_anchored_completion_waits_for_the_target_committed_size() {
     );
 
     assert_eq!(animation.anchors.x, SurfaceAnchor::Far);
-    assert!(animation.needs_landing(Size::from((100, 80))));
-    assert!(!animation.needs_landing(Size::from((140, 80))));
+    assert!(animation.is_active());
 
+    // The client commits its old size. The frame timer still completes, and
+    // the animation stops asking for frames; whether the resize transaction is
+    // over belongs to WindowGeometrySync, not to this type.
     let tick = animation.tick(start + Duration::from_millis(100), Size::from((100, 80)));
     assert!(tick.done);
-    assert!(tick.waiting_for_resize);
-    assert!(animation.is_waiting_for_resize());
+    assert!(!animation.is_active());
 }
 
 #[test]
