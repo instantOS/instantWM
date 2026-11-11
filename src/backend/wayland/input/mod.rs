@@ -22,7 +22,6 @@ pub use pointer::handle_virtual_pointer_event;
 use crate::backend::wayland::output::clamp_output_size;
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
-use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
 use smithay::utils::Transform;
 
@@ -118,14 +117,54 @@ pub fn handle_resize(
         .native
         .output_management_state
         .update_heads::<crate::backend::wayland::compositor::WaylandState>(std::iter::once(output));
-    layer_map_for_output(output).arrange();
+    state.native.configure_output_surfaces(output);
 
-    state.wm.core.state.derived.display.width = safe_size.w;
-    state.wm.core.state.derived.display.height = safe_size.h;
     refresh_monitor_layout(&mut state.ctx());
     // `refresh_monitor_layout` resets each monitor's `available_rect` back to
     // its full output rect, so re-apply the layer-shell exclusive zones.
     let _ = crate::backend::wayland::compositor::layer_shell::apply_available_rects(state);
     state.wm.core.work.layout.mark_all_urgent();
     state.native.request_space_sync();
+    recover_pointer_after_output_change(state);
+}
+
+/// A topology change can leave the pointer on an output that no longer exists.
+/// Recover immediately, including for explicit/client-managed layouts with gaps.
+pub(crate) fn recover_pointer_after_output_change(
+    state: &mut crate::backend::wayland::compositor::WaylandState,
+) {
+    if state
+        .native
+        .space
+        .output_under(state.native.runtime.pointer_location)
+        .next()
+        .is_some()
+    {
+        return;
+    }
+    let target = state
+        .wm
+        .core
+        .state
+        .model
+        .selected_monitor()
+        .and_then(|monitor| {
+            state
+                .native
+                .space
+                .outputs()
+                .find(|output| output.name() == monitor.name)
+        })
+        .or_else(|| state.native.space.outputs().next());
+    let center = target
+        .and_then(|output| state.native.space.output_geometry(output))
+        .map(|geometry| {
+            (
+                geometry.loc.x as f64 + geometry.size.w as f64 / 2.0,
+                geometry.loc.y as f64 + geometry.size.h as f64 / 2.0,
+            )
+        });
+    if let Some((x, y)) = center {
+        state.native.request_warp(x, y);
+    }
 }

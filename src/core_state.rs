@@ -210,7 +210,7 @@ impl FontConfig {
         Ok(self)
     }
 
-    /// Return a copy scaled for a monitor's logical UI scale.
+    /// Return a copy at the native rasterizer's pixel density.
     pub fn scaled(&self, scale: f32) -> Self {
         let mut scaled = self.clone();
         scaled.text_size = (scaled.text_size * scale).max(1.0);

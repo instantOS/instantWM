@@ -195,7 +195,7 @@ pub(crate) struct TilingContext {
     pub members: Vec<TiledClientInfo>,
     pub placement: LayoutPlacement,
     pub minimums: HashMap<WindowId, Size>,
-    /// The monitor's own (scaled) bar height. Layout is a pure reader of bar
+    /// The monitor's logical bar height. Layout is a pure reader of bar
     /// geometry, which the monitor-sync path owns.
     bar_height: i32,
     tiled_count: u32,

@@ -1,5 +1,6 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
+use crate::backend::wayland::input::recover_pointer_after_output_change;
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
@@ -44,8 +45,7 @@ use frames::{
     render_outputs,
 };
 use layout::{
-    DrmLayoutState, compute_total_dimensions, init_layout_state,
-    recover_pointer_after_output_change, refresh_drm_layout_state,
+    DrmLayoutState, compute_total_dimensions, init_layout_state, refresh_drm_layout_state,
 };
 use output_config::{process_output_configurations, process_output_power_requests};
 use scheduling::DrmLoopState;

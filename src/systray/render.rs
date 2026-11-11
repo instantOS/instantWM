@@ -21,24 +21,16 @@ pub(crate) fn draw_menu(
     base_scheme: &ColorScheme,
     bar_height: i32,
     hover: Option<TrayMenuHover>,
-    ui_scale: f64,
 ) {
     painter.set_scheme(*base_scheme);
-    draw_entry_separators(painter, menu, cells, base_scheme, bar_height, ui_scale);
+    draw_entry_separators(painter, menu, cells, base_scheme, bar_height);
     for cell in cells {
         let Some(entry) = menu.entries.get(cell.idx) else {
             continue;
         };
         let width = cell.end - cell.start;
         if entry.separator {
-            draw_separator_entry(
-                painter,
-                cell.start,
-                width,
-                base_scheme,
-                bar_height,
-                ui_scale,
-            );
+            draw_separator_entry(painter, cell.start, width, base_scheme, bar_height);
             continue;
         }
         if !entry.enabled {
@@ -50,7 +42,7 @@ pub(crate) fn draw_menu(
         }
         painter.text(
             Rect::new(cell.start, 0, width, bar_height),
-            scaled_px(6, ui_scale),
+            6,
             &entry.display_label(),
             SchemeColor::Foreground,
             0,
@@ -68,8 +60,6 @@ pub(crate) fn draw_menu(
     }
 }
 
-use crate::types::geometry::scaled_px;
-
 /// Thin vertical rules between adjacent ordinary entries, in the style of the
 /// i3bar block separators. Boundaries next to a separator entry already read
 /// as a break, so they are not doubled up.
@@ -79,7 +69,6 @@ fn draw_entry_separators(
     cells: &[SystrayHitSlot],
     base_scheme: &ColorScheme,
     bar_height: i32,
-    ui_scale: f64,
 ) {
     for pair in cells.windows(2) {
         let (left, right) = (pair[0], pair[1]);
@@ -93,10 +82,10 @@ fn draw_entry_separators(
             continue;
         }
         painter.set_scheme(*base_scheme);
-        let line_height = (bar_height - scaled_px(8, ui_scale)).max(1).min(bar_height);
+        let line_height = (bar_height - 8).max(1).min(bar_height);
         let line_y = (bar_height - line_height) / 2;
         painter.rect(
-            Rect::new(left.end, line_y, scaled_px(1, ui_scale), line_height),
+            Rect::new(left.end, line_y, 1, line_height),
             SchemeColor::Foreground,
         );
     }
@@ -109,17 +98,11 @@ fn draw_separator_entry(
     width: i32,
     base_scheme: &ColorScheme,
     bar_height: i32,
-    ui_scale: f64,
 ) {
     painter.set_scheme(*base_scheme);
-    let y = (bar_height - scaled_px(1, ui_scale)) / 2;
+    let y = (bar_height - 1) / 2;
     painter.rect(
-        Rect::new(
-            start + scaled_px(4, ui_scale),
-            y,
-            (width - scaled_px(8, ui_scale)).max(1),
-            scaled_px(1, ui_scale),
-        ),
+        Rect::new(start + 4, y, (width - 8).max(1), 1),
         SchemeColor::Foreground,
     );
 }
@@ -239,15 +222,7 @@ mod tests {
         let cells = cells_for(&[68, 60]);
         let mut painter = RecordingPainter::default();
 
-        draw_menu(
-            &mut painter,
-            &menu,
-            &cells,
-            &scheme(),
-            BAR_HEIGHT,
-            None,
-            1.0,
-        );
+        draw_menu(&mut painter, &menu, &cells, &scheme(), BAR_HEIGHT, None);
 
         let line_height = (BAR_HEIGHT - 8).clamp(1, BAR_HEIGHT);
         let separator = (
@@ -274,15 +249,7 @@ mod tests {
         let cells = cells_for(&[68, 24, 60]);
         let mut painter = RecordingPainter::default();
 
-        draw_menu(
-            &mut painter,
-            &menu,
-            &cells,
-            &scheme(),
-            BAR_HEIGHT,
-            None,
-            1.0,
-        );
+        draw_menu(&mut painter, &menu, &cells, &scheme(), BAR_HEIGHT, None);
 
         // No vertical rules at all: both boundaries flank the separator entry.
         assert!(
@@ -318,7 +285,6 @@ mod tests {
                 entry_index: 1,
                 color: hover_color,
             }),
-            1.0,
         );
 
         let accent = (
@@ -360,7 +326,6 @@ mod tests {
                 entry_index: 0,
                 color: hover_color,
             }),
-            1.0,
         );
 
         assert!(
@@ -383,15 +348,7 @@ mod tests {
         let cells = cells_for(&[76, 100]);
         let mut painter = RecordingPainter::default();
 
-        draw_menu(
-            &mut painter,
-            &menu,
-            &cells,
-            &scheme(),
-            BAR_HEIGHT,
-            None,
-            1.0,
-        );
+        draw_menu(&mut painter, &menu, &cells, &scheme(), BAR_HEIGHT, None);
 
         assert_eq!(painter.texts[0].1, "✓ Enabled");
         assert_eq!(painter.texts[1].1, "Preferences ›");
@@ -407,15 +364,7 @@ mod tests {
         let cells = cells_for(&[100]);
         let mut painter = RecordingPainter::default();
 
-        draw_menu(
-            &mut painter,
-            &menu,
-            &cells,
-            &scheme(),
-            BAR_HEIGHT,
-            None,
-            1.0,
-        );
+        draw_menu(&mut painter, &menu, &cells, &scheme(), BAR_HEIGHT, None);
 
         let (_, _, text_scheme) = &painter.texts[0];
         assert!(text_scheme.foreground.a() < scheme().foreground.a());
@@ -425,32 +374,19 @@ mod tests {
     }
 
     #[test]
-    fn decorative_pixels_follow_monitor_scale() {
+    fn decorative_pixels_use_logical_units() {
         let menu = MenuView {
             entries: vec![entry("Open"), entry("Quit")],
         };
         let cells = cells_for(&[68, 60]);
         let mut painter = RecordingPainter::default();
 
-        draw_menu(
-            &mut painter,
-            &menu,
-            &cells,
-            &scheme(),
-            BAR_HEIGHT,
-            None,
-            2.0,
-        );
+        draw_menu(&mut painter, &menu, &cells, &scheme(), BAR_HEIGHT, None);
 
-        // The vertical rule doubles in width and inset from the bar edges.
-        let line_height = (BAR_HEIGHT - scaled_px(8, 2.0)).clamp(1, BAR_HEIGHT);
+        // Decorations are specified in logical units, just like the bar layout.
+        let line_height = (BAR_HEIGHT - 8).clamp(1, BAR_HEIGHT);
         let separator = (
-            Rect::new(
-                cells[0].end,
-                (BAR_HEIGHT - line_height) / 2,
-                scaled_px(1, 2.0),
-                line_height,
-            ),
+            Rect::new(cells[0].end, (BAR_HEIGHT - line_height) / 2, 1, line_height),
             scheme().foreground,
         );
         assert!(painter.rectangles.contains(&separator));

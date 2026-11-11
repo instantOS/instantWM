@@ -27,10 +27,10 @@ mod z_order;
 pub use tag_state::PerTagState;
 pub use z_order::ClientZOrder;
 
-/// Bar UI metrics for one output, already scaled for that output's UI scale.
+/// Bar UI metrics for one output, in logical desktop units.
 ///
 /// These three values always travel, compare, and apply together — they are
-/// computed together from the unscaled [`DerivedState`](crate::core_state::DerivedState)
+/// computed together from the configuration
 /// base, checked together for changes, and written together onto a
 /// [`Monitor`]. Carrying them as one named type means the compiler rejects
 /// transposing `horizontal_padding` and `startmenu_size` (both plain `i32`
@@ -41,11 +41,11 @@ pub use z_order::ClientZOrder;
 /// individual fields; read them back via [`Monitor::ui_metrics`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MonitorUiMetrics {
-    /// Effective bar height for the output, scaled for its UI scale.
+    /// Effective bar height for the output, in logical units.
     pub bar_height: i32,
-    /// Effective horizontal padding for the output's bar, scaled.
+    /// Effective horizontal padding for the output's bar, in logical units.
     pub horizontal_padding: i32,
-    /// Effective start menu width for the output's bar, scaled.
+    /// Effective start menu width for the output's bar, in logical units.
     pub startmenu_size: i32,
 }
 
@@ -68,8 +68,8 @@ pub struct Monitor {
     pub(crate) monitor_id: MonitorId,
     /// Monitor index number (0-based).
     pub num: i32,
-    /// Per-monitor UI scale, currently used by the Wayland bar.
-    pub ui_scale: f64,
+    /// Physical pixels per logical desktop unit; never applied to layout metrics.
+    pub output_scale: f64,
     /// Effective bar height for this monitor.
     pub bar_height: i32,
     /// Height of the bottom gesture strip on this monitor (0 = none).
@@ -142,7 +142,7 @@ impl Default for Monitor {
         Self {
             monitor_id: MonitorId::default(),
             num: 0,
-            ui_scale: 1.0,
+            output_scale: 1.0,
             bar_height: 0,
             bottom_bar_height: 0,
             horizontal_padding: 0,
@@ -985,20 +985,13 @@ impl Monitor {
         // and bar position are derived from this rectangle on access.
         self.available_rect = rect;
         self.name = name;
-        self.set_ui_metrics(scale, metrics);
+        self.output_scale = scale;
+        self.set_ui_metrics(metrics);
     }
 
     /// Set effective UI metrics for this monitor.
-    pub fn set_ui_metrics(&mut self, ui_scale: f64, metrics: MonitorUiMetrics) {
-        self.ui_scale = if ui_scale.is_finite() && ui_scale > 0.0 {
-            ui_scale
-        } else {
-            1.0
-        };
-        // This is the single place a UI metric's minimum is decided. Callers
-        // hand over already-scaled values; `scaled_px` clamps at the source
-        // and the remaining floors live here, so no layer re-clamps a value
-        // another layer already settled.
+    pub fn set_ui_metrics(&mut self, metrics: MonitorUiMetrics) {
+        // All layout metrics are logical. Pixel density belongs to the backend.
         let bar_height = metrics.bar_height.max(0);
         self.bar_height = bar_height;
         // The bottom strip is just a gesture handle, so it stays thinner than

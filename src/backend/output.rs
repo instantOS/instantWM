@@ -166,8 +166,8 @@ impl OutputHeadConfiguration {
             1.0
         };
         Size::new(
-            (f64::from(width) / scale).round() as i32,
-            (f64::from(height) / scale).round() as i32,
+            (f64::from(width) / scale).ceil() as i32,
+            (f64::from(height) / scale).ceil() as i32,
         )
     }
 

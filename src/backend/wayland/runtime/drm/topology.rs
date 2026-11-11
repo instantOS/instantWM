@@ -1,15 +1,13 @@
 //! Reconcile hotplugged DRM devices and their logical outputs.
 
+use crate::backend::wayland::input::recover_pointer_after_output_change;
 use smithay::reexports::calloop::LoopHandle;
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use super::layout::{
-    DrmLayoutState, compact_drm_automatic_layout, recover_pointer_after_output_change,
-    refresh_drm_layout_state,
-};
+use super::layout::{DrmLayoutState, compact_drm_automatic_layout, refresh_drm_layout_state};
 use super::{DrmRuntimeEvent, devices::DrmDevices, scheduling::DrmLoopState};
 use crate::backend::output::{OutputId, OutputPowerError};
 use crate::backend::wayland::compositor::WaylandState;

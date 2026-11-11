@@ -1443,10 +1443,9 @@ fn reset_active_layout_returns_stock_geometry_and_drops_a_lens() {
 }
 
 #[test]
-fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
-    // Regression: `arrange` used to read the unscaled bar height and write it back onto the monitor, undoing the
-    // per-output scaling applied by the monitor-sync path. On a 2x output that
-    // left a 1x-tall bar alongside 2x padding and start-menu width.
+fn arrange_does_not_overwrite_monitor_bar_metrics() {
+    // Layout must read the monitor's logical metrics without substituting
+    // global defaults or applying output pixel density.
     let mut wm = crate::test_support::TestWm::new(crate::backend::WaylandBackendData::default());
     wm.core.state.config.animations.enabled = false;
 
@@ -1457,14 +1456,11 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
         .model
         .monitor_mut(monitor_id)
         .unwrap()
-        .set_ui_metrics(
-            2.0,
-            MonitorUiMetrics {
-                bar_height: 60,
-                horizontal_padding: 30,
-                startmenu_size: 60,
-            },
-        );
+        .set_ui_metrics(MonitorUiMetrics {
+            bar_height: 60,
+            horizontal_padding: 30,
+            startmenu_size: 60,
+        });
 
     super::arrange(
         &mut wm.test_ctx(),
@@ -1475,7 +1471,7 @@ fn arrange_does_not_overwrite_a_scaled_monitor_bar_height() {
     let monitor = wm.core.state.model.monitor(monitor_id).unwrap();
     assert_eq!(
         monitor.bar_height, 60,
-        "arrange must not clobber the scaled bar height with the unscaled global"
+        "arrange must preserve the monitor's logical bar height"
     );
     assert_eq!(monitor.horizontal_padding, 30);
     assert_eq!(monitor.startmenu_size, 60);

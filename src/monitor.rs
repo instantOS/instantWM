@@ -457,7 +457,7 @@ fn apply_output_to_monitor(
 fn output_geom_changed(m: &Monitor, output: &BackendOutputInfo, metrics: MonitorUiMetrics) -> bool {
     m.monitor_rect != output.rect
         || m.name != output.name
-        || (m.ui_scale - output.scale).abs() > f64::EPSILON
+        || (m.output_scale - output.scale).abs() > f64::EPSILON
         || m.ui_metrics() != metrics
 }
 
@@ -568,7 +568,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     // hold an immutable config borrow.
     let metrics: Vec<MonitorUiMetrics> = outputs
         .iter()
-        .map(|o| scaled_monitor_ui_metrics(&ctx.core().state.config, o.scale))
+        .map(|_| monitor_ui_metrics(&ctx.core().state.config))
         .collect();
     let policies: Vec<TagBarPolicy> = outputs
         .iter()
@@ -686,50 +686,30 @@ fn reconcile_monitor_model(
     }
 }
 
-fn scaled_monitor_ui_metrics(config: &EffectiveConfig, scale: f64) -> MonitorUiMetrics {
+fn monitor_ui_metrics(config: &EffectiveConfig) -> MonitorUiMetrics {
     let base = config.bar_metrics();
     MonitorUiMetrics {
-        bar_height: crate::types::geometry::scaled_px(base.height, scale).max(1),
-        horizontal_padding: crate::types::geometry::scaled_px(base.horizontal_padding, scale)
-            .max(1),
-        startmenu_size: crate::types::geometry::scaled_px(config.bar.startmenu_size, scale).max(1),
+        bar_height: base.height.max(1),
+        horizontal_padding: base.horizontal_padding.max(1),
+        startmenu_size: config.bar.startmenu_size.max(1),
     }
 }
 
-/// Re-apply scaled UI metrics to every monitor after the unscaled base changed.
-///
-/// Config provides the unscaled base metrics while each monitor owns the scaled
-/// copy for its output's UI scale. Output topology sync does this as part of
-/// reconciling monitors; this
-/// entry point covers the paths that change the base without touching
-/// topology. Both runtime configuration edits and reloads apply these metrics
-/// before scheduling layout and invalidating the native bar appearance.
-///
-/// Layout deliberately does *not* substitute for this: `arrange` reads bar
-/// geometry, and the unscaled global is never a valid value for a scaled
-/// output. Writing it back from a layout pass would silently undo the scaling.
-///
-/// Returns whether any monitor's metrics changed.
+/// Re-apply logical UI metrics after configuration changes. Output pixel density
+/// never changes the space reserved for compositor UI in the logical desktop.
 pub fn resync_monitor_ui_metrics(core: &mut CoreState) -> bool {
-    // Compute while the config is immutably borrowed, then apply separately.
-    let pending: Vec<(MonitorId, f64, MonitorUiMetrics)> = core
-        .model
-        .monitors_iter()
-        .map(|(id, monitor)| {
-            let metrics = scaled_monitor_ui_metrics(&core.config, monitor.ui_scale);
-            (id, monitor.ui_scale, metrics)
-        })
-        .collect();
+    let metrics = monitor_ui_metrics(&core.config);
+    let pending: Vec<_> = core.model.monitors_iter().map(|(id, _)| id).collect();
 
     let mut changed = false;
-    for (id, ui_scale, metrics) in pending {
+    for id in pending {
         let Some(monitor) = core.model.monitors.get_mut(id) else {
             continue;
         };
         if monitor.ui_metrics() == metrics {
             continue;
         }
-        monitor.set_ui_metrics(ui_scale, metrics);
+        monitor.set_ui_metrics(metrics);
         changed = true;
     }
     changed

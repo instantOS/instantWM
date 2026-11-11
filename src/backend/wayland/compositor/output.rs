@@ -63,6 +63,15 @@ fn close_layer_surfaces(output: &Output) -> bool {
 }
 
 impl WaylandNativeState {
+    /// Reconfigure output-bound shell surfaces after mode, scale or transform
+    /// changes. Both the DRM transaction and nested resize paths use this.
+    pub(crate) fn configure_output_surfaces(&self, output: &Output) {
+        smithay::desktop::layer_map_for_output(output).arrange();
+        if let Some(surface) = self.lock_surfaces.get(&output.name()) {
+            super::session_lock::configure_lock_surface(surface, output);
+        }
+    }
+
     pub(crate) fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
         let Some(global) = output.user_data().get::<OutputGlobal>() else {
             return;
@@ -175,6 +184,7 @@ impl WaylandNativeState {
                 self.set_output_global_enabled(&output, false);
             } else {
                 self.space.map_output(&output, output.current_location());
+                self.configure_output_surfaces(&output);
                 self.set_output_global_enabled(&output, true);
             }
         }
@@ -825,6 +835,68 @@ mod tests {
             .commit(requested);
         state.native.apply_output_snapshot(&snapshot);
         effective
+    }
+
+    #[test]
+    fn runtime_scale_changes_keep_layout_metrics_logical_and_topology_current() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let output = state
+            .native
+            .create_output("scale-test", Size::new(1921, 1081), None);
+        let mut previous_id = None;
+        for scale in [1.0, 2.0, 1.25, 0.75, 1.0] {
+            let mut snapshot = snapshot(&[("scale-test", true, scale)]);
+            snapshot.heads[0].configuration = state
+                .native
+                .observed_output_transaction()
+                .heads
+                .into_iter()
+                .next()
+                .unwrap();
+            snapshot.heads[0].modes = snapshot.heads[0].configuration.mode.into_iter().collect();
+            let head = snapshot
+                .heads
+                .iter_mut()
+                .find(|head| head.configuration.id.0 == "scale-test")
+                .unwrap();
+            head.configuration.scale = scale;
+            state.native.apply_output_snapshot(&snapshot);
+            crate::monitor::refresh_monitor_layout(&mut state.ctx());
+            let geometry = state.native.space.output_geometry(&output).unwrap();
+            let mon = state
+                .wm
+                .core
+                .state
+                .model
+                .monitors_iter_all()
+                .find(|mon| mon.name == "scale-test")
+                .unwrap();
+            assert_eq!(mon.output_scale, scale);
+            assert_eq!(mon.monitor_rect.w, (1921.0_f64 / scale).ceil() as i32);
+            assert_eq!(mon.monitor_rect.h, (1081.0_f64 / scale).ceil() as i32);
+            assert_eq!(
+                mon.bar_height,
+                state.wm.core.state.config.bar_metrics().height
+            );
+            assert_eq!(
+                mon.horizontal_padding,
+                state.wm.core.state.config.bar_metrics().horizontal_padding
+            );
+            assert_eq!(mon.monitor_rect.w, geometry.size.w);
+            assert_eq!(mon.monitor_rect.h, geometry.size.h);
+            assert_eq!(*previous_id.get_or_insert(mon.id()), mon.id());
+            let head = snapshot
+                .heads
+                .iter()
+                .find(|head| head.configuration.id.0 == "scale-test")
+                .unwrap();
+            assert_eq!(head.configuration.logical_size().w, geometry.size.w);
+            assert_eq!(head.configuration.logical_size().h, geometry.size.h);
+            assert_eq!(
+                crate::hooks::snapshot_monitors(&state.wm.core.state.model)[0].scale,
+                scale
+            );
+        }
     }
 
     #[test]

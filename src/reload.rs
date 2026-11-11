@@ -20,7 +20,7 @@ pub fn reload_config(ctx: &mut WmCtx<'_>) -> Result<(), String> {
         ctx.core_mut().start_status_sources();
     }
 
-    // Layout reads the scaled metrics immediately. Native resources and bar
+    // Layout reads the logical metrics immediately. Native resources and bar
     // surfaces are projected once after the tick's monitor/layout work.
     crate::monitor::resync_monitor_ui_metrics(&mut ctx.core_mut().state);
     ctx.core_mut()

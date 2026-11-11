@@ -335,7 +335,7 @@ fn build_drm_cursor_elements(
         state.runtime.dnd_icon.as_ref(),
         state.runtime.cursor_hidden_by_touch,
     );
-    let cursor_scale = output.current_scale().integer_scale();
+    let cursor_scale = output.current_scale().fractional_scale();
     let millis = start_time.elapsed().as_millis() as u32;
 
     build_cursor_elements(
@@ -386,7 +386,7 @@ fn build_locked_drm_render_elements(
                 renderer,
                 lock_surface.wl_surface(),
                 smithay::utils::Point::<i32, Physical>::from((0, 0)),
-                smithay::utils::Scale::from(1.0),
+                smithay::utils::Scale::from(output.current_scale().fractional_scale()),
                 1.0,
                 smithay::backend::renderer::element::Kind::Unspecified,
             );
@@ -473,7 +473,7 @@ fn build_cursor_elements(
     cursor_manager: &CursorManager,
     resolved_cursor: &ResolvedCursor,
     local_pointer: Point<f64, smithay::utils::Logical>,
-    scale: i32,
+    scale: f64,
     millis: u32,
 ) -> Vec<DrmExtras> {
     let mut custom_elements = Vec::new();
@@ -497,7 +497,7 @@ fn build_cursor_elements(
                 surface,
                 local_pointer,
                 *hotspot,
-                scale as f64,
+                scale,
             ) else {
                 return custom_elements;
             };
@@ -522,7 +522,7 @@ fn build_cursor_elements(
                 icon,
                 local_pointer,
                 *hotspot,
-                scale as f64,
+                scale,
             ) else {
                 return custom_elements;
             };

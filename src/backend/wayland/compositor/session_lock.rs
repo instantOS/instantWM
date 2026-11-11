@@ -12,6 +12,23 @@ use super::{
     state::{SessionLockState, WaylandState},
 };
 
+/// Lock-surface sizes are logical, including rotation and fractional scaling.
+pub(super) fn configure_lock_surface(surface: &LockSurface, output: &Output) {
+    let Some(mode) = output.current_mode() else {
+        return;
+    };
+    let size: smithay::utils::Size<i32, smithay::utils::Logical> = output
+        .current_transform()
+        .transform_size(mode.size)
+        .to_f64()
+        .to_logical(output.current_scale().fractional_scale())
+        .to_i32_ceil();
+    surface.with_pending_state(|states| {
+        states.size = Some((size.w.max(1) as u32, size.h.max(1) as u32).into());
+    });
+    surface.send_configure();
+}
+
 impl WaylandState {
     /// Keyboard focus that must hold while the session is locked.
     ///
@@ -116,15 +133,7 @@ impl SessionLockHandler for WaylandState {
             return;
         };
 
-        // Configure the lock surface to cover the full output.
-        let mode = output
-            .current_mode()
-            .expect("output must have a current mode for lock surface sizing");
-        surface.with_pending_state(|states| {
-            let (w, h) = mode.size.into();
-            states.size = Some((w as u32, h as u32).into());
-        });
-        surface.send_configure();
+        configure_lock_surface(&surface, &output);
 
         let output_name = output.name();
         log::info!("session lock: new lock surface for output {output_name}");
@@ -195,6 +204,7 @@ mod session_lock_focus_tests {
     struct TestClient {
         globals: Vec<(u32, String)>,
         sync_count: usize,
+        lock_sizes: Vec<(u32, u32)>,
     }
 
     impl Dispatch<wl_callback::WlCallback, ()> for TestClient {
@@ -233,7 +243,26 @@ mod session_lock_focus_tests {
     delegate_noop!(TestClient: ignore wl_output::WlOutput);
     delegate_noop!(TestClient: ignore ext_session_lock_manager_v1::ExtSessionLockManagerV1);
     delegate_noop!(TestClient: ignore ext_session_lock_v1::ExtSessionLockV1);
-    delegate_noop!(TestClient: ignore ext_session_lock_surface_v1::ExtSessionLockSurfaceV1);
+    impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for TestClient {
+        fn event(
+            state: &mut Self,
+            surface: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
+            event: ext_session_lock_surface_v1::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+            if let ext_session_lock_surface_v1::Event::Configure {
+                serial,
+                width,
+                height,
+            } = event
+            {
+                state.lock_sizes.push((width, height));
+                surface.ack_configure(serial);
+            }
+        }
+    }
 
     fn pump(
         event_loop: &mut smithay::reexports::calloop::EventLoop<'static, WaylandState>,
@@ -346,6 +375,52 @@ mod session_lock_focus_tests {
             SERIAL_COUNTER.next_serial(),
         );
         assert!(keyboard.is_grabbed());
+    }
+
+    #[test]
+    fn lock_surfaces_receive_logical_size_at_creation_and_runtime_changes() {
+        use smithay::output::Scale;
+        use smithay::utils::Transform;
+        let (mut event_loop, mut state) = crate::test_support::new_compositor();
+        let output = state
+            .native
+            .create_output("lock-scale", Size::new(1921, 1081), None);
+        output.change_current_state(
+            None,
+            Some(Transform::Normal),
+            Some(Scale::Fractional(2.0)),
+            None,
+        );
+        let (conn, mut queue, mut client, registry, _) =
+            connect_client(&mut event_loop, &mut state);
+        let qh = queue.handle();
+        let compositor: wl_compositor::WlCompositor =
+            registry.bind(global(&client, "wl_compositor"), 1, &qh, ());
+        let manager: ext_session_lock_manager_v1::ExtSessionLockManagerV1 =
+            registry.bind(global(&client, "ext_session_lock_manager_v1"), 1, &qh, ());
+        let lock = manager.lock(&qh, ());
+        pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+        let wl_output: wl_output::WlOutput =
+            registry.bind(global(&client, "wl_output"), 1, &qh, ());
+        let surface = compositor.create_surface(&qh, ());
+        let _lock_surface = lock.get_lock_surface(&surface, &wl_output, &qh, ());
+        pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+        assert_eq!(client.lock_sizes.last(), Some(&(961, 541)));
+        for (scale, transform, expected) in [
+            (1.25, Transform::Normal, (1537, 865)),
+            (1.25, Transform::_90, (865, 1537)),
+            (1.0, Transform::Normal, (1921, 1081)),
+        ] {
+            output.change_current_state(
+                None,
+                Some(transform),
+                Some(Scale::Fractional(scale)),
+                None,
+            );
+            state.native.configure_output_surfaces(&output);
+            pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+            assert_eq!(client.lock_sizes.last(), Some(&expected));
+        }
     }
 
     #[test]

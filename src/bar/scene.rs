@@ -11,8 +11,6 @@ const STARTMENU_ICON_INNER: i32 = 6;
 const TAG_DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 
-use crate::types::geometry::scaled_px;
-
 fn status_scheme(colors: &StatusColorConfig) -> ColorScheme {
     colors.as_scheme()
 }
@@ -167,9 +165,8 @@ pub(crate) struct StatusContent {
 pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
-    /// Effective logical UI scale used for decorative metrics that are not
-    /// derived from font advances or bar height.
-    pub ui_scale: f64,
+    /// Output pixel density, used only by native rasterizers.
+    pub output_scale: f64,
     pub fonts: crate::core_state::FontConfig,
     pub is_selected_monitor: bool,
     pub status_scheme: ColorScheme,
@@ -382,7 +379,7 @@ pub(crate) fn build_monitor_snapshots(
         if !include {
             continue;
         }
-        let fonts = base_fonts.scaled(mon.ui_scale as f32);
+        let fonts = base_fonts.clone();
 
         let stats = crate::bar::model::ClientBarStats::collect(mon);
 
@@ -441,7 +438,7 @@ pub(crate) fn build_monitor_snapshots(
                 mon.work_rect().w,
                 mon.bar_height,
             ),
-            ui_scale: mon.ui_scale,
+            output_scale: mon.output_scale,
             fonts,
             is_selected_monitor,
             status_scheme,
@@ -478,15 +475,14 @@ fn draw_startmenu_icon(
     startmenu_size: i32,
     gesture: Gesture,
     bar_height: i32,
-    ui_scale: f64,
 ) {
-    let icon_size = scaled_px(STARTMENU_ICON_SIZE, ui_scale);
-    let inner_size = scaled_px(STARTMENU_ICON_INNER, ui_scale);
+    let icon_size = STARTMENU_ICON_SIZE;
+    let inner_size = STARTMENU_ICON_INNER;
     let icon_offset = (bar_height - icon_size) / 2;
-    let outer_x = scaled_px(5, ui_scale);
-    let inner_x = scaled_px(9, ui_scale);
-    let inner_y_offset = scaled_px(4, ui_scale);
-    let trailing_x = scaled_px(19, ui_scale);
+    let outer_x = 5;
+    let inner_x = 9;
+    let inner_y_offset = 4;
+    let trailing_x = 19;
     // Hovering swaps the two tones: the plate and inner square trade places
     // with the two outer squares.
     let (plate, square) = if gesture == Gesture::StartMenu {
@@ -543,14 +539,13 @@ fn draw_close_button(
     is_hover: bool,
     x: i32,
     bar_height: i32,
-    ui_scale: f64,
 ) {
     let mut scheme = *scheme;
     scheme.foreground = scheme.detail;
     painter.set_scheme(scheme);
-    let button_width = scaled_px(CLOSE_BUTTON_WIDTH, ui_scale);
-    let button_height = scaled_px(CLOSE_BUTTON_HEIGHT, ui_scale);
-    let button_detail = scaled_px(CLOSE_BUTTON_DETAIL, ui_scale);
+    let button_width = CLOSE_BUTTON_WIDTH;
+    let button_height = CLOSE_BUTTON_HEIGHT;
+    let button_detail = CLOSE_BUTTON_DETAIL;
     let button_x = x + bar_height / 6;
     let detail_offset = if is_hover { button_detail } else { 0 };
     let button_y = (bar_height - button_width) / 2 - detail_offset;
@@ -581,9 +576,9 @@ fn draw_tags_section(
         let width = (text_w + snapshot.horizontal_padding).max(snapshot.horizontal_padding);
         painter.set_scheme(tag.scheme);
         let detail_height = if snapshot.gesture == Gesture::Tag(tag.tag_index) {
-            scaled_px(TAG_DETAIL_BAR_HEIGHT_HOVER, snapshot.ui_scale)
+            TAG_DETAIL_BAR_HEIGHT_HOVER
         } else {
-            scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale)
+            TAG_DETAIL_BAR_HEIGHT_NORMAL
         };
         let lpad = (snapshot.horizontal_padding / 2).max(0);
         x = painter.text(
@@ -711,9 +706,9 @@ fn draw_titles_section(
     {
         let text_w = painter.text_width(&title.name);
         painter.set_scheme(title.scheme);
-        let roomy_text_margin = scaled_px(64, snapshot.ui_scale);
-        let close_button_threshold = scaled_px(32, snapshot.ui_scale);
-        let close_button_text_offset = scaled_px(20, snapshot.ui_scale);
+        let roomy_text_margin = 64;
+        let close_button_threshold = 32;
+        let close_button_text_offset = 20;
         let lpad = if text_w < this_width - roomy_text_margin {
             ((this_width - text_w) as f32 * 0.5) as i32
         } else {
@@ -729,7 +724,7 @@ fn draw_titles_section(
             lpad,
             &title.name,
             SchemeColor::Foreground,
-            scaled_px(TAG_DETAIL_BAR_HEIGHT_NORMAL, snapshot.ui_scale),
+            TAG_DETAIL_BAR_HEIGHT_NORMAL,
         );
         if let Some(close_scheme) = &title.close_scheme
             && this_width >= close_button_threshold
@@ -740,7 +735,6 @@ fn draw_titles_section(
                 snapshot.gesture == Gesture::CloseButton,
                 title_x,
                 bar_height,
-                snapshot.ui_scale,
             );
         }
         hit.title_ranges.push(crate::bar::TitleHitRange {
@@ -794,7 +788,6 @@ pub(crate) fn render_monitor_snapshot(
         snapshot.startmenu_size,
         snapshot.gesture,
         bar_height,
-        snapshot.ui_scale,
     );
 
     let mut x = snapshot.startmenu_size;
@@ -866,7 +859,6 @@ fn draw_systray_section(painter: &mut dyn BarPainter, snapshot: &MonitorBarSnaps
             &systray.base_scheme,
             bar_height,
             hover,
-            snapshot.ui_scale,
         );
     }
 }
@@ -959,13 +951,6 @@ mod tests {
     fn marker(value: f32) -> ColorScheme {
         let color = Rgba::new(value, value, value, 1.0);
         ColorScheme::new(color, color, color)
-    }
-
-    #[test]
-    fn decorative_pixels_follow_monitor_scale() {
-        assert_eq!(scaled_px(4, 1.0), 4);
-        assert_eq!(scaled_px(4, 1.5), 6);
-        assert_eq!(scaled_px(1, 0.5), 1);
     }
 
     #[test]

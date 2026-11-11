@@ -164,8 +164,8 @@ fn render_snapshots(painter: &mut BarRasterizer, snapshots: Snapshots) -> AsyncB
     let mut hit_caches = Vec::with_capacity(snapshots.len());
 
     for mon in snapshots.iter() {
+        painter.begin(mon.rect, super::raster_scale(mon.output_scale));
         painter.set_fonts(&mon.fonts);
-        painter.begin(mon.rect);
         let hit = scene::render_monitor_snapshot(mon, painter);
 
         if let Some(raw) = painter.finish_raw() {
@@ -227,6 +227,58 @@ mod tests {
         let second = snapshots(&wm.core);
         assert!(first != second);
         (first, second)
+    }
+
+    #[test]
+    fn scale_and_mode_changes_reject_obsolete_bar_buffers() {
+        let mut wm = test_wm();
+        let id = wm.core.state.model.selected_monitor_id();
+        wm.core
+            .state
+            .model
+            .monitor_mut(id)
+            .unwrap()
+            .bar_default_show = true;
+        let initial = snapshots(&wm.core);
+        let mut renderer = WaylandBarRenderer {
+            cached_buffers: Vec::new(),
+            cached_snapshots: Default::default(),
+            async_runtime: runtime_without_worker(),
+        };
+        renderer.async_runtime.request(initial.clone());
+        renderer
+            .async_runtime
+            .shared
+            .publish_result(render_snapshots(
+                &mut BarRasterizer::default(),
+                Arc::new(initial),
+            ));
+        assert_eq!(
+            super::super::render_bar_buffers(&mut wm.core, &mut renderer).len(),
+            1
+        );
+        {
+            let mon = wm.core.state.model.monitor_mut(id).unwrap();
+            mon.output_scale = 2.0;
+            mon.monitor_rect.w = 400;
+            mon.set_available_rect(crate::types::Rect::new(0, 0, 400, 300));
+        }
+        assert!(super::super::render_bar_buffers(&mut wm.core, &mut renderer).is_empty());
+        let current = snapshots(&wm.core);
+        renderer
+            .async_runtime
+            .shared
+            .publish_result(render_snapshots(
+                &mut BarRasterizer::default(),
+                Arc::new(current),
+            ));
+        assert_eq!(
+            super::super::render_bar_buffers(&mut wm.core, &mut renderer).len(),
+            1
+        );
+        let buffer = &renderer.cached_buffers[0].1;
+        assert_eq!(buffer.logical_size, crate::types::Size::new(400, 24));
+        assert_eq!(buffer.raster_scale, 2);
     }
 
     #[test]

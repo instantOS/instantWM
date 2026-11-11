@@ -21,7 +21,7 @@ use smithay::backend::renderer::element::memory::{
 };
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::input::pointer::CursorIcon;
-use smithay::utils::{Physical, Point, Transform};
+use smithay::utils::{Logical, Physical, Point, Rectangle, Size, Transform};
 use xcursor::CursorTheme;
 use xcursor::parser::{Image, parse_xcursor};
 
@@ -31,8 +31,9 @@ static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("drm/cursor.rgba");
 
 struct CursorFrame {
     buffer: MemoryRenderBuffer,
-    hotspot_x: i32,
-    hotspot_y: i32,
+    logical_size: Size<i32, Logical>,
+    logical_hotspot: Point<f64, Logical>,
+    source_size: Size<i32, Logical>,
 }
 
 #[derive(Clone)]
@@ -246,10 +247,14 @@ impl CursorManager {
                 cursor
                     .frames()
                     .iter()
-                    .map(|frame| CursorFrame {
-                        buffer: cursor_buffer(frame),
-                        hotspot_x: frame.xhot as i32,
-                        hotspot_y: frame.yhot as i32,
+                    .map(|frame| {
+                        let (logical_size, logical_hotspot) = cursor_geometry(frame, self.size);
+                        CursorFrame {
+                            buffer: cursor_buffer(frame),
+                            logical_size,
+                            logical_hotspot,
+                            source_size: (frame.width as i32, frame.height as i32).into(),
+                        }
                     })
                     .collect(),
             )
@@ -260,7 +265,7 @@ impl CursorManager {
         &self,
         pointer_location: Point<f64, smithay::utils::Logical>,
         presentation: &ResolvedCursor,
-        scale: i32,
+        scale: f64,
         millis: u32,
         renderer: &mut GlesRenderer,
     ) -> Option<MemoryRenderBufferRenderElement<GlesRenderer>> {
@@ -273,8 +278,9 @@ impl CursorManager {
             }
         };
 
-        let cursor = self.get_cursor(icon, scale);
-        let frames = self.get_cached_frames(icon, scale);
+        let image_scale = scale.ceil().max(1.0) as i32;
+        let cursor = self.get_cursor(icon, image_scale);
+        let frames = self.get_cached_frames(icon, image_scale);
 
         if frames.is_empty() {
             return None;
@@ -284,22 +290,40 @@ impl CursorManager {
         let idx = frame_idx.min(frames.len() - 1);
 
         let cursor_frame = &frames[idx];
-        let render_x = pointer_location.x - cursor_frame.hotspot_x as f64;
-        let render_y = pointer_location.y - cursor_frame.hotspot_y as f64;
-        let pos: Point<f64, Physical> = Point::from((render_x, render_y));
+        let pos: Point<f64, Physical> =
+            (pointer_location - cursor_frame.logical_hotspot).to_physical(scale);
 
         MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             pos,
             &cursor_frame.buffer,
             None,
-            None,
-            None,
+            Some(Rectangle::from_size(cursor_frame.source_size.to_f64())),
+            Some(cursor_frame.logical_size),
             Kind::Cursor,
         )
         .map_err(|err| log::warn!("cursor texture import failed: {err}"))
         .ok()
     }
+}
+
+/// Theme images (including the fallback) may have a different nominal size
+/// than requested. Normalize their geometry to the configured logical size;
+/// selecting a high resolution image must only affect sharpness.
+fn cursor_geometry(
+    frame: &Image,
+    configured_size: u8,
+) -> (Size<i32, Logical>, Point<f64, Logical>) {
+    let ratio = f64::from(configured_size) / f64::from(frame.size.max(1));
+    let size = Size::from((
+        (f64::from(frame.width) * ratio).round().max(1.0) as i32,
+        (f64::from(frame.height) * ratio).round().max(1.0) as i32,
+    ));
+    let hotspot = Point::from((
+        f64::from(frame.xhot) * f64::from(size.w) / f64::from(frame.width.max(1)),
+        f64::from(frame.yhot) * f64::from(size.h) / f64::from(frame.height.max(1)),
+    ));
+    (size, hotspot)
 }
 
 // KMS cursor buffers use ARGB8888 (BGRA bytes on little-endian machines).
@@ -339,6 +363,24 @@ mod tests {
             delay,
             pixels_rgba: Vec::new(),
             pixels_argb: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn theme_resolution_changes_sharpness_without_changing_logical_geometry() {
+        for nominal in [24, 32, 48, 64] {
+            let mut frame = image(nominal, nominal, 0);
+            frame.xhot = nominal / 4;
+            frame.yhot = nominal / 2;
+            let (size, hotspot) = cursor_geometry(&frame, 24);
+            assert_eq!(size, Size::from((24, 24)));
+            assert_eq!(hotspot, Point::from((6.0, 12.0)));
+            for scale in [0.75, 1.0, 1.25, 1.5, 2.0] {
+                let pointer = Point::<f64, Logical>::from((1920.0 / scale, 1080.0 / scale));
+                let origin = (pointer - hotspot).to_physical(scale);
+                assert!((origin.x + hotspot.x * scale - 1920.0).abs() < 1e-9);
+                assert!((origin.y + hotspot.y * scale - 1080.0).abs() < 1e-9);
+            }
         }
     }
 

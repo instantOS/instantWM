@@ -172,7 +172,7 @@ fn removed_output_recovers_the_pointer_even_with_a_gap_in_the_layout() {
             .build(),
     );
 
-    super::layout::recover_pointer_after_output_change(&mut state);
+    crate::backend::wayland::input::recover_pointer_after_output_change(&mut state);
     assert_eq!(state.native.pending_warp, Some((2880.0, 540.0).into()));
     let pointer = state.native.pointer.clone();
     let keyboard = state.native.keyboard.clone();
@@ -202,7 +202,7 @@ fn output_changes_do_not_warp_a_pointer_already_on_a_remaining_display() {
     state.native.space.map_output(&output, (0, 0));
     state.native.runtime.pointer_location = (50.0, 50.0).into();
     state.wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
-    super::layout::recover_pointer_after_output_change(&mut state);
+    crate::backend::wayland::input::recover_pointer_after_output_change(&mut state);
     assert!(state.native.pending_warp.is_none());
 }
 
