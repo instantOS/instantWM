@@ -285,3 +285,54 @@ fn secondary_device_removal_preserves_the_primary() {
     assert_eq!(changes.removed, vec![DrmDeviceId(1)]);
     assert!(changes.added.is_empty());
 }
+
+#[test]
+fn simultaneous_device_removals_and_card_reuse_match_enumeration_and_udev() {
+    let paths: Vec<PathBuf> = (0..5)
+        .map(|id| format!("/dev/dri/card{id}").into())
+        .collect();
+    // Four known devices; card4 can appear in the same event burst as any
+    // combination of removals and reused card paths. Primary retirement is
+    // intentionally handled by the runtime's separate shutdown path.
+    for present in 0u8..32 {
+        for removed in 0u8..16 {
+            let known = (0..4).map(|id| {
+                (
+                    DrmDeviceId(id),
+                    paths[id as usize].as_path(),
+                    id as libc::dev_t,
+                )
+            });
+            let enumerated = paths
+                .iter()
+                .enumerate()
+                .filter(|(id, _)| present & (1 << id) != 0)
+                .map(|(_, path)| path.clone())
+                .collect();
+            let notifications = (0..4)
+                .filter(|id| removed & (1 << id) != 0)
+                .map(|id| id as libc::dev_t)
+                .collect();
+            let changes = plan_device_changes(known, enumerated, &notifications);
+            let expected_removed: Vec<_> = (1..4)
+                .filter(|id| present & (1 << id) == 0 || removed & (1 << id) != 0)
+                .map(DrmDeviceId)
+                .collect();
+            let expected_added: Vec<_> = (0..5)
+                .filter(|id| {
+                    present & (1 << id) != 0
+                        && (*id == 4 || expected_removed.contains(&DrmDeviceId(*id)))
+                })
+                .map(|id| paths[id as usize].clone())
+                .collect();
+            assert_eq!(
+                changes.removed, expected_removed,
+                "present={present:05b}, removed={removed:04b}"
+            );
+            assert_eq!(
+                changes.added, expected_added,
+                "present={present:05b}, removed={removed:04b}"
+            );
+        }
+    }
+}

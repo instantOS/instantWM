@@ -267,6 +267,10 @@ mod tests {
 
     fn setup_wm() -> (Wm, WindowId, MonitorId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        // Press-policy tests install the bindings they exercise. Inheriting
+        // defaults lets a synthetic root click run `ins launch` on the user's
+        // desktop through the test process's real display environment.
+        wm.core.state.config.bindings.buttons.clear();
         wm.core.state.model.tags.num_tags = 4;
         let tags = TagMask::single(1).unwrap();
         let win = WindowId(10);
@@ -305,8 +309,9 @@ mod tests {
     }
 
     #[test]
-    fn empty_root_click_is_consumed() {
+    fn unbound_root_click_is_consumed_without_launching_a_process() {
         let (mut wm, win, _) = setup_wm();
+        assert!(wm.core.state.config.bindings.buttons.is_empty());
         crate::focus::focus(&mut wm.test_ctx(), Some(win));
         assert_eq!(wm.core.state.model.selected_win(), Some(win));
 
@@ -322,6 +327,7 @@ mod tests {
 
         let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
         assert_eq!(outcome, PressOutcome::Consumed);
+        assert!(wm.core.state.pending_launches.is_empty());
     }
 
     #[test]

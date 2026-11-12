@@ -709,9 +709,6 @@ fn lid_suppressed_outputs(
     let heads = snapshot.connected().map(|output| {
         let internal = is_internal_connector(&output.name);
         let crtc = snapshot.crtcs.get(&output.info.crtc);
-        let mode = crtc
-            .and_then(|crtc| snapshot.mode(crtc.mode))
-            .or_else(|| output.info.modes.first().and_then(|id| snapshot.mode(*id)));
         LidOutput {
             id: output.name.clone().into(),
             connector: if internal {
@@ -726,7 +723,6 @@ fn lid_suppressed_outputs(
                         && policy
                             .effective(&output.name)
                             .is_some_and(|c| c.enable != Some(false)))),
-            has_mode: mode.is_some(),
         }
     });
     let projected = runtime.lid_output_policy.evaluate(heads);
@@ -1253,15 +1249,18 @@ mod refresh_tests {
     }
 
     #[test]
-    fn undocking_restores_panel_and_redocking_suppresses_it_again() {
+    fn undocking_keeps_panel_suppressed_until_lid_opens() {
         let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
         runtime.lid_output_policy.set_closed(true);
         let policy = MonitorPolicy::default();
         super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy);
         let mut unplugged = lid_snapshot(false, false);
         unplugged.outputs.retain(|output| output.name == "eDP-1");
-        assert!(super::lid_suppressed_outputs(&unplugged, &mut runtime, &policy).is_empty());
+        assert!(super::lid_suppressed_outputs(&unplugged, &mut runtime, &policy).contains("eDP-1"));
         assert!(runtime.lid_restore.contains_key("eDP-1"));
+        runtime.lid_output_policy.set_closed(false);
+        assert!(super::lid_suppressed_outputs(&unplugged, &mut runtime, &policy).is_empty());
+        runtime.lid_output_policy.set_closed(true);
         assert!(
             super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy)
                 .contains("eDP-1")
@@ -1269,14 +1268,16 @@ mod refresh_tests {
     }
 
     #[test]
-    fn lid_never_suppresses_the_only_usable_display_or_enables_a_disabled_panel() {
+    fn lid_suppresses_the_only_display_without_enabling_an_explicitly_disabled_panel() {
         let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
         runtime.lid_output_policy.set_closed(true);
         let policy = MonitorPolicy::default();
         assert!(
             super::lid_suppressed_outputs(&lid_snapshot(true, false), &mut runtime, &policy)
-                .is_empty()
+                .contains("eDP-1")
         );
+        let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
+        runtime.lid_output_policy.set_closed(true);
         assert!(
             super::lid_suppressed_outputs(&lid_snapshot(false, true), &mut runtime, &policy)
                 .is_empty()
@@ -1296,7 +1297,7 @@ mod refresh_tests {
     }
 
     #[test]
-    fn lid_suppression_releases_external_mirror_and_respects_disabled_external_policy() {
+    fn lid_suppression_releases_external_mirror_even_when_external_policy_disables_it() {
         let mut runtime = crate::backend::x11::X11RuntimeConfig::default();
         runtime.lid_output_policy.set_closed(true);
         let policy = mirror_configs([]);
@@ -1325,7 +1326,7 @@ mod refresh_tests {
         )]));
         assert!(
             super::lid_suppressed_outputs(&lid_snapshot(true, true), &mut runtime, &policy)
-                .is_empty()
+                .contains("eDP-1")
         );
     }
 

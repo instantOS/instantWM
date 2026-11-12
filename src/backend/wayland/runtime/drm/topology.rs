@@ -1,5 +1,8 @@
 //! Reconcile hotplugged DRM devices and their logical outputs.
 
+#[cfg(test)]
+mod tests;
+
 use crate::backend::wayland::input::recover_pointer_after_output_change;
 use smithay::reexports::calloop::LoopHandle;
 use std::cell::{Cell, RefCell};
