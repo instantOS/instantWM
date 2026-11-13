@@ -17,7 +17,7 @@ const DEFAULT_HEIGHT_PERCENT: u32 = 60;
 
 pub const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 pub const DEFAULT_EDGE_SCRATCHPAD_NAME: &str = "instantwm_edge_scratchpad";
-pub(crate) const SCRATCHPAD_IDENTITY_PREFIX: &str = "scratchpad_";
+pub(crate) const SCRATCHPAD_IDENTITY_PREFIX: &str = "org.instantos.scratchpad.";
 
 /// Infer the scratchpad role advertised by launchers such as `ins` before the
 /// client participates in its first layout. Native Wayland uses `class` as the
@@ -26,7 +26,17 @@ pub(crate) fn name_from_window_identity<'a>(class: &'a str, instance: &'a str) -
     [class, instance].into_iter().find_map(|identity| {
         identity
             .strip_prefix(SCRATCHPAD_IDENTITY_PREFIX)
-            .filter(|name| !name.is_empty())
+            .filter(|name| {
+                !name.is_empty()
+                    && name.len() <= SCRATCHPAD_NAME_LEN
+                    && name
+                        .bytes()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+                    && name
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+            })
     })
 }
 

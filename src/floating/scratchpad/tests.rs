@@ -11,15 +11,40 @@ use crate::types::{Client, ClientPlacement, Monitor, Rect, Size, TagMask, Window
 #[test]
 fn scratchpad_identity_accepts_wayland_app_id_and_x11_instance() {
     assert_eq!(
-        name_from_window_identity("scratchpad_menu", ""),
+        name_from_window_identity("org.instantos.scratchpad.menu", ""),
         Some("menu")
     );
     assert_eq!(
-        name_from_window_identity("kitty", "scratchpad_notes"),
+        name_from_window_identity("kitty", "org.instantos.scratchpad.notes"),
         Some("notes")
     );
-    assert_eq!(name_from_window_identity("scratchpad_", "kitty"), None);
+    assert_eq!(
+        name_from_window_identity("org.instantos.scratchpad.", "kitty"),
+        None
+    );
     assert_eq!(name_from_window_identity("kitty", "kitty"), None);
+}
+
+#[test]
+fn scratchpad_identity_rejects_invalid_names_and_legacy_prefix() {
+    for name in [
+        "",
+        "2notes",
+        "notes.space",
+        "two words",
+        "日本語",
+        &"a".repeat(65),
+    ] {
+        assert_eq!(
+            name_from_window_identity(&format!("org.instantos.scratchpad.{name}"), ""),
+            None
+        );
+    }
+    for name in ["insmenu", "_notes", "Notes-2", &"a".repeat(64)] {
+        let id = format!("org.instantos.scratchpad.{name}");
+        assert_eq!(name_from_window_identity(&id, ""), Some(name));
+    }
+    assert_eq!(name_from_window_identity("scratchpad_notes", ""), None);
 }
 
 #[test]
