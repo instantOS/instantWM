@@ -18,6 +18,10 @@ pub(crate) struct MenuHost<C> {
 }
 
 impl<C> MenuHost<C> {
+    pub(crate) fn is_installed(&self) -> bool {
+        self.watch.is_some()
+    }
+
     pub(crate) fn cancel(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         if let Some(token) = self.source.take()

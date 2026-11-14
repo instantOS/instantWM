@@ -141,6 +141,9 @@ pub struct MonitorHitCache {
 impl BarState {
     /// Record stale derived state; reconciliation always reads the latest model.
     pub fn invalidate(&mut self, change: BarChange) {
+        if change >= BarChange::Presentation {
+            self.systray_host.menu.invalidate_presentation();
+        }
         self.pending_change = Some(
             self.pending_change
                 .map_or(change, |pending| pending.max(change)),

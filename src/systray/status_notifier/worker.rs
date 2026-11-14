@@ -22,6 +22,7 @@ pub(super) enum SystrayCmd {
     MenuAction {
         session_id: u64,
         action: MenuAction,
+        view: MenuView,
     },
     CloseMenu {
         session_id: u64,
@@ -290,12 +291,23 @@ pub(super) fn dispatch_cmd(
                 }
             }
         }
-        SystrayCmd::MenuAction { session_id, action } => {
+        SystrayCmd::MenuAction {
+            session_id,
+            action,
+            view,
+        } => {
             if menu_session
                 .as_ref()
                 .is_some_and(|session| session.id == session_id)
             {
-                handle_menu_action(conn, action, evt_tx, menu_session);
+                // Refresh may have advanced the worker before the main thread
+                // consumed its update. Reject choices from a superseded view.
+                let current = menu_session.as_ref().unwrap();
+                if current.last_view == view {
+                    handle_menu_action(conn, action, evt_tx, menu_session);
+                } else {
+                    send_menu_changed(evt_tx, session_id, Some(current.last_view.clone()));
+                }
             }
         }
         SystrayCmd::CloseMenu { session_id } => {

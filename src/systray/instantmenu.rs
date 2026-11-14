@@ -1,42 +1,17 @@
-//! instantMENU-backed presentation of a hosted DBus tray menu.
-//!
-//! When [`crate::core_state::TrayMenuBackend`] resolves to instantMENU, the
-//! bar delegates the open tray-menu session to an `instantmenu` process: the
-//! current level's entries are written to its stdin as icon-annotated lines,
-//! and its single-line stdout answer maps back to the entry's
-//! [`MenuAction`]. Dismissal (Escape or an outside press) closes the session
-//! exactly like a press outside the bar-native menu.
-//!
-//! The process runs in its own process group with piped stdio, mirroring the
-//! status-command lifecycle: a reader thread owns the child, publishes the
-//! outcome through a channel, and pings the event loop so the next tick
-//! reconciles state deterministically.
-
-use std::io::{BufRead, BufReader, Write};
+//! Event-driven instantMENU presentation of hosted D-Bus tray menus.
+//! D-Bus sessions and submenu navigation stay in the tray worker. Each process
+//! receives an immutable presentation snapshot; replacements invalidate its
+//! generation so late output cannot select from, or dismiss, a newer menu.
 use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::process::{Command, Stdio};
 
-use calloop::ping::Ping;
-
-use crate::core_state::TrayMenuBackend;
-use crate::core_state::WmCore;
-use crate::systray::{MenuAction, MenuEntry, MenuView};
+use crate::contexts::WmCtx;
+use crate::core_state::{TrayMenuBackend, WmCore};
+use crate::menu_presenter::{self, MenuHost};
+use crate::systray::{MenuAction, MenuEntry, MenuView, TrayMenuPresentation};
 
 const INSTANTMENU_BIN: &str = "instantmenu";
-/// Fixed context-menu width. `auto` would apply instantMENU's launcher
-/// minimum (500 px), far wider than a tray menu needs.
 const MENU_WIDTH: i32 = 340;
-
-/// Final result of one instantmenu process, delivered by its reader thread.
-enum MenuOutcome {
-    /// An item was chosen; `label` is the `value` instantMENU printed
-    /// (the entry index as string), or legacy display label for fallback.
-    Selected { session_id: u64, label: String },
-    /// The menu was dismissed without a choice (Escape or an outside press).
-    Dismissed { session_id: u64 },
-}
 
 fn instantmenu_on_path() -> bool {
     std::env::var_os("PATH")
@@ -44,53 +19,21 @@ fn instantmenu_on_path() -> bool {
         .unwrap_or(false)
 }
 
-/// State of the external instantmenu presentation, owned by the bar.
+#[derive(Default)]
 pub(crate) struct InstantMenuHost {
-    sender: Sender<MenuOutcome>,
-    outcomes: Receiver<MenuOutcome>,
-    /// Event-loop wake shared with the reader threads.
-    wake: Option<Ping>,
-    /// Process-group id of the live instantmenu, if any. The reader thread
-    /// clears its own entry after reaping, so a stale pid is never signalable.
-    child_pgid: Arc<Mutex<Option<i32>>>,
-    /// Session and view currently handed to instantmenu. Compared against
-    /// the presented menu to decide whether to (re)spawn.
-    presented: Option<(u64, MenuView)>,
-    /// Last observed config value; a change rescans binary availability.
+    presenter: MenuHost<TrayMenuPresentation>,
+    /// The view revision and placement already submitted, including while a
+    /// selection is awaiting its asynchronous D-Bus response.
+    presented: Option<(u64, i32)>,
     last_backend: TrayMenuBackend,
-    /// Whether the binary is on `$PATH`, scanned once per backend setting. A
-    /// failed spawn also demotes it so `auto` (and a forced-but-missing
-    /// `instantmenu`) falls back to bar-native rendering instead of retrying
-    /// every tick. `None` until scanned.
     available: Option<bool>,
-}
-
-impl Default for InstantMenuHost {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl InstantMenuHost {
     pub(crate) fn new() -> Self {
-        let (sender, outcomes) = channel();
-        Self {
-            sender,
-            outcomes,
-            wake: None,
-            child_pgid: Arc::new(Mutex::new(None)),
-            presented: None,
-            last_backend: TrayMenuBackend::Auto,
-            available: None,
-        }
+        Self::default()
     }
 
-    pub(crate) fn set_wake(&mut self, wake: Option<Ping>) {
-        self.wake = wake;
-    }
-
-    /// Whether the external instantmenu presents the tray menu, i.e. the bar
-    /// must not render the menu overlay itself.
     pub(crate) fn hosting(&self, backend: TrayMenuBackend) -> bool {
         backend != TrayMenuBackend::StatusBar && self.available == Some(true)
     }
@@ -106,157 +49,122 @@ impl InstantMenuHost {
     }
 }
 
-impl Drop for InstantMenuHost {
-    fn drop(&mut self) {
-        // Teardown at WM shutdown; backend death also closes the menu, but
-        // explicit termination avoids a flash on nested backends.
-        kill_child(&self.child_pgid);
-    }
+pub(crate) fn install<T: 'static>(
+    handle: calloop::LoopHandle<'static, T>,
+    host: &mut crate::systray::SystrayHost,
+    context: for<'a> fn(&'a mut T) -> WmCtx<'a>,
+) {
+    menu_presenter::install(handle, &mut host.instantmenu.presenter, context, finish);
+    host.menu.invalidate_presentation();
 }
 
-/// Reconcile the external instantmenu with the presented tray menu.
-///
-/// Called once per tick after [`Wm::poll_systray`]: drains finished processes
-/// (a selection may close the session or navigate a level), then spawns,
-/// replaces, or tears down the child to match the session state. Returns
-/// `true` when bar-visible content changed.
-pub(crate) fn drive_instantmenu_menu(wm: &mut WmCore) -> bool {
-    let backend = wm.state.config.systray.menu_backend;
-    wm.bar
-        .systray_host
-        .instantmenu
-        .refresh_availability(backend);
-    let hosting = wm.bar.systray_host.instantmenu.hosting(backend);
-
-    let mut changed = false;
-    // Outcomes are drained before reconciliation so a selection can close or
-    // navigate the session within this same tick.
-    let outcomes: Vec<MenuOutcome> = wm
-        .bar
-        .systray_host
-        .instantmenu
-        .outcomes
-        .try_iter()
-        .collect();
-    for outcome in outcomes {
-        match outcome {
-            MenuOutcome::Selected { session_id, label } => {
-                changed |= handle_selection(wm, session_id, &label, hosting);
-            }
-            MenuOutcome::Dismissed { session_id } => {
-                if session_is_open(wm, session_id) {
-                    close_session(wm);
-                    changed |= !hosting;
-                }
-            }
-        }
-    }
-
-    let bar_height = wm.state.config.bar_metrics().height;
+/// Called only when the tray view or bar presentation changes. There is no
+/// per-tick channel drain, menu cloning, process-ID lock, or child polling.
+pub(crate) fn reconcile(wm: &mut WmCore) -> bool {
     let host = &mut wm.bar.systray_host.instantmenu;
-    let presentation = wm.bar.systray_host.menu.presentation();
-    let wanted = if hosting { presentation.as_ref() } else { None };
-
-    match wanted {
-        None => {
-            let was_presented = host.presented.take().is_some();
-            kill_child(&host.child_pgid);
-            changed |= was_presented && !hosting;
-        }
-        Some(presentation) => {
-            let fingerprint = (presentation.session_id, presentation.view.clone());
-            if host.presented.as_ref() != Some(&fingerprint) {
-                kill_child(&host.child_pgid);
-                let lines = build_lines(&presentation.view);
-                if lines.is_empty() {
-                    // Nothing selectable at all: an empty launcher window
-                    // would flash and strand the session, so close it.
-                    host.presented = None;
-                    close_session(wm);
-                    changed = true;
-                } else if spawn_menu(host, presentation.session_id, lines, bar_height) {
-                    host.presented = Some(fingerprint);
-                    changed = true;
-                } else {
-                    // Spawn failed and availability is demoted: hosting is
-                    // already false again, so this same tick falls through to
-                    // bar-native rendering. Leave `presented` unset.
-                    host.presented = None;
-                }
-            }
-        }
-    }
-    changed
-}
-
-/// Map a chosen instantmenu line back to its entry and dispatch the action.
-///
-/// With the `value=<index>` integration, instantMENU outputs the `value`
-/// attribute (the entry's index in `MenuView`) rather than the display label.
-/// This decouples selection from fragile label equality and handles duplicate
-/// labels. A failing parse falls back to legacy label matching for backward
-/// compatibility.
-fn handle_selection(wm: &mut WmCore, session_id: u64, label: &str, hosting: bool) -> bool {
-    let Some(presentation) = wm.bar.systray_host.menu.presentation() else {
-        return false;
-    };
-    if presentation.session_id != session_id {
+    // X11 builds its first bars before installing event-loop sources.
+    if !host.presenter.is_installed() {
         return false;
     }
-    // Prefer index/value parsing; fall back to legacy label comparison.
-    let entry = if let Ok(index) = label.parse::<usize>() {
-        match presentation.view.entries.get(index) {
-            Some(entry) => entry,
-            None => {
-                // Unknown index: treat as dismissal.
-                close_session(wm);
-                return !hosting;
-            }
-        }
-    } else if let Some(entry) = presentation
-        .view
-        .entries
-        .iter()
-        .find(|entry| entry.display_label() == label)
-    {
-        entry
-    } else {
-        // Unknown output text: treat the exchange as a dismissal.
-        close_session(wm);
-        return !hosting;
-    };
-    if entry.separator || !entry.enabled {
-        // Parity with the bar-native menu, where a disabled entry consumes
-        // the press but stays inert: redisplay the same level.
-        wm.bar.systray_host.instantmenu.presented = None;
+    let backend = wm.state.config.systray.menu_backend;
+    let was_hosting = host.hosting(backend);
+    host.refresh_availability(backend);
+    let hosting = host.hosting(backend);
+    let revision = wm.bar.systray_host.menu.revision();
+    let height = wm.state.config.bar_metrics().height;
+    let host = &mut wm.bar.systray_host.instantmenu;
+    if !hosting || !wm.bar.systray_host.menu.is_presented() {
+        let was_presented = host.presented.take().is_some();
+        host.presenter.cancel();
+        return was_presented || was_hosting != hosting;
+    }
+    if host.presented == Some((revision, height)) {
         return false;
     }
-    let Some(runtime) = wm.bar.systray_host.runtime.as_ref() else {
-        return false;
-    };
-    runtime.dispatch_menu_action(session_id, entry.action);
-    // Activate closes through the worker's MenuChanged update; submenu
-    // navigation replaces the view and respawns on a later tick.
-    false
-}
-
-fn session_is_open(wm: &WmCore, session_id: u64) -> bool {
-    wm.bar
+    let presentation = wm
+        .bar
         .systray_host
         .menu
         .presentation()
-        .is_some_and(|presentation| presentation.session_id == session_id)
+        .expect("open tray view");
+    let lines = build_lines(&presentation.view);
+    if lines.is_empty() {
+        host.presenter.cancel();
+        host.presented = None;
+        close_session(wm);
+        return true;
+    }
+    let command = instantmenu_command(lines.len().try_into().unwrap_or(i32::MAX), height);
+    if start_menu(host, command, presentation, lines).is_err() {
+        // A failed presenter falls back to bar-native rendering. Retry only
+        // after the backend setting changes, rather than on every frame.
+        host.available = Some(false);
+        return true;
+    }
+    host.presented = Some((revision, height));
+    true
 }
 
-/// Close the open session on the main thread and tell the worker, mirroring
-/// [`crate::systray::close_menu`].
-fn close_session(wm: &mut WmCore) {
-    let Some(session_id) = wm.bar.systray_host.menu.close() else {
+fn start_menu(
+    host: &mut InstantMenuHost,
+    command: Command,
+    presentation: TrayMenuPresentation,
+    lines: Vec<String>,
+) -> Result<(), String> {
+    host.presented = None;
+    let input = lines.join("\n") + "\n";
+    menu_presenter::start(&mut host.presenter, command, presentation, input).inspect_err(|error| {
+        log::warn!("systray menu: {error}");
+    })
+}
+
+fn selected_entry<'a>(view: &'a MenuView, answer: &str) -> Option<&'a MenuEntry> {
+    if let Ok(index) = answer.parse::<usize>() {
+        view.entries.get(index)
+    } else {
+        view.entries
+            .iter()
+            .find(|entry| entry.display_label() == answer)
+    }
+}
+
+fn finish(ctx: &mut WmCtx<'_>, generation: u64, presentation: TrayMenuPresentation, answer: &str) {
+    let wm = ctx.core_mut();
+    let host = &mut wm.bar.systray_host.instantmenu;
+    if generation != host.presenter.generation {
+        return;
+    }
+    host.presenter.source = None;
+    if let Some(child) = host.presenter.child.take() {
+        crate::util::reap_child_async(child);
+    }
+    // A D-Bus update can arrive before reconciliation cancels the old source.
+    // Validate the model revision as well as the process generation.
+    if presentation.revision != wm.bar.systray_host.menu.revision()
+        || !host.hosting(wm.state.config.systray.menu_backend)
+    {
+        return;
+    }
+    let Some(entry) = selected_entry(&presentation.view, answer) else {
+        close_session(wm);
         return;
     };
-    if let Some(runtime) = wm.bar.systray_host.runtime.as_ref() {
-        runtime.close_menu(session_id);
+    if entry.separator || !entry.enabled {
+        host.presented = None;
+        wm.bar.systray_host.menu.invalidate_presentation();
+        return;
     }
+    let Some(runtime) = wm.bar.systray_host.runtime.as_ref() else {
+        close_session(wm);
+        return;
+    };
+    runtime.dispatch_menu_action(presentation.session_id, entry.action, &presentation.view);
+    // Keep the presentation stamp until the worker acknowledges the action.
+    // This prevents respawning the previous level while a submenu is loading.
+}
+
+fn close_session(wm: &mut WmCore) {
+    crate::systray::close_menu(wm);
 }
 
 fn instantmenu_command(count: i32, bar_height: i32) -> Command {
@@ -280,103 +188,6 @@ fn instantmenu_command(count: i32, bar_height: i32) -> Command {
         .stdout(Stdio::piped())
         .process_group(0);
     command
-}
-
-/// Spawn an instantmenu for `session_id` showing one line per selectable
-/// entry. The reader thread publishes the outcome and pings the loop.
-fn spawn_menu(
-    host: &mut InstantMenuHost,
-    session_id: u64,
-    lines: Vec<String>,
-    bar_height: i32,
-) -> bool {
-    let Ok(count) = i32::try_from(lines.len()) else {
-        return false;
-    };
-    let mut items = lines.join("\n");
-    items.push('\n');
-
-    let mut command = instantmenu_command(count, bar_height);
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            log::warn!("systray menu: failed to spawn instantmenu: {error}");
-            host.available = Some(false);
-            return false;
-        }
-    };
-
-    let Ok(pgid) = i32::try_from(child.id()) else {
-        let _ = child.kill();
-        return false;
-    };
-    if let Ok(mut slot) = host.child_pgid.lock() {
-        *slot = Some(pgid);
-    }
-
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take();
-    let sender = host.sender.clone();
-    let wake = host.wake.clone();
-    let pgid_slot = Arc::clone(&host.child_pgid);
-
-    let reader = std::thread::Builder::new()
-        .name("instantwm-tray-menu".to_owned())
-        .spawn(move || {
-            let outcome = match run_child(&mut child, stdin, stdout, &items) {
-                Some(label) => MenuOutcome::Selected { session_id, label },
-                None => MenuOutcome::Dismissed { session_id },
-            };
-            // Drop our pgid before publishing: once wait() has reaped the
-            // child the pid may be recycled and must not stay signalable.
-            if let Ok(mut slot) = pgid_slot.lock()
-                && slot.is_some_and(|pid| pid == pgid)
-            {
-                *slot = None;
-            }
-            let _ = sender.send(outcome);
-            if let Some(wake) = wake.as_ref() {
-                wake.ping();
-            }
-        });
-    if reader.is_err() {
-        log::warn!("systray menu: failed to spawn instantmenu reader thread");
-        kill_child(&host.child_pgid);
-        return false;
-    }
-    true
-}
-
-/// Feed the item lines, then read instantMENU's single-line answer. `None`
-/// means no selection (empty output, or a failed/exited process).
-fn run_child(
-    child: &mut Child,
-    stdin: Option<std::process::ChildStdin>,
-    stdout: Option<std::process::ChildStdout>,
-    items: &str,
-) -> Option<String> {
-    if let Some(mut stdin) = stdin {
-        let _ = stdin.write_all(items.as_bytes());
-        let _ = stdin.flush();
-    } // dropped here: EOF tells instantmenu the item stream is complete
-    let label = stdout
-        .and_then(|stdout| BufReader::new(stdout).lines().next())
-        .and_then(|line| line.ok())
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty());
-    let _ = child.wait();
-    label
-}
-
-/// Terminate the live instantmenu process group, if any.
-fn kill_child(pgid_slot: &Arc<Mutex<Option<i32>>>) {
-    if let Ok(mut slot) = pgid_slot.lock()
-        && let Some(pgid) = slot.take()
-    {
-        // TERM lets instantmenu release its surfaces; a missing group (ESRCH)
-        // means the process is already gone, which is the goal.
-        crate::util::signal_process_group(pgid, libc::SIGTERM);
-    }
 }
 
 /// One instantMENU input line per selectable entry; separators have no

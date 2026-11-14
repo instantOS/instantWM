@@ -80,6 +80,11 @@ pub fn autostart_ipc_status_ping(
     crate::window_menu::install(loop_handle.clone(), &mut wm.core.window_menu, |state| {
         state.ctx()
     });
+    crate::systray::instantmenu::install(
+        loop_handle.clone(),
+        &mut wm.core.bar.systray_host,
+        |state| state.ctx(),
+    );
     crate::bar::layout_menu::install(loop_handle.clone(), &mut wm.core.bar.layout_menu, |state| {
         state.ctx()
     });
