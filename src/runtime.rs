@@ -40,8 +40,7 @@ pub struct TickResult {
 /// Shared per-tick housekeeping with backend-specific scheduler options.
 ///
 /// Processing order is backend-independent and deterministic:
-/// 1. StatusNotifier tray events (incl. the external instantMENU tray-menu
-///    host, which reconciles against the drained session state)
+/// 1. StatusNotifier tray events
 /// 2. internal status updates
 /// 3. IPC command dispatch
 /// 4. monitor configuration work
@@ -57,9 +56,6 @@ pub fn event_loop_tick_with_options(
     }
     ctx.core().state.shortcuts.validated();
     let systray_updated = ctx.core_mut().poll_systray();
-    if crate::systray::instantmenu::drive_instantmenu_menu(ctx.core_mut()) {
-        ctx.core_mut().bar.invalidate_content();
-    }
     let status_handled = ctx.core_mut().bar.drain_status_updates();
     // A finished region selection may resize a window, so it drains before
     // pending work to let the same tick apply the resulting layout.

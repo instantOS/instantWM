@@ -103,15 +103,7 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>, reverse: bool) -> Result<(), String> {
     menu_presenter::start(&mut core.window_menu, command, windows, input)
 }
 
-pub(crate) fn install<T: 'static>(
-    handle: calloop::LoopHandle<'static, T>,
-    host: &mut WindowMenuHost,
-    context: for<'a> fn(&'a mut T) -> WmCtx<'a>,
-) {
-    menu_presenter::install(handle, host, context, finish);
-}
-
-fn finish(ctx: &mut WmCtx<'_>, generation: u64, windows: Vec<WindowId>, answer: &str) {
+pub(crate) fn finish(ctx: &mut WmCtx<'_>, generation: u64, windows: Vec<WindowId>, answer: &str) {
     let host = &mut ctx.core_mut().window_menu;
     if host.generation != generation {
         return;
@@ -250,10 +242,11 @@ mod tests {
             .unwrap()
             .is_hidden = true;
         let mut event_loop = calloop::EventLoop::try_new().unwrap();
-        install(
+        menu_presenter::install(
             event_loop.handle(),
             &mut wm.core.window_menu,
             |wm: &mut TestWm| wm.test_ctx(),
+            finish,
         );
         let mut command = Command::new("sh");
         command

@@ -80,16 +80,15 @@ pub(super) fn handle_menu_action(
                 // Do not navigate into a stale submenu that has no real items.
                 Ok(view) if view.entries.len() > 1 => {
                     current.parents.push(id);
-                    current.last_view = view.clone();
-                    send_menu_changed(evt_tx, current.id, Some(view));
+                    current.last_view = view;
                 }
                 Ok(_) => {}
                 Err(error) => log::warn!("status notifier: failed to open submenu: {error}"),
             }
+            send_menu_changed(evt_tx, current.id, Some(current.last_view.clone()));
         }
         MenuAction::Back => {
-            current.parents.pop();
-            let parent_id = current.parent_id();
+            let parent_id = current.parents.iter().rev().nth(1).copied().unwrap_or(0);
             notify_menu_about_to_show(conn, &current.service, &current.menu_path, parent_id);
             match fetch_menu_level(
                 conn,
@@ -99,11 +98,12 @@ pub(super) fn handle_menu_action(
                 parent_id != 0,
             ) {
                 Ok(view) => {
-                    current.last_view = view.clone();
-                    send_menu_changed(evt_tx, current.id, Some(view));
+                    current.parents.pop();
+                    current.last_view = view;
                 }
                 Err(error) => log::warn!("status notifier: failed to return to menu: {error}"),
             }
+            send_menu_changed(evt_tx, current.id, Some(current.last_view.clone()));
         }
     }
 }
