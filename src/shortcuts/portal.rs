@@ -118,7 +118,7 @@ struct Portal {
 
 #[zbus::interface(name = "org.freedesktop.impl.portal.GlobalShortcuts")]
 impl Portal {
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         2
     }
@@ -465,7 +465,7 @@ struct PortalSession {
 }
 #[zbus::interface(name = "org.freedesktop.impl.portal.Session")]
 impl PortalSession {
-    #[zbus(property)]
+    #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         1
     }
