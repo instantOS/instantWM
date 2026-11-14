@@ -77,9 +77,12 @@ pub fn autostart_ipc_status_ping(
     loop_handle
         .insert_source(slop_ping_source, |_, _, _| {})
         .expect("failed to insert region-selection ping source");
-    crate::window_menu::install(loop_handle.clone(), &mut wm.core.window_menu, |state| {
-        state.ctx()
-    });
+    crate::menu_presenter::install(
+        loop_handle.clone(),
+        &mut wm.core.window_menu,
+        |state| state.ctx(),
+        crate::window_menu::finish,
+    );
     crate::systray::instantmenu::install(
         loop_handle.clone(),
         &mut wm.core.bar.systray_host,

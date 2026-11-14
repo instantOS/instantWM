@@ -80,7 +80,7 @@ pub(super) fn handle_menu_action(
                 // Do not navigate into a stale submenu that has no real items.
                 Ok(view) if view.entries.len() > 1 => {
                     current.parents.push(id);
-                    current.last_view = view.clone();
+                    current.last_view = view;
                 }
                 Ok(_) => {}
                 Err(error) => log::warn!("status notifier: failed to open submenu: {error}"),

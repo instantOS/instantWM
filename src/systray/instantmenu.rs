@@ -30,10 +30,6 @@ pub(crate) struct InstantMenuHost {
 }
 
 impl InstantMenuHost {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     pub(crate) fn hosting(&self, backend: TrayMenuBackend) -> bool {
         backend != TrayMenuBackend::StatusBar && self.available == Some(true)
     }
@@ -91,17 +87,12 @@ pub(crate) fn reconcile(wm: &mut WmCore) -> bool {
     if lines.is_empty() {
         host.presenter.cancel();
         host.presented = None;
-        close_session(wm);
+        crate::systray::close_menu(wm);
         return true;
     }
     let command = instantmenu_command(lines.len().try_into().unwrap_or(i32::MAX), height);
-    if start_menu(host, command, presentation, lines).is_err() {
-        // A failed presenter falls back to bar-native rendering. Retry only
-        // after the backend setting changes, rather than on every frame.
-        host.available = Some(false);
-        return true;
-    }
-    host.presented = Some((revision, height));
+    start_menu(host, command, presentation, lines, height);
+
     true
 }
 
@@ -110,12 +101,20 @@ fn start_menu(
     command: Command,
     presentation: TrayMenuPresentation,
     lines: Vec<String>,
-) -> Result<(), String> {
+    bar_height: i32,
+) {
     host.presented = None;
+    let revision = presentation.revision;
     let input = lines.join("\n") + "\n";
-    menu_presenter::start(&mut host.presenter, command, presentation, input).inspect_err(|error| {
-        log::warn!("systray menu: {error}");
-    })
+    match menu_presenter::start(&mut host.presenter, command, presentation, input) {
+        Ok(()) => host.presented = Some((revision, bar_height)),
+        Err(error) => {
+            log::warn!("systray menu: {error}");
+            // Retain the model for bar-native fallback. Retry only after the
+            // backend setting changes, rather than on every frame.
+            host.available = Some(false);
+        }
+    }
 }
 
 fn selected_entry<'a>(view: &'a MenuView, answer: &str) -> Option<&'a MenuEntry> {
@@ -146,7 +145,7 @@ fn finish(ctx: &mut WmCtx<'_>, generation: u64, presentation: TrayMenuPresentati
         return;
     }
     let Some(entry) = selected_entry(&presentation.view, answer) else {
-        close_session(wm);
+        crate::systray::close_menu(wm);
         return;
     };
     if entry.separator || !entry.enabled {
@@ -155,16 +154,12 @@ fn finish(ctx: &mut WmCtx<'_>, generation: u64, presentation: TrayMenuPresentati
         return;
     }
     let Some(runtime) = wm.bar.systray_host.runtime.as_ref() else {
-        close_session(wm);
+        crate::systray::close_menu(wm);
         return;
     };
     runtime.dispatch_menu_action(presentation.session_id, entry.action, &presentation.view);
     // Keep the presentation stamp until the worker acknowledges the action.
     // This prevents respawning the previous level while a submenu is loading.
-}
-
-fn close_session(wm: &mut WmCore) {
-    crate::systray::close_menu(wm);
 }
 
 fn instantmenu_command(count: i32, bar_height: i32) -> Command {
@@ -489,7 +484,7 @@ mod tests {
 
     #[test]
     fn hosting_depends_on_backend_and_availability() {
-        let mut host = InstantMenuHost::new();
+        let mut host = InstantMenuHost::default();
         assert!(!host.hosting(TrayMenuBackend::Auto), "not scanned yet");
 
         host.available = Some(true);
@@ -546,5 +541,275 @@ mod tests {
                 .is_some()
         );
         assert_eq!(map.get("--position"), Some(&"top-right"));
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use crate::systray::MenuToggle;
+    use crate::test_support::TestWm;
+    use std::time::Duration;
+
+    fn view(label: &str) -> MenuView {
+        MenuView {
+            entries: vec![MenuEntry {
+                label: label.into(),
+                width: 80,
+                enabled: true,
+                separator: false,
+                toggle: MenuToggle::None,
+                action: MenuAction::Activate(7),
+            }],
+        }
+    }
+
+    fn fixture() -> (TestWm, calloop::EventLoop<'static, TestWm>) {
+        let mut wm = TestWm::new(crate::backend::WaylandBackendData::default());
+        let event_loop = calloop::EventLoop::<TestWm>::try_new().unwrap();
+        install(event_loop.handle(), &mut wm.core.bar.systray_host, |wm| {
+            wm.test_ctx()
+        });
+        wm.core.bar.systray_host.instantmenu.available = Some(true);
+        (wm, event_loop)
+    }
+
+    fn open(wm: &mut TestWm, label: &str) -> TrayMenuPresentation {
+        let menu = &mut wm.core.bar.systray_host.menu;
+        menu.begin(4);
+        menu.apply(4, Some(view(label)));
+        menu.presentation().unwrap()
+    }
+
+    fn command(script: &str) -> Command {
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .process_group(0);
+        command
+    }
+
+    fn present(wm: &mut TestWm, command: Command) {
+        let presentation = wm.core.bar.systray_host.menu.presentation().unwrap();
+        let lines = build_lines(&presentation.view);
+        let height = wm.core.state.config.bar_metrics().height;
+        start_menu(
+            &mut wm.core.bar.systray_host.instantmenu,
+            command,
+            presentation,
+            lines,
+            height,
+        );
+    }
+
+    #[test]
+    fn closed_and_unchanged_menus_have_no_repeated_presenter_work() {
+        let (mut wm, _event_loop) = fixture();
+        wm.with_ctx(|ctx| ctx.reconcile_bars());
+        assert!(
+            wm.core
+                .bar
+                .systray_host
+                .instantmenu
+                .presenter
+                .source
+                .is_none()
+        );
+        let generation = wm.core.bar.systray_host.instantmenu.presenter.generation;
+        for _ in 0..100 {
+            wm.core.bar.invalidate_content();
+            wm.with_ctx(|ctx| ctx.reconcile_bars());
+        }
+        assert_eq!(
+            generation,
+            wm.core.bar.systray_host.instantmenu.presenter.generation
+        );
+        open(&mut wm, "Open");
+        present(&mut wm, command("cat >/dev/null; exec sleep 30"));
+        let generation = wm.core.bar.systray_host.instantmenu.presenter.generation;
+        for _ in 0..100 {
+            assert!(!reconcile(&mut wm.core));
+        }
+        assert_eq!(
+            generation,
+            wm.core.bar.systray_host.instantmenu.presenter.generation
+        );
+    }
+
+    #[test]
+    fn replacement_rejects_old_dismissal_and_old_selection() {
+        let (mut wm, mut event_loop) = fixture();
+        let old = open(&mut wm, "Old");
+        present(&mut wm, command("cat >/dev/null; exec sleep 30"));
+        let old_generation = wm.core.bar.systray_host.instantmenu.presenter.generation;
+        wm.core.bar.systray_host.menu.apply(4, Some(view("New")));
+        present(&mut wm, command("cat >/dev/null; exec sleep 30"));
+        let host = &wm.core.bar.systray_host.instantmenu;
+        let generation = host.presenter.generation;
+        let child = host.presenter.child.as_ref().unwrap().id();
+        for answer in ["", "0"] {
+            wm.with_ctx(|ctx| finish(ctx, old_generation, old.clone(), answer));
+            assert_eq!(
+                wm.core.bar.systray_host.menu.presentation().unwrap().view,
+                view("New")
+            );
+            assert_eq!(
+                wm.core
+                    .bar
+                    .systray_host
+                    .instantmenu
+                    .presenter
+                    .child
+                    .as_ref()
+                    .unwrap()
+                    .id(),
+                child
+            );
+        }
+        assert_ne!(generation, old_generation);
+        wm.core.bar.systray_host.menu.close();
+        reconcile(&mut wm.core);
+        assert!(
+            wm.core
+                .bar
+                .systray_host
+                .instantmenu
+                .presenter
+                .source
+                .is_none()
+        );
+        assert!(
+            wm.core
+                .bar
+                .systray_host
+                .instantmenu
+                .presenter
+                .child
+                .is_none()
+        );
+        event_loop.dispatch(Duration::ZERO, &mut wm).unwrap();
+    }
+
+    #[test]
+    fn updates_before_reconciliation_also_reject_stale_results() {
+        for answer in ["", "0"] {
+            let (mut wm, _event_loop) = fixture();
+            let old = open(&mut wm, "Old");
+            let generation = wm.core.bar.systray_host.instantmenu.presenter.generation;
+            wm.core.bar.systray_host.menu.apply(4, Some(view("New")));
+            wm.with_ctx(|ctx| finish(ctx, generation, old, answer));
+            assert_eq!(
+                wm.core.bar.systray_host.menu.presentation().unwrap().view,
+                view("New")
+            );
+        }
+    }
+
+    #[test]
+    fn dismissal_via_output_readiness_closes_session_and_releases_source() {
+        for script in ["cat >/dev/null", "cat >/dev/null; printf 'unknown\\n'"] {
+            let (mut wm, mut event_loop) = fixture();
+            open(&mut wm, "Open");
+            present(&mut wm, command(script));
+            event_loop
+                .dispatch(Duration::from_secs(5), &mut wm)
+                .unwrap();
+            assert!(wm.core.bar.systray_host.menu.presentation().is_none());
+            assert!(
+                wm.core
+                    .bar
+                    .systray_host
+                    .instantmenu
+                    .presenter
+                    .source
+                    .is_none()
+            );
+            assert!(
+                wm.core
+                    .bar
+                    .systray_host
+                    .instantmenu
+                    .presenter
+                    .child
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn spawn_failure_falls_back_and_backend_change_cancels_external_menu() {
+        let (mut wm, _event_loop) = fixture();
+        open(&mut wm, "Open");
+        present(&mut wm, Command::new("/missing/instantmenu"));
+        assert!(
+            !wm.core
+                .bar
+                .systray_host
+                .instantmenu
+                .hosting(TrayMenuBackend::Auto)
+        );
+        assert!(
+            wm.core.bar.systray_host.menu.presentation().is_some(),
+            "native fallback retains the view"
+        );
+        assert!(!reconcile(&mut wm.core));
+        wm.core.bar.systray_host.instantmenu.available = Some(true);
+        present(&mut wm, command("cat >/dev/null; exec sleep 30"));
+        wm.core.state.config.systray.menu_backend = TrayMenuBackend::StatusBar;
+        wm.core.bar.invalidate(crate::bar::BarChange::Presentation);
+        wm.with_ctx(|ctx| ctx.reconcile_bars());
+        assert!(
+            wm.core
+                .bar
+                .systray_host
+                .instantmenu
+                .presenter
+                .source
+                .is_none()
+        );
+        assert!(
+            wm.core
+                .bar
+                .systray_host
+                .instantmenu
+                .presenter
+                .child
+                .is_none()
+        );
+        assert!(wm.core.bar.systray_host.menu.presentation().is_some());
+    }
+
+    #[test]
+    fn acknowledgement_of_unchanged_view_advances_revision_and_redisplays() {
+        let (mut wm, _event_loop) = fixture();
+        let first = open(&mut wm, "Preferences");
+        present(&mut wm, command("cat >/dev/null; exec sleep 30"));
+        assert!(
+            !wm.core
+                .bar
+                .systray_host
+                .menu
+                .apply(4, Some(first.view.clone()))
+        );
+        assert_ne!(wm.core.bar.systray_host.menu.revision(), first.revision);
+        present(&mut wm, command("cat >/dev/null; exec sleep 30"));
+    }
+
+    #[test]
+    fn selection_resolves_against_snapshot_and_disabled_rows_are_redisplayed() {
+        let (mut wm, _event_loop) = fixture();
+        let mut presentation = open(&mut wm, "Open");
+        assert_eq!(
+            selected_entry(&presentation.view, "0").unwrap().action,
+            MenuAction::Activate(7)
+        );
+        presentation.view.entries[0].enabled = false;
+        let generation = wm.core.bar.systray_host.instantmenu.presenter.generation;
+        wm.core.bar.systray_host.menu.take_presentation_change();
+        wm.with_ctx(|ctx| finish(ctx, generation, presentation, "0"));
+        assert!(wm.core.bar.systray_host.menu.presentation().is_some());
+        assert!(wm.core.bar.systray_host.menu.take_presentation_change());
     }
 }
