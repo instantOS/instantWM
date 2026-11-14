@@ -32,6 +32,8 @@ pub(crate) struct ClientView<'a> {
 pub struct WmModel {
     /// All monitors/screens, each owning its clients.
     pub(crate) monitors: MonitorManager,
+    /// Global MRU order for the window switcher, newest first.
+    pub(crate) focus_history: Vec<WindowId>,
     /// Shared tag metadata.
     pub(crate) tags: TagSet,
 }
@@ -41,7 +43,15 @@ impl WmModel {
         Self {
             monitors: MonitorManager::new(),
             tags: TagSet::default(),
+            focus_history: Vec::new(),
         }
+    }
+
+    /// Record committed focus across tags and monitors. Per-tag recovery history
+    /// remains independent of this global switcher order.
+    pub(crate) fn record_global_focus(&mut self, win: WindowId) {
+        self.focus_history.retain(|candidate| *candidate != win);
+        self.focus_history.insert(0, win);
     }
 
     // -------------------------------------------------------------------------
@@ -168,6 +178,7 @@ impl WmModel {
     /// metadata. Once this returns, the model cannot contain a partial client.
     pub(crate) fn remove_client(&mut self, win: WindowId) -> Option<RemovedClient> {
         let detached = self.detach_client(win)?;
+        self.focus_history.retain(|candidate| *candidate != win);
         self.debug_assert_client_graph();
         Some(RemovedClient {
             client: detached.client,

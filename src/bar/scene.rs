@@ -924,6 +924,7 @@ mod tests {
             running,
             bar,
             focus,
+            window_menu: Default::default(),
         };
         let snapshots = build_monitor_snapshots(&core, 60, BarSnapshotScope::Visible);
         let host = snapshots

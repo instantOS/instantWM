@@ -1,19 +1,14 @@
 //! WM-owned layout chooser. The event loop watches the presenter only while
 //! it is open; its stdout callback applies the choice without per-tick polling.
-use std::fs::File;
-use std::io::{self, Read, Write};
-use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 
 use crate::actions::{KeyAction, NamedAction};
 use crate::contexts::WmCtx;
 use crate::layouts::LayoutCommand;
 use crate::types::{Key, Modifier, Monitor, MonitorId, TagMask};
-use calloop::generic::Generic;
-use calloop::{Interest, LoopHandle, Mode, PostAction, RegistrationToken};
 
-struct Choice {
+pub(crate) struct Choice {
     value: String,
     label: String,
     icon: &'static str,
@@ -235,7 +230,7 @@ fn menu_command(active: LayoutCommand, anchor: &MenuAnchor) -> Command {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct MenuContext {
+pub(crate) struct MenuContext {
     monitor: MonitorId,
     tags: TagMask,
 }
@@ -249,111 +244,26 @@ impl MenuContext {
     }
 }
 
-type WatchOutput = dyn Fn(File, u64, MenuContext, Vec<Choice>) -> Result<RegistrationToken, String>;
+pub(crate) type LayoutMenuHost = crate::menu_presenter::MenuHost<(MenuContext, Vec<Choice>)>;
 
-#[derive(Default)]
-pub(crate) struct LayoutMenuHost {
-    watch: Option<Box<WatchOutput>>,
-    remove: Option<Box<dyn Fn(RegistrationToken)>>,
-    source: Option<RegistrationToken>,
-    generation: u64,
-    child: Option<Child>,
-}
-
-impl LayoutMenuHost {
-    fn cancel(&mut self) {
-        self.generation = self.generation.wrapping_add(1);
-        if let Some(token) = self.source.take()
-            && let Some(remove) = &self.remove
-        {
-            remove(token);
-        }
-        if let Some(mut child) = self.child.take() {
-            // Keep the child unreaped until after signalling, so its pid cannot
-            // be reused for an unrelated process group.
-            if let Ok(pgid) = i32::try_from(child.id()) {
-                crate::util::signal_process_group(pgid, libc::SIGTERM);
-            } else {
-                let _ = child.kill();
-            }
-            crate::util::reap_child_async(child);
-        }
-    }
-}
-
-impl Drop for LayoutMenuHost {
-    fn drop(&mut self) {
-        self.cancel();
-    }
-}
-
-/// Backend wiring supplies only access to its shared context. Sources are
-/// installed on demand and removed after a choice, dismissal, or cancellation.
 pub(crate) fn install<T: 'static>(
-    handle: LoopHandle<'static, T>,
+    handle: calloop::LoopHandle<'static, T>,
     host: &mut LayoutMenuHost,
     context: for<'a> fn(&'a mut T) -> WmCtx<'a>,
 ) {
-    let remove_handle = handle.clone();
-    host.remove = Some(Box::new(move |token| remove_handle.remove(token)));
-    host.watch = Some(Box::new(
-        move |output, generation, menu_context, entries| {
-            let mut buffer = Vec::new();
-            handle
-                .insert_source(
-                    Generic::new(output, Interest::READ, Mode::Level),
-                    move |_, output, state| {
-                        let answer = match read_answer(&mut &**output, &mut buffer) {
-                            Ok(None) => return Ok(PostAction::Continue),
-                            Ok(Some(answer)) => answer,
-                            Err(error) => {
-                                log::debug!("layout chooser output: {error}");
-                                String::new()
-                            }
-                        };
-                        finish(
-                            &mut context(state),
-                            generation,
-                            menu_context,
-                            selected_action(&entries, answer.trim_end()),
-                        );
-                        Ok(PostAction::Remove)
-                    },
-                )
-                .map_err(|error| format!("failed to watch layout chooser: {error}"))
+    crate::menu_presenter::install(
+        handle,
+        host,
+        context,
+        |ctx, generation, (menu_context, entries), answer| {
+            finish(
+                ctx,
+                generation,
+                menu_context,
+                selected_action(&entries, answer),
+            );
         },
-    ));
-}
-
-/// Read a bounded, nonblocking single-line response. Empty EOF is dismissal.
-fn read_answer(output: &mut impl Read, buffer: &mut Vec<u8>) -> io::Result<Option<String>> {
-    let mut chunk = [0; 128];
-    loop {
-        match output.read(&mut chunk) {
-            Ok(0) => {
-                return String::from_utf8(std::mem::take(buffer))
-                    .map(Some)
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
-            }
-            Ok(count) => {
-                buffer.extend_from_slice(&chunk[..count]);
-                if buffer.len() > 128 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "layout chooser response too long",
-                    ));
-                }
-                if let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
-                    return String::from_utf8(buffer[..end].to_vec())
-                        .map(Some)
-                        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(None),
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(error) => return Err(error),
-        }
-    }
+    );
 }
 
 fn anchor(monitor: &Monitor, layout_start: i32) -> (i32, i32) {
@@ -392,54 +302,17 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
 
 fn start_menu(
     host: &mut LayoutMenuHost,
-    mut command: Command,
+    command: Command,
     context: MenuContext,
     entries: Vec<Choice>,
 ) -> Result<(), String> {
-    if host.watch.is_none() {
-        return Err("layout chooser event source is not configured".into());
-    }
     let input = entries
         .iter()
         .map(Choice::line)
         .collect::<Vec<_>>()
         .join("\n")
         + "\n";
-    host.cancel();
-    let child = command
-        .spawn()
-        .map_err(|error| format!("failed to open layout chooser: {error}"))?;
-    host.child = Some(child);
-    let result = (|| {
-        let child = host.child.as_mut().unwrap();
-        let output = child.stdout.take().expect("piped stdout");
-        let output = File::from(OwnedFd::from(output));
-        // Preserve existing descriptor flags when enabling nonblocking reads.
-        let fd = output.as_raw_fd();
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
-            return Err(io::Error::last_os_error().to_string());
-        }
-        // Eight bounded menu rows fit in an empty pipe. Close stdin immediately
-        // after writing so instantMENU can finish reading its entries.
-        child
-            .stdin
-            .take()
-            .expect("piped stdin")
-            .write_all(input.as_bytes())
-            .map_err(|error| format!("failed to populate layout chooser: {error}"))?;
-        host.source = Some(host.watch.as_ref().unwrap()(
-            output,
-            host.generation,
-            context,
-            entries,
-        )?);
-        Ok(())
-    })();
-    if result.is_err() {
-        host.cancel();
-    }
-    result
+    crate::menu_presenter::start(host, command, (context, entries), input)
 }
 
 fn finish(ctx: &mut WmCtx<'_>, generation: u64, context: MenuContext, action: Option<NamedAction>) {
@@ -471,6 +344,8 @@ fn finish(ctx: &mut WmCtx<'_>, generation: u64, context: MenuContext, action: Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::menu_presenter::read_answer;
+    use std::io::Write;
 
     fn wm_with_monitor() -> crate::test_support::TestWm {
         let mut wm =

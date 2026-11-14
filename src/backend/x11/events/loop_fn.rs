@@ -80,6 +80,9 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .insert_source(slop_ping_source, |_, _, _| {})
         .expect("failed to insert region-selection ping source");
 
+    crate::window_menu::install(loop_handle.clone(), &mut wm.core.window_menu, |wm| {
+        wm.x11_ctx()
+    });
     crate::bar::layout_menu::install(loop_handle.clone(), &mut wm.core.bar.layout_menu, |wm| {
         wm.x11_ctx()
     });

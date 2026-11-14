@@ -266,6 +266,8 @@ define_named_actions!(
     } },
     TerminalExec(Vec<String>) => { name: "terminal_exec", overview: Preserve, doc: "run a command in the configured terminal without shell expansion", run: |ctx, argv| { let (program, args) = argv.split_first().ok_or("terminal_exec requires a command")?; crate::util::spawn_terminal(ctx, instantos_terminal::Launcher::new(program).args(args))?; } },
     Spawn(Vec<String>) => { name: "spawn", overview: Preserve, doc: "spawn a command without shell expansion", run: |ctx, argv| { spawn(ctx, argv)?; } },
+    WindowMenu => { name: "window_menu", doc: "switch windows in recent focus order", run: |ctx| { crate::window_menu::open(ctx, false)?; } },
+    WindowMenuReverse => { name: "window_menu_reverse", doc: "switch windows in reverse recent focus order", run: |ctx| { crate::window_menu::open(ctx, true)?; } },
     LayoutMenu => { name: "layout_menu", overview: Preserve, doc: "open the layout chooser below the bar button", run: |ctx| { crate::bar::layout_menu::open(ctx)?; } },
     SetLayout(LayoutCommand) => { name: "set_layout", doc: "set layout", run: |ctx, layout| { set_layout(ctx, *layout); } },
     ResetLayoutTo(LayoutCommand) => { name: "reset_layout_to", doc: "activate a tiling layout and reset its arrangement", run: |ctx, layout| { reset_layout_to(ctx, *layout)?; } },
