@@ -54,6 +54,21 @@ fn normalized_winit_touch_position(
     NormalizedTouchPosition::new(x / f64::from(size.w), y / f64::from(size.h))
 }
 
+/// Host pointer coordinates are normalized fractions. Map them into the live
+/// output's logical region, including its origin, rather than window pixels.
+fn nested_pointer_position(
+    output: &smithay::output::Output,
+    x: f64,
+    y: f64,
+) -> Option<smithay::utils::Point<f64, smithay::utils::Logical>> {
+    let size = output
+        .current_transform()
+        .transform_size(output.current_mode()?.size)
+        .to_f64()
+        .to_logical(output.current_scale().fractional_scale());
+    Some(output.current_location().to_f64() + smithay::utils::Point::from((x * size.w, y * size.h)))
+}
+
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
     let wm = super::bootstrap::create_wayland_wm();
@@ -167,6 +182,7 @@ pub fn run() -> ! {
             let outputs_changed = state.native.project_completed_output_transactions();
             if outputs_changed {
                 refresh_monitor_layout(&mut state.ctx());
+                crate::backend::wayland::input::recover_pointer_after_output_change(state);
                 state
                     .native
                     .push_command(WmCommand::SyncLayerExclusiveZones);
@@ -358,11 +374,18 @@ fn dispatch_winit_input(
             }
         }
         InputEvent::PointerMotionAbsolute { event: motion } => {
-            let Some(size) = usable_window_size(state.native.runtime.winit_window_size) else {
+            if usable_window_size(state.native.runtime.winit_window_size).is_none() {
+                return;
+            }
+            let Some(output) = state.native.space.outputs().next() else {
                 return;
             };
-            let x = motion.x_transformed(size.w);
-            let y = motion.y_transformed(size.h);
+            let Some(position) =
+                nested_pointer_position(output, motion.x_transformed(1), motion.y_transformed(1))
+            else {
+                return;
+            };
+            let (x, y) = (position.x, position.y);
             state
                 .native
                 .push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
@@ -519,6 +542,38 @@ mod touch_tests {
     use crate::backend::wayland::input::touch::NormalizedTouchPosition;
     use crate::types::Size;
     use smithay::utils::{Physical, Size as SmithaySize};
+
+    #[test]
+    fn nested_pointer_tracks_runtime_scale_and_output_origin() {
+        use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
+        use smithay::utils::{Point, Transform};
+        let output = Output::new(
+            "test".into(),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "test".into(),
+                model: "test".into(),
+                serial_number: "test".into(),
+            },
+        );
+        for scale in [1.0, 2.0, 1.25, 0.75, 1.0] {
+            output.change_current_state(
+                Some(Mode {
+                    size: (1920, 1080).into(),
+                    refresh: 60_000,
+                }),
+                Some(Transform::Flipped180),
+                Some(Scale::Fractional(scale)),
+                Some((-200, 100).into()),
+            );
+            let position = super::nested_pointer_position(&output, 0.5, 0.75).unwrap();
+            assert_eq!(
+                position,
+                Point::from((-200.0 + 960.0 / scale, 100.0 + 810.0 / scale))
+            );
+        }
+    }
 
     #[test]
     fn touch_coordinates_use_each_window_dimension() {

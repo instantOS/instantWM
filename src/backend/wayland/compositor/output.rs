@@ -63,6 +63,15 @@ fn close_layer_surfaces(output: &Output) -> bool {
 }
 
 impl WaylandNativeState {
+    /// Reconfigure output-bound shell surfaces after mode, scale or transform
+    /// changes. Both the DRM transaction and nested resize paths use this.
+    pub(crate) fn configure_output_surfaces(&self, output: &Output) {
+        smithay::desktop::layer_map_for_output(output).arrange();
+        if let Some(surface) = self.lock_surfaces.get(&output.name()) {
+            super::session_lock::configure_lock_surface(surface, output);
+        }
+    }
+
     pub(crate) fn set_output_global_enabled(&self, output: &Output, enabled: bool) {
         let Some(global) = output.user_data().get::<OutputGlobal>() else {
             return;
@@ -175,6 +184,7 @@ impl WaylandNativeState {
                 self.set_output_global_enabled(&output, false);
             } else {
                 self.space.map_output(&output, output.current_location());
+                self.configure_output_surfaces(&output);
                 self.set_output_global_enabled(&output, true);
             }
         }
@@ -288,9 +298,26 @@ impl WaylandNativeState {
 
     /// Desired configuration, before lid, mirror, and placement projection.
     fn requested_output_transaction(&self) -> OutputTransaction {
+        let capabilities: Vec<_> =
+            self.output_management_state
+                .outputs()
+                .iter()
+                .map(|output| crate::backend::output::OutputHeadCapabilities {
+                    id: OutputId(output.name()),
+                    modes: output.modes().into_iter().map(from_smithay_mode).collect(),
+                    adaptive_sync: self.output_vrr_metadata(&output.name()).is_some_and(
+                        |metadata| !matches!(metadata.vrr_support, BackendVrrSupport::Unsupported),
+                    ),
+                })
+                .collect();
         self.runtime.requested_output_state.resolve(
             &self.observed_output_transaction(),
-            self.runtime.output_transactions.latest_pending_apply(),
+            self.runtime
+                .output_transactions
+                .latest_pending_apply_matching(|pending| {
+                    pending.origin == OutputTransactionOrigin::CompositorPolicy
+                        || pending.transaction.validate(&capabilities).is_ok()
+                }),
         )
     }
 
@@ -315,7 +342,6 @@ impl WaylandNativeState {
                     id: head.id.clone(),
                     connector,
                     enabled: head.enabled,
-                    has_mode: head.mode.is_some(),
                 })
             }))
     }
@@ -364,6 +390,9 @@ impl WaylandNativeState {
                 head.position = position;
             }
         }
+        // Packing automatic outputs can move a source after its mirror was
+        // pinned above (for example when the panel disappears on lid closure).
+        effective.apply_mirrors(&self.runtime.mirror_of);
         effective
     }
 
@@ -388,6 +417,33 @@ impl WaylandNativeState {
         configs: &std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
     ) {
         let mut transaction = self.requested_output_transaction();
+        // A client may have persisted the panel's advertised disabled state
+        // while the lid was closed. Once the dock disappears, simply replaying
+        // that intent fails validation forever, even after opening the lid.
+        // Recover a panel unless persistent monitor policy explicitly opts out.
+        let mut fallback_panels: Vec<_> = self
+            .output_management_state
+            .outputs()
+            .iter()
+            .filter(|output| {
+                output
+                    .user_data()
+                    .get::<crate::backend::output::OutputConnectorKind>()
+                    == Some(&crate::backend::output::OutputConnectorKind::Internal)
+                    && configs
+                        .get(&output.name())
+                        .or_else(|| configs.get("*"))
+                        .is_none_or(|config| config.enable != Some(false))
+            })
+            .map(|output| OutputId(output.name()))
+            .collect();
+        fallback_panels.sort_by(|a, b| a.0.cmp(&b.0));
+        if let Some(id) = transaction.restore_fallback_output(fallback_panels) {
+            log::warn!(
+                "Output {}: recovering internal display intent; lid suppression still applies",
+                id.0
+            );
+        }
         let enabled: std::collections::HashSet<String> = transaction
             .heads
             .iter()
@@ -705,6 +761,8 @@ impl WaylandNativeState {
 
 #[cfg(test)]
 mod tests {
+    mod hotplug;
+
     use super::*;
     use crate::backend::output::OutputTransform;
 
@@ -803,9 +861,15 @@ mod tests {
 
     /// Exercise the policy/snapshot boundary without owning physical DRM.
     fn apply_policy(state: &mut WaylandState, requested: &OutputTransaction) -> OutputTransaction {
-        let effective = state
-            .native
-            .effective_output_transaction(requested, OutputTransactionOrigin::CompositorPolicy);
+        apply_transaction(state, requested, OutputTransactionOrigin::CompositorPolicy)
+    }
+
+    fn apply_transaction(
+        state: &mut WaylandState,
+        requested: &OutputTransaction,
+        origin: OutputTransactionOrigin,
+    ) -> OutputTransaction {
+        let effective = state.native.effective_output_transaction(requested, origin);
         let snapshot = OutputSnapshot {
             heads: effective
                 .heads
@@ -825,6 +889,68 @@ mod tests {
             .commit(requested);
         state.native.apply_output_snapshot(&snapshot);
         effective
+    }
+
+    #[test]
+    fn runtime_scale_changes_keep_layout_metrics_logical_and_topology_current() {
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        let output = state
+            .native
+            .create_output("scale-test", Size::new(1921, 1081), None);
+        let mut previous_id = None;
+        for scale in [1.0, 2.0, 1.25, 0.75, 1.0] {
+            let mut snapshot = snapshot(&[("scale-test", true, scale)]);
+            snapshot.heads[0].configuration = state
+                .native
+                .observed_output_transaction()
+                .heads
+                .into_iter()
+                .next()
+                .unwrap();
+            snapshot.heads[0].modes = snapshot.heads[0].configuration.mode.into_iter().collect();
+            let head = snapshot
+                .heads
+                .iter_mut()
+                .find(|head| head.configuration.id.0 == "scale-test")
+                .unwrap();
+            head.configuration.scale = scale;
+            state.native.apply_output_snapshot(&snapshot);
+            crate::monitor::refresh_monitor_layout(&mut state.ctx());
+            let geometry = state.native.space.output_geometry(&output).unwrap();
+            let mon = state
+                .wm
+                .core
+                .state
+                .model
+                .monitors_iter_all()
+                .find(|mon| mon.name == "scale-test")
+                .unwrap();
+            assert_eq!(mon.output_scale, scale);
+            assert_eq!(mon.monitor_rect.w, (1921.0_f64 / scale).ceil() as i32);
+            assert_eq!(mon.monitor_rect.h, (1081.0_f64 / scale).ceil() as i32);
+            assert_eq!(
+                mon.bar_height,
+                state.wm.core.state.config.bar_metrics().height
+            );
+            assert_eq!(
+                mon.horizontal_padding,
+                state.wm.core.state.config.bar_metrics().horizontal_padding
+            );
+            assert_eq!(mon.monitor_rect.w, geometry.size.w);
+            assert_eq!(mon.monitor_rect.h, geometry.size.h);
+            assert_eq!(*previous_id.get_or_insert(mon.id()), mon.id());
+            let head = snapshot
+                .heads
+                .iter()
+                .find(|head| head.configuration.id.0 == "scale-test")
+                .unwrap();
+            assert_eq!(head.configuration.logical_size().w, geometry.size.w);
+            assert_eq!(head.configuration.logical_size().h, geometry.size.h);
+            assert_eq!(
+                crate::hooks::snapshot_monitors(&state.wm.core.state.model)[0].scale,
+                scale
+            );
+        }
     }
 
     #[test]
@@ -914,6 +1040,240 @@ mod tests {
         let requested = state.native.requested_output_transaction();
         assert_eq!(requested.heads.len(), 4);
         assert!(requested.heads.iter().any(|head| head.id.0 == "DP-NEW"));
+    }
+
+    #[test]
+    fn closed_lid_undocking_restores_panel_despite_a_queued_docked_configuration() {
+        // The two external heads represent the dock's native DP and DisplayLink
+        // outputs. Exercise both removal orders and lid opening before/after
+        // the hotplug projection (as can happen around suspend/resume).
+        for removed_names in [["DP-1", "HDMI-1"], ["HDMI-1", "DP-1"]] {
+            for open_before_projection in [false, true] {
+                let mut state = three_outputs();
+                state.native.runtime.lid_output_policy.set_closed(true);
+                let requested = state.native.requested_output_transaction();
+                apply_policy(&mut state, &requested);
+                assert_eq!(state.native.space.outputs().count(), 2);
+
+                if open_before_projection {
+                    state.native.runtime.lid_output_policy.set_closed(false);
+                }
+                state
+                    .native
+                    .queue_output_policy_projection(&Default::default());
+                assert_eq!(
+                    state
+                        .native
+                        .runtime
+                        .output_transactions
+                        .latest_pending_apply()
+                        .unwrap()
+                        .heads
+                        .len(),
+                    3
+                );
+
+                for (index, name) in removed_names.into_iter().enumerate() {
+                    let output = state
+                        .native
+                        .output_management_state
+                        .outputs()
+                        .iter()
+                        .find(|output| output.name() == name)
+                        .unwrap()
+                        .clone();
+                    state
+                        .native
+                        .output_management_state
+                        .remove_heads::<WaylandState>(std::iter::once(&output));
+                    state.native.space.unmap_output(&output);
+                    state.native.set_output_global_enabled(&output, false);
+                    state
+                        .native
+                        .runtime
+                        .requested_output_state
+                        .forget(&OutputId(name.into()));
+
+                    // A stale pending transaction must neither resurrect a
+                    // removed dock head nor erase the panel's enabled intent.
+                    state
+                        .native
+                        .queue_output_policy_projection(&Default::default());
+                    let requested = state
+                        .native
+                        .runtime
+                        .output_transactions
+                        .latest_pending_apply()
+                        .unwrap()
+                        .clone();
+                    assert_eq!(requested.heads.len(), 2 - index);
+                    assert!(
+                        requested
+                            .heads
+                            .iter()
+                            .find(|head| head.id.0 == "eDP-1")
+                            .unwrap()
+                            .enabled
+                    );
+                    let effective = apply_policy(&mut state, &requested);
+                    let panel = effective
+                        .heads
+                        .iter()
+                        .find(|head| head.id.0 == "eDP-1")
+                        .unwrap();
+                    assert_eq!(panel.enabled, open_before_projection);
+                }
+
+                state.native.runtime.lid_output_policy.set_closed(false);
+                state
+                    .native
+                    .queue_output_policy_projection(&Default::default());
+                let restored = state.native.requested_output_transaction();
+                apply_policy(&mut state, &restored);
+                assert_eq!(restored.heads.len(), 1);
+                assert!(restored.heads[0].enabled);
+                assert_eq!(restored.heads[0].position, Point::default());
+                assert_eq!(
+                    state
+                        .native
+                        .space
+                        .outputs()
+                        .map(Output::name)
+                        .collect::<Vec<_>>(),
+                    vec!["eDP-1"]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn lid_can_disable_the_last_panel_without_accepting_invalid_client_layouts() {
+        let mut state = three_outputs();
+        let mut requested = state.native.requested_output_transaction();
+        for head in &mut requested.heads {
+            head.enabled = head.id.0 == "eDP-1";
+        }
+        let capabilities: Vec<_> = requested
+            .heads
+            .iter()
+            .map(|head| crate::backend::output::OutputHeadCapabilities {
+                id: head.id.clone(),
+                modes: head.mode.into_iter().collect(),
+                adaptive_sync: false,
+            })
+            .collect();
+        state.native.runtime.lid_output_policy.set_closed(true);
+        let projection = state.native.lid_output_projection(&requested);
+        let effective = apply_policy(&mut state, &requested);
+        assert!(effective.heads.iter().all(|head| !head.enabled));
+        assert_eq!(state.native.space.outputs().count(), 0);
+        assert_eq!(
+            projection.validate_transaction(&requested, &effective, &capabilities),
+            Ok(())
+        );
+
+        // A client cannot use the closed lid to bypass ordinary validation.
+        assert_eq!(
+            projection.validate_transaction(&effective, &effective, &capabilities),
+            Err(OutputTransactionError::NoEnabledOutputs)
+        );
+        let mut invalid = effective.clone();
+        invalid.heads[0].scale = 0.0;
+        assert_eq!(
+            projection.validate_transaction(&requested, &invalid, &capabilities),
+            Err(OutputTransactionError::InvalidScale("eDP-1".into()))
+        );
+        let mut external_enabled = requested.clone();
+        external_enabled.heads[1].enabled = true;
+        assert_eq!(
+            projection.validate_transaction(&external_enabled, &effective, &capabilities),
+            Err(OutputTransactionError::NoEnabledOutputs)
+        );
+
+        state.native.runtime.lid_output_policy.set_closed(false);
+        let restored = state.native.requested_output_transaction();
+        let effective = apply_policy(&mut state, &restored);
+        assert!(effective.heads[0].enabled);
+        assert_eq!(state.native.space.outputs().count(), 1);
+    }
+
+    #[test]
+    fn undocking_recovers_a_panel_remembered_as_disabled() {
+        for disabled_config_key in [None, Some("eDP-1"), Some("*")] {
+            let explicitly_disabled = disabled_config_key.is_some();
+            let mut state = three_outputs();
+            state.native.runtime.lid_output_policy.set_closed(true);
+            let requested = state.native.requested_output_transaction();
+            apply_policy(&mut state, &requested);
+
+            // An output-management client can round-trip the advertised state
+            // while docked, turning lid suppression into a persistent disable.
+            // This is a valid request while either external display remains.
+            let client_request = state.native.observed_output_transaction();
+            assert!(!client_request.heads[0].enabled);
+            apply_transaction(&mut state, &client_request, OutputTransactionOrigin::Client);
+            state
+                .native
+                .queue_output_policy_projection(&Default::default());
+            assert!(!pending_head(&state, "eDP-1").enabled);
+            let external: Vec<_> = state
+                .native
+                .output_management_state
+                .outputs()
+                .iter()
+                .filter(|output| output.name() != "eDP-1")
+                .cloned()
+                .collect();
+            state
+                .native
+                .output_management_state
+                .remove_heads::<WaylandState>(external.iter());
+            for output in external {
+                state.native.space.unmap_output(&output);
+                state.native.set_output_global_enabled(&output, false);
+                state
+                    .native
+                    .runtime
+                    .requested_output_state
+                    .forget(&OutputId(output.name()));
+            }
+
+            let mut configs = std::collections::HashMap::new();
+            if let Some(key) = disabled_config_key {
+                configs.insert(
+                    key.into(),
+                    crate::config::config_toml::MonitorConfig {
+                        enable: Some(false),
+                        ..Default::default()
+                    },
+                );
+            }
+            for closed in [true, false, true, false] {
+                state.native.runtime.lid_output_policy.set_closed(closed);
+                state.native.queue_output_policy_projection(&configs);
+                let requested = state.native.requested_output_transaction();
+                assert_eq!(requested.heads.len(), 1);
+                assert_eq!(requested.heads[0].enabled, !explicitly_disabled);
+                if !explicitly_disabled {
+                    let capabilities = [crate::backend::output::OutputHeadCapabilities {
+                        id: requested.heads[0].id.clone(),
+                        modes: requested.heads[0].mode.into_iter().collect(),
+                        adaptive_sync: false,
+                    }];
+                    assert_eq!(requested.validate(&capabilities), Ok(()));
+                    let effective = apply_policy(&mut state, &requested);
+                    assert_eq!(
+                        state
+                            .native
+                            .lid_output_projection(&requested)
+                            .validate_transaction(&requested, &effective, &capabilities,),
+                        Ok(())
+                    );
+                    assert_eq!(effective.heads[0].enabled, !closed);
+                    assert_eq!(state.native.space.outputs().count(), usize::from(!closed));
+                }
+            }
+        }
     }
 
     #[test]

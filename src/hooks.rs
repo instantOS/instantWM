@@ -30,7 +30,7 @@ pub fn snapshot_monitors(model: &WmModel) -> Vec<MonitorSnapshot> {
         .map(|(_, m)| MonitorSnapshot {
             name: m.name.clone(),
             rect: m.monitor_rect,
-            scale: m.ui_scale,
+            scale: m.output_scale,
         })
         .collect()
 }
@@ -283,7 +283,7 @@ mod tests {
                     .monitor_rect(Rect::new(x, 0, 1920, 1080))
                     .configure(|m| {
                         m.monitor_id = MonitorId::from_raw(id);
-                        m.ui_scale = 1.0;
+                        m.output_scale = 1.0;
                     })
                     .build(),
             );

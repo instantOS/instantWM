@@ -6,6 +6,8 @@ use crate::animation::WindowAnimation;
 use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::{Rect, WindowId};
 
+use super::geometry_sync::WindowGeometrySync;
+
 mod transition;
 
 pub(crate) use transition::WaylandWindowAnimation;
@@ -402,22 +404,29 @@ impl WaylandNativeState {
     /// Reposition a completed far-anchored transition after a client buffer
     /// commit. Its anchor remains presentation state without keeping the frame
     /// timer active, so a late resize cannot move the preserved edge.
+    ///
+    /// Native clients release the entry once their configure transaction has
+    /// settled, including constrained replies. XWayland has no acknowledgement
+    /// and retains the anchor until the resized buffer lands.
     pub(crate) fn reconcile_completed_window_animation(
         &mut self,
         win: WindowId,
         committed_size: Size<i32, Logical>,
     ) {
-        let Some(animation) = self
+        let Some((target, border_width, loc)) = self
             .window_animations
             .get(&win)
-            .filter(|animation| animation.is_waiting_for_resize())
+            .filter(|animation| !animation.is_active())
+            .map(|animation| {
+                (
+                    animation.target(),
+                    animation.target_border_width(),
+                    animation.target_surface_location(committed_size),
+                )
+            })
         else {
             return;
         };
-        let target = animation.target();
-        let border_width = animation.target_border_width();
-        let landed = animation.has_landed(committed_size);
-        let loc = animation.target_surface_location(committed_size);
 
         if let Some(element) = self.find_window(win).cloned()
             && self.space.element_location(&element).is_some()
@@ -431,7 +440,33 @@ impl WaylandNativeState {
             self.request_visual_rect_render(target.with_borders(border_width));
         }
 
-        if landed {
+        self.finish_settled_animation(win);
+    }
+
+    /// Release a completed animation whose resize transaction has settled.
+    ///
+    /// Safe to call after every geometry observation: it is a no-op while the
+    /// frame timer is still running or the configure is still unacknowledged.
+    /// XWayland additionally waits for the buffer size on far-anchored axes.
+    pub(crate) fn finish_settled_animation(&mut self, win: WindowId) {
+        let Some(animation) = self
+            .window_animations
+            .get(&win)
+            .filter(|animation| !animation.is_active())
+        else {
+            return;
+        };
+        if let Some(element) = self.find_window(win)
+            && element.x11_surface().is_some()
+            && !animation.has_landed(element.geometry().size)
+        {
+            return;
+        }
+        if self
+            .geometry_sync
+            .get(&win)
+            .is_none_or(WindowGeometrySync::is_settled)
+        {
             self.window_animations.remove(&win);
         }
     }
@@ -447,17 +482,7 @@ impl WaylandNativeState {
             self.layout_preview_animation.tick(now);
             self.request_render();
         }
-        let animation_inputs: Vec<_> = self
-            .window_animations
-            .iter()
-            .filter(|(_, animation)| !animation.is_waiting_for_resize())
-            .map(|(&win, _)| {
-                (
-                    win,
-                    self.find_window(win).map(|element| element.geometry().size),
-                )
-            })
-            .collect();
+        let windows: Vec<WindowId> = self.window_animations.keys().copied().collect();
         let output_rects: Vec<_> = if self
             .window_animations
             .values()
@@ -467,37 +492,42 @@ impl WaylandNativeState {
         } else {
             Default::default()
         };
-        let mut updates = Vec::with_capacity(animation_inputs.len());
+        let mut updates = Vec::with_capacity(windows.len());
         let mut finished: Vec<WindowId> = Vec::new();
-        for (win, committed_size) in animation_inputs {
-            let Some(committed_size) = committed_size else {
+        for win in windows {
+            let Some(committed_size) = self.find_window(win).map(|element| element.geometry().size)
+            else {
                 finished.push(win);
                 continue;
             };
-            if let Some(animation) = self.window_animations.get_mut(&win) {
-                animation.revalidate_offscreen_resize_phase(committed_size, &output_rects);
-                let tick = animation.tick(now, committed_size);
-                let border_width = animation.displayed_border_width();
-                updates.push((
-                    win,
-                    tick.surface_location,
-                    tick.resize_due,
-                    tick.previous_frame,
-                    tick.frame,
-                    border_width,
-                    tick.done,
-                    tick.waiting_for_resize,
-                ));
+            let Some(animation) = self.window_animations.get_mut(&win) else {
+                continue;
+            };
+            if !animation.is_active() {
+                finished.push(win);
+                continue;
             }
+            animation.revalidate_offscreen_resize_phase(committed_size, &output_rects);
+            let tick = animation.tick(now, committed_size);
+            let border_width = animation.displayed_border_width();
+            updates.push((
+                win,
+                tick.surface_location,
+                tick.resize_due,
+                tick.previous_frame,
+                tick.frame,
+                border_width,
+                tick.done,
+            ));
         }
 
-        for (win, loc, resize_due, previous_frame, frame, border_width, done, waiting_for_resize) in
-            updates
-        {
+        for (win, loc, resize_due, previous_frame, frame, border_width, done) in updates {
             if let Some(element) = self.find_window(win).cloned() {
                 self.request_visual_rect_render(previous_frame.with_borders(border_width));
                 self.request_visible_window_render(&element);
-                if resize_due
+                // X11 also needs the final position-only configure to move
+                // its input window when a slide completes.
+                if (resize_due || done)
                     && let Some(target) = core_view.model.client(win).map(|client| client.geo)
                 {
                     self.dispatch_window_resize(core_view, win, &element, target);
@@ -515,12 +545,16 @@ impl WaylandNativeState {
                 finished.push(win);
                 continue;
             }
-            if done && !waiting_for_resize {
+            if done {
                 finished.push(win);
             }
         }
         for win in finished {
-            self.cancel_window_animation(core_view, win);
+            if let Some(element) = self.find_window(win) {
+                self.reconcile_completed_window_animation(win, element.geometry().size);
+            } else {
+                self.drop_window_animation(win);
+            }
         }
     }
 

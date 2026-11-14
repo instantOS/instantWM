@@ -111,7 +111,7 @@ fn apply_rules_impl(
     application: RuleApplication,
 ) -> Option<RulesApplied> {
     // `ins` and the other compositor integrations launch scratchpad terminals
-    // with a stable `scratchpad_<name>` class/app-id. Classify that protocol
+    // with a stable `org.instantos.scratchpad.<name>` class/app-id. Classify that protocol
     // role before clearing inherited tags or running ordinary window rules, so
     // the client can never occupy a tiling leaf for its first arrange. A name
     // already held by another scratchpad is left to the ordinary rules.
@@ -1081,7 +1081,7 @@ mod tests {
             &mut state,
             win,
             &WindowProperties {
-                class: "scratchpad_menu".to_string(),
+                class: "org.instantos.scratchpad.menu".to_string(),
                 ..Default::default()
             },
             None,
@@ -1119,7 +1119,7 @@ mod tests {
             &mut state,
             win,
             &WindowProperties {
-                class: "scratchpad_menu".to_string(),
+                class: "org.instantos.scratchpad.menu".to_string(),
                 title: "updated title".to_string(),
                 ..Default::default()
             },

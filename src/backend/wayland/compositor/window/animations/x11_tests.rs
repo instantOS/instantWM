@@ -130,6 +130,11 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
     );
 
     // A position-only slide must also move the X input window when it lands.
+    let element = state.native.find_window(win).unwrap().clone();
+    state
+        .native
+        .space
+        .map_element(element, (moved.x, moved.y), false);
     let shown = Rect::new(20, 0, initial.w, initial.h);
     state.wm.core.state.config.animations.enabled = true;
     state.wm.core.state.model.sync_client_geometry(win, shown);
@@ -147,4 +152,58 @@ fn x11_position_only_snap_configures_the_supplied_origin_without_a_pending_resiz
     assert!(!state.native.has_active_window_animations());
     let actual = conn.get_geometry(xwindow).unwrap().reply().unwrap();
     assert_eq!((actual.x, actual.y), (20, 0));
+
+    // Model a completed growth with an outstanding old buffer. There is no
+    // Wayland surface in this fixture, so X11Surface's initial geometry stands
+    // in for the old buffer until we configure the new geometry below.
+    let grown = Rect::new(shown.x, shown.y, shown.w + 200, shown.h);
+    let started_at = std::time::Instant::now();
+    let mut animation = super::WaylandWindowAnimation::new(
+        crate::animation::WindowAnimation {
+            from: shown,
+            to: grown,
+            started_at,
+            duration: std::time::Duration::ZERO,
+        },
+        (shown.w, shown.h).into(),
+        true,
+        0,
+        0,
+    );
+    animation.tick(started_at, (shown.w, shown.h).into());
+    state.native.window_animations.insert(win, animation);
+    state
+        .native
+        .geometry_sync
+        .get_mut(&win)
+        .unwrap()
+        .sent(grown.size(), None);
+    state
+        .native
+        .reconcile_completed_window_animation(win, (shown.w, shown.h).into());
+    assert!(state.native.animation_targets_outer_rect(win, grown));
+    assert!(!state.native.has_active_window_animations());
+    let element = state.native.find_window(win).unwrap();
+    assert_eq!(
+        state.native.space.element_location(element),
+        Some((grown.x + 200, grown.y).into())
+    );
+
+    element
+        .x11_surface()
+        .unwrap()
+        .configure(Rectangle::new(
+            (grown.x, grown.y).into(),
+            (grown.w, grown.h).into(),
+        ))
+        .unwrap();
+    state
+        .native
+        .reconcile_completed_window_animation(win, (grown.w, grown.h).into());
+    assert!(!state.native.animation_targets_outer_rect(win, grown));
+    let element = state.native.find_window(win).unwrap();
+    assert_eq!(
+        state.native.space.element_location(element),
+        Some((grown.x, grown.y).into())
+    );
 }

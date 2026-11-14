@@ -58,7 +58,7 @@ pub fn render_frame(
                     renderer,
                     lock_surface.wl_surface(),
                     smithay::utils::Point::<i32, smithay::utils::Physical>::from((0, 0)),
-                    smithay::utils::Scale::from(1.0),
+                    smithay::utils::Scale::from(output.current_scale().fractional_scale()),
                     1.0,
                     smithay::backend::renderer::element::Kind::Unspecified,
                 );
@@ -77,7 +77,8 @@ pub fn render_frame(
         render_cursor_overlays(
             renderer,
             &resolved_cursor,
-            state.pointer.current_location(),
+            state.pointer.current_location() - output.current_location().to_f64(),
+            output.current_scale().fractional_scale(),
             &mut render_elements,
         );
 
@@ -175,6 +176,7 @@ fn render_cursor_overlays(
     renderer: &mut GlesRenderer,
     presentation: &ResolvedCursor,
     pointer_location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    scale: f64,
     render_elements: &mut Vec<WaylandExtras>,
 ) {
     match presentation {
@@ -186,7 +188,7 @@ fn render_cursor_overlays(
                 surface,
                 pointer_location,
                 *hotspot,
-                1.0,
+                scale,
             ) else {
                 return;
             };
@@ -198,7 +200,7 @@ fn render_cursor_overlays(
             cursor,
         } => {
             // Render the base cursor overlay first if it's a surface
-            render_cursor_overlays(renderer, cursor, pointer_location, render_elements);
+            render_cursor_overlays(renderer, cursor, pointer_location, scale, render_elements);
 
             // Double-check that the drag icon surface is still alive before rendering.
             let Some(dnd_elements) = super::cursor_surface_render_elements(
@@ -206,7 +208,7 @@ fn render_cursor_overlays(
                 icon,
                 pointer_location,
                 *hotspot,
-                1.0,
+                scale,
             ) else {
                 return;
             };

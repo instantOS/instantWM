@@ -108,16 +108,8 @@ pub(crate) fn hit_test(
     for r in &hit.title_ranges {
         if local_x >= r.start && local_x < r.end {
             let this_width = (r.end - r.start).max(0);
-            let resize_start = r.start + this_width
-                - crate::types::geometry::scaled_px(RESIZE_WIDGET_WIDTH, monitor.ui_scale);
-            if monitor.selected == Some(r.win)
-                && local_x
-                    < r.start
-                        + crate::types::geometry::scaled_px(
-                            CLOSE_BUTTON_HIT_WIDTH,
-                            monitor.ui_scale,
-                        )
-            {
+            let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
+            if monitor.selected == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
                 return BarPosition::CloseButton(r.win);
             }
             if monitor.selected == Some(r.win) && local_x >= resize_start {

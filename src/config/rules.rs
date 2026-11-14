@@ -7,7 +7,7 @@ use crate::types::{MonitorSelector, Rule, RuleFloat, TagMask};
 
 use std::borrow::Cow;
 
-const SCRATCHPAD_CLASS: &str = "scratchpad_default";
+const SCRATCHPAD_CLASS: &str = "org.instantos.scratchpad.default";
 
 /// Merge default rules with TOML-configured rules.
 ///

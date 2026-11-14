@@ -199,21 +199,6 @@ impl Size {
     }
 }
 
-/// Decorative pixels that are not derived from font advances or bar height
-/// follow the monitor's UI scale.
-#[inline]
-pub(crate) fn scaled_px(value: i32, scale: f64) -> i32 {
-    if value <= 0 {
-        return 0;
-    }
-    let scale = if scale.is_finite() && scale > 0.0 {
-        scale
-    } else {
-        1.0
-    };
-    ((value as f64 * scale).round() as i32).max(1)
-}
-
 /// A rectangle representing window geometry or screen areas.
 #[derive(
     Debug,

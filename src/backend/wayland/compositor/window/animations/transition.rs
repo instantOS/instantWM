@@ -153,7 +153,11 @@ pub(crate) struct WaylandWindowAnimation {
     resize_timing: ResizeTiming,
     resize_configure_phase: f64,
     shrink_stage_presented: bool,
-    waiting_for_resize: bool,
+    /// The frame timer has completed. The entry stays resident until
+    /// `WindowGeometrySync` reports the resize transaction settled, so a late
+    /// client commit can still be anchored to the far edge; it no longer needs
+    /// frames of its own.
+    frame_done: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -163,7 +167,6 @@ pub(super) struct WaylandAnimationTick {
     pub(super) surface_location: Point<i32, Logical>,
     pub(super) resize_due: bool,
     pub(super) done: bool,
-    pub(super) waiting_for_resize: bool,
 }
 
 /// Blend a border width across eased animation progress so the border keeps
@@ -195,7 +198,7 @@ impl WaylandWindowAnimation {
             resize_timing: ResizeTiming::Normal,
             resize_configure_phase: RESIZE_CONFIGURE_PHASE,
             shrink_stage_presented: false,
-            waiting_for_resize: false,
+            frame_done: false,
             frame,
         }
     }
@@ -228,22 +231,19 @@ impl WaylandWindowAnimation {
         self.resize_dispatch_ready
     }
 
-    fn needs_landing(&self, committed_size: Size<i32, Logical>) -> bool {
-        let target = self.target();
-        (self.anchors.x == SurfaceAnchor::Far && committed_size.w != target.w)
-            || (self.anchors.y == SurfaceAnchor::Far && committed_size.h != target.h)
-    }
-
+    /// Whether the frame timer still needs frames.
+    ///
+    /// A completed transition can stay resident while its resize transaction is
+    /// outstanding, but it must not keep the frame loop alive for that.
     pub(crate) fn is_active(&self) -> bool {
-        !self.waiting_for_resize
+        !self.frame_done
     }
 
+    /// XWayland has no configure acknowledgement. Keep its far-edge anchor
+    /// until the presented buffer reaches the requested size on that axis.
     pub(super) fn has_landed(&self, committed_size: Size<i32, Logical>) -> bool {
-        !self.needs_landing(committed_size)
-    }
-
-    pub(super) fn is_waiting_for_resize(&self) -> bool {
-        self.waiting_for_resize
+        (self.anchors.x != SurfaceAnchor::Far || committed_size.w == self.target().w)
+            && (self.anchors.y != SurfaceAnchor::Far || committed_size.h == self.target().h)
     }
 
     pub(super) fn requires_output_revalidation(&self) -> bool {
@@ -369,7 +369,7 @@ impl WaylandWindowAnimation {
         self.displayed_frame = tick.rect;
         self.displayed_border = interpolate_borders(self.from_border, self.to_border, eased);
         if tick.done {
-            self.waiting_for_resize = self.needs_landing(committed_size);
+            self.frame_done = true;
         }
         WaylandAnimationTick {
             previous_frame,
@@ -382,7 +382,6 @@ impl WaylandWindowAnimation {
             ),
             resize_due: self.resize_dispatch_ready,
             done: tick.done,
-            waiting_for_resize: self.waiting_for_resize,
         }
     }
 }

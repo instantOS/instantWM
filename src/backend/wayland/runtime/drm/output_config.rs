@@ -170,10 +170,9 @@ pub(super) fn process_output_configurations(
             }
         }
         let effective = state.effective_output_transaction(&pending.transaction, pending.origin);
-        if let Err(error) = pending
-            .transaction
-            .validate(&capabilities)
-            .and_then(|()| effective.validate(&capabilities))
+        if let Err(error) = state
+            .lid_output_projection(&pending.transaction)
+            .validate_transaction(&pending.transaction, &effective, &capabilities)
         {
             state
                 .runtime

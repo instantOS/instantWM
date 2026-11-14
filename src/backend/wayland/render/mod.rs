@@ -69,15 +69,14 @@ macro_rules! assemble_scene_elements {
 pub(crate) use assemble_scene_elements;
 
 /// Physical top-left corner for a cursor surface tree: `pointer_location` in
-/// logical coordinates minus the surface's hotspot, rounded to whole pixels.
+/// output-local logical coordinates minus the logical hotspot, then scaled
+/// to physical output pixels and rounded once.
 fn cursor_surface_loc(
     pointer_location: smithay::utils::Point<f64, smithay::utils::Logical>,
     hotspot: smithay::utils::Point<i32, smithay::utils::Logical>,
+    scale: f64,
 ) -> smithay::utils::Point<i32, smithay::utils::Physical> {
-    smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-        (pointer_location.x - hotspot.x as f64).round() as i32,
-        (pointer_location.y - hotspot.y as f64).round() as i32,
-    ))
+    (pointer_location - hotspot.to_f64()).to_physical_precise_round(scale)
 }
 
 /// Render a client-provided cursor surface (or DnD icon) tree into render
@@ -101,7 +100,7 @@ pub fn cursor_surface_render_elements(
     if !smithay::utils::IsAlive::alive(surface) {
         return None;
     }
-    let loc = cursor_surface_loc(pointer_location, hotspot);
+    let loc = cursor_surface_loc(pointer_location, hotspot, scale);
     Some(
         smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
             renderer,
@@ -120,19 +119,32 @@ mod cursor_loc_tests {
     use smithay::utils::{Physical, Point};
 
     #[test]
+    fn cursor_hotspot_tracks_the_pointer_at_every_output_scale() {
+        // The logical right/bottom corner must reach the physical corner,
+        // including when the cursor image extends beyond the output.
+        for scale in [0.75, 1.0, 1.25, 1.5, 2.0, 2.5] {
+            let pointer = Point::from((1920.0 / scale, 1080.0 / scale));
+            let hotspot = Point::from((4, 12));
+            let loc = cursor_surface_loc(pointer, hotspot, scale);
+            assert_eq!(loc.x, (1920.0 - 4.0 * scale).round() as i32);
+            assert_eq!(loc.y, (1080.0 - 12.0 * scale).round() as i32);
+        }
+    }
+
+    #[test]
     fn hotspot_offsets_the_cursor_surface() {
-        let loc = cursor_surface_loc(Point::from((100.0, 200.0)), Point::from((4, 12)));
+        let loc = cursor_surface_loc(Point::from((100.0, 200.0)), Point::from((4, 12)), 1.0);
         let expected: Point<i32, Physical> = Point::from((96, 188));
         assert_eq!(loc, expected);
     }
 
     #[test]
     fn fractional_pointer_positions_round_to_nearest_pixel() {
-        let loc = cursor_surface_loc(Point::from((10.4, 11.6)), Point::from((0, 0)));
+        let loc = cursor_surface_loc(Point::from((10.4, 11.6)), Point::from((0, 0)), 1.0);
         let expected: Point<i32, Physical> = Point::from((10, 12));
         assert_eq!(loc, expected);
         // negative half rounds away from zero
-        let loc = cursor_surface_loc(Point::from((-1.5, 1.5)), Point::from((0, 0)));
+        let loc = cursor_surface_loc(Point::from((-1.5, 1.5)), Point::from((0, 0)), 1.0);
         let expected: Point<i32, Physical> = Point::from((-2, 2));
         assert_eq!(loc, expected);
     }

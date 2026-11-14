@@ -166,8 +166,8 @@ impl OutputHeadConfiguration {
             1.0
         };
         Size::new(
-            (f64::from(width) / scale).round() as i32,
-            (f64::from(height) / scale).round() as i32,
+            (f64::from(width) / scale).ceil() as i32,
+            (f64::from(height) / scale).ceil() as i32,
         )
     }
 
@@ -262,6 +262,34 @@ pub enum OutputTransactionError {
 }
 
 impl OutputTransaction {
+    /// Recover from runtime disable intent whose last enabled head disappeared.
+    /// The caller supplies eligible fallback heads in preference order, excluding
+    /// outputs explicitly disabled by persistent policy. Client transactions
+    /// should still be validated as submitted rather than repaired this way.
+    pub fn restore_fallback_output(
+        &mut self,
+        candidates: impl IntoIterator<Item = OutputId>,
+    ) -> Option<OutputId> {
+        if self
+            .heads
+            .iter()
+            .any(|head| head.enabled && head.mode.is_some())
+        {
+            return None;
+        }
+        for id in candidates {
+            if let Some(head) = self
+                .heads
+                .iter_mut()
+                .find(|head| head.id == id && head.mode.is_some())
+            {
+                head.enabled = true;
+                return Some(id);
+            }
+        }
+        None
+    }
+
     /// Validate backend-independent transaction invariants against the current
     /// set of outputs. Backends may perform additional test-only checks before
     /// committing, but should not duplicate these structural rules.
@@ -478,10 +506,19 @@ impl OutputTransactionQueue {
     }
 
     pub fn latest_pending_apply(&self) -> Option<&OutputTransaction> {
+        self.latest_pending_apply_matching(|_| true)
+    }
+
+    /// Find the newest apply whose intent a policy producer can safely reuse.
+    /// Rejected/stale client requests must not contaminate a later policy apply.
+    pub fn latest_pending_apply_matching(
+        &self,
+        accept: impl Fn(&OutputTransactionRequest) -> bool,
+    ) -> Option<&OutputTransaction> {
         self.pending
             .iter()
             .rev()
-            .find(|(_, pending)| pending.kind == OutputTransactionKind::Apply)
+            .find(|(_, pending)| pending.kind == OutputTransactionKind::Apply && accept(pending))
             .map(|(_, pending)| &pending.transaction)
     }
 }

@@ -135,45 +135,6 @@ pub(super) fn refresh_drm_layout_state(
     *layout_state = layout_state_for_outputs(active, layout);
 }
 
-/// A topology change can leave the pointer on an output that no longer exists.
-/// Recover immediately, including for explicit/client-managed layouts with gaps.
-pub(super) fn recover_pointer_after_output_change(state: &mut WaylandState) {
-    if state
-        .native
-        .space
-        .output_under(state.native.runtime.pointer_location)
-        .next()
-        .is_some()
-    {
-        return;
-    }
-    let target = state
-        .wm
-        .core
-        .state
-        .model
-        .selected_monitor()
-        .and_then(|monitor| {
-            state
-                .native
-                .space
-                .outputs()
-                .find(|output| output.name() == monitor.name)
-        })
-        .or_else(|| state.native.space.outputs().next());
-    let center = target
-        .and_then(|output| state.native.space.output_geometry(output))
-        .map(|geometry| {
-            (
-                geometry.loc.x as f64 + geometry.size.w as f64 / 2.0,
-                geometry.loc.y as f64 + geometry.size.h as f64 / 2.0,
-            )
-        });
-    if let Some((x, y)) = center {
-        state.native.request_warp(x, y);
-    }
-}
-
 pub(super) fn compact_drm_automatic_layout(
     state: &mut WaylandState,
     output_surfaces: &mut [OutputSurfaceEntry],

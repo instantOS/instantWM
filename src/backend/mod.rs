@@ -21,6 +21,8 @@ pub use instantos_ipc::VrrSupport as BackendVrrSupport;
 pub struct BackendOutputInfo {
     pub name: String,
     pub rect: Rect,
+    /// Physical pixels per logical desktop unit. Layout metrics are already
+    /// logical; renderers apply this scale exactly once.
     pub scale: f64,
     pub vrr_support: BackendVrrSupport,
     pub vrr_mode: Option<VrrMode>,

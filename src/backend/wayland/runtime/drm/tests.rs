@@ -119,6 +119,140 @@ fn equal_crtc_handles_on_distinct_devices_complete_independently() {
 }
 
 #[test]
+fn undocking_during_session_pause_retires_dock_flips_before_panel_recovery() {
+    use super::{
+        DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
+    };
+    use smithay::utils::{Clock, Monotonic};
+    use std::sync::mpsc;
+
+    let panel = crtc(1);
+    let dock_dp = crtc(2);
+    let displaylink = super::ScanoutId {
+        device: DrmDeviceId(1),
+        ..panel
+    };
+    let mut runtime = DrmLoopState::new(&[]);
+    for scanout in [panel, dock_dp, displaylink] {
+        runtime.add_output(scanout);
+    }
+    // The suppressed panel has no flip in flight. Both dock outputs do.
+    runtime.pending_crtcs.extend([dock_dp, displaylink]);
+    let layout = DrmLayoutState {
+        layout: Rect::new(0, 0, 3840, 1080),
+        output_hit_regions: vec![],
+    };
+    let clock = Clock::<Monotonic>::new();
+    let (tx, rx) = mpsc::channel();
+    tx.send(DrmRuntimeEvent::SessionPaused).unwrap();
+    tx.send(DrmRuntimeEvent::OutputTopologyChanged).unwrap();
+    tx.send(DrmRuntimeEvent::DeviceRemoved(123)).unwrap();
+    let (_, changed) = process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+    assert!(!runtime.take_topology_change(changed));
+    assert!(runtime.removed_devices.contains(&123));
+
+    tx.send(DrmRuntimeEvent::SessionActivated).unwrap();
+    let (_, changed) = process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+    assert!(runtime.take_topology_change(changed));
+    assert!(runtime.removed_devices.contains(&123));
+    // Activation must preserve live buffers; topology retirement owns cleanup
+    // of disconnected scanouts, whose completion may never arrive.
+    assert_eq!(runtime.pending_crtcs.len(), 2);
+    runtime.remove_output(dock_dp);
+    runtime.remove_output(displaylink);
+    assert!(runtime.pending_crtcs.is_empty());
+    assert_eq!(runtime.render_flags.len(), 1);
+    assert!(runtime.has_renderable_dirty_outputs());
+
+    // Late dock completions cannot recreate retired scheduling state.
+    for scanout in [dock_dp, displaylink] {
+        tx.send(DrmRuntimeEvent::VBlank(scanout)).unwrap();
+    }
+    process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+    assert_eq!(runtime.render_flags.len(), 1);
+    assert!(runtime.render_flags[&panel]);
+    assert!(runtime.pending_crtcs.is_empty());
+}
+
+#[test]
+fn session_and_dock_event_orderings_preserve_removal_and_deferred_reprobes() {
+    use super::{DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events};
+    use smithay::utils::{Clock, Monotonic};
+    use std::sync::mpsc;
+
+    // All 24 orders, dispatched individually, in pairs, or as one batch.
+    // Activation-before-pause also represents a second suspend in a burst.
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for d in 0..4 {
+                    let order = [a, b, c, d];
+                    if (0..4).any(|i| order[..i].contains(&order[i])) {
+                        continue;
+                    }
+                    for batch in [1, 2, 4] {
+                        let mut runtime = DrmLoopState::new(&[]);
+                        let panel = crtc(1);
+                        runtime.add_output(panel);
+                        runtime.pending_crtcs.insert(panel);
+                        let layout = DrmLayoutState {
+                            layout: Rect::new(0, 0, 1920, 1080),
+                            output_hit_regions: vec![],
+                        };
+                        let clock = Clock::<Monotonic>::new();
+                        let (tx, rx) = mpsc::channel();
+                        let events = [
+                            DrmRuntimeEvent::SessionPaused,
+                            DrmRuntimeEvent::SessionActivated,
+                            DrmRuntimeEvent::OutputTopologyChanged,
+                            DrmRuntimeEvent::DeviceRemoved(123),
+                        ];
+                        let mut expected_active = true;
+                        for chunk in order.chunks(batch) {
+                            for &index in chunk {
+                                tx.send(events[index]).unwrap();
+                                if index == 0 {
+                                    expected_active = false;
+                                }
+                                if index == 1 {
+                                    expected_active = true;
+                                }
+                            }
+                            let (_, changed) =
+                                process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+                            assert_eq!(
+                                runtime.session_active, expected_active,
+                                "{order:?}, batch {batch}"
+                            );
+                            let scan = runtime.take_topology_change(changed);
+                            assert!(
+                                !scan || expected_active,
+                                "must not probe without DRM ownership"
+                            );
+                            assert!(
+                                runtime.pending_crtcs.contains(&panel),
+                                "session events cannot retire a live frame"
+                            );
+                        }
+                        assert!(
+                            runtime.removed_devices.contains(&123),
+                            "{order:?}, batch {batch}"
+                        );
+                        // An activation must always arrange a scan even when
+                        // no fresh udev notification follows it.
+                        tx.send(DrmRuntimeEvent::SessionActivated).unwrap();
+                        let (_, changed) =
+                            process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+                        assert!(runtime.take_topology_change(changed));
+                        assert!(!runtime.take_topology_change(false));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn delayed_completion_from_removed_device_cannot_release_its_replacement() {
     use super::{
         DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
@@ -172,7 +306,7 @@ fn removed_output_recovers_the_pointer_even_with_a_gap_in_the_layout() {
             .build(),
     );
 
-    super::layout::recover_pointer_after_output_change(&mut state);
+    crate::backend::wayland::input::recover_pointer_after_output_change(&mut state);
     assert_eq!(state.native.pending_warp, Some((2880.0, 540.0).into()));
     let pointer = state.native.pointer.clone();
     let keyboard = state.native.keyboard.clone();
@@ -202,7 +336,7 @@ fn output_changes_do_not_warp_a_pointer_already_on_a_remaining_display() {
     state.native.space.map_output(&output, (0, 0));
     state.native.runtime.pointer_location = (50.0, 50.0).into();
     state.wm = crate::wm::WaylandWm::new(crate::backend::WaylandBackendData::default());
-    super::layout::recover_pointer_after_output_change(&mut state);
+    crate::backend::wayland::input::recover_pointer_after_output_change(&mut state);
     assert!(state.native.pending_warp.is_none());
 }
 
