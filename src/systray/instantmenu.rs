@@ -375,7 +375,7 @@ fn kill_child(pgid_slot: &Arc<Mutex<Option<i32>>>) {
     {
         // TERM lets instantmenu release its surfaces; a missing group (ESRCH)
         // means the process is already gone, which is the goal.
-        crate::util::signal_process_group(pgid, libc::SIGTERM);
+        crate::util::signal_process_group(pgid, rustix::process::Signal::TERM);
     }
 }
 

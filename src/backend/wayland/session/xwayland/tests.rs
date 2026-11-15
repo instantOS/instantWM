@@ -190,7 +190,13 @@ fn lazy_start_idle_shutdown_and_crash_recovery_keep_the_same_display() {
         .unwrap()
         .pid;
     // This PID comes from Child::id(), not SO_PEERCRED on the inherited socket.
-    assert_eq!(unsafe { libc::kill(pid as i32, libc::SIGKILL) }, 0);
+    assert!(
+        rustix::process::kill_process(
+            rustix::process::Pid::from_raw(i32::try_from(pid).unwrap()).unwrap(),
+            rustix::process::Signal::KILL,
+        )
+        .is_ok()
+    );
     drive_until(&mut event_loop, &mut state, Duration::from_secs(5), |s| {
         s.native.xwayland_session.as_ref().unwrap().server.is_none()
     });

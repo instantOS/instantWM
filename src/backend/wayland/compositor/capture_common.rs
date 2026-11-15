@@ -117,15 +117,8 @@ pub(crate) fn copy_into_dmabuf(
 
 /// Monotonic system time for presentation timestamps.
 pub(crate) fn monotonic_timestamp() -> Duration {
-    let mut ts = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: `ts` points to valid writable storage owned by this function.
-    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } == 0
-        && ts.tv_sec >= 0
-        && ts.tv_nsec >= 0
-    {
+    let ts = rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+    if ts.tv_sec >= 0 && ts.tv_nsec >= 0 {
         Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
     } else {
         Duration::ZERO

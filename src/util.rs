@@ -184,9 +184,14 @@ pub(crate) fn reap_child_async(child: Child) {
 }
 
 /// Send `signal` to every process in the group led by `pgid`.
-pub(crate) fn signal_process_group(pgid: i32, signal: libc::c_int) -> bool {
-    // SAFETY: kill(2) with a negative pid only addresses that process group.
-    unsafe { libc::kill(-pgid, signal) == 0 }
+pub(crate) fn signal_process_group(pgid: i32, signal: rustix::process::Signal) -> bool {
+    if pgid <= 0 {
+        return false;
+    }
+    let Some(pgid) = rustix::process::Pid::from_raw(pgid) else {
+        return false;
+    };
+    rustix::process::kill_process_group(pgid, signal).is_ok()
 }
 
 /// Whether `path` points at an executable file.

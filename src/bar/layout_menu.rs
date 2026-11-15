@@ -2,7 +2,7 @@
 //! it is open; its stdout callback applies the choice without per-tick polling.
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::OwnedFd;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 
@@ -272,7 +272,7 @@ impl LayoutMenuHost {
             // Keep the child unreaped until after signalling, so its pid cannot
             // be reused for an unrelated process group.
             if let Ok(pgid) = i32::try_from(child.id()) {
-                crate::util::signal_process_group(pgid, libc::SIGTERM);
+                crate::util::signal_process_group(pgid, rustix::process::Signal::TERM);
             } else {
                 let _ = child.kill();
             }
@@ -415,11 +415,9 @@ fn start_menu(
         let output = child.stdout.take().expect("piped stdout");
         let output = File::from(OwnedFd::from(output));
         // Preserve existing descriptor flags when enabling nonblocking reads.
-        let fd = output.as_raw_fd();
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
-        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
-            return Err(io::Error::last_os_error().to_string());
-        }
+        let flags = rustix::fs::fcntl_getfl(&output).map_err(|error| error.to_string())?;
+        rustix::fs::fcntl_setfl(&output, flags | rustix::fs::OFlags::NONBLOCK)
+            .map_err(|error| error.to_string())?;
         // Eight bounded menu rows fit in an empty pipe. Close stdin immediately
         // after writing so instantMENU can finish reading its entries.
         child

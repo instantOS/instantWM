@@ -1,7 +1,7 @@
 //! A single pending wallpaper request and an explicitly owned helper process.
 
 use std::io::{self, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex, mpsc};
@@ -17,17 +17,22 @@ impl WallpaperChild {
     fn spawn(command: &mut Command) -> io::Result<Self> {
         let mut child = command.spawn()?;
         // The unreaped child reserves its PID; the pidfd notifies us on exit.
-        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, child.id(), 0) };
-        if fd < 0 {
-            let error = io::Error::last_os_error();
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(error);
+        let pid = i32::try_from(child.id())
+            .ok()
+            .and_then(rustix::process::Pid::from_raw)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "child pid out of range"));
+        let exit = pid.and_then(|pid| {
+            rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty())
+                .map_err(io::Error::from)
+        });
+        match exit {
+            Ok(exit) => Ok(Self { child, exit }),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                Err(error)
+            }
         }
-        Ok(Self {
-            child,
-            exit: unsafe { OwnedFd::from_raw_fd(fd as i32) },
-        })
     }
 }
 
@@ -154,27 +159,27 @@ fn notify(wake: &mut UnixStream) -> io::Result<()> {
 fn run_worker(requests: &Mutex<Requests>, mut wake: UnixStream) -> io::Result<()> {
     let mut current: Option<WallpaperChild> = None;
     loop {
-        let mut fds = [
-            libc::pollfd {
-                fd: wake.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            },
-            libc::pollfd {
-                fd: current.as_ref().map_or(-1, |child| child.exit.as_raw_fd()),
-                events: libc::POLLIN,
-                revents: 0,
-            },
-        ];
-        if unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) } < 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() == io::ErrorKind::Interrupted {
-                continue;
+        let (wake_ready, exit_ready) = {
+            let mut fds = vec![rustix::event::PollFd::new(
+                &wake,
+                rustix::event::PollFlags::IN,
+            )];
+            if let Some(child) = current.as_ref() {
+                fds.push(rustix::event::PollFd::new(
+                    &child.exit,
+                    rustix::event::PollFlags::IN,
+                ));
             }
-            return Err(error);
-        }
+            if let Err(error) = rustix::event::poll(&mut fds, None) {
+                if error == rustix::io::Errno::INTR {
+                    continue;
+                }
+                return Err(error.into());
+            }
+            (fds[0].revents(), fds.get(1).map(|fd| fd.revents()))
+        };
         // Reap an exited helper before processing a replacement request.
-        if fds[1].revents != 0
+        if exit_ready.is_some_and(|flags| !flags.is_empty())
             && let Some(mut child) = current.take()
         {
             let status = child.child.wait()?;
@@ -182,7 +187,7 @@ fn run_worker(requests: &Mutex<Requests>, mut wake: UnixStream) -> io::Result<()
                 log::warn!("wallpaper helper exited with {status}");
             }
         }
-        if fds[0].revents != 0 {
+        if !wake_ready.is_empty() {
             let mut bytes = [0; 256];
             loop {
                 match wake.read(&mut bytes) {
@@ -213,6 +218,7 @@ fn run_worker(requests: &Mutex<Requests>, mut wake: UnixStream) -> io::Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsRawFd;
     use std::path::Path;
     use std::time::{Duration, Instant};
 

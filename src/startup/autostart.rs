@@ -49,7 +49,7 @@ pub fn shutdown_autostart() {
     }
     // SIGTERM lets well-behaved children clean up; the session is ending
     // either way.
-    crate::util::signal_process_group(pgid as i32, libc::SIGTERM);
+    crate::util::signal_process_group(pgid as i32, rustix::process::Signal::TERM);
 }
 
 /// Spawn a list of commands via `sh -c`, detached from the WM process.

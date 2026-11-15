@@ -84,7 +84,7 @@ fn evdi_scanout_from_primary_gpu() {
             Ok(()) => break,
             Err(smithay::backend::drm::compositor::FrameError::DrmError(
                 smithay::backend::drm::DrmError::Access(error),
-            )) if error.source.raw_os_error() == Some(libc::EBUSY) => {
+            )) if error.source.raw_os_error() == Some(rustix::io::Errno::BUSY.raw_os_error()) => {
                 // As in the runtime, let asynchronous KMS setup finish
                 // before retrying a busy controller. Other failures fail.
                 assert!(
