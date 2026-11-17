@@ -76,13 +76,18 @@ pub(crate) fn resolve_modal_focus(
 
 /// Update monitor state after focus target resolution.
 fn update_focus_state(model: &mut WmModel, sel_mon_id: MonitorId, target: Option<WindowId>) {
+    let mut committed = None;
     if let Some(mon) = model.monitor_mut(sel_mon_id) {
         mon.selected = target;
         if let Some(t) = target
             && mon.overview_state.is_none()
         {
             mon.record_focus(mon.selected_tags(), t);
+            committed = Some(t);
         }
+    }
+    if let Some(win) = committed {
+        model.record_global_focus(win);
     }
 }
 
@@ -483,6 +488,9 @@ pub fn activate_client(ctx: &mut WmCtx, win: WindowId) -> bool {
         return false;
     };
 
+    // Revealing a different output/tag can transiently restore its selection.
+    // The activation is one user choice: only its final target belongs in MRU.
+    let history = ctx.core().state.model.focus_history.clone();
     select_monitor(ctx, monitor_id);
 
     let target_tags = client_tags.without_scratchpad();
@@ -500,6 +508,11 @@ pub fn activate_client(ctx: &mut WmCtx, win: WindowId) -> bool {
     // model already names it as selected. Unlike ordinary focus, it therefore
     // raises persistently (within the window's policy layer).
     refresh_focus(ctx, Some(win));
+    let model = &mut ctx.core_mut().state.model;
+    model.focus_history = history;
+    if let Some(target) = model.selected_win() {
+        model.record_global_focus(target);
+    }
     ctx.raise_client(win);
     true
 }

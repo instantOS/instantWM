@@ -363,7 +363,20 @@ fn actions() -> List {
 #[test]
 fn portal_dbus_bind_list_reconfigure_and_session_cleanup() {
     let mut harness = Harness::new();
+    let proxy = Proxy::new(&harness.frontend, NAME, PATH, IFACE).unwrap();
+    assert_eq!(proxy.get_property::<u32>("version").unwrap(), 2);
+    drop(proxy);
     harness.create("one");
+    let session_path = Harness::path("one");
+    let session = Proxy::new(
+        &harness.frontend,
+        NAME,
+        session_path.as_str(),
+        "org.freedesktop.impl.portal.Session",
+    )
+    .unwrap();
+    assert_eq!(session.get_property::<u32>("version").unwrap(), 1);
+    drop(session);
     assert!(harness.list("one").is_empty());
     assert_eq!(harness.bind("one", actions()).unwrap().0, 0);
     assert_eq!(harness.list("one")[0].0, "talk");
@@ -905,7 +918,7 @@ fn real_portal_frontend_discovers_backend_and_forwards_shortcuts() {
             PATH,
             "org.freedesktop.portal.GlobalShortcuts",
         )?;
-        assert!(proxy.get_property::<u32>("version")? >= 1);
+        assert_eq!(proxy.get_property::<u32>("version")?, 2);
         let rule = zbus::MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
             .interface("org.freedesktop.portal.Request")?

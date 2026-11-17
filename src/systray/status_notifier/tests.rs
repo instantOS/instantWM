@@ -841,3 +841,170 @@ fn external_watcher_signals_are_subscribed_before_ready() {
     print!("{stdout}");
     assert!(stdout.contains("EXTERNAL SMOKE passed"));
 }
+
+/// D-Bus menu used to exercise successful navigation and failures without
+/// touching the desktop's real tray applications.
+type FakeMenuLayout = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
+
+struct FakeNavigableMenu {
+    clicks: Arc<Mutex<Vec<i32>>>,
+    fail_parent: Arc<Mutex<Option<i32>>>,
+}
+
+#[zbus::interface(name = "com.canonical.dbusmenu")]
+impl FakeNavigableMenu {
+    fn about_to_show(&self, _id: i32) -> bool {
+        false
+    }
+
+    fn get_layout(
+        &self,
+        parent_id: i32,
+        _depth: i32,
+        _properties: Vec<String>,
+    ) -> zbus::fdo::Result<(u32, FakeMenuLayout)> {
+        if *self.fail_parent.lock().unwrap() == Some(parent_id) {
+            return Err(zbus::fdo::Error::Failed("unavailable level".into()));
+        }
+        let children = if parent_id == 99 {
+            Vec::new()
+        } else {
+            let props = HashMap::from([
+                (
+                    "label".to_string(),
+                    string_value(if parent_id == 0 {
+                        "Preferences"
+                    } else {
+                        "Apply"
+                    }),
+                ),
+                (
+                    "children-display".to_string(),
+                    string_value(if parent_id == 0 { "submenu" } else { "" }),
+                ),
+            ]);
+            vec![
+                OwnedValue::try_from(Value::from((7i32, props, Vec::<OwnedValue>::new()))).unwrap(),
+            ]
+        };
+        Ok((1, (parent_id, HashMap::new(), children)))
+    }
+
+    fn event(&self, id: i32, _event: &str, _data: Value<'_>, _timestamp: u32) {
+        self.clicks.lock().unwrap().push(id);
+    }
+}
+
+fn menu_navigation_smoke_child() {
+    use super::{DbusMenuSession, MenuView, SystrayCmd, SystrayEvt};
+    let clicks = Arc::new(Mutex::new(Vec::new()));
+    let fail_parent = Arc::new(Mutex::new(None));
+    let server = zbus::blocking::connection::Builder::session()
+        .unwrap()
+        .serve_at(
+            "/Menu",
+            FakeNavigableMenu {
+                clicks: clicks.clone(),
+                fail_parent: fail_parent.clone(),
+            },
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+    let connection = zbus::blocking::Connection::session().unwrap();
+    let service = server.unique_name().unwrap().to_string();
+    let root = super::fetch_menu_level(&connection, &service, "/Menu", 0, false).unwrap();
+    let mut session = Some(DbusMenuSession {
+        id: 4,
+        service,
+        menu_path: "/Menu".into(),
+        parents: Vec::new(),
+        last_view: root.clone(),
+    });
+    let (tx, rx) = channel();
+    let events = SystrayEventTx { tx, wake: None };
+    let (watch_tx, _watch_rx) = channel();
+    let mut dispatch = |action: MenuAction, view: MenuView| {
+        super::dispatch_cmd(
+            &connection,
+            SystrayCmd::MenuAction {
+                session_id: 4,
+                action,
+                view,
+            },
+            &events,
+            &mut session,
+            None,
+            &watch_tx,
+        );
+        match rx.recv_timeout(Duration::from_secs(5)).unwrap() {
+            SystrayEvt::MenuChanged {
+                session_id: 4,
+                view,
+            } => view,
+            event => panic!("unexpected menu response: {event:?}"),
+        }
+    };
+    let submenu = dispatch(MenuAction::OpenSubmenu(7), root.clone()).unwrap();
+    assert_eq!(submenu.entries[0].action, MenuAction::Back);
+    assert_eq!(submenu.entries[1].action, MenuAction::Activate(7));
+    // A superseded selection must refresh the current level, not activate.
+    assert_eq!(
+        dispatch(MenuAction::Activate(7), root.clone()),
+        Some(submenu.clone())
+    );
+    assert!(clicks.lock().unwrap().is_empty());
+    // A failed Back retains the submenu and acknowledges it for redisplay.
+    *fail_parent.lock().unwrap() = Some(0);
+    assert_eq!(
+        dispatch(MenuAction::Back, submenu.clone()),
+        Some(submenu.clone())
+    );
+    *fail_parent.lock().unwrap() = None;
+    assert_eq!(dispatch(MenuAction::Back, submenu), Some(root.clone()));
+    // Empty and unavailable submenus both acknowledge the unchanged level.
+    assert_eq!(
+        dispatch(MenuAction::OpenSubmenu(99), root.clone()),
+        Some(root.clone())
+    );
+    *fail_parent.lock().unwrap() = Some(7);
+    assert_eq!(
+        dispatch(MenuAction::OpenSubmenu(7), root.clone()),
+        Some(root.clone())
+    );
+    *fail_parent.lock().unwrap() = None;
+    assert!(dispatch(MenuAction::Activate(7), root).is_none());
+    assert_eq!(*clicks.lock().unwrap(), vec![7]);
+    assert!(session.is_none());
+}
+
+#[test]
+fn hosted_menu_navigation_acknowledges_failures_and_rejects_stale_choices() {
+    if std::env::var_os("INSTANTWM_TRAY_MENU_CHILD").is_some() {
+        menu_navigation_smoke_child();
+        return;
+    }
+    if !Command::new("dbus-run-session")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+    {
+        return;
+    }
+    let output = Command::new("dbus-run-session")
+        .arg("--")
+        .arg(std::env::current_exe().unwrap())
+        .args([
+            "hosted_menu_navigation_acknowledges_failures_and_rejects_stale_choices",
+            "--nocapture",
+        ])
+        .env("INSTANTWM_TRAY_MENU_CHILD", "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "menu navigation smoke failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

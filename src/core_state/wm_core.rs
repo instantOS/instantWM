@@ -19,6 +19,7 @@ pub struct WmCore {
     pub(crate) running: bool,
     pub bar: BarState,
     pub focus: FocusState,
+    pub(crate) window_menu: crate::window_menu::WindowMenuHost,
 }
 impl Default for WmCore {
     fn default() -> Self {
@@ -28,6 +29,7 @@ impl Default for WmCore {
             running: true,
             bar: BarState::default(),
             focus: FocusState::default(),
+            window_menu: Default::default(),
         }
     }
 }

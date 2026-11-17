@@ -734,6 +734,16 @@ impl<'a> WmCtx<'a> {
     /// Project accumulated bar changes once, after shared state and layout work.
     /// Startup and XEmbed docking also call this at their protocol boundary.
     pub fn reconcile_bars(&mut self) {
+        if self
+            .core_mut()
+            .bar
+            .systray_host
+            .menu
+            .take_presentation_change()
+            && crate::systray::instantmenu::reconcile(self.core_mut())
+        {
+            self.core_mut().bar.invalidate_content();
+        }
         match self {
             WmCtx::X11(ctx) => crate::backend::x11::bar::reconcile_bars(ctx),
             WmCtx::Wayland(ctx) => {

@@ -182,11 +182,18 @@ impl StatusNotifierRuntime {
         menu_session_id
     }
 
-    pub(crate) fn dispatch_menu_action(&self, session_id: u64, action: MenuAction) {
+    pub(crate) fn dispatch_menu_action(
+        &self,
+        session_id: u64,
+        action: MenuAction,
+        view: &MenuView,
+    ) {
         if let Some(worker) = self.worker.as_ref() {
-            let _ = worker
-                .cmd_tx
-                .send(SystrayCmd::MenuAction { session_id, action });
+            let _ = worker.cmd_tx.send(SystrayCmd::MenuAction {
+                session_id,
+                action,
+                view: view.clone(),
+            });
         }
     }
 

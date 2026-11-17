@@ -42,7 +42,6 @@ impl SystrayHost {
         native_menu_request: Option<NativeMenuRequestSlot>,
         wake: Option<calloop::ping::Ping>,
     ) {
-        self.instantmenu.set_wake(wake.clone());
         if self.runtime.is_none() {
             self.runtime = Some(StatusNotifierRuntime::start(native_menu_request, wake));
         }
@@ -91,7 +90,7 @@ pub(crate) fn activate_menu_entry(core: &mut WmCore, idx: usize) -> bool {
     let Some(runtime) = core.bar.systray_host.runtime.as_ref() else {
         return false;
     };
-    runtime.dispatch_menu_action(presentation.session_id, entry.action);
+    runtime.dispatch_menu_action(presentation.session_id, entry.action, &presentation.view);
     true
 }
 
@@ -239,6 +238,7 @@ pub(crate) struct MenuView {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TrayMenuPresentation {
+    pub revision: u64,
     pub session_id: u64,
     pub view: MenuView,
 }
@@ -251,12 +251,36 @@ pub(crate) struct TrayMenuPresentation {
 pub(crate) struct TrayMenuState {
     session_id: u64,
     accepting_updates: bool,
+    revision: u64,
+    presentation_changed: bool,
     view: Option<MenuView>,
 }
 
 impl TrayMenuState {
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn is_presented(&self) -> bool {
+        self.view.is_some()
+    }
+
+    pub fn invalidate_presentation(&mut self) {
+        self.presentation_changed = true;
+    }
+
+    pub fn take_presentation_change(&mut self) -> bool {
+        std::mem::take(&mut self.presentation_changed)
+    }
+
+    fn advance_revision(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+        self.invalidate_presentation();
+    }
+
     pub fn begin(&mut self, session_id: u64) -> bool {
         let changed = self.view.take().is_some();
+        self.advance_revision();
         self.session_id = session_id;
         self.accepting_updates = true;
         changed
@@ -266,6 +290,7 @@ impl TrayMenuState {
         if !self.accepting_updates || self.session_id != session_id {
             return false;
         }
+        self.advance_revision();
         let changed = self.view != view;
         self.view = view;
         if self.view.is_none() {
@@ -278,6 +303,7 @@ impl TrayMenuState {
         if !self.accepting_updates && self.view.is_none() {
             return None;
         }
+        self.advance_revision();
         self.accepting_updates = false;
         self.view = None;
         Some(self.session_id)
@@ -285,6 +311,7 @@ impl TrayMenuState {
 
     pub fn presentation(&self) -> Option<TrayMenuPresentation> {
         self.view.clone().map(|view| TrayMenuPresentation {
+            revision: self.revision,
             session_id: self.session_id,
             view,
         })

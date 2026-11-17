@@ -344,6 +344,7 @@ fn forced_refresh_reapplies_unchanged_backend_focus() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
 
@@ -369,6 +370,7 @@ fn projection_uses_focus_from_before_a_precommitted_model_change() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
 
@@ -461,6 +463,7 @@ fn changing_focus_does_not_change_persistent_z_order() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(
@@ -524,6 +527,7 @@ fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(
@@ -582,6 +586,7 @@ fn closing_temporary_tiled_window_in_maximized_presentation_restores_previous_fo
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
 
@@ -645,6 +650,7 @@ fn closing_repeated_temporary_tiled_windows_unwinds_focus_in_mru_order() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(
@@ -725,6 +731,7 @@ fn native_focus_drift_reprojects_without_inventing_a_selection_change() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend {
         stale_focus: true,
@@ -756,6 +763,7 @@ fn unchanged_focus_leaves_urgency_untouched_until_projection_is_required() {
         running,
         bar,
         focus,
+        window_menu: Default::default(),
     };
     let mut backend = RecordingBackend::default();
     focus_from_current_selection(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();

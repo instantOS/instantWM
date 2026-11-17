@@ -27,6 +27,7 @@ mod keyboard;
 mod keyboard_layout;
 pub mod layouts;
 mod logging;
+mod menu_presenter;
 mod model;
 mod monitor;
 mod mouse;
@@ -43,6 +44,7 @@ mod test_support;
 mod toggles;
 pub mod types;
 mod util;
+mod window_menu;
 mod wm;
 
 // Compile-negative fixtures use the real private API, rather than doctests
