@@ -100,7 +100,7 @@ pub fn tree_resize_begin(
     true
 }
 
-/// Commit the currently selected floating-border or tiled-gap hover target.
+/// Commit the offered floating-border or tiled-gap hover target.
 pub fn hover_drag_begin(
     ctx: &mut WmCtx<'_>,
     position: Point,
@@ -129,9 +129,20 @@ pub fn hover_drag_begin(
         return tree_resize_begin(ctx, win, btn, source, position, geometry, resize);
     }
 
-    let Some(target) =
-        crate::mouse::hover::selected_hover_resize_target_at(&ctx.core().state.model, position)
+    let Some((win, _)) = ctx
+        .core()
+        .state
+        .interaction
+        .drag
+        .hover_offer()
+        .resize_target()
     else {
+        return false;
+    };
+    let Some(target) =
+        crate::mouse::hover::resize_target_at(&ctx.core().state.model, win, position)
+    else {
+        crate::mouse::clear_hover_offer(ctx);
         return false;
     };
 
