@@ -1,5 +1,7 @@
 use super::*;
 use std::collections::HashMap;
+use std::thread::JoinHandle;
+use zbus::blocking::Connection as BlockingConnection;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{
     Connection,
@@ -503,6 +505,103 @@ impl PortalRequest {
     }
 }
 
+/// Watch the portal frontend's unique owner. A frontend disconnect closes its
+/// sessions; if the frontend itself exits, discard all of its sessions as well.
+fn spawn_frontend_watcher(
+    shared: &Arc<Shared>,
+    connection: &BlockingConnection,
+) -> zbus::Result<JoinHandle<()>> {
+    let rule = zbus::MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .sender("org.freedesktop.DBus")?
+        .interface("org.freedesktop.DBus")?
+        .member("NameOwnerChanged")?
+        .add_arg(FRONTEND)?
+        .build();
+    let mut watcher = zbus::blocking::MessageIterator::for_match_rule(rule, connection, Some(16))?;
+    let shared = Arc::downgrade(shared);
+    let connection = connection.clone();
+    Ok(std::thread::spawn(move || {
+        for message in &mut watcher {
+            let Ok(message) = message else {
+                if let Some(shared) = shared.upgrade() {
+                    let _ = shared.tx.send(Event::BusGone);
+                }
+                break;
+            };
+            let Ok((_, old, _)) = message.body().deserialize::<(String, String, String)>() else {
+                continue;
+            };
+            if old.is_empty() {
+                continue;
+            }
+            let Some(shared) = shared.upgrade() else {
+                break;
+            };
+            let paths: Vec<_> = shared
+                .registry
+                .lock()
+                .unwrap()
+                .sessions
+                .iter()
+                .filter(|(_, session)| session.owner == old)
+                .map(|(path, _)| path.clone())
+                .collect();
+            for path in paths {
+                shared.remove_session(&path);
+                let _ = connection.object_server().remove::<PortalSession, _>(path);
+            }
+        }
+    }))
+}
+
+fn emit_shortcuts_changed(
+    connection: &BlockingConnection,
+    shared: &Shared,
+    path: &str,
+) -> zbus::Result<()> {
+    let shortcuts = shared
+        .registry
+        .lock()
+        .unwrap()
+        .sessions
+        .get(path)
+        .map(|session| list(&session.shortcuts));
+    let Some(shortcuts) = shortcuts else {
+        return Ok(());
+    };
+    connection.emit_signal(
+        None::<&str>,
+        PATH,
+        INTERFACE,
+        "ShortcutsChanged",
+        &(
+            OwnedObjectPath::try_from(path.to_owned()).unwrap(),
+            shortcuts,
+        ),
+    )
+}
+
+fn emit_activation(
+    connection: &BlockingConnection,
+    activation: &Activation,
+    pressed: bool,
+    time: u64,
+) -> zbus::Result<()> {
+    connection.emit_signal(
+        None::<&str>,
+        PATH,
+        INTERFACE,
+        if pressed { "Activated" } else { "Deactivated" },
+        &(
+            OwnedObjectPath::try_from(activation.session.clone()).unwrap(),
+            &activation.id,
+            time,
+            Dict::new(),
+        ),
+    )
+}
+
 pub(super) fn serve(
     shared: Arc<Shared>,
     rx: mpsc::Receiver<Event>,
@@ -528,89 +627,21 @@ pub(super) fn serve(
         )?
         .build()?;
     log::info!("global shortcuts portal ready");
-    // Watch the frontend's unique owner. It closes sessions on app disconnect;
-    // if the frontend itself exits, discard all of its sessions as well.
-    let rule = zbus::MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .sender("org.freedesktop.DBus")?
-        .interface("org.freedesktop.DBus")?
-        .member("NameOwnerChanged")?
-        .add_arg(FRONTEND)?
-        .build();
-    let mut watcher = zbus::blocking::MessageIterator::for_match_rule(rule, &connection, Some(16))?;
-    let watch_shared = Arc::downgrade(&shared);
-    let watch_connection = connection.clone();
-    let watcher_thread = std::thread::spawn(move || {
-        for message in &mut watcher {
-            let Ok(message) = message else {
-                if let Some(shared) = watch_shared.upgrade() {
-                    let _ = shared.tx.send(Event::BusGone);
-                }
-                break;
-            };
-            let Ok((_, old, _)) = message.body().deserialize::<(String, String, String)>() else {
-                continue;
-            };
-            if old.is_empty() {
-                continue;
-            }
-            let Some(shared) = watch_shared.upgrade() else {
-                break;
-            };
-            let paths: Vec<_> = shared
-                .registry
-                .lock()
-                .unwrap()
-                .sessions
-                .iter()
-                .filter(|(_, session)| session.owner == old)
-                .map(|(path, _)| path.clone())
-                .collect();
-            for path in paths {
-                shared.remove_session(&path);
-                let _ = watch_connection
-                    .object_server()
-                    .remove::<PortalSession, _>(path);
-            }
-        }
-    });
+    let watcher_thread = spawn_frontend_watcher(&shared, &connection)?;
     let _ = ready.send(Ok(()));
     let mut result = Ok(());
     while let Ok(event) = rx.recv() {
         match event {
             Event::Stop | Event::BusGone => break,
             Event::Changed(path) => {
-                let shortcuts = shared
-                    .registry
-                    .lock()
-                    .unwrap()
-                    .sessions
-                    .get(&path)
-                    .map(|session| list(&session.shortcuts));
-                if let Some(shortcuts) = shortcuts {
-                    let path = OwnedObjectPath::try_from(path).unwrap();
-                    let _ = connection.emit_signal(
-                        None::<&str>,
-                        PATH,
-                        INTERFACE,
-                        "ShortcutsChanged",
-                        &(path, shortcuts),
-                    );
-                }
+                let _ = emit_shortcuts_changed(&connection, &shared, &path);
             }
             Event::Key {
                 activation,
                 pressed,
                 time,
             } => {
-                let path = OwnedObjectPath::try_from(activation.session).unwrap();
-                if let Err(error) = connection.emit_signal(
-                    None::<&str>,
-                    PATH,
-                    INTERFACE,
-                    if pressed { "Activated" } else { "Deactivated" },
-                    &(path, activation.id, time, Dict::new()),
-                ) {
+                if let Err(error) = emit_activation(&connection, &activation, pressed, time) {
                     result = Err(error);
                     break;
                 }
