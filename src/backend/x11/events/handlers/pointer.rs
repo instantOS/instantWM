@@ -1,5 +1,6 @@
 use crate::contexts::WmCtxX11;
-use crate::types::{BarPosition, Gesture, ModMask, MouseButton, Point, WindowId};
+use crate::mouse::motion::{MotionBand, MotionPolicyInput};
+use crate::types::{ModMask, MouseButton, Point, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xinput::{ConnectionExt as XInputConnectionExt, EventMode, TouchBeginEvent};
@@ -136,7 +137,8 @@ pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
 }
 
 fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<WindowId>) {
-    // Handle focus-follows-mouse monitor switching
+    // Handle focus-follows-mouse monitor switching. The shared motion policy
+    // owns the remaining ordering so X11 and Wayland cannot diverge.
     let monitor_changed = ctx
         .core
         .state
@@ -158,49 +160,31 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
         return;
     }
 
-    // Early-out: cursor is below the bar area.
-    let (monitor_id, monitor_y, bar_height) = {
+    let (monitor_y, bar_height) = {
         let mon = ctx.core.state.model.expect_selected_monitor();
-        (mon.monitor_id, mon.monitor_rect.y, mon.bar_height)
+        (mon.monitor_rect.y, mon.bar_height)
     };
-    let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
-
-    if root.y >= monitor_y + bar_height {
-        // Overview owns pointer semantics wholesale; a border-zone offer
-        // armed before entering it must not keep borrowing the pointer.
-        if ctx.core.state.model.is_overview_active() {
-            crate::mouse::clear_hover_offer(&mut ctx.wm_ctx());
-        } else {
-            let sidebar_target = (!hovered.is_some())
-                .then(|| crate::mouse::pointer::sidebar_target_at(&ctx.core.state.model, root))
-                .flatten();
-            if crate::mouse::set_sidebar_offer(&mut ctx.wm_ctx(), sidebar_target)
-                .affects_pointer_handling()
-            {
-                return;
-            }
-            if crate::mouse::update_resize_offer_with_focus_at(&mut ctx.wm_ctx(), root, hovered) {
-                return;
-            }
-        }
-        crate::bar::clear_hover(&mut ctx.wm_ctx());
-        if !monitor_changed {
-            crate::focus::apply_hover_focus(
-                &mut ctx.wm_ctx(),
-                hovered,
-                false,
-                Some(root),
-                crate::types::HoverFocusTrigger::PointerMotion,
-            );
-        }
-        return;
+    let band = if root.y < monitor_y + bar_height {
+        MotionBand::Bar
+    } else {
+        MotionBand::Content
     };
 
-    // The bar owns the pointer for its whole band; release any offer that is
-    // still armed from the desktop area below it (Wayland parity).
-    crate::mouse::clear_hover_offer(&mut ctx.wm_ctx());
-    let pos = crate::bar::update_hover(&mut ctx.wm_ctx(), root, false, false);
-    if matches!(pos, Some(BarPosition::Root) | None) && current_gesture != Gesture::None {
-        crate::bar::clear_hover(&mut ctx.wm_ctx());
-    }
+    let _ = crate::mouse::motion::update_motion_policy(
+        &mut ctx.wm_ctx(),
+        MotionPolicyInput {
+            root,
+            hovered,
+            band,
+            trigger: crate::types::HoverFocusTrigger::PointerMotion,
+            sync_selected_monitor: false,
+            bar_hover_blocked: false,
+            capture_active: false,
+            sidebar_blocked: hovered.is_some(),
+            suppress_hover_focus: false,
+            monitor_already_selected: monitor_changed,
+            focus_resize_offer: true,
+            preserve_focus: false,
+        },
+    );
 }

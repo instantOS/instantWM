@@ -15,14 +15,15 @@
 //!
 //! The hover-offer model is authoritative: cursor presentation and pointer
 //! routing are derived from it and reconciled by the active backend.
-//! Both backends commit the active offer through the shared press policy.
+//! The shared motion policy updates the offer; the shared press policy
+//! commits it, so X11 and Wayland cannot drift apart.
 //!
 //! ## Entry points
 //!
 //! | Function                                      | Called from          | Purpose                                    |
 //! |-----------------------------------------------|----------------------|--------------------------------------------|
-//! | [`update_resize_offer_with_focus_at`]         | X11 motion           | Update resize offer + cursor, may focus    |
-//! | [`update_resize_offer_at`]                    | Wayland motion       | Update resize offer + cursor only          |
+//! | [`update_resize_offer_at`]                    | shared motion policy | Update resize offer + cursor               |
+//! | [`focus_resize_offer`]                        | shared motion policy | Apply X11's historical resize focus rule   |
 
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
@@ -175,37 +176,25 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
 
 // ── Motion-notify hook ───────────────────────────────────────────────────────
 
-/// Updates the resize offer at floating borders and adjustable inner gaps.
+/// Apply the historical X11 rule for moving focus onto a resize offer.
 ///
-/// Returns `true` when the pointer is over a resize offer zone and the caller
-/// should stop processing the motion event.
-pub fn update_resize_offer_with_focus_at(
-    ctx: &mut WmCtx,
-    root: Point,
-    hovered: Option<WindowId>,
-) -> bool {
-    if let Some(win) = update_resize_offer_at(ctx, root, hovered, HoverFocusTrigger::PointerMotion)
-    {
-        // This function is only entered from physical X11 motion. The shared
-        // mode policy still decides whether the resize offer may move focus.
-        // Otherwise the motion handler resolves the actual window beneath the
-        // pointer after the resize-offer check.
-        let should_focus = ctx
-            .core()
-            .state
-            .config
-            .window
-            .focus_follows_mouse
-            .allows(crate::types::HoverFocusTrigger::PointerMotion)
-            && ctx.core().state.model.selected_win() != Some(win)
-            && !has_visible_tiled_client(&ctx.core().state.model);
+/// The shared motion policy decides whether a resize offer owns the motion;
+/// only X11 opts into this focus side effect. Wayland keeps focus independent
+/// so its pointer focus and resize cursor cannot fight each other.
+pub fn focus_resize_offer(ctx: &mut WmCtx, win: WindowId) {
+    let should_focus = ctx
+        .core()
+        .state
+        .config
+        .window
+        .focus_follows_mouse
+        .allows(crate::types::HoverFocusTrigger::PointerMotion)
+        && ctx.core().state.model.selected_win() != Some(win)
+        && !has_visible_tiled_client(&ctx.core().state.model);
 
-        if should_focus {
-            crate::focus::focus(ctx, Some(win));
-        }
-        return true;
+    if should_focus {
+        crate::focus::focus(ctx, Some(win));
     }
-    false
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

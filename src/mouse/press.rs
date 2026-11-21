@@ -477,14 +477,19 @@ mod tests {
 
     fn offer_floating_border(wm: &mut Wm, win: WindowId, border: Point) {
         let motion = crate::types::HoverFocusTrigger::PointerMotion;
-        crate::mouse::update_resize_offer_at(
+        crate::mouse::hover::update_resize_offer_at(
             &mut wm.test_ctx(),
             Point::new(border.x + 10, border.y),
             Some(win),
             motion,
         );
         assert_eq!(
-            crate::mouse::update_resize_offer_at(&mut wm.test_ctx(), border, Some(win), motion),
+            crate::mouse::hover::update_resize_offer_at(
+                &mut wm.test_ctx(),
+                border,
+                Some(win),
+                motion
+            ),
             Some(win)
         );
     }

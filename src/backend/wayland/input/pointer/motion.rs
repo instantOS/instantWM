@@ -10,13 +10,9 @@ use crate::backend::wayland::commands::PointerMotionCommand;
 use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::backend::wayland::compositor::window::hit_test::{PointerContents, SurfaceFocus};
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
-use crate::backend::wayland::input::bar::update_bar_hit_state;
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::backend::wayland::input::pointer::constraints::ActivePointerConstraint;
-use crate::backend::wayland::input::pointer::drag::active_drag_window;
-use crate::contexts::WmCtx;
-use crate::mouse::{clear_hover_offer, set_sidebar_offer};
-use crate::types::BarPosition;
+use crate::mouse::motion::{MotionBand, MotionOutcome, MotionPolicyInput, update_motion_policy};
 use crate::types::ModMask;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
@@ -770,18 +766,14 @@ fn dispatch_pointer_motion(
     let pointer_location = state.native.runtime.pointer_location;
     let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
 
-    // Get active drag window once - used in multiple phases
-    let active_drag_window = active_drag_window(&state.wm);
-
-    // Phase 1: Compute bar/guard band hit detection
     let (in_bar_band, in_bar_guard_band) = compute_bar_hit(&state.wm, root);
-
-    // Phase 2: Resolve pointer focus and hovered window
     let (pointer_focus, hovered_win) =
         resolve_pointer_focus_from_hit(state, hit_test, in_bar_band, in_bar_guard_band);
 
-    // Core actions and native pointer dispatch run in successive borrow scopes.
-    if handle_resize_drag_motion(
+    // An active window move/resize owns the pointer until release. Other
+    // captures (tag/title drags, sidebar, bottom bar) are updated after the
+    // hover policy below.
+    if handle_active_drag_motion(
         state,
         pointer_handle,
         pointer_focus.clone(),
@@ -791,85 +783,55 @@ fn dispatch_pointer_motion(
         return pointer_focus;
     }
 
-    // Phase 4: Handle bar interaction (early return path)
-    // Some captured gestures own the bar hover until release. Running the
-    // ordinary hover path as well makes the two states alternate every motion
-    // frame, which is visible as flicker on Wayland.
-    let bar_pos = if state.wm.core.state.interaction.drag.owns_bar_hover() {
-        None
-    } else if hit_test.band.above_bar() {
-        crate::bar::clear_hover(&mut state.ctx());
-        None
-    } else {
-        update_bar_hit_state(state, root, false)
+    let (capture_active, bar_hover_blocked, preserve_focus) = {
+        let drag = &state.wm.core.state.interaction.drag;
+        (
+            drag.has_capture(),
+            drag.owns_bar_hover(),
+            // An exclusive layer (for example a selector) owns keyboard
+            // focus; pointer motion must not select/reorder managed windows.
+            state.exclusive_layer_has_keyboard_focus(),
+        )
     };
-    if handle_bar_motion(
-        state,
-        pointer_handle,
-        pointer_focus.clone(),
-        in_bar_band,
-        bar_pos,
-        time,
-    ) {
+    let band = if state.native.is_locked() || hit_test.band.above_bar() {
+        MotionBand::AboveBar
+    } else if in_bar_band {
+        MotionBand::Bar
+    } else {
+        MotionBand::Content
+    };
+    let outcome = update_motion_policy(
+        &mut state.ctx(),
+        MotionPolicyInput {
+            root,
+            hovered: hovered_win,
+            band,
+            trigger: hover_focus_trigger,
+            sync_selected_monitor: true,
+            bar_hover_blocked,
+            capture_active,
+            // A surface, window, or application overlay already owns the
+            // point; the sidebar may not arm through it.
+            sidebar_blocked: hit_test.surface.is_some()
+                || hit_test.hovered_win.is_some()
+                || hit_test.band == SceneBand::WindowOverlay,
+            // The guard strip below the bar still presents resize offers but
+            // must not move focus to the window under it.
+            suppress_hover_focus: in_bar_guard_band,
+            monitor_already_selected: false,
+            focus_resize_offer: false,
+            preserve_focus,
+        },
+    );
+
+    if outcome == MotionOutcome::Bar {
+        send_pointer_motion(state, pointer_handle, pointer_focus.clone(), time);
+        pointer_handle.frame(state);
         return pointer_focus;
     }
 
-    // A global sidebar offer suppresses ordinary hover/focus policy, but it
-    // must not consume the motion event: Smithay's pointer position is the
-    // protocol authority used by constraints, buttons, and cursor rendering.
-    let sidebar_offer_active = if !state.wm.core.state.interaction.drag.has_capture() {
-        let sidebar_target =
-            crate::mouse::pointer::sidebar_target_at(&state.wm.core.state.model, root);
-        let blocked_by_non_desktop = sidebar_target.is_some()
-            && (hit_test.surface.is_some()
-                || hit_test.hovered_win.is_some()
-                || hit_test.band == SceneBand::WindowOverlay);
-        let ctx = state.ctx();
-        if let WmCtx::Wayland(mut ctx) = ctx {
-            let target = if blocked_by_non_desktop {
-                None
-            } else {
-                sidebar_target
-            };
-            matches!(
-                set_sidebar_offer(&mut ctx.wm_ctx(), target),
-                crate::mouse::SidebarOfferUpdate::Active
-            )
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    if !sidebar_offer_active {
-        // Phase 5: Update floating-border and tiled-gap resize offers
-        let suppress_hover_focus = if hit_test.band.above_bar() || state.native.is_locked() {
-            // Foreground shell UI and menus also occlude compositor resize
-            // offers; otherwise a selector can inherit a window's resize cursor.
-            clear_hover_offer(&mut state.ctx());
-            true
-        } else {
-            update_hover_resize_state(state, root, hovered_win, hover_focus_trigger)
-        };
-
-        // Phase 6: Update pointer focus based on drag state. An exclusive layer
-        // surface (for example slurp) temporarily owns keyboard focus; moving the
-        // pointer while it is active must not select/reorder managed windows below
-        // the overlay.
-        if !state.exclusive_layer_has_keyboard_focus() {
-            update_pointer_focus(
-                state,
-                active_drag_window,
-                hovered_win,
-                suppress_hover_focus,
-                root,
-                hover_focus_trigger,
-            );
-        }
-    }
-
-    // Phase 7: Handle tag/title drag motion
+    // Other captures are updated after hover policy so their own release
+    // semantics decide the final state. Active window drags returned above.
     if hover_focus_trigger == crate::types::HoverFocusTrigger::PointerMotion {
         handle_wm_drag_motion(state, keyboard_handle, root);
     }
@@ -879,23 +841,9 @@ fn dispatch_pointer_motion(
     let relative_focus = matches!(event, MotionEvent::Relative { .. })
         .then(|| pointer_focus.clone())
         .flatten();
-    // Phase 8: Dispatch final motion event to Smithay
-    let focus =
-        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-
-    let serial = SERIAL_COUNTER.next_serial();
-    let motion = smithay::input::pointer::MotionEvent {
-        location: pointer_location,
-        serial,
-        time,
-    };
-    pointer_handle.motion(state, focus, &motion);
+    send_pointer_motion(state, pointer_handle, pointer_focus, time);
     relative_focus
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper functions for dispatch_pointer_motion
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Compute whether the pointer is in the bar area or guard band below it.
 fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
@@ -947,8 +895,29 @@ fn resolve_pointer_focus_from_hit(
     (contents.surface.clone(), contents.hovered_win)
 }
 
-/// Handle resize drag motion. Returns true if handled (early return).
-fn handle_resize_drag_motion(
+/// Send one native pointer motion sample.
+///
+/// Callers decide whether this sample also closes a frame; early-return paths
+/// close their own frame, while the normal path leaves it open for the
+/// relative-motion dispatch that follows.
+fn send_pointer_motion(
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    focus: Option<SurfaceFocus>,
+    time: InputTime,
+) {
+    let focus = focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+    let serial = SERIAL_COUNTER.next_serial();
+    let motion = smithay::input::pointer::MotionEvent {
+        location: state.native.runtime.pointer_location,
+        serial,
+        time,
+    };
+    pointer_handle.motion(state, focus, &motion);
+}
+
+/// Update an active window move/resize. Returns true if handled.
+fn handle_active_drag_motion(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     pointer_focus: Option<SurfaceFocus>,
@@ -980,104 +949,11 @@ fn handle_resize_drag_motion(
         return false;
     }
 
-    // During an active resize drag, forward motion to Smithay to keep
-    // the pointer protocol in sync, but skip focus updates.
-    let serial = SERIAL_COUNTER.next_serial();
-    let motion = smithay::input::pointer::MotionEvent {
-        location: pointer_location,
-        serial,
-        time,
-    };
-    let focus =
-        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-    pointer_handle.motion(state, focus, &motion);
+    // During an active move/resize, forward motion to Smithay to keep the
+    // pointer protocol in sync, but skip hover and focus updates.
+    send_pointer_motion(state, pointer_handle, pointer_focus, time);
     pointer_handle.frame(state);
     true
-}
-
-/// Handle bar motion. Returns true if handled (early return).
-fn handle_bar_motion(
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    pointer_focus: Option<SurfaceFocus>,
-    in_bar_band: bool,
-    bar_pos: Option<BarPosition>,
-    time: InputTime,
-) -> bool {
-    let pointer_location = state.native.runtime.pointer_location;
-    let is_drag = state.wm.core.state.interaction.drag.has_capture();
-    if (in_bar_band || bar_pos.is_some()) && !is_drag {
-        let ctx = state.ctx();
-        let WmCtx::Wayland(mut ctx) = ctx else {
-            return true;
-        };
-        clear_hover_offer(&mut ctx.wm_ctx());
-        let focus = pointer_focus
-            .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-        let serial = SERIAL_COUNTER.next_serial();
-        let motion = smithay::input::pointer::MotionEvent {
-            location: pointer_location,
-            serial,
-            time,
-        };
-        pointer_handle.motion(state, focus, &motion);
-        pointer_handle.frame(state);
-        return true;
-    }
-    false
-}
-
-/// Update floating-border and tiled-gap resize state.
-///
-/// Hover focus is suppressed only while a resize-border offer is actually
-/// held: the pointer then sits in the border strip of a floating window, and
-/// yanking focus to whatever lies beneath would fight the offered gesture.
-/// Without an offer, hover focus applies normally (focus-follows-mouse,
-/// unfocus when hovering the root).
-fn update_hover_resize_state(
-    state: &mut WaylandState,
-    root: RootPoint,
-    hovered: Option<crate::types::WindowId>,
-    trigger: crate::types::HoverFocusTrigger,
-) -> bool {
-    if state.wm.core.state.model.is_overview_active() {
-        let mut ctx = state.ctx();
-        clear_hover_offer(&mut ctx);
-        return false;
-    }
-    crate::mouse::update_resize_offer_at(&mut state.ctx(), root, hovered, trigger).is_some()
-}
-
-/// Update pointer focus based on drag state.
-fn update_pointer_focus(
-    state: &mut WaylandState,
-    active_drag_window: Option<crate::types::WindowId>,
-    hovered_win: Option<crate::types::WindowId>,
-    suppress_hover_focus: bool,
-    root: RootPoint,
-    trigger: crate::types::HoverFocusTrigger,
-) {
-    if state.wm.core.state.model.is_overview_active() {
-        let mut ctx = state.ctx();
-        crate::focus::apply_hover_focus(&mut ctx, hovered_win, false, Some(root), trigger);
-        return;
-    }
-    if let Some(lock_win) = active_drag_window {
-        let ctx = state.ctx();
-        let WmCtx::Wayland(mut ctx) = ctx else {
-            return;
-        };
-        if ctx.wayland.state.wm.core.state.model.selected_win() != Some(lock_win) {
-            crate::focus::focus(&mut ctx.wm_ctx(), Some(lock_win));
-        }
-    } else if !suppress_hover_focus {
-        let ctx = state.ctx();
-        let WmCtx::Wayland(ctx) = ctx else {
-            return;
-        };
-        let mut wm_ctx = WmCtx::Wayland(ctx);
-        crate::focus::apply_hover_focus(&mut wm_ctx, hovered_win, false, Some(root), trigger);
-    }
 }
 
 /// Handle tag and title drag motion.

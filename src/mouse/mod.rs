@@ -10,6 +10,7 @@
 //!   - [`drag::title`] — title bar click/drag
 //!   - [`drag::gesture`] — root-window gestures
 //! - [`interaction`] — normalized pointer/touch update, end, and cancel events
+//! - [`motion`]     — shared motion policy (bar, sidebar, resize, hover focus)
 //! - [`resize`]     — shared corner, aspect, and hover-resize policy
 //! - [`slop`]       — region selection (`instantslop`/`slurp`) for `draw_window`, geometry validation, `apply_window_resize`
 //! - [`monitor`]    — monitor-crossing detection after a drag/resize
@@ -28,7 +29,7 @@
 //! ```
 //!
 //! X11 and Wayland's event-driven pointer/touch adapters feed the same state
-//! machine. They do not implement gesture behavior.
+//! machine and shared motion policy. They do not implement gesture behavior.
 
 pub mod bindings;
 pub mod constants;
@@ -37,6 +38,7 @@ pub mod hot_corner;
 pub mod hover;
 pub mod interaction;
 pub mod monitor;
+pub mod motion;
 pub mod pointer;
 pub mod press;
 pub mod resize;
@@ -52,10 +54,7 @@ pub use drag::handle_window_title_mouse;
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hot_corner::update_overlay_hot_corner;
-pub use hover::{
-    SidebarOfferUpdate, clear_hover_offer, set_sidebar_offer, update_resize_offer_at,
-    update_resize_offer_with_focus_at,
-};
+pub use hover::{clear_hover_offer, set_sidebar_offer};
 
 // ── resize ────────────────────────────────────────────────────────────────────
 

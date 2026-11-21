@@ -1,18 +1,5 @@
 //! Pointer drag handling (title drag, tag drag, resize drag).
 
-use crate::types::WindowId;
-use crate::wm::WaylandWm as Wm;
-
-/// Get the active drag window (if any).
-pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
-    wm.core
-        .state
-        .interaction
-        .drag
-        .active_interaction()
-        .map(|drag| drag.win())
-}
-
 #[cfg(test)]
 mod tests {
     use crate::test_support::TestWm as Wm;
