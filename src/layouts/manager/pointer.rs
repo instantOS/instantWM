@@ -123,8 +123,10 @@ pub(crate) fn pointer_tree_gap_resize_target(
 
 /// Whether pointer movement/resizing should edit the persistent layout tree.
 ///
-/// Every tiled move remains a placement gesture, including a lone source.
-/// Maximized and floating presentations retain free movement.
+/// Every ordinary tiled move remains a placement gesture, including a lone
+/// source. Maximized and floating presentations retain free movement, and a
+/// bar-title drag on a tiled view with a single visible tile is lifted to
+/// floating because there is no second tiling slot to place it into.
 pub(crate) fn uses_manual_tree_pointer_interaction(view: ClientView<'_>) -> bool {
     view.monitor.current_layout() == PresentationMode::Tiled
         && view.client.mode().is_normal_tiling()
