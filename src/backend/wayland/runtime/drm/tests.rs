@@ -22,7 +22,8 @@ fn crtc(raw: u32) -> super::ScanoutId {
 
 #[test]
 fn session_reactivation_reprobes_outputs_without_fabricating_flip_completion() {
-    use super::{DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events};
+    use super::layout::DrmLayoutState;
+    use super::{DrmLoopState, DrmRuntimeEvent};
     use smithay::utils::{Clock, Monotonic};
     use std::sync::mpsc;
 
@@ -37,7 +38,7 @@ fn session_reactivation_reprobes_outputs_without_fabricating_flip_completion() {
     };
     let (tx, rx) = mpsc::channel();
     tx.send(DrmRuntimeEvent::SessionPaused).unwrap();
-    process_runtime_events(
+    super::session::process_runtime_events(
         &rx,
         &mut runtime,
         &layout,
@@ -53,7 +54,7 @@ fn session_reactivation_reprobes_outputs_without_fabricating_flip_completion() {
 
     // Resume must also request a scan independently of udev notifications.
     tx.send(DrmRuntimeEvent::SessionActivated).unwrap();
-    let (_, topology_changed) = process_runtime_events(
+    let (_, topology_changed) = super::session::process_runtime_events(
         &rx,
         &mut runtime,
         &layout,
@@ -69,7 +70,7 @@ fn session_reactivation_reprobes_outputs_without_fabricating_flip_completion() {
 
     // A delayed real completion, rather than resume, releases the redraw.
     tx.send(DrmRuntimeEvent::VBlank(panel)).unwrap();
-    process_runtime_events(
+    super::session::process_runtime_events(
         &rx,
         &mut runtime,
         &layout,
@@ -82,9 +83,8 @@ fn session_reactivation_reprobes_outputs_without_fabricating_flip_completion() {
 
 #[test]
 fn equal_crtc_handles_on_distinct_devices_complete_independently() {
-    use super::{
-        DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
-    };
+    use super::layout::DrmLayoutState;
+    use super::{DrmDeviceId, DrmLoopState, DrmRuntimeEvent};
     use smithay::utils::{Clock, Monotonic};
     use std::sync::mpsc;
     let primary = crtc(1);
@@ -103,7 +103,7 @@ fn equal_crtc_handles_on_distinct_devices_complete_independently() {
     };
     let (tx, rx) = mpsc::channel();
     tx.send(DrmRuntimeEvent::VBlank(secondary)).unwrap();
-    process_runtime_events(
+    super::session::process_runtime_events(
         &rx,
         &mut runtime,
         &layout,
@@ -120,9 +120,8 @@ fn equal_crtc_handles_on_distinct_devices_complete_independently() {
 
 #[test]
 fn undocking_during_session_pause_retires_dock_flips_before_panel_recovery() {
-    use super::{
-        DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
-    };
+    use super::layout::DrmLayoutState;
+    use super::{DrmDeviceId, DrmLoopState, DrmRuntimeEvent};
     use smithay::utils::{Clock, Monotonic};
     use std::sync::mpsc;
 
@@ -147,12 +146,14 @@ fn undocking_during_session_pause_retires_dock_flips_before_panel_recovery() {
     tx.send(DrmRuntimeEvent::SessionPaused).unwrap();
     tx.send(DrmRuntimeEvent::OutputTopologyChanged).unwrap();
     tx.send(DrmRuntimeEvent::DeviceRemoved(123)).unwrap();
-    let (_, changed) = process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+    let (_, changed) =
+        super::session::process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
     assert!(!runtime.take_topology_change(changed));
     assert!(runtime.removed_devices.contains(&123));
 
     tx.send(DrmRuntimeEvent::SessionActivated).unwrap();
-    let (_, changed) = process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+    let (_, changed) =
+        super::session::process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
     assert!(runtime.take_topology_change(changed));
     assert!(runtime.removed_devices.contains(&123));
     // Activation must preserve live buffers; topology retirement owns cleanup
@@ -168,7 +169,7 @@ fn undocking_during_session_pause_retires_dock_flips_before_panel_recovery() {
     for scanout in [dock_dp, displaylink] {
         tx.send(DrmRuntimeEvent::VBlank(scanout)).unwrap();
     }
-    process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+    super::session::process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
     assert_eq!(runtime.render_flags.len(), 1);
     assert!(runtime.render_flags[&panel]);
     assert!(runtime.pending_crtcs.is_empty());
@@ -176,7 +177,8 @@ fn undocking_during_session_pause_retires_dock_flips_before_panel_recovery() {
 
 #[test]
 fn session_and_dock_event_orderings_preserve_removal_and_deferred_reprobes() {
-    use super::{DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events};
+    use super::layout::DrmLayoutState;
+    use super::{DrmLoopState, DrmRuntimeEvent};
     use smithay::utils::{Clock, Monotonic};
     use std::sync::mpsc;
 
@@ -218,8 +220,13 @@ fn session_and_dock_event_orderings_preserve_removal_and_deferred_reprobes() {
                                     expected_active = true;
                                 }
                             }
-                            let (_, changed) =
-                                process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+                            let (_, changed) = super::session::process_runtime_events(
+                                &rx,
+                                &mut runtime,
+                                &layout,
+                                &mut [],
+                                &clock,
+                            );
                             assert_eq!(
                                 runtime.session_active, expected_active,
                                 "{order:?}, batch {batch}"
@@ -241,8 +248,13 @@ fn session_and_dock_event_orderings_preserve_removal_and_deferred_reprobes() {
                         // An activation must always arrange a scan even when
                         // no fresh udev notification follows it.
                         tx.send(DrmRuntimeEvent::SessionActivated).unwrap();
-                        let (_, changed) =
-                            process_runtime_events(&rx, &mut runtime, &layout, &mut [], &clock);
+                        let (_, changed) = super::session::process_runtime_events(
+                            &rx,
+                            &mut runtime,
+                            &layout,
+                            &mut [],
+                            &clock,
+                        );
                         assert!(runtime.take_topology_change(changed));
                         assert!(!runtime.take_topology_change(false));
                     }
@@ -254,9 +266,8 @@ fn session_and_dock_event_orderings_preserve_removal_and_deferred_reprobes() {
 
 #[test]
 fn delayed_completion_from_removed_device_cannot_release_its_replacement() {
-    use super::{
-        DrmDeviceId, DrmLayoutState, DrmLoopState, DrmRuntimeEvent, process_runtime_events,
-    };
+    use super::layout::DrmLayoutState;
+    use super::{DrmDeviceId, DrmLoopState, DrmRuntimeEvent};
     use smithay::utils::{Clock, Monotonic};
     use std::sync::mpsc;
     let old = super::ScanoutId {
@@ -278,7 +289,7 @@ fn delayed_completion_from_removed_device_cannot_release_its_replacement() {
     };
     let (tx, rx) = mpsc::channel();
     tx.send(DrmRuntimeEvent::VBlank(old)).unwrap();
-    process_runtime_events(
+    super::session::process_runtime_events(
         &rx,
         &mut runtime,
         &layout,

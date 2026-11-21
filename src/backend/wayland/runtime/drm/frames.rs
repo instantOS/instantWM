@@ -3,13 +3,13 @@
 use smithay::reexports::calloop::LoopHandle;
 use smithay::wayland::presentation::Refresh;
 use std::collections::HashMap;
-use std::time::Instant;
 
-use super::{scheduling::DrmLoopState, vrr::apply_output_vrr_policy};
+use super::session::DrmOutputRuntime;
+use super::vrr::apply_output_vrr_policy;
 use crate::backend::output::{OutputId, OutputPowerError, OutputPowerMode};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::input::apply_pending_warp;
-use crate::backend::wayland::render::cursor_theme::CursorManager;
+use crate::backend::wayland::render::cursor::resolve_cursor;
 use crate::backend::wayland::render::drm::{
     OutputSurfaceEntry, RenderOutcome, ScanoutId, render_drm_output,
 };
@@ -28,64 +28,260 @@ pub(super) fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
     }
 }
 
-/// Promote compositor-side redraw requests into DRM output dirties.
-pub(super) fn process_commit_redraws(
-    state: &mut WaylandState,
-    loop_state: &mut DrmLoopState,
-    output_surfaces: &[OutputSurfaceEntry],
-) {
-    use crate::backend::wayland::compositor::PendingRenderTargets;
+impl DrmOutputRuntime {
+    /// Promote compositor-side redraw requests into DRM output dirties.
+    pub(super) fn process_commit_redraws(&mut self, state: &mut WaylandState) {
+        use crate::backend::wayland::compositor::PendingRenderTargets;
 
-    match state.native.take_render_targets() {
-        PendingRenderTargets::None => {}
-        PendingRenderTargets::All => loop_state.mark_all_dirty(),
-        PendingRenderTargets::Outputs(outputs) => {
-            for entry in output_surfaces {
-                if outputs.contains(&entry.output.name()) {
-                    loop_state.mark_dirty(entry.scanout());
+        let loop_state = &mut self.loop_state;
+        let output_surfaces = &self.output_surfaces;
+        match state.native.take_render_targets() {
+            PendingRenderTargets::None => {}
+            PendingRenderTargets::All => loop_state.mark_all_dirty(),
+            PendingRenderTargets::Outputs(outputs) => {
+                for entry in output_surfaces {
+                    if outputs.contains(&entry.output.name()) {
+                        loop_state.mark_dirty(entry.scanout());
+                    }
                 }
             }
         }
     }
-}
 
-/// Service frame-callback-only commits without forcing a DRM render.
-pub(super) fn process_frame_callback_requests(
-    state: &mut WaylandState,
-    loop_handle: &LoopHandle<'_, WaylandState>,
-    loop_state: &DrmLoopState,
-    output_surfaces: &[OutputSurfaceEntry],
-    start_time: Instant,
-) {
-    use crate::backend::wayland::compositor::PendingRenderTargets;
+    /// Service frame-callback-only commits without forcing a DRM render.
+    pub(super) fn process_frame_callbacks(
+        &self,
+        state: &mut WaylandState,
+        loop_handle: &LoopHandle<'_, WaylandState>,
+    ) {
+        use crate::backend::wayland::compositor::PendingRenderTargets;
 
-    let targets = state.native.take_frame_callback_targets();
-    for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
-        let targeted = match &targets {
-            PendingRenderTargets::None => false,
-            PendingRenderTargets::All => true,
-            PendingRenderTargets::Outputs(outputs) => outputs.contains(&entry.output.name()),
-        };
-        if targeted {
-            loop_state.presentation_scheduler.arm_callbacks(
+        let loop_state = &self.loop_state;
+        let output_surfaces = &self.output_surfaces;
+        let start_time = self.start_time;
+        let targets = state.native.take_frame_callback_targets();
+        for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
+            let targeted = match &targets {
+                PendingRenderTargets::None => false,
+                PendingRenderTargets::All => true,
+                PendingRenderTargets::Outputs(outputs) => outputs.contains(&entry.output.name()),
+            };
+            if targeted {
+                loop_state.presentation_scheduler.arm_callbacks(
+                    entry.scanout(),
+                    loop_handle,
+                    &entry.output,
+                    start_time,
+                );
+            }
+        }
+    }
+
+    /// Keep presentation timing aligned with the outputs that are currently
+    /// participating in a scanout.
+    pub(super) fn schedule_commit_timing(
+        &mut self,
+        state: &mut WaylandState,
+        loop_handle: &LoopHandle<'_, WaylandState>,
+    ) {
+        let loop_state = &mut self.loop_state;
+        let output_surfaces = &self.output_surfaces;
+        for entry in output_surfaces
+            .iter()
+            .filter(|entry| entry.enabled && entry.powered)
+        {
+            loop_state.presentation_scheduler.schedule_commit_timing(
                 entry.scanout(),
                 loop_handle,
+                state,
                 &entry.output,
-                start_time,
             );
         }
     }
-}
 
-/// Apply compositor-side cursor warp.
-pub(super) fn process_cursor_warp(
-    state: &mut WaylandState,
-    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
-    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
-    loop_state: &mut DrmLoopState,
-) {
-    if apply_pending_warp(state, pointer_handle, keyboard_handle) {
-        loop_state.mark_all_dirty();
+    /// Apply compositor-side cursor warp.
+    pub(super) fn process_cursor_warp(
+        &mut self,
+        state: &mut WaylandState,
+        pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+        keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
+    ) {
+        if apply_pending_warp(state, pointer_handle, keyboard_handle) {
+            self.loop_state.mark_all_dirty();
+        }
+    }
+
+    /// Reload the cursor theme after a configuration change.
+    pub(super) fn reload_cursor(&mut self, state: &mut WaylandState) {
+        let cursor = &state.wm.core.state.config.cursor;
+        self.cursor_manager
+            .reload(&cursor.theme, super::cursor_size(cursor.size));
+        state.native.cursor_config = cursor.clone();
+        if let Some(xwm) = state.native.xwm.as_mut() {
+            self.cursor_manager.configure_xwayland(xwm);
+        }
+        self.loop_state.mark_all_dirty();
+    }
+
+    /// Resolve cursor animation state. Its first dirty frame starts a
+    /// page-flip chain; subsequent vblanks advance it without an independent
+    /// compositor timer drifting against scanout.
+    pub(super) fn update_cursor_animation(&mut self, state: &mut WaylandState) {
+        let presentation = resolve_cursor(
+            &state.native.cursor_image_status,
+            state.native.cursor_icon_override,
+            state.native.runtime.dnd_icon.as_ref(),
+            state.native.runtime.cursor_hidden_by_touch,
+        );
+        let animated = super::resolved_cursor_icon(&presentation)
+            .is_some_and(|icon| self.cursor_manager.is_animated(icon, 1));
+        state.native.runtime.cursor_is_animated = animated;
+        if animated {
+            self.mark_pointer_output_dirty(state);
+        }
+    }
+
+    /// Render all outputs that need it.
+    pub(super) fn render(
+        &mut self,
+        state: &mut WaylandState,
+        loop_handle: &LoopHandle<'_, WaylandState>,
+    ) {
+        let output_surfaces = &mut self.output_surfaces;
+        let loop_state = &mut self.loop_state;
+        let render_failures = &mut self.render_failures;
+        let cursor_manager = &self.cursor_manager;
+        let start_time = self.start_time;
+
+        let mut render_flags = loop_state.take_render_flags();
+        propagate_mirror_render_flags(state, output_surfaces, &mut render_flags);
+        let session_active = loop_state.session_active;
+        let pending_crtcs = loop_state.pending_crtcs.clone();
+
+        if session_active {
+            let needs_any_render = output_surfaces.iter().any(|entry| {
+                entry.enabled
+                    && entry.powered
+                    && !pending_crtcs.contains(&entry.scanout())
+                    && render_flags.get(&entry.scanout()).copied().unwrap_or(false)
+            });
+            let shared_scene = if needs_any_render && !state.native.is_locked() {
+                Some(build_shared_scene_elements(
+                    &mut state.wm,
+                    &mut state.native,
+                    &mut loop_state.scene_cache,
+                ))
+            } else {
+                None
+            };
+
+            for entry in output_surfaces.iter_mut() {
+                let needs_render = render_flags.get(&entry.scanout()).copied().unwrap_or(false);
+                if !needs_render || !entry.enabled || !entry.powered {
+                    continue;
+                }
+                // Don't render if a page flip is already in flight — queue_buffer
+                // would fail with EBUSY and leak a swapchain slot.
+                if pending_crtcs.contains(&entry.scanout()) {
+                    // Re-mark as dirty so we render after the VBlank arrives.
+                    loop_state.mark_dirty(entry.scanout());
+                    continue;
+                }
+                apply_output_vrr_policy(state, entry);
+                let scene_policy = crate::backend::wayland::stacking::OutputScenePolicy::for_output(
+                    &state.wm.core.state,
+                    &state.native.presented_output(&entry.output),
+                );
+                let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
+                let rendered = graphics.with_renderer(|renderer| {
+                    render_drm_output(
+                        &mut state.native,
+                        renderer,
+                        entry,
+                        cursor_manager,
+                        start_time,
+                        shared_scene.clone(),
+                        scene_policy,
+                    )
+                });
+
+                match rendered {
+                    RenderOutcome::Submitted => {
+                        if let Some(id) = entry.pending_power_on.take() {
+                            let output = OutputId(entry.output.name());
+                            state
+                                .native
+                                .runtime
+                                .output_power_modes
+                                .insert(output.0.clone(), OutputPowerMode::On);
+                            state
+                                .native
+                                .runtime
+                                .output_power
+                                .complete(id, (output, Ok(OutputPowerMode::On)));
+                        }
+                        loop_state
+                            .presentation_scheduler
+                            .presentation_submitted(&entry.scanout());
+                        loop_state.pending_crtcs.insert(entry.scanout());
+                        if let Some(failed_frames) = render_failures.remove(&entry.scanout())
+                            && failed_frames >= 3
+                        {
+                            log::info!(
+                                "DRM render recovered on {:?} after {failed_frames} failed frames",
+                                entry.scanout()
+                            );
+                        }
+                    }
+                    RenderOutcome::EmptyFrame => {
+                        loop_state.presentation_scheduler.arm_callbacks(
+                            entry.scanout(),
+                            loop_handle,
+                            &entry.output,
+                            start_time,
+                        );
+                        render_failures.remove(&entry.scanout());
+                        if entry.pending_power_on.is_some() {
+                            loop_state.mark_dirty(entry.scanout());
+                        }
+                    }
+                    RenderOutcome::Failed => {
+                        let failed_frames = render_failures.entry(entry.scanout()).or_insert(0);
+                        *failed_frames += 1;
+
+                        if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
+                            log::warn!(
+                                "DRM render failed on {:?} (consecutive failures: {})",
+                                entry.scanout(),
+                                *failed_frames
+                            );
+                        }
+
+                        if *failed_frames >= 3
+                            && let Some(id) = entry.pending_power_on.take()
+                        {
+                            entry.powered = false;
+                            let output = OutputId(entry.output.name());
+                            state.native.runtime.output_power.complete(
+                                id,
+                                (
+                                    output,
+                                    Err(OutputPowerError::Backend(
+                                        "failed to queue a frame while powering on".to_string(),
+                                    )),
+                                ),
+                            );
+                            if let Some(surface) = entry.surface.as_ref() {
+                                let _ = surface.with_compositor(|compositor| compositor.clear());
+                            }
+                        } else {
+                            loop_state.mark_dirty(entry.scanout());
+                        }
+                    }
+                }
+            }
+        }
+        loop_state.taken_render_flags = render_flags;
     }
 }
 
@@ -118,146 +314,4 @@ fn propagate_mirror_render_flags(
             render_flags.insert(entry.scanout(), true);
         }
     }
-}
-
-/// Render all outputs that need it.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn render_outputs(
-    state: &mut WaylandState,
-    output_surfaces: &mut [OutputSurfaceEntry],
-    cursor_manager: &CursorManager,
-    loop_handle: &LoopHandle<'_, WaylandState>,
-    loop_state: &mut DrmLoopState,
-    render_failures: &mut HashMap<ScanoutId, u32>,
-    start_time: Instant,
-) {
-    let mut render_flags = loop_state.take_render_flags();
-    propagate_mirror_render_flags(state, output_surfaces, &mut render_flags);
-    let session_active = loop_state.session_active;
-    let pending_crtcs = loop_state.pending_crtcs.clone();
-
-    if session_active {
-        let needs_any_render = output_surfaces.iter().any(|entry| {
-            entry.enabled
-                && entry.powered
-                && !pending_crtcs.contains(&entry.scanout())
-                && render_flags.get(&entry.scanout()).copied().unwrap_or(false)
-        });
-        let shared_scene = if needs_any_render && !state.native.is_locked() {
-            Some(build_shared_scene_elements(
-                &mut state.wm,
-                &mut state.native,
-                &mut loop_state.scene_cache,
-            ))
-        } else {
-            None
-        };
-
-        for entry in output_surfaces.iter_mut() {
-            let needs_render = render_flags.get(&entry.scanout()).copied().unwrap_or(false);
-            if !needs_render || !entry.enabled || !entry.powered {
-                continue;
-            }
-            // Don't render if a page flip is already in flight — queue_buffer
-            // would fail with EBUSY and leak a swapchain slot.
-            if pending_crtcs.contains(&entry.scanout()) {
-                // Re-mark as dirty so we render after the VBlank arrives.
-                loop_state.mark_dirty(entry.scanout());
-                continue;
-            }
-            apply_output_vrr_policy(state, entry);
-            let scene_policy = crate::backend::wayland::stacking::OutputScenePolicy::for_output(
-                &state.wm.core.state,
-                &state.native.presented_output(&entry.output),
-            );
-            let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
-            let rendered = graphics.with_renderer(|renderer| {
-                render_drm_output(
-                    &mut state.native,
-                    renderer,
-                    entry,
-                    cursor_manager,
-                    start_time,
-                    shared_scene.clone(),
-                    scene_policy,
-                )
-            });
-
-            match rendered {
-                RenderOutcome::Submitted => {
-                    if let Some(id) = entry.pending_power_on.take() {
-                        let output = OutputId(entry.output.name());
-                        state
-                            .native
-                            .runtime
-                            .output_power_modes
-                            .insert(output.0.clone(), OutputPowerMode::On);
-                        state
-                            .native
-                            .runtime
-                            .output_power
-                            .complete(id, (output, Ok(OutputPowerMode::On)));
-                    }
-                    loop_state
-                        .presentation_scheduler
-                        .presentation_submitted(&entry.scanout());
-                    loop_state.pending_crtcs.insert(entry.scanout());
-                    if let Some(failed_frames) = render_failures.remove(&entry.scanout())
-                        && failed_frames >= 3
-                    {
-                        log::info!(
-                            "DRM render recovered on {:?} after {failed_frames} failed frames",
-                            entry.scanout()
-                        );
-                    }
-                }
-                RenderOutcome::EmptyFrame => {
-                    loop_state.presentation_scheduler.arm_callbacks(
-                        entry.scanout(),
-                        loop_handle,
-                        &entry.output,
-                        start_time,
-                    );
-                    render_failures.remove(&entry.scanout());
-                    if entry.pending_power_on.is_some() {
-                        loop_state.mark_dirty(entry.scanout());
-                    }
-                }
-                RenderOutcome::Failed => {
-                    let failed_frames = render_failures.entry(entry.scanout()).or_insert(0);
-                    *failed_frames += 1;
-
-                    if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
-                        log::warn!(
-                            "DRM render failed on {:?} (consecutive failures: {})",
-                            entry.scanout(),
-                            *failed_frames
-                        );
-                    }
-
-                    if *failed_frames >= 3
-                        && let Some(id) = entry.pending_power_on.take()
-                    {
-                        entry.powered = false;
-                        let output = OutputId(entry.output.name());
-                        state.native.runtime.output_power.complete(
-                            id,
-                            (
-                                output,
-                                Err(OutputPowerError::Backend(
-                                    "failed to queue a frame while powering on".to_string(),
-                                )),
-                            ),
-                        );
-                        if let Some(surface) = entry.surface.as_ref() {
-                            let _ = surface.with_compositor(|compositor| compositor.clear());
-                        }
-                    } else {
-                        loop_state.mark_dirty(entry.scanout());
-                    }
-                }
-            }
-        }
-    }
-    loop_state.taken_render_flags = render_flags;
 }

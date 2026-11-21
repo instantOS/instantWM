@@ -1,6 +1,5 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-use crate::backend::wayland::input::recover_pointer_after_output_change;
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
@@ -9,24 +8,20 @@ use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::input::pointer::CursorIcon;
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::input::Libinput;
-use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
-use smithay::utils::{Clock, Monotonic};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::mem;
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::init::drm::init_gpu;
-use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
+use crate::backend::wayland::init::drm::{GpuResources, init_gpu};
+use crate::backend::wayland::render::cursor::ResolvedCursor;
 use crate::backend::wayland::render::cursor_theme::CursorManager;
 use crate::backend::wayland::render::drm::{
-    DrmDeviceId, OutputSurfaceEntry, ScanoutId, build_output_surfaces, create_output_manager,
+    DrmDeviceId, ScanoutId, build_output_surfaces, create_output_manager,
 };
 
 mod devices;
@@ -34,22 +29,16 @@ mod frames;
 mod layout;
 mod output_config;
 mod scheduling;
+mod session;
 #[cfg(test)]
 mod tests;
 mod topology;
 mod vrr;
 
 use devices::{DrmDevices, PRIMARY_DEVICE};
-use frames::{
-    output_refresh, process_commit_redraws, process_cursor_warp, process_frame_callback_requests,
-    render_outputs,
-};
-use layout::{
-    DrmLayoutState, compute_total_dimensions, init_layout_state, refresh_drm_layout_state,
-};
-use output_config::{process_output_configurations, process_output_power_requests};
+use layout::{compute_total_dimensions, init_layout_state};
 use scheduling::DrmLoopState;
-use topology::reconcile_drm_outputs;
+use session::{DrmOutputRuntime, DrmSession};
 
 #[derive(Debug, Clone, Copy)]
 enum DrmRuntimeEvent {
@@ -79,28 +68,27 @@ pub fn run() -> ! {
 
     crate::keyboard_layout::init_keyboard_layout(&mut state.ctx());
 
-    let (
+    let GpuResources {
         primary_gpu_path,
         drm_device,
         drm_notifier,
         drm_fd,
         gbm_device,
         egl_display,
-        renderer_value,
-    ) = init_gpu(&mut session, &seat_name);
-    let mut renderer = renderer_value;
+        mut renderer,
+    } = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
     state.init_drm_syncobj(drm_fd.clone());
 
-    let mut cursor_manager = CursorManager::from_environment(&state.native.cursor_config);
+    let cursor_manager = CursorManager::from_environment(&state.native.cursor_config);
     // The scanout device may be a different GPU from the render device (split
     // setups).  Open its own GBM handle for framebuffer import/export.
     let scanout_gbm = GbmDevice::new(drm_fd.clone()).expect("scanout GbmDevice::new");
     let mut output_manager =
         create_output_manager(drm_device, &renderer, &gbm_device, &scanout_gbm);
 
-    let mut output_surfaces = {
+    let output_surfaces = {
         build_output_surfaces(
             &mut output_manager,
             PRIMARY_DEVICE,
@@ -141,7 +129,7 @@ pub fn run() -> ! {
         .push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut state.ctx());
 
-    let mut layout_state = init_layout_state(&output_surfaces, layout);
+    let layout_state = init_layout_state(&output_surfaces, layout);
     // Calloop dispatches sources and the loop callback sequentially on this
     // thread. Libinput only needs the current layout bounds, so share that
     // small copy without putting the complete layout behind an atomic lock.
@@ -232,7 +220,7 @@ pub fn run() -> ! {
     loop_state.topology_dirty = true;
     setup_udev_hotplug_handler(&loop_handle, &seat_name, runtime_event_tx.clone());
 
-    let mut ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut state.wm);
+    let ipc_server = super::bootstrap::autostart_ipc_status_ping(&loop_handle, &mut state.wm);
 
     // One-shot wakeup for the initial frame. Later render failures use a
     // bounded timer instead of an immediate self-ping loop.
@@ -250,7 +238,7 @@ pub fn run() -> ! {
     initial_render_ping.ping();
 
     let start_time = Instant::now();
-    let mut render_failures: HashMap<ScanoutId, u32> = HashMap::new();
+    let render_failures: HashMap<ScanoutId, u32> = HashMap::new();
 
     crate::runtime::spawn_status_bar(&mut state.wm);
 
@@ -263,22 +251,23 @@ pub fn run() -> ! {
         Some(&egl_display),
     );
 
-    run_event_loop(
-        event_loop,
-        &mut state,
-        &mut layout_state,
-        &input_dimensions,
-        &mut loop_state,
-        &mut output_surfaces,
-        &devices,
-        &runtime_event_tx,
-        &mut cursor_manager,
-        &mut ipc_server,
-        &mut render_failures,
-        start_time,
-        led_state_rx,
+    DrmSession::new(
+        DrmOutputRuntime {
+            layout_state,
+            input_dimensions,
+            loop_state,
+            output_surfaces,
+            devices,
+            render_failures,
+            cursor_manager,
+            start_time,
+        },
+        runtime_event_tx,
         runtime_event_rx,
-    );
+        led_state_rx,
+        ipc_server,
+    )
+    .run(event_loop, &mut state);
 
     state.wm.backend.wallpaper.shutdown();
     crate::startup::autostart::shutdown_autostart();
@@ -415,300 +404,4 @@ fn resolved_cursor_icon(p: &ResolvedCursor) -> Option<CursorIcon> {
         ResolvedCursor::Named(icon) => Some(*icon),
         ResolvedCursor::DndIcon { cursor, .. } => resolved_cursor_icon(cursor),
     }
-}
-
-/// Run the main event loop.
-///
-/// This is the heart of the DRM backend. It handles:
-/// - Frame submission tracking
-/// - Libinput event dispatch
-/// - Layout arrangement
-/// - IPC command processing
-/// - Window animations
-/// - Cursor warp
-/// - DRM rendering
-#[allow(clippy::too_many_arguments)]
-fn run_event_loop(
-    mut event_loop: EventLoop<WaylandState>,
-
-    state: &mut WaylandState,
-    layout_state: &mut DrmLayoutState,
-    input_dimensions: &Rc<Cell<crate::types::Rect>>,
-    loop_state: &mut DrmLoopState,
-    output_surfaces: &mut Vec<OutputSurfaceEntry>,
-    devices: &Rc<RefCell<DrmDevices>>,
-    runtime_event_tx: &mpsc::Sender<DrmRuntimeEvent>,
-    cursor_manager: &mut CursorManager,
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-    render_failures: &mut HashMap<ScanoutId, u32>,
-    start_time: Instant,
-    led_state_rx: mpsc::Receiver<smithay::input::keyboard::LedState>,
-    runtime_event_rx: mpsc::Receiver<DrmRuntimeEvent>,
-) {
-    let loop_signal: LoopSignal = event_loop.get_signal();
-    let loop_handle = event_loop.handle();
-    let pointer_handle = state.native.pointer.clone();
-    let render_retry_guard = crate::runtime::AnimationTimerGuard::new();
-    let shared_input_dimensions = Rc::clone(input_dimensions);
-    let monotonic_clock = Clock::<Monotonic>::new();
-
-    event_loop
-        .run(None, state, move |state| {
-            state.dispatch_pending_commits();
-            let (pointer_moved, topology_changed) = process_runtime_events(
-                &runtime_event_rx,
-                loop_state,
-                layout_state,
-                output_surfaces,
-                &monotonic_clock,
-            );
-            if loop_state
-                .removed_devices
-                .contains(&devices.borrow().devices[&PRIMARY_DEVICE].devnum)
-            {
-                log::error!("Primary rendering GPU was removed; stopping the DRM session");
-                loop_signal.stop();
-                return;
-            }
-            if loop_state.take_topology_change(topology_changed)
-                && reconcile_drm_outputs(
-                    state,
-                    output_surfaces,
-                    devices,
-                    &loop_handle,
-                    runtime_event_tx,
-                    loop_state,
-                    layout_state,
-                    &shared_input_dimensions,
-                )
-            {
-                loop_state.mark_all_dirty();
-                render_failures.retain(|scanout, _| {
-                    output_surfaces
-                        .iter()
-                        .any(|entry| entry.scanout() == *scanout)
-                });
-            }
-            process_frame_callback_requests(
-                state,
-                &loop_handle,
-                loop_state,
-                output_surfaces,
-                start_time,
-            );
-            for entry in output_surfaces
-                .iter()
-                .filter(|entry| entry.enabled && entry.powered)
-            {
-                loop_state.presentation_scheduler.schedule_commit_timing(
-                    entry.scanout(),
-                    &loop_handle,
-                    state,
-                    &entry.output,
-                );
-            }
-            state.dispatch_pending_commits();
-
-            super::engine::event_loop_tick_and_request_render(state, ipc_server);
-            if mem::take(&mut state.native.runtime.lid_policy_dirty) {
-                state
-                    .native
-                    .queue_output_policy_projection(&state.wm.core.state.config.monitors);
-            }
-            if loop_state.session_active {
-                let graphics = state.graphics.as_mut().expect("DRM graphics initialized");
-                graphics.with_renderer(|renderer| {
-                    process_output_configurations(
-                        &mut state.native,
-                        output_surfaces,
-                        &mut devices.borrow_mut(),
-                        renderer,
-                        loop_state,
-                    )
-                });
-            }
-            let outputs_changed = state.native.project_completed_output_transactions();
-            if outputs_changed {
-                crate::monitor::refresh_monitor_layout(&mut state.ctx());
-                state.native.push_command(
-                    crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones,
-                );
-                refresh_drm_layout_state(state, output_surfaces, layout_state);
-                shared_input_dimensions.set(layout_state.layout);
-                recover_pointer_after_output_change(state);
-            }
-            state.native.project_completed_output_power_requests();
-            if loop_state.session_active {
-                process_output_power_requests(&mut state.native, output_surfaces, loop_state);
-            }
-            state.native.project_completed_output_power_requests();
-            if pointer_moved {
-                loop_state.mark_pointer_output_dirty(
-                    crate::types::Point::new(
-                        state.native.runtime.pointer_location.x as i32,
-                        state.native.runtime.pointer_location.y as i32,
-                    ),
-                    layout_state,
-                );
-            }
-            super::engine::process_animations_and_request_render(state);
-            process_commit_redraws(state, loop_state, output_surfaces);
-            let bar_update_seq = state.wm.core.bar.update_seq();
-            if loop_state.last_bar_update_seq != bar_update_seq {
-                loop_state.last_bar_update_seq = bar_update_seq;
-                loop_state.mark_all_dirty();
-            }
-
-            if state.wm.core.work.input_config {
-                state.wm.core.work.input_config = false;
-                crate::backend::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.native.runtime.tracked_devices,
-                    &state.wm.core.state.config.input,
-                );
-            }
-
-            if state.wm.core.work.cursor_config {
-                state.wm.core.work.cursor_config = false;
-                let cursor = &state.wm.core.state.config.cursor;
-                cursor_manager.reload(&cursor.theme, cursor_size(cursor.size));
-                state.native.cursor_config = cursor.clone();
-                if let Some(xwm) = state.native.xwm.as_mut() {
-                    cursor_manager.configure_xwayland(xwm);
-                }
-                loop_state.mark_all_dirty();
-            }
-
-            while let Ok(led_state) = led_state_rx.try_recv() {
-                let leds = smithay::reexports::input::Led::from(led_state);
-                for device in state.native.runtime.tracked_devices.iter_mut() {
-                    use smithay::reexports::input::DeviceCapability;
-                    if device.has_capability(DeviceCapability::Keyboard) {
-                        device.led_update(leds);
-                    }
-                }
-            }
-
-            // Resolve cursor animation state. Its first dirty frame starts a
-            // page-flip chain; subsequent vblanks advance it without an
-            // independent compositor timer drifting against scanout.
-            let animated = {
-                let presentation = resolve_cursor(
-                    &state.native.cursor_image_status,
-                    state.native.cursor_icon_override,
-                    state.native.runtime.dnd_icon.as_ref(),
-                    state.native.runtime.cursor_hidden_by_touch,
-                );
-                resolved_cursor_icon(&presentation)
-                    .is_some_and(|icon| cursor_manager.is_animated(icon, 1))
-            };
-            state.native.runtime.cursor_is_animated = animated;
-            if animated {
-                loop_state.mark_pointer_output_dirty(
-                    crate::types::Point::new(
-                        state.native.runtime.pointer_location.x as i32,
-                        state.native.runtime.pointer_location.y as i32,
-                    ),
-                    layout_state,
-                );
-            }
-
-            if let Some(keyboard_handle) = state.native.seat.get_keyboard() {
-                process_cursor_warp(state, &pointer_handle, &keyboard_handle, loop_state);
-            }
-
-            render_outputs(
-                state,
-                output_surfaces,
-                cursor_manager,
-                &loop_handle,
-                loop_state,
-                render_failures,
-                start_time,
-            );
-
-            // Retry persistent render failures at a bounded cadence. Dirty
-            // outputs with a page flip in flight are woken by DRM vblank.
-            render_retry_guard.ensure_armed(
-                loop_state.has_renderable_dirty_outputs(),
-                &loop_handle,
-                |_| false,
-            );
-
-            state.dispatch_pending_commits();
-
-            if state.native.display_handle.flush_clients().is_err() {
-                loop_signal.stop();
-            }
-        })
-        .expect("event loop run");
-}
-
-fn process_runtime_events(
-    runtime_event_rx: &mpsc::Receiver<DrmRuntimeEvent>,
-    loop_state: &mut DrmLoopState,
-    layout_state: &DrmLayoutState,
-    output_surfaces: &mut [OutputSurfaceEntry],
-    monotonic_clock: &Clock<Monotonic>,
-) -> (bool, bool) {
-    let mut pointer_moved = false;
-    let mut topology_changed = false;
-    while let Ok(event) = runtime_event_rx.try_recv() {
-        match event {
-            DrmRuntimeEvent::SessionPaused => {
-                loop_state.session_active = false;
-            }
-            DrmRuntimeEvent::SessionActivated => {
-                // Keep in-flight flips intact: Smithay retains their buffers
-                // across activate(), and only a real vblank may retire them.
-                loop_state.session_active = true;
-                loop_state.mark_all_dirty();
-                // The dock may have disappeared while this session was inactive.
-                topology_changed = true;
-            }
-            DrmRuntimeEvent::VBlank(crtc) => {
-                if !loop_state.render_flags.contains_key(&crtc) {
-                    continue;
-                }
-                loop_state
-                    .presentation_scheduler
-                    .presentation_completed(crtc, Instant::now());
-                if let Some(entry) = output_surfaces
-                    .iter_mut()
-                    .find(|entry| entry.scanout() == crtc)
-                {
-                    let Some(surface) = entry.surface.as_mut() else {
-                        loop_state.pending_crtcs.remove(&crtc);
-                        continue;
-                    };
-                    match surface.frame_submitted() {
-                        Ok(Some(mut metadata)) => {
-                            let seq = loop_state.presentation_seq.entry(crtc).or_insert(0);
-                            *seq += 1;
-                            metadata.presentation_feedback.presented(
-                                monotonic_clock.now(),
-                                output_refresh(entry),
-                                *seq,
-                                wp_presentation_feedback::Kind::Vsync,
-                            );
-                        }
-                        Ok(None) => {}
-                        Err(err) => {
-                            log::warn!("frame_submitted failed for {:?}: {err}", crtc);
-                        }
-                    }
-                }
-                loop_state.pending_crtcs.remove(&crtc);
-            }
-            DrmRuntimeEvent::PointerMoved { old_location } => {
-                loop_state.mark_pointer_output_dirty(old_location, layout_state);
-                pointer_moved = true;
-            }
-            DrmRuntimeEvent::OutputTopologyChanged => topology_changed = true,
-            DrmRuntimeEvent::DeviceRemoved(devnum) => {
-                loop_state.removed_devices.insert(devnum);
-                topology_changed = true;
-            }
-        }
-    }
-    (pointer_moved, topology_changed)
 }

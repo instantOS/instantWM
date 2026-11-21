@@ -16,6 +16,25 @@ use std::path::PathBuf;
 
 use smithay::utils::DeviceFd;
 
+/// Resources returned by [`init_gpu`]: the scanout device, allocator, EGL
+/// display, and renderer.
+pub struct GpuResources {
+    /// Path of the GPU selected for scanout (KMS mode-setting).
+    pub primary_gpu_path: PathBuf,
+    /// DRM device for scanout.
+    pub drm_device: DrmDevice,
+    /// Notifier for DRM events (vblank, page-flip).
+    pub drm_notifier: DrmDeviceNotifier,
+    /// File descriptor for the DRM device.
+    pub drm_fd: DrmDeviceFd,
+    /// GBM allocator on the render device.
+    pub gbm_device: GbmDevice<DrmDeviceFd>,
+    /// EGL display for the render device.
+    pub egl_display: EGLDisplay,
+    /// GLES renderer created from the EGL context.
+    pub renderer: GlesRenderer,
+}
+
 /// Initialize GPU, EGL, and renderer.
 ///
 /// This function is safety-critical: it handles raw file descriptors and
@@ -27,18 +46,7 @@ use smithay::utils::DeviceFd;
 /// We therefore select the scanout (KMS) device and the render (EGL) device
 /// independently, and use the render device's GBM for allocation while letting
 /// each scanout device import those buffers (cross-device).
-pub fn init_gpu(
-    session: &mut LibSeatSession,
-    seat_name: &str,
-) -> (
-    PathBuf,
-    DrmDevice,
-    DrmDeviceNotifier,
-    DrmDeviceFd,
-    GbmDevice<DrmDeviceFd>,
-    EGLDisplay,
-    GlesRenderer,
-) {
+pub fn init_gpu(session: &mut LibSeatSession, seat_name: &str) -> GpuResources {
     // Pick a GPU that can actually render (has a render node) for EGL/GBM.
     let gpus = smithay::backend::udev::all_gpus(seat_name).expect("enumerate rendering GPUs");
     let primary = smithay::backend::udev::primary_gpu(seat_name)
@@ -114,15 +122,15 @@ pub fn init_gpu(
     );
     let renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
 
-    (
-        scanout_path,
+    GpuResources {
+        primary_gpu_path: scanout_path,
         drm_device,
         drm_notifier,
         drm_fd,
         gbm_device,
         egl_display,
         renderer,
-    )
+    }
 }
 
 fn has_render_node(path: &PathBuf) -> bool {

@@ -4,6 +4,7 @@
 use smithay::backend::renderer::gles::GlesRenderer;
 use std::collections::HashSet;
 
+use super::scheduling::DrmLoopState;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
     AdaptiveSyncPolicy, OutputHeadCapabilities, OutputHeadConfiguration, OutputHeadSnapshot,
@@ -17,8 +18,6 @@ use crate::backend::wayland::render::drm::{
     OutputSurfaceEntry, ScanoutId, best_connector_mode, build_output_dmabuf_feedback,
 };
 use crate::config::config_toml::VrrMode;
-
-use super::{DrmLoopState, devices::DrmDevices};
 
 /// Only devices with native changes need idle controllers. Smithay may adjust
 /// other controllers on that device to meet bandwidth requirements, so wait
@@ -129,384 +128,394 @@ fn requested_vrr(
     }
 }
 
-pub(super) fn process_output_configurations(
-    state: &mut WaylandNativeState,
-    output_surfaces: &mut [OutputSurfaceEntry],
-    devices: &mut DrmDevices,
-    renderer: &mut GlesRenderer,
-    loop_state: &mut DrmLoopState,
-) {
-    if !state.runtime.output_transactions.has_pending() {
-        return;
-    }
+impl super::session::DrmOutputRuntime {
+    pub(super) fn process_output_configurations(
+        &mut self,
+        state: &mut WaylandNativeState,
+        renderer: &mut GlesRenderer,
+    ) {
+        let output_surfaces = &mut self.output_surfaces;
+        let loop_state = &mut self.loop_state;
+        let mut devices = self.devices.borrow_mut();
+        if !state.runtime.output_transactions.has_pending() {
+            return;
+        }
 
-    let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
-        GlesRenderer,
-        crate::backend::wayland::render::drm::DrmOutputElement,
-    >::default();
-    let capabilities = output_capabilities(output_surfaces);
+        let render_elements = smithay::backend::drm::output::DrmOutputRenderElements::<
+            GlesRenderer,
+            crate::backend::wayland::render::drm::DrmOutputElement,
+        >::default();
+        let capabilities = output_capabilities(output_surfaces);
 
-    while let Some((id, mut pending)) = state.runtime.output_transactions.take_next_pending() {
-        // Hardware capability refresh is staged until the normal apply path
-        // commits it. Keep the old logical layout intact while flips are pending.
-        if pending.origin == OutputTransactionOrigin::CompositorPolicy {
-            for head in &mut pending.transaction.heads {
-                if let Some(entry) = output_surfaces
-                    .iter()
-                    .find(|entry| entry.output.name() == head.id.0)
-                {
-                    let modes: Vec<_> = entry.modes.iter().map(|(_, native)| *native).collect();
-                    let preferred = best_connector_mode(&modes)
-                        .map(smithay::output::Mode::from)
-                        .map(from_smithay_mode);
-                    if head.reconcile_mode(&transaction_modes(entry), preferred) {
-                        log::info!(
-                            "Output {}: selecting supported mode {:?} after capability change",
-                            head.id.0,
-                            head.mode
-                        );
+        while let Some((id, mut pending)) = state.runtime.output_transactions.take_next_pending() {
+            // Hardware capability refresh is staged until the normal apply path
+            // commits it. Keep the old logical layout intact while flips are pending.
+            if pending.origin == OutputTransactionOrigin::CompositorPolicy {
+                for head in &mut pending.transaction.heads {
+                    if let Some(entry) = output_surfaces
+                        .iter()
+                        .find(|entry| entry.output.name() == head.id.0)
+                    {
+                        let modes: Vec<_> = entry.modes.iter().map(|(_, native)| *native).collect();
+                        let preferred = best_connector_mode(&modes)
+                            .map(smithay::output::Mode::from)
+                            .map(from_smithay_mode);
+                        if head.reconcile_mode(&transaction_modes(entry), preferred) {
+                            log::info!(
+                                "Output {}: selecting supported mode {:?} after capability change",
+                                head.id.0,
+                                head.mode
+                            );
+                        }
                     }
                 }
             }
-        }
-        let effective = state.effective_output_transaction(&pending.transaction, pending.origin);
-        if let Err(error) = state
-            .lid_output_projection(&pending.transaction)
-            .validate_transaction(&pending.transaction, &effective, &capabilities)
-        {
+            let effective =
+                state.effective_output_transaction(&pending.transaction, pending.origin);
+            if let Err(error) = state
+                .lid_output_projection(&pending.transaction)
+                .validate_transaction(&pending.transaction, &effective, &capabilities)
+            {
+                state
+                    .runtime
+                    .output_transactions
+                    .complete(id, (pending.kind, Err(error)));
+                continue;
+            }
+            if pending.kind == OutputTransactionKind::Test {
+                let snapshot = transaction_snapshot(&effective, output_surfaces);
+                state
+                    .runtime
+                    .output_transactions
+                    .complete(id, (pending.kind, Ok(snapshot)));
+                continue;
+            }
+
+            let requested: Vec<_> = effective
+                .heads
+                .iter()
+                .map(|config| {
+                    let index = output_surfaces
+                        .iter()
+                        .position(|entry| entry.output.name() == config.id.0)
+                        .expect("validated output disappeared before application");
+                    (
+                        index,
+                        config,
+                        requested_mode(&output_surfaces[index], config),
+                    )
+                })
+                .collect();
+            let blocker = busy_configuration_output(
+                requested.iter().map(|(index, config, mode)| {
+                    let entry = &output_surfaces[*index];
+                    let current = entry.surface.as_ref().map(|surface| {
+                        surface.with_compositor(|compositor| {
+                            (compositor.current_mode(), compositor.vrr_enabled())
+                        })
+                    });
+                    let desired = config.enabled.then(|| {
+                        (
+                            mode.expect("enabled configurations were prevalidated"),
+                            requested_vrr(entry, config).1,
+                        )
+                    });
+                    (entry.scanout(), current, desired)
+                }),
+                &loop_state.pending_crtcs,
+            );
+            if let Some(scanout) = blocker {
+                log::trace!("Output transaction {id:?} waits for page flip on {scanout:?}");
+                state.runtime.output_transactions.requeue(id, pending);
+                break;
+            }
+
+            let mut newly_enabled = Vec::new();
+            let mut changed_modes = Vec::new();
+            let mut changed_vrr = Vec::new();
+            let mut applied = true;
+
+            for (index, config, mode) in &requested {
+                if !config.enabled {
+                    continue;
+                }
+                let entry = &mut output_surfaces[*index];
+                let mode = mode.expect("enabled configurations were prevalidated");
+                let was_enabled = entry.surface.is_some();
+                if let Some(surface) = entry.surface.as_mut() {
+                    let current_mode =
+                        surface.with_compositor(|compositor| compositor.current_mode());
+                    if current_mode != mode {
+                        if surface.use_mode(mode, renderer, &render_elements).is_err() {
+                            applied = false;
+                            break;
+                        }
+                        changed_modes.push((*index, current_mode));
+                    }
+                } else {
+                    // Release the manager's compositor write lock before building
+                    // feedback: with_compositor() acquires that same lock for reading.
+                    // A match scrutinee temporary would live through its match arms.
+                    let initialized = {
+                        let manager = devices.manager(entry.device);
+                        manager.lock().initialize_output(
+                            entry.crtc,
+                            mode,
+                            &[entry.connector],
+                            &entry.output,
+                            None,
+                            renderer,
+                            &render_elements,
+                        )
+                    };
+                    match initialized {
+                        Ok(surface) => {
+                            entry.dmabuf_feedback =
+                                build_output_dmabuf_feedback(renderer, &surface);
+                            if entry.dmabuf_feedback.is_none() {
+                                log::warn!(
+                                    "Output {}: could not rebuild DMA-BUF scanout feedback",
+                                    entry.output.name()
+                                );
+                            }
+                            entry.surface = Some(surface);
+                            newly_enabled.push(*index);
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "failed to enable output {}: {error:?}",
+                                entry.output.name()
+                            );
+                            applied = false;
+                            break;
+                        }
+                    }
+                }
+                let (_, adaptive_sync) = requested_vrr(entry, config);
+                let current_vrr = entry
+                    .surface
+                    .as_ref()
+                    .expect("output was enabled above")
+                    .with_compositor(|compositor| compositor.vrr_enabled());
+                if current_vrr != adaptive_sync {
+                    if entry
+                        .surface
+                        .as_ref()
+                        .expect("output was enabled above")
+                        .with_compositor(|compositor| compositor.use_vrr(adaptive_sync))
+                        .is_err()
+                    {
+                        applied = false;
+                        break;
+                    }
+                    if was_enabled {
+                        changed_vrr.push((*index, current_vrr));
+                    }
+                }
+            }
+
+            if !applied {
+                for index in newly_enabled {
+                    output_surfaces[index].surface.take();
+                }
+                for (index, old_mode) in changed_modes {
+                    if let Some(surface) = output_surfaces[index].surface.as_mut() {
+                        let _ = surface.use_mode(old_mode, renderer, &render_elements);
+                    }
+                }
+                for (index, old_vrr) in changed_vrr {
+                    if let Some(surface) = output_surfaces[index].surface.as_ref() {
+                        let _ = surface.with_compositor(|compositor| compositor.use_vrr(old_vrr));
+                    }
+                }
+                state.runtime.output_transactions.complete(
+                    id,
+                    (
+                        pending.kind,
+                        Err(OutputTransactionError::Backend(
+                            "DRM could not commit the requested output state".to_string(),
+                        )),
+                    ),
+                );
+                continue;
+            }
+
+            for (index, config, _) in &requested {
+                let entry = &mut output_surfaces[*index];
+                let intent = pending
+                    .transaction
+                    .heads
+                    .iter()
+                    .find(|head| head.id == config.id)
+                    .expect("effective configuration preserves requested heads");
+                log::info!(
+                    "Output transaction {id:?}: {} device={:?}, origin={:?}, lid={:?}, requested_enabled={}, effective_enabled={}, previous_enabled={}",
+                    config.id.0,
+                    entry.device,
+                    pending.origin,
+                    state.lid_output_projection(&pending.transaction).decision,
+                    intent.enabled,
+                    config.enabled,
+                    entry.enabled
+                );
+                let native_modes: Vec<_> = entry.modes.iter().map(|(_, mode)| *mode).collect();
+                if let Some(preferred) = best_connector_mode(&native_modes) {
+                    entry
+                        .output
+                        .set_preferred(smithay::output::Mode::from(preferred));
+                }
+                let name = entry.output.name();
+                let position_source = if pending.origin == OutputTransactionOrigin::CompositorPolicy
+                {
+                    state.output_position_source(&name)
+                } else {
+                    OutputPositionSource::ClientManaged
+                };
+                state
+                    .runtime
+                    .output_position_sources
+                    .insert(name, position_source);
+                if !config.enabled {
+                    if let Some(power_id) = entry.pending_power_on.take() {
+                        state.runtime.output_power.complete(
+                            power_id,
+                            (
+                                OutputId(entry.output.name()),
+                                Err(OutputPowerError::Unavailable(entry.output.name())),
+                            ),
+                        );
+                    }
+                    entry.surface.take();
+                    loop_state
+                        .presentation_scheduler
+                        .remove_output(&entry.scanout());
+                    entry.enabled = false;
+                    entry.powered = false;
+                    entry.vrr_enabled = false;
+                    state
+                        .runtime
+                        .output_power_modes
+                        .remove(&entry.output.name());
+                } else {
+                    let newly_enabled = !entry.enabled;
+                    entry.enabled = true;
+                    if newly_enabled {
+                        entry.powered = true;
+                        state
+                            .runtime
+                            .output_power_modes
+                            .insert(entry.output.name(), OutputPowerMode::On);
+                    }
+                    let (mode, enabled) = requested_vrr(entry, config);
+                    entry.vrr_enabled = enabled;
+                    entry.configured_vrr_mode = mode;
+                }
+            }
             state
                 .runtime
-                .output_transactions
-                .complete(id, (pending.kind, Err(error)));
-            continue;
-        }
-        if pending.kind == OutputTransactionKind::Test {
+                .requested_output_state
+                .commit(&pending.transaction);
             let snapshot = transaction_snapshot(&effective, output_surfaces);
             state
                 .runtime
                 .output_transactions
                 .complete(id, (pending.kind, Ok(snapshot)));
-            continue;
-        }
-
-        let requested: Vec<_> = effective
-            .heads
-            .iter()
-            .map(|config| {
-                let index = output_surfaces
-                    .iter()
-                    .position(|entry| entry.output.name() == config.id.0)
-                    .expect("validated output disappeared before application");
-                (
-                    index,
-                    config,
-                    requested_mode(&output_surfaces[index], config),
-                )
-            })
-            .collect();
-        let blocker = busy_configuration_output(
-            requested.iter().map(|(index, config, mode)| {
-                let entry = &output_surfaces[*index];
-                let current = entry.surface.as_ref().map(|surface| {
-                    surface.with_compositor(|compositor| {
-                        (compositor.current_mode(), compositor.vrr_enabled())
-                    })
-                });
-                let desired = config.enabled.then(|| {
-                    (
-                        mode.expect("enabled configurations were prevalidated"),
-                        requested_vrr(entry, config).1,
-                    )
-                });
-                (entry.scanout(), current, desired)
-            }),
-            &loop_state.pending_crtcs,
-        );
-        if let Some(scanout) = blocker {
-            log::trace!("Output transaction {id:?} waits for page flip on {scanout:?}");
-            state.runtime.output_transactions.requeue(id, pending);
+            loop_state.mark_all_dirty();
+            // Project the authoritative state before attempting another apply.
             break;
         }
+    }
 
-        let mut newly_enabled = Vec::new();
-        let mut changed_modes = Vec::new();
-        let mut changed_vrr = Vec::new();
-        let mut applied = true;
+    pub(super) fn process_output_power_requests(&mut self, state: &mut WaylandNativeState) {
+        let output_surfaces = &mut self.output_surfaces;
+        let loop_state = &mut self.loop_state;
+        if !state.runtime.output_power.has_pending() {
+            return;
+        }
 
-        for (index, config, mode) in &requested {
-            if !config.enabled {
+        while let Some((id, request)) = state.runtime.output_power.take_next_pending() {
+            let Some(entry) = output_surfaces
+                .iter_mut()
+                .find(|entry| entry.output.name() == request.output.0)
+            else {
+                let name = request.output.0.clone();
+                state.runtime.output_power.complete(
+                    id,
+                    (request.output, Err(OutputPowerError::Unavailable(name))),
+                );
+                continue;
+            };
+            if !entry.enabled || entry.surface.is_none() {
+                let name = entry.output.name();
+                state.runtime.output_power.complete(
+                    id,
+                    (request.output, Err(OutputPowerError::Unavailable(name))),
+                );
                 continue;
             }
-            let entry = &mut output_surfaces[*index];
-            let mode = mode.expect("enabled configurations were prevalidated");
-            let was_enabled = entry.surface.is_some();
-            if let Some(surface) = entry.surface.as_mut() {
-                let current_mode = surface.with_compositor(|compositor| compositor.current_mode());
-                if current_mode != mode {
-                    if surface.use_mode(mode, renderer, &render_elements).is_err() {
-                        applied = false;
-                        break;
-                    }
-                    changed_modes.push((*index, current_mode));
-                }
-            } else {
-                // Release the manager's compositor write lock before building
-                // feedback: with_compositor() acquires that same lock for reading.
-                // A match scrutinee temporary would live through its match arms.
-                let initialized = {
-                    let manager = devices.manager(entry.device);
-                    manager.lock().initialize_output(
-                        entry.crtc,
-                        mode,
-                        &[entry.connector],
-                        &entry.output,
-                        None,
-                        renderer,
-                        &render_elements,
-                    )
-                };
-                match initialized {
-                    Ok(surface) => {
-                        entry.dmabuf_feedback = build_output_dmabuf_feedback(renderer, &surface);
-                        if entry.dmabuf_feedback.is_none() {
-                            log::warn!(
-                                "Output {}: could not rebuild DMA-BUF scanout feedback",
-                                entry.output.name()
-                            );
-                        }
-                        entry.surface = Some(surface);
-                        newly_enabled.push(*index);
-                    }
-                    Err(error) => {
-                        log::warn!("failed to enable output {}: {error:?}", entry.output.name());
-                        applied = false;
-                        break;
-                    }
-                }
+            if entry.pending_power_on.is_some()
+                || loop_state.pending_crtcs.contains(&entry.scanout())
+            {
+                state.runtime.output_power.requeue(id, request);
+                break;
             }
-            let (_, adaptive_sync) = requested_vrr(entry, config);
-            let current_vrr = entry
-                .surface
-                .as_ref()
-                .expect("output was enabled above")
-                .with_compositor(|compositor| compositor.vrr_enabled());
-            if current_vrr != adaptive_sync {
-                if entry
-                    .surface
-                    .as_ref()
-                    .expect("output was enabled above")
-                    .with_compositor(|compositor| compositor.use_vrr(adaptive_sync))
-                    .is_err()
-                {
-                    applied = false;
-                    break;
-                }
-                if was_enabled {
-                    changed_vrr.push((*index, current_vrr));
-                }
-            }
-        }
 
-        if !applied {
-            for index in newly_enabled {
-                output_surfaces[index].surface.take();
-            }
-            for (index, old_mode) in changed_modes {
-                if let Some(surface) = output_surfaces[index].surface.as_mut() {
-                    let _ = surface.use_mode(old_mode, renderer, &render_elements);
-                }
-            }
-            for (index, old_vrr) in changed_vrr {
-                if let Some(surface) = output_surfaces[index].surface.as_ref() {
-                    let _ = surface.with_compositor(|compositor| compositor.use_vrr(old_vrr));
-                }
-            }
-            state.runtime.output_transactions.complete(
-                id,
-                (
-                    pending.kind,
-                    Err(OutputTransactionError::Backend(
-                        "DRM could not commit the requested output state".to_string(),
-                    )),
-                ),
-            );
-            continue;
-        }
-
-        for (index, config, _) in &requested {
-            let entry = &mut output_surfaces[*index];
-            let intent = pending
-                .transaction
-                .heads
-                .iter()
-                .find(|head| head.id == config.id)
-                .expect("effective configuration preserves requested heads");
-            log::info!(
-                "Output transaction {id:?}: {} device={:?}, origin={:?}, lid={:?}, requested_enabled={}, effective_enabled={}, previous_enabled={}",
-                config.id.0,
-                entry.device,
-                pending.origin,
-                state.lid_output_projection(&pending.transaction).decision,
-                intent.enabled,
-                config.enabled,
-                entry.enabled
-            );
-            let native_modes: Vec<_> = entry.modes.iter().map(|(_, mode)| *mode).collect();
-            if let Some(preferred) = best_connector_mode(&native_modes) {
-                entry
-                    .output
-                    .set_preferred(smithay::output::Mode::from(preferred));
-            }
-            let name = entry.output.name();
-            let position_source = if pending.origin == OutputTransactionOrigin::CompositorPolicy {
-                state.output_position_source(&name)
+            let current = if entry.powered {
+                OutputPowerMode::On
             } else {
-                OutputPositionSource::ClientManaged
+                OutputPowerMode::Off
             };
-            state
-                .runtime
-                .output_position_sources
-                .insert(name, position_source);
-            if !config.enabled {
-                if let Some(power_id) = entry.pending_power_on.take() {
-                    state.runtime.output_power.complete(
-                        power_id,
-                        (
-                            OutputId(entry.output.name()),
-                            Err(OutputPowerError::Unavailable(entry.output.name())),
-                        ),
-                    );
-                }
-                entry.surface.take();
-                loop_state
-                    .presentation_scheduler
-                    .remove_output(&entry.scanout());
-                entry.enabled = false;
-                entry.powered = false;
-                entry.vrr_enabled = false;
+            if current == request.mode {
                 state
                     .runtime
-                    .output_power_modes
-                    .remove(&entry.output.name());
-            } else {
-                let newly_enabled = !entry.enabled;
-                entry.enabled = true;
-                if newly_enabled {
+                    .output_power
+                    .complete(id, (request.output, Ok(current)));
+                continue;
+            }
+
+            let source = entry.output.name();
+            let mode = request.mode;
+            match mode {
+                OutputPowerMode::Off => {
+                    let result = entry
+                        .surface
+                        .as_ref()
+                        .expect("enabled DRM output has a surface")
+                        .with_compositor(|compositor| compositor.clear());
+                    match result {
+                        Ok(()) => {
+                            entry.powered = false;
+                            state
+                                .runtime
+                                .output_power_modes
+                                .insert(source.clone(), OutputPowerMode::Off);
+                            state
+                                .runtime
+                                .output_power
+                                .complete(id, (request.output, Ok(OutputPowerMode::Off)));
+                        }
+                        Err(error) => {
+                            state.runtime.output_power.complete(
+                                id,
+                                (
+                                    request.output,
+                                    Err(OutputPowerError::Backend(format!("{error:?}"))),
+                                ),
+                            );
+                            break;
+                        }
+                    }
+                }
+                OutputPowerMode::On => {
                     entry.powered = true;
-                    state
-                        .runtime
-                        .output_power_modes
-                        .insert(entry.output.name(), OutputPowerMode::On);
-                }
-                let (mode, enabled) = requested_vrr(entry, config);
-                entry.vrr_enabled = enabled;
-                entry.configured_vrr_mode = mode;
-            }
-        }
-        state
-            .runtime
-            .requested_output_state
-            .commit(&pending.transaction);
-        let snapshot = transaction_snapshot(&effective, output_surfaces);
-        state
-            .runtime
-            .output_transactions
-            .complete(id, (pending.kind, Ok(snapshot)));
-        loop_state.mark_all_dirty();
-        // Project the authoritative state before attempting another apply.
-        break;
-    }
-}
-
-pub(super) fn process_output_power_requests(
-    state: &mut WaylandNativeState,
-    output_surfaces: &mut [OutputSurfaceEntry],
-    loop_state: &mut DrmLoopState,
-) {
-    if !state.runtime.output_power.has_pending() {
-        return;
-    }
-
-    while let Some((id, request)) = state.runtime.output_power.take_next_pending() {
-        let Some(entry) = output_surfaces
-            .iter_mut()
-            .find(|entry| entry.output.name() == request.output.0)
-        else {
-            let name = request.output.0.clone();
-            state.runtime.output_power.complete(
-                id,
-                (request.output, Err(OutputPowerError::Unavailable(name))),
-            );
-            continue;
-        };
-        if !entry.enabled || entry.surface.is_none() {
-            let name = entry.output.name();
-            state.runtime.output_power.complete(
-                id,
-                (request.output, Err(OutputPowerError::Unavailable(name))),
-            );
-            continue;
-        }
-        if entry.pending_power_on.is_some() || loop_state.pending_crtcs.contains(&entry.scanout()) {
-            state.runtime.output_power.requeue(id, request);
-            break;
-        }
-
-        let current = if entry.powered {
-            OutputPowerMode::On
-        } else {
-            OutputPowerMode::Off
-        };
-        if current == request.mode {
-            state
-                .runtime
-                .output_power
-                .complete(id, (request.output, Ok(current)));
-            continue;
-        }
-
-        let source = entry.output.name();
-        let mode = request.mode;
-        match mode {
-            OutputPowerMode::Off => {
-                let result = entry
-                    .surface
-                    .as_ref()
-                    .expect("enabled DRM output has a surface")
-                    .with_compositor(|compositor| compositor.clear());
-                match result {
-                    Ok(()) => {
-                        entry.powered = false;
-                        state
-                            .runtime
-                            .output_power_modes
-                            .insert(source.clone(), OutputPowerMode::Off);
-                        state
-                            .runtime
-                            .output_power
-                            .complete(id, (request.output, Ok(OutputPowerMode::Off)));
-                    }
-                    Err(error) => {
-                        state.runtime.output_power.complete(
-                            id,
-                            (
-                                request.output,
-                                Err(OutputPowerError::Backend(format!("{error:?}"))),
-                            ),
-                        );
-                        break;
-                    }
+                    entry.pending_power_on = Some(id);
+                    loop_state.mark_dirty(entry.scanout());
+                    // Completion is delayed until render_outputs queues the first
+                    // frame, which is the commit that re-enables a cleared CRTC.
                 }
             }
-            OutputPowerMode::On => {
-                entry.powered = true;
-                entry.pending_power_on = Some(id);
-                loop_state.mark_dirty(entry.scanout());
-                // Completion is delayed until render_outputs queues the first
-                // frame, which is the commit that re-enables a cleared CRTC.
-            }
+            power_mirrors_with_source(state, output_surfaces, loop_state, &source, mode);
         }
-        power_mirrors_with_source(state, output_surfaces, loop_state, &source, mode);
     }
 }
 
