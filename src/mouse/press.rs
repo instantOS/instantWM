@@ -434,6 +434,7 @@ mod tests {
         let (mut wm, win, _) = setup_wm();
         wm.core.state.config.bindings.buttons.clear();
         let border = Point::new(100, 150);
+        offer_floating_border(&mut wm, win, border);
 
         let outcome = dispatch_press_policy(
             &mut wm.test_ctx(),
@@ -453,6 +454,7 @@ mod tests {
 
         let (mut pointer_wm, pointer_win, _) = setup_wm();
         pointer_wm.core.state.config.bindings.buttons.clear();
+        offer_floating_border(&mut pointer_wm, pointer_win, border);
         let pointer_outcome = dispatch_press_policy(
             &mut pointer_wm.test_ctx(),
             PressInput {
@@ -473,15 +475,26 @@ mod tests {
         );
     }
 
+    fn offer_floating_border(wm: &mut Wm, win: WindowId, border: Point) {
+        let motion = crate::types::HoverFocusTrigger::PointerMotion;
+        crate::mouse::update_resize_offer_at(
+            &mut wm.test_ctx(),
+            Point::new(border.x + 10, border.y),
+            Some(win),
+            motion,
+        );
+        assert_eq!(
+            crate::mouse::update_resize_offer_at(&mut wm.test_ctx(), border, Some(win), motion),
+            Some(win)
+        );
+    }
+
     #[test]
     fn middle_click_close_clears_the_hover_offer_first() {
         let (mut wm, win, _) = setup_wm();
         wm.core.state.config.bindings.buttons.clear();
         let border = Point::new(100, 150);
-        assert_eq!(
-            crate::mouse::update_resize_offer_at(&mut wm.test_ctx(), border),
-            Some(win)
-        );
+        offer_floating_border(&mut wm, win, border);
 
         let outcome = dispatch_press_policy(
             &mut wm.test_ctx(),

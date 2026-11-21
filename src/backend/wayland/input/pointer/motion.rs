@@ -844,17 +844,13 @@ fn dispatch_pointer_motion(
 
     if !sidebar_offer_active {
         // Phase 5: Update floating-border and tiled-gap resize offers
-        let suppress_hover_focus = if hit_test.band.above_bar() {
+        let suppress_hover_focus = if hit_test.band.above_bar() || state.native.is_locked() {
             // Foreground shell UI and menus also occlude compositor resize
             // offers; otherwise a selector can inherit a window's resize cursor.
             clear_hover_offer(&mut state.ctx());
             true
         } else {
-            update_hover_resize_state(
-                state,
-                root,
-                state.wm.core.state.interaction.drag.has_capture(),
-            )
+            update_hover_resize_state(state, root, hovered_win, hover_focus_trigger)
         };
 
         // Phase 6: Update pointer focus based on drag state. An exclusive layer
@@ -1038,23 +1034,18 @@ fn handle_bar_motion(
 /// yanking focus to whatever lies beneath would fight the offered gesture.
 /// Without an offer, hover focus applies normally (focus-follows-mouse,
 /// unfocus when hovering the root).
-fn update_hover_resize_state(state: &mut WaylandState, root: RootPoint, drag_active: bool) -> bool {
+fn update_hover_resize_state(
+    state: &mut WaylandState,
+    root: RootPoint,
+    hovered: Option<crate::types::WindowId>,
+    trigger: crate::types::HoverFocusTrigger,
+) -> bool {
     if state.wm.core.state.model.is_overview_active() {
         let mut ctx = state.ctx();
         clear_hover_offer(&mut ctx);
         return false;
     }
-    if drag_active {
-        return false;
-    }
-
-    let ctx = state.ctx();
-    let WmCtx::Wayland(mut ctx) = ctx else {
-        return false;
-    };
-
-    // Offer resize at visible floating borders and adjustable tiled gaps.
-    crate::mouse::update_resize_offer_at(&mut ctx.wm_ctx(), root).is_some()
+    crate::mouse::update_resize_offer_at(&mut state.ctx(), root, hovered, trigger).is_some()
 }
 
 /// Update pointer focus based on drag state.

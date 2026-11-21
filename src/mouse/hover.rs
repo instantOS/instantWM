@@ -1,22 +1,21 @@
 //! Hover-resize: cursor feedback and click-to-resize around floating windows
 //! and in gaps between tiled windows.
 //!
-//! When the pointer hovers just outside a floating window's border, the root
-//! cursor changes to a resize shape.  A left-click then starts an interactive
+//! Moving from inside a floating window into its outer border band changes
+//! the cursor to a resize shape.  A left-click then starts an interactive
 //! resize (or move, when the cursor is at the window's top-middle edge);
 //! a right-click always starts a move; a middle-click closes the window.
-//! Moving further away deactivates the mode.
+//! Moving beyond the band clears the offer until the pointer visits the
+//! window interior again.
 //! The offer is occlusion-aware: a border seam hidden beneath another
-//! window's surface is never offered, and the scan stops at the first
-//! surface the pointer is actually over.
+//! window's surface is never offered.
 //! An adjustable inner tiling gap instead offers the corresponding tree seam;
 //! dragging either primary button there has the same layout effect as a
 //! Super+right-button resize on the adjacent tile.
 //!
 //! The hover-offer model is authoritative: cursor presentation and pointer
-//! routing are derived from it and reconciled by the active backend. Committing
-//! an offer remains a transport concern (X11 uses its modal interaction loop;
-//! Wayland uses compositor-owned pointer input).
+//! routing are derived from it and reconciled by the active backend.
+//! Both backends commit the active offer through the shared press policy.
 //!
 //! ## Entry points
 //!
@@ -28,7 +27,7 @@
 use crate::contexts::WmCtx;
 use crate::core_state::HoverOffer;
 use crate::model::WmModel;
-use crate::types::{Client, Monitor, Point, Rect, ResizeDirection, WindowId};
+use crate::types::{Client, HoverFocusTrigger, Monitor, Point, Rect, ResizeDirection, WindowId};
 
 use super::constants::RESIZE_BORDER_ZONE;
 
@@ -46,48 +45,68 @@ pub struct HoverResizeHit {
     pub geo: Rect,
 }
 
-/// Activate a resize hover offer and reconcile its derived presentation.
-fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeHit) {
+/// Update the passive resize offer. A floating border can only inherit
+/// the pointer from that window's interior or its already active border band.
+pub fn update_resize_offer_at(
+    ctx: &mut WmCtx,
+    root: Point,
+    hovered: Option<WindowId>,
+    trigger: HoverFocusTrigger,
+) -> Option<WindowId> {
+    let state = &ctx.core().state;
+    let drag = &state.interaction.drag;
+    if drag.has_capture() {
+        return None;
+    }
+
+    let physical_motion = trigger == HoverFocusTrigger::PointerMotion;
+    let origin = drag.resize_hover_origin();
+    let candidate = drag
+        .hover_offer()
+        .resize_target()
+        .map(|(win, _)| win)
+        .or(origin.filter(|_| physical_motion));
+
+    let mut next_origin = None;
+    let (offer, target) =
+        if let Some(hit) = candidate.and_then(|win| resize_target_at(&state.model, win, root)) {
+            (
+                HoverOffer::Resize {
+                    win: hit.win,
+                    dir: hit.dir,
+                },
+                Some(hit.win),
+            )
+        } else if let Some((win, dir)) =
+            crate::layouts::manager::pointer_tree_gap_resize_target(state, root)
+        {
+            (HoverOffer::TreeResize { win, dir }, Some(win))
+        } else {
+            next_origin = hovered
+                .filter(|&win| physical_motion || origin == Some(win))
+                .filter(|&win| {
+                    state.model.client_view(win).is_some_and(|view| {
+                        accepts_floating_resize(view.client, view.monitor)
+                            && view.client.geo.contains_point(root)
+                            && !view
+                                .client
+                                .geo
+                                .contains_resize_border_point(root, RESIZE_BORDER_ZONE)
+                    })
+                });
+            (HoverOffer::None, None)
+        };
+
     let changed = ctx.transition_pointer_interaction(|drag| {
-        drag.set_hover_offer(HoverOffer::Resize {
-            win: target.win,
-            dir: target.dir,
-        })
+        let changed = drag.set_hover_offer(offer);
+        drag.set_resize_hover_origin(next_origin);
+        changed
     });
     if !changed {
-        // Retry a previously failed native projection while the offer remains
-        // authoritative (for example, an X11 grab becoming available).
+        // Retry native projection even when the offer is unchanged.
         ctx.sync_interaction_projection();
     }
-}
-
-fn offer_tree_resize(ctx: &mut WmCtx, win: WindowId, direction: ResizeDirection) {
-    let changed = ctx.transition_pointer_interaction(|drag| {
-        drag.set_hover_offer(HoverOffer::TreeResize {
-            win,
-            dir: direction,
-        })
-    });
-    if !changed {
-        ctx.sync_interaction_projection();
-    }
-}
-
-/// Update the passive resize offer at a pointer position without applying
-/// hover-focus policy. Returns the window owning the offered resize seam.
-pub fn update_resize_offer_at(ctx: &mut WmCtx, root: Point) -> Option<WindowId> {
-    if let Some(target) = hover_resize_target_at(&ctx.core().state.model, root) {
-        offer_hover_resize(ctx, target);
-        return Some(target.win);
-    }
-    if let Some((win, direction)) =
-        crate::layouts::manager::pointer_tree_gap_resize_target(&ctx.core().state, root)
-    {
-        offer_tree_resize(ctx, win, direction);
-        return Some(win);
-    }
-    clear_hover_offer(ctx);
-    None
+    target
 }
 
 /// Clear any active hover offer and reconcile the resulting presentation.
@@ -100,43 +119,33 @@ pub fn clear_hover_offer(ctx: &mut WmCtx) {
     }
 }
 
-fn resize_target_for_window(
-    client: &Client,
-    monitor: &Monitor,
-    root: Point,
-) -> Option<HoverResizeHit> {
-    let selected_tags = monitor.visible_tags();
-    let has_tiling = monitor.is_tiling_layout();
+fn accepts_floating_resize(client: &Client, monitor: &Monitor) -> bool {
+    client.is_visible(monitor.visible_tags())
+        && (client.mode().is_normal_floating() || !monitor.is_tiling_layout())
+}
 
-    if !client.is_visible(selected_tags) {
-        return None;
-    }
-    if !client.mode().is_normal_floating() && has_tiling {
-        return None;
-    }
-    if !client
-        .geo
-        .contains_resize_border_point(root, RESIZE_BORDER_ZONE)
+/// Validate the tracked window's band against the pointer output and stacking.
+pub fn resize_target_at(model: &WmModel, win: WindowId, root: Point) -> Option<HoverResizeHit> {
+    let pointer_monitor = model
+        .monitors
+        .monitor_intersecting_rect(crate::mouse::pointer::point_rect(root))?;
+    let view = model.client_view(win)?;
+    let client = view.client;
+    if pointer_monitor.bar_contains_y(root.y)
+        || !accepts_floating_resize(client, view.monitor)
+        || !client
+            .geo
+            .contains_resize_border_point(root, RESIZE_BORDER_ZONE)
+        || point_occluded_above(model, win, root)
     {
         return None;
     }
 
-    let hit = client.geo.local_point(root);
     Some(HoverResizeHit {
-        win: client.win,
-        dir: ResizeDirection::from_hit(client.geo.size(), hit),
+        win,
+        dir: ResizeDirection::from_hit(client.geo.size(), client.geo.local_point(root)),
         geo: client.geo,
     })
-}
-
-// ── Border detection ─────────────────────────────────────────────────────────
-
-/// `true` when a visible window's surface — borders included — covers `point`.
-///
-/// Mirrors the backend hit tests: what matters is the surface the pointer is
-/// actually over, not focus order. Hidden windows do not occlude.
-fn client_covers_point(client: &Client, monitor: &Monitor, point: Point) -> bool {
-    client.is_visible(monitor.visible_tags()) && client.total_rect().contains_point(point)
 }
 
 /// Check occlusion using the same global layer projection as rendering.
@@ -146,50 +155,11 @@ fn point_occluded_above(model: &WmModel, win: WindowId, point: Point) -> bool {
         .rev()
         .take_while(|&above| above != win)
         .any(|above| {
-            model
-                .client_view(above)
-                .is_some_and(|view| client_covers_point(view.client, view.monitor, point))
+            model.client_view(above).is_some_and(|view| {
+                view.client.is_visible(view.monitor.visible_tags())
+                    && view.client.total_rect().contains_point(point)
+            })
         })
-}
-
-/// Return the floating window + direction currently targeted by hover-resize.
-fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeHit> {
-    let point = Rect::new(root.x, root.y, 1, 1);
-    let monitor = model.monitors.monitor_intersecting_rect(point)?;
-    if monitor.bar_contains_y(root.y) {
-        return None;
-    }
-    // Ownership does not constrain where a window's visible border can be.
-    for win in crate::layouts::global_z_order(model).into_iter().rev() {
-        let Some(view) = model.client_view(win) else {
-            continue;
-        };
-        if let Some(hit) = resize_target_for_window(view.client, view.monitor, root) {
-            return Some(hit);
-        }
-        if client_covers_point(view.client, view.monitor, root) {
-            return None;
-        }
-    }
-    None
-}
-
-pub fn selected_hover_resize_target_at(model: &WmModel, position: Point) -> Option<HoverResizeHit> {
-    // The selected window belongs to the selected monitor, so the monitor's
-    // own map resolves both halves of the view without a model-wide scan.
-    let monitor = model.selected_monitor()?;
-    let win = monitor.selected?;
-    let client = monitor.client(win)?;
-    if monitor.bar_contains_y(position.y) {
-        return None;
-    }
-    // A click must never commit a border the user cannot see: when another
-    // window's surface covers the position, the press belongs to that window.
-    // Checked before the band test so an occluded seam skips the hit math.
-    if point_occluded_above(model, win, position) {
-        return None;
-    }
-    resize_target_for_window(client, monitor, position)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
@@ -209,8 +179,13 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
 ///
 /// Returns `true` when the pointer is over a resize offer zone and the caller
 /// should stop processing the motion event.
-pub fn update_resize_offer_with_focus_at(ctx: &mut WmCtx, root: Point) -> bool {
-    if let Some(win) = update_resize_offer_at(ctx, root) {
+pub fn update_resize_offer_with_focus_at(
+    ctx: &mut WmCtx,
+    root: Point,
+    hovered: Option<WindowId>,
+) -> bool {
+    if let Some(win) = update_resize_offer_at(ctx, root, hovered, HoverFocusTrigger::PointerMotion)
+    {
         // This function is only entered from physical X11 motion. The shared
         // mode policy still decides whether the resize offer may move focus.
         // Otherwise the motion handler resolves the actual window beneath the
@@ -279,6 +254,102 @@ mod tests {
     use crate::types::{ClientMode, MonitorId, TagMask, WindowId};
     use crate::wm::WaylandWm as Wm;
 
+    #[test]
+    fn floating_resize_offer_requires_an_outward_crossing() {
+        let mut wm =
+            crate::test_support::TestWm::new(crate::backend::WaylandBackendData::default());
+        let tags = TagMask::single(1).unwrap();
+        let monitor = wm.core.state.model.monitors.push(
+            MonitorBuilder::new()
+                .monitor_rect(Rect::new(0, 0, 1200, 800))
+                .bar(0, false)
+                .tag_count(1)
+                .selected_tags(tags)
+                .build(),
+        );
+        wm.core.state.model.monitors.set_selected(monitor);
+        let tile = add_selected_client_with(&mut wm.core.state.model, monitor, |client| {
+            client.win = WindowId(1);
+            client.tags = tags;
+            client.geo = Rect::new(0, 0, 1200, 800);
+            client.mode = ClientMode::tiled();
+        });
+        let floating = add_client_with(&mut wm.core.state.model, monitor, |client| {
+            client.win = WindowId(2);
+            client.tags = tags;
+            client.geo = Rect::new(100, 100, 600, 400);
+            client.mode = ClientMode::floating();
+        });
+
+        use crate::mouse::press::{PressInput, PressOutcome, dispatch_press_policy};
+        use crate::types::{AltCursor, InteractionSource, ModMask, MouseButton};
+
+        let inside = Point::new(690, 270);
+        let border = Point::new(710, 270);
+        let far = Point::new(750, 270);
+        let motion = |wm: &mut crate::test_support::TestWm, point, hovered, trigger| {
+            update_resize_offer_at(&mut wm.test_ctx(), point, Some(hovered), trigger)
+        };
+        let button = MouseButton::Left;
+        let press = |wm: &mut crate::test_support::TestWm| {
+            dispatch_press_policy(
+                &mut wm.test_ctx(),
+                PressInput {
+                    root: border,
+                    button: Some(button),
+                    raw_button: 1,
+                    modifiers: ModMask::NONE,
+                    clicked_window: Some(tile),
+                    source: InteractionSource::Pointer,
+                    time_msec: 0,
+                },
+            )
+        };
+        let device = HoverFocusTrigger::PointerMotion;
+        let refresh = HoverFocusTrigger::SceneChange;
+        for (point, hovered, trigger, expected) in [
+            (far, tile, device, None),
+            (border, tile, device, None),
+            (inside, floating, refresh, None),
+            (border, tile, device, None),
+            (inside, floating, device, None),
+            (border, tile, device, Some(floating)),
+            (Point::new(720, 270), tile, device, Some(floating)),
+            (far, tile, device, None),
+            (border, tile, device, None),
+        ] {
+            assert_eq!(
+                motion(&mut wm, point, hovered, trigger),
+                expected,
+                "{point:?}"
+            );
+            let cursor = if expected.is_some() {
+                AltCursor::Resize(ResizeDirection::Right)
+            } else {
+                AltCursor::Default
+            };
+            assert_eq!(wm.core.state.interaction.drag.projection().cursor, cursor);
+        }
+        assert_eq!(
+            press(&mut wm),
+            PressOutcome::ReplayToClient { window: Some(tile) }
+        );
+        assert_eq!(wm.core.state.model.selected_win(), Some(tile));
+
+        motion(&mut wm, inside, floating, device);
+        assert_eq!(motion(&mut wm, border, tile, device), Some(floating));
+        assert_eq!(press(&mut wm), PressOutcome::CapturedInteraction { button });
+        assert_eq!(
+            wm.core
+                .state
+                .interaction
+                .drag
+                .projection()
+                .active_resize_window,
+            Some(floating)
+        );
+    }
+
     /// Push one taggable monitor for a hover fixture.
     ///
     /// The tag list must be non-empty before `set_selected_tags` can select
@@ -293,53 +364,32 @@ mod tests {
         )
     }
 
-    /// Two floating windows whose top border zones overlap: the visually
-    /// topmost one must win the offer even when focus order puts the other
-    /// window first.
     #[test]
-    fn border_scan_prefers_the_topmost_window_over_focus_order() {
-        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let tags = TagMask::single(1).unwrap();
-        let bottom = WindowId(1);
-        let top = WindowId(2);
-
-        let monitor_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), false);
-        wm.core
-            .state
-            .model
-            .monitor_mut(monitor_id)
-            .unwrap()
-            .set_selected_tags(tags);
-        wm.core.state.model.monitors.set_selected(monitor_id);
-
-        // Adding `bottom` first stacks `top` above it, and the focus stack is
-        // pinned so the two orders disagree.
-        for (win, y) in [(bottom, 100), (top, 90)] {
-            add_client_with(&mut wm.core.state.model, monitor_id, |client| {
-                client.win = win;
-                client.tags = tags;
-                client.geo = Rect::new(100, y, 600, 400);
-                client.mode = ClientMode::floating();
-                client.set_placement(crate::types::ClientPlacement::Floating);
-            });
-        }
-        // Focus order: `bottom` is the focused window.
-        assert!(
-            wm.core
-                .state
-                .model
-                .monitor_mut(monitor_id)
-                .unwrap()
-                .set_focus_order(vec![bottom, top])
+    fn overlapping_bands_keep_the_window_the_pointer_left() {
+        let mut wm =
+            crate::test_support::TestWm::new(crate::backend::WaylandBackendData::default());
+        setup_stacked_floating_windows(
+            &mut wm,
+            Rect::new(100, 100, 600, 400),
+            Rect::new(715, 100, 600, 400),
         );
 
-        // Inside both windows' top border zones (30 px band above each edge).
-        let target = hover_resize_target_at(&wm.core.state.model, Point::new(300, 85));
-        assert_eq!(target.map(|target| target.win), Some(top));
+        let bottom = WindowId(1);
+        let device = HoverFocusTrigger::PointerMotion;
+        update_resize_offer_at(
+            &mut wm.test_ctx(),
+            Point::new(690, 270),
+            Some(bottom),
+            device,
+        );
+        assert_eq!(
+            update_resize_offer_at(&mut wm.test_ctx(), Point::new(710, 270), None, device),
+            Some(bottom)
+        );
     }
 
     #[test]
-    fn border_scan_uses_the_monitor_under_the_pointer() {
+    fn resize_target_uses_the_monitor_under_the_pointer() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         let tags = TagMask::single(1).unwrap();
         let left_id = push_hover_monitor(&mut wm, Rect::new(0, 0, 1920, 1080), true);
@@ -361,7 +411,7 @@ mod tests {
             client.set_placement(crate::types::ClientPlacement::Floating);
         });
 
-        let target = hover_resize_target_at(&wm.core.state.model, Point::new(2200, 95));
+        let target = resize_target_at(&wm.core.state.model, win, Point::new(2200, 95));
         assert_eq!(target.map(|target| target.win), Some(win));
         assert_eq!(wm.core.state.model.selected_monitor_id(), left_id);
     }
@@ -409,8 +459,7 @@ mod tests {
     }
 
     /// A smaller floating window fully covered by a larger one must not offer
-    /// its border seams through the covering window's surface: neither the
-    /// passive motion offer nor the selected-window click commit may see them.
+    /// its border seams through the covering window's surface.
     #[test]
     fn covered_window_borders_are_not_offered_through_the_covering_surface() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
@@ -423,16 +472,12 @@ mod tests {
         // Inside the covered window's top border zone (y 100..130) but
         // strictly inside the covering window's surface.
         assert_eq!(
-            hover_resize_target_at(&wm.core.state.model, Point::new(300, 110)),
-            None
-        );
-        assert_eq!(
-            selected_hover_resize_target_at(&wm.core.state.model, Point::new(300, 110)),
+            resize_target_at(&wm.core.state.model, WindowId(1), Point::new(300, 110)),
             None
         );
 
-        // The covering window's own border still offers when hovered directly.
-        let target = hover_resize_target_at(&wm.core.state.model, Point::new(300, 85));
+        // The covering window's own border is exposed.
+        let target = resize_target_at(&wm.core.state.model, WindowId(2), Point::new(300, 85));
         assert_eq!(target.map(|hit| hit.win), Some(WindowId(2)));
     }
 
@@ -450,13 +495,8 @@ mod tests {
 
         // In the covered window's left border zone, outside the cover's
         // surface (the cover's band ends at x = 700 + 30).
-        let target = hover_resize_target_at(&wm.core.state.model, Point::new(735, 200));
+        let target = resize_target_at(&wm.core.state.model, WindowId(1), Point::new(735, 200));
         assert_eq!(target.map(|hit| hit.win), Some(WindowId(1)));
-        assert_eq!(
-            selected_hover_resize_target_at(&wm.core.state.model, Point::new(735, 200))
-                .map(|hit| hit.win),
-            Some(WindowId(1))
-        );
     }
 }
 
@@ -500,7 +540,7 @@ mod cross_output_tests {
         });
         let point = Point::new(1100, 95);
         assert_eq!(
-            hover_resize_target_at(&wm.core.state.model, point).map(|hit| hit.win),
+            resize_target_at(&wm.core.state.model, floating, point).map(|hit| hit.win),
             Some(floating)
         );
         assert!(!point_occluded_above(&wm.core.state.model, floating, point));
