@@ -263,7 +263,7 @@ mod tests {
     use crate::test_support::TestWm as Wm;
 
     use crate::test_support::{add_selected_client_with, push_monitor_with};
-    use crate::types::{Button, ClientMode, MonitorId, Rect, TagMask, WindowId};
+    use crate::types::{Button, ClientMode, Modifier, MonitorId, Rect, TagMask, WindowId};
 
     fn setup_wm() -> (Wm, WindowId, MonitorId) {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
@@ -570,6 +570,33 @@ mod tests {
             wm.core.state.interaction.drag.captured_button(),
             Some(MouseButton::Left)
         );
+    }
+
+    #[test]
+    fn default_shift_left_click_on_a_tag_arms_the_tag_click() {
+        let (mut wm, _, _) = bar_hit_wm();
+        wm.core.state.config.bindings.buttons = crate::config::buttons::get_buttons();
+        let input = PressInput {
+            modifiers: ModMask::from_modifiers([Modifier::Shift]),
+            ..left_click_at(50)
+        };
+
+        let outcome = dispatch_press_policy(&mut wm.test_ctx(), input);
+
+        assert_eq!(
+            outcome,
+            PressOutcome::CapturedInteraction {
+                button: MouseButton::Left
+            }
+        );
+        let drag = wm
+            .core
+            .state
+            .interaction
+            .drag
+            .captured::<crate::core_state::TagDragState>()
+            .expect("shift+click armed a tag capture");
+        assert_eq!(drag.initial_tag, TagMask::single(1).unwrap());
     }
 
     #[test]

@@ -67,6 +67,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), MODKEY, button:MouseButton::Left => ButtonAction::SetSelectedClientClickedTag),
         btn!(Tag(0), MODKEY, button:MouseButton::Right => ButtonAction::ToggleSelectedClientClickedTag),
         btn!(Tag(0), MOD1, button:MouseButton::Left => ButtonAction::DragTagBegin),
+        btn!(Tag(0), SHIFT, button:MouseButton::Left => ButtonAction::DragTagBegin),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp => ButtonAction::named(NamedAction::ShiftViewLeft)),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => ButtonAction::named(NamedAction::ShiftViewRight)),
         btn!(screen:ButtonTarget::BottomBar, ModMask::NONE, button:MouseButton::Left => ButtonAction::BottomBarDrag {
