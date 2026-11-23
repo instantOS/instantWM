@@ -8,7 +8,6 @@ use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::udev::{UdevBackend, UdevEvent};
-use smithay::input::pointer::CursorIcon;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
@@ -23,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::init::drm::init_gpu;
-use crate::backend::wayland::render::cursor::{ResolvedCursor, resolve_cursor};
+use crate::backend::wayland::render::cursor::resolve_cursor;
 use crate::backend::wayland::render::cursor_theme::CursorManager;
 use crate::backend::wayland::render::drm::{
     DrmDeviceId, OutputSurfaceEntry, ScanoutId, build_output_surfaces, create_output_manager,
@@ -406,17 +405,6 @@ fn setup_udev_hotplug_handler(
         .expect("failed to insert udev hot-plug source");
 }
 
-/// Extract a `CursorIcon` from a resolved cursor presentation for
-/// animation-timer scheduling.  `Surface` cursors are client-owned and
-/// cannot be introspected, so they return `None`.
-fn resolved_cursor_icon(p: &ResolvedCursor) -> Option<CursorIcon> {
-    match p {
-        ResolvedCursor::Hidden | ResolvedCursor::Surface { .. } => None,
-        ResolvedCursor::Named(icon) => Some(*icon),
-        ResolvedCursor::DndIcon { cursor, .. } => resolved_cursor_icon(cursor),
-    }
-}
-
 /// Run the main event loop.
 ///
 /// This is the heart of the DRM backend. It handles:
@@ -598,8 +586,14 @@ fn run_event_loop(
                     state.native.runtime.dnd_icon.as_ref(),
                     state.native.runtime.cursor_hidden_by_touch,
                 );
-                resolved_cursor_icon(&presentation)
-                    .is_some_and(|icon| cursor_manager.is_animated(icon, 1))
+                state
+                    .native
+                    .space
+                    .output_under(state.native.runtime.pointer_location)
+                    .any(|output| {
+                        cursor_manager
+                            .is_animated(&presentation, output.current_scale().fractional_scale())
+                    })
             };
             state.native.runtime.cursor_is_animated = animated;
             if animated {

@@ -103,18 +103,27 @@ pub(super) fn layer_output_for_surface(
 pub fn collect_available_rects(state: &WaylandState) -> HashMap<String, Rect> {
     let mut out = HashMap::new();
     for output in state.native.space.outputs() {
-        let output_loc = state
-            .native
-            .space
-            .output_geometry(output)
-            .map(|geo| geo.loc)
-            .unwrap_or_default();
+        let (Some(geometry), Some(mode)) = (
+            state.native.space.output_geometry(output),
+            output.current_mode(),
+        ) else {
+            continue;
+        };
         let zone = layer_map_for_output(output).non_exclusive_zone();
+        // Smithay's layer map rounds the output size to nearest, while Space
+        // rounds up. Preserve the exclusive insets, rather than losing the
+        // fractional edge of the desktop even when there are no layers.
+        let layer_size: smithay::utils::Size<i32, smithay::utils::Logical> = output
+            .current_transform()
+            .transform_size(mode.size)
+            .to_f64()
+            .to_logical(output.current_scale().fractional_scale())
+            .to_i32_round();
         let rect = Rect {
-            x: output_loc.x + zone.loc.x,
-            y: output_loc.y + zone.loc.y,
-            w: zone.size.w.max(1),
-            h: zone.size.h.max(1),
+            x: geometry.loc.x + zone.loc.x,
+            y: geometry.loc.y + zone.loc.y,
+            w: (zone.size.w + geometry.size.w - layer_size.w).max(1),
+            h: (zone.size.h + geometry.size.h - layer_size.h).max(1),
         };
         out.insert(output.name(), rect);
     }
