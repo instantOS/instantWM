@@ -116,13 +116,8 @@ pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
 
 /// Core-motion fallback for X servers without XI2 raw motion support.
 pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
-    let event_win = WindowId::from(e.event);
-    let root_win = WindowId::from(ctx.x11_runtime.root);
-    if event_win != root_win {
-        return;
-    }
-
-    let hovered = crate::backend::x11::mouse::managed_window(&ctx.core.state, e.child);
+    let hovered = crate::backend::x11::mouse::managed_window(&ctx.core.state, e.event)
+        .or_else(|| crate::backend::x11::mouse::managed_window(&ctx.core.state, e.child));
     physical_pointer_motion(ctx, Point::new(e.root_x as i32, e.root_y as i32), hovered);
 }
 
@@ -142,7 +137,7 @@ pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
 
 fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<WindowId>) {
     // Handle focus-follows-mouse monitor switching
-    if ctx
+    let monitor_changed = ctx
         .core
         .state
         .behavior
@@ -156,12 +151,10 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
             .window
             .focus_follows_mouse
             .is_enabled()
-        && crate::focus::select_monitor_at_pointer(&mut ctx.wm_ctx(), root)
-    {
-        return;
-    }
+        && crate::focus::select_monitor_at_pointer(&mut ctx.wm_ctx(), root);
 
     if crate::mouse::update_overlay_hot_corner(&mut ctx.wm_ctx(), root) {
+        crate::mouse::clear_hover_offer(&mut ctx.wm_ctx());
         return;
     }
 
@@ -186,18 +179,20 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
             {
                 return;
             }
-            if crate::mouse::update_resize_offer_with_focus_at(&mut ctx.wm_ctx(), root) {
+            if crate::mouse::update_resize_offer_with_focus_at(&mut ctx.wm_ctx(), root, hovered) {
                 return;
             }
         }
         crate::bar::clear_hover(&mut ctx.wm_ctx());
-        crate::focus::apply_hover_focus(
-            &mut ctx.wm_ctx(),
-            hovered,
-            false,
-            Some(root),
-            crate::types::HoverFocusTrigger::PointerMotion,
-        );
+        if !monitor_changed {
+            crate::focus::apply_hover_focus(
+                &mut ctx.wm_ctx(),
+                hovered,
+                false,
+                Some(root),
+                crate::types::HoverFocusTrigger::PointerMotion,
+            );
+        }
         return;
     };
 

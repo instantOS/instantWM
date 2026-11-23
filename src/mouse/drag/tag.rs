@@ -79,6 +79,15 @@ fn resolve_tag_release(
                 modifiers,
             }
         })
+    } else if modifiers.contains(Modifier::Shift) {
+        // Shift+click moves the selected window without leaving the current
+        // view. With no window there is nothing to move, so do not fall back
+        // to viewing the clicked tag.
+        selected_window.map_or(TagReleaseAction::None, |win| TagReleaseAction::DropWindow {
+            win,
+            tags: drag.initial_tag,
+            modifiers,
+        })
     } else {
         TagReleaseAction::View(drag.initial_tag)
     }
@@ -220,8 +229,10 @@ pub fn apply_drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 }
 
 /// Finish a tag click or drag using the modifiers held at release time.
-/// Ctrl moves all windows from the dragged tag; Shift swaps its windows with
-/// the destination (taking precedence over Ctrl). Alt follows the destination.
+/// A plain click views the clicked tag; Alt+click moves the selected window
+/// there and follows, while Shift+click moves it without following. While
+/// dragging a tag, Ctrl moves all of its windows; Shift swaps them with the
+/// destination (taking precedence over Ctrl). Alt follows the destination.
 pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: ModMask) {
     let Some(button) = ctx
         .core()
@@ -330,11 +341,38 @@ mod tests {
             TagDropBehavior::MoveAndFollow
         );
         assert_eq!(
+            TagDropBehavior::from_modifiers(ModMask::from_modifiers([Modifier::Shift])),
+            TagDropBehavior::Move
+        );
+        assert_eq!(
             TagDropBehavior::from_modifiers(ModMask::from_modifiers([
                 Modifier::Alt,
+                Modifier::Shift,
                 Modifier::Control
             ])),
             TagDropBehavior::MoveAndFollow
+        );
+    }
+
+    #[test]
+    fn shift_click_moves_the_selected_window_without_following() {
+        let clicked = TagMask::single(3).unwrap();
+        let win = WindowId(10);
+        let shift = ModMask::from_modifiers([Modifier::Shift]);
+
+        assert_eq!(
+            resolve_tag_release(&drag(false, clicked), Some(win), Some(clicked), shift),
+            TagReleaseAction::DropWindow {
+                win,
+                tags: clicked,
+                modifiers: shift,
+            }
+        );
+        // Without a selected window shift+click must not fall back to viewing
+        // the clicked tag, unlike Alt+click.
+        assert_eq!(
+            resolve_tag_release(&drag(false, clicked), None, Some(clicked), shift),
+            TagReleaseAction::None
         );
     }
 
@@ -370,17 +408,26 @@ mod tests {
             resolve_tag_release(&drag(true, initial), None, Some(target), ModMask::NONE),
             TagReleaseAction::None
         );
-        for modifier in [Modifier::Shift, Modifier::Control] {
-            assert_eq!(
-                resolve_tag_release(
-                    &drag(false, initial),
-                    None,
-                    Some(target),
-                    ModMask::from_modifiers([modifier]),
-                ),
-                TagReleaseAction::View(initial)
-            );
-        }
+        assert_eq!(
+            resolve_tag_release(
+                &drag(false, initial),
+                None,
+                Some(target),
+                ModMask::from_modifiers([Modifier::Control]),
+            ),
+            TagReleaseAction::View(initial)
+        );
+        // Shift-click needs a selected window to move; without one it is a
+        // no-op rather than a view change.
+        assert_eq!(
+            resolve_tag_release(
+                &drag(false, initial),
+                None,
+                Some(target),
+                ModMask::from_modifiers([Modifier::Shift]),
+            ),
+            TagReleaseAction::None
+        );
     }
 
     #[test]

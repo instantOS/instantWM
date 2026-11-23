@@ -23,11 +23,7 @@ instantos-ipc = { version = "0.1.0", git = "https://github.com/instantOS/instant
 x11rb = { version = "0.14", features = ["cursor", "randr", "xinerama", "xinput", "xkb", "shm", "render", "composite", "damage", "dpms", "dri2", "dri3", "glx", "present", "record", "res", "sync", "xf86dri", "xf86vidmode", "xfixes", "xprint", "xselinux", "xtest", "xv", "xvmc", "allow-unsafe-code", "dl-libxcb"] }
 libc = "0.2"
 rustix = { version = "1", features = ["event", "fs", "process", "time"] }
-fontconfig = "0.10"
-freetype = "0.7"
-bitflags = "2.11"
 thiserror = "2.0"
-once_cell = "1.21"
 anyhow = "1.0"
 log = { version = "0.4", features = ["std"] }
 clap = { version = "4.6", features = ["derive"] }

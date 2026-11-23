@@ -9,7 +9,7 @@ use crate::types::{Client, ClientMode, MonitorId, Rect, Size, TagMask, WindowId}
 use smithay::backend::input::InputTime;
 use smithay::backend::input::{KeyState, Keycode};
 use smithay::input::keyboard::{GrabStartData, KeyboardGrab, KeyboardInnerHandle, ModifiersState};
-use smithay::input::pointer::CursorImageStatus;
+use smithay::input::pointer::{CursorIcon, CursorImageStatus};
 use smithay::output::Output;
 use smithay::utils::Serial;
 use smithay::utils::{Point, SERIAL_COUNTER};
@@ -367,6 +367,67 @@ impl Fixture {
         self.pump();
         lock
     }
+}
+
+#[test]
+fn floating_resize_cursor_follows_outward_motion_and_clears_beyond_the_band() {
+    use crate::backend::wayland::commands::PointerButtonCommand;
+    use crate::backend::wayland::input::pointer::button::{
+        PointerButtonInput, handle_pointer_button,
+    };
+    use smithay::backend::input::ButtonState;
+
+    let mut f = Fixture::new(2);
+    let (win, _) = f.window();
+    f.state.wm.core.state.model.client_mut(win).unwrap().mode = ClientMode::floating();
+
+    for (x, cursor) in [
+        (240.0, None),
+        (210.0, None),
+        (190.0, None),
+        (210.0, Some(CursorIcon::EResize)),
+        (240.0, None),
+        (210.0, None),
+        (190.0, None),
+        (210.0, Some(CursorIcon::EResize)),
+    ] {
+        f.motion(PointerMotionCommand::Absolute {
+            x,
+            y: 115.0,
+            time: InputTime::now(),
+        });
+        assert_eq!(
+            f.state.native.cursor_icon_override, cursor,
+            "pointer x = {x}"
+        );
+    }
+
+    let pointer = f.state.native.seat.get_pointer().unwrap();
+    let keyboard = f.state.native.seat.get_keyboard().unwrap();
+    handle_pointer_button(
+        &mut f.state,
+        &pointer,
+        &keyboard,
+        PointerButtonInput {
+            event: PointerButtonCommand {
+                code: 0x110, // BTN_LEFT
+                state: ButtonState::Pressed,
+                time: InputTime::now(),
+            },
+            location: Point::from((210.0, 115.0)),
+        },
+    );
+    assert_eq!(
+        f.state
+            .wm
+            .core
+            .state
+            .interaction
+            .drag
+            .projection()
+            .active_resize_window,
+        Some(win)
+    );
 }
 
 #[test]

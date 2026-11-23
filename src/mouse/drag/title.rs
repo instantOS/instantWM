@@ -96,11 +96,19 @@ pub fn title_drag_begin(
 ///
 /// A manual-tree placement gesture skips promotion and keeps the tiled source
 /// in its original slot so cancellation is lossless.
+///
+/// A bar-title drag is the exception when the tiled view shows only one
+/// window: that window already fills the work area and there is no second
+/// tiling slot to place it into, so the gesture lifts it to floating exactly
+/// like a title drag in maximized presentation. Other drag origins keep tree
+/// placement, so a lone tiled window can still be carried to another output
+/// as a tile.
 fn begin_move_drag(
     ctx: &mut WmCtx,
     win: WindowId,
     input: DragInput,
     start_point: Point,
+    origin: crate::core_state::ArmedDragOrigin,
 ) -> Option<(Rect, Point)> {
     // One view decides eligibility, snap restoration, and whether this is a
     // manual-tree gesture. `reset_snap` below is the only state change before
@@ -110,7 +118,9 @@ fn begin_move_drag(
         (
             view.client.is_edge_scratchpad(),
             view.client.snap_status != SnapPosition::None,
-            crate::layouts::manager::uses_manual_tree_pointer_interaction(view),
+            crate::layouts::manager::uses_manual_tree_pointer_interaction(view)
+                && !(origin == crate::core_state::ArmedDragOrigin::BarTitle
+                    && view.monitor.tiled_client_count() <= 1),
         )
     };
     if blocked {
@@ -140,7 +150,7 @@ fn begin_move_drag(
 
 /// Handle the transition from an armed click to an active shared drag.
 fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
-    let (win, btn, source, start_point, suppress_click_action) = {
+    let (win, btn, source, start_point, suppress_click_action, origin) = {
         let Some(drag) = ctx.core().state.interaction.drag.armed_interaction() else {
             return false;
         };
@@ -150,6 +160,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
             drag.source(),
             drag.start_point(),
             drag.suppress_click_action(),
+            drag.origin(),
         )
     };
     let is_right_click = btn == MouseButton::Right;
@@ -209,7 +220,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
     // A tiled left-drag is a manual-tree placement gesture. Floating windows
     // continue to move directly. Keeping the tiled source in its original slot
     // also makes cancellation lossless.
-    let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point) else {
+    let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point, origin) else {
         return false;
     };
 
@@ -330,6 +341,7 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
     let monitor_id = reorder.monitor_id();
     let source = drag.source();
     let start_point = drag.start_point();
+    let origin = drag.origin();
     ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));
 
     match title_strip_target(ctx.core(), monitor_id, root) {
@@ -345,7 +357,7 @@ pub fn process_title_reorder_motion(ctx: &mut WmCtx, root: Point) -> bool {
             }
             true
         }
-        None => convert_reorder_to_move(ctx, win, source, start_point, root),
+        None => convert_reorder_to_move(ctx, win, source, start_point, root, origin),
     }
 }
 
@@ -356,12 +368,13 @@ fn convert_reorder_to_move(
     source: InteractionSource,
     start_point: Point,
     root: Point,
+    origin: crate::core_state::ArmedDragOrigin,
 ) -> bool {
     let input = match source {
         InteractionSource::Pointer => DragInput::Pointer(root),
         InteractionSource::Touch(_) => DragInput::Absolute(root),
     };
-    let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point) else {
+    let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point, origin) else {
         // The window cannot start a move drag (e.g. an edge scratchpad); end
         // the interaction instead of leaving the capture dangling.
         ctx.transition_pointer_interaction(|drag| drag.finish_reordering());
@@ -620,6 +633,36 @@ mod tests {
         (wm, monitor_id, windows[0], windows[1])
     }
 
+    /// A bar-title fixture with one tiled window on the visible monitor.
+    fn single_tiled_bar_title_fixture() -> (Wm, MonitorId, WindowId) {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        wm.core.state.model.tags.num_tags = 9;
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = push_drag_monitor(&mut wm, Rect::new(0, 0, 1200, 800), 30, true, 9);
+        wm.core.state.derived.display.x = 0;
+        wm.core.state.derived.display.y = 0;
+        wm.core.state.derived.display.width = 1200;
+        wm.core.state.derived.display.height = 800;
+        wm.core.state.model.monitors.set_selected(monitor_id);
+        let win = WindowId(33);
+        add_client_with(&mut wm.core.state.model, monitor_id, |client| {
+            client.win = win;
+            client.tags = tags;
+            client.mode = ClientMode::tiled();
+            client.geo = Rect::new(0, 30, 1200, 770);
+        });
+        let monitor = wm.core.state.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        assert!(monitor.set_focus_order(vec![win]));
+        monitor.selected = Some(win);
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &[win], 1);
+        crate::bar::render_hit_caches_for_test(wm.test_ctx().core_mut());
+        (wm, monitor_id, win)
+    }
+
     /// Root-space center x of `win`'s title cell, scanned through the shared
     /// hit-test so the test cannot drift from the renderer's layout.
     fn title_cell_center(wm: &mut Wm, monitor_id: MonitorId, win: WindowId) -> i32 {
@@ -717,6 +760,102 @@ mod tests {
             active.operation(),
             crate::core_state::ActiveWindowOperation::Move
         ));
+        assert!(
+            wm.core
+                .state
+                .model
+                .client(first)
+                .unwrap()
+                .mode()
+                .is_normal_tiling(),
+            "a multi-window tiled drag must remain a tree placement gesture"
+        );
+    }
+
+    #[test]
+    fn single_tiled_bar_title_drag_promotes_to_floating_and_moves() {
+        let (mut wm, monitor_id, win) = single_tiled_bar_title_fixture();
+        let title_x = title_cell_center(&mut wm, monitor_id, win);
+
+        assert!(title_drag_begin(
+            &mut wm.test_ctx(),
+            win,
+            MouseButton::Left,
+            crate::core_state::ArmedDragOrigin::BarTitle,
+            InteractionSource::Pointer,
+            Point::new(title_x, 10),
+            false,
+        ));
+
+        // Leaving the bar starts the move. A lone tiled window has no second
+        // tiling slot to occupy, so it is lifted to floating like a maximized
+        // title.
+        assert!(process_title_drag_motion(
+            &mut wm.test_ctx(),
+            DragInput::Absolute(Point::new(title_x, 200))
+        ));
+
+        let client = wm.core.state.model.client(win).unwrap();
+        assert!(client.mode().is_normal_floating());
+        assert!(matches!(
+            wm.core
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .unwrap()
+                .operation(),
+            crate::core_state::ActiveWindowOperation::Move
+        ));
+        let before = client.geo;
+
+        assert!(crate::mouse::drag::apply_active_drag_motion(
+            &mut wm.test_ctx(),
+            Point::new(title_x + 80, 260)
+        ));
+        let after = wm.core.state.model.client(win).unwrap().geo;
+        assert_eq!(after.x, before.x + 80);
+        assert_eq!(after.y, before.y + 60);
+    }
+
+    #[test]
+    fn client_origin_drag_on_a_lone_tiled_window_keeps_tree_placement() {
+        let (mut wm, _monitor_id, win) = single_tiled_bar_title_fixture();
+
+        assert!(title_drag_begin(
+            &mut wm.test_ctx(),
+            win,
+            MouseButton::Left,
+            crate::core_state::ArmedDragOrigin::Client,
+            InteractionSource::Pointer,
+            Point::new(600, 400),
+            true,
+        ));
+        assert!(process_title_drag_motion(
+            &mut wm.test_ctx(),
+            DragInput::Absolute(Point::new(700, 500))
+        ));
+
+        assert!(matches!(
+            wm.core
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .unwrap()
+                .operation(),
+            crate::core_state::ActiveWindowOperation::Move
+        ));
+        assert!(
+            wm.core
+                .state
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_normal_tiling(),
+            "only bar-title drags lift a lone tiled window to floating"
+        );
     }
 
     #[test]
@@ -815,6 +954,7 @@ mod tests {
             win,
             DragInput::Absolute(Point::new(300, 220)),
             Point::new(300, 220),
+            crate::core_state::ArmedDragOrigin::Client,
         );
 
         assert_eq!(result, Some((saved, Point::new(300, 220))));
@@ -853,6 +993,7 @@ mod tests {
                 win,
                 DragInput::Absolute(Point::new(100, 200)),
                 Point::new(100, 200),
+                crate::core_state::ArmedDragOrigin::Client,
             ),
             None
         );

@@ -181,6 +181,8 @@ impl CapturedInteraction {
 pub struct PointerInteractionState {
     capture: Option<CapturedInteraction>,
     hover_offer: HoverOffer,
+    /// Window whose interior the pointer most recently visited.
+    resize_hover_origin: Option<WindowId>,
 }
 
 impl PointerInteractionState {
@@ -221,6 +223,14 @@ impl PointerInteractionState {
 
     pub fn hover_offer(&self) -> HoverOffer {
         self.hover_offer
+    }
+
+    pub fn resize_hover_origin(&self) -> Option<WindowId> {
+        self.resize_hover_origin
+    }
+
+    pub fn set_resize_hover_origin(&mut self, origin: Option<WindowId>) {
+        self.resize_hover_origin = origin;
     }
 
     pub fn capture(&self) -> Option<&CapturedInteraction> {
@@ -513,7 +523,7 @@ impl PointerInteractionState {
         // A passive offer and an owned input sequence are mutually exclusive.
         // Dropping the offer here prevents stale hover intent from resurfacing
         // when the capture later ends.
-        self.hover_offer = HoverOffer::None;
+        self.clear_hover_offer();
         self.capture = Some(capture.into());
         Ok(())
     }
@@ -523,6 +533,7 @@ impl PointerInteractionState {
     /// the model transition.
     #[inline]
     pub fn set_hover_offer(&mut self, offer: HoverOffer) -> bool {
+        self.resize_hover_origin = None;
         if self.capture.is_some() {
             return false;
         }
@@ -535,6 +546,7 @@ impl PointerInteractionState {
 
     /// Clears an active hover offer. Returns `true` if the state changed.
     pub fn clear_hover_offer(&mut self) -> bool {
+        self.resize_hover_origin = None;
         if !self.hover_offer.is_active() {
             return false;
         }

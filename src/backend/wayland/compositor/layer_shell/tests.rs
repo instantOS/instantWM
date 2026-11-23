@@ -742,12 +742,13 @@ fn selector_pointer_motion_does_not_offer_resize_of_the_window_below() {
     f.state.sync_space();
     let pointer = f.state.native.pointer.clone();
     let keyboard = f.state.native.keyboard.clone();
-    let motion = || PointerMotionCommand::Absolute {
-        x: 185.0,
+    let motion = |x| PointerMotionCommand::Absolute {
+        x,
         y: 100.0,
         time: InputTime::now(),
     };
-    process_pointer_motion_command(&mut f.state, &pointer, &keyboard, motion());
+    process_pointer_motion_command(&mut f.state, &pointer, &keyboard, motion(170.0));
+    process_pointer_motion_command(&mut f.state, &pointer, &keyboard, motion(185.0));
     assert!(
         f.state.native.cursor_icon_override.is_some(),
         "fixture must expose a floating resize border"
@@ -759,7 +760,7 @@ fn selector_pointer_motion_does_not_offer_resize_of_the_window_below() {
         zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
         true,
     );
-    process_pointer_motion_command(&mut f.state, &pointer, &keyboard, motion());
+    process_pointer_motion_command(&mut f.state, &pointer, &keyboard, motion(185.0));
     assert_eq!(f.state.native.cursor_icon_override, None);
     assert_eq!(f.keyboard_root(), Some(selector.root));
 }

@@ -272,10 +272,15 @@ fn subscribe_manage_events(
     runtime: &mut X11RuntimeConfig,
     window: WindowId,
 ) -> Result<(), x11rb::errors::ConnectionError> {
-    let mask = EventMask::ENTER_WINDOW
+    let mut mask = EventMask::ENTER_WINDOW
         | EventMask::FOCUS_CHANGE
         | EventMask::PROPERTY_CHANGE
         | EventMask::STRUCTURE_NOTIFY;
+    if !runtime.raw_pointer_motion {
+        // Client motion may never propagate to the root. Observe it here so
+        // a floating resize offer can detect where the pointer came from.
+        mask |= EventMask::POINTER_MOTION;
+    }
     let x11_window: Window = window.into();
     runtime.subscriptions.select(x11.conn, x11_window, mask)
 }

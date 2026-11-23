@@ -35,6 +35,7 @@ pub struct X11RuntimeConfig {
     /// Whether the server supports XI2.2 passive touch grabs. These let
     /// click-to-focus observe a touch without degrading it to Button1.
     pub xi2_touch_grabs: bool,
+    pub(crate) raw_pointer_motion: bool,
     /// Server keyboard mapping, refreshed on `MappingNotify`.
     pub keyboard_mapping: X11KeyboardMapping,
     pub(crate) key_grabs: std::cell::RefCell<keyboard::KeyGrabs>,
@@ -102,6 +103,7 @@ impl Default for X11RuntimeConfig {
             motifatom: 0,
             numlockmask: ModMask::NONE,
             xi2_touch_grabs: false,
+            raw_pointer_motion: false,
             keyboard_mapping: X11KeyboardMapping::default(),
             key_grabs: Default::default(),
             root: 0,

@@ -58,6 +58,7 @@ pub fn setup_root(wm: &mut Wm) {
     let conn = &data.conn;
     let (raw_pointer_motion, xi2_touch_grabs) = configure_xinput(conn, root);
     data.x11_runtime.xi2_touch_grabs = xi2_touch_grabs;
+    data.x11_runtime.raw_pointer_motion = raw_pointer_motion;
     let mut mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
