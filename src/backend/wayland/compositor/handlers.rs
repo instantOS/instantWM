@@ -881,7 +881,7 @@ impl crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignTo
         use crate::backend::wayland::compositor::protocols::foreign_toplevel::ForeignToplevelRequest;
 
         let command = match request {
-            ForeignToplevelRequest::Activate => WmCommand::FocusWindow(window),
+            ForeignToplevelRequest::Activate => WmCommand::ActivateForeignToplevel(window),
             ForeignToplevelRequest::Close => WmCommand::CloseWindow(window),
             ForeignToplevelRequest::SetMaximized(maximized) => WmCommand::SetMaximized {
                 win: window,

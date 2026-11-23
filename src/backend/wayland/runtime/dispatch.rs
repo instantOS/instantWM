@@ -31,10 +31,10 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
             WmCommand::UnmapWindow(_) => {}
             WmCommand::UnmanageWindow(win) => handle_unmanage_window(&mut state.ctx(), win),
             WmCommand::ActivateWindow(win) => {
-                // Selection refresh is handled by the post-command diff
-                // below; activating an invisible window only marks it
-                // urgent, which is not part of the advertised snapshot.
                 handle_activate_window(&mut state.ctx(), win);
+            }
+            WmCommand::ActivateForeignToplevel(win) => {
+                handle_foreign_toplevel_activation(&mut state.ctx(), win);
             }
             WmCommand::PointerMotion(motion) => {
                 if let (Some(pointer), Some(keyboard)) = (
@@ -704,6 +704,19 @@ fn handle_activate_window(ctx: &mut WmCtx, win: crate::types::WindowId) {
     if activate {
         crate::focus::activate_client(ctx, win);
     }
+}
+
+fn handle_foreign_toplevel_activation(ctx: &mut WmCtx, win: crate::types::WindowId) {
+    let Some(client) = ctx.core().state.model.client(win) else {
+        return;
+    };
+    if client.is_scratchpad() && !client.is_scratchpad_visible() {
+        return;
+    }
+    if client.is_minimized() {
+        crate::client::show_window(ctx, win);
+    }
+    crate::focus::activate_client(ctx, win);
 }
 
 fn handle_begin_resize(

@@ -168,8 +168,10 @@ pub enum WmCommand {
     UnmapWindow(WindowId),
     /// Stop managing a window (e.g. it was closed).
     UnmanageWindow(WindowId),
-    /// Request to activate a window (e.g. from xdg-activation).
+    /// Request activation with an xdg-activation token.
     ActivateWindow(WindowId),
+    /// Switch to a window selected by a foreign-toplevel client.
+    ActivateForeignToplevel(WindowId),
     /// Pointer motion event.
     PointerMotion(PointerMotionCommand),
     /// Pointer button event.

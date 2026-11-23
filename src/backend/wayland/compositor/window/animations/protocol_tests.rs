@@ -6,16 +6,20 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use wayland_client::protocol::{
-    wl_buffer, wl_callback, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle, delegate_noop};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols_wlr::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
+};
 
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::client::geometry::FloatingPlacementIntent;
 use crate::floating::{WindowModeRequest, set_window_mode};
-use crate::test_support::{MonitorBuilder, add_client};
-use crate::types::{Client, ClientMode, Rect, WindowId};
+use crate::test_support::{MonitorBuilder, add_client, push_monitor};
+use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
 use crate::wm::WaylandWm as Wm;
 
 #[derive(Default)]
@@ -27,6 +31,7 @@ struct NativeClient {
     states: Vec<Vec<u32>>,
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     surface: Option<wl_surface::WlSurface>,
+    foreign_toplevel: Option<ZwlrForeignToplevelHandleV1>,
 }
 
 impl Dispatch<wl_callback::WlCallback, ()> for NativeClient {
@@ -105,6 +110,27 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for NativeClient {
     }
 }
 
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for NativeClient {
+    fn event(
+        state: &mut Self,
+        _: &ZwlrForeignToplevelManagerV1,
+        event: zwlr_foreign_toplevel_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } = event {
+            state.foreign_toplevel = Some(toplevel);
+        }
+    }
+
+    wayland_client::event_created_child!(NativeClient, ZwlrForeignToplevelManagerV1, [
+        zwlr_foreign_toplevel_manager_v1::EVT_TOPLEVEL_OPCODE => (ZwlrForeignToplevelHandleV1, ())
+    ]);
+}
+
+delegate_noop!(NativeClient: ignore ZwlrForeignToplevelHandleV1);
+delegate_noop!(NativeClient: ignore wl_seat::WlSeat);
 delegate_noop!(NativeClient: ignore wl_compositor::WlCompositor);
 delegate_noop!(NativeClient: ignore wl_surface::WlSurface);
 delegate_noop!(NativeClient: ignore xdg_wm_base::XdgWmBase);
@@ -169,6 +195,63 @@ fn connect_native_window(
     let native = state.native.runtime.pending_toplevels.pop().unwrap();
     let win = state.setup_managed_window(native);
     (conn, queue, client, win)
+}
+
+#[test]
+fn foreign_toplevel_activation_restores_window_on_another_output_and_tag() {
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    let (conn, mut queue, mut client, win) = connect_native_window(&mut event_loop, &mut state);
+
+    let model = &mut state.wm.core.state.model;
+    model.tags.num_tags = 2;
+    let first = push_monitor(model);
+    let target_tag = TagMask::single(2).unwrap();
+    let target = model.monitors.push(
+        MonitorBuilder::new()
+            .tag_count(2)
+            .selected_tags(TagMask::single(1).unwrap())
+            .build(),
+    );
+    model.monitors.set_selected(first);
+    add_client(
+        model,
+        target,
+        Client {
+            win,
+            tags: target_tag,
+            is_hidden: true,
+            ..Client::default()
+        },
+    );
+    state
+        .native
+        .refresh_foreign_toplevel(&state.wm.core.state, win);
+
+    let qh = queue.handle();
+    let registry = conn.display().get_registry(&qh, ());
+    let global = |interface: &str| {
+        client
+            .globals
+            .iter()
+            .find(|(_, name)| name == interface)
+            .unwrap()
+            .0
+    };
+    let seat: wl_seat::WlSeat = registry.bind(global("wl_seat"), 1, &qh, ());
+    let _manager: ZwlrForeignToplevelManagerV1 =
+        registry.bind(global("zwlr_foreign_toplevel_manager_v1"), 3, &qh, ());
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+    client.foreign_toplevel.as_ref().unwrap().activate(&seat);
+    pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
+    crate::backend::wayland::runtime::dispatch::drain_command_queue(&mut state);
+
+    let model = &state.wm.core.state.model;
+    let monitor = model.expect_selected_monitor();
+    assert_eq!(monitor.id(), target);
+    assert_eq!(monitor.visible_tags(), target_tag);
+    assert!(!model.client(win).unwrap().is_hidden);
+    assert_eq!(model.selected_win(), Some(win));
+    assert!(state.is_seat_focused_on(win));
 }
 
 #[test]
