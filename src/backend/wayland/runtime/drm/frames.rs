@@ -133,8 +133,14 @@ impl DrmOutputRuntime {
             state.native.runtime.dnd_icon.as_ref(),
             state.native.runtime.cursor_hidden_by_touch,
         );
-        let animated = super::resolved_cursor_icon(&presentation)
-            .is_some_and(|icon| self.cursor_manager.is_animated(icon, 1));
+        let animated = state
+            .native
+            .space
+            .output_under(state.native.runtime.pointer_location)
+            .any(|output| {
+                self.cursor_manager
+                    .is_animated(&presentation, output.current_scale().fractional_scale())
+            });
         state.native.runtime.cursor_is_animated = animated;
         if animated {
             self.mark_pointer_output_dirty(state);

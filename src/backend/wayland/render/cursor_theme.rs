@@ -235,8 +235,11 @@ impl CursorManager {
         })
     }
 
-    pub fn is_animated(&self, icon: CursorIcon, scale: i32) -> bool {
-        self.get_cursor(icon, scale).is_animated()
+    pub fn is_animated(&self, presentation: &ResolvedCursor, scale: f64) -> bool {
+        presentation.named_icon().is_some_and(|icon| {
+            self.get_cursor(icon, scale.ceil().max(1.0) as i32)
+                .is_animated()
+        })
     }
 
     fn get_cached_frames(&self, icon: CursorIcon, scale: i32) -> Rc<Vec<CursorFrame>> {
@@ -364,6 +367,31 @@ mod tests {
             pixels_rgba: Vec::new(),
             pixels_argb: Vec::new(),
         }
+    }
+
+    #[test]
+    fn animation_uses_the_same_density_as_the_rendered_cursor() {
+        let manager = CursorManager {
+            theme: CursorTheme::load("default"),
+            theme_name: "default".into(),
+            size: 24,
+            named_cursor_cache: Default::default(),
+            frame_cache: Default::default(),
+        };
+        for (density, frames) in [
+            (1, vec![image(24, 24, 0)]),
+            (2, vec![image(48, 48, 10), image(48, 48, 10)]),
+        ] {
+            manager.named_cursor_cache.borrow_mut().insert(
+                (CursorIcon::Wait, density),
+                Some(Rc::new(XCursor::from_images(frames, 24 * density).unwrap())),
+            );
+        }
+        let cursor = ResolvedCursor::Named(CursorIcon::Wait);
+        assert!(!manager.is_animated(&cursor, 1.0));
+        assert!(manager.is_animated(&cursor, 1.25));
+        assert!(manager.is_animated(&cursor, 2.0));
+        assert!(!manager.is_animated(&ResolvedCursor::Hidden, 2.0));
     }
 
     #[test]

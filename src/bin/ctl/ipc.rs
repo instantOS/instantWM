@@ -50,5 +50,8 @@ pub fn get_default_socket() -> String {
     if let Ok(val) = std::env::var("INSTANTWM_SOCKET") {
         return val;
     }
-    format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
+    format!(
+        "/tmp/instantwm-{}.sock",
+        rustix::process::geteuid().as_raw()
+    )
 }

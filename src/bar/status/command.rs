@@ -212,7 +212,7 @@ fn reconcile_suspension(state: &mut StatusProcessState) {
     }
 
     let error = std::io::Error::last_os_error();
-    if error.raw_os_error() == Some(libc::ESRCH) {
+    if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) {
         state.pid = None;
         state.click_sender = None;
         state.suspended = false;
@@ -511,10 +511,12 @@ fn kill_status_process_group(child: &mut std::process::Child) {
 }
 
 fn kill_status_process_group_id(pid: i32) {
-    if !crate::util::signal_process_group(pid, libc::SIGKILL) {
+    if !crate::util::signal_process_group(pid, rustix::process::Signal::KILL) {
         // A failed group lookup must not turn shutdown/reload into a leaked
         // shell. The unreaped child still owns this PID, so fallback is safe.
-        unsafe { libc::kill(pid, libc::SIGKILL) };
+        if let Some(pid) = rustix::process::Pid::from_raw(pid) {
+            let _ = rustix::process::kill_process(pid, rustix::process::Signal::KILL);
+        }
     }
 }
 

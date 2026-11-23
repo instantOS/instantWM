@@ -247,7 +247,9 @@ pub fn probe_usable_connectors(
             // MST connectors can disappear between enumerating resources and
             // querying them. ENOENT is an actual removal, unlike other probe
             // failures, which must leave the previous topology intact.
-            Err(error) if error.raw_os_error() == Some(libc::ENOENT) => continue,
+            Err(error) if error.raw_os_error() == Some(rustix::io::Errno::NOENT.raw_os_error()) => {
+                continue;
+            }
             Err(error) => return Err(error),
         };
         if is_usable_connector(&info) {

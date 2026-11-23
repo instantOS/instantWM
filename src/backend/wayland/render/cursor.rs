@@ -22,6 +22,17 @@ pub enum ResolvedCursor {
     },
 }
 
+impl ResolvedCursor {
+    /// Theme icon whose animation the compositor must drive, including during DnD.
+    pub(crate) fn named_icon(&self) -> Option<CursorIcon> {
+        match self {
+            Self::Hidden | Self::Surface { .. } => None,
+            Self::Named(icon) => Some(*icon),
+            Self::DndIcon { cursor, .. } => cursor.named_icon(),
+        }
+    }
+}
+
 /// Resolve effective cursor state shared by nested and DRM backends.
 ///
 /// WM icon overrides are only visual hints for compositor-driven interactions.

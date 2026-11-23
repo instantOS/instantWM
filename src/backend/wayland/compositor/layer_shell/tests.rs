@@ -340,6 +340,100 @@ impl Fixture {
 }
 
 #[test]
+fn fractional_output_edges_are_not_exclusive_zones() {
+    use smithay::output::Scale;
+    use smithay::utils::Transform;
+
+    let (_event_loop, mut state) = crate::test_support::new_compositor();
+    let output = state
+        .native
+        .create_output("edges", Size::new(1921, 1081), None);
+    for scale in [1.0, 1.25, 1.75, 2.0, 2.5, 0.75] {
+        for transform in [Transform::Normal, Transform::_90] {
+            output.change_current_state(
+                None,
+                Some(transform),
+                Some(Scale::Fractional(scale)),
+                None,
+            );
+            state.native.space.map_output(&output, (-200, 100));
+            state.native.configure_output_surfaces(&output);
+            crate::monitor::refresh_monitor_layout(&mut state.ctx());
+            super::apply_available_rects(&mut state);
+
+            let geometry = state.native.space.output_geometry(&output).unwrap();
+            let monitor = state
+                .wm
+                .core
+                .state
+                .model
+                .monitors_iter_all()
+                .find(|monitor| monitor.name == "edges")
+                .unwrap();
+            assert_eq!(
+                monitor.available_rect,
+                Rect::new(
+                    geometry.loc.x,
+                    geometry.loc.y,
+                    geometry.size.w,
+                    geometry.size.h,
+                )
+            );
+        }
+    }
+}
+
+#[test]
+fn fractional_output_edges_preserve_panel_exclusive_insets() {
+    use smithay::output::{Mode, Scale};
+    use zwlr_layer_surface_v1::Anchor;
+
+    let mut f = Fixture::new(1);
+    let output = f.outputs[0].0.clone();
+    output.change_current_state(
+        Some(Mode {
+            size: (1921, 1081).into(),
+            refresh: 60_000,
+        }),
+        None,
+        Some(Scale::Fractional(2.5)),
+        None,
+    );
+    f.state.native.configure_output_surfaces(&output);
+    let panel = f.layer(
+        "panel",
+        0,
+        zwlr_layer_shell_v1::Layer::Top,
+        zwlr_layer_surface_v1::KeyboardInteractivity::None,
+        false,
+    );
+    panel
+        .layer
+        .set_anchor(Anchor::Top | Anchor::Left | Anchor::Right);
+    panel.layer.set_size(0, 32);
+    panel.layer.set_exclusive_zone(32);
+    panel.surface.commit();
+    f.pump();
+
+    assert_eq!(
+        super::collect_available_rects(&f.state)["test-0"],
+        Rect::new(0, 32, 769, 401)
+    );
+
+    panel
+        .layer
+        .set_anchor(Anchor::Right | Anchor::Top | Anchor::Bottom);
+    panel.layer.set_size(40, 0);
+    panel.layer.set_exclusive_zone(40);
+    panel.surface.commit();
+    f.pump();
+    assert_eq!(
+        super::collect_available_rects(&f.state)["test-0"],
+        Rect::new(0, 0, 729, 433)
+    );
+}
+
+#[test]
 fn fullscreen_preserves_overlay_render_band_input_and_exclusive_focus() {
     let mut f = Fixture::new(1);
     let (win, _) = f.window();

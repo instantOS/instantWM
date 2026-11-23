@@ -564,12 +564,9 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let layout_size = output_layout_extent(&outputs);
     let mut changed = sync_runtime_screen_size(&mut ctx.core_mut().state.derived, layout_size);
 
-    // Pre-compute per-output UI metrics and tag-display policies while we
+    // Pre-compute logical UI metrics and per-output tag-display policies while we
     // hold an immutable config borrow.
-    let metrics: Vec<MonitorUiMetrics> = outputs
-        .iter()
-        .map(|_| monitor_ui_metrics(&ctx.core().state.config))
-        .collect();
+    let metrics = monitor_ui_metrics(&ctx.core().state.config);
     let policies: Vec<TagBarPolicy> = outputs
         .iter()
         .map(|o| TagBarPolicy::resolve(&ctx.core().state.config, &o.name))
@@ -579,7 +576,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         reconcile_monitor_model(
             model,
             &outputs,
-            &metrics,
+            metrics,
             &template,
             show_bottom_bar,
             &policies,
@@ -614,12 +611,11 @@ struct MonitorReconciliation {
 fn reconcile_monitor_model(
     model: &mut crate::model::WmModel,
     outputs: &[BackendOutputInfo],
-    metrics: &[MonitorUiMetrics],
+    metrics: MonitorUiMetrics,
     tag_template: &[crate::types::Tag],
     show_bottom_bar: bool,
     policies: &[TagBarPolicy],
 ) -> MonitorReconciliation {
-    debug_assert_eq!(outputs.len(), metrics.len());
     debug_assert_eq!(outputs.len(), policies.len());
     let mut changed = model.monitors.len() != outputs.len();
 
@@ -630,7 +626,6 @@ fn reconcile_monitor_model(
 
     let mut new_monitors = Vec::with_capacity(outputs.len());
     for (i, output) in outputs.iter().enumerate() {
-        let metrics = metrics[i];
         match take_matching_monitor(&mut pool, i, output) {
             Some(mut m) => {
                 if output_geom_changed(&m, output, metrics) {
@@ -761,11 +756,11 @@ mod tests {
         let result = reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[MonitorUiMetrics {
+            MonitorUiMetrics {
                 bar_height: 20,
                 horizontal_padding: 4,
                 startmenu_size: 30,
-            }],
+            },
             &[],
             false,
             &[TagBarPolicy {
@@ -829,11 +824,11 @@ mod tests {
         reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[MonitorUiMetrics {
+            MonitorUiMetrics {
                 bar_height: 20,
                 horizontal_padding: 4,
                 startmenu_size: 30,
-            }],
+            },
             &[],
             false,
             &[TagBarPolicy {
@@ -886,11 +881,11 @@ mod tests {
         reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[MonitorUiMetrics {
+            MonitorUiMetrics {
                 bar_height: 20,
                 horizontal_padding: 4,
                 startmenu_size: 30,
-            }],
+            },
             &[],
             false,
             &[TagBarPolicy {
@@ -975,11 +970,11 @@ mod tests {
         reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[MonitorUiMetrics {
+            MonitorUiMetrics {
                 bar_height: 20,
                 horizontal_padding: 4,
                 startmenu_size: 30,
-            }; 2],
+            },
             &[],
             false,
             &[TagBarPolicy {
@@ -1025,18 +1020,11 @@ mod tests {
         let result = reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[
-                MonitorUiMetrics {
-                    bar_height: 20,
-                    horizontal_padding: 4,
-                    startmenu_size: 30,
-                },
-                MonitorUiMetrics {
-                    bar_height: 20,
-                    horizontal_padding: 4,
-                    startmenu_size: 30,
-                },
-            ],
+            MonitorUiMetrics {
+                bar_height: 20,
+                horizontal_padding: 4,
+                startmenu_size: 30,
+            },
             &[],
             false,
             &[
@@ -1084,11 +1072,11 @@ mod tests {
         let result = reconcile_monitor_model(
             &mut model,
             &outputs,
-            &[MonitorUiMetrics {
+            MonitorUiMetrics {
                 bar_height: 20,
                 horizontal_padding: 4,
                 startmenu_size: 30,
-            }],
+            },
             &[],
             false,
             &[TagBarPolicy {

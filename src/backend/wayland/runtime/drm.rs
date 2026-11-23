@@ -7,7 +7,6 @@ use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::udev::{UdevBackend, UdevEvent};
-use smithay::input::pointer::CursorIcon;
 use smithay::reexports::input::Libinput;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -18,7 +17,6 @@ use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::init::drm::{GpuResources, init_gpu};
-use crate::backend::wayland::render::cursor::ResolvedCursor;
 use crate::backend::wayland::render::cursor_theme::CursorManager;
 use crate::backend::wayland::render::drm::{
     DrmDeviceId, ScanoutId, build_output_surfaces, create_output_manager,
@@ -393,15 +391,4 @@ fn setup_udev_hotplug_handler(
             }
         })
         .expect("failed to insert udev hot-plug source");
-}
-
-/// Extract a `CursorIcon` from a resolved cursor presentation for
-/// animation-timer scheduling.  `Surface` cursors are client-owned and
-/// cannot be introspected, so they return `None`.
-fn resolved_cursor_icon(p: &ResolvedCursor) -> Option<CursorIcon> {
-    match p {
-        ResolvedCursor::Hidden | ResolvedCursor::Surface { .. } => None,
-        ResolvedCursor::Named(icon) => Some(*icon),
-        ResolvedCursor::DndIcon { cursor, .. } => resolved_cursor_icon(cursor),
-    }
 }

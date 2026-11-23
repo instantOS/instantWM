@@ -4,7 +4,7 @@ use crate::reload::reload_config;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -42,25 +42,20 @@ struct IpcReadiness(Arc<OwnedFd>);
 
 impl IpcReadiness {
     fn new(listener: &UnixListener) -> io::Result<Self> {
-        let fd = unsafe { libc::epoll_create1(libc::EPOLL_CLOEXEC) };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let readiness = Self(Arc::new(unsafe { OwnedFd::from_raw_fd(fd) }));
-        readiness.watch(listener.as_raw_fd())?;
+        let readiness = Self(Arc::new(rustix::event::epoll::create(
+            rustix::event::epoll::CreateFlags::CLOEXEC,
+        )?));
+        readiness.watch(listener)?;
         Ok(readiness)
     }
 
-    fn watch(&self, fd: std::os::fd::RawFd) -> io::Result<()> {
-        let mut event = libc::epoll_event {
-            events: libc::EPOLLIN as u32,
-            u64: 0,
-        };
-        let result =
-            unsafe { libc::epoll_ctl(self.0.as_raw_fd(), libc::EPOLL_CTL_ADD, fd, &mut event) };
-        if result < 0 {
-            return Err(io::Error::last_os_error());
-        }
+    fn watch(&self, fd: impl AsFd) -> io::Result<()> {
+        rustix::event::epoll::add(
+            &self.0,
+            fd,
+            rustix::event::epoll::EventData::new_u64(0),
+            rustix::event::epoll::EventFlags::IN,
+        )?;
         Ok(())
     }
 }
@@ -147,7 +142,7 @@ impl IpcServer {
                 Ok((stream, _)) => {
                     if self.clients.len() < MAX_PENDING_CLIENTS
                         && let Ok(()) = stream.set_nonblocking(true)
-                        && let Ok(()) = self.readiness.watch(stream.as_raw_fd())
+                        && let Ok(()) = self.readiness.watch(&stream)
                     {
                         self.clients.push(PendingClient {
                             stream,
@@ -235,7 +230,7 @@ fn get_available_socket_path() -> PathBuf {
         return path;
     }
 
-    let uid = unsafe { libc::geteuid() };
+    let uid = rustix::process::geteuid().as_raw();
     let mut i = 0;
     loop {
         let path = if i == 0 {
@@ -511,6 +506,15 @@ mod tests {
         assert_eq!(client.buffer, request);
     }
 
+    fn poll_readiness(
+        fd: &impl AsFd,
+        timeout: &rustix::time::Timespec,
+    ) -> (usize, rustix::event::PollFlags) {
+        let mut fds = [rustix::event::PollFd::new(fd, rustix::event::PollFlags::IN)];
+        let ready = rustix::event::poll(&mut fds, Some(timeout)).unwrap();
+        (ready, fds[0].revents())
+    }
+
     #[test]
     fn accepted_client_data_wakes_the_event_loop() {
         static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
@@ -533,31 +537,35 @@ mod tests {
         assert!(!wm.with_ctx(|wm| server.process_pending(wm)));
         assert_eq!(server.clients.len(), 1);
         let readiness = server.event_fd();
-        let mut poll_fd = libc::pollfd {
-            fd: readiness.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
+        let zero = rustix::time::Timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
         };
-        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
+        let one_second = rustix::time::Timespec {
+            tv_sec: 1,
+            tv_nsec: 0,
+        };
+        assert_eq!(poll_readiness(&readiness, &zero).0, 0);
         let request = IpcRequest::new(IpcCommand::GetTheme, false);
         let bytes = bincode::encode_to_vec(&request, bincode::config::standard()).unwrap();
         stream.write_all(&bytes).unwrap();
-        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 1000) }, 1);
+        assert_eq!(poll_readiness(&readiness, &one_second).0, 1);
         assert!(!wm.with_ctx(|wm| server.process_pending(wm)));
         assert_eq!(server.clients.len(), 1);
-        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
+        assert_eq!(poll_readiness(&readiness, &zero).0, 0);
 
         // EOF completes the request and must produce its own wakeup.
         stream.shutdown(Shutdown::Write).unwrap();
-        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 1000) }, 1);
-        assert_ne!(poll_fd.revents & libc::POLLIN, 0);
+        let (ready, revents) = poll_readiness(&readiness, &one_second);
+        assert_eq!(ready, 1);
+        assert!(revents.contains(rustix::event::PollFlags::IN));
 
         assert!(wm.with_ctx(|wm| server.process_pending(wm)));
-        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
+        assert_eq!(poll_readiness(&readiness, &zero).0, 0);
         assert!(server.clients.is_empty());
 
         drop(server);
-        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
+        assert_eq!(poll_readiness(&readiness, &zero).0, 0);
     }
 
     #[test]
