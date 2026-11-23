@@ -6,6 +6,7 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 
+use crate::backend::BackendKind;
 use crate::backend::wayland::commands::PointerMotionCommand;
 use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::backend::wayland::compositor::window::hit_test::{PointerContents, SurfaceFocus};
@@ -803,6 +804,7 @@ fn dispatch_pointer_motion(
     let outcome = update_motion_policy(
         &mut state.ctx(),
         MotionPolicyInput {
+            backend: BackendKind::Wayland,
             root,
             hovered: hovered_win,
             band,
@@ -819,7 +821,6 @@ fn dispatch_pointer_motion(
             // must not move focus to the window under it.
             suppress_hover_focus: in_bar_guard_band,
             monitor_already_selected: false,
-            focus_resize_offer: false,
             preserve_focus,
         },
     );

@@ -1,16 +1,18 @@
 //! Backend-neutral pointer motion policy.
 //!
 //! X11 and Wayland resolve native hit testing differently, but the ordering
-//! and meaning of compositor-owned hover targets is the same: bar, then
-//! sidebar, then resize offer, then ordinary hover focus. Keeping that policy
-//! here prevents the two adapters from drifting into separate state machines.
+//! of compositor-owned hover targets is the same: bar, then sidebar, then
+//! resize offer, then ordinary hover focus. Each backend retains its own
+//! sidebar release and resize focus behavior.
 //!
 //! Backends supply a normalized [`MotionPolicyInput`] and keep native
 //! transport (X11 event replay, Smithay pointer focus, constraints, caching)
 //! in their own modules. The returned [`MotionOutcome`] tells the adapter
 //! which part of the pointer path owns the motion.
 
+use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
+use crate::mouse::hover::SidebarOfferUpdate;
 use crate::types::{BarPosition, HoverFocusTrigger, Point, WindowId};
 
 /// Where the pointer sits relative to window-manager-owned chrome.
@@ -27,6 +29,8 @@ pub enum MotionBand {
 /// Normalized facts a backend must resolve before applying motion policy.
 #[derive(Clone, Copy, Debug)]
 pub struct MotionPolicyInput {
+    /// Which sidebar release and resize focus behavior to use.
+    pub backend: BackendKind,
     /// Root-space pointer position.
     pub root: Point,
     /// Managed window under the pointer, as resolved by the backend's hit test.
@@ -48,8 +52,6 @@ pub struct MotionPolicyInput {
     pub suppress_hover_focus: bool,
     /// The backend already selected the monitor under the pointer.
     pub monitor_already_selected: bool,
-    /// Resize offers may move focus (X11's historical behavior).
-    pub focus_resize_offer: bool,
     /// An exclusive layer owns focus; do not apply hover focus at all.
     pub preserve_focus: bool,
 }
@@ -59,10 +61,9 @@ pub struct MotionPolicyInput {
 pub enum MotionOutcome {
     /// The bar owns the pointer. Native motion may still be forwarded.
     Bar,
-    /// A sidebar gesture owns the pointer. Focus must not change.
+    /// A sidebar offer or its X11 release consumed ordinary hover handling.
     Sidebar,
-    /// A resize offer owns the pointer. Focus changes only if the backend
-    /// opted into `focus_resize_offer`.
+    /// A resize offer owns the pointer. X11 may focus its target.
     Resize { win: WindowId },
     /// Normal desktop content; hover focus was already reconciled.
     Content,
@@ -93,7 +94,12 @@ pub fn update_motion_policy(ctx: &mut WmCtx<'_>, input: MotionPolicyInput) -> Mo
     let bar_position = if input.bar_hover_blocked {
         None
     } else {
-        crate::bar::update_hover(ctx, input.root, false, input.sync_selected_monitor)
+        crate::bar::update_hover(
+            ctx,
+            input.root,
+            false,
+            input.sync_selected_monitor && !input.preserve_focus,
+        )
     };
     if !input.bar_hover_blocked
         && (input.band == MotionBand::Bar || bar_position.is_some())
@@ -128,7 +134,10 @@ pub fn update_motion_policy(ctx: &mut WmCtx<'_>, input: MotionPolicyInput) -> Mo
         } else {
             crate::mouse::pointer::sidebar_target_at(&ctx.core().state.model, input.root)
         };
-        if crate::mouse::set_sidebar_offer(ctx, target).affects_pointer_handling() {
+        let update = crate::mouse::set_sidebar_offer(ctx, target);
+        if update == SidebarOfferUpdate::Active
+            || (update == SidebarOfferUpdate::Cleared && input.backend == BackendKind::X11)
+        {
             return MotionOutcome::Sidebar;
         }
     }
@@ -141,7 +150,7 @@ pub fn update_motion_policy(ctx: &mut WmCtx<'_>, input: MotionPolicyInput) -> Mo
             input.trigger,
         )
     {
-        if input.focus_resize_offer {
+        if input.backend == BackendKind::X11 {
             crate::mouse::hover::focus_resize_offer(ctx, win);
         }
         return MotionOutcome::Resize { win };
@@ -178,6 +187,7 @@ mod tests {
 
     fn input(root: Point, band: MotionBand) -> MotionPolicyInput {
         MotionPolicyInput {
+            backend: BackendKind::Wayland,
             root,
             hovered: None,
             band,
@@ -188,7 +198,6 @@ mod tests {
             sidebar_blocked: false,
             suppress_hover_focus: false,
             monitor_already_selected: false,
-            focus_resize_offer: false,
             preserve_focus: false,
         }
     }
@@ -241,6 +250,48 @@ mod tests {
         let outcome = update_motion_policy(&mut wm.test_ctx(), policy);
 
         assert_eq!(outcome, MotionOutcome::Content);
+    }
+
+    #[test]
+    fn leaving_sidebar_resumes_wayland_hover_on_the_same_sample() {
+        for backend in [BackendKind::Wayland, BackendKind::X11] {
+            let (mut wm, monitor, tags) = wm_with_monitor(Rect::new(0, 0, 1200, 800));
+            wm.core.state.config.window.focus_follows_float_mouse = true;
+            let selected = add_selected_client_with(&mut wm.core.state.model, monitor, |client| {
+                client.win = WindowId(1);
+                client.tags = tags;
+                client.geo = Rect::new(100, 100, 400, 400);
+                client.mode = ClientMode::tiled();
+            });
+            let hovered = add_client_with(&mut wm.core.state.model, monitor, |client| {
+                client.win = WindowId(2);
+                client.tags = tags;
+                client.geo = Rect::new(600, 100, 400, 400);
+                client.mode = ClientMode::floating();
+            });
+
+            let mut policy = input(Point::new(1195, 400), MotionBand::Content);
+            policy.backend = backend;
+            assert_eq!(
+                update_motion_policy(&mut wm.test_ctx(), policy),
+                MotionOutcome::Sidebar
+            );
+
+            policy.root = Point::new(800, 300);
+            policy.hovered = Some(hovered);
+            policy.sidebar_blocked = true;
+            let outcome = update_motion_policy(&mut wm.test_ctx(), policy);
+
+            let (expected_outcome, expected_focus, expected_resize_origin) = match backend {
+                BackendKind::Wayland => (MotionOutcome::Content, hovered, Some(hovered)),
+                BackendKind::X11 => (MotionOutcome::Sidebar, selected, None),
+            };
+            let drag = &wm.core.state.interaction.drag;
+            assert!(!drag.hover_offer().is_sidebar());
+            assert_eq!(outcome, expected_outcome);
+            assert_eq!(wm.core.state.model.selected_win(), Some(expected_focus));
+            assert_eq!(drag.resize_hover_origin(), expected_resize_origin);
+        }
     }
 
     #[test]
@@ -373,6 +424,7 @@ mod tests {
         let mut policy = input(Point::new(1300, 200), MotionBand::Content);
         policy.hovered = Some(win);
         policy.preserve_focus = true;
+        policy.sync_selected_monitor = true;
 
         let outcome = update_motion_policy(&mut wm.test_ctx(), policy);
 
@@ -401,7 +453,7 @@ mod tests {
 
         let mut border = input(Point::new(710, 270), MotionBand::Content);
         border.hovered = Some(floating);
-        border.focus_resize_offer = true;
+        border.backend = BackendKind::X11;
         let outcome = update_motion_policy(&mut wm.test_ctx(), border);
 
         assert_eq!(outcome, MotionOutcome::Resize { win: floating });

@@ -282,7 +282,7 @@ impl Monitor {
 
     /// Check whether the bar is visible on this monitor and `root_y` falls within it.
     pub fn bar_contains_y(&self, root_y: i32) -> bool {
-        self.bar_visible() && self.y_in_bar(root_y)
+        self.y_in_bar(root_y) && self.bar_visible()
     }
 
     /// Create a new monitor with its initial tag selection.

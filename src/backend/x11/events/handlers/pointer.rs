@@ -1,3 +1,4 @@
+use crate::backend::BackendKind;
 use crate::contexts::WmCtxX11;
 use crate::mouse::motion::{MotionBand, MotionPolicyInput};
 use crate::types::{ModMask, MouseButton, Point, WindowId};
@@ -137,8 +138,7 @@ pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
 }
 
 fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<WindowId>) {
-    // Handle focus-follows-mouse monitor switching. The shared motion policy
-    // owns the remaining ordering so X11 and Wayland cannot diverge.
+    // Select the monitor before evaluating the desktop hover targets.
     let monitor_changed = ctx
         .core
         .state
@@ -173,6 +173,7 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
     let _ = crate::mouse::motion::update_motion_policy(
         &mut ctx.wm_ctx(),
         MotionPolicyInput {
+            backend: BackendKind::X11,
             root,
             hovered,
             band,
@@ -183,7 +184,6 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
             sidebar_blocked: hovered.is_some(),
             suppress_hover_focus: false,
             monitor_already_selected: monitor_changed,
-            focus_resize_offer: true,
             preserve_focus: false,
         },
     );

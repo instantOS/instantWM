@@ -205,12 +205,6 @@ pub enum SidebarOfferUpdate {
     Cleared,
 }
 
-impl SidebarOfferUpdate {
-    pub fn affects_pointer_handling(self) -> bool {
-        !matches!(self, SidebarOfferUpdate::None)
-    }
-}
-
 pub fn set_sidebar_offer(
     ctx: &mut WmCtx,
     target: Option<crate::types::SidebarTarget>,

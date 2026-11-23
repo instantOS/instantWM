@@ -65,8 +65,8 @@ pub fn autostart_ipc_status_ping(
     wm: &mut crate::wm::WaylandWm,
 ) -> Option<crate::ipc::IpcServer> {
     crate::runtime::run_startup_commands(wm);
-    let ipc_server = crate::ipc::IpcServer::bind().ok();
-    crate::runtime::register_ipc_source(loop_handle, &ipc_server);
+    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+    crate::runtime::register_ipc_source(loop_handle, &mut ipc_server);
     if let Some(status_wake) = wm.core.bar.status_sources.take_wake_source() {
         loop_handle
             .insert_source(status_wake, |_, _, _| {})

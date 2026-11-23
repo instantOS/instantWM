@@ -236,22 +236,18 @@ pub fn make_wake_ping<T: 'static>(
 ///
 /// The source wakes the event loop for new connections and incoming request data;
 /// actual command processing is done by the caller via
-/// [`process_ipc_commands`].
+/// [`process_ipc_commands`]. Close the listener if registration fails.
 pub fn register_ipc_source<'loop_handle, T: 'static>(
     handle: &calloop::LoopHandle<'loop_handle, T>,
-    ipc_server: &Option<crate::ipc::IpcServer>,
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) {
-    use std::os::unix::io::AsRawFd;
-    if let Some(ref server) = *ipc_server {
-        let ipc_fd = server.as_raw_fd();
-        let ipc_source = Generic::new(
-            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
-            Interest::READ,
-            Mode::Level,
-        );
-        handle
-            .insert_source(ipc_source, |_, _, _| Ok(PostAction::Continue))
-            .expect("failed to insert IPC fd source");
+    let Some(server) = ipc_server.as_ref() else {
+        return;
+    };
+    let source = Generic::new(server.event_fd(), Interest::READ, Mode::Level);
+    if let Err(error) = handle.insert_source(source, |_, _, _| Ok(PostAction::Continue)) {
+        log::warn!("disabling IPC after readiness registration failed: {error}");
+        *ipc_server = None;
     }
 }
 

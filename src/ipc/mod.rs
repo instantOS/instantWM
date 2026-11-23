@@ -7,6 +7,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const MAX_PENDING_CLIENTS: usize = 128;
@@ -37,7 +38,7 @@ pub struct IpcServer {
 
 /// Aggregate listener and accepted-client readiness into one event-loop fd.
 /// Watching only the listener loses wakeups when request data arrives after accept.
-struct IpcReadiness(OwnedFd);
+struct IpcReadiness(Arc<OwnedFd>);
 
 impl IpcReadiness {
     fn new(listener: &UnixListener) -> io::Result<Self> {
@@ -45,7 +46,7 @@ impl IpcReadiness {
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
-        let readiness = Self(unsafe { OwnedFd::from_raw_fd(fd) });
+        let readiness = Self(Arc::new(unsafe { OwnedFd::from_raw_fd(fd) }));
         readiness.watch(listener.as_raw_fd())?;
         Ok(readiness)
     }
@@ -112,6 +113,11 @@ fn prune_idle_clients(clients: &mut Vec<PendingClient>, now: Instant) {
 }
 
 impl IpcServer {
+    /// Share the readiness fd with the event source, which can outlive the server.
+    pub(crate) fn event_fd(&self) -> Arc<OwnedFd> {
+        Arc::clone(&self.readiness.0)
+    }
+
     pub fn bind() -> io::Result<Self> {
         let path = get_available_socket_path();
         // The bind override is a launch-time input, not session state that
@@ -214,12 +220,6 @@ impl IpcServer {
 impl Drop for IpcServer {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
-    }
-}
-
-impl std::os::unix::io::AsRawFd for IpcServer {
-    fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
-        self.readiness.0.as_raw_fd()
     }
 }
 
@@ -532,8 +532,9 @@ mod tests {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
         assert!(!wm.with_ctx(|wm| server.process_pending(wm)));
         assert_eq!(server.clients.len(), 1);
+        let readiness = server.event_fd();
         let mut poll_fd = libc::pollfd {
-            fd: server.as_raw_fd(),
+            fd: readiness.as_raw_fd(),
             events: libc::POLLIN,
             revents: 0,
         };
@@ -554,6 +555,9 @@ mod tests {
         assert!(wm.with_ctx(|wm| server.process_pending(wm)));
         assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
         assert!(server.clients.is_empty());
+
+        drop(server);
+        assert_eq!(unsafe { libc::poll(&mut poll_fd, 1, 0) }, 0);
     }
 
     #[test]
