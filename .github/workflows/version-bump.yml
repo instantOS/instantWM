@@ -61,7 +61,8 @@ jobs:
         run: |
           useradd -m builder
           for directory in packaging/arch packaging/arch-bin; do
-            (cd "$directory" && runuser -u builder -- makepkg --printsrcinfo) > "$directory/.SRCINFO"
+            install -o builder -g builder -m 0644 "$directory/PKGBUILD" /home/builder/PKGBUILD
+            (cd /home/builder && runuser -u builder -- makepkg --printsrcinfo) > "$directory/.SRCINFO"
           done
       - name: Read prepared version
         id: version
