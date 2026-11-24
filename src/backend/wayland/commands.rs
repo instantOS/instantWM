@@ -153,6 +153,7 @@ pub struct MapWindowParams {
     pub x11_hints: Option<x11rb::properties::WmHints>,
     pub x11_size_hints: Option<x11rb::properties::WmSizeHints>,
     pub parent: Option<WindowId>,
+    pub is_modal: bool,
 }
 
 /// Commands sent from the Wayland compositor to the core Window Manager.
@@ -197,6 +198,10 @@ pub enum WmCommand {
         win: WindowId,
         parent: Option<WindowId>,
     },
+    SetModal {
+        win: WindowId,
+        modal: bool,
+    },
     /// Reconcile one complete XWayland policy snapshot.
     UpdateXWaylandPolicy {
         win: WindowId,
@@ -219,11 +224,20 @@ pub enum WmCommand {
         acknowledged_configure: Option<smithay::utils::Serial>,
     },
     /// Request to change a window's maximized state.
-    SetMaximized { win: WindowId, maximized: bool },
+    SetMaximized {
+        win: WindowId,
+        maximized: bool,
+    },
     /// Request to change a window's fullscreen state.
-    SetFullscreen { win: WindowId, fullscreen: bool },
+    SetFullscreen {
+        win: WindowId,
+        fullscreen: bool,
+    },
     /// Request to change a window's minimized/hidden state.
-    SetMinimized { win: WindowId, minimized: bool },
+    SetMinimized {
+        win: WindowId,
+        minimized: bool,
+    },
     /// Gracefully close a window (WM-initiated, e.g. from
     /// wlr-foreign-toplevel-management's `close` request).
     CloseWindow(WindowId),

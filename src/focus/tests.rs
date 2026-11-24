@@ -788,27 +788,23 @@ fn modal_focus_follows_nested_dialogs_but_leaves_other_apps_alone() {
             Client {
                 win: WindowId(id),
                 transient_for: parent.map(WindowId),
+                is_modal: parent.is_some(),
                 tags,
                 ..Client::default()
             },
         );
     }
-    let modal = |win| [WindowId(2), WindowId(3)].contains(&win);
     assert_eq!(
-        super::resolve_modal_focus(&model, WindowId(1), modal),
-        WindowId(3)
+        super::resolve_focus_target(&model, Some(WindowId(1))),
+        Some(WindowId(3))
     );
     assert_eq!(
-        super::resolve_modal_focus(&model, WindowId(2), modal),
-        WindowId(3)
+        super::resolve_focus_target(&model, Some(WindowId(2))),
+        Some(WindowId(3))
     );
     assert_eq!(
-        super::resolve_modal_focus(&model, WindowId(4), modal),
-        WindowId(4)
-    );
-    assert_eq!(
-        super::resolve_modal_focus(&model, WindowId(1), |_| false),
-        WindowId(1)
+        super::resolve_focus_target(&model, Some(WindowId(4))),
+        Some(WindowId(4))
     );
 
     // A hidden modal must not trap focus on a surface that cannot receive input.
@@ -819,8 +815,8 @@ fn modal_focus_follows_nested_dialogs_but_leaves_other_apps_alone() {
         .unwrap()
         .is_hidden = true;
     assert_eq!(
-        super::resolve_modal_focus(&model, WindowId(1), modal),
-        WindowId(1)
+        super::resolve_focus_target(&model, Some(WindowId(1))),
+        Some(WindowId(1))
     );
     model
         .monitor_mut(monitor)
@@ -829,14 +825,11 @@ fn modal_focus_follows_nested_dialogs_but_leaves_other_apps_alone() {
         .unwrap()
         .is_hidden = false;
     // Malformed ancestry must terminate without revisiting the requested target.
-    model
-        .monitor_mut(monitor)
-        .unwrap()
-        .client_mut(WindowId(1))
-        .unwrap()
-        .transient_for = Some(WindowId(3));
+    let parent = model.client_mut(WindowId(1)).unwrap();
+    parent.transient_for = Some(WindowId(3));
+    parent.is_modal = true;
     assert_eq!(
-        super::resolve_modal_focus(&model, WindowId(1), |_| true),
-        WindowId(3)
+        super::resolve_focus_target(&model, Some(WindowId(1))),
+        Some(WindowId(3))
     );
 }

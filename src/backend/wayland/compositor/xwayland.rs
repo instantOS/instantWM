@@ -215,6 +215,11 @@ impl XwmHandler for WaylandState {
         if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             sync_surface_metadata(self, win, &window);
             apply_surface_policy(self, win, &window);
+            self.native
+                .push_command(super::super::commands::WmCommand::SetModal {
+                    win,
+                    modal: window.is_modal(),
+                });
             let _wm_view = &self.wm;
             self.map_window_in_space(win);
             self.request_window_focus(win);
@@ -266,6 +271,7 @@ impl XwmHandler for WaylandState {
                     x11_hints: window.hints(),
                     x11_size_hints: window.size_hints(),
                     parent,
+                    is_modal: window.is_modal(),
                 },
             ));
 
@@ -559,13 +565,11 @@ impl XwmHandler for WaylandState {
     }
 
     fn modal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
-        let _ = window.set_modal(true);
-        self.restore_focus_after_overlay();
+        self.set_xwayland_modal(&window, true);
     }
 
     fn unmodal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
-        let _ = window.set_modal(false);
-        self.restore_focus_after_overlay();
+        self.set_xwayland_modal(&window, false);
     }
 
     fn above_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
@@ -741,6 +745,14 @@ impl XwmHandler for WaylandState {
 }
 
 impl WaylandState {
+    fn set_xwayland_modal(&mut self, window: &X11Surface, modal: bool) {
+        let _ = window.set_modal(modal);
+        if let Some(win) = self.native.window_id_for_x11_surface(window) {
+            self.native
+                .push_command(super::super::commands::WmCommand::SetModal { win, modal });
+        }
+    }
+
     /// Include hidden managed windows as well as untracked override-redirect
     /// surfaces: server death must not leave either in the compositor model.
     pub(crate) fn cleanup_xwayland_windows(&mut self, id: smithay::xwayland::xwm::XwmId) {

@@ -40,6 +40,7 @@ pub fn setup_root(wm: &mut Wm) {
         netatom.wm_state,
         netatom.wm_check,
         netatom.wm_fullscreen,
+        netatom.wm_modal,
         netatom.wm_maximized_vert,
         netatom.wm_maximized_horz,
         netatom.wm_window_type,

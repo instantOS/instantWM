@@ -5,6 +5,9 @@ Requires a Wayland session (or any X server with --host-x11), XWayland, libX11,
 and the debug instantwm binaries. Headless CI form:
   xvfb-run -a python3 tests/xwayland_dialogs.py --host-x11 --hostile-case tests/fuzz_corpus/lifecycle_smoke.json
 Run with python3 tests/xwayland_dialogs.py. No application crash is required.
+To check actual button delivery via the nested compositor, run
+  xvfb-run -a python3 tests/xwayland_dialogs.py --host-x11 --check-pointer-buttons
+This mode also requires xdotool and moves the pointer on the test X server.
 Use --check-idle-cursor-updates to additionally exercise the pending upstream
 Smithay flush fix; the currently pinned upstream revision can fail that check.
 """
@@ -53,6 +56,8 @@ def client(directory):
         "XClearWindow": (C.c_int, [display, window]),
         "XSetTransientForHint": (C.c_int, [display, window, window]),
         "XSetWMProtocols": (C.c_int, [display, window, C.POINTER(window), C.c_int]),
+        "XSelectInput": (C.c_int, [display, window, C.c_long]),
+        "XCheckTypedEvent": (C.c_int, [display, C.c_int, C.c_void_p]),
         "XSync": (C.c_int, [display, C.c_int]),
         "XGetInputFocus": (C.c_int, [display, C.POINTER(window), C.POINTER(C.c_int)]),
         "XGetSelectionOwner": (window, [display, window]),
@@ -69,6 +74,14 @@ def client(directory):
                     ("width", C.c_ushort), ("height", C.c_ushort),
                     ("xhot", C.c_ushort), ("yhot", C.c_ushort),
                     ("serial", C.c_ulong), ("pixels", C.POINTER(C.c_ulong))]
+
+    # XButtonEvent begins with the same fields as XAnyEvent.
+    class AnyEvent(C.Structure):
+        _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send_event", C.c_int),
+                    ("display", display), ("window", window)]
+
+    class Event(C.Union):
+        _fields_ = [("any", AnyEvent), ("padding", C.c_long * 24)]
 
     fixes = C.CDLL("libXfixes.so.3")
     fixes.XFixesGetCursorImage.argtypes = [display]
@@ -96,6 +109,7 @@ def client(directory):
     protocols = (window * 1)(atom("WM_DELETE_WINDOW"))
     for w in (main, dialog):
         x.XSetWMProtocols(d, w, protocols, len(protocols))
+        x.XSelectInput(d, w, 1 << 2)  # ButtonPressMask
     x.XMapWindow(d, main)
     x.XMapWindow(d, dialog)
 
@@ -167,6 +181,8 @@ def client(directory):
             x.XSync(d, False)
         return {"applied": applied, "skipped": skipped}
 
+    presses = []
+    event = Event()
     while True:
         attack = directory / "attack.json"
         if attack.exists():
@@ -180,6 +196,8 @@ def client(directory):
                 traceback.print_exc()
             attack_done = True
         x.XSync(d, False)
+        while x.XCheckTypedEvent(d, 4, C.byref(event)):  # ButtonPress
+            presses.append(event.any.window)
         focus, revert = window(), C.c_int()
         x.XGetInputFocus(d, C.byref(focus), C.byref(revert))
         owner = x.XGetSelectionOwner(d, atom("_XSETTINGS_S0"))
@@ -216,14 +234,15 @@ def client(directory):
         cursor_size = [image.contents.width, image.contents.height]
         x.XFree(image)
         snapshot = {"attack_done": attack_done, "attack_result": attack_result, "cursor_size": cursor_size, "pid": os.getpid(), "display": os.environ["DISPLAY"], "focus": focus.value,
-                    "dialog": dialog, "settings": settings}
+                    "main": main, "dialog": dialog, "presses": presses, "settings": settings}
         temporary = directory / "snapshot.tmp"
         temporary.write_text(json.dumps(snapshot))
         temporary.replace(directory / "snapshot.json")
         time.sleep(0.025)
 
 
-def run(check_idle_cursor_updates=False, host_x11=False, hostile_case=None):
+def run(check_idle_cursor_updates=False, host_x11=False, hostile_case=None,
+        check_pointer_buttons=False):
     assert host_x11 or os.environ.get("WAYLAND_DISPLAY"), \
         "run inside a Wayland session, or pass --host-x11 under any X server (e.g. xvfb-run)"
     root = Path(__file__).resolve().parents[1]
@@ -240,6 +259,9 @@ def run(check_idle_cursor_updates=False, host_x11=False, hostile_case=None):
         wm_env = dict(env)
         if host_x11:
             wm_env.pop("WAYLAND_DISPLAY", None)
+            runtime_dir = directory / "runtime"
+            runtime_dir.mkdir(mode=0o700)
+            wm_env["XDG_RUNTIME_DIR"] = str(runtime_dir)
         wm = subprocess.Popen([root / "target/debug/instantwm", "--backend", "nested"],
                               env=wm_env, stdout=log, stderr=log, start_new_session=True)
 
@@ -291,6 +313,36 @@ def run(check_idle_cursor_updates=False, host_x11=False, hostile_case=None):
             wait_for(lambda: snapshot().get("focus") == snapshot().get("dialog"),
                      "actual X11 input focus follows compositor focus")
             print("XWayland modal/above focus, X11 input focus and initial cursor settings: PASS")
+            if check_pointer_buttons:
+                def xdo(*args):
+                    return subprocess.check_output(
+                        ["xdotool", *map(str, args)], env=wm_env, text=True, timeout=5
+                    ).strip()
+
+                host_window = xdo("search", "--onlyvisible", "--pid", wm.pid)
+
+                def click(x, y):
+                    xdo("mousemove", "--sync", "--window", host_window, x, y, "click", 1)
+
+                before = len(snapshot()["presses"])
+                main_rect = main["geometry"]
+                click(main_rect["x"] + 10, main_rect["y"] + 10)
+                wait_for(lambda: len(snapshot()["presses"]) == before + 1,
+                         "button press on the exposed XWayland parent")
+                position = snapshot()
+                assert position["presses"][-1] == position["main"], position
+                assert position["focus"] == position["dialog"], position
+                click(rect["x"] + rect["w"] // 2, rect["y"] + rect["h"] // 2)
+                wait_for(lambda: len(snapshot()["presses"]) == before + 2,
+                         "button press in the XWayland dialog")
+                position = snapshot()
+                assert position["presses"][-1] == position["dialog"], (
+                    f"click at dialog center {rect} reached X11 window "
+                    f"{position['presses'][-1]:#x}, expected {position['dialog']:#x} "
+                    f"(parent {position['main']:#x}, keyboard focus {position['focus']:#x})"
+                )
+                assert position["focus"] == position["dialog"], position
+                print("XWayland dialog and parent receive clicks at their own coordinates: PASS")
             if hostile_case:
                 case = json.loads(hostile_case.read_text())
                 expected = len(case["actions"])
@@ -383,10 +435,15 @@ if __name__ == "__main__":
     parser.add_argument("--host-x11", action="store_true",
                         help="host the nested compositor on any X server instead "
                              "of the Wayland session (session XWayland, or Xvfb)")
+    parser.add_argument("--check-pointer-buttons", action="store_true",
+                        help="send button presses via an isolated host X server")
     parser.add_argument("--hostile-case", type=Path,
                         help="also replay shared fuzz actions against scratch X11 windows")
     args = parser.parse_args()
+    if args.check_pointer_buttons and not args.host_x11:
+        parser.error("--check-pointer-buttons requires --host-x11 on an isolated X server")
     if args.client:
         client(args.client)
     else:
-        run(args.check_idle_cursor_updates, args.host_x11, args.hostile_case)
+        run(args.check_idle_cursor_updates, args.host_x11, args.hostile_case,
+            args.check_pointer_buttons)

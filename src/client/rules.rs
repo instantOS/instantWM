@@ -331,6 +331,7 @@ pub fn update_transient_for(
         .client_mut(win)
         .expect("owner was resolved from client membership");
     let needs_float = parent.is_some() && client.placement() != ClientPlacement::Floating;
+    let modal_parent_changed = client.is_modal && client.transient_for != parent;
     client.transient_for = parent;
 
     if needs_float {
@@ -341,6 +342,9 @@ pub fn update_transient_for(
                 crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
             ),
         );
+    }
+    if modal_parent_changed {
+        crate::focus::reconcile_modal_focus(ctx);
     }
     Some(monitor_id)
 }

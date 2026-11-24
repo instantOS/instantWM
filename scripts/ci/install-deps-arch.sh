@@ -21,6 +21,7 @@ pacman -S --noconfirm --needed \
   sudo \
   xorg-server \
   xorg-server-xvfb \
+  xorg-xwayland \
   xorg-xev \
   xorg-xmessage \
   xorg-xprop \
@@ -50,6 +51,7 @@ pacman -S --noconfirm --needed \
   fontconfig \
   freetype2 \
   ttf-dejavu \
+  adwaita-cursors \
   libxft \
   libdrm \
   wayland \

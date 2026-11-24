@@ -156,6 +156,20 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
     };
     let atoms = [data[1], data[2]];
     let netatom = ctx.x11_runtime.netatom;
+    if netatom.wm_modal != 0
+        && atoms.contains(&netatom.wm_modal)
+        && let Some(client) = ctx.core.state.model.client(win)
+        && let Some(modal) = requested(client.is_modal)
+    {
+        crate::backend::x11::properties::update_wm_state_atoms(
+            &ctx.x11,
+            ctx.x11_runtime,
+            win,
+            &[netatom.wm_modal],
+            modal,
+        );
+        crate::focus::update_modality(&mut ctx.wm_ctx(), win, modal);
+    }
     if atoms.contains(&netatom.wm_maximized_vert) || atoms.contains(&netatom.wm_maximized_horz) {
         let current = ctx
             .core

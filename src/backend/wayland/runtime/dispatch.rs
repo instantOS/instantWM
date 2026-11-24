@@ -114,6 +114,9 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                     .native
                     .refresh_foreign_toplevel(&state.wm.core.state, win);
             }
+            WmCommand::SetModal { win, modal } => {
+                crate::focus::update_modality(&mut state.ctx(), win, modal);
+            }
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(&mut state.ctx(), win, update);
             }
@@ -387,6 +390,7 @@ fn handle_map_window(
         x11_hints,
         x11_size_hints,
         parent,
+        is_modal,
     } = params;
 
     let core = &mut wl_state.wm.core;
@@ -408,7 +412,7 @@ fn handle_map_window(
         launch_pid,
         launch_startup_id.as_deref(),
     );
-    let Some((monitor_id, client)) = build_initial_wayland_client(
+    let Some((monitor_id, mut client)) = build_initial_wayland_client(
         state,
         win,
         &properties,
@@ -420,6 +424,7 @@ fn handle_map_window(
         return;
     };
 
+    client.is_modal = is_modal;
     if !state.model.add_client(monitor_id, client) {
         return;
     }
@@ -831,6 +836,7 @@ mod tests {
                 x11_hints: None,
                 x11_size_hints: None,
                 parent: None,
+                is_modal: false,
             },
         ));
         drain_command_queue(&mut state);

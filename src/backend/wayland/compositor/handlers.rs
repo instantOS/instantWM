@@ -183,6 +183,7 @@ impl CompositorHandler for WaylandState {
                 let parent = toplevel
                     .parent()
                     .and_then(|parent| self.native.window_id_for_surface(&parent));
+                let is_modal = super::WaylandNativeState::toplevel_is_modal(&toplevel);
                 let window_id = self.setup_managed_window(toplevel);
 
                 let properties = self.native.window_properties(window_id);
@@ -203,6 +204,7 @@ impl CompositorHandler for WaylandState {
                             x11_hints: None,
                             x11_size_hints: None,
                             parent,
+                            is_modal,
                         },
                     ));
             }

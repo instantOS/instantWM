@@ -34,6 +34,7 @@ use smithay::{
         },
         shell::xdg::{
             PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
+            XdgToplevelSurfaceData,
             decoration::XdgDecorationHandler,
             dialog::{ToplevelDialogHint, XdgDialogHandler},
         },
@@ -241,8 +242,14 @@ impl XdgForeignHandler for WaylandState {
 }
 
 impl XdgDialogHandler for WaylandState {
-    fn dialog_hint_changed(&mut self, toplevel: ToplevelSurface, _hint: ToplevelDialogHint) {
-        self.native.apply_floating_policy(&toplevel);
+    fn dialog_hint_changed(&mut self, toplevel: ToplevelSurface, hint: ToplevelDialogHint) {
+        if let Some(win) = self.native.window_id_for_toplevel(&toplevel) {
+            self.native
+                .push_command(super::super::commands::WmCommand::SetModal {
+                    win,
+                    modal: hint == ToplevelDialogHint::Modal,
+                });
+        }
     }
 }
 
@@ -772,6 +779,15 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
 }
 
 impl WaylandNativeState {
+    pub(crate) fn toplevel_is_modal(surface: &ToplevelSurface) -> bool {
+        compositor::with_states(surface.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .is_some_and(|role| role.lock().unwrap().dialog_hint == ToplevelDialogHint::Modal)
+        })
+    }
+
     pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
         &self,
         surface: &ToplevelSurface,

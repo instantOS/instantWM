@@ -38,16 +38,11 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<Window
         }
     }
 
-    target
+    target.map(|target| resolve_modal_focus(model, target))
 }
 
-/// A modal transient blocks focus to its parent. Protocol adapters supply the
-/// modal hint; ancestry, visibility and stacking remain shared WM policy.
-pub(crate) fn resolve_modal_focus(
-    model: &WmModel,
-    target: WindowId,
-    is_modal: impl Fn(WindowId) -> bool,
-) -> WindowId {
+/// A modal transient blocks focus to its parent.
+fn resolve_modal_focus(model: &WmModel, target: WindowId) -> WindowId {
     let Some(view) = model.client_view(target) else {
         return target;
     };
@@ -64,7 +59,7 @@ pub(crate) fn resolve_modal_focus(
                         && client.is_visible(monitor.visible_tags())
                         && !client.never_focus
                         && !visited.contains(&win)
-                        && is_modal(win)
+                        && client.is_modal
                 })
             })
             .last();
@@ -72,6 +67,26 @@ pub(crate) fn resolve_modal_focus(
         target = child;
     }
     target
+}
+
+/// Re-resolve selection when a client acquires or loses modality.
+pub(crate) fn update_modality(ctx: &mut WmCtx, win: WindowId, modal: bool) {
+    let Some(client) = ctx.core_mut().state.model.client_mut(win) else {
+        return;
+    };
+    if client.is_modal != modal {
+        client.is_modal = modal;
+        reconcile_modal_focus(ctx);
+    }
+}
+
+pub(crate) fn reconcile_modal_focus(ctx: &mut WmCtx) {
+    let model = &ctx.core().state.model;
+    if let Some(selected) = model.selected_win()
+        && resolve_modal_focus(model, selected) != selected
+    {
+        focus(ctx, Some(selected));
+    }
 }
 
 /// Update monitor state after focus target resolution.
@@ -274,15 +289,7 @@ fn focus_impl(
             if state.wm.core.state.model.monitors.is_empty() {
                 return;
             }
-            let target = resolve_focus_target(&state.wm.core.state.model, win).map(|target| {
-                resolve_modal_focus(&state.wm.core.state.model, target, |win| {
-                    state
-                        .native
-                        .find_window(win)
-                        .and_then(|window| window.x11_surface())
-                        .is_some_and(|surface| surface.is_modal())
-                })
-            });
+            let target = resolve_focus_target(&state.wm.core.state.model, win);
             let needs_refocus = target.is_some_and(|win| !state.is_seat_focused_on(win));
             let effects = commit_focus_transition(
                 &mut state.wm.core,
