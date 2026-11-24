@@ -105,8 +105,17 @@ def update_pkgbuild(version: str) -> None:
         if not path.exists():
             continue
         text = path.read_text()
+        if re.search(rf"^pkgver={re.escape(version)}$", text, flags=re.MULTILINE):
+            continue
         text = re.sub(r"^pkgver=.*", f"pkgver={version}", text, flags=re.MULTILINE)
         text = re.sub(r"^pkgrel=.*", "pkgrel=1", text, flags=re.MULTILINE)
+        # The next release assets are unavailable until the release workflow runs.
+        text = re.sub(
+            r"^sha256sums=\([^)]*\)",
+            lambda match: re.sub(r"'[0-9a-f]{64}'", "'SKIP'", match[0]),
+            text,
+            flags=re.MULTILINE,
+        )
         path.write_text(text)
 
 

@@ -76,6 +76,7 @@ jobs:
             if [[ "$file_version" != "$version" ]]; then
               sed -i "s/^pkgver=.*/pkgver=$version/" "$pkgbuild_file"
               sed -i "s/^pkgrel=.*/pkgrel=1/" "$pkgbuild_file"
+              sed -Ei "/^sha256sums=\(.*\)$/ s/'[0-9a-f]{64}'/'SKIP'/g; /^sha256sums=\($/,/^\)$/ s/'[0-9a-f]{64}'/'SKIP'/g" "$pkgbuild_file"
             fi
 
             if ! git diff --quiet "$pkgbuild_file"; then

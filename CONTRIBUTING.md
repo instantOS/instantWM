@@ -13,9 +13,24 @@ opens a release PR that updates:
 - `CHANGELOG.md`
 - `packaging/arch/PKGBUILD`
 - `packaging/arch-bin/PKGBUILD`
+- Both recipes' `.SRCINFO` files
 
 After that PR is merged, the release workflow creates the `vX.Y.Z` tag, builds
 release artifacts, and publishes a GitHub release.
+
+### AUR publishing
+
+The release workflow prepares `instantwm` (source) and `instantwm-bin`
+(prebuilt x86_64), then installs and smoke-tests the binary package on Arch.
+The `aur-recipes` workflow artifact contains both checksummed recipes and their
+`.SRCINFO` files. GitHub release reruns preserve the binary archive checksum.
+
+For the first `instantwm-bin` submission, push `PKGBUILD` and `.SRCINFO`
+from `packaging/arch-bin` for its pinned release, or from the workflow artifact,
+to the AUR package's `master` branch.
+Give the AUR account behind the CI SSH key push access to both packages, then
+set `AUR_SSH_PRIVATE_KEY` as a repository Actions secret. Eligible releases
+from `main` or protected tags publish to the AUR once the secret is set.
 
 ### Commit Message Format
 

@@ -7,9 +7,13 @@ pkgdesc="A tiling window manager for X11 and Wayland (prebuilt binary)"
 arch=('x86_64')
 url="https://instantos.io"
 license=('MIT')
-provides=("instantwm=$pkgver")
+# Match the source package's epoch for versioned dependencies.
+provides=("$_pkgname=1:$pkgver")
 conflicts=('instantwm')
 depends=(
+    'bash'
+    'gcc-libs'
+    'glibc'
     'libx11'
     'libxcb'
     'libxkbcommon'
@@ -22,6 +26,7 @@ depends=(
     'libxdamage'
     'libxcomposite'
     'libxrender'
+    'libxft'
     'libxi'
     'libxres'
     'libxvmc'
@@ -42,17 +47,21 @@ depends=(
     'libwacom'
     'dbus'
     'systemd'
+    'xorg-setxkbmap'
     'xdg-desktop-portal-wlr'
 )
 optdepends=('instantmenu: global shortcut approval and configuration dialogs' 'xdg-desktop-portal: application global shortcuts')
 source=(
-    "$_pkgname-$pkgver.tar.gz"
-    "$_pkgname-x86_64-unknown-linux-gnu-v$pkgver.tgz"
+    "$_pkgname-$pkgver.tar.gz::https://github.com/instantOS/instantWM/archive/refs/tags/v$pkgver.tar.gz"
+    "https://github.com/instantOS/instantWM/releases/download/v$pkgver/$_pkgname-x86_64-unknown-linux-gnu-v$pkgver.tgz"
 )
-md5sums=('SKIP' 'SKIP')
+sha256sums=(
+    '2bc38fa3ccb943db2656c748184e14d5fad30774771fd0d2e5f4137e4b4fc879'
+    '193bd58e96a8c448ab2082777947b149b8985e1919cdf0f4acf5cddf87608669'
+)
 
 package() {
-    cd "$_pkgname-$pkgver"
+    cd "instantWM-$pkgver"
 
     install -Dm755 "$srcdir/$_pkgname-x86_64-unknown-linux-gnu-v$pkgver/instantwm" "$pkgdir/usr/bin/instantwm"
     install -Dm755 "$srcdir/$_pkgname-x86_64-unknown-linux-gnu-v$pkgver/instantwmctl" "$pkgdir/usr/bin/instantwmctl"

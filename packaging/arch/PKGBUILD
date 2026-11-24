@@ -2,11 +2,15 @@
 pkgname=instantwm
 pkgver=0.8.2
 pkgrel=1
+epoch=1
 pkgdesc="A tiling window manager for X11 and Wayland"
 arch=('x86_64')
 url="https://instantos.io"
 license=('MIT')
 depends=(
+    'bash'
+    'gcc-libs'
+    'glibc'
     'libx11'
     'libxcb'
     'libxkbcommon'
@@ -40,6 +44,7 @@ depends=(
     'libwacom'
     'dbus'
     'systemd'
+    'xorg-setxkbmap'
     'xdg-desktop-portal-wlr'
 )
 optdepends=('instantmenu: global shortcut approval and configuration dialogs' 'xdg-desktop-portal: application global shortcuts')
@@ -47,10 +52,11 @@ makedepends=(
     'rust'
     'cargo'
     'cmake'
+    'git'
     'pkgconf'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/instantOS/instantWM/archive/refs/tags/v$pkgver.tar.gz")
-md5sums=('SKIP')
+sha256sums=('2bc38fa3ccb943db2656c748184e14d5fad30774771fd0d2e5f4137e4b4fc879')
 options=('!lto')
 
 build() {

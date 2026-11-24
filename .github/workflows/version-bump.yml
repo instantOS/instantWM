@@ -8,7 +8,9 @@ on:
       - Cargo.lock
       - CHANGELOG.md
       - packaging/arch/PKGBUILD
+      - packaging/arch/.SRCINFO
       - packaging/arch-bin/PKGBUILD
+      - packaging/arch-bin/.SRCINFO
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
@@ -28,7 +30,7 @@ jobs:
     name: Prepare release PR
     runs-on: ubuntu-26.04
     container:
-      image: ubuntu:26.04
+      image: archlinux:latest
     if: ${{ github.repository_owner == 'instantOS' }}
     permissions:
       contents: write
@@ -39,8 +41,9 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm --needed git python
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -54,6 +57,12 @@ jobs:
         env:
           BUMP: ${{ inputs.bump || 'auto' }}
         run: python3 .github/scripts/prepare-release.py --bump "$BUMP"
+      - name: Generate Arch package metadata
+        run: |
+          useradd -m builder
+          for directory in packaging/arch packaging/arch-bin; do
+            (cd "$directory" && runuser -u builder -- makepkg --printsrcinfo) > "$directory/.SRCINFO"
+          done
       - name: Read prepared version
         id: version
         run: |
@@ -81,5 +90,4 @@ jobs:
             - `Cargo.toml`
             - `Cargo.lock`
             - `CHANGELOG.md`
-            - `packaging/arch/PKGBUILD`
-            - `packaging/arch-bin/PKGBUILD`
+            - Arch package recipes and metadata
