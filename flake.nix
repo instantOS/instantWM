@@ -184,6 +184,9 @@
         };
 
         config = lib.mkIf cfg.enable {
+          hardware.graphics.enable = lib.mkDefault true;
+          programs.xwayland.enable = lib.mkDefault true;
+
           environment.systemPackages = [cfg.package];
 
           # Expose the X11 and Wayland sessions to display managers.
