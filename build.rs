@@ -5,6 +5,7 @@ use std::path::PathBuf;
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(instantwm_borrow_contract)");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=INSTANTWM_BUILD_COMMIT");
     emit_git_rerun_paths();
 
     println!("cargo:rustc-link-lib=Xinerama");
@@ -18,7 +19,9 @@ fn main() {
     let crate_version = env!("CARGO_PKG_VERSION");
     let source_hash = compute_ipc_source_hash();
 
-    let build_commit = git_head_commit().unwrap_or_else(|| "unknown".to_string());
+    let build_commit = build_commit_from_env()
+        .or_else(git_head_commit)
+        .unwrap_or_else(|| "unknown".to_string());
 
     // Protocol version: crate version + first 8 chars of source hash + first 8 chars of git commit
     let protocol_version = format!(
@@ -95,6 +98,14 @@ fn git_output(args: &[&str]) -> Option<String> {
     }
 
     let value = String::from_utf8(output.stdout).ok()?;
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+/// Use the revision supplied by the build system (e.g. the Nix flake) when
+/// the source tree has no `.git` directory to query.
+fn build_commit_from_env() -> Option<String> {
+    let value = std::env::var("INSTANTWM_BUILD_COMMIT").ok()?;
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
 }

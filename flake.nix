@@ -7,8 +7,16 @@
     self,
     nixpkgs,
   }: let
-    systems = ["x86_64-linux"];
+    systems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = nixpkgs.lib.genAttrs systems;
+
+    # Full revision (not shortRev), because build.rs truncates the commit to
+    # eight characters for IPC_PROTOCOL_VERSION; a seven-character shortRev
+    # would not match a ctl built from a Git checkout. Drop the "-dirty"
+    # suffix so the embedded commit matches `git rev-parse HEAD`.
+    sourceRevision = nixpkgs.lib.removeSuffix "-dirty" (
+      self.rev or self.dirtyRev or "unknown"
+    );
 
     mkInstantwm = pkgs:
       pkgs.rustPlatform.buildRustPackage {
@@ -27,6 +35,12 @@
             "smithay-0.7.0" = "sha256-Wr+wonmUFcM9LxNIsVhkLrAploVPLp1GJtlZzb3ugJk=";
           };
         };
+
+        # Nix's source copy has no .git, so build.rs cannot run `git rev-parse`
+        # itself. Pass the flake revision through explicitly to keep the IPC
+        # protocol version and `instantwmctl status` commit in sync with builds
+        # made from a Git checkout.
+        env.INSTANTWM_BUILD_COMMIT = sourceRevision;
 
         nativeBuildInputs = [
           pkgs.pkg-config
@@ -77,6 +91,11 @@
           dbus
         ];
 
+        # instantwm-portals.conf routes Screenshot and ScreenCast to the wlr
+        # backend. Keep it in the package closure for dev shells and
+        # non-NixOS setups; nixosModules below wires up runtime discovery.
+        propagatedBuildInputs = [pkgs.xdg-desktop-portal-wlr];
+
         doCheck = false;
 
         # wayland-client is built with `dlopen`, and smithay loads EGL the same
@@ -101,6 +120,7 @@
           install -Dm755 scripts/startinstantos $out/bin/startinstantos
           install -Dm755 scripts/instantwm-debug.sh $out/bin/instantwm-debug
           install -Dm644 instantwm.1 $out/share/man/man1/instantwm.1
+          install -Dm644 LICENSE $out/share/licenses/instantwm/LICENSE
 
           install -Dm644 utils/instantwm-x11.desktop \
             $out/share/xsessions/instantwm.desktop
@@ -116,6 +136,12 @@
           install -Dm644 resources/instantwm-session.target \
             $out/lib/systemd/user/instantwm-session.target
         '';
+
+        passthru.providedSessions = [
+          "instantwm"
+          "instantwm-wayland"
+          "instantwm-debug"
+        ];
 
         meta = {
           description = "Hybrid tiling window manager for X11 and Wayland";
@@ -136,9 +162,62 @@
 
     overlays.default = final: _prev: {instantwm = mkInstantwm final;};
 
+    nixosModules = rec {
+      instantwm = {
+        config,
+        lib,
+        pkgs,
+        ...
+      }: let
+        cfg = config.programs.instantwm;
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      in {
+        options.programs.instantwm = {
+          enable = lib.mkEnableOption "the instantWM window manager";
+
+          package = lib.mkOption {
+            type = lib.types.package;
+            default = package;
+            defaultText = lib.literalExpression "instantwm.packages.${pkgs.stdenv.hostPlatform.system}.default";
+            description = "The instantWM package to install.";
+          };
+        };
+
+        config = lib.mkIf cfg.enable {
+          environment.systemPackages = [cfg.package];
+
+          # Expose the X11 and Wayland sessions to display managers.
+          services.displayManager.sessionPackages = [cfg.package];
+
+          # Provides instantwm-session.target and any future user units.
+          systemd.packages = [cfg.package];
+
+          # instantwm-portals.conf routes Screenshot and ScreenCast to the
+          # wlr backend and uses gtk as the default fallback.
+          xdg.portal = {
+            enable = lib.mkDefault true;
+            extraPortals = [
+              pkgs.xdg-desktop-portal-wlr
+              pkgs.xdg-desktop-portal-gtk
+            ];
+            configPackages = [cfg.package];
+          };
+        };
+      };
+
+      default = instantwm;
+    };
+
     devShells = forAllSystems (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
+        nestedBackendLibs = pkgs.lib.makeLibraryPath [
+          pkgs.libglvnd
+          pkgs.mesa
+          pkgs.libdrm
+          pkgs.libgbm
+          pkgs.wayland
+        ];
       in {
         default = pkgs.mkShell {
           inputsFrom = [self.packages.${system}.default];
@@ -150,6 +229,8 @@
             pkgs.uv
             pkgs.python3
           ];
+
+          LD_LIBRARY_PATH = nestedBackendLibs;
         };
       }
     );
