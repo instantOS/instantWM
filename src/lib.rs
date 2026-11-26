@@ -1,5 +1,3 @@
-#![allow(improper_ctypes)]
-
 // SAFETY: instantWM is single-threaded — all window manager state is confined to
 // the main event loop thread. The FFI wrappers around Xlib/Xft types (DrawContext, Fnt,
 // Color, Cursor, XlibDisplay) are only accessed from this thread, so Send+Sync

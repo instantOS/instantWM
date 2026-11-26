@@ -68,8 +68,7 @@ DEV_LIBS=(
   libevdev-dev
   libwacom-dev
   libdbus-1-dev
-  libliftoff-dev
-  libdisplay-info-dev
+  libsystemd-dev
   libudev-dev
 )
 
