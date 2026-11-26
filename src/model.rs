@@ -118,12 +118,12 @@ impl WmModel {
             .sum()
     }
 
-    /// Record a client's authoritative geometry and floating placement.
+    /// Record a client's authoritative geometry and saved floating geometry.
     ///
     /// This only mutates the model; it does not configure any backend. Callers
     /// either have already applied `rect` or rely on the next layout pass to
     /// project it. A normal floating client records `rect` as its saved
-    /// placement unless it is snapped; other client modes only update current
+    /// geometry unless it is snapped; other client modes only update current
     /// geometry.
     pub fn record_client_geometry(&mut self, win: WindowId, rect: Rect) {
         let Some(monitor) = self.client_owner_mut(win) else {
@@ -135,7 +135,7 @@ impl WmModel {
             .expect("owner was resolved from client membership");
         client.update_geometry(rect);
         if client.mode().is_normal_floating() && client.snap_status == SnapPosition::None {
-            client.save_floating_placement(rect, work_area);
+            client.save_floating_geometry(rect, work_area);
         }
     }
 

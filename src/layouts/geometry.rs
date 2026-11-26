@@ -8,18 +8,18 @@ use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::types::{Client, Monitor, Rect, Size};
 
-/// Thickness of the hollow manual-placement preview frame in logical pixels.
+/// Thickness of the hollow manual-tree insertion preview frame in logical pixels.
 /// It is intentionally independent of ordinary client borders: users may
-/// configure those to zero while the placement affordance must remain clear.
+/// configure those to zero while the insertion affordance must remain clear.
 pub(crate) const LAYOUT_PREVIEW_BORDER_WIDTH: i32 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct LayoutPlacement {
+pub(crate) struct LayoutGeometry {
     work_rect: Rect,
     inner_gap: i32,
 }
 
-impl LayoutPlacement {
+impl LayoutGeometry {
     pub(crate) fn new(
         cfg: &LayoutConfig,
         monitor: &Monitor,
@@ -164,7 +164,7 @@ fn inset_rect_saturating(rect: Rect, left: i32, top: i32, right: i32, bottom: i3
 }
 
 /// Four non-overlapping rectangles forming a hollow frame inside `rect`.
-/// Used by both backends for the manual-tree placement preview.
+/// Used by both backends for the manual-tree insertion preview.
 pub(crate) fn outline_rectangles(rect: Rect, requested_width: i32) -> [Rect; 4] {
     let width = requested_width
         .max(1)
@@ -182,7 +182,7 @@ pub(crate) fn outline_rectangles(rect: Rect, requested_width: i32) -> [Rect; 4] 
 #[cfg(test)]
 mod tests {
     use super::{
-        LAYOUT_PREVIEW_BORDER_WIDTH, LayoutPlacement, inset_rect_saturating, outline_rectangles,
+        LAYOUT_PREVIEW_BORDER_WIDTH, LayoutGeometry, inset_rect_saturating, outline_rectangles,
     };
     use crate::config::config_toml::LayoutConfig;
     use crate::layouts::PresentationMode;
@@ -209,11 +209,11 @@ mod tests {
     fn no_gaps_preserves_slot_except_border() {
         let cfg = config_with_gaps(0, 0, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 2);
+        let geometry = LayoutGeometry::new(&cfg, &monitor, PresentationMode::Tiled, 2);
 
-        assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
+        assert_eq!(geometry.work_rect(), Rect::new(0, 0, 100, 80));
         assert_eq!(
-            placement.client_rect(Rect::new(0, 0, 50, 80), 1),
+            geometry.client_rect(Rect::new(0, 0, 50, 80), 1),
             Rect::new(0, 0, 48, 78)
         );
     }
@@ -222,19 +222,19 @@ mod tests {
     fn outer_gap_shrinks_layout_work_rect() {
         let cfg = config_with_gaps(0, 8, false);
         let monitor = monitor_with_work_rect(Rect::new(10, 20, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 2);
+        let geometry = LayoutGeometry::new(&cfg, &monitor, PresentationMode::Tiled, 2);
 
-        assert_eq!(placement.work_rect(), Rect::new(18, 28, 84, 64));
+        assert_eq!(geometry.work_rect(), Rect::new(18, 28, 84, 64));
     }
 
     #[test]
     fn inner_gap_is_split_between_adjacent_slots() {
         let cfg = config_with_gaps(9, 0, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 2);
+        let geometry = LayoutGeometry::new(&cfg, &monitor, PresentationMode::Tiled, 2);
 
-        let left = placement.client_rect(Rect::new(0, 0, 50, 80), 0);
-        let right = placement.client_rect(Rect::new(50, 0, 50, 80), 0);
+        let left = geometry.client_rect(Rect::new(0, 0, 50, 80), 0);
+        let right = geometry.client_rect(Rect::new(50, 0, 50, 80), 0);
 
         assert_eq!(left, Rect::new(0, 0, 45, 80));
         assert_eq!(right, Rect::new(54, 0, 46, 80));
@@ -245,11 +245,11 @@ mod tests {
     fn smart_gaps_disable_all_gaps_for_single_tiled_client() {
         let cfg = config_with_gaps(8, 8, true);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 1);
+        let geometry = LayoutGeometry::new(&cfg, &monitor, PresentationMode::Tiled, 1);
 
-        assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
+        assert_eq!(geometry.work_rect(), Rect::new(0, 0, 100, 80));
         assert_eq!(
-            placement.client_rect(Rect::new(0, 0, 100, 80), 0),
+            geometry.client_rect(Rect::new(0, 0, 100, 80), 0),
             Rect::new(0, 0, 100, 80)
         );
     }
@@ -258,9 +258,9 @@ mod tests {
     fn maximized_ignores_gaps_by_default() {
         let cfg = config_with_gaps(8, 8, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Maximized, 3);
+        let geometry = LayoutGeometry::new(&cfg, &monitor, PresentationMode::Maximized, 3);
 
-        assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
+        assert_eq!(geometry.work_rect(), Rect::new(0, 0, 100, 80));
     }
 
     #[test]

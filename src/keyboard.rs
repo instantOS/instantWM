@@ -17,13 +17,14 @@ use crate::types::*;
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = mod_mask.cleaned(numlockmask);
-    let placement_active = matches!(
+    let placement_session_active = matches!(
         &ctx.core().state.behavior.current_mode,
-        ActiveWmMode::TreePlacement(_)
+        ActiveWmMode::PlacementSession(_)
     );
-    // Super may still be held after the chord that entered placement. Treat it
-    // as an entry modifier, not part of commands within the mode.
-    let binding_mask = if placement_active {
+    // Super may still be held after the chord that entered the placement
+    // session. Treat it as an entry modifier, not part of commands within the
+    // mode.
+    let binding_mask = if placement_session_active {
         cleaned.without(Modifier::Super)
     } else {
         cleaned
@@ -57,7 +58,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: Keysym, mod_mask: ModMask) -> bool
             ctx.reset_mode();
         }
         true
-    } else if placement_active {
+    } else if placement_session_active {
         // Modifier presses are part of forming the next chord. Every other
         // unbound key cancels and is consumed so it cannot leak to a client.
         if !keysym.is_modifier() {
@@ -95,9 +96,9 @@ fn binding_scopes<'a>(
             .map_or(&[][..], |mode| mode.keybinds.as_slice())
     };
     match mode {
-        ActiveWmMode::TreePlacement(_) => (
+        ActiveWmMode::PlacementSession(_) => (
             [
-                mode_keys(crate::core_state::TREE_PLACEMENT_MODE_NAME),
+                mode_keys(crate::core_state::PLACEMENT_SESSION_MODE_NAME),
                 &[],
                 &[],
             ],
@@ -182,12 +183,12 @@ mod tests {
     use crate::core_state::ActiveWmMode;
     use std::collections::HashMap;
 
-    fn placement_mode() -> ActiveWmMode {
-        let state = crate::core_state::KeyboardTreePlacement::new(
+    fn placement_session_mode() -> ActiveWmMode {
+        let state = crate::core_state::TreePlacementSession::new(
             WindowId(1),
             MonitorId::default(),
             TagMask::EMPTY,
-            vec![crate::layouts::tree::PlacementTarget {
+            vec![crate::layouts::tree::InsertionTarget {
                 target: WindowId(2),
                 side: None,
                 candidate_index: 0,
@@ -195,8 +196,8 @@ mod tests {
             }],
             0,
         )
-        .expect("valid placement test state");
-        ActiveWmMode::TreePlacement(state)
+        .expect("valid placement session test state");
+        ActiveWmMode::PlacementSession(state)
     }
 
     #[test]
@@ -279,8 +280,8 @@ mod tests {
     }
 
     #[test]
-    fn placement_resolves_only_its_configured_mode_actions() {
-        let placement_key = Key {
+    fn placement_session_resolves_only_its_configured_mode_actions() {
+        let session_key = Key {
             mod_mask: ModMask::NONE,
             keysym: Keysym::new(42),
             action: KeyAction::named(NamedAction::PlacementLeft),
@@ -295,14 +296,14 @@ mod tests {
         let global_keys = [global_key];
         let mut modes = HashMap::new();
         modes.insert(
-            crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
+            crate::core_state::PLACEMENT_SESSION_MODE_NAME.to_string(),
             ModeConfig {
                 description: None,
                 transient: true,
-                keybinds: vec![placement_key],
+                keybinds: vec![session_key],
             },
         );
-        let mode = placement_mode();
+        let mode = placement_session_mode();
         let bindings = BindingConfig {
             keys: global_keys.to_vec(),
             modes,
@@ -317,12 +318,15 @@ mod tests {
             ModMask::NONE,
             ModMask::NONE,
         )
-        .expect("configured placement action");
+        .expect("configured placement session action");
         assert!(matches!(
             resolved.0,
             KeyAction::Named(NamedAction::PlacementLeft)
         ));
-        assert!(!resolved.1, "placement is intrinsically non-transient");
+        assert!(
+            !resolved.1,
+            "the placement session is intrinsically non-transient"
+        );
         assert!(
             resolve_key_action(
                 &bindings,
@@ -472,7 +476,7 @@ mod tests {
         };
         let mut modes = HashMap::new();
         modes.insert(
-            crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
+            crate::core_state::PLACEMENT_SESSION_MODE_NAME.to_string(),
             ModeConfig {
                 keybinds: vec![inactive_mode],
                 ..ModeConfig::default()

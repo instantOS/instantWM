@@ -23,7 +23,7 @@ impl LayoutTree {
     /// Resolve tree slots while enforcing each leaf's minimum outer size.
     ///
     /// Returns `None` when the tree cannot fit all requirements in `rect`.
-    /// Callers can therefore reject a placement or resize atomically instead
+    /// Callers can therefore reject an insertion or resize atomically instead
     /// of asking a backend to realize overlapping geometry.
     pub fn constrained_bounds(
         &self,

@@ -68,7 +68,7 @@ pub fn handle_pending_tmp_rule(
                 }
                 if is_floating == Some(false) {
                     return Response::err(
-                        "geometry implies floating placement; drop --tile or the geometry",
+                        "geometry implies floating mode; drop --tile or the geometry",
                     );
                 }
             }

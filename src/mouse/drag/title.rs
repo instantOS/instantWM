@@ -4,7 +4,7 @@
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 use crate::backend::PointerOps;
 
-use crate::client::geometry::FloatingPlacementIntent;
+use crate::client::geometry::FloatingGeometryIntent;
 use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
@@ -94,14 +94,14 @@ pub fn title_drag_begin(
 /// window — and that warped position is returned as the drag anchor so the
 /// drag math stays consistent.
 ///
-/// A manual-tree placement gesture skips promotion and keeps the tiled source
+/// A manual-tree insertion gesture skips promotion and keeps the tiled source
 /// in its original slot so cancellation is lossless.
 ///
 /// A bar-title drag is the exception when the tiled view shows only one
 /// window: that window already fills the work area and there is no second
 /// tiling slot to place it into, so the gesture lifts it to floating exactly
 /// like a title drag in maximized presentation. Other drag origins keep tree
-/// placement, so a lone tiled window can still be carried to another output
+/// position, so a lone tiled window can still be carried to another output
 /// as a tile.
 fn begin_move_drag(
     ctx: &mut WmCtx,
@@ -135,7 +135,7 @@ fn begin_move_drag(
         let geo = ctx.core().client_geo(win)?;
         Some((geo, start_point))
     } else {
-        let intent = FloatingPlacementIntent::PreservePointerAnchor(position);
+        let intent = FloatingGeometryIntent::PreservePointerAnchor(position);
         let (geo, _) = promote_to_floating(ctx, win, intent)?;
         if !input.may_warp_pointer() {
             return Some((geo, position));
@@ -193,7 +193,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         let Some((current_geo, _)) = promote_to_floating(
             ctx,
             win,
-            FloatingPlacementIntent::PreservePointerAnchor(start_point),
+            FloatingGeometryIntent::PreservePointerAnchor(start_point),
         ) else {
             return false;
         };
@@ -217,7 +217,7 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         return true;
     }
 
-    // A tiled left-drag is a manual-tree placement gesture. Floating windows
+    // A tiled left-drag is a manual-tree insertion gesture. Floating windows
     // continue to move directly. Keeping the tiled source in its original slot
     // also makes cancellation lossless.
     let Some((current_geo, start)) = begin_move_drag(ctx, win, input, start_point, origin) else {
@@ -763,7 +763,7 @@ mod tests {
                 .unwrap()
                 .mode()
                 .is_normal_tiling(),
-            "a multi-window tiled drag must remain a tree placement gesture"
+            "a multi-window tiled drag must remain a tree insertion gesture"
         );
     }
 
@@ -814,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn client_origin_drag_on_a_lone_tiled_window_keeps_tree_placement() {
+    fn client_origin_drag_on_a_lone_tiled_window_keeps_tree_insertion() {
         let (mut wm, _monitor_id, win) = single_tiled_bar_title_fixture();
 
         assert!(title_drag_begin(
@@ -941,7 +941,7 @@ mod tests {
             snap_status: SnapPosition::Left,
             ..Client::default()
         };
-        client.save_floating_placement(saved, work);
+        client.save_floating_geometry(saved, work);
         wm.core.state.model.add_client(monitor_id, client);
 
         let result = begin_move_drag(

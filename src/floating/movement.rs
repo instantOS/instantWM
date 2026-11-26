@@ -165,7 +165,7 @@ mod tests {
             ..Client::default()
         };
         client.set_mode_for_test(ClientMode::maximized(ClientPlacement::Floating));
-        client.save_floating_placement(saved, work_rect);
+        client.save_floating_geometry(saved, work_rect);
         assert!(wm.core.state.model.add_client(monitor_id, client));
 
         assert!(key_move(&mut wm.test_ctx(), win, Direction::Right));

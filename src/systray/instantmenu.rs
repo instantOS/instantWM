@@ -22,7 +22,7 @@ fn instantmenu_on_path() -> bool {
 #[derive(Default)]
 pub(crate) struct InstantMenuHost {
     presenter: MenuHost<TrayMenuPresentation>,
-    /// The view revision and placement already submitted, including while a
+    /// The view revision and position already submitted, including while a
     /// selection is awaiting its asynchronous D-Bus response.
     presented: Option<(u64, i32)>,
     last_backend: TrayMenuBackend,

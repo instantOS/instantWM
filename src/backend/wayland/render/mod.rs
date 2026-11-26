@@ -10,8 +10,8 @@ pub mod cursor;
 pub mod cursor_theme;
 pub mod drm;
 pub mod frame;
+mod insertion_overlay;
 pub mod mirror;
-mod placement_overlay;
 pub mod scene;
 pub mod winit;
 

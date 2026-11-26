@@ -15,7 +15,7 @@ impl LayoutTree {
     pub fn reconcile_for_layout(
         &mut self,
         visible: &[WindowId],
-        policy: NewWindowPlacement,
+        policy: NewWindowInsertion,
         work_rect: Rect,
         minimums: &HashMap<WindowId, Size>,
     ) {
@@ -348,7 +348,7 @@ impl LayoutTree {
     fn insert_new(
         &mut self,
         window: WindowId,
-        policy: NewWindowPlacement,
+        policy: NewWindowInsertion,
         work_rect: Rect,
         minimums: &HashMap<WindowId, Size>,
     ) {
@@ -362,14 +362,14 @@ impl LayoutTree {
             return;
         }
 
-        if policy == NewWindowPlacement::Force {
+        if policy == NewWindowInsertion::Force {
             self.insert_force(root, window, work_rect, minimums);
             return;
         }
 
         self.root = Some(match policy {
-            NewWindowPlacement::Force => unreachable!("handled above"),
-            NewWindowPlacement::Auto | NewWindowPlacement::AutoResize => {
+            NewWindowInsertion::Force => unreachable!("handled above"),
+            NewWindowInsertion::Auto | NewWindowInsertion::AutoResize => {
                 self.clear_insertion_provenance();
                 let Some(candidate) = Self::automatic_insertion(&root, window, work_rect, minimums)
                 else {
@@ -377,7 +377,7 @@ impl LayoutTree {
                     return;
                 };
                 let id = self.allocate();
-                if policy == NewWindowPlacement::AutoResize && !candidate.is_healthy(work_rect) {
+                if policy == NewWindowInsertion::AutoResize && !candidate.is_healthy(work_rect) {
                     let assisted_axis =
                         Self::preferred_axis(work_rect, AUTO_RESIZE_NEW_ROOT_WEIGHT);
                     let assisted = Self::root_split(
@@ -503,7 +503,7 @@ impl LayoutTree {
     /// or cycle the primary slot if the window is already primary.
     ///
     /// If `window` is not currently the first visual leaf (master), it is
-    /// removed from its position and re-inserted using force placement,
+    /// removed from its position and re-inserted using force insertion,
     /// placing it into the primary slot.
     ///
     /// If `window` is already the first visual leaf, it is swapped with the
@@ -531,7 +531,7 @@ impl LayoutTree {
                 return None;
             }
             self.clear_insertion_provenance();
-            self.insert_new(window, NewWindowPlacement::Force, work_rect, minimums);
+            self.insert_new(window, NewWindowInsertion::Force, work_rect, minimums);
             Some(window)
         } else {
             let next_primary = candidate_order

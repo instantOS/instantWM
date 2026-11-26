@@ -384,14 +384,14 @@ pub struct InteractionState {
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
     /// Backend-neutral outer rectangle of the active compositor interaction
-    /// outline (manual-tree placement or destructive overview gesture).
+    /// outline (placement session or destructive overview gesture).
     pub layout_preview: Option<Rect>,
     pub layout_preview_style: InteractionOutlineStyle,
-    /// Lazily solved trigger zones for the active pointer tree-placement drag.
+    /// Lazily solved trigger zones for the active pointer tree-insertion drag.
     /// Authoritative arrange passes invalidate the cached layout/constraints;
     /// source, monitor, tag view, and edge policy are checked before reuse.
-    pub(crate) pointer_placement_cache:
-        Option<crate::layouts::manager::PointerPlacementPreviewCache>,
+    pub(crate) pointer_insertion_cache:
+        Option<crate::layouts::manager::PointerInsertionPreviewCache>,
 }
 
 /// Backend-neutral state owned by the window manager.
@@ -480,32 +480,32 @@ impl CoreState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KeyboardPlacementInputs {
-    pub tree: crate::layouts::tree::PlacementTreeGeometry,
+pub(crate) struct PlacementSessionInputs {
+    pub tree: crate::layouts::tree::LayoutTreeSnapshot,
     pub work_rect: Rect,
     pub minimums: HashMap<WindowId, Size>,
     pub edge_fraction_bits: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyboardTreePlacement {
+pub struct TreePlacementSession {
     pub source: WindowId,
     /// The tree is owned by this exact monitor/tag view. Capturing both keeps
-    /// a modal placement from being applied to a different tree after a view
-    /// or monitor change.
+    /// a modal placement session from being applied to a different tree after
+    /// a view or monitor change.
     pub monitor_id: MonitorId,
     pub tags: TagMask,
-    targets: Vec<crate::layouts::tree::PlacementTarget>,
+    targets: Vec<crate::layouts::tree::InsertionTarget>,
     selected: usize,
-    pub(crate) inputs: Option<Box<KeyboardPlacementInputs>>,
+    pub(crate) inputs: Option<Box<PlacementSessionInputs>>,
 }
 
-impl KeyboardTreePlacement {
+impl TreePlacementSession {
     pub fn new(
         source: WindowId,
         monitor_id: MonitorId,
         tags: TagMask,
-        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        targets: Vec<crate::layouts::tree::InsertionTarget>,
         selected: usize,
     ) -> Option<Self> {
         targets.get(selected)?;
@@ -523,18 +523,18 @@ impl KeyboardTreePlacement {
         source: WindowId,
         monitor_id: MonitorId,
         tags: TagMask,
-        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        targets: Vec<crate::layouts::tree::InsertionTarget>,
         point: Point,
     ) -> Option<Self> {
         let selected = Self::nearest_target_index(&targets, point);
         Self::new(source, monitor_id, tags, targets, selected)
     }
 
-    pub fn targets(&self) -> &[crate::layouts::tree::PlacementTarget] {
+    pub fn targets(&self) -> &[crate::layouts::tree::InsertionTarget] {
         &self.targets
     }
 
-    pub fn selected_target(&self) -> crate::layouts::tree::PlacementTarget {
+    pub fn selected_target(&self) -> crate::layouts::tree::InsertionTarget {
         // Only the validating constructor and replacement method can create
         // this state, so a selected target always exists.
         self.targets[self.selected]
@@ -560,7 +560,7 @@ impl KeyboardTreePlacement {
     }
 
     fn nearest_target_index(
-        targets: &[crate::layouts::tree::PlacementTarget],
+        targets: &[crate::layouts::tree::InsertionTarget],
         point: Point,
     ) -> usize {
         targets
@@ -578,7 +578,7 @@ impl KeyboardTreePlacement {
     /// candidate. At a visual edge, wrap to the opposite edge and use
     /// cross-axis alignment to break ties. This keeps a
     /// directional key productive without requiring users to understand the
-    /// exact placement-target topology.
+    /// exact insertion-target topology.
     pub fn select_direction(&mut self, side: crate::layouts::tree::Side) -> bool {
         let current = self.selected_target().position;
         let selected = self.selected;
@@ -654,7 +654,7 @@ impl KeyboardTreePlacement {
 
     pub fn replace_targets(
         &mut self,
-        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        targets: Vec<crate::layouts::tree::InsertionTarget>,
         selected: usize,
     ) -> bool {
         if targets.get(selected).is_none() {
@@ -667,7 +667,7 @@ impl KeyboardTreePlacement {
 
     pub fn replace_targets_near(
         &mut self,
-        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        targets: Vec<crate::layouts::tree::InsertionTarget>,
         point: Point,
     ) -> bool {
         let selected = Self::nearest_target_index(&targets, point);
@@ -739,7 +739,9 @@ impl WmBehavior {
     pub fn normalize_current_mode(&mut self, modes: &HashMap<String, ModeConfig>) {
         let mode_exists = match &self.current_mode {
             ActiveWmMode::Named(name) => modes.contains_key(name),
-            ActiveWmMode::Default | ActiveWmMode::Overview | ActiveWmMode::TreePlacement(_) => true,
+            ActiveWmMode::Default | ActiveWmMode::Overview | ActiveWmMode::PlacementSession(_) => {
+                true
+            }
         };
         if !mode_exists {
             self.current_mode = ActiveWmMode::Default;

@@ -4,13 +4,13 @@
 //! split into focused sub-modules so that each concern stays small and
 //! easy to navigate:
 //!
-//! | Sub-module | Responsibility |
-//! |------------|----------------|
-//! | [`tree`] | Canonical weighted tree and private transformation algorithms |
-//! | [`algo`] | Non-tree floating and maximized presentations |
-//! | `placement` | Gap, border, and preview geometry |
-//! | `keyboard_placement` | Keyboard placement-session orchestration |
-//! | [`manager`] | Arrange application, z-order, pointer interaction, and layout commands |
+//! | Sub-module          | Responsibility                                                  |
+//! |---------------------|-----------------------------------------------------------------|
+//! | [`tree`]            | Canonical weighted tree and private transformation algorithms   |
+//! | [`algo`]            | Non-tree floating and maximized presentations                   |
+//! | `geometry`          | Gap, border, and preview geometry                               |
+//! | `placement_session` | Keyboard placement-session orchestration                        |
+//! | [`manager`]         | Arrange application, z-order, pointer interaction, and commands |
 //!
 //! ## Layout commands, presentation state, and layout slots
 //!
@@ -45,9 +45,9 @@
 //! that callers only ever need `use crate::layouts::…`.
 
 pub mod algo;
-mod keyboard_placement;
+pub(crate) mod geometry;
 pub mod manager;
-pub(crate) mod placement;
+mod placement_session;
 pub mod tree;
 
 use std::str::FromStr;
@@ -259,11 +259,6 @@ impl FromStr for LayoutCommand {
 }
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
-pub use keyboard_placement::{
-    begin_tree_placement, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
-    finish_keyboard_tree_placement, resize_keyboard_tree_placement, step_keyboard_tree_placement,
-    swap_keyboard_tree_placement,
-};
 pub(crate) use manager::global_z_order;
 pub use manager::{
     ArrangeAnimation, MaximizedStackReorder, arrange, cycle_layout_direction, focus_tree_neighbor,
@@ -271,6 +266,11 @@ pub use manager::{
     reorder_maximized_stack, reset_active_layout, reset_layout_to, resize_tree, resize_tree_smart,
     set_layout, swap_bar_titles, swap_tree_neighbor, sync_z_order, toggle_floating_presentation,
     toggle_tiling_maximized,
+};
+pub use placement_session::{
+    begin_tree_placement, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
+    finish_keyboard_tree_placement, resize_keyboard_tree_placement, step_keyboard_tree_placement,
+    swap_keyboard_tree_placement,
 };
 
 #[cfg(test)]

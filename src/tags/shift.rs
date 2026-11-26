@@ -31,7 +31,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     }
 
     crate::focus::focus(ctx, Some(win));
-    // Cursor placement must use destination geometry, not the stale rectangle
+    // Cursor positioning must use destination geometry, not the stale rectangle
     // from the tag we just left.
     crate::layouts::arrange(ctx, Some(monitor_id), ArrangeAnimation::Configured);
     if ctx

@@ -616,8 +616,8 @@ mod tests {
                 state.native.runtime.mirror_of.source_of("DP-1"),
                 Some("eDP-1")
             );
-            // A mirror owns no desktop region, so it is not a placement
-            // anchor; automatic placement simply skips it.
+            // A mirror owns no desktop region, so it is not a position
+            // anchor; automatic positioning simply skips it.
             assert!(
                 state
                     .native

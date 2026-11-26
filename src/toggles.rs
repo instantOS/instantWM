@@ -52,10 +52,10 @@ pub fn unhide_all(ctx: &mut WmCtx) {
 }
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
-    if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
+    if name == crate::core_state::PLACEMENT_SESSION_MODE_NAME {
         if matches!(
             &ctx.core().state.behavior.current_mode,
-            ActiveWmMode::TreePlacement(_)
+            ActiveWmMode::PlacementSession(_)
         ) {
             ctx.reset_mode();
         }

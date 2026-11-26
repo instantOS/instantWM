@@ -1,6 +1,6 @@
-//! Output geometry, automatic placement, and pointer recovery.
+//! Output geometry, automatic positioning, and pointer recovery.
 
-use crate::backend::output::{OutputPlacement, plan_automatic_output_positions};
+use crate::backend::output::{OutputPosition, plan_automatic_output_positions};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::render::drm::{OutputSurfaceEntry, ScanoutId};
 
@@ -139,18 +139,18 @@ pub(super) fn compact_drm_automatic_layout(
     state: &mut WaylandState,
     output_surfaces: &mut [OutputSurfaceEntry],
 ) {
-    let mut placements: Vec<_> = output_surfaces
+    let mut positions: Vec<_> = output_surfaces
         .iter()
         .filter(|entry| {
             entry.enabled && state.native.space.output_geometry(&entry.output).is_some()
         })
-        .map(|entry| OutputPlacement {
+        .map(|entry| OutputPosition {
             id: entry.output.name(),
             rect: entry.rect,
             source: state.native.output_position_source(&entry.output.name()),
         })
         .collect();
-    for (name, position) in plan_automatic_output_positions(&mut placements) {
+    for (name, position) in plan_automatic_output_positions(&mut positions) {
         let Some(entry) = output_surfaces
             .iter_mut()
             .find(|entry| entry.output.name() == name)

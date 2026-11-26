@@ -1,7 +1,7 @@
 use crate::backend::WindowOps;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::placement::LayoutPlacement;
+use crate::layouts::geometry::LayoutGeometry;
 use crate::layouts::tree::LayoutTree;
 use crate::layouts::{ArrangePlan, LayoutOutput, PresentationMode};
 use crate::types::{Client, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
@@ -18,22 +18,23 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
     let animated = matches!(animation, ArrangeAnimation::Configured)
         && ctx.core().state.config.animations.enabled;
     // Any authoritative arrange may reconcile the tree, constraints, gaps, or
-    // monitor geometry. Pointer placement rebuilds lazily on the next sample.
-    ctx.core_mut().state.interaction.pointer_placement_cache = None;
+    // monitor geometry. Pointer insertion candidates rebuild lazily on the next
+    // sample.
+    ctx.core_mut().state.interaction.pointer_insertion_cache = None;
 
     if ctx
         .core()
         .state
         .behavior
         .current_mode
-        .tree_placement()
+        .placement_session()
         .is_some()
         && !ctx
             .core()
             .state
             .behavior
             .current_mode
-            .tree_placement_is_current_for(&ctx.core().state.model)
+            .placement_session_is_current_for(&ctx.core().state.model)
     {
         ctx.reset_mode();
     }
@@ -55,7 +56,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
         }
     }
 
-    crate::layouts::keyboard_placement::refresh_targets_after_arrange(ctx, monitor_id);
+    crate::layouts::placement_session::refresh_targets_after_arrange(ctx, monitor_id);
     ctx.core_mut()
         .bar
         .invalidate(crate::bar::BarChange::Presentation);
@@ -187,14 +188,14 @@ impl Monitor {
 }
 
 /// The single source of tiling geometry for one monitor: arrange, pointer
-/// resize, placement previews, and promotion all read this, so gaps and
+/// resize, insertion previews, and promotion all read this, so gaps and
 /// minimum slot sizes cannot drift between them.
 #[derive(Debug, Clone)]
 pub(crate) struct TilingContext {
     /// Persistent tree members (fullscreen and maximized ones included), in
     /// monitor client order.
     pub members: Vec<TiledClientInfo>,
-    pub placement: LayoutPlacement,
+    pub geometry: LayoutGeometry,
     pub minimums: HashMap<WindowId, Size>,
     /// The monitor's logical bar height. Layout is a pure reader of bar
     /// geometry, which the monitor-sync path owns.
@@ -219,7 +220,7 @@ impl TilingContext {
         incoming: Option<&Client>,
     ) -> Self {
         let members = monitor.collect_tiling_tree_members();
-        let placement = LayoutPlacement::new(
+        let geometry = LayoutGeometry::new(
             layout_cfg,
             monitor,
             PresentationMode::Tiled,
@@ -234,8 +235,8 @@ impl TilingContext {
             .map(|client| {
                 let border =
                     border_width_for_layout_client(client, tiled_count, true, false).max(0);
-                let mut size = placement.minimum_slot_size(client, resize_hints, border);
-                let decoration = 2 * border + placement.inner_gap();
+                let mut size = geometry.minimum_slot_size(client, resize_hints, border);
+                let decoration = 2 * border + geometry.inner_gap();
                 size.w = size.w.max(bar_height.saturating_add(decoration));
                 size.h = size.h.max(bar_height.saturating_add(decoration));
                 (client.win, size)
@@ -243,7 +244,7 @@ impl TilingContext {
             .collect();
         Self {
             members,
-            placement,
+            geometry,
             minimums,
             bar_height,
             tiled_count,
@@ -251,7 +252,7 @@ impl TilingContext {
     }
 
     pub(crate) fn work_rect(&self) -> Rect {
-        self.placement.work_rect()
+        self.geometry.work_rect()
     }
 
     pub(crate) fn slots(&self, tree: &LayoutTree) -> (HashMap<WindowId, Rect>, bool) {
@@ -261,7 +262,7 @@ impl TilingContext {
     /// Outer rectangle `client` will occupy when assigned `slot`.
     pub(crate) fn outer_rect(&self, client: &Client, slot: Rect, resize_hints: bool) -> Rect {
         let border = border_width_for_layout_client(client, self.tiled_count, true, false).max(0);
-        let mut content = self.placement.client_rect(slot, border);
+        let mut content = self.geometry.client_rect(slot, border);
         let available = content.size();
         content.enforce_minimum(self.bar_height, self.bar_height);
         if resize_hints {
@@ -303,7 +304,7 @@ fn reconcile_manual_tree(
     let tiling = TilingContext::for_monitor(monitor, layout_cfg, resize_hints);
     monitor.per_tag_state().layout_tree.reconcile_for_layout(
         &windows,
-        layout_cfg.new_window_placement,
+        layout_cfg.new_window_insertion,
         tiling.work_rect(),
         &tiling.minimums,
     );
@@ -320,7 +321,7 @@ fn compute_manual_tree(
         let tree = &mut monitor.per_tag_state().layout_tree;
         tree.reconcile_for_layout(
             &windows,
-            layout_cfg.new_window_placement,
+            layout_cfg.new_window_insertion,
             tiling.work_rect(),
             &tiling.minimums,
         );
@@ -346,7 +347,7 @@ fn compute_manual_tree(
             let slot = slots.get(&client.win).copied()?;
             Some(LayoutOutput {
                 win: client.win,
-                rect: tiling.placement.client_rect(slot, client.border_width),
+                rect: tiling.geometry.client_rect(slot, client.border_width),
                 options,
             })
         })

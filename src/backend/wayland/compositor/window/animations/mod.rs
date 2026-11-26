@@ -18,7 +18,7 @@ mod protocol_tests;
 #[cfg(test)]
 mod x11_tests;
 
-/// Backend-resolved placement mode for a Wayland window — the Wayland
+/// Backend-resolved positioning mode for a Wayland window — the Wayland
 /// compositor's counterpart to the core `MoveResizeMode`. Unlike the core
 /// enum (caller intent), these variants carry *resolved* semantics:
 /// [`Retarget`](Self::Retarget) is the only mode that lets the backend resolve
@@ -183,7 +183,7 @@ impl WaylandNativeState {
     /// Snap `element` to `target`: configure its geometry, remap without
     /// disturbing z-order, and record the border width. Shared by an explicit
     /// [`WindowMoveMode::Snap`] and by an animated mode that resolves to a
-    /// no-transition placement (animations disabled, or `from == target`).
+    /// no-transition positioning (animations disabled, or `from == target`).
     fn snap_window_to(
         &mut self,
         core_view: &crate::core_state::CoreState,
@@ -212,7 +212,7 @@ impl WaylandNativeState {
     /// Place a window at `target` (in outer/WM coordinates) using the given
     /// movement mode.
     ///
-    /// This is a **visual placement** function. It converts the outer WM rect
+    /// This is a **visual positioning** function. It converts the outer WM rect
     /// to inner/surface coordinates (adding `border_width`) and either snaps
     /// or animates the element to the target. Animated resizes send exactly
     /// one configure partway through the transition; snapped changes send it
@@ -278,7 +278,7 @@ impl WaylandNativeState {
         // The border width the window is actually presented with right now.
         //
         // During an in-flight transition the window follows the animation's own
-        // interpolated border. After a placement the recorded width stays with
+        // interpolated border. After positioning the recorded width stays with
         // the model's pre-transition value, so a subsequent transition starts
         // from the border the window was visibly drawn with, not the already
         // mutated post-transition value. Unplaced windows fall back to the
@@ -755,7 +755,7 @@ mod tests {
         );
 
         // No surface is needed: an unchanged target must never reach native
-        // placement or consume the existing animation in the first place.
+        // positioning or consume the existing animation in the first place.
         state
             .ctx()
             .move_resize(win, target, MoveResizeOptions::animate_to(50));

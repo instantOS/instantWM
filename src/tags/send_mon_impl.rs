@@ -9,7 +9,7 @@
 //! For floating clients the window is repositioned so that its relative
 //! position on the target monitor mirrors its position on the source monitor.
 //! Tiled clients are simply detached and re-attached; the layout engine takes
-//! care of placement.
+//! care of positioning.
 
 use crate::backend::WindowOps;
 
@@ -20,7 +20,7 @@ use crate::types::{MonitorDirection, MonitorId, Rect, WindowId};
 /// How a client crosses to the target monitor.
 ///
 /// Floating clients keep their relative position and size fraction on the new
-/// output; every other placement is handed over untouched because the layout
+/// output; every other position is handed over untouched because the layout
 /// engine re-places it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SendToMonitorStrategy {
@@ -45,7 +45,7 @@ fn plan_send_to_monitor(
 
     let selected_id = model.selected_monitor_id();
     // The selected window is the selected monitor's own client, so its
-    // placement is a monitor-local lookup.
+    // positioning is a monitor-local lookup.
     let monitor = model.monitor(selected_id)?;
     let win = monitor.selected?;
     let strategy = if monitor

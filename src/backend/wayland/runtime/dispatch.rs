@@ -538,7 +538,7 @@ fn handle_map_window(
     }
     let rule_outcome = crate::client::apply_initial_rules(state, win, &properties, launch_context);
     let position_is_explicit = rule_outcome
-        .placement
+        .position
         .position_is_explicit(initial_position_is_explicit);
 
     if state.config.window.decor_hints
@@ -764,7 +764,7 @@ fn position_new_wayland_floating_window(
     }
 }
 
-/// Record the freshly managed client's final floating placement and resolve
+/// Record the freshly managed client's final floating geometry and resolve
 /// where it ended up and whether it should be focused.
 ///
 /// The client is already owned by its monitor by the time this runs:
@@ -791,7 +791,7 @@ fn finalize_wayland_client(
     // a normal floating client restores to where it first appeared.
     if client.mode().is_normal_floating() && client.snap_status == crate::types::SnapPosition::None
     {
-        client.save_floating_placement(client.geo, work_area);
+        client.save_floating_geometry(client.geo, work_area);
     }
 
     Some((monitor_id, client.is_visible(visible_tags)))

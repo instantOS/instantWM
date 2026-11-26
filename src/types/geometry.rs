@@ -14,7 +14,7 @@ pub enum MonitorPosition {
     },
 }
 
-/// Relative placement of one monitor against another.
+/// Relative position of one monitor against another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RelativePosition {
     LeftOf,
@@ -24,7 +24,7 @@ pub enum RelativePosition {
 }
 
 impl MonitorPosition {
-    /// Parse monitor placement syntax.
+    /// Parse monitor position syntax.
     ///
     /// Supported formats:
     /// - `"X,Y"`
@@ -460,7 +460,7 @@ impl Rect {
         }
     }
 
-    /// Clamp a single axis for fully-contained placement.
+    /// Clamp a single axis for fully-contained positioning.
     ///
     /// Shared primitive for `contain_floating_rect` and `normalize_spawn_axis`:
     /// if `total_len >= bounds_len` anchor to `bounds_pos`, else

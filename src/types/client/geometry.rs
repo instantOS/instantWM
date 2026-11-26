@@ -1,14 +1,14 @@
-//! Client-owned geometry history and floating placement state.
+//! Client-owned geometry history and saved floating geometry.
 
 use super::Client;
 use crate::types::{Rect, Size};
 
-/// A real floating placement previously chosen or accepted by the WM.
+/// A real floating geometry previously chosen or accepted by the WM.
 ///
-/// The reference work area makes the placement portable across output
+/// The reference work area makes the geometry portable across output
 /// resolution, scale, position, and bar/exclusive-zone changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SavedFloatingPlacement {
+pub struct SavedFloatingGeometry {
     pub rect: Rect,
     pub reference_work_area: Rect,
 }
@@ -21,7 +21,7 @@ pub struct SavedFloatingPlacement {
 /// without pretending that the client supplied a meaningful floating position.
 #[derive(Debug, Clone, Default)]
 pub struct FloatingGeometryState {
-    saved: Option<SavedFloatingPlacement>,
+    saved: Option<SavedFloatingGeometry>,
     preferred_size: Option<Size>,
 }
 
@@ -48,13 +48,12 @@ impl Client {
         self.update_geometry(outer_rect.without_borders(new_width));
     }
 
-    pub fn saved_floating_placement(&self) -> Option<SavedFloatingPlacement> {
+    pub fn saved_floating_geometry(&self) -> Option<SavedFloatingGeometry> {
         self.floating_geometry.saved
     }
 
     pub fn saved_floating_rect(&self) -> Option<Rect> {
-        self.saved_floating_placement()
-            .map(|placement| placement.rect)
+        self.saved_floating_geometry().map(|geometry| geometry.rect)
     }
 
     pub fn preferred_floating_size(&self) -> Option<Size> {
@@ -67,9 +66,9 @@ impl Client {
         }
     }
 
-    pub fn save_floating_placement(&mut self, rect: Rect, reference_work_area: Rect) {
+    pub fn save_floating_geometry(&mut self, rect: Rect, reference_work_area: Rect) {
         if rect.is_valid() && reference_work_area.is_valid() {
-            self.floating_geometry.saved = Some(SavedFloatingPlacement {
+            self.floating_geometry.saved = Some(SavedFloatingGeometry {
                 rect,
                 reference_work_area,
             });
@@ -80,9 +79,9 @@ impl Client {
         if !size.is_positive() {
             return;
         }
-        if let Some(placement) = self.floating_geometry.saved.as_mut() {
-            placement.rect.w = size.w;
-            placement.rect.h = size.h;
+        if let Some(geometry) = self.floating_geometry.saved.as_mut() {
+            geometry.rect.w = size.w;
+            geometry.rect.h = size.h;
         }
     }
 
@@ -143,13 +142,13 @@ mod tests {
     }
 
     #[test]
-    fn placement_changes_do_not_discard_saved_floating_geometry() {
+    fn placement_policy_changes_do_not_discard_saved_floating_geometry() {
         let saved = Rect::new(100, 120, 640, 480);
         let mut client = Client {
             geo: Rect::new(0, 0, 1920, 1080),
             ..Client::default()
         };
-        client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
+        client.save_floating_geometry(saved, Rect::new(0, 0, 1920, 1080));
 
         client.set_placement(crate::types::ClientPlacement::Tiling);
 

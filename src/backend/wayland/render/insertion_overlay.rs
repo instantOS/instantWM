@@ -1,4 +1,4 @@
-//! Diagnostic geometry for tiled placement, captured only while enabled.
+//! Diagnostic geometry for tree insertion targets, captured only while enabled.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -10,12 +10,12 @@ use smithay::utils::Transform;
 
 use crate::bar::canvas::Canvas;
 use crate::core_state::CoreState;
-use crate::layouts::tree::{PlacementHitboxes, Side};
+use crate::layouts::tree::{InsertionHitboxes, Side};
 use crate::types::{Point, Rect, Rgba, Rgba8};
 
-pub(super) enum PlacementOverlay {
+pub(super) enum InsertionOverlay {
     Pointer {
-        hitboxes: Arc<PlacementHitboxes>,
+        hitboxes: Arc<InsertionHitboxes>,
         buffer: MemoryRenderBuffer,
     },
     Keyboard {
@@ -25,14 +25,14 @@ pub(super) enum PlacementOverlay {
     },
 }
 
-impl PlacementOverlay {
+impl InsertionOverlay {
     pub(super) fn capture(state: &mut CoreState, cached: Option<&Rc<Self>>) -> Option<Rc<Self>> {
         if !state.config.layout.show_placement_hitboxes {
             return None;
         }
-        if let Some(placement) = state.behavior.current_mode.tree_placement() {
-            let positions = placement.targets().iter().map(|target| target.position);
-            let selected = placement.selected_target().position;
+        if let Some(session) = state.behavior.current_mode.placement_session() {
+            let positions = session.targets().iter().map(|target| target.position);
+            let selected = session.selected_target().position;
             if let Some(cached) = cached
                 && let Self::Keyboard {
                     positions: previous,
@@ -56,7 +56,7 @@ impl PlacementOverlay {
                 markers,
             }));
         }
-        let hitboxes = crate::layouts::manager::pointer_placement_hitboxes(state)?;
+        let hitboxes = crate::layouts::manager::pointer_insertion_hitboxes(state)?;
         if let Some(cached) = cached
             && let Self::Pointer {
                 hitboxes: previous, ..
@@ -80,7 +80,7 @@ fn push_marker(out: &mut Vec<SolidColorRenderElement>, point: Point, width: i32,
     );
 }
 
-fn draw_hitboxes(hitboxes: &PlacementHitboxes) -> MemoryRenderBuffer {
+fn draw_hitboxes(hitboxes: &InsertionHitboxes) -> MemoryRenderBuffer {
     let mut canvas = Canvas::new(hitboxes.area.size());
     for span in &hitboxes.spans {
         let rect = Rect::new(
@@ -123,7 +123,7 @@ mod tests {
     };
 
     #[test]
-    fn diagnostics_follow_live_drag_and_keyboard_placement_without_background_work() {
+    fn diagnostics_follow_live_drag_and_placement_session_without_background_work() {
         let mut wm = TestWm::new(crate::backend::WaylandBackendData::default());
         let area = Rect::new(-500, 100, 500, 400);
         let tags = TagMask::single(1).unwrap();
@@ -164,12 +164,12 @@ mod tests {
             )
             .unwrap();
 
-        assert!(PlacementOverlay::capture(&mut wm.core.state, None).is_none());
-        assert!(wm.core.state.interaction.pointer_placement_cache.is_none());
+        assert!(InsertionOverlay::capture(&mut wm.core.state, None).is_none());
+        assert!(wm.core.state.interaction.pointer_insertion_cache.is_none());
 
         wm.core.state.config.layout.show_placement_hitboxes = true;
-        let overlay = PlacementOverlay::capture(&mut wm.core.state, None).unwrap();
-        let PlacementOverlay::Pointer { hitboxes, .. } = overlay.as_ref() else {
+        let overlay = InsertionOverlay::capture(&mut wm.core.state, None).unwrap();
+        let InsertionOverlay::Pointer { hitboxes, .. } = overlay.as_ref() else {
             panic!("an active tiled move should show pointer hitboxes");
         };
         assert_eq!(hitboxes.area, area);
@@ -180,28 +180,28 @@ mod tests {
                 .iter()
                 .all(|span| !span.rect.contains_point(source_geo.center()))
         );
-        let cached = PlacementOverlay::capture(&mut wm.core.state, Some(&overlay)).unwrap();
+        let cached = InsertionOverlay::capture(&mut wm.core.state, Some(&overlay)).unwrap();
         assert!(Rc::ptr_eq(&overlay, &cached));
         wm.core.state.config.layout.show_placement_hitboxes = false;
-        assert!(PlacementOverlay::capture(&mut wm.core.state, Some(&overlay)).is_none());
+        assert!(InsertionOverlay::capture(&mut wm.core.state, Some(&overlay)).is_none());
         assert!(crate::mouse::drag::active_drag_finish(
             &mut wm.test_ctx(),
             MouseButton::Left,
             ModMask::NONE
         ));
         wm.core.state.config.layout.show_placement_hitboxes = true;
-        assert!(PlacementOverlay::capture(&mut wm.core.state, Some(&overlay)).is_none());
+        assert!(InsertionOverlay::capture(&mut wm.core.state, Some(&overlay)).is_none());
 
         assert!(crate::layouts::begin_tree_placement(&mut wm.test_ctx()));
-        let overlay = PlacementOverlay::capture(&mut wm.core.state, None).unwrap();
+        let overlay = InsertionOverlay::capture(&mut wm.core.state, None).unwrap();
         assert!(matches!(
             overlay.as_ref(),
-            PlacementOverlay::Keyboard { .. }
+            InsertionOverlay::Keyboard { .. }
         ));
         crate::layouts::cycle_keyboard_tree_placement(&mut wm.test_ctx(), false);
-        let next = PlacementOverlay::capture(&mut wm.core.state, Some(&overlay)).unwrap();
+        let next = InsertionOverlay::capture(&mut wm.core.state, Some(&overlay)).unwrap();
         assert!(!Rc::ptr_eq(&overlay, &next));
         crate::layouts::finish_keyboard_tree_placement(&mut wm.test_ctx(), false);
-        assert!(PlacementOverlay::capture(&mut wm.core.state, Some(&next)).is_none());
+        assert!(InsertionOverlay::capture(&mut wm.core.state, Some(&next)).is_none());
     }
 }

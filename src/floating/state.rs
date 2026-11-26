@@ -1,6 +1,6 @@
 //! Floating state transitions and geometry persistence.
 
-use crate::client::geometry::{FloatingPlacementIntent, resolve_floating_transition};
+use crate::client::geometry::{FloatingGeometryIntent, resolve_floating_transition};
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::ArrangeAnimation;
@@ -14,7 +14,7 @@ pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     let rect = resolve_floating_transition(
         view.client,
         view.monitor.work_rect(),
-        FloatingPlacementIntent::RestoreOrCenter,
+        FloatingGeometryIntent::RestoreOrCenter,
         view.client.border_width,
     );
     ctx.move_resize(win, rect, MoveResizeOptions::for_floating_transition());
@@ -30,13 +30,13 @@ pub enum WindowModeChange {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowModeRequest {
-    Floating(FloatingPlacementIntent),
+    Floating(FloatingGeometryIntent),
     Tiling,
 }
 
 /// Set a window to floating or tiled mode.
 ///
-/// This is an explicit user/IPC transition: the requested placement becomes
+/// This is an explicit user/IPC transition: the requested policy becomes
 /// immediately visible, so temporary fullscreen and maximized presentations
 /// are exited first.
 pub fn set_window_mode(
@@ -61,13 +61,13 @@ pub fn set_window_mode(
     crate::client::fullscreen::leave_maximized(ctx, win);
 
     let change = set_window_placement_from_policy(ctx, win, request);
-    // Placement determines the protocol-visible maximized state in tiling
-    // presentations, so project it after the placement change.
+    // The placement policy determines the protocol-visible maximized state in tiling
+    // presentations, so project it after the policy change.
     crate::client::fullscreen::sync_client_maximized_signal(ctx, win);
     change
 }
 
-/// Change persistent placement without taking ownership of presentation.
+/// Change the persistent placement policy without taking ownership of presentation.
 ///
 /// Rules and property refreshes use this path. A policy update may change
 /// where a window restores after fullscreen/maximization, but must not cancel
@@ -85,12 +85,12 @@ pub(crate) fn set_window_placement_from_policy(
         .client_mut(win)
         .expect("owner was resolved from client membership");
     let current_mode = client.mode();
-    let current_placement = client.placement();
+    let current_policy = client.placement();
     let current_rect = client.geo;
 
     match request {
         WindowModeRequest::Floating(intent) => {
-            if current_placement == ClientPlacement::Floating {
+            if current_policy == ClientPlacement::Floating {
                 return WindowModeChange::ChangedToFloating {
                     restored_geometry: current_rect,
                 };
@@ -107,11 +107,11 @@ pub(crate) fn set_window_placement_from_policy(
             if current_mode.is_normal_tiling() {
                 client.restore_border_width();
             } else {
-                client.save_floating_placement(restored_geometry, work_area);
+                client.save_floating_geometry(restored_geometry, work_area);
             }
 
             // Temporary presentation modes retain their current geometry.
-            // Only their eventual restore mode and placement change.
+            // Only their eventual restore mode and placement policy change.
             if !current_mode.is_normal_tiling() {
                 return WindowModeChange::ChangedToFloating { restored_geometry };
             }
@@ -125,9 +125,9 @@ pub(crate) fn set_window_placement_from_policy(
             WindowModeChange::ChangedToFloating { restored_geometry }
         }
         WindowModeRequest::Tiling => {
-            if current_placement == ClientPlacement::Floating {
+            if current_policy == ClientPlacement::Floating {
                 if current_mode.is_normal_floating() {
-                    client.save_floating_placement(current_rect, work_area);
+                    client.save_floating_geometry(current_rect, work_area);
                 }
                 client.set_placement(ClientPlacement::Tiling);
             }
@@ -146,7 +146,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         return;
     }
     let request = if client.placement() != ClientPlacement::Floating || client.is_fixed_size {
-        WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter)
+        WindowModeRequest::Floating(FloatingGeometryIntent::RestoreOrCenter)
     } else {
         WindowModeRequest::Tiling
     };
@@ -164,7 +164,7 @@ mod tests {
     };
     use crate::test_support::TestWm as Wm;
 
-    use crate::client::geometry::FloatingPlacementIntent;
+    use crate::client::geometry::FloatingGeometryIntent;
     use crate::test_support::MonitorBuilder;
     use crate::types::{Client, ClientMode, ClientPlacement, Rect, TagMask, WindowId};
 
@@ -197,7 +197,7 @@ mod tests {
         let change = set_window_mode(
             &mut wm.test_ctx(),
             win,
-            WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
+            WindowModeRequest::Floating(FloatingGeometryIntent::RestoreOrCenter),
         );
 
         let expected = Rect::new(150, 126, 896, 573);
@@ -260,7 +260,7 @@ mod tests {
         let change = set_window_placement_from_policy(
             &mut wm.test_ctx(),
             win,
-            WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
+            WindowModeRequest::Floating(FloatingGeometryIntent::RestoreOrCenter),
         );
 
         let client = wm.core.state.model.client(win).unwrap();
@@ -285,7 +285,7 @@ mod tests {
             .model
             .client_mut(win)
             .unwrap()
-            .save_floating_placement(saved, Rect::new(0, 30, 1200, 770));
+            .save_floating_geometry(saved, Rect::new(0, 30, 1200, 770));
 
         let change =
             set_window_placement_from_policy(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
@@ -311,7 +311,7 @@ mod tests {
             .model
             .client_mut(win)
             .unwrap()
-            .save_floating_placement(saved, Rect::new(0, 30, 1200, 770));
+            .save_floating_geometry(saved, Rect::new(0, 30, 1200, 770));
 
         toggle_floating(&mut wm.test_ctx());
 
@@ -330,7 +330,7 @@ mod tests {
             .model
             .client_mut(win)
             .unwrap()
-            .save_floating_placement(Rect::new(200, 160, 700, 500), Rect::new(0, 30, 1200, 770));
+            .save_floating_geometry(Rect::new(200, 160, 700, 500), Rect::new(0, 30, 1200, 770));
 
         let change = set_window_mode(&mut wm.test_ctx(), win, WindowModeRequest::Tiling);
 

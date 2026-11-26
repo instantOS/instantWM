@@ -321,9 +321,9 @@ fn visible_close_outline_parts(scene: &BorderScene, scratch: &mut Vec<Rect>) -> 
     else {
         return Vec::new();
     };
-    let parts = crate::layouts::placement::outline_rectangles(
+    let parts = crate::layouts::geometry::outline_rectangles(
         window.bounding_rect(),
-        crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
+        crate::layouts::geometry::LAYOUT_PREVIEW_BORDER_WIDTH,
     )
     .to_vec();
     let higher_occluders = scene.windows[target_index + 1..]
@@ -375,9 +375,9 @@ pub fn append_layout_preview(
     let Some(preview) = preview else {
         return;
     };
-    for side in crate::layouts::placement::outline_rectangles(
+    for side in crate::layouts::geometry::outline_rectangles(
         preview,
-        crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
+        crate::layouts::geometry::LAYOUT_PREVIEW_BORDER_WIDTH,
     ) {
         push_solid(out, side, color);
     }

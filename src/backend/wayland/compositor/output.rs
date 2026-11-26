@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
     AdaptiveSyncPolicy, MonitorModeRequest, OutputHeadConfiguration, OutputId,
-    OutputMode as TransactionOutputMode, OutputPlacement, OutputPositionSource, OutputSnapshot,
+    OutputMode as TransactionOutputMode, OutputPosition, OutputPositionSource, OutputSnapshot,
     OutputTransaction, OutputTransactionError, OutputTransactionKind, OutputTransactionOrigin,
     RequestId, plan_automatic_output_positions, position_after,
 };
@@ -158,7 +158,7 @@ impl WaylandNativeState {
     /// its region of the space.
     ///
     /// A mirror presents its source's region, so it must not own input,
-    /// hit-testing, layer-shell placement or damage of its own. Keeping it out
+    /// hit-testing, layer-shell positioning or damage of its own. Keeping it out
     /// of the space makes every space consumer correct without special cases;
     /// the renderer projects the source's scene onto it.
     pub(crate) fn set_mirror_roles(&mut self, realized: std::collections::HashMap<String, String>) {
@@ -218,7 +218,7 @@ impl WaylandNativeState {
         }
     }
 
-    /// Current ownership of an output's position for automatic placement.
+    /// Current ownership of an output's position for automatic positioning.
     pub(crate) fn output_position_source(&self, name: &str) -> OutputPositionSource {
         if self.runtime.configured_output_positions.contains(name) {
             return OutputPositionSource::Configured;
@@ -296,7 +296,7 @@ impl WaylandNativeState {
         OutputTransaction { heads }
     }
 
-    /// Desired configuration, before lid, mirror, and placement projection.
+    /// Desired configuration, before lid, mirror, and position projection.
     fn requested_output_transaction(&self) -> OutputTransaction {
         let capabilities: Vec<_> =
             self.output_management_state
@@ -375,17 +375,17 @@ impl WaylandNativeState {
             .active_pairs(|name| enabled.contains(name))
             .map(|(name, _)| name)
             .collect();
-        let mut placements: Vec<_> = effective
+        let mut positions: Vec<_> = effective
             .heads
             .iter()
             .filter(|head| head.enabled && !mirrors.contains(head.id.0.as_str()))
-            .map(|head| OutputPlacement {
+            .map(|head| OutputPosition {
                 id: head.id.0.clone(),
                 rect: head.logical_rect(),
                 source: self.output_position_source(&head.id.0),
             })
             .collect();
-        for (name, position) in plan_automatic_output_positions(&mut placements) {
+        for (name, position) in plan_automatic_output_positions(&mut positions) {
             if let Some(head) = effective.heads.iter_mut().find(|head| head.id.0 == name) {
                 head.position = position;
             }
@@ -482,17 +482,17 @@ impl WaylandNativeState {
             }
         }
 
-        let mut placements: Vec<_> = transaction
+        let mut positions: Vec<_> = transaction
             .heads
             .iter()
             .filter(|head| head.enabled && !mirrors.contains(&head.id.0))
-            .map(|head| OutputPlacement {
+            .map(|head| OutputPosition {
                 id: head.id.0.clone(),
                 rect: head.logical_rect(),
                 source: self.output_position_source(&head.id.0),
             })
             .collect();
-        for (name, position) in plan_automatic_output_positions(&mut placements) {
+        for (name, position) in plan_automatic_output_positions(&mut positions) {
             if let Some(head) = transaction.heads.iter_mut().find(|head| head.id.0 == name) {
                 head.position = position;
             }

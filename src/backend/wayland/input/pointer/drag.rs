@@ -96,7 +96,7 @@ mod tests {
             let last = (batch_start + batch_size).min(SAMPLE_COUNT) - 1;
             if clear_cache_each_sample {
                 for index in batch_start..=last {
-                    wm.core.state.interaction.pointer_placement_cache = None;
+                    wm.core.state.interaction.pointer_insertion_cache = None;
                     process_drag_sample(wm, sample_point(index));
                     updates += 1;
                 }

@@ -39,7 +39,7 @@ pub(super) fn validate_mode_name(
     configured_modes: &HashMap<String, ModeConfig>,
     name: &str,
 ) -> Result<(), String> {
-    if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
+    if name == crate::core_state::PLACEMENT_SESSION_MODE_NAME {
         return Err("mode 'placement' can only be entered by begin_tree_placement".to_string());
     }
     if configured_modes.contains_key(name)
@@ -229,7 +229,7 @@ pub(super) const DEFAULT_GAP_STEP: i32 = 2;
 ///
 /// Inner and outer gaps move together because users think of "the gap size"
 /// as one knob; per-axis values stay reachable through config and IPC. Both
-/// clamp at zero: placement treats zero gaps as disabled, so decreasing at
+/// clamp at zero: the placement session treats zero gaps as disabled, so decreasing at
 /// the floor simply keeps gapless tiling instead of inverting windows.
 pub(super) fn adjust_gaps(ctx: &mut WmCtx<'_>, delta: i32) {
     let layout = &mut ctx.core_mut().state.config.layout;

@@ -79,7 +79,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutCommand) {
 ///
 /// Ignored while a pointer tree resize is dragging: its motion events replay
 /// an origin snapshot of the tree, so a slot exchange underneath would let
-/// the drag clobber the freshly restored slot. Keyboard placement mode is
+/// the drag clobber the freshly restored slot. Keyboard placement sessions are
 /// inherently safe — unbound keys cancel it before any command runs.
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
     activate_tree_preset(ctx, preset, false);

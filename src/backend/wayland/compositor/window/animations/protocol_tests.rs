@@ -16,7 +16,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
 };
 
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
-use crate::client::geometry::FloatingPlacementIntent;
+use crate::client::geometry::FloatingGeometryIntent;
 use crate::floating::{WindowModeRequest, set_window_mode};
 use crate::test_support::{MonitorBuilder, add_client, push_monitor};
 use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
@@ -283,7 +283,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
         geo: tiled,
         ..Client::default()
     };
-    model_client.save_floating_placement(floating, tiled);
+    model_client.save_floating_geometry(floating, tiled);
     add_client(&mut state.wm.core.state.model, monitor, model_client);
     state.map_window_in_space(win);
     state.native.resize_window(&state.wm.core.state, win, tiled);
@@ -296,7 +296,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
     let _ = set_window_mode(
         &mut state.ctx(),
         win,
-        WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
+        WindowModeRequest::Floating(FloatingGeometryIntent::RestoreOrCenter),
     );
     assert_eq!(state.wm.core.state.model.client(win).unwrap().geo, floating);
     assert_eq!(
@@ -328,7 +328,7 @@ fn native_restore_schedules_before_dispatch_and_converges_to_constrained_size() 
 
     pump(&mut event_loop, &mut state, &conn, &mut queue, &mut client);
 
-    // Leaving tiled placement also sends the unmaximize state, carrying
+    // Leaving the tiled policy also sends the unmaximize state, carrying
     // the previous size until the animation dispatches the floating resize.
     assert_eq!(client.sizes.len(), tiled_configured_count + 1);
     assert_eq!(client.sizes.last(), Some(&(1920, 1080)));
@@ -850,7 +850,7 @@ fn protocol_presentation_requests_commit_before_later_native_configures() {
                 .mode()
                 .is_true_fullscreen()
         );
-        // Floating placement remains saved in the model; native geometry
+        // Floating geometry remains saved in the model; native geometry
         // immediately projects the fullscreen transition.
         assert_eq!(client.sizes.last(), Some(&(desktop.w, desktop.h)));
         // Reproduce the ordering constraint that originally motivated the WM

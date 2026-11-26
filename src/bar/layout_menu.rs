@@ -278,7 +278,7 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     let monitor = core.state.model.expect_selected_monitor();
     let context = MenuContext::from_monitor(monitor);
     let active = monitor.current_layout_command();
-    let placement = core
+    let position = core
         .bar
         .monitor_hit_cache(monitor.id())
         .map(|hit| {
@@ -294,7 +294,7 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>) -> Result<(), String> {
     apply_shortcuts(&mut entries, &core.state.config.bindings.keys);
     start_menu(
         &mut core.bar.layout_menu,
-        menu_command(active, &placement),
+        menu_command(active, &position),
         context,
         entries,
     )

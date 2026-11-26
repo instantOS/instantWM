@@ -8,7 +8,7 @@ mod iter;
 mod mode;
 mod scratchpad;
 
-pub use geometry::{FloatingGeometryState, SavedFloatingPlacement};
+pub use geometry::{FloatingGeometryState, SavedFloatingGeometry};
 pub use iter::{OrderedClients, TiledClientInfo};
 pub use mode::{ClientMode, ClientPlacement};
 pub use scratchpad::ScratchpadData;

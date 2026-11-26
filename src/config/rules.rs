@@ -1,4 +1,4 @@
-//! Window placement rules.
+//! Window rules.
 //!
 //! Rules are matched against newly-mapped windows in order.  The first
 //! matching rule wins.  A `None` field is a wildcard that matches anything.
@@ -18,7 +18,7 @@ pub fn merge_rules(defaults: Vec<Rule>, toml_rules: Vec<Rule>) -> Vec<Rule> {
     rules
 }
 
-/// Build the list of window placement rules.
+/// Build the list of window rules.
 pub fn get_rules() -> Vec<Rule> {
     vec![
         // --- Floating dialogs / tools ---
@@ -47,7 +47,7 @@ pub fn get_rules() -> Vec<Rule> {
 // Helpers — avoids repeating the full Rule literal for the common cases
 // ---------------------------------------------------------------------------
 
-/// A rule that matches `class` and applies `float` as its placement behavior.
+/// A rule that matches `class` and applies `float` as its tiled/floating behavior.
 fn rule(class: &'static str, float: RuleFloat) -> Rule {
     Rule {
         class: Some(Cow::Borrowed(class)),

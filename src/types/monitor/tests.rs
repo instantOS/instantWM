@@ -487,7 +487,7 @@ fn minimized_tiled_titles_keep_their_position_in_maximized_presentation() {
     let windows: Vec<_> = order_members.iter().map(|client| client.win).collect();
     monitor.per_tag_state().layout_tree.reconcile_for_layout(
         &windows,
-        crate::config::config_toml::NewWindowPlacement::default(),
+        crate::config::config_toml::NewWindowInsertion::default(),
         Rect::new(0, 0, 800, 600),
         &HashMap::new(),
     );

@@ -1,13 +1,13 @@
 use super::*;
 
-fn new_session(
+fn new_planner(
     tree: &LayoutTree,
     source: WindowId,
     area: Rect,
     fraction: f64,
     minimums: &HashMap<WindowId, Size>,
-) -> TreePlacementSession {
-    TreePlacementSession::new(tree.clone(), source, area, fraction, minimums.clone())
+) -> TreeInsertionPlanner {
+    TreeInsertionPlanner::new(tree.clone(), source, area, fraction, minimums.clone())
 }
 
 #[test]
@@ -21,15 +21,15 @@ fn hit_testing_uses_the_slots_that_size_hints_actually_display() {
     let point = target_slot.center();
     assert!(!tree.bounds(area)[&windows[1]].contains_point(point));
 
-    let mut session = new_session(&tree, windows[0], area, 0.34, &minimums);
+    let mut planner = new_planner(&tree, windows[0], area, 0.34, &minimums);
     // The stale unconstrained slot point falls on the source's own edge, which
-    // is now a same-window placement target rather than an invalid drop.
+    // is now a same-window insertion target rather than an invalid drop.
     assert_eq!(
-        session.resolve(Point::new(70, point.y)).map(|(key, _)| key),
+        planner.resolve(Point::new(70, point.y)).map(|(key, _)| key),
         Some((windows[0], Some(Side::Right)))
     );
     assert_eq!(
-        session
+        planner
             .hitboxes(area, None)
             .spans
             .iter()
@@ -38,9 +38,9 @@ fn hit_testing_uses_the_slots_that_size_hints_actually_display() {
             .target,
         windows[1]
     );
-    let pointer = session.into_plan(point).unwrap();
+    let pointer = planner.into_plan(point).unwrap();
     let keyboard = tree
-        .placement_targets(windows[0], area, 0.34, &minimums)
+        .insertion_targets(windows[0], area, 0.34, &minimums)
         .into_iter()
         .find(|target| target.target == windows[1] && target.side.is_none())
         .unwrap();
@@ -57,8 +57,8 @@ fn source_edges_are_targets_but_its_centre_stays_neutral() {
     let source_rect = tree.bounds(area)[&windows[0]];
     assert_eq!(source_rect, Rect::new(0, 0, 400, 600));
 
-    let mut session = new_session(&tree, windows[0], area, 0.34, &HashMap::new());
-    let hitboxes = session.hitboxes(area, None);
+    let mut planner = new_planner(&tree, windows[0], area, 0.34, &HashMap::new());
+    let hitboxes = planner.hitboxes(area, None);
     assert!(
         hitboxes
             .spans
@@ -74,14 +74,14 @@ fn source_edges_are_targets_but_its_centre_stays_neutral() {
         "the source centre must remain an explicit no-op"
     );
     assert!(
-        session.preview_point(source_rect.center()).is_none(),
-        "a centre drop on the source must not preview a second placement"
+        planner.preview_point(source_rect.center()).is_none(),
+        "a centre drop on the source must not preview a second insertion"
     );
 
     let top = Point::new(source_rect.center().x, source_rect.y + 1);
-    let preview = session.preview_point(top).unwrap();
+    let preview = planner.preview_point(top).unwrap();
     assert_eq!(preview, Rect::new(0, 0, 800, 300));
-    let applied = new_session(&tree, windows[0], area, 0.34, &HashMap::new())
+    let applied = new_planner(&tree, windows[0], area, 0.34, &HashMap::new())
         .into_plan(top)
         .unwrap()
         .into_tree();
@@ -101,8 +101,8 @@ fn dense_stacks_offer_usable_scope_bands_in_order_of_extent() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::MasterStack, &windows, 1);
     let row = tree.bounds(area)[&target];
-    let mut session = new_session(&tree, source, area, 0.34, &HashMap::new());
-    let hitboxes = session.hitboxes(area, None);
+    let mut planner = new_planner(&tree, source, area, 0.34, &HashMap::new());
+    let hitboxes = planner.hitboxes(area, None);
     let spans = hitboxes
         .spans
         .iter()
@@ -112,19 +112,19 @@ fn dense_stacks_offer_usable_scope_bands_in_order_of_extent() {
         .collect::<Vec<_>>();
     assert!(spans.len() >= 2);
     assert!(
-        session.plans[&(target, Some(Side::Left))].len() > spans.len(),
+        planner.plans[&(target, Some(Side::Left))].len() > spans.len(),
         "the stack must exercise downsampling of broader scopes"
     );
     let mut previous_height = area.h;
     for span in &spans {
         assert!(span.rect.w >= MIN_SCOPE_BAND as i32);
-        let height = session.preview_point(span.rect.center()).unwrap().h;
+        let height = planner.preview_point(span.rect.center()).unwrap().h;
         assert!(height <= previous_height);
         previous_height = height;
     }
     let local = spans.last().unwrap().rect;
     assert!(f64::from(local.w) >= (edge_depth(row.w, 0.34) / 2.0).floor());
-    assert_eq!(session.preview_point(local.center()).unwrap().h, row.h);
+    assert_eq!(planner.preview_point(local.center()).unwrap().h, row.h);
 }
 
 #[test]
@@ -214,11 +214,11 @@ fn seeded_layouts_match_every_drawn_pixel_to_the_drop_resolver() {
             })
             .collect::<HashMap<_, _>>();
         let fraction = [0.05, 0.34, 0.49][seed as usize % 3];
-        let mut session = new_session(&tree, source, area, fraction, &minimums);
+        let mut planner = new_planner(&tree, source, area, fraction, &minimums);
         let output = Rect::new(area.x - 3, area.y - 5, area.w + 9, area.h + 11);
         let bar = Rect::new(output.x, output.y + 1, output.w, 3);
-        let hitboxes = session.hitboxes(output, Some(bar));
-        assert!(Arc::ptr_eq(&hitboxes, &session.hitboxes(output, Some(bar))));
+        let hitboxes = planner.hitboxes(output, Some(bar));
+        assert!(Arc::ptr_eq(&hitboxes, &planner.hitboxes(output, Some(bar))));
         let offset = |x, y| ((y - output.y) * output.w + x - output.x) as usize;
         let mut drawn = vec![None; output.area() as usize];
         for span in &hitboxes.spans {
@@ -233,7 +233,7 @@ fn seeded_layouts_match_every_drawn_pixel_to_the_drop_resolver() {
             }
         }
 
-        let bounds = session.bounds().iter().copied().collect::<HashMap<_, _>>();
+        let bounds = planner.bounds().iter().copied().collect::<HashMap<_, _>>();
         let mut sampled = HashSet::new();
         for y in output.y..output.bottom() {
             for x in output.x..output.right() {
@@ -242,15 +242,15 @@ fn seeded_layouts_match_every_drawn_pixel_to_the_drop_resolver() {
                 let resolved = if bar.contains_point(point) {
                     None
                 } else {
-                    session.resolve(session.layout_point(point))
+                    planner.resolve(planner.layout_point(point))
                 };
                 assert_eq!(draw.is_some(), resolved.is_some(), "seed {seed}, {point:?}");
                 let (Some(span), Some((key, index))) = (draw, resolved) else {
                     continue;
                 };
-                let side = span.side.or_else(|| session.center_side());
+                let side = span.side.or_else(|| planner.center_side());
                 assert_eq!(key, (span.target, side), "seed {seed}, {point:?}");
-                let plans = &session.plans[&key];
+                let plans = &planner.plans[&key];
                 let displayed_index = span.side.map_or(plans.len() - 1, |side| {
                     let edges = HitboxEdges::new(bounds[&span.target], fraction);
                     EdgeBands::new(edges.depth(side), plans.len()).plan_index(span.band)
@@ -258,8 +258,8 @@ fn seeded_layouts_match_every_drawn_pixel_to_the_drop_resolver() {
                 assert_eq!(displayed_index, index, "seed {seed}, {point:?}");
 
                 if sampled.insert((key, index)) {
-                    let preview = session.preview_point(point).unwrap();
-                    let plan = new_session(&tree, source, area, fraction, &minimums)
+                    let preview = planner.preview_point(point).unwrap();
+                    let plan = new_planner(&tree, source, area, fraction, &minimums)
                         .into_plan(point)
                         .expect("a fresh mouse-up must resolve the same region");
                     assert_eq!(plan.source_slot(), preview);
@@ -276,14 +276,14 @@ fn seeded_layouts_match_every_drawn_pixel_to_the_drop_resolver() {
         }
 
         if tree.leaves().contains(&source) {
-            let targets = tree.placement_targets(source, area, fraction, &minimums);
+            let targets = tree.insertion_targets(source, area, fraction, &minimums);
             for target in targets {
                 assert!(
                     bounds[&target.target].contains_point(target.position),
                     "seed {seed}"
                 );
                 let plan = tree
-                    .plan_placement(source, target, area, &minimums)
+                    .plan_insertion(source, target, area, &minimums)
                     .unwrap();
                 assert!(area.contains_rect(&plan.source_slot()));
             }

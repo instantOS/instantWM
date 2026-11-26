@@ -14,7 +14,7 @@
 //! | `close`         | Guarded close funnel for client termination                 |
 //! | `lifecycle`     | shared client creation/removal and launch-context policy    |
 //! | `layout_ops`    | zoom (promote to master)                                    |
-//! | `mode`          | Placement / presentation projections for a client           |
+//! | `mode`          | Tiled/floating policy and presentation projections for a client |
 //! | `rules`         | Initial window rules and property application               |
 
 // ---------------------------------------------------------------------------

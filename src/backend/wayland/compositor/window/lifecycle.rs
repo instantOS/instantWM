@@ -90,7 +90,7 @@ impl WaylandState {
     /// The element is intentionally left unmapped here. Mapping into Smithay
     /// space is a WM visibility decision. The following arrange transaction
     /// maps it at the current logical geometry, assigns its layout target, and
-    /// replaces that provisional placement with the explicit spawn transition
+    /// replaces that provisional geometry with the explicit spawn transition
     /// before rendering. Registering it at a hard-coded (0,0) leaks backend
     /// placeholder geometry into that transition.
     fn register_toplevel(&mut self, surface: ToplevelSurface, is_overlay: bool) -> WindowId {

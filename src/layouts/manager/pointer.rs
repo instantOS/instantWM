@@ -1,21 +1,21 @@
 use crate::contexts::WmCtx;
 use crate::layouts::ArrangeAnimation;
 use crate::layouts::PresentationMode;
-use crate::layouts::tree::TreePlacementSession;
+use crate::layouts::tree::TreeInsertionPlanner;
 use crate::model::ClientView;
 use crate::types::{Client, MonitorId, Rect, TagMask, WindowId};
 
 use super::arrange::{TilingContext, arrange};
 use super::commands::finish_layout_change_for_monitor;
 
-/// Pointer placement state for one drag over one monitor/tag view. Every
+/// Pointer insertion state for one drag over one monitor/tag view. Every
 /// authoritative arrange drops it, so its tiling snapshot cannot go stale.
 #[derive(Debug, Clone)]
-pub(crate) struct PointerPlacementPreviewCache {
+pub(crate) struct PointerInsertionPreviewCache {
     monitor_id: MonitorId,
     tags: TagMask,
     tiling: TilingContext,
-    session: TreePlacementSession,
+    session: TreeInsertionPlanner,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,7 @@ pub(crate) fn pointer_tree_gap_resize_target(
         state.config.window.resize_hints,
     );
     if tiling.members.len() <= 1
-        || tiling.placement.inner_gap() <= 0
+        || tiling.geometry.inner_gap() <= 0
         || !tiling.work_rect().contains_point(point)
     {
         return None;
@@ -107,7 +107,7 @@ pub(crate) fn pointer_tree_gap_resize_target(
 
     // Removing only the inner gap (and no client border) distinguishes a real
     // gap from content, borders, and unused pixels at the work-area edge.
-    if tiling.placement.client_rect(slot, 0).contains_point(point) {
+    if tiling.geometry.client_rect(slot, 0).contains_point(point) {
         return None;
     }
 
@@ -123,7 +123,7 @@ pub(crate) fn pointer_tree_gap_resize_target(
 
 /// Whether pointer movement/resizing should edit the persistent layout tree.
 ///
-/// Every ordinary tiled move remains a placement gesture, including a lone
+/// Every ordinary tiled move remains a tree-insertion gesture, including a lone
 /// source. Maximized and floating presentations retain free movement, and a
 /// bar-title drag on a tiled view with a single visible tile is lifted to
 /// floating because there is no second tiling slot to place it into.
@@ -283,22 +283,22 @@ pub(crate) fn selected_tiling(state: &crate::core_state::CoreState) -> TilingCon
     )
 }
 
-/// The pointer placement session for dragging `client` (owned by `owner`)
+/// The pointer insertion session for dragging `client` (owned by `owner`)
 /// over the pointer's monitor, reusing the cached one while it still describes
 /// the same view.
 ///
 /// `model`, `config`, and `interaction` are passed as the split borrows a
 /// caller already holds on [`crate::core_state::CoreState`], so a resolved
 /// client view can stay alive across the call instead of being looked up
-/// again for the placement's `incoming` test.
-fn pointer_placement<'a>(
+/// again for the insertion's `incoming` test.
+fn pointer_insertion<'a>(
     model: &crate::model::WmModel,
     config: &crate::core_state::EffectiveConfig,
     interaction: &'a mut crate::core_state::InteractionState,
     client: &Client,
     owner: MonitorId,
     point: crate::types::Point,
-) -> Option<&'a mut PointerPlacementPreviewCache> {
+) -> Option<&'a mut PointerInsertionPreviewCache> {
     let monitor = model
         .monitors
         .monitor_intersecting_rect(Rect::new(point.x, point.y, 1, 1))?;
@@ -307,7 +307,7 @@ fn pointer_placement<'a>(
     }
     let (monitor_id, tags) = (monitor.id(), monitor.selected_tags());
     let cached = interaction
-        .pointer_placement_cache
+        .pointer_insertion_cache
         .as_ref()
         .is_some_and(|cache| {
             cache.session.source() == client.win
@@ -323,7 +323,7 @@ fn pointer_placement<'a>(
             config.window.resize_hints,
             incoming,
         );
-        let mut session = TreePlacementSession::new(
+        let mut session = TreeInsertionPlanner::new(
             tree,
             client.win,
             tiling.work_rect(),
@@ -335,14 +335,14 @@ fn pointer_placement<'a>(
                 TilingContext::for_monitor(monitor, &config.layout, config.window.resize_hints);
             session = session.with_hover_layout(current.work_rect(), &current.minimums);
         }
-        interaction.pointer_placement_cache = Some(PointerPlacementPreviewCache {
+        interaction.pointer_insertion_cache = Some(PointerInsertionPreviewCache {
             monitor_id,
             tags,
             tiling,
             session,
         });
     }
-    interaction.pointer_placement_cache.as_mut()
+    interaction.pointer_insertion_cache.as_mut()
 }
 
 pub fn place_tree_at_point(
@@ -350,7 +350,7 @@ pub fn place_tree_at_point(
     window: WindowId,
     point: crate::types::Point,
 ) -> bool {
-    // One resolution supplies the source monitor and the client the placement
+    // One resolution supplies the source monitor and the client the insertion
     // session is built for; the cache is then taken out of the model-free
     // interaction state below.
     let source = {
@@ -359,7 +359,7 @@ pub fn place_tree_at_point(
             return false;
         };
         let source = view.monitor.id();
-        if pointer_placement(
+        if pointer_insertion(
             &state.model,
             &state.config,
             &mut state.interaction,
@@ -377,9 +377,9 @@ pub fn place_tree_at_point(
         .core_mut()
         .state
         .interaction
-        .pointer_placement_cache
+        .pointer_insertion_cache
         .take()
-        .expect("pointer_placement just resolved a cache");
+        .expect("pointer_insertion just resolved a cache");
     let Some(plan) = cache.session.into_plan(point) else {
         return false;
     };
@@ -416,13 +416,13 @@ pub fn preview_tree_at_point(
     window: WindowId,
     point: crate::types::Point,
 ) -> Option<Rect> {
-    // Resolved once: the mode gate, the placement session's client, and the
+    // Resolved once: the mode gate, the insertion session's client, and the
     // outer-rect projection below all read this same view.
     let view = state.model.client_view(window)?;
     if !view.client.mode().is_normal_tiling() {
         return None;
     }
-    pointer_placement(
+    pointer_insertion(
         &state.model,
         &state.config,
         &mut state.interaction,
@@ -430,7 +430,7 @@ pub fn preview_tree_at_point(
         view.monitor.id(),
         point,
     )?;
-    let cache = state.interaction.pointer_placement_cache.as_mut()?;
+    let cache = state.interaction.pointer_insertion_cache.as_mut()?;
     let slot = cache.session.preview_point(point)?;
     Some(
         cache
@@ -441,9 +441,9 @@ pub fn preview_tree_at_point(
 
 /// Reuse the live drag's session so the overlay reads exactly the same zones
 /// as motion and release. Renderers call this only while the overlay is enabled.
-pub(crate) fn pointer_placement_hitboxes(
+pub(crate) fn pointer_insertion_hitboxes(
     state: &mut crate::core_state::CoreState,
-) -> Option<std::sync::Arc<crate::layouts::tree::PlacementHitboxes>> {
+) -> Option<std::sync::Arc<crate::layouts::tree::InsertionHitboxes>> {
     use crate::core_state::ActiveWindowOperation;
     use crate::mouse::drag::move_drop::{MoveDropTarget, resolve_move_drop};
 
@@ -465,7 +465,7 @@ pub(crate) fn pointer_placement_hitboxes(
     let bar = monitor
         .bar_visible()
         .then(|| Rect::new(area.x, monitor.bar_y(), area.w, monitor.bar_height.max(1)));
-    let cache = pointer_placement(
+    let cache = pointer_insertion(
         &state.model,
         &state.config,
         &mut state.interaction,
@@ -483,7 +483,7 @@ mod outline_cache_tests {
     use crate::types::InteractionOutlineStyle;
 
     #[test]
-    fn clearing_an_already_hidden_outline_discards_stale_placement() {
+    fn clearing_an_already_hidden_outline_discards_stale_insertion() {
         let mut core = crate::core_state::CoreState::default();
         let monitor_id = core.model.monitors.push(
             crate::test_support::MonitorBuilder::new()
@@ -493,15 +493,15 @@ mod outline_cache_tests {
                 .build(),
         );
         let tiling = crate::layouts::manager::selected_tiling(&core);
-        let session = TreePlacementSession::new(
+        let session = TreeInsertionPlanner::new(
             LayoutTree::default(),
             WindowId(1),
             tiling.work_rect(),
             0.34,
             tiling.minimums.clone(),
         );
-        core.interaction.pointer_placement_cache =
-            Some(crate::layouts::manager::PointerPlacementPreviewCache {
+        core.interaction.pointer_insertion_cache =
+            Some(crate::layouts::manager::PointerInsertionPreviewCache {
                 monitor_id,
                 tags: TagMask::single(1).unwrap(),
                 tiling,
@@ -517,6 +517,6 @@ mod outline_cache_tests {
                 )
                 .is_none()
         );
-        assert!(core.interaction.pointer_placement_cache.is_none());
+        assert!(core.interaction.pointer_insertion_cache.is_none());
     }
 }

@@ -103,7 +103,7 @@ pub(crate) fn apply_xwayland_policy(
     let mut presentation_rect = fullscreen_transition.presentation_rect();
     let mut raise = fullscreen_transition.entered();
     // An absent maximize atom is not an unmaximize request during initial
-    // policy discovery: instantWM's default tiled placement deliberately
+    // policy discovery: instantWM's default tiled policy deliberately
     // projects as maximized. Explicit runtime requests arrive through the
     // backend maximize/unmaximize handlers. A pre-existing positive atom still
     // carries useful initial intent.

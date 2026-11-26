@@ -74,7 +74,7 @@ fn set_window_floating(ctx: &mut WmCtx<'_>, win: WindowId, floating: bool) -> Re
     };
     let request = if floating {
         crate::floating::WindowModeRequest::Floating(
-            crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+            crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
         )
     } else {
         crate::floating::WindowModeRequest::Tiling

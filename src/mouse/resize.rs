@@ -4,7 +4,7 @@
 //! normalized input to it. Free and aspect-preserving resize therefore use
 //! identical geometry and lifecycle behavior on X11 and Wayland.
 
-use crate::client::geometry::FloatingPlacementIntent;
+use crate::client::geometry::FloatingGeometryIntent;
 use crate::contexts::WmCtx;
 use crate::types::*;
 
@@ -125,7 +125,7 @@ pub fn resize_from_point(
         let Some((new_geo, _)) = promote_restored_client(
             ctx,
             win,
-            FloatingPlacementIntent::PreservePointerAnchor(point),
+            FloatingGeometryIntent::PreservePointerAnchor(point),
         ) else {
             return;
         };

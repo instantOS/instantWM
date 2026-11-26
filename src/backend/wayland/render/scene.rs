@@ -22,7 +22,7 @@ use crate::backend::wayland::compositor::window::WindowType;
 use crate::backend::wayland::stacking::{OutputScenePolicy, SceneBand};
 use crate::wm::WaylandWm as Wm;
 
-use super::placement_overlay::PlacementOverlay;
+use super::insertion_overlay::InsertionOverlay;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bar render elements
@@ -80,7 +80,7 @@ pub struct SharedSceneElements {
     pub bar_buffers: Rc<Vec<(MemoryRenderBuffer, crate::types::Point)>>,
     pub borders: Vec<SolidColorRenderElement>,
     pub layout_preview_color: crate::types::color::Rgba,
-    placement_overlay: Option<Rc<PlacementOverlay>>,
+    insertion_overlay: Option<Rc<InsertionOverlay>>,
 }
 
 /// Renderer-owned cache shared across consecutive frames.
@@ -89,7 +89,7 @@ pub struct SceneCache {
     entry: Option<(u64, u64, Rc<SharedSceneElements>)>,
     // The debug texture must stay reusable even while the bar is hidden or
     // its asynchronous renderer has an unfinished frame.
-    placement_overlay: Option<Rc<PlacementOverlay>>,
+    insertion_overlay: Option<Rc<InsertionOverlay>>,
 }
 
 /// Capture shared scene pieces that do not depend on the target output.
@@ -110,13 +110,13 @@ pub fn build_shared_scene_elements(
     let borders_hash =
         border_scene.cache_key(&wm.core.state.config.colors.border, layout_preview_color);
     let bar_dirty = wm.core.bar.needs_redraw();
-    cache.placement_overlay =
-        PlacementOverlay::capture(&mut wm.core.state, cache.placement_overlay.as_ref());
+    cache.insertion_overlay =
+        InsertionOverlay::capture(&mut wm.core.state, cache.insertion_overlay.as_ref());
     let previous_overlay = cache
         .entry
         .as_ref()
-        .and_then(|(_, _, scene)| scene.placement_overlay.as_ref());
-    let same_overlay = match (previous_overlay, &cache.placement_overlay) {
+        .and_then(|(_, _, scene)| scene.insertion_overlay.as_ref());
+    let same_overlay = match (previous_overlay, &cache.insertion_overlay) {
         (None, None) => true,
         (Some(previous), Some(current)) => Rc::ptr_eq(previous, current),
         _ => false,
@@ -144,7 +144,7 @@ pub fn build_shared_scene_elements(
         bar_buffers,
         borders,
         layout_preview_color,
-        placement_overlay: cache.placement_overlay.clone(),
+        insertion_overlay: cache.insertion_overlay.clone(),
     });
 
     if !wm.core.bar.needs_redraw() {
@@ -231,8 +231,8 @@ pub fn build_common_scene_elements_from_shared(
     );
 
     let mut bar = Vec::new();
-    let pointer_overlay = match shared.placement_overlay.as_deref() {
-        Some(PlacementOverlay::Pointer { hitboxes, buffer }) => {
+    let pointer_overlay = match shared.insertion_overlay.as_deref() {
+        Some(InsertionOverlay::Pointer { hitboxes, buffer }) => {
             Some((buffer, hitboxes.area.position()))
         }
         _ => None,
@@ -278,8 +278,8 @@ pub fn build_common_scene_elements_from_shared(
         shared.layout_preview_color,
     );
     if let Some(output_rect) = output_rect {
-        if let Some(PlacementOverlay::Keyboard { markers, .. }) =
-            shared.placement_overlay.as_deref()
+        if let Some(InsertionOverlay::Keyboard { markers, .. }) =
+            shared.insertion_overlay.as_deref()
         {
             let mut projected = project_solids_to_output(markers, output_rect, output_scale);
             projected.append(&mut borders);

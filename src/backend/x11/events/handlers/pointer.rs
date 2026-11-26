@@ -144,7 +144,7 @@ fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point, hovered: Option<
         .state
         .behavior
         .current_mode
-        .tree_placement()
+        .placement_session()
         .is_none()
         && ctx
             .core

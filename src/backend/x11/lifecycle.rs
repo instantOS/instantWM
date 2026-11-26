@@ -76,7 +76,7 @@ pub fn manage(
         window,
     );
     // The shared assignment policy decides the destination monitor and stamps
-    // the client-local tag/placement state. The monitor id is returned rather
+    // the client-local tag/policy state. The monitor id is returned rather
     // than stored on the client so `add_client` below can adopt the finished
     // client in one step.
     let Some(monitor_id) = crate::client::lifecycle::assign_initial_monitor_and_tags(
@@ -166,7 +166,7 @@ pub fn manage(
     set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, window);
     update_motif_hints(ctx, window);
     let position_is_explicit = rules
-        .placement
+        .position
         .position_is_explicit(size_hints.is_some_and(|hints| hints.position.is_some()));
     grab_buttons(&ctx.core.state, &ctx.x11, ctx.x11_runtime, window, false);
 
@@ -392,7 +392,7 @@ fn read_client_info(
     };
 
     // Tags removed from the configuration since the last session are dropped.
-    // If none survive, keep the placement from `_NET_WM_DESKTOP`.
+    // If none survive, keep the tag assignment from `_NET_WM_DESKTOP`.
     let Some(tags) = restored_tag_mask(data.next().unwrap_or(0), model.tags.count()) else {
         return;
     };

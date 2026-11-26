@@ -108,8 +108,8 @@ fn inner_gap_offers_tree_resize_but_outer_gap_stays_desktop() {
             .unwrap()
             .layout_tree,
     );
-    let first_geo = tiling.placement.client_rect(slots[&first], 0);
-    let second_geo = tiling.placement.client_rect(slots[&second], 0);
+    let first_geo = tiling.geometry.client_rect(slots[&first], 0);
+    let second_geo = tiling.geometry.client_rect(slots[&second], 0);
     let gap = if first_geo.right() <= second_geo.x {
         Point::new((first_geo.right() + second_geo.x) / 2, first_geo.center().y)
     } else if second_geo.right() <= first_geo.x {
@@ -237,7 +237,7 @@ fn disabled_animation_is_still_consumed_after_first_layout() {
 }
 
 #[test]
-fn arrange_invalidates_pointer_placement_candidates() {
+fn arrange_invalidates_pointer_insertion_candidates() {
     let mut wm = wayland_wm();
     let source = WindowId(1);
     let windows = [source, WindowId(2)];
@@ -247,14 +247,14 @@ fn arrange_invalidates_pointer_placement_candidates() {
     assert!(
         super::preview_tree_at_point(&mut wm.core.state, source, Point::new(201, 150),).is_some()
     );
-    assert!(wm.core.state.interaction.pointer_placement_cache.is_some());
+    assert!(wm.core.state.interaction.pointer_insertion_cache.is_some());
 
     super::arrange(
         &mut wm.test_ctx(),
         Some(monitor_id),
         ArrangeAnimation::Configured,
     );
-    assert!(wm.core.state.interaction.pointer_placement_cache.is_none());
+    assert!(wm.core.state.interaction.pointer_insertion_cache.is_none());
 }
 
 #[test]
@@ -645,12 +645,12 @@ fn changing_new_window_policy_does_not_rewrite_an_existing_tree() {
     monitor.available_rect = Rect::new(0, 0, 1200, 800);
     monitor.monitor_rect = monitor.available_rect;
     let auto = LayoutConfig {
-        new_window_placement: crate::config::config_toml::NewWindowPlacement::Auto,
+        new_window_insertion: crate::config::config_toml::NewWindowInsertion::Auto,
         ..LayoutConfig::default()
     };
     let before = monitor.compute_arrange(&auto, true, false);
     let force = LayoutConfig {
-        new_window_placement: crate::config::config_toml::NewWindowPlacement::Force,
+        new_window_insertion: crate::config::config_toml::NewWindowInsertion::Force,
         ..auto
     };
     let after = monitor.compute_arrange(&force, true, false);
@@ -1590,7 +1590,7 @@ fn tiled_drag_over_its_own_edge_reflows_instead_of_doing_nothing() {
         point
     ));
     let preview = super::preview_tree_at_point(&mut wm.core.state, win, point)
-        .expect("the source's own top edge must be a placement target");
+        .expect("the source's own top edge must be an insertion target");
     assert_eq!(preview, Rect::new(0, 0, 800, 300));
     assert_eq!(
         wm.core.state.model.client(win).unwrap().geo,
@@ -1726,7 +1726,7 @@ fn cross_monitor_preview_cancellation_preserves_both_trees() {
             .leaves(),
         vec![WindowId(923)]
     );
-    assert!(wm.core.state.interaction.pointer_placement_cache.is_none());
+    assert!(wm.core.state.interaction.pointer_insertion_cache.is_none());
 }
 
 #[test]

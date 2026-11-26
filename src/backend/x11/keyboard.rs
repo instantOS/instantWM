@@ -229,7 +229,7 @@ pub fn ungrab_modal_keyboard(x11: &X11BackendRef) {
     let _ = x11.conn.flush();
 }
 
-/// Show or hide the hollow manual-tree placement preview.
+/// Show or hide the hollow manual-tree insertion preview.
 pub fn update_layout_preview(
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
@@ -320,13 +320,12 @@ fn render_layout_preview(
                 x11_runtime.border_scheme.close.background.pixel()
             }
         };
-        for (window, side) in
-            windows
-                .into_iter()
-                .zip(crate::layouts::placement::outline_rectangles(
-                    rect,
-                    crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
-                ))
+        for (window, side) in windows
+            .into_iter()
+            .zip(crate::layouts::geometry::outline_rectangles(
+                rect,
+                crate::layouts::geometry::LAYOUT_PREVIEW_BORDER_WIDTH,
+            ))
         {
             let _ = conn.change_window_attributes(
                 window,

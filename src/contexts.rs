@@ -266,7 +266,7 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Refresh the backend-native visualization of a pending tree placement.
+    /// Refresh the backend-native visualization of a pending placement session.
     pub fn update_layout_preview(&mut self, rect: Option<Rect>) {
         self.update_layout_preview_with_animation(rect, false);
     }
@@ -285,7 +285,7 @@ impl<'a> WmCtx<'a> {
                 .active_interaction()
                 .is_none()
         {
-            self.core_mut().state.interaction.pointer_placement_cache = None;
+            self.core_mut().state.interaction.pointer_insertion_cache = None;
         }
         self.update_interaction_outline(
             rect,
@@ -528,7 +528,7 @@ impl<'a> WmCtx<'a> {
     }
 
     /// Apply the backend-native border presentation for a client entering
-    /// floating placement.
+    /// floating geometry.
     ///
     /// X11 pushes the modeled border width to the server and switches to the
     /// floating border color scheme. Wayland renders borders from the model
@@ -843,7 +843,7 @@ impl<'a> WmCtx<'a> {
         crate::overview::handle_mode_transition(self, &previous_mode, &next_mode, overview_exit);
         if matches!(
             previous_mode,
-            crate::core_state::ActiveWmMode::TreePlacement(_)
+            crate::core_state::ActiveWmMode::PlacementSession(_)
         ) {
             self.update_layout_preview(None);
             self.end_modal_keyboard();
@@ -931,18 +931,18 @@ impl crate::backend::WindowOps for WmCtx<'_> {
 mod mode_transition_tests {
     use crate::test_support::TestWm as Wm;
 
-    use crate::core_state::{ActiveWmMode, KeyboardTreePlacement};
-    use crate::layouts::tree::PlacementTarget;
+    use crate::core_state::{ActiveWmMode, TreePlacementSession};
+    use crate::layouts::tree::InsertionTarget;
     use crate::types::{MonitorId, Point, Rect, TagMask, WindowId};
 
     #[test]
-    fn leaving_placement_clears_its_preview_through_the_mode_transition() {
+    fn leaving_placement_session_clears_its_preview_through_the_mode_transition() {
         let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
-        let placement = KeyboardTreePlacement::new(
+        let session = TreePlacementSession::new(
             WindowId(1),
             MonitorId::default(),
             TagMask::EMPTY,
-            vec![PlacementTarget {
+            vec![InsertionTarget {
                 target: WindowId(2),
                 side: None,
                 candidate_index: 0,
@@ -950,8 +950,8 @@ mod mode_transition_tests {
             }],
             0,
         )
-        .expect("valid placement");
-        wm.core.state.behavior.current_mode = ActiveWmMode::TreePlacement(placement);
+        .expect("valid placement session");
+        wm.core.state.behavior.current_mode = ActiveWmMode::PlacementSession(session);
         wm.core.state.interaction.layout_preview = Some(Rect::new(0, 0, 100, 100));
 
         wm.test_ctx()

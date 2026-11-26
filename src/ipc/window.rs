@@ -166,7 +166,7 @@ fn resize_window(
             ctx,
             win,
             crate::floating::WindowModeRequest::Floating(
-                crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
             ),
         );
         arrange(ctx, Some(current_monitor_id), ArrangeAnimation::Configured);

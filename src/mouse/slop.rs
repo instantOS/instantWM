@@ -143,7 +143,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         ctx,
         c_win,
         crate::floating::WindowModeRequest::Floating(
-            crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+            crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
         ),
     );
 

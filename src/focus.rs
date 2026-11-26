@@ -338,7 +338,7 @@ pub fn apply_hover_focus(
     if crate::overview::hover_window(ctx.core_mut(), hovered_win, pointer_pos) {
         return;
     }
-    // Keyboard tree placement owns a virtual selection cursor. Physical
+    // The keyboard placement session owns a virtual selection cursor. Physical
     // pointer motion must not steal focus from the source window while that
     // session is active.
     if ctx
@@ -346,7 +346,7 @@ pub fn apply_hover_focus(
         .state
         .behavior
         .current_mode
-        .tree_placement()
+        .placement_session()
         .is_some()
     {
         return;
@@ -358,7 +358,7 @@ pub fn apply_hover_focus(
         return;
     };
     // Resolve the hovered client once; monitor selection below does not move
-    // clients between monitors or change their placement.
+    // clients between monitors or change their placement policy.
     let hovered = ctx
         .core()
         .state

@@ -428,7 +428,7 @@ impl XwmHandler for WaylandState {
         _above: Option<smithay::xwayland::xwm::X11Window>,
     ) {
         // A managed window's ConfigureNotify can answer an older WM request.
-        // Its placement and logical size remain owned by the WM model.
+        // Its position and logical size remain owned by the WM model.
         if self.native.window_id_for_x11_surface(&window).is_some() {
             return;
         }

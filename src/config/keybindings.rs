@@ -220,7 +220,7 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
     ]
 }
 
-/// Default bindings for the compositor-owned tree placement mode. Super is
+/// Default bindings for the compositor-owned tree placement session. Super is
 /// intentionally absent: the dispatcher ignores a still-held Super modifier
 /// after the Super+M entry chord, while every binding remains configurable as
 /// an ordinary named action under `[modes.placement]`.
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn placement_defaults_are_regular_named_actions() {
+    fn placement_session_defaults_are_regular_named_actions() {
         assert_eq!(
             named_action(ModMask::NONE, XK_H),
             Some(NamedAction::PlacementLeft)

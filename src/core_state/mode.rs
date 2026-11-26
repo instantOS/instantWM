@@ -4,14 +4,14 @@ use super::*;
 pub enum ActiveWmMode {
     Default,
     Overview,
-    /// Compositor-owned keyboard placement. Keeping the interaction payload
-    /// in the mode makes it impossible for modal input and the advertised WM
-    /// mode to disagree.
-    TreePlacement(KeyboardTreePlacement),
+    /// Compositor-owned keyboard placement session. Keeping the interaction
+    /// payload in the mode makes it impossible for modal input and the
+    /// advertised WM mode to disagree.
+    PlacementSession(TreePlacementSession),
     Named(String),
 }
 
-pub const TREE_PLACEMENT_MODE_NAME: &str = "placement";
+pub const PLACEMENT_SESSION_MODE_NAME: &str = "placement";
 
 impl ActiveWmMode {
     pub fn from_name(name: impl Into<String>) -> Self {
@@ -27,28 +27,28 @@ impl ActiveWmMode {
         match self {
             Self::Default => "default",
             Self::Overview => crate::overview::OVERVIEW_MODE_NAME,
-            Self::TreePlacement(_) => TREE_PLACEMENT_MODE_NAME,
+            Self::PlacementSession(_) => PLACEMENT_SESSION_MODE_NAME,
             Self::Named(name) => name,
         }
     }
 
-    pub fn tree_placement(&self) -> Option<&KeyboardTreePlacement> {
+    pub fn placement_session(&self) -> Option<&TreePlacementSession> {
         match self {
-            Self::TreePlacement(state) => Some(state),
+            Self::PlacementSession(state) => Some(state),
             _ => None,
         }
     }
 
-    pub fn tree_placement_mut(&mut self) -> Option<&mut KeyboardTreePlacement> {
+    pub fn placement_session_mut(&mut self) -> Option<&mut TreePlacementSession> {
         match self {
-            Self::TreePlacement(state) => Some(state),
+            Self::PlacementSession(state) => Some(state),
             _ => None,
         }
     }
 
-    pub fn tree_placement_is_current_for(&self, model: &WmModel) -> bool {
-        self.tree_placement()
-            .is_some_and(|placement| placement.is_current_for(model))
+    pub fn placement_session_is_current_for(&self, model: &WmModel) -> bool {
+        self.placement_session()
+            .is_some_and(|session| session.is_current_for(model))
     }
 }
 
@@ -66,8 +66,8 @@ impl From<String> for ActiveWmMode {
 
 #[cfg(test)]
 mod active_wm_mode_tests {
-    use super::{ActiveWmMode, KeyboardTreePlacement};
-    use crate::layouts::tree::{PlacementTarget, Side};
+    use super::{ActiveWmMode, TreePlacementSession};
+    use crate::layouts::tree::{InsertionTarget, Side};
     use crate::types::{MonitorId, Point, TagMask, WindowId};
 
     #[test]
@@ -82,15 +82,15 @@ mod active_wm_mode_tests {
     }
 
     #[test]
-    fn keyboard_placement_rejects_an_invalid_selection() {
-        let target = PlacementTarget {
+    fn placement_session_rejects_an_invalid_selection() {
+        let target = InsertionTarget {
             target: WindowId(2),
             side: Some(Side::Left),
             candidate_index: 0,
             position: Point::new(10, 20),
         };
         assert!(
-            KeyboardTreePlacement::new(
+            TreePlacementSession::new(
                 WindowId(1),
                 MonitorId::default(),
                 TagMask::EMPTY,
@@ -100,7 +100,7 @@ mod active_wm_mode_tests {
             .is_none()
         );
 
-        let mut placement = KeyboardTreePlacement::new(
+        let mut session = TreePlacementSession::new(
             WindowId(1),
             MonitorId::default(),
             TagMask::EMPTY,
@@ -108,13 +108,13 @@ mod active_wm_mode_tests {
             0,
         )
         .expect("valid selection");
-        assert_eq!(placement.selected_target(), target);
-        assert!(!placement.select(1));
-        assert_eq!(placement.selected_target(), target);
+        assert_eq!(session.selected_target(), target);
+        assert!(!session.select(1));
+        assert_eq!(session.selected_target(), target);
     }
 
-    fn target(window: u32, x: i32, y: i32) -> PlacementTarget {
-        PlacementTarget {
+    fn target(window: u32, x: i32, y: i32) -> InsertionTarget {
+        InsertionTarget {
             target: WindowId(window),
             side: None,
             candidate_index: 0,
@@ -123,9 +123,9 @@ mod active_wm_mode_tests {
     }
 
     #[test]
-    fn keyboard_placement_nearest_target_is_stable_for_equal_distances() {
+    fn placement_session_nearest_target_is_stable_for_equal_distances() {
         let targets = [target(1, -10, 0), target(2, 10, 0)];
-        let placement = KeyboardTreePlacement::new_nearest(
+        let session = TreePlacementSession::new_nearest(
             WindowId(9),
             MonitorId::default(),
             TagMask::EMPTY,
@@ -133,13 +133,13 @@ mod active_wm_mode_tests {
             Point::new(0, 0),
         )
         .unwrap();
-        assert_eq!(placement.selected_target(), targets[0]);
+        assert_eq!(session.selected_target(), targets[0]);
     }
 
     #[test]
-    fn keyboard_placement_direction_wraps_at_a_visual_edge() {
+    fn placement_session_direction_wraps_at_a_visual_edge() {
         let targets = vec![target(1, 0, 0), target(2, 100, 0), target(3, -100, 0)];
-        let mut placement = KeyboardTreePlacement::new(
+        let mut session = TreePlacementSession::new(
             WindowId(9),
             MonitorId::default(),
             TagMask::EMPTY,
@@ -148,16 +148,16 @@ mod active_wm_mode_tests {
         )
         .unwrap();
 
-        assert!(placement.select_direction(Side::Right));
-        assert_eq!(placement.selected_target().target, WindowId(2));
-        assert!(placement.select_direction(Side::Top));
-        assert_eq!(placement.selected_target().target, WindowId(1));
+        assert!(session.select_direction(Side::Right));
+        assert_eq!(session.selected_target().target, WindowId(2));
+        assert!(session.select_direction(Side::Top));
+        assert_eq!(session.selected_target().target, WindowId(1));
     }
 
     #[test]
-    fn keyboard_placement_direction_prefers_visual_alignment() {
+    fn placement_session_direction_prefers_visual_alignment() {
         let targets = vec![target(1, 0, 0), target(2, 80, 100), target(3, 100, 5)];
-        let mut placement = KeyboardTreePlacement::new(
+        let mut session = TreePlacementSession::new(
             WindowId(9),
             MonitorId::default(),
             TagMask::EMPTY,
@@ -166,19 +166,19 @@ mod active_wm_mode_tests {
         )
         .unwrap();
 
-        assert!(placement.select_direction(Side::Right));
-        assert_eq!(placement.selected_target().target, WindowId(3));
+        assert!(session.select_direction(Side::Right));
+        assert_eq!(session.selected_target().target, WindowId(3));
     }
 
     #[test]
-    fn keyboard_placement_wrap_prefers_alignment_on_the_opposite_edge() {
+    fn placement_session_wrap_prefers_alignment_on_the_opposite_edge() {
         let targets = vec![
             target(1, 100, 100),
             target(2, 0, 10),
             target(3, 20, 102),
             target(4, 0, 300),
         ];
-        let mut placement = KeyboardTreePlacement::new(
+        let mut session = TreePlacementSession::new(
             WindowId(9),
             MonitorId::default(),
             TagMask::EMPTY,
@@ -187,7 +187,7 @@ mod active_wm_mode_tests {
         )
         .unwrap();
 
-        assert!(placement.select_direction(Side::Right));
-        assert_eq!(placement.selected_target().target, WindowId(2));
+        assert!(session.select_direction(Side::Right));
+        assert_eq!(session.selected_target().target, WindowId(2));
     }
 }

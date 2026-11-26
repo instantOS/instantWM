@@ -420,15 +420,15 @@ mod tests {
     }
 
     #[test]
-    fn placement_policy_roundtrips_through_runtime_config_ipc() {
+    fn new_window_insertion_policy_roundtrips_through_runtime_config_ipc() {
         let mut wm = test_wm();
         assert!(matches!(
             wm.with_ctx(|wm| do_set(wm, "layout.new_window_placement", "force")),
             Response::Ok
         ));
         assert_eq!(
-            wm.core.state.config.layout.new_window_placement,
-            crate::config::config_toml::NewWindowPlacement::Force
+            wm.core.state.config.layout.new_window_insertion,
+            crate::config::config_toml::NewWindowInsertion::Force
         );
         assert!(matches!(
             wm.with_ctx(|wm| do_get(wm, "layout.new_window_placement")),

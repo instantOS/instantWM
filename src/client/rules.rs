@@ -21,8 +21,8 @@ pub struct WindowProperties {
 
 /// Positioning instruction produced by an initial window rule.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum InitialRulePlacement {
-    /// Keep the backend-derived placement policy.
+pub enum InitialRulePosition {
+    /// Keep the backend-derived tiled/floating policy.
     ///
     /// A rule may adjust geometry without claiming the position, and this is
     /// that variant. [`RuleFloat::Float`] is the case in point: it pins
@@ -43,8 +43,8 @@ pub enum InitialRulePlacement {
     Preserve,
 }
 
-impl InitialRulePlacement {
-    /// Merge a rule's placement instruction with the position information
+impl InitialRulePosition {
+    /// Merge a rule's position instruction with the position information
     /// supplied by the backend.
     pub(crate) fn position_is_explicit(self, backend_position_is_explicit: bool) -> bool {
         match self {
@@ -58,7 +58,7 @@ impl InitialRulePlacement {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct InitialRuleOutcome {
     pub changed: bool,
-    pub placement: InitialRulePlacement,
+    pub position: InitialRulePosition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,14 +90,14 @@ pub fn apply_initial_rules(
     );
     InitialRuleOutcome {
         changed: before != after,
-        placement: applied.placement,
+        position: applied.position,
     }
 }
 
 /// Result of one rule application pass.
 #[derive(Debug, Clone, Copy)]
 struct RulesApplied {
-    placement: InitialRulePlacement,
+    position: InitialRulePosition,
     /// Monitor owning the client once rules ran; a monitor rule may move it.
     monitor_id: MonitorId,
 }
@@ -122,7 +122,7 @@ fn apply_rules_impl(
         .flatten()
         .filter(|name| state.model.scratchpad_find(name).is_none())
         .map(str::to_owned);
-    let initial_placement = if launch_context.is_some_and(|ctx| ctx.is_floating) {
+    let initial_policy = if launch_context.is_some_and(|ctx| ctx.is_floating) {
         ClientPlacement::Floating
     } else {
         ClientPlacement::Tiling
@@ -147,7 +147,7 @@ fn apply_rules_impl(
     // normal window.
     if client.is_scratchpad() {
         return Some(RulesApplied {
-            placement: InitialRulePlacement::Default,
+            position: InitialRulePosition::Default,
             monitor_id,
         });
     }
@@ -168,18 +168,18 @@ fn apply_rules_impl(
             scratchpad.remember_focus(restore_focus);
         }
         return Some(RulesApplied {
-            placement: InitialRulePlacement::Center,
+            position: InitialRulePosition::Center,
             monitor_id,
         });
     }
 
     // --- Initialise fields we are about to set -------------------------------
-    client.set_placement(initial_placement);
+    client.set_placement(initial_policy);
     client.set_tag_mask(TagMask::EMPTY);
 
     let tag_mask = state.model.tags.mask();
     let mut applied = RulesApplied {
-        placement: InitialRulePlacement::Default,
+        position: InitialRulePosition::Default,
         monitor_id,
     };
 
@@ -339,7 +339,7 @@ pub fn update_transient_for(
             ctx,
             win,
             crate::floating::WindowModeRequest::Floating(
-                crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
             ),
         );
     }
@@ -360,8 +360,8 @@ pub fn update_transient_for(
 /// real mask afterwards — so any bar lookup keyed on the client's tags would
 /// miss the tag the window is about to land on and silently fall back to the
 /// monitor-wide default. `work_rect` is resolved against the monitor's selected
-/// tags instead, so it cannot disagree with the placement the resolver runs
-/// moments later.
+/// tags instead, so it cannot disagree with the position resolved moments
+/// later.
 #[derive(Debug, Clone, Copy)]
 struct RuleMonitorGeo {
     monitor_rect: Rect,
@@ -402,7 +402,7 @@ fn apply_float_rule(
             // Pin the top edge to the work area so a client-requested position
             // cannot open a window underneath the bar. The x axis and the
             // spawn policy are left alone — see
-            // [`InitialRulePlacement::Default`].
+            // [`InitialRulePosition::Default`].
             client.geo.y = geo.work_rect.y;
         }
         RuleFloat::Tiled => {
@@ -415,7 +415,7 @@ fn apply_float_rule(
 ///
 /// Used both for the fallback config-rule pass and the leading pending-tmp-rule
 /// pass in [`apply_rules_impl`]. Extracted so the matching-class override,
-/// monitor placement, floating placement and tag assignment use the same code
+/// monitor selection, floating geometry, and tag assignment use the same code
 /// path regardless of rule origin. `applied.monitor_id` must name the client's
 /// owner on entry and is updated when a monitor rule moves it.
 fn apply_rule(
@@ -446,22 +446,22 @@ fn apply_rule(
         c.is_sticky = true;
     }
 
-    // A geometry is a floating placement instruction even when the rule
+    // A geometry is a floating-mode instruction even when the rule
     // does not spell out `is_floating`.
     let effective_float = rule
         .is_floating
         .or_else(|| rule.geometry.is_some().then_some(RuleFloat::Float));
     if let Some(ref float_rule) = effective_float {
         apply_float_rule(c, float_rule, geo);
-        applied.placement = match float_rule {
-            RuleFloat::FloatCenter => InitialRulePlacement::Center,
-            RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
-            _ => InitialRulePlacement::Default,
+        applied.position = match float_rule {
+            RuleFloat::FloatCenter => InitialRulePosition::Center,
+            RuleFloat::FloatFullscreen => InitialRulePosition::Preserve,
+            _ => InitialRulePosition::Default,
         };
     }
     if let Some(geometry) = rule.geometry {
         apply_geometry_rule(c, geometry, geo);
-        applied.placement = InitialRulePlacement::Preserve;
+        applied.position = InitialRulePosition::Preserve;
     }
     if rule.borderless {
         c.is_borderless = true;
@@ -609,7 +609,7 @@ fn clamp_client_tags(
 #[cfg(test)]
 mod tests {
     use super::{
-        InitialRulePlacement, WindowProperties, apply_initial_rules, apply_property_change,
+        InitialRulePosition, WindowProperties, apply_initial_rules, apply_property_change,
         update_window_properties,
     };
     use crate::test_support::TestWm as Wm;
@@ -1043,7 +1043,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(outcome.placement, InitialRulePlacement::Center);
+        assert_eq!(outcome.position, InitialRulePosition::Center);
         assert!(state.model.client(win).unwrap().mode().is_normal_floating());
     }
 
@@ -1092,7 +1092,7 @@ mod tests {
         );
 
         let client = state.model.client(win).unwrap();
-        assert_eq!(outcome.placement, InitialRulePlacement::Center);
+        assert_eq!(outcome.position, InitialRulePosition::Center);
         assert!(outcome.changed);
         assert!(client.mode().is_normal_floating());
         assert!(!client.is_sticky);
@@ -1178,7 +1178,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(outcome.placement, InitialRulePlacement::Preserve);
+        assert_eq!(outcome.position, InitialRulePosition::Preserve);
         assert_eq!(
             state.model.client(win).unwrap().geo,
             Rect::new(1920, 32, 1920, 1048)
@@ -1236,7 +1236,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(outcome.placement, InitialRulePlacement::Default);
+        assert_eq!(outcome.position, InitialRulePosition::Default);
         (state.model.client(win).unwrap().geo.y, work_rect.y)
     }
 
@@ -1331,7 +1331,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(outcome.placement, InitialRulePlacement::Preserve);
+        assert_eq!(outcome.position, InitialRulePosition::Preserve);
         let client = state.model.client(win).unwrap();
         assert_eq!(client.placement(), ClientPlacement::Floating);
         assert!(client.is_borderless);
@@ -1382,7 +1382,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(outcome.placement, InitialRulePlacement::Default);
+        assert_eq!(outcome.position, InitialRulePosition::Default);
         let client = state.model.client(win).unwrap();
         assert!(client.is_borderless);
         assert_eq!(client.border_width, 0);

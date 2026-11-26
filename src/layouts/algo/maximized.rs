@@ -8,7 +8,7 @@
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::DEFAULT_ANIMATION_MILLIS;
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::placement::LayoutPlacement;
+use crate::layouts::geometry::LayoutGeometry;
 use crate::layouts::{LayoutOutput, PresentationMode};
 use crate::types::Monitor;
 
@@ -20,13 +20,13 @@ pub fn maximized(
     let selected_window = monitor.selected;
     let selected_tags = monitor.selected_tags();
     let tiled_client_count = monitor.tiled_client_count() as u32;
-    let placement = LayoutPlacement::new(
+    let geometry = LayoutGeometry::new(
         layout_cfg,
         monitor,
         PresentationMode::Maximized,
         tiled_client_count,
     );
-    let work_rect = placement.work_rect();
+    let work_rect = geometry.work_rect();
 
     monitor
         .iter_clients()
@@ -41,7 +41,7 @@ pub fn maximized(
             };
             Some(LayoutOutput {
                 win,
-                rect: placement.client_rect(work_rect, client.border_width),
+                rect: geometry.client_rect(work_rect, client.border_width),
                 options: MoveResizeOptions::animate_to(duration_millis),
             })
         })

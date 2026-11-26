@@ -46,7 +46,7 @@ impl SurfaceAnchors {
     }
 
     /// Retargeting samples a new visual frame while the client may still be
-    /// displaying an older committed size. Keep the anchor whose placement is
+    /// displaying an older committed size. Keep the anchor whose geometry is
     /// closest to the current surface location; changing policy here would
     /// itself create a teleport.
     fn continuous_with(
@@ -133,7 +133,7 @@ fn closest_axis_anchor(
 ///
 /// The border width is part of the transition: it animates from the width the
 /// window was displayed with (`from_border`) to the width the requested
-/// placement needs (`to_border`). Positioning and rendering both use the
+/// positioning needs (`to_border`). Positioning and rendering both use the
 /// current interpolated width, so the animated frame stays faithful to the
 /// screen at every instant instead of snapping to the post-transition width
 /// on the first frame.
@@ -218,7 +218,7 @@ impl WaylandWindowAnimation {
         self.displayed_border
     }
 
-    /// The border width the final placement requests.
+    /// The border width the final geometry requests.
     pub(super) fn target_border_width(&self) -> i32 {
         self.to_border
     }

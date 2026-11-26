@@ -3,23 +3,23 @@ use super::*;
 /// Canonical tree structure with split identities and weights erased.
 ///
 /// Candidates with the same topology differ only in how much space their
-/// equivalent splits inherited. They should be one placement choice, not
+/// equivalent splits inherited. They should be one insertion choice, not
 /// several adjacent pointer bands.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(super) enum PlacementTopology {
+pub(super) enum InsertionTopology {
     Window(WindowId),
-    Split(Axis, Vec<PlacementTopology>),
+    Split(Axis, Vec<InsertionTopology>),
 }
 
-pub(super) fn placement_topology(node: &Node) -> PlacementTopology {
+pub(super) fn insertion_topology(node: &Node) -> InsertionTopology {
     match node {
-        Node::Window(window) => PlacementTopology::Window(*window),
-        Node::Split(split) => PlacementTopology::Split(
+        Node::Window(window) => InsertionTopology::Window(*window),
+        Node::Split(split) => InsertionTopology::Split(
             split.axis,
             split
                 .children
                 .iter()
-                .map(|child| placement_topology(&child.node))
+                .map(|child| insertion_topology(&child.node))
                 .collect(),
         ),
     }
@@ -29,7 +29,7 @@ pub(super) fn placement_topology(node: &Node) -> PlacementTopology {
 /// weights and allocation-only split IDs are ignored. Candidate order is
 /// deterministic, so retaining the first representative does not let current
 /// geometry influence structural equivalence.
-pub(super) fn topology_representatives(plans: Vec<PlacementPlan>) -> Vec<PlacementPlan> {
+pub(super) fn topology_representatives(plans: Vec<InsertionPlan>) -> Vec<InsertionPlan> {
     let mut topologies = HashSet::new();
     plans
         .into_iter()
@@ -37,7 +37,7 @@ pub(super) fn topology_representatives(plans: Vec<PlacementPlan>) -> Vec<Placeme
             plan.candidate
                 .root
                 .as_ref()
-                .is_some_and(|root| topologies.insert(placement_topology(root)))
+                .is_some_and(|root| topologies.insert(insertion_topology(root)))
         })
         .collect()
 }
@@ -52,21 +52,21 @@ pub(super) fn normalized_plans(
     source: WindowId,
     layout_rect: Rect,
     minimums: &HashMap<WindowId, Size>,
-    candidates: impl IntoIterator<Item = (PlacementTarget, LayoutTree)>,
-) -> Vec<PlacementPlan> {
+    candidates: impl IntoIterator<Item = (InsertionTarget, LayoutTree)>,
+) -> Vec<InsertionPlan> {
     topology_representatives(
         candidates
             .into_iter()
             .filter_map(|(target, candidate)| {
-                PlacementPlan::new(target, candidate, source, layout_rect, minimums)
+                InsertionPlan::new(target, candidate, source, layout_rect, minimums)
             })
             .collect(),
     )
 }
 
-impl PlacementPlan {
+impl InsertionPlan {
     pub(super) fn new(
-        target: PlacementTarget,
+        target: InsertionTarget,
         candidate: LayoutTree,
         source: WindowId,
         layout_rect: Rect,
@@ -87,20 +87,20 @@ impl PlacementPlan {
 }
 
 impl LayoutTree {
-    /// Distinct viable placement targets for `source`, as offered to keyboard
+    /// Distinct viable insertion targets for `source`, as offered to keyboard
     /// navigation.
-    pub(crate) fn placement_targets(
+    pub(crate) fn insertion_targets(
         &self,
         source: WindowId,
         layout_rect: Rect,
         edge_fraction: f64,
         minimums: &HashMap<WindowId, Size>,
-    ) -> Vec<PlacementTarget> {
+    ) -> Vec<InsertionTarget> {
         normalized_plans(
             source,
             layout_rect,
             minimums,
-            self.placement_candidates(
+            self.insertion_candidates(
                 source,
                 layout_rect,
                 sane_edge_fraction(edge_fraction),
@@ -112,21 +112,21 @@ impl LayoutTree {
         .collect()
     }
 
-    /// Materialize one target previously returned by [`Self::placement_targets`].
-    pub(crate) fn plan_placement(
+    /// Materialize one target previously returned by [`Self::insertion_targets`].
+    pub(crate) fn plan_insertion(
         &self,
         source: WindowId,
-        target: PlacementTarget,
+        target: InsertionTarget,
         layout_rect: Rect,
         minimums: &HashMap<WindowId, Size>,
-    ) -> Option<PlacementPlan> {
+    ) -> Option<InsertionPlan> {
         let candidate = match target.side {
             Some(side) => {
                 self.edge_candidate(source, target.target, side, target.candidate_index)?
             }
             None => self.swapped(source, target.target)?,
         };
-        PlacementPlan::new(target, candidate, source, layout_rect, minimums)
+        InsertionPlan::new(target, candidate, source, layout_rect, minimums)
     }
 
     pub(super) fn swapped(&self, first: WindowId, second: WindowId) -> Option<LayoutTree> {
@@ -275,7 +275,7 @@ impl LayoutTree {
         target: WindowId,
         side: Side,
         rects: &HashMap<NodeKey, FRect>,
-    ) -> Vec<PlacementScope> {
+    ) -> Vec<InsertionScope> {
         let Some(root) = self.root.as_ref() else {
             return Vec::new();
         };
@@ -318,7 +318,7 @@ impl LayoutTree {
             .into_iter()
             .filter(|key| rects.contains_key(key))
             .map(|key| EdgeCandidate {
-                scope: PlacementScope::Node(key),
+                scope: InsertionScope::Node(key),
                 scope_depth: match key {
                     NodeKey::Window(_) => 0,
                     NodeKey::Split(id) => split_depth(id),
@@ -342,7 +342,7 @@ impl LayoutTree {
                 && let Some(before) = seam_partition(&split.children, seam, axis, rects, tolerance)
             {
                 candidates.push(EdgeCandidate {
-                    scope: PlacementScope::AlignedNode {
+                    scope: InsertionScope::AlignedNode {
                         key: scope_key,
                         seam,
                         before,
@@ -382,7 +382,7 @@ impl LayoutTree {
                             };
                         if (range_edge - seam).abs() <= tolerance {
                             candidates.push(EdgeCandidate {
-                                scope: PlacementScope::ChildRange {
+                                scope: InsertionScope::ChildRange {
                                     parent: split.id,
                                     children: children
                                         .iter()
@@ -405,7 +405,7 @@ impl LayoutTree {
                         continue;
                     };
                     candidates.push(EdgeCandidate {
-                        scope: PlacementScope::AlignedChildRange {
+                        scope: InsertionScope::AlignedChildRange {
                             parent: split.id,
                             children: children.iter().map(|child| child.node.key()).collect(),
                             seam,
@@ -433,13 +433,13 @@ impl LayoutTree {
             .collect()
     }
 
-    pub(super) fn placement_candidates(
+    pub(super) fn insertion_candidates(
         &self,
         source: WindowId,
         layout_rect: Rect,
         edge_fraction: f64,
         minimums: &HashMap<WindowId, Size>,
-    ) -> Vec<(PlacementTarget, LayoutTree)> {
+    ) -> Vec<(InsertionTarget, LayoutTree)> {
         let (bounds, _) = self.soft_constrained_bounds(layout_rect, minimums);
         let unit_bounds = self.unit_bounds();
         let mut output = Vec::new();
@@ -452,7 +452,7 @@ impl LayoutTree {
             };
             if let Some(candidate) = self.swapped(source, target) {
                 output.push((
-                    PlacementTarget {
+                    InsertionTarget {
                         target,
                         side: None,
                         candidate_index: 0,
@@ -489,7 +489,7 @@ impl LayoutTree {
                     position.x = position.x.clamp(rect.x, rect.right() - 1);
                     position.y = position.y.clamp(rect.y, rect.bottom() - 1);
                     output.push((
-                        PlacementTarget {
+                        InsertionTarget {
                             target,
                             side: Some(side),
                             candidate_index: index,
@@ -561,19 +561,19 @@ impl LayoutTree {
         source: WindowId,
         target: WindowId,
         side: Side,
-        scope: PlacementScope,
+        scope: InsertionScope,
     ) -> Option<LayoutTree> {
         let without_source = self.without_source(source, target)?;
         let mut next_split_id = self.next_split_id;
         let mut allocate = || take_split_id(&mut next_split_id);
         let rebuilt = match scope {
-            PlacementScope::Node(mut key) => {
+            InsertionScope::Node(mut key) => {
                 if !without_source.contains_key(key) {
                     key = NodeKey::Window(target);
                 }
                 insert_at_scope_edge(without_source, key, target, source, side, allocate())
             }
-            PlacementScope::ChildRange { parent, children } => insert_at_child_range_edge(
+            InsertionScope::ChildRange { parent, children } => insert_at_child_range_edge(
                 without_source,
                 parent,
                 &children,
@@ -581,7 +581,7 @@ impl LayoutTree {
                 side,
                 &mut allocate,
             ),
-            PlacementScope::AlignedNode { key, seam, before } => {
+            InsertionScope::AlignedNode { key, seam, before } => {
                 let insertion = AlignedInsertion {
                     seam,
                     before: &before,
@@ -590,7 +590,7 @@ impl LayoutTree {
                 };
                 insert_across_aligned_node(without_source, key, &insertion, &mut allocate)
             }
-            PlacementScope::AlignedChildRange {
+            InsertionScope::AlignedChildRange {
                 parent,
                 children,
                 seam,

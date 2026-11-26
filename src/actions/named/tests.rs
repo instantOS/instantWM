@@ -264,9 +264,10 @@ fn action_dispatch_rejects_unknown_and_interaction_owned_modes() {
         .unwrap_err();
     assert!(unknown.contains("not found"));
 
-    let placement = NamedAction::SetMode(crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string())
-        .execute(&mut wm.test_ctx())
-        .unwrap_err();
+    let placement =
+        NamedAction::SetMode(crate::core_state::PLACEMENT_SESSION_MODE_NAME.to_string())
+            .execute(&mut wm.test_ctx())
+            .unwrap_err();
     assert!(placement.contains("begin_tree_placement"));
 }
 

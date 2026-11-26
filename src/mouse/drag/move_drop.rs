@@ -5,7 +5,7 @@
 use crate::backend::PointerOps;
 use crate::layouts::ArrangeAnimation;
 
-use crate::client::geometry::FloatingPlacementIntent;
+use crate::client::geometry::FloatingGeometryIntent;
 use crate::contexts::WmCtx;
 use crate::core_state::CoreState;
 use crate::floating::{WindowModeRequest, set_window_mode};
@@ -75,7 +75,7 @@ impl MoveDropTarget {
 
 /// Resolve the destination of a move whose dragged `client` is already known.
 ///
-/// The client's mode decides between tree, edge snap, and free placement, so
+/// The client's mode decides between tree, edge snap, and free positioning, so
 /// callers pass the view they resolved for this sample instead of paying for
 /// a second lookup here.
 pub(crate) fn resolve_move_drop(
@@ -92,7 +92,7 @@ pub(crate) fn resolve_move_drop(
     if client.mode().is_normal_tiling() && mon.current_layout() == PresentationMode::Tiled {
         return Some(MoveDropTarget::Tree(mon.id()));
     }
-    // Tiled sources keep their placement when entering a different presentation.
+    // Tiled sources keep their tree slot when entering a different presentation.
     // Floating windows retain directional edge snapping on floating outputs.
     if mon.current_layout() == PresentationMode::Floating && client.mode().is_normal_floating() {
         let edge = if root.x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH {
@@ -170,7 +170,7 @@ pub fn clear_bar_hover(ctx: &mut WmCtx) {
 ///
 /// The window geometry at the moment the drag started.  When the window was
 /// floating, this is the true pre-drag origin; we preserve its size in the
-/// saved floating placement
+/// saved floating geometry
 /// so un-tiling later restores the original floating position.
 pub fn handle_bar_drop(
     ctx: &mut WmCtx,
@@ -199,7 +199,7 @@ pub fn handle_bar_drop(
     }
 
     // Remember whether the window was floating *before* any state change so
-    // we know whether to correct the saved floating placement afterwards.
+    // we know whether to correct the saved floating geometry afterwards.
     // The tag/tile actions below both only read what is captured here, so
     // this is the single resolution after the transfer.
     let (was_floating, is_true_fullscreen) = match ctx.core().state.model.client(win) {
@@ -216,7 +216,7 @@ pub fn handle_bar_drop(
         // Old order: tag() → arrange(, ArrangeAnimation::Configured) [window still floating, layout skips
         // it] → set_window_mode() → arrange(, ArrangeAnimation::Configured) again.  That's two arrange passes.
         //
-        // New order: set_window_mode saves the floating placement from the
+        // New order: set_window_mode saves the floating geometry from the
         // current floating geometry *before* tag() calls arrange(, ArrangeAnimation::Configured).  Then
         // tag() calls arrange(, ArrangeAnimation::Configured) exactly once with the window already marked
         // tiled, so the layout places it correctly in a single pass.
@@ -244,7 +244,7 @@ pub fn handle_bar_drop(
         return;
     }
 
-    // ── Correct the saved placement using pre-drag dimensions ─────────────
+    // ── Correct the saved geometry using pre-drag dimensions ─────────────
     //
     // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
@@ -317,7 +317,7 @@ pub fn complete_move_drop(
             crate::geometry::MoveResizeOptions::hinted_immediate(false),
         );
         if let MoveDropTarget::Snap(_, edge) = target {
-            // The destination owns the window by now, so the saved placement
+            // The destination owns the window by now, so the saved geometry
             // reaches it through that monitor's own client map.
             if let Some(client) = ctx
                 .core_mut()
@@ -326,7 +326,7 @@ pub fn complete_move_drop(
                 .monitor_mut(monitor_id)
                 .and_then(|monitor| monitor.client_mut(win))
             {
-                client.save_floating_placement(free_geometry, work);
+                client.save_floating_geometry(free_geometry, work);
                 client.snap_status = edge;
                 if let Some(rect) = edge.target_rect(client.border_width, work) {
                     ctx.move_resize(
@@ -347,10 +347,10 @@ pub fn complete_move_drop(
 pub fn promote_to_floating(
     ctx: &mut WmCtx,
     win: WindowId,
-    intent: FloatingPlacementIntent,
+    intent: FloatingGeometryIntent,
 ) -> Option<(Rect, bool)> {
     // Literal maximization in the global floating presentation restores its
-    // free geometry first. Re-evaluating placement afterwards preserves a
+    // free geometry first. Re-evaluating geometry afterwards preserves a
     // tiled client's manual-tree membership while still allowing it to move
     // freely in that presentation.
     crate::client::fullscreen::leave_maximized(ctx, win);
@@ -362,11 +362,11 @@ pub fn promote_to_floating(
 pub(crate) fn promote_restored_client(
     ctx: &mut WmCtx,
     win: WindowId,
-    intent: FloatingPlacementIntent,
+    intent: FloatingGeometryIntent,
 ) -> Option<(Rect, bool)> {
     // One view decides everything: floating clients keep their geometry, and
     // tiled clients inside a floating presentation move freely without
-    // changing their persistent placement mode, so returning to tiling can
+    // changing their persistent placement policy, so returning to tiling can
     // restore the manual tree.
     let monitor_id = {
         let view = ctx.core().state.model.client_view(win)?;
@@ -399,7 +399,7 @@ mod tests {
     use super::promote_to_floating;
     use crate::test_support::TestWm as Wm;
 
-    use crate::client::geometry::FloatingPlacementIntent;
+    use crate::client::geometry::FloatingGeometryIntent;
     use crate::layouts::PresentationMode;
     use crate::test_support::{MonitorBuilder, add_client, add_client_with};
     use crate::types::{Client, ClientMode, ClientPlacement, MonitorId, Rect, TagMask, WindowId};
@@ -437,7 +437,7 @@ mod tests {
         let result = promote_to_floating(
             &mut wm.test_ctx(),
             win,
-            FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(200, 200)),
+            FloatingGeometryIntent::PreservePointerAnchor(crate::types::Point::new(200, 200)),
         );
 
         assert_eq!(result, Some((Rect::new(100, 100, 400, 300), false)));
@@ -462,13 +462,13 @@ mod tests {
             geo: work_rect,
             ..Client::default()
         };
-        client.save_floating_placement(saved, work_rect);
+        client.save_floating_geometry(saved, work_rect);
         add_client(&mut wm.core.state.model, monitor_id, client);
 
         let result = promote_to_floating(
             &mut wm.test_ctx(),
             win,
-            FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(600, 200)),
+            FloatingGeometryIntent::PreservePointerAnchor(crate::types::Point::new(600, 200)),
         );
 
         assert_eq!(result, Some((saved, false)));

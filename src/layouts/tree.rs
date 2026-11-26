@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::config::config_toml::NewWindowPlacement;
+use crate::config::config_toml::NewWindowInsertion;
 use crate::types::{Point, Rect, Size, WindowId};
 
 const EPSILON: f64 = 1.0e-9;
@@ -20,21 +20,21 @@ const AUTO_RESIZE_NEW_ROOT_WEIGHT: f64 = 0.4;
 mod constraints;
 mod geometry;
 mod insertion;
-mod placement;
-mod placement_ops;
-mod placement_session;
+mod insertion_ops;
+mod insertion_planner;
+mod insertion_targets;
 mod presets;
 mod resize_commands;
 mod resize_ops;
 mod types;
 use constraints::*;
-use placement_ops::*;
-pub(crate) use placement_session::PlacementHitboxes;
+use insertion_ops::*;
+pub(crate) use insertion_planner::InsertionHitboxes;
 #[cfg(test)]
 use presets::equal_run;
 use presets::{build_grid, build_master_stack};
 use resize_ops::*;
-pub use types::{Axis, CommandConfig, PlacementTarget, Preset, Side};
+pub use types::{Axis, CommandConfig, InsertionTarget, Preset, Side};
 use types::{DEFAULT_MINIMUM_WEIGHT, DEFAULT_RESIZE_STEP};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -209,7 +209,7 @@ impl Node {
 }
 
 #[derive(Debug, Clone)]
-enum PlacementScope {
+enum InsertionScope {
     Node(NodeKey),
     ChildRange {
         parent: SplitId,
@@ -230,21 +230,21 @@ enum PlacementScope {
 
 #[derive(Debug, Clone)]
 struct EdgeCandidate {
-    scope: PlacementScope,
+    scope: InsertionScope,
     scope_depth: usize,
     cross_span: f64,
 }
 
-/// A fully materialized placement outcome. Preview reads `source_slot`; apply
+/// A fully materialized insertion outcome. Preview reads `source_slot`; apply
 /// commits `candidate`, so both operations necessarily describe the same tree.
 #[derive(Debug, Clone)]
-pub(crate) struct PlacementPlan {
-    target: PlacementTarget,
+pub(crate) struct InsertionPlan {
+    target: InsertionTarget,
     candidate: LayoutTree,
     source_slot: Rect,
 }
 
-impl PlacementPlan {
+impl InsertionPlan {
     pub(crate) fn source_slot(&self) -> Rect {
         self.source_slot
     }
@@ -471,23 +471,23 @@ pub struct LayoutTree {
     untouched_force_windows: Vec<WindowId>,
 }
 
-/// The weighted tree used to enumerate placement scopes and solve their slots.
+/// The weighted tree used to enumerate insertion scopes and solve their slots.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PlacementTreeGeometry(Option<Node>);
+pub(crate) struct LayoutTreeSnapshot(Option<Node>);
 
-impl PlacementTreeGeometry {
+impl LayoutTreeSnapshot {
     pub(crate) fn matches(&self, tree: &LayoutTree) -> bool {
         self.0 == tree.root
     }
 }
 
-/// Pointer placement engine for one stable layout snapshot.
+/// Pointer insertion planner for one stable layout snapshot.
 ///
 /// Plans are materialized lazily per hovered target and edge, because pointer
 /// motion repeatedly queries the same target while dragging. Preview and drop
 /// read the same cached plan.
 #[derive(Debug, Clone)]
-pub(crate) struct TreePlacementSession {
+pub(crate) struct TreeInsertionPlanner {
     tree: LayoutTree,
     source: WindowId,
     source_in_tree: bool,
@@ -496,8 +496,8 @@ pub(crate) struct TreePlacementSession {
     edge_fraction: f64,
     minimums: HashMap<WindowId, Size>,
     bounds: Option<Vec<(WindowId, Rect)>>,
-    plans: HashMap<(WindowId, Option<Side>), Vec<PlacementPlan>>,
-    hitboxes: Option<std::sync::Arc<PlacementHitboxes>>,
+    plans: HashMap<(WindowId, Option<Side>), Vec<InsertionPlan>>,
+    hitboxes: Option<std::sync::Arc<InsertionHitboxes>>,
 }
 
 impl Default for LayoutTree {
@@ -511,8 +511,8 @@ impl Default for LayoutTree {
 }
 
 impl LayoutTree {
-    pub(crate) fn placement_geometry(&self) -> PlacementTreeGeometry {
-        PlacementTreeGeometry(self.root.clone())
+    pub(crate) fn tree_snapshot(&self) -> LayoutTreeSnapshot {
+        LayoutTreeSnapshot(self.root.clone())
     }
 
     fn allocate(&mut self) -> SplitId {

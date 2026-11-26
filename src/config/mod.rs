@@ -8,7 +8,7 @@
 //! | [`appearance`]    | Color palette and per-scheme color tables                |
 //! | [`keybindings`]   | Normal-mode key bindings (`default_keybinds`, `get_desktop_keybinds`) |
 //! | [`buttons`]       | Mouse button bindings (`get_buttons`)                   |
-//! | [`rules`]         | Window placement rules (`get_rules`)                    |
+//! | [`rules`]         | Window rules (`get_rules`)                              |
 //! | [`keysyms`]       | X11 keysym constants (re-exported via `use keysyms::*`) |
 //!
 //! # Quick-start: changing things
@@ -189,27 +189,29 @@ pub fn resolve_config(
         ),
     );
 
-    let mut placement_mode = merge_mode(
-        theme.modes.get(crate::core_state::TREE_PLACEMENT_MODE_NAME),
+    let mut placement_session_mode = merge_mode(
+        theme
+            .modes
+            .get(crate::core_state::PLACEMENT_SESSION_MODE_NAME),
         "place window",
         false,
         keybindings::get_tree_placement_keybinds(),
         "modes.placement.keybinds",
         &mut keybind_errors,
     );
-    // Placement has a transactional apply/cancel lifecycle; treating one
+    // The placement session has a transactional apply/cancel lifecycle; treating one
     // command as transient would discard that transaction mid-navigation.
-    placement_mode.transient = false;
+    placement_session_mode.transient = false;
     modes.insert(
-        crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
-        placement_mode,
+        crate::core_state::PLACEMENT_SESSION_MODE_NAME.to_string(),
+        placement_session_mode,
     );
 
     // Add all other user-defined modes
     for (name, spec) in &theme.modes {
         if name == "prefix"
             || name == "desktop"
-            || name == crate::core_state::TREE_PLACEMENT_MODE_NAME
+            || name == crate::core_state::PLACEMENT_SESSION_MODE_NAME
         {
             continue;
         }

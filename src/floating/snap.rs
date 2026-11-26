@@ -45,7 +45,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     let new_snap = status.next(direction);
     // Save geometry before entering snap for the first time.
     if status == SnapPosition::None && client.mode().is_normal_floating() {
-        client.save_floating_placement(client.geo, work_area);
+        client.save_floating_geometry(client.geo, work_area);
     }
     let SnapTarget { border_width, rect } = apply_snap(client, new_snap, work_area);
 

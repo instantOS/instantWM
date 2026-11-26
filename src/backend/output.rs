@@ -30,7 +30,7 @@ pub enum OutputPositionSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutputPlacement {
+pub struct OutputPosition {
     pub id: String,
     pub rect: Rect,
     pub source: OutputPositionSource,
@@ -38,7 +38,7 @@ pub struct OutputPlacement {
 
 /// Plan a gap-free left-to-right layout for automatic outputs while treating
 /// configured and client-managed outputs as immovable anchors.
-pub fn plan_automatic_output_positions(outputs: &mut [OutputPlacement]) -> Vec<(String, Point)> {
+pub fn plan_automatic_output_positions(outputs: &mut [OutputPosition]) -> Vec<(String, Point)> {
     outputs.sort_by(|a, b| (a.rect.x, &a.id).cmp(&(b.rect.x, &b.id)));
     let mut cursor = 0;
     let mut moves = Vec::new();
@@ -449,9 +449,9 @@ impl<P, C> RequestQueue<P, C> {
 pub type OutputPowerQueue =
     RequestQueue<OutputPowerRequest, (OutputId, Result<OutputPowerMode, OutputPowerError>)>;
 
-/// Determines capability repair, placement ownership, and queue coalescing.
+/// Determines capability repair, position ownership, and queue coalescing.
 /// Client requests are validated as submitted; compositor policy may adapt to
-/// changed hardware and retains compositor ownership of automatic placement.
+/// changed hardware and retains compositor ownership of automatic positioning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputTransactionOrigin {
     Client,
@@ -547,17 +547,17 @@ mod tests {
     #[test]
     fn automatic_layout_compacts_only_automatic_outputs() {
         let mut outputs = vec![
-            OutputPlacement {
+            OutputPosition {
                 id: "automatic-left".into(),
                 rect: Rect::new(1920, 0, 1920, 1080),
                 source: OutputPositionSource::Automatic,
             },
-            OutputPlacement {
+            OutputPosition {
                 id: "configured-anchor".into(),
                 rect: Rect::new(5000, 0, 1000, 1000),
                 source: OutputPositionSource::Configured,
             },
-            OutputPlacement {
+            OutputPosition {
                 id: "automatic-right".into(),
                 rect: Rect::new(7000, 0, 1280, 720),
                 source: OutputPositionSource::Automatic,

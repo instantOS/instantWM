@@ -8,14 +8,14 @@ const MIN_SCOPE_BAND: f64 = 12.0;
 const SIDES: [Side; 4] = [Side::Left, Side::Right, Side::Top, Side::Bottom];
 
 #[derive(Debug)]
-pub(crate) struct PlacementHitboxes {
+pub(crate) struct InsertionHitboxes {
     pub area: Rect,
     excluded: Option<Rect>,
-    pub spans: Vec<PlacementHitboxSpan>,
+    pub spans: Vec<InsertionHitboxSpan>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct PlacementHitboxSpan {
+pub(crate) struct InsertionHitboxSpan {
     pub rect: Rect,
     pub side: Option<Side>,
     pub band: usize,
@@ -104,7 +104,7 @@ impl HitboxEdges {
 
 type PlanKey = (WindowId, Option<Side>);
 
-impl TreePlacementSession {
+impl TreeInsertionPlanner {
     pub(crate) fn new(
         tree: LayoutTree,
         source: WindowId,
@@ -119,7 +119,7 @@ impl TreePlacementSession {
             source_in_tree,
             layout_rect,
             hover_rect: layout_rect,
-            edge_fraction: placement::sane_edge_fraction(edge_fraction),
+            edge_fraction: insertion_targets::sane_edge_fraction(edge_fraction),
             minimums,
             bounds: None,
             plans: HashMap::new(),
@@ -157,17 +157,17 @@ impl TreePlacementSession {
         let (bounds, _) = tree.soft_constrained_bounds(rect, minimums);
         // Rounded slots can share a pixel in an extremely small area. Use
         // tree order so the winner is stable across rebuilds. The source stays
-        // included: its own edge bands are meaningful placement targets.
+        // included: its own edge bands are meaningful insertion targets.
         tree.leaves()
             .into_iter()
             .filter_map(|window| Some((window, bounds.get(&window)?.intersection(&rect)?)))
             .collect()
     }
 
-    fn plans(&mut self, key: PlanKey, target_rect: Rect) -> &[PlacementPlan] {
+    fn plans(&mut self, key: PlanKey, target_rect: Rect) -> &[InsertionPlan] {
         let (target, side) = key;
         self.plans.entry(key).or_insert_with(|| {
-            let placement_target = |candidate_index| PlacementTarget {
+            let insertion_target = |candidate_index| InsertionTarget {
                 target,
                 side,
                 candidate_index,
@@ -180,18 +180,18 @@ impl TreePlacementSession {
                 let Some(candidate) = self.tree.self_edge_candidate(self.source, side) else {
                     return Vec::new();
                 };
-                return placement::normalized_plans(
+                return insertion_targets::normalized_plans(
                     self.source,
                     self.layout_rect,
                     &self.minimums,
-                    [(placement_target(0), candidate)],
+                    [(insertion_target(0), candidate)],
                 );
             }
             let candidates = match side {
                 None => self
                     .tree
                     .swapped(self.source, target)
-                    .map(|candidate| (placement_target(0), candidate))
+                    .map(|candidate| (insertion_target(0), candidate))
                     .into_iter()
                     .collect::<Vec<_>>(),
                 Some(side) => self
@@ -199,13 +199,13 @@ impl TreePlacementSession {
                     .edge_candidates(self.source, target, side)
                     .into_iter()
                     .enumerate()
-                    .map(|(index, candidate)| (placement_target(index), candidate))
+                    .map(|(index, candidate)| (insertion_target(index), candidate))
                     .collect(),
             };
             // An ancestor can collapse to the same topology as a local
             // scope after removing the source. Keep the local representative
             // so the innermost hitbox continues to use the local geometry.
-            let mut plans = placement::normalized_plans(
+            let mut plans = insertion_targets::normalized_plans(
                 self.source,
                 self.layout_rect,
                 &self.minimums,
@@ -249,7 +249,7 @@ impl TreePlacementSession {
         &mut self,
         area: Rect,
         excluded: Option<Rect>,
-    ) -> Arc<PlacementHitboxes> {
+    ) -> Arc<InsertionHitboxes> {
         if let Some(hitboxes) = &self.hitboxes
             && hitboxes.area == area
             && hitboxes.excluded == excluded
@@ -258,7 +258,7 @@ impl TreePlacementSession {
         }
         let mut spans = Vec::new();
         let layout = self.hover_rect;
-        let mut push = |mut span: PlacementHitboxSpan| {
+        let mut push = |mut span: InsertionHitboxSpan| {
             // Motion outside the gapped work area is clamped to its nearest
             // pixel. Extend those edge pixels over the same outer margins.
             let right = if span.rect.right() == layout.right() {
@@ -286,7 +286,7 @@ impl TreePlacementSession {
                     spans.extend(
                         rect.subtract(&excluded)
                             .into_iter()
-                            .map(|rect| PlacementHitboxSpan { rect, ..span }),
+                            .map(|rect| InsertionHitboxSpan { rect, ..span }),
                     );
                 } else {
                     spans.push(span);
@@ -294,7 +294,7 @@ impl TreePlacementSession {
             }
         };
         if self.tree.is_empty() {
-            push(PlacementHitboxSpan {
+            push(InsertionHitboxSpan {
                 rect: self.hover_rect,
                 side: None,
                 band: 0,
@@ -344,7 +344,7 @@ impl TreePlacementSession {
                             }
                         }
                         if let (side, Some(band)) = zone {
-                            push(PlacementHitboxSpan {
+                            push(InsertionHitboxSpan {
                                 rect: Rect::new(x, y, lo - x, 1),
                                 side,
                                 band,
@@ -357,7 +357,7 @@ impl TreePlacementSession {
                 }
             }
         }
-        let hitboxes = Arc::new(PlacementHitboxes {
+        let hitboxes = Arc::new(InsertionHitboxes {
             area,
             excluded,
             spans,
@@ -366,14 +366,14 @@ impl TreePlacementSession {
         hitboxes
     }
 
-    fn empty_plan(&self, point: Point) -> Option<PlacementPlan> {
+    fn empty_plan(&self, point: Point) -> Option<InsertionPlan> {
         if !self.tree.is_empty() {
             return None;
         }
         let mut tree = self.tree.clone();
         tree.apply_preset(Preset::MasterStack, &[self.source], 1);
-        PlacementPlan::new(
-            PlacementTarget {
+        InsertionPlan::new(
+            InsertionTarget {
                 target: self.source,
                 side: None,
                 candidate_index: 0,
@@ -406,7 +406,7 @@ impl TreePlacementSession {
         Some(self.plans[&key][index].source_slot)
     }
 
-    pub(crate) fn into_plan(mut self, point: Point) -> Option<PlacementPlan> {
+    pub(crate) fn into_plan(mut self, point: Point) -> Option<InsertionPlan> {
         let point = self.layout_point(point);
         if let Some(plan) = self.empty_plan(point) {
             return Some(plan);
@@ -417,5 +417,5 @@ impl TreePlacementSession {
 }
 
 #[cfg(test)]
-#[path = "placement_hitbox_tests.rs"]
+#[path = "insertion_hitbox_tests.rs"]
 mod tests;

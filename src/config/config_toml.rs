@@ -296,7 +296,8 @@ pub struct AnimationConfig {
     /// animations.enabled` flips this at runtime; `instantwmctl reload`
     /// restores the configured value.
     pub enabled: bool,
-    /// Animate the outline as keyboard placement moves between destinations.
+    /// Animate the outline as the keyboard placement session moves between
+    /// destinations.
     pub keyboard_placement_preview: bool,
     /// Animate the outline as a drag moves between tiled destinations.
     pub tiled_drag_preview: bool,
@@ -384,12 +385,16 @@ pub struct LayoutConfig {
     pub keyboard_resize_step: f64,
     /// Preferred minimum weight for a child in a manual axis run.
     pub minimum_weight: f64,
-    /// Fraction of a target window occupied by pointer edge-placement bands.
+    /// Fraction of a target window occupied by pointer edge-insertion bands.
     pub pointer_edge_fraction: f64,
-    /// Show tiled drag zones and keyboard placement targets on Wayland.
+    /// Show tiled drag zones and keyboard placement-session targets on Wayland.
     pub show_placement_hitboxes: bool,
     /// How newly tiled windows are inserted into the persistent layout tree.
-    pub new_window_placement: NewWindowPlacement,
+    ///
+    /// The TOML and runtime-config key remains `new_window_placement` for
+    /// compatibility with existing user configuration.
+    #[serde(rename = "new_window_placement")]
+    pub new_window_insertion: NewWindowInsertion,
 }
 
 impl Default for LayoutConfig {
@@ -403,7 +408,7 @@ impl Default for LayoutConfig {
             minimum_weight: 0.15,
             pointer_edge_fraction: 0.34,
             show_placement_hitboxes: false,
-            new_window_placement: NewWindowPlacement::default(),
+            new_window_insertion: NewWindowInsertion::default(),
         }
     }
 }
@@ -459,11 +464,11 @@ impl LayoutConfig {
 /// persistent tiling tree.
 #[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum NewWindowPlacement {
+pub enum NewWindowInsertion {
     /// Split the best existing leaf without deliberately rebalancing unrelated
     /// branches.
     Auto,
-    /// Use automatic placement, but give a cramped newcomer a larger root-level
+    /// Use automatic insertion, but give a cramped newcomer a larger root-level
     /// region and proportionally resize the existing tree.
     #[default]
     AutoResize,
@@ -1611,7 +1616,7 @@ mod theme_tests {
     }
 
     #[test]
-    fn placement_preview_animation_switches_are_independent() {
+    fn placement_session_preview_animation_switches_are_independent() {
         let keyboard_off = parse("[animations]\nkeyboard_placement_preview = false").animations;
         let drag_off = parse("[animations]\ntiled_drag_preview = false").animations;
 
@@ -1635,18 +1640,18 @@ mod theme_tests {
     }
 
     #[test]
-    fn new_window_placement_defaults_to_auto_resize_and_accepts_all_policies() {
+    fn new_window_insertion_defaults_to_auto_resize_and_accepts_all_policies() {
         assert_eq!(
-            parse("").layout.new_window_placement,
-            NewWindowPlacement::AutoResize
+            parse("").layout.new_window_insertion,
+            NewWindowInsertion::AutoResize
         );
         for (name, expected) in [
-            ("auto", NewWindowPlacement::Auto),
-            ("auto-resize", NewWindowPlacement::AutoResize),
-            ("force", NewWindowPlacement::Force),
+            ("auto", NewWindowInsertion::Auto),
+            ("auto-resize", NewWindowInsertion::AutoResize),
+            ("force", NewWindowInsertion::Force),
         ] {
             let config = parse(&format!("[layout]\nnew_window_placement = {name:?}"));
-            assert_eq!(config.layout.new_window_placement, expected);
+            assert_eq!(config.layout.new_window_insertion, expected);
         }
     }
 

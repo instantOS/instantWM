@@ -27,7 +27,7 @@ fn keybind_entries(bindings: &crate::core_state::BindingConfig) -> Vec<KeybindIn
     }
 
     // Per-mode bindings: the built-in `prefix` and `desktop` modes (empty
-    // unless configured), the compositor-owned placement mode, and any
+    // unless configured), the compositor-owned placement session mode, and any
     // user-defined modes.
     let mut mode_names: Vec<&String> = bindings.modes.keys().collect();
     mode_names.sort();
@@ -44,7 +44,7 @@ fn keybind_entries(bindings: &crate::core_state::BindingConfig) -> Vec<KeybindIn
         }
     }
 
-    // Overview is also a non-default mode, but unlike named and placement
+    // Overview is also a non-default mode, but unlike named and placement-session
     // modes it has no entry in BindingConfig::modes.
     if !bindings.modes.contains_key("overview") {
         entries.push(reset_mode_entry("overview"));

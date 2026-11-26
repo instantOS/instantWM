@@ -19,7 +19,7 @@ use crate::types::{Client, Monitor, Point, Rect, Size, WindowId};
 
 /// Why a tiled client is acquiring floating geometry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FloatingPlacementIntent {
+pub enum FloatingGeometryIntent {
     /// A non-pointer action such as a key binding, IPC command, or mode toggle.
     RestoreOrCenter,
     /// A pointer gesture must keep the same point under the cursor as the
@@ -32,16 +32,16 @@ const FIRST_FLOAT_MAX_DENOMINATOR: i32 = 4;
 
 /// Resolve the authoritative rectangle for a tiled-to-floating transition.
 ///
-/// Previous real floating placements are restored and rebased from their
+/// Previous real floating rectangles are restored and rebased from their
 /// reference work area. First-time transitions use the client's pre-layout
 /// preferred size when available, otherwise its tiled size, capped to 75% of
 /// the work area. Every result is fully contained inside the current work area.
-/// `border_width` is the border the floating placement will use, which may
+/// `border_width` is the border the floating rectangle will use, which may
 /// differ from the current tiled or fullscreen border.
 pub fn resolve_floating_transition(
     client: &Client,
     work_area: Rect,
-    intent: FloatingPlacementIntent,
+    intent: FloatingGeometryIntent,
     border_width: i32,
 ) -> Rect {
     if !work_area.is_valid() {
@@ -49,9 +49,9 @@ pub fn resolve_floating_transition(
     }
 
     let border = border_width.max(0);
-    let saved = client.saved_floating_placement();
+    let saved = client.saved_floating_geometry();
     let mut size = saved
-        .map(|placement| placement.rect.size())
+        .map(|geometry| geometry.rect.size())
         .or_else(|| client.preferred_floating_size())
         .unwrap_or_else(|| client.geo.size());
 
@@ -69,7 +69,7 @@ pub fn resolve_floating_transition(
     let total_w = size.w + 2 * border;
     let total_h = size.h + 2 * border;
     let position = match intent {
-        FloatingPlacementIntent::PreservePointerAnchor(pointer) => {
+        FloatingGeometryIntent::PreservePointerAnchor(pointer) => {
             let current_total_w = client.geo.total_width(border).max(1);
             let current_total_h = client.geo.total_height(border).max(1);
             let anchor_x =
@@ -81,8 +81,8 @@ pub fn resolve_floating_transition(
                 pointer.y - (anchor_y * total_h as f64).round() as i32,
             )
         }
-        FloatingPlacementIntent::RestoreOrCenter => saved
-            .map(|placement| rebase_saved_position(placement, work_area, total_w, total_h))
+        FloatingGeometryIntent::RestoreOrCenter => saved
+            .map(|geometry| rebase_saved_position(geometry, work_area, total_w, total_h))
             .unwrap_or_else(|| {
                 Point::new(
                     work_area.x + (work_area.w - total_w) / 2,
@@ -99,7 +99,7 @@ pub fn resolve_floating_transition(
 }
 
 fn rebase_saved_position(
-    placement: crate::types::SavedFloatingPlacement,
+    geometry: crate::types::SavedFloatingGeometry,
     work_area: Rect,
     total_w: i32,
     total_h: i32,
@@ -123,17 +123,17 @@ fn rebase_saved_position(
 
     Point::new(
         axis(
-            placement.rect.x,
-            placement.reference_work_area.x,
-            placement.reference_work_area.w,
+            geometry.rect.x,
+            geometry.reference_work_area.x,
+            geometry.reference_work_area.w,
             work_area.x,
             work_area.w,
             total_w,
         ),
         axis(
-            placement.rect.y,
-            placement.reference_work_area.y,
-            placement.reference_work_area.h,
+            geometry.rect.y,
+            geometry.reference_work_area.y,
+            geometry.reference_work_area.h,
             work_area.y,
             work_area.h,
             total_h,
@@ -160,7 +160,7 @@ pub(crate) fn contain_floating_rect(mut rect: Rect, work_area: Rect, border: i32
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FloatingPlacementKind {
+pub enum FloatingPositionKind {
     /// A newly mapped window for which the compositor owns the position.
     NewAutomatic,
     /// A newly mapped window with an explicit client-provided position.
@@ -171,14 +171,14 @@ pub enum FloatingPlacementKind {
 ///
 /// Floating clients often provide stale coordinates, especially transient
 /// dialogs restored from a previous monitor setup.  Keep the app-provided size
-/// but ensure the position is usable on the target monitor.  Parent-relative
-/// placement is preferred for new transients without a usable position.
+/// but ensure the position is usable on the target monitor. Parent-relative
+/// positioning is preferred for new transients without a usable position.
 #[cfg(test)]
-fn resolve_floating_placement(
+fn resolve_floating_rect(
     model: &WmModel,
     win: WindowId,
     requested: Rect,
-    kind: FloatingPlacementKind,
+    kind: FloatingPositionKind,
     parent: Option<WindowId>,
 ) -> Rect {
     let Some(view) = model.client_view(win) else {
@@ -192,14 +192,14 @@ fn resolve_floating_placement(
     let work_rect = view.monitor.work_rect();
     let parent_rect = parent.and_then(|parent| model.client(parent).map(|client| client.geo));
 
-    resolve_floating_placement_for_client(client, work_rect, requested, kind, parent_rect)
+    resolve_floating_rect_for_client(client, work_rect, requested, kind, parent_rect)
 }
 
-fn resolve_floating_placement_for_client(
+fn resolve_floating_rect_for_client(
     client: &Client,
     work_rect: Rect,
     requested: Rect,
-    kind: FloatingPlacementKind,
+    kind: FloatingPositionKind,
     parent_rect: Option<Rect>,
 ) -> Rect {
     if !work_rect.is_valid() {
@@ -216,11 +216,11 @@ fn resolve_floating_placement_for_client(
     let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.bottom();
 
     // Wayland toplevels cannot provide an absolute position, and X11 clients
-    // without USPosition/PPosition have likewise delegated placement to the
+    // without USPosition/PPosition have likewise delegated positioning to the
     // WM. Center those new windows over their parent or, for standalone
     // windows, in the monitor work area. Explicit X11 positions are preserved
     // unless they need clamping to remain usable.
-    let used_automatic_position = if matches!(kind, FloatingPlacementKind::NewAutomatic) {
+    let used_automatic_position = if matches!(kind, FloatingPositionKind::NewAutomatic) {
         if let Some(parent_rect) = parent_rect {
             rect.x = parent_rect.x + (parent_rect.w - total_w) / 2;
             rect.y = parent_rect.y + (parent_rect.h - total_h) / 2;
@@ -269,12 +269,12 @@ pub fn sane_floating_spawn_rect(
     }
 
     let kind = if position_is_explicit {
-        FloatingPlacementKind::NewExplicit
+        FloatingPositionKind::NewExplicit
     } else {
-        FloatingPlacementKind::NewAutomatic
+        FloatingPositionKind::NewAutomatic
     };
     let parent_rect = parent.and_then(|parent| model.client(parent).map(|client| client.geo));
-    let rect = resolve_floating_placement_for_client(
+    let rect = resolve_floating_rect_for_client(
         client,
         view.monitor.work_rect(),
         client.geo,
@@ -437,8 +437,8 @@ pub fn scale_client(ctx: &mut WmCtx<'_>, win: WindowId, scale: i32) {
 #[cfg(test)]
 mod tests {
     use super::{
-        FloatingPlacementIntent, FloatingPlacementKind, clamp_position_to_bounds,
-        resolve_floating_placement, resolve_floating_transition, sane_floating_spawn_rect,
+        FloatingGeometryIntent, FloatingPositionKind, clamp_position_to_bounds,
+        resolve_floating_rect, resolve_floating_transition, sane_floating_spawn_rect,
     };
     use crate::core_state::{CoreState, DisplayConfig};
     use crate::model::WmModel;
@@ -471,7 +471,7 @@ mod tests {
         client.set_placement(crate::types::ClientPlacement::Floating);
         client.border_width = border_width;
         client.geo = rect;
-        client.save_floating_placement(rect, work_rect);
+        client.save_floating_geometry(rect, work_rect);
         client.old_geo = rect;
         assert!(state.model.add_client(monitor_id, client));
 
@@ -495,7 +495,7 @@ mod tests {
         let resolved = resolve_floating_transition(
             &client,
             work,
-            FloatingPlacementIntent::RestoreOrCenter,
+            FloatingGeometryIntent::RestoreOrCenter,
             client.border_width,
         );
 
@@ -516,7 +516,7 @@ mod tests {
         let resolved = resolve_floating_transition(
             &client,
             work,
-            FloatingPlacementIntent::RestoreOrCenter,
+            FloatingGeometryIntent::RestoreOrCenter,
             client.border_width,
         );
 
@@ -530,12 +530,12 @@ mod tests {
         let new_work = Rect::new(1920, 0, 1280, 1024);
         let saved = Rect::new(1116, 476, 800, 600);
         let mut client = tiled_client(Rect::new(1920, 0, 1280, 1024), 2);
-        client.save_floating_placement(saved, old_work);
+        client.save_floating_geometry(saved, old_work);
 
         let resolved = resolve_floating_transition(
             &client,
             new_work,
-            FloatingPlacementIntent::RestoreOrCenter,
+            FloatingGeometryIntent::RestoreOrCenter,
             client.border_width,
         );
 
@@ -548,7 +548,7 @@ mod tests {
     fn oversized_saved_float_is_shrunk_and_fully_contained() {
         let work = Rect::new(100, 50, 800, 600);
         let mut client = tiled_client(work, 3);
-        client.save_floating_placement(
+        client.save_floating_geometry(
             Rect::new(-500, -400, 2000, 1600),
             Rect::new(0, 0, 2560, 1440),
         );
@@ -556,7 +556,7 @@ mod tests {
         let resolved = resolve_floating_transition(
             &client,
             work,
-            FloatingPlacementIntent::RestoreOrCenter,
+            FloatingGeometryIntent::RestoreOrCenter,
             client.border_width,
         );
 
@@ -574,7 +574,7 @@ mod tests {
         let resolved = resolve_floating_transition(
             &client,
             work,
-            FloatingPlacementIntent::PreservePointerAnchor(pointer),
+            FloatingGeometryIntent::PreservePointerAnchor(pointer),
             client.border_width,
         );
 
@@ -588,11 +588,11 @@ mod tests {
         let work = Rect::new(0, 0, 1000, 800);
         let mut client = tiled_client(work, 0);
         client.old_border_width = 4;
-        client.save_floating_placement(work, work);
+        client.save_floating_geometry(work, work);
         let resolved = resolve_floating_transition(
             &client,
             work,
-            FloatingPlacementIntent::RestoreOrCenter,
+            FloatingGeometryIntent::RestoreOrCenter,
             client.restored_border_width(),
         );
         assert_eq!(resolved, Rect::new(0, 0, 992, 792));
@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn geometry_sync_records_only_real_floating_placements() {
+    fn geometry_sync_records_only_real_floating_geometry() {
         let mut model = WmModel::new();
         let monitor_id = model.monitors.push(
             MonitorBuilder::new()
@@ -618,7 +618,7 @@ mod tests {
         ));
 
         model.record_client_geometry(win, Rect::new(10, 40, 900, 700));
-        assert_eq!(model.client(win).unwrap().saved_floating_placement(), None);
+        assert_eq!(model.client(win).unwrap().saved_floating_geometry(), None);
 
         model
             .client_mut(win)
@@ -629,17 +629,17 @@ mod tests {
         let saved = model
             .client(win)
             .unwrap()
-            .saved_floating_placement()
+            .saved_floating_geometry()
             .unwrap();
         assert_eq!(saved.rect, floating);
         assert_eq!(saved.reference_work_area, Rect::new(0, 30, 1000, 770));
 
-        let free_placement = saved;
+        let free_geometry = saved;
         model.client_mut(win).unwrap().snap_status = SnapPosition::Left;
         model.record_client_geometry(win, Rect::new(0, 30, 500, 770));
         assert_eq!(
-            model.client(win).unwrap().saved_floating_placement(),
-            Some(free_placement)
+            model.client(win).unwrap().saved_floating_geometry(),
+            Some(free_geometry)
         );
     }
 
@@ -720,11 +720,11 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = resolve_floating_placement(
+        let rect = resolve_floating_rect(
             &state.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 500, 300),
-            FloatingPlacementKind::NewExplicit,
+            FloatingPositionKind::NewExplicit,
             None,
         );
 
@@ -750,11 +750,11 @@ mod tests {
         };
         assert!(state.model.add_client(parent_monitor, parent));
 
-        let rect = resolve_floating_placement(
+        let rect = resolve_floating_rect(
             &state.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 400, 200),
-            FloatingPlacementKind::NewAutomatic,
+            FloatingPositionKind::NewAutomatic,
             Some(WindowId::from(2_u32)),
         );
 

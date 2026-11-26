@@ -18,7 +18,7 @@ pub(crate) struct InitialPresentationIntent {
 
 /// Commit only the client-local portion of a fullscreen transition.
 ///
-/// Monitor-owned placement bookkeeping stays with the caller; this helper owns
+/// Monitor-owned geometry and tag bookkeeping stays with the caller; this helper owns
 /// the mode state machine plus the border-width save/restore. It returns the
 /// mode the client held before the transition together with whether anything
 /// actually changed, so the caller classifies the outcome without re-reading
@@ -180,7 +180,7 @@ fn restore_rect_after_leaving(client: &mut Client, work_rect: Rect) -> Option<Re
         let restore_rect = crate::client::geometry::resolve_floating_transition(
             client,
             work_rect,
-            crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+            crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
             client.border_width,
         );
         client.update_geometry(restore_rect);
@@ -192,7 +192,7 @@ fn restore_rect_after_leaving(client: &mut Client, work_rect: Rect) -> Option<Re
 
 /// Whether the application should perceive its window as maximized.
 ///
-/// Tiling presentations deliberately expose tiled placement through the
+/// Tiling presentations deliberately expose the tiled policy through the
 /// application's maximize/restore control. In a global floating
 /// presentation, maximization retains its literal full-work-area meaning.
 pub(crate) fn protocol_maximized(monitor: &Monitor, client: &Client) -> bool {
@@ -214,7 +214,7 @@ fn owned_client_mut(monitor: &mut Monitor, win: WindowId) -> &mut Client {
 fn set_client_maximized(client: &mut Client, work_rect: Rect, maximized: bool) -> MaximizedChange {
     let previous_mode = client.mode();
     if maximized && previous_mode.is_normal_floating() {
-        client.save_floating_placement(client.geo, work_rect);
+        client.save_floating_geometry(client.geo, work_rect);
     }
     client.set_maximized_presentation(maximized);
     let current_mode = client.mode();
@@ -241,7 +241,7 @@ fn set_fullscreen_on(
     let client = owned_client_mut(monitor, win);
 
     if fullscreen && client.mode().is_normal_floating() {
-        client.save_floating_placement(client.geo, work_rect);
+        client.save_floating_geometry(client.geo, work_rect);
     }
     let (previous_mode, changed) = set_client_fullscreen(client, fullscreen);
 
@@ -295,7 +295,7 @@ fn apply_maximize_intent_on(
             // Global floating presentation makes even persistently tiled
             // clients free-positioned, so literal maximization must save
             // their current visible rectangle too.
-            client.save_floating_placement(client.geo, work_rect);
+            client.save_floating_geometry(client.geo, work_rect);
         }
         let mut change = set_client_maximized(client, work_rect, maximized);
         if !maximized
@@ -306,7 +306,7 @@ fn apply_maximize_intent_on(
             let restore_rect = crate::client::geometry::resolve_floating_transition(
                 client,
                 work_rect,
-                crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
                 client.border_width,
             );
             client.update_geometry(restore_rect);
@@ -333,7 +333,7 @@ fn apply_maximize_intent_on(
     let before_border = client.border_width;
 
     // A client-maximized presentation can survive a layout-presentation
-    // switch. Once tiling is available, collapse it into placement before
+    // switch. Once tiling is available, collapse it into the tiled policy before
     // applying the new intent.
     if before_mode.has_maximized_presentation() {
         client.set_maximized_presentation(false);
@@ -344,7 +344,7 @@ fn apply_maximize_intent_on(
         ClientPlacement::Tiling => {
             if client.placement() == ClientPlacement::Floating {
                 if client.mode().is_normal_floating() {
-                    client.save_floating_placement(client.geo, work_rect);
+                    client.save_floating_geometry(client.geo, work_rect);
                 }
                 client.set_placement(ClientPlacement::Tiling);
             }
@@ -354,11 +354,11 @@ fn apply_maximize_intent_on(
                 let restored = crate::client::geometry::resolve_floating_transition(
                     client,
                     work_rect,
-                    crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+                    crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
                     client.restored_border_width(),
                 );
                 client.set_placement(ClientPlacement::Floating);
-                client.save_floating_placement(restored, work_rect);
+                client.save_floating_geometry(restored, work_rect);
                 if client.mode().is_normal_floating() {
                     client.restore_border_width();
                     client.update_geometry(restored);
@@ -384,7 +384,7 @@ fn apply_maximize_intent_on(
 
 impl WmModel {
     /// Apply coalesced initial presentation intent after rules and backend
-    /// placement policy have established the client's restore mode.
+    /// placement policy has established the client's restore mode.
     pub(crate) fn apply_initial_presentation_intent(
         &mut self,
         win: WindowId,
@@ -440,7 +440,7 @@ impl WmModel {
         let work_rect = monitor.work_rect();
         let client = owned_client_mut(monitor, win);
         if !was_fullscreen && client.mode().is_normal_floating() {
-            client.save_floating_placement(client.geo, work_rect);
+            client.save_floating_geometry(client.geo, work_rect);
         }
         client.save_border_width();
         client.enter_fake_fullscreen();
@@ -454,7 +454,7 @@ impl WmModel {
 
     /// Interpret an application's maximize/restore control.
     ///
-    /// In tiling presentations it controls tiled/floating placement. In the
+    /// In tiling presentations it controls the tiled/floating policy. In the
     /// global floating presentation it controls a literal work-area maximize.
     pub(crate) fn apply_client_maximize_intent(
         &mut self,
@@ -468,7 +468,7 @@ impl WmModel {
         ))
     }
 
-    /// Collapse literal client maximization into tiled placement when a
+    /// Collapse literal client maximization into the tiled policy when a
     /// monitor leaves the global floating presentation.
     pub(crate) fn reconcile_client_maximization_for_tiling(
         &mut self,

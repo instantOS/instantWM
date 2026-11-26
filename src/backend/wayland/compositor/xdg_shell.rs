@@ -847,7 +847,7 @@ impl WaylandNativeState {
         if self.window_id_for_toplevel(surface).is_some()
             && self.xdg_toplevel_wants_floating(surface)
         {
-            // Shared property reconciliation owns placement and stacking.
+            // Shared property reconciliation owns positioning and stacking.
             self.request_space_sync();
         }
     }

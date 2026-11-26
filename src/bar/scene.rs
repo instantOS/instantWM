@@ -216,8 +216,8 @@ fn resolve_status(core: &WmCore) -> Option<StatusContent> {
         }
         ActiveWmMode::Overview => "overview".to_string(),
         ActiveWmMode::Named(name) => mode_display(core, name).unwrap_or_else(|| name.clone()),
-        ActiveWmMode::TreePlacement(_) => {
-            mode_display(core, crate::core_state::TREE_PLACEMENT_MODE_NAME)
+        ActiveWmMode::PlacementSession(_) => {
+            mode_display(core, crate::core_state::PLACEMENT_SESSION_MODE_NAME)
                 .unwrap_or_else(|| "place window".to_string())
         }
     };
@@ -410,7 +410,7 @@ pub(crate) fn build_monitor_snapshots(
         };
 
         // The tray snapshot and the right-edge width reserved for external
-        // tray content must agree: hit testing and XEmbed placement rely on
+        // tray content must agree: hit testing and XEmbed positioning rely on
         // both describing the same strip.
         let tray_visible = show_systray && is_tray_monitor;
         let external_tray_width = if tray_visible {

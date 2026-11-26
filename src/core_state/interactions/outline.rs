@@ -21,10 +21,10 @@ impl InteractionState {
         rect: Option<Rect>,
         style: InteractionOutlineStyle,
     ) -> Option<OutlineProjection> {
-        // Clearing the outline invalidates placement even when it was already
+        // Clearing the outline invalidates insertion candidates even when it was already
         // absent. Keep this before the redundant-presentation check.
         if rect.is_none() {
-            self.pointer_placement_cache = None;
+            self.pointer_insertion_cache = None;
         }
         let previous = self.layout_preview;
         if previous == rect && (rect.is_none() || self.layout_preview_style == style) {

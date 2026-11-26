@@ -208,7 +208,7 @@ pub enum PendingTmpRuleCmd {
     /// With no `--class`/`--instance`/`--title` flag, the rule matches the
     /// *next* window regardless of identity — useful for forcing the very
     /// next spawn (e.g. an app launched via `spawn`) into a particular
-    /// placement. With any matcher set, only a window whose
+    /// mode. With any matcher set, only a window whose
     /// class/instance/title contains the supplied string consumes it.
     Add {
         /// Window class to match.
@@ -230,8 +230,8 @@ pub enum PendingTmpRuleCmd {
         /// position, "focused" or "primary".
         #[arg(long, value_name = "MONITOR")]
         on_monitor: Option<MonitorSelector>,
-        /// Exact floating placement relative to the target monitor's work
-        /// area. Implies floating placement.
+        /// Exact floating geometry relative to the target monitor's work
+        /// area. Implies floating mode.
         #[arg(long, value_name = "X,Y,W,H")]
         geometry: Option<RuleGeometry>,
         /// Manage the matched window without a WM border.
@@ -262,7 +262,7 @@ pub struct PendingTmpRuleInfo {
     /// Monitor the rule targets, in selector syntax (`"DP-1"`, `"focused"`,
     /// `"primary"` or a layout position). `None` targets any monitor.
     pub on_monitor: Option<String>,
-    /// Exact placement, if the rule pins one.
+    /// Exact geometry, if the rule pins one.
     pub geometry: Option<String>,
     pub borderless: bool,
     /// Milliseconds remaining until the rule expires.

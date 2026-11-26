@@ -3,7 +3,7 @@
 use crate::backend::BackendOutputInfo;
 use crate::backend::BackendVrrSupport;
 use crate::backend::output::{
-    MonitorModeRequest, OutputMode, OutputPlacement, OutputPositionSource,
+    MonitorModeRequest, OutputMode, OutputPosition, OutputPositionSource,
     plan_automatic_output_positions, position_after,
 };
 use crate::config::config_toml::{MirrorFit, MonitorConfig};
@@ -811,7 +811,7 @@ pub fn refresh_topology(
     let active_before = randr.snapshot().active_names();
 
     // A CRTC disappearing while its physical connector remains present is an
-    // external disable, not a hot-plug. Relinquish automatic placement and do
+    // external disable, not a hot-plug. Relinquish automatic positioning and do
     // not queue it for re-enabling.
     for name in runtime
         .active_outputs
@@ -1098,10 +1098,10 @@ fn find_same_aspect_crop_mode(
 
 /// Attempt automatic activation only for connectors that the runtime has
 /// identified as physically new. Returns the newly active outputs whose
-/// placement is owned by the automatic policy.
+/// positioning is owned by the automatic policy.
 ///
 /// Declared mirrors of a connected source are left to [`apply_policy`],
-/// which glues them onto their source instead of giving them a placement.
+/// which glues them onto their source instead of giving them a position.
 fn configure_new_outputs(
     randr: &mut RandrConfigurator<'_>,
     policy: &MonitorPolicy,
@@ -1175,17 +1175,17 @@ fn planned_automatic_positions(
     automatic_outputs: &HashSet<String>,
     mirror_heads: &HashSet<String>,
 ) -> Vec<(String, Point)> {
-    let mut placements: Vec<_> = outputs
+    let mut positions: Vec<_> = outputs
         .iter()
         // A mirror head presents its source's region; planning it as a
-        // placement would mark that region occupied and shift the source.
+        // positioning would mark that region occupied and shift the source.
         .filter(|(name, _)| !mirror_heads.contains(name))
         .map(|(name, rect)| {
             let automatic = automatic_outputs.contains(name)
                 && policy
                     .effective(name)
                     .is_none_or(|config| config.position.is_none());
-            OutputPlacement {
+            OutputPosition {
                 id: name.clone(),
                 rect: *rect,
                 source: if automatic {
@@ -1196,7 +1196,7 @@ fn planned_automatic_positions(
             }
         })
         .collect();
-    plan_automatic_output_positions(&mut placements)
+    plan_automatic_output_positions(&mut positions)
 }
 #[cfg(test)]
 mod refresh_tests {
@@ -1913,7 +1913,7 @@ mod refresh_tests {
     }
 
     #[test]
-    fn a_released_mirror_takes_part_in_placement_again() {
+    fn a_released_mirror_takes_part_in_positioning_again() {
         // Once released, a former mirror is an ordinary automatic output.
         let outputs = vec![
             output("eDP-1", Rect::new(0, 0, 1920, 1080)),

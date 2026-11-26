@@ -1,17 +1,17 @@
 //! Keyboard-driven manual-tree placement session orchestration.
 
 use crate::contexts::WmCtx;
-use crate::core_state::{ActiveWmMode, KeyboardPlacementInputs, KeyboardTreePlacement};
-use crate::layouts::tree::{LayoutTree, PlacementTarget, Side};
+use crate::core_state::{ActiveWmMode, PlacementSessionInputs, TreePlacementSession};
+use crate::layouts::tree::{InsertionTarget, LayoutTree, Side};
 use crate::types::{MonitorId, Rect, WindowId};
 
 use super::manager::{finish_layout_change, selected_tiling};
 
-/// Enter keyboard placement for the selected tiled window. Returns whether
-/// placement mode is active afterwards.
+/// Enter a keyboard placement session for the selected tiled window.
+/// Returns whether the session is active afterwards.
 pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
     match &ctx.core().state.behavior.current_mode {
-        ActiveWmMode::TreePlacement(_) => return true,
+        ActiveWmMode::PlacementSession(_) => return true,
         ActiveWmMode::Overview => ctx.reset_mode(),
         ActiveWmMode::Default | ActiveWmMode::Named(_) => {}
     }
@@ -41,8 +41,8 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
             .map_or_else(|| tiling.work_rect().center(), |rect| rect.center());
         let work_rect = tiling.work_rect();
         let edge_fraction = ctx.core().state.config.layout.pointer_edge_fraction;
-        let targets = tree.placement_targets(source, work_rect, edge_fraction, &tiling.minimums);
-        let Some(mut state) = KeyboardTreePlacement::new_nearest(
+        let targets = tree.insertion_targets(source, work_rect, edge_fraction, &tiling.minimums);
+        let Some(mut state) = TreePlacementSession::new_nearest(
             source,
             monitor.id(),
             monitor.selected_tags(),
@@ -51,8 +51,8 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         ) else {
             return false;
         };
-        state.inputs = Some(Box::new(KeyboardPlacementInputs {
-            tree: tree.placement_geometry(),
+        state.inputs = Some(Box::new(PlacementSessionInputs {
+            tree: tree.tree_snapshot(),
             work_rect,
             minimums: tiling.minimums,
             edge_fraction_bits: edge_fraction.to_bits(),
@@ -67,8 +67,8 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         ctx.end_modal_keyboard();
         return false;
     };
-    ctx.set_current_mode(ActiveWmMode::TreePlacement(state));
-    // Placement keys own the pointer until the session ends; a hover-resize
+    ctx.set_current_mode(ActiveWmMode::PlacementSession(state));
+    // Placement-session keys own the pointer until the session ends; a hover-resize
     // offer armed beforehand must give up its cursor and pointer borrow.
     crate::mouse::clear_hover_offer(ctx);
     ctx.update_layout_preview(Some(preview));
@@ -79,13 +79,13 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
 fn preview_rect(
     state: &crate::core_state::CoreState,
     source: WindowId,
-    target: PlacementTarget,
+    target: InsertionTarget,
 ) -> Option<Rect> {
     let tiling = selected_tiling(state);
     // The placement session is armed on the selected monitor, which owns its
     // source: one monitor-scoped lookup feeds both the plan and the projection.
     let monitor = state.model.expect_selected_monitor();
-    let plan = monitor.per_tag()?.layout_tree.plan_placement(
+    let plan = monitor.per_tag()?.layout_tree.plan_insertion(
         source,
         target,
         tiling.work_rect(),
@@ -104,7 +104,7 @@ fn refresh_preview(ctx: &mut WmCtx<'_>) {
         .state
         .behavior
         .current_mode
-        .tree_placement()
+        .placement_session()
         .and_then(|state| preview_rect(&ctx.core().state, state.source, state.selected_target()));
     let animate = ctx
         .core()
@@ -117,13 +117,13 @@ fn refresh_preview(ctx: &mut WmCtx<'_>) {
 
 /// The active placement session, or `None` after ending one whose
 /// monitor/tag/tree context is no longer current.
-fn current_placement<'a>(ctx: &'a mut WmCtx<'_>) -> Option<&'a mut KeyboardTreePlacement> {
+fn current_session<'a>(ctx: &'a mut WmCtx<'_>) -> Option<&'a mut TreePlacementSession> {
     if !ctx
         .core()
         .state
         .behavior
         .current_mode
-        .tree_placement_is_current_for(&ctx.core().state.model)
+        .placement_session_is_current_for(&ctx.core().state.model)
     {
         ctx.reset_mode();
         return None;
@@ -132,18 +132,18 @@ fn current_placement<'a>(ctx: &'a mut WmCtx<'_>) -> Option<&'a mut KeyboardTreeP
         .state
         .behavior
         .current_mode
-        .tree_placement_mut()
+        .placement_session_mut()
 }
 
 pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
-    if current_placement(ctx).is_some_and(|state| state.select_direction(side)) {
+    if current_session(ctx).is_some_and(|state| state.select_direction(side)) {
         refresh_preview(ctx);
     }
     true
 }
 
 pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bool {
-    if let Some(state) = current_placement(ctx) {
+    if let Some(state) = current_session(ctx) {
         state.cycle(backwards);
         refresh_preview(ctx);
     }
@@ -151,14 +151,14 @@ pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bo
 }
 
 pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
-    if current_placement(ctx).is_some_and(|state| state.select_center_of_current_window()) {
+    if current_session(ctx).is_some_and(|state| state.select_center_of_current_window()) {
         refresh_preview(ctx);
     }
     true
 }
 
 /// Swap the originally armed window with its visual neighbour while keeping
-/// keyboard placement active.
+/// the keyboard placement session active.
 pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: Side) -> bool {
     edit_around_source(ctx, |tree, source| {
         tree.swap_with_neighbor(source, side).is_some()
@@ -175,7 +175,7 @@ fn edit_around_source(
     ctx: &mut WmCtx<'_>,
     edit: impl FnOnce(&mut LayoutTree, WindowId) -> bool,
 ) -> bool {
-    let Some(state) = current_placement(ctx) else {
+    let Some(state) = current_session(ctx) else {
         return true;
     };
     let source = state.source;
@@ -194,11 +194,11 @@ fn edit_around_source(
 
 pub(super) fn refresh_targets_after_arrange(ctx: &mut WmCtx<'_>, arranged: Option<MonitorId>) {
     let state = &ctx.core().state;
-    let Some(placement) = state
+    let Some(session) = state
         .behavior
         .current_mode
-        .tree_placement()
-        .filter(|placement| arranged.is_none_or(|id| id == placement.monitor_id))
+        .placement_session()
+        .filter(|session| arranged.is_none_or(|id| id == session.monitor_id))
     else {
         return;
     };
@@ -215,7 +215,7 @@ pub(super) fn refresh_targets_after_arrange(ctx: &mut WmCtx<'_>, arranged: Optio
     let work_rect = tiling.work_rect();
     let edge_fraction = state.config.layout.pointer_edge_fraction;
     let edge_fraction_bits = edge_fraction.to_bits();
-    let inputs = placement.inputs.as_deref();
+    let inputs = session.inputs.as_deref();
     let same_tree = inputs.is_some_and(|inputs| inputs.tree.matches(tree));
     if same_tree
         && inputs.is_some_and(|inputs| {
@@ -230,9 +230,9 @@ pub(super) fn refresh_targets_after_arrange(ctx: &mut WmCtx<'_>, arranged: Optio
         return;
     }
 
-    let preferred = placement.selected_target();
+    let preferred = session.selected_target();
     let targets =
-        tree.placement_targets(placement.source, work_rect, edge_fraction, &tiling.minimums);
+        tree.insertion_targets(session.source, work_rect, edge_fraction, &tiling.minimums);
     // Split indices are only stable while the weighted tree is unchanged.
     // A swap still identifies the same operation by its target window alone.
     let exact = targets.iter().position(|target| {
@@ -241,25 +241,25 @@ pub(super) fn refresh_targets_after_arrange(ctx: &mut WmCtx<'_>, arranged: Optio
             && target.side == preferred.side
             && target.candidate_index == preferred.candidate_index
     });
-    let inputs = KeyboardPlacementInputs {
-        tree: tree.placement_geometry(),
+    let inputs = PlacementSessionInputs {
+        tree: tree.tree_snapshot(),
         work_rect,
         minimums: tiling.minimums,
         edge_fraction_bits,
     };
-    let placement = ctx
+    let session = ctx
         .core_mut()
         .state
         .behavior
         .current_mode
-        .tree_placement_mut()
-        .expect("the placement mode is still active");
+        .placement_session_mut()
+        .expect("the placement session is still active");
     let rebuilt = match exact {
-        Some(index) => placement.replace_targets(targets, index),
-        None => placement.replace_targets_near(targets, preferred.position),
+        Some(index) => session.replace_targets(targets, index),
+        None => session.replace_targets_near(targets, preferred.position),
     };
     if rebuilt {
-        placement.inputs = Some(Box::new(inputs));
+        session.inputs = Some(Box::new(inputs));
         refresh_preview(ctx);
     } else {
         finish_keyboard_tree_placement(ctx, false);
@@ -271,7 +271,7 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
         ActiveWmMode::Default,
         crate::overview::ExitMode::RestorePrevious,
     );
-    let ActiveWmMode::TreePlacement(state) = previous else {
+    let ActiveWmMode::PlacementSession(state) = previous else {
         return false;
     };
     if !state.is_current_for(&ctx.core().state.model) {
@@ -293,7 +293,7 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
 fn apply_target(
     state: &mut crate::core_state::CoreState,
     source: WindowId,
-    target: PlacementTarget,
+    target: InsertionTarget,
 ) -> bool {
     let tiling = selected_tiling(state);
     let tree = &mut state
@@ -301,7 +301,7 @@ fn apply_target(
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree;
-    let Some(plan) = tree.plan_placement(source, target, tiling.work_rect(), &tiling.minimums)
+    let Some(plan) = tree.plan_insertion(source, target, tiling.work_rect(), &tiling.minimums)
     else {
         return false;
     };
@@ -375,7 +375,7 @@ mod tests {
     fn expected_targets(
         state: &crate::core_state::CoreState,
         source: WindowId,
-    ) -> Vec<PlacementTarget> {
+    ) -> Vec<InsertionTarget> {
         let tiling = selected_tiling(state);
         state
             .model
@@ -383,7 +383,7 @@ mod tests {
             .per_tag()
             .unwrap()
             .layout_tree
-            .placement_targets(
+            .insertion_targets(
                 source,
                 tiling.work_rect(),
                 state.config.layout.pointer_edge_fraction,
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_placement_navigation_keeps_focus_on_its_source() {
+    fn placement_session_navigation_keeps_focus_on_its_source() {
         let mut wm = tiled_wm(Rect::new(0, 0, 1200, 800), vec![client(1), client(2)]);
         let source = WindowId(1);
 
@@ -415,14 +415,14 @@ mod tests {
         let mut wm = tiled_wm(area, vec![client(1), client(2), client(3)]);
         assert!(begin_tree_placement(&mut wm.test_ctx()));
         assert!(center_keyboard_tree_placement(&mut wm.test_ctx()));
-        let placement = wm
+        let session = wm
             .core
             .state
             .behavior
             .current_mode
-            .tree_placement()
+            .placement_session()
             .unwrap();
-        let previous = placement.selected_target();
+        let previous = session.selected_target();
         assert_eq!(previous.side, None);
         wm.core
             .state
@@ -431,7 +431,7 @@ mod tests {
             .available_rect = Rect::new(0, 0, 800, 600);
         finish_layout_change(&mut wm.test_ctx());
         let state = &wm.core.state;
-        let current = state.behavior.current_mode.tree_placement().unwrap();
+        let current = state.behavior.current_mode.placement_session().unwrap();
         let selected = current.selected_target();
         assert_eq!(selected.target, previous.target);
         assert_eq!(selected.side, previous.side);
@@ -444,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn arrange_reuses_keyboard_targets_until_placement_inputs_change() {
+    fn arrange_reuses_keyboard_targets_until_placement_session_inputs_change() {
         let mut wm = tiled_wm(
             Rect::new(0, 0, 1200, 800),
             vec![client(1), client(2), client(3)],
@@ -452,45 +452,45 @@ mod tests {
         wm.core.state.config.window.resize_hints = true;
         finish_layout_change(&mut wm.test_ctx());
         assert!(begin_tree_placement(&mut wm.test_ctx()));
-        let placement = wm
+        let session = wm
             .core
             .state
             .behavior
             .current_mode
-            .tree_placement()
+            .placement_session()
             .unwrap();
-        let cached_targets = placement.targets().as_ptr();
-        let source = placement.source;
+        let cached_targets = session.targets().as_ptr();
+        let source = session.source;
         let preview_width = wm.core.state.interaction.layout_preview.unwrap().w;
 
         finish_layout_change(&mut wm.test_ctx());
-        let placement = wm
+        let session = wm
             .core
             .state
             .behavior
             .current_mode
-            .tree_placement()
+            .placement_session()
             .unwrap();
-        assert_eq!(placement.targets().as_ptr(), cached_targets);
+        assert_eq!(session.targets().as_ptr(), cached_targets);
 
         let monitor = wm.core.state.model.expect_selected_monitor_mut();
         monitor.client_mut(source).unwrap().size_hints.max_width = 120;
         finish_layout_change(&mut wm.test_ctx());
         let state = &wm.core.state;
-        let placement = state.behavior.current_mode.tree_placement().unwrap();
-        assert_eq!(placement.targets().as_ptr(), cached_targets);
+        let session = state.behavior.current_mode.placement_session().unwrap();
+        assert_eq!(session.targets().as_ptr(), cached_targets);
         assert!(state.interaction.layout_preview.unwrap().w < preview_width);
 
         wm.core.state.config.layout.pointer_edge_fraction = 0.20;
         finish_layout_change(&mut wm.test_ctx());
         let state = &wm.core.state;
-        let placement = state.behavior.current_mode.tree_placement().unwrap();
-        assert_ne!(placement.targets().as_ptr(), cached_targets);
-        assert_eq!(placement.targets(), expected_targets(state, source));
+        let session = state.behavior.current_mode.placement_session().unwrap();
+        assert_ne!(session.targets().as_ptr(), cached_targets);
+        assert_eq!(session.targets(), expected_targets(state, source));
     }
 
     #[test]
-    fn single_tiled_window_has_no_tree_placement_targets() {
+    fn single_tiled_window_has_no_tree_insertion_targets() {
         let mut wm = tiled_wm(Rect::new(0, 0, 1200, 800), vec![client(1)]);
 
         assert!(!begin_tree_placement(&mut wm.test_ctx()));
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_placement_keeps_targets_when_minimum_sizes_cannot_fit() {
+    fn placement_session_keeps_targets_when_minimum_sizes_cannot_fit() {
         let mut wm = tiled_wm(
             Rect::new(0, 0, 300, 100),
             vec![
@@ -522,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn placement_preview_does_not_expand_beyond_an_overcommitted_slot() {
+    fn insertion_preview_does_not_expand_beyond_an_overcommitted_slot() {
         let mut client = client_with_minimum(1, 140, 60);
         client.border_width = 0;
         let wm = tiled_wm(Rect::new(0, 0, 100, 100), vec![client]);

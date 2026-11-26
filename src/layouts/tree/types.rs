@@ -70,9 +70,9 @@ pub enum Preset {
     BottomStack,
 }
 
-/// Opaque semantic target shared by pointer and keyboard placement.
+/// Opaque semantic target shared by pointer and keyboard placement sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlacementTarget {
+pub struct InsertionTarget {
     pub target: WindowId,
     pub side: Option<Side>,
     pub candidate_index: usize,

@@ -9,7 +9,7 @@ use x11rb::properties::WmSizeHints;
 /// `min_aspect`, `max_aspect`, and fixed-size state.
 ///
 /// The parsed hints are returned so initial management can distinguish an
-/// explicit USPosition/PPosition from compositor-owned placement.
+/// explicit USPosition/PPosition from compositor-owned positioning.
 pub fn update_size_hints(
     model: &mut WmModel,
     x11: &X11BackendRef,
