@@ -2,7 +2,7 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
-use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
+use crate::backend::x11::properties::update_wm_state_atoms;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -41,29 +41,6 @@ pub fn set_maximized_atoms(
         ],
         maximized,
     );
-}
-
-/// Add `atoms` to or remove them from the window's `_NET_WM_STATE` list.
-fn update_wm_state_atoms(
-    x11: &X11BackendRef<'_>,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-    atoms: &[Atom],
-    present: bool,
-) {
-    let x11_win: Window = win.into();
-    let wm_state = x11_runtime.netatom.wm_state;
-    let [mut state] = get_atom_props(x11.conn, x11_win, [wm_state]);
-    if present {
-        for &atom in atoms {
-            if !state.contains(&atom) {
-                state.push(atom);
-            }
-        }
-    } else {
-        state.retain(|atom| !atoms.contains(atom));
-    }
-    write_net_wm_state_atoms(x11.conn, x11_win, wm_state, &state);
 }
 
 /// Remove border from an X11 window (for entering fullscreen).

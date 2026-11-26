@@ -232,6 +232,14 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                     );
                 }
             }
+            x if x == ctx.x11_runtime.netatom.wm_state => {
+                let modal = crate::backend::x11::properties::read_modal_hint(
+                    &ctx.x11,
+                    ctx.x11_runtime,
+                    event_win,
+                );
+                crate::focus::update_modality(&mut ctx.wm_ctx(), event_win, modal);
+            }
             _ => {}
         }
 

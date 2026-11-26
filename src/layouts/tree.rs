@@ -29,6 +29,7 @@ mod resize_ops;
 mod types;
 use constraints::*;
 use placement_ops::*;
+pub(crate) use placement_session::PlacementHitboxes;
 #[cfg(test)]
 use presets::equal_run;
 use presets::{build_grid, build_master_stack};
@@ -45,7 +46,15 @@ struct WeightedNode {
     weight: f64,
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq for WeightedNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.weight.to_bits() == other.weight.to_bits() && self.node == other.node
+    }
+}
+
+impl Eq for WeightedNode {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Split {
     id: SplitId,
     axis: Axis,
@@ -53,7 +62,7 @@ struct Split {
     children: Vec<WeightedNode>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Node {
     Window(WindowId),
     Split(Split),
@@ -223,6 +232,7 @@ enum PlacementScope {
 struct EdgeCandidate {
     scope: PlacementScope,
     scope_depth: usize,
+    cross_span: f64,
 }
 
 /// A fully materialized placement outcome. Preview reads `source_slot`; apply
@@ -461,6 +471,16 @@ pub struct LayoutTree {
     untouched_force_windows: Vec<WindowId>,
 }
 
+/// The weighted tree used to enumerate placement scopes and solve their slots.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PlacementTreeGeometry(Option<Node>);
+
+impl PlacementTreeGeometry {
+    pub(crate) fn matches(&self, tree: &LayoutTree) -> bool {
+        self.0 == tree.root
+    }
+}
+
 /// Pointer placement engine for one stable layout snapshot.
 ///
 /// Plans are materialized lazily per hovered target and edge, because pointer
@@ -470,11 +490,14 @@ pub struct LayoutTree {
 pub(crate) struct TreePlacementSession {
     tree: LayoutTree,
     source: WindowId,
+    source_in_tree: bool,
     layout_rect: Rect,
+    hover_rect: Rect,
     edge_fraction: f64,
     minimums: HashMap<WindowId, Size>,
-    bounds: Option<HashMap<WindowId, Rect>>,
+    bounds: Option<Vec<(WindowId, Rect)>>,
     plans: HashMap<(WindowId, Option<Side>), Vec<PlacementPlan>>,
+    hitboxes: Option<std::sync::Arc<PlacementHitboxes>>,
 }
 
 impl Default for LayoutTree {
@@ -488,6 +511,10 @@ impl Default for LayoutTree {
 }
 
 impl LayoutTree {
+    pub(crate) fn placement_geometry(&self) -> PlacementTreeGeometry {
+        PlacementTreeGeometry(self.root.clone())
+    }
+
     fn allocate(&mut self) -> SplitId {
         take_split_id(&mut self.next_split_id)
     }

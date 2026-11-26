@@ -22,6 +22,8 @@ use crate::backend::wayland::compositor::window::WindowType;
 use crate::backend::wayland::stacking::{OutputScenePolicy, SceneBand};
 use crate::wm::WaylandWm as Wm;
 
+use super::placement_overlay::PlacementOverlay;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Bar render elements
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,12 +80,16 @@ pub struct SharedSceneElements {
     pub bar_buffers: Rc<Vec<(MemoryRenderBuffer, crate::types::Point)>>,
     pub borders: Vec<SolidColorRenderElement>,
     pub layout_preview_color: crate::types::color::Rgba,
+    placement_overlay: Option<Rc<PlacementOverlay>>,
 }
 
 /// Renderer-owned cache shared across consecutive frames.
 #[derive(Default)]
 pub struct SceneCache {
     entry: Option<(u64, u64, Rc<SharedSceneElements>)>,
+    // The debug texture must stay reusable even while the bar is hidden or
+    // its asynchronous renderer has an unfinished frame.
+    placement_overlay: Option<Rc<PlacementOverlay>>,
 }
 
 /// Capture shared scene pieces that do not depend on the target output.
@@ -104,12 +110,24 @@ pub fn build_shared_scene_elements(
     let borders_hash =
         border_scene.cache_key(&wm.core.state.config.colors.border, layout_preview_color);
     let bar_dirty = wm.core.bar.needs_redraw();
+    cache.placement_overlay =
+        PlacementOverlay::capture(&mut wm.core.state, cache.placement_overlay.as_ref());
+    let previous_overlay = cache
+        .entry
+        .as_ref()
+        .and_then(|(_, _, scene)| scene.placement_overlay.as_ref());
+    let same_overlay = match (previous_overlay, &cache.placement_overlay) {
+        (None, None) => true,
+        (Some(previous), Some(current)) => Rc::ptr_eq(previous, current),
+        _ => false,
+    };
 
     if !bar_dirty
         && let Some((cached_bar, cached_borders, ref elements)) = cache.entry
         && cached_bar == bar_seq
         && cached_borders == borders_hash
         && elements.layout_preview_color == layout_preview_color
+        && same_overlay
     {
         return elements.clone();
     }
@@ -126,10 +144,15 @@ pub fn build_shared_scene_elements(
         bar_buffers,
         borders,
         layout_preview_color,
+        placement_overlay: cache.placement_overlay.clone(),
     });
 
     if !wm.core.bar.needs_redraw() {
         cache.entry = Some((bar_seq, borders_hash, elements.clone()));
+    } else if !same_overlay {
+        // A pending bar update shouldn't retain the texture of a finished
+        // gesture in the previous frame's cache entry.
+        cache.entry = None;
     }
     elements
 }
@@ -208,7 +231,18 @@ pub fn build_common_scene_elements_from_shared(
     );
 
     let mut bar = Vec::new();
-    for (buffer, position) in shared.bar_buffers.iter() {
+    let pointer_overlay = match shared.placement_overlay.as_deref() {
+        Some(PlacementOverlay::Pointer { hitboxes, buffer }) => {
+            Some((buffer, hitboxes.area.position()))
+        }
+        _ => None,
+    };
+    for (buffer, position) in shared
+        .bar_buffers
+        .iter()
+        .map(|(buffer, point)| (buffer, *point))
+        .chain(pointer_overlay)
+    {
         let Some(output_rect) = output_rect else {
             continue;
         };
@@ -217,7 +251,7 @@ pub fn build_common_scene_elements_from_shared(
         if !output_rect.contains(global_position) {
             continue;
         }
-        let local = logical_point_to_output_physical(*position, output_rect, output_scale);
+        let local = logical_point_to_output_physical(position, output_rect, output_scale);
         match MemoryRenderBufferRenderElement::from_buffer(
             renderer,
             (local.x as f64, local.y as f64),
@@ -244,6 +278,13 @@ pub fn build_common_scene_elements_from_shared(
         shared.layout_preview_color,
     );
     if let Some(output_rect) = output_rect {
+        if let Some(PlacementOverlay::Keyboard { markers, .. }) =
+            shared.placement_overlay.as_deref()
+        {
+            let mut projected = project_solids_to_output(markers, output_rect, output_scale);
+            projected.append(&mut borders);
+            borders = projected;
+        }
         borders.extend(project_solids_to_output(
             &layout_preview,
             output_rect,

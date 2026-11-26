@@ -1,13 +1,14 @@
-//! Real pointer constraints and keyboard grabs without a GPU or running desktop.
+//! Real Wayland pointer delivery and grabs without a GPU or running desktop.
 
-use crate::backend::wayland::commands::PointerMotionCommand;
+use crate::backend::wayland::commands::{PointerButtonCommand, PointerMotionCommand, WmCommand};
 use crate::backend::wayland::compositor::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::backend::wayland::input::pointer::motion::process_pointer_motion_command;
+use crate::backend::wayland::runtime::dispatch::drain_command_queue;
 use crate::test_support::{MonitorBuilder, add_client};
 use crate::types::{Client, ClientMode, MonitorId, Rect, Size, TagMask, WindowId};
 use smithay::backend::input::InputTime;
-use smithay::backend::input::{KeyState, Keycode};
+use smithay::backend::input::{ButtonState, KeyState, Keycode};
 use smithay::input::keyboard::{GrabStartData, KeyboardGrab, KeyboardInnerHandle, ModifiersState};
 use smithay::input::pointer::{CursorIcon, CursorImageStatus};
 use smithay::output::Output;
@@ -30,7 +31,10 @@ use wayland_protocols::wp::pointer_constraints::zv1::client::{
 use wayland_protocols::wp::relative_pointer::zv1::client::{
     zwp_relative_pointer_manager_v1, zwp_relative_pointer_v1,
 };
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
+use wayland_protocols::xdg::shell::client::{
+    xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
+};
 
 type EventLoop = smithay::reexports::calloop::EventLoop<'static, WaylandState>;
 
@@ -39,6 +43,8 @@ struct ClientEvents {
     globals: Vec<(u32, String)>,
     syncs: usize,
     enters: usize,
+    pointer_surface: Option<wl_surface::WlSurface>,
+    presses: Vec<(u32, wl_surface::WlSurface)>,
     locks: usize,
     unlocks: usize,
     relative: usize,
@@ -83,11 +89,27 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientEvents {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Enter { serial, .. } = event {
-            state.enters += 1;
-            if !state.show_cursor {
-                pointer.set_cursor(serial, None, 0, 0);
+        match event {
+            wl_pointer::Event::Enter {
+                serial, surface, ..
+            } => {
+                state.enters += 1;
+                state.pointer_surface = Some(surface);
+                if !state.show_cursor {
+                    pointer.set_cursor(serial, None, 0, 0);
+                }
             }
+            wl_pointer::Event::Leave { .. } => state.pointer_surface = None,
+            wl_pointer::Event::Button {
+                serial,
+                state: wayland_client::WEnum::Value(wl_pointer::ButtonState::Pressed),
+                ..
+            } => {
+                if let Some(surface) = &state.pointer_surface {
+                    state.presses.push((serial, surface.clone()));
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -143,6 +165,10 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for ClientEvents {
     }
 }
 delegate_noop!(ClientEvents: ignore xdg_toplevel::XdgToplevel);
+delegate_noop!(ClientEvents: ignore xdg_positioner::XdgPositioner);
+delegate_noop!(ClientEvents: ignore xdg_popup::XdgPopup);
+delegate_noop!(ClientEvents: ignore xdg_wm_dialog_v1::XdgWmDialogV1);
+delegate_noop!(ClientEvents: ignore xdg_dialog_v1::XdgDialogV1);
 delegate_noop!(ClientEvents: ignore zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
 delegate_noop!(ClientEvents: ignore zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1);
 
@@ -154,10 +180,12 @@ struct Fixture {
     events: ClientEvents,
     compositor: wl_compositor::WlCompositor,
     shm: wl_shm::WlShm,
+    seat: wl_seat::WlSeat,
     pointer: wl_pointer::WlPointer,
     constraints: zwp_pointer_constraints_v1::ZwpPointerConstraintsV1,
     _relative: zwp_relative_pointer_v1::ZwpRelativePointerV1,
     xdg: xdg_wm_base::XdgWmBase,
+    dialogs: xdg_wm_dialog_v1::XdgWmDialogV1,
     outputs: Vec<(Output, wl_output::WlOutput, MonitorId)>,
 }
 
@@ -223,6 +251,7 @@ impl Fixture {
         );
         let relative = manager.get_relative_pointer(&pointer, &queue.handle(), ());
         let xdg = registry.bind(global("xdg_wm_base"), 1, &queue.handle(), ());
+        let dialogs = registry.bind(global("xdg_wm_dialog_v1"), 1, &queue.handle(), ());
         let globals: Vec<_> = events
             .globals
             .iter()
@@ -248,10 +277,12 @@ impl Fixture {
             events,
             compositor,
             shm,
+            seat,
             pointer,
             constraints,
             _relative: relative,
             xdg,
+            dialogs,
             outputs,
         }
     }
@@ -285,16 +316,20 @@ impl Fixture {
         );
     }
     fn attach(&mut self, surface: &wl_surface::WlSurface) {
+        self.attach_sized(surface, 200, 200);
+    }
+    fn attach_sized(&mut self, surface: &wl_surface::WlSurface, width: i32, height: i32) {
+        let byte_len = width * height * 4;
         let file = tempfile::tempfile().unwrap();
-        file.set_len(200 * 200 * 4).unwrap();
+        file.set_len(byte_len as u64).unwrap();
         let pool = self
             .shm
-            .create_pool(file.as_fd(), 200 * 200 * 4, &self.queue.handle(), ());
+            .create_pool(file.as_fd(), byte_len, &self.queue.handle(), ());
         let buffer = pool.create_buffer(
             0,
-            200,
-            200,
-            200 * 4,
+            width,
+            height,
+            width * 4,
             wl_shm::Format::Argb8888,
             &self.queue.handle(),
             (),
@@ -330,6 +365,69 @@ impl Fixture {
 }
 
 impl Fixture {
+    fn managed_toplevel(
+        &mut self,
+        geometry: Rect,
+        parent: Option<&xdg_toplevel::XdgToplevel>,
+    ) -> (
+        WindowId,
+        wl_surface::WlSurface,
+        xdg_surface::XdgSurface,
+        xdg_toplevel::XdgToplevel,
+        Option<xdg_dialog_v1::XdgDialogV1>,
+    ) {
+        let qh = self.queue.handle();
+        let surface = self.compositor.create_surface(&qh, ());
+        let xdg = self.xdg.get_xdg_surface(&surface, &qh, ());
+        let toplevel = xdg.get_toplevel(&qh, ());
+        let dialog = parent.map(|parent| {
+            toplevel.set_parent(Some(parent));
+            let dialog = self.dialogs.get_xdg_dialog(&toplevel, &qh, ());
+            dialog.set_modal();
+            dialog
+        });
+        surface.commit();
+        self.pump();
+        self.attach_sized(&surface, geometry.w, geometry.h);
+        drain_command_queue(&mut self.state);
+        drain_command_queue(&mut self.state);
+        let win = self.state.focused_window().unwrap();
+        let window = self.state.native.find_window(win).unwrap();
+        // Fix the test geometry without depending on which layout is configured.
+        self.state.wm.core.state.model.client_mut(win).unwrap().geo = geometry;
+        self.state
+            .native
+            .space
+            .map_element(window.clone(), (geometry.x, geometry.y), false);
+        (win, surface, xdg, toplevel, dialog)
+    }
+
+    fn move_pointer(&mut self, x: f64, y: f64) {
+        self.motion(PointerMotionCommand::Absolute {
+            x,
+            y,
+            time: InputTime::now(),
+        });
+    }
+
+    fn client_button(&mut self, state: ButtonState) {
+        self.state
+            .native
+            .push_command(WmCommand::PointerButton(PointerButtonCommand {
+                code: 0x110, // BTN_LEFT
+                state,
+                time: InputTime::now(),
+            }));
+        drain_command_queue(&mut self.state);
+        self.pump();
+    }
+
+    fn click(&mut self, x: f64, y: f64) {
+        self.move_pointer(x, y);
+        self.client_button(ButtonState::Pressed);
+        self.client_button(ButtonState::Released);
+    }
+
     fn motion(&mut self, command: PointerMotionCommand) {
         let pointer = self.state.native.seat.get_pointer().unwrap();
         let keyboard = self.state.native.seat.get_keyboard().unwrap();
@@ -370,12 +468,106 @@ impl Fixture {
 }
 
 #[test]
+fn native_modal_dialog_receives_clicks_inside_its_surface() {
+    let mut f = Fixture::new(1);
+    let (parent, parent_surface, _, parent_toplevel, _) =
+        f.managed_toplevel(Rect::new(0, 0, 200, 200), None);
+    let (dialog, dialog_surface, _, _, _) =
+        f.managed_toplevel(Rect::new(60, 60, 80, 80), Some(&parent_toplevel));
+    assert_eq!(
+        f.state
+            .wm
+            .core
+            .state
+            .model
+            .client(dialog)
+            .unwrap()
+            .transient_for,
+        Some(parent)
+    );
+    f.click(30.0, 30.0);
+    assert_eq!(&f.events.presses.last().unwrap().1, &parent_surface);
+    assert_eq!(f.events.presses.len(), 1);
+    f.click(100.0, 100.0);
+    assert_eq!(&f.events.presses.last().unwrap().1, &dialog_surface);
+    assert_eq!(f.events.presses.len(), 2);
+    assert!(f.state.is_seat_focused_on(dialog));
+}
+
+#[test]
+fn native_modal_dialog_keeps_keyboard_focus_when_parent_is_clicked() {
+    let mut f = Fixture::new(1);
+    f.state.wm.core.state.config.window.focus_follows_mouse =
+        crate::types::FocusFollowsMouseMode::Off;
+    let (parent, _, _, parent_toplevel, _) = f.managed_toplevel(Rect::new(0, 0, 200, 200), None);
+    let (dialog, _, _, _, modal_hint) =
+        f.managed_toplevel(Rect::new(60, 60, 80, 80), Some(&parent_toplevel));
+    let modal_hint = modal_hint.unwrap();
+    assert!(f.state.is_seat_focused_on(dialog), "initial dialog focus");
+
+    f.move_pointer(30.0, 30.0);
+    assert!(f.state.is_seat_focused_on(dialog), "focus before press");
+    f.client_button(ButtonState::Pressed);
+    assert!(
+        f.state.is_seat_focused_on(dialog),
+        "clicking the exposed parent moved keyboard focus away from the modal dialog (parent focused: {})",
+        f.state.is_seat_focused_on(parent),
+    );
+    f.client_button(ButtonState::Released);
+
+    modal_hint.unset_modal();
+    f.pump();
+    drain_command_queue(&mut f.state);
+    f.click(30.0, 30.0);
+    assert!(f.state.is_seat_focused_on(parent));
+
+    modal_hint.set_modal();
+    f.pump();
+    drain_command_queue(&mut f.state);
+    assert!(f.state.is_seat_focused_on(dialog));
+
+    modal_hint.destroy();
+    f.pump();
+    drain_command_queue(&mut f.state);
+    f.click(30.0, 30.0);
+    assert!(f.state.is_seat_focused_on(parent));
+}
+
+#[test]
+fn grabbed_xdg_popup_receives_clicks_over_its_parent() {
+    let mut f = Fixture::new(1);
+    let (_, parent_surface, parent_xdg, _, _) = f.managed_toplevel(Rect::new(0, 0, 200, 200), None);
+    f.move_pointer(30.0, 30.0);
+    f.client_button(ButtonState::Pressed);
+    let (serial, target) = f.events.presses.last().unwrap();
+    assert_eq!(target, &parent_surface);
+
+    let qh = f.queue.handle();
+    let popup_surface = f.compositor.create_surface(&qh, ());
+    let popup_xdg = f.xdg.get_xdg_surface(&popup_surface, &qh, ());
+    let positioner = f.xdg.create_positioner(&qh, ());
+    positioner.set_size(60, 60);
+    positioner.set_anchor_rect(60, 60, 10, 10);
+    positioner.set_anchor(xdg_positioner::Anchor::TopLeft);
+    positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+    let popup = popup_xdg.get_popup(Some(&parent_xdg), &positioner, &qh, ());
+    popup.grab(&f.seat, *serial);
+    popup_surface.commit();
+    f.pump();
+    f.attach_sized(&popup_surface, 60, 60);
+    assert!(f.state.native.pointer.is_grabbed());
+    f.client_button(ButtonState::Released);
+
+    f.click(90.0, 90.0);
+    assert_eq!(f.events.presses.len(), 2);
+    assert_eq!(&f.events.presses.last().unwrap().1, &popup_surface);
+}
+
+#[test]
 fn floating_resize_cursor_follows_outward_motion_and_clears_beyond_the_band() {
-    use crate::backend::wayland::commands::PointerButtonCommand;
     use crate::backend::wayland::input::pointer::button::{
         PointerButtonInput, handle_pointer_button,
     };
-    use smithay::backend::input::ButtonState;
 
     let mut f = Fixture::new(2);
     let (win, _) = f.window();

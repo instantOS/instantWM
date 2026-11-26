@@ -215,6 +215,11 @@ impl XwmHandler for WaylandState {
         if let Some(win) = self.native.window_id_for_x11_surface(&window) {
             sync_surface_metadata(self, win, &window);
             apply_surface_policy(self, win, &window);
+            self.native
+                .push_command(super::super::commands::WmCommand::SetModal {
+                    win,
+                    modal: window.is_modal(),
+                });
             let _wm_view = &self.wm;
             self.map_window_in_space(win);
             self.request_window_focus(win);
@@ -266,6 +271,7 @@ impl XwmHandler for WaylandState {
                     x11_hints: window.hints(),
                     x11_size_hints: window.size_hints(),
                     parent,
+                    is_modal: window.is_modal(),
                 },
             ));
 
@@ -387,6 +393,17 @@ impl XwmHandler for WaylandState {
         h: Option<u32>,
         _reorder: Option<smithay::xwayland::xwm::Reorder>,
     ) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
+            self.native
+                .push_command(super::super::commands::WmCommand::ConfigureXWaylandWindow {
+                    win,
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                });
+            return;
+        }
         let mut geo = window.last_configure();
         if let Some(x) = x {
             geo.loc.x = x;
@@ -399,14 +416,6 @@ impl XwmHandler for WaylandState {
         }
         if let Some(h) = h {
             geo.size.h = h as i32;
-        }
-        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
-            self.native
-                .push_command(super::super::commands::WmCommand::RequestX11WindowSize {
-                    win,
-                    size: crate::types::Size::new(geo.size.w, geo.size.h),
-                });
-            return;
         }
         let _ = window.configure(Some(geo));
     }
@@ -456,6 +465,18 @@ impl XwmHandler for WaylandState {
         };
 
         match property {
+            WmWindowProperty::MotifHints => {
+                if let Some(decorated) =
+                    crate::backend::x11::policy::motif_decoration_preference(&window)
+                {
+                    self.native.push_command(
+                        super::super::commands::WmCommand::UpdateXWaylandDecorations {
+                            win,
+                            decorated,
+                        },
+                    );
+                }
+            }
             WmWindowProperty::Title | WmWindowProperty::Class => {
                 sync_surface_metadata(self, win, &window);
                 apply_surface_policy(self, win, &window);
@@ -464,7 +485,6 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::NormalHints
             | WmWindowProperty::TransientFor
             | WmWindowProperty::WindowType
-            | WmWindowProperty::MotifHints
             | WmWindowProperty::StartupId
             | WmWindowProperty::Pid
             | WmWindowProperty::Protocols
@@ -559,13 +579,11 @@ impl XwmHandler for WaylandState {
     }
 
     fn modal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
-        let _ = window.set_modal(true);
-        self.restore_focus_after_overlay();
+        self.set_xwayland_modal(&window, true);
     }
 
     fn unmodal_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
-        let _ = window.set_modal(false);
-        self.restore_focus_after_overlay();
+        self.set_xwayland_modal(&window, false);
     }
 
     fn above_request(&mut self, _xwm: smithay::xwayland::xwm::XwmId, window: X11Surface) {
@@ -741,6 +759,14 @@ impl XwmHandler for WaylandState {
 }
 
 impl WaylandState {
+    fn set_xwayland_modal(&mut self, window: &X11Surface, modal: bool) {
+        let _ = window.set_modal(modal);
+        if let Some(win) = self.native.window_id_for_x11_surface(window) {
+            self.native
+                .push_command(super::super::commands::WmCommand::SetModal { win, modal });
+        }
+    }
+
     /// Include hidden managed windows as well as untracked override-redirect
     /// surfaces: server death must not leave either in the compositor model.
     pub(crate) fn cleanup_xwayland_windows(&mut self, id: smithay::xwayland::xwm::XwmId) {

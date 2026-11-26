@@ -56,8 +56,8 @@ impl LayoutTree {
     /// Resolve tiled slots, treating client minimum sizes as soft constraints.
     ///
     /// Minimums are honored whenever the complete tree can satisfy them. If
-    /// its topology and work area make that impossible, preserve the same
-    /// non-overlapping tree partition without client minimums instead.
+    /// its topology and work area make that impossible, fall back to one pixel
+    /// per leaf where the partition can still fit on the output.
     pub fn soft_constrained_bounds(
         &self,
         rect: Rect,
@@ -65,7 +65,11 @@ impl LayoutTree {
     ) -> (HashMap<WindowId, Rect>, bool) {
         match self.constrained_bounds(rect, minimums) {
             Some(bounds) => (bounds, true),
-            None => (self.bounds(rect), false),
+            None => (
+                self.constrained_bounds(rect, &HashMap::new())
+                    .unwrap_or_else(|| self.bounds(rect)),
+                false,
+            ),
         }
     }
 

@@ -153,6 +153,7 @@ pub struct MapWindowParams {
     pub x11_hints: Option<x11rb::properties::WmHints>,
     pub x11_size_hints: Option<x11rb::properties::WmSizeHints>,
     pub parent: Option<WindowId>,
+    pub is_modal: bool,
 }
 
 /// Commands sent from the Wayland compositor to the core Window Manager.
@@ -168,8 +169,10 @@ pub enum WmCommand {
     UnmapWindow(WindowId),
     /// Stop managing a window (e.g. it was closed).
     UnmanageWindow(WindowId),
-    /// Request to activate a window (e.g. from xdg-activation).
+    /// Request activation with an xdg-activation token.
     ActivateWindow(WindowId),
+    /// Switch to a window selected by a foreign-toplevel client.
+    ActivateForeignToplevel(WindowId),
     /// Pointer motion event.
     PointerMotion(PointerMotionCommand),
     /// Pointer button event.
@@ -195,16 +198,27 @@ pub enum WmCommand {
         win: WindowId,
         parent: Option<WindowId>,
     },
+    SetModal {
+        win: WindowId,
+        modal: bool,
+    },
     /// Reconcile one complete XWayland policy snapshot.
     UpdateXWaylandPolicy {
         win: WindowId,
         update: crate::backend::x11::policy::XWaylandPolicyUpdate,
     },
-    /// An X11 client's request to resize a managed window. The WM decides at
-    /// dispatch time whether that client may change its logical geometry.
-    RequestX11WindowSize {
+    UpdateXWaylandDecorations {
         win: WindowId,
-        size: crate::types::Size,
+        decorated: bool,
+    },
+    /// The configure mask remains intact until the WM can resolve omitted
+    /// coordinates and dimensions against its current geometry.
+    ConfigureXWaylandWindow {
+        win: WindowId,
+        x: Option<i32>,
+        y: Option<i32>,
+        width: Option<u32>,
+        height: Option<u32>,
     },
     /// Observe a native Wayland surface's committed size and the configure it
     /// answered. This is never an X11 client resize request.
@@ -217,11 +231,20 @@ pub enum WmCommand {
         acknowledged_configure: Option<smithay::utils::Serial>,
     },
     /// Request to change a window's maximized state.
-    SetMaximized { win: WindowId, maximized: bool },
+    SetMaximized {
+        win: WindowId,
+        maximized: bool,
+    },
     /// Request to change a window's fullscreen state.
-    SetFullscreen { win: WindowId, fullscreen: bool },
+    SetFullscreen {
+        win: WindowId,
+        fullscreen: bool,
+    },
     /// Request to change a window's minimized/hidden state.
-    SetMinimized { win: WindowId, minimized: bool },
+    SetMinimized {
+        win: WindowId,
+        minimized: bool,
+    },
     /// Gracefully close a window (WM-initiated, e.g. from
     /// wlr-foreign-toplevel-management's `close` request).
     CloseWindow(WindowId),

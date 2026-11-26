@@ -36,6 +36,8 @@ pub struct NetAtoms {
     pub wm_check: u32,
     /// _NET_WM_STATE_FULLSCREEN atom.
     pub wm_fullscreen: u32,
+    /// _NET_WM_STATE_MODAL atom.
+    pub wm_modal: u32,
     /// _NET_WM_STATE_MAXIMIZED_VERT atom.
     pub wm_maximized_vert: u32,
     /// _NET_WM_STATE_MAXIMIZED_HORZ atom.

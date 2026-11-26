@@ -394,19 +394,41 @@ impl WaylandBackend<'_> {
     /// Project the sanitized monitor policy onto the output state.
     pub fn apply_monitor_configs(&mut self, policy: &crate::output_mirror::MonitorPolicy) {
         self.with_state(|state: &mut WaylandState| {
-            let output_names: Vec<_> = state
+            let mut configurations: Vec<_> = state
                 .native
                 .output_management_state
                 .outputs()
                 .iter()
-                .map(|output| output.name())
+                .filter_map(|output| {
+                    let name = output.name();
+                    let config = policy.effective(&name)?;
+                    let anchor = match config
+                        .position
+                        .as_deref()
+                        .and_then(crate::types::MonitorPosition::parse)
+                    {
+                        Some(crate::types::MonitorPosition::Relative { output, .. }) => {
+                            Some(output)
+                        }
+                        _ => None,
+                    };
+                    Some((name, config, anchor))
+                })
                 .collect();
             state.native.runtime.mirror_of = policy.mirrors.clone();
             state.native.runtime.configured_output_positions.clear();
-            for name in &output_names {
-                let Some(config) = policy.effective(name) else {
-                    continue;
-                };
+            while !configurations.is_empty() {
+                // Resolve relative positions against the anchor's new geometry.
+                // Cycles fall back to applying in discovery order.
+                let next = configurations
+                    .iter()
+                    .position(|(_, _, anchor)| {
+                        anchor.as_ref().is_none_or(|anchor| {
+                            !configurations.iter().any(|(name, _, _)| name == anchor)
+                        })
+                    })
+                    .unwrap_or(0);
+                let (name, config, _) = configurations.remove(next);
                 if config.position.is_some() {
                     state
                         .native
@@ -414,7 +436,7 @@ impl WaylandBackend<'_> {
                         .configured_output_positions
                         .insert(name.clone());
                 }
-                state.native.set_output_config(name, config);
+                state.native.set_output_config(&name, config);
             }
             state.native.queue_output_policy_projection(&policy.configs);
         });
@@ -510,6 +532,50 @@ mod tests {
     use crate::backend::{OutputOps, WindowProtocol};
     use crate::types::{AltCursor, ResizeDirection, WindowId};
     use smithay::input::pointer::CursorIcon;
+
+    #[test]
+    fn relative_layout_uses_new_anchor_geometry_in_any_discovery_order() {
+        use crate::config::config_toml::MonitorConfig;
+        use crate::types::{Point, Size};
+
+        let (_event_loop, mut state) = crate::test_support::new_compositor();
+        for (name, width) in [("HDMI-A-1", 1024), ("DP-1", 1600), ("eDP-1", 1280)] {
+            state
+                .native
+                .create_output(name, Size::new(width, 720), Some(59_940));
+        }
+        let configs = [
+            ("eDP-1", "0,0"),
+            ("DP-1", "right-of:eDP-1"),
+            ("HDMI-A-1", "right-of:DP-1"),
+        ]
+        .into_iter()
+        .map(|(name, position)| {
+            (
+                name.into(),
+                MonitorConfig {
+                    position: Some(position.into()),
+                    scale: Some(1.0),
+                    ..MonitorConfig::default()
+                },
+            )
+        })
+        .collect();
+        WaylandBackend::new(&mut state)
+            .apply_monitor_configs(&crate::output_mirror::MonitorPolicy::new(&configs));
+
+        let pending = state
+            .native
+            .runtime
+            .output_transactions
+            .latest_pending_apply()
+            .unwrap();
+        for (name, x) in [("eDP-1", 0), ("DP-1", 1280), ("HDMI-A-1", 2880)] {
+            let head = pending.heads.iter().find(|head| head.id.0 == name).unwrap();
+            assert_eq!(head.position, Point::new(x, 0));
+            assert_eq!(head.mode.unwrap().refresh_millihertz, 59_940);
+        }
+    }
 
     #[test]
     fn apply_monitor_configs_records_mirrors_without_anchoring_them() {

@@ -6,8 +6,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::{
-    BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
-    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD,
+    BROKEN, MWM_HINTS_DECORATIONS, MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD,
 };
 use crate::client::rules::WindowProperties;
 use crate::client::set_fullscreen;
@@ -408,6 +407,10 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let atom_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
     let atom_dialog = ctx_x11.x11_runtime.netatom.wm_window_type_dialog;
 
+    if let Some(client) = ctx_x11.core.state.model.client_mut(win) {
+        client.is_modal = state.contains(&ctx_x11.x11_runtime.netatom.wm_modal);
+    }
+
     if state.contains(&atom_fullscreen) {
         set_fullscreen(&mut WmCtx::X11(ctx_x11.reborrow()), win, true);
     }
@@ -472,7 +475,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     let decorations = motif[MWM_HINTS_DECORATIONS_FIELD];
-    let new_bw = if decorations & (MWM_DECOR_ALL | MWM_DECOR_BORDER | MWM_DECOR_TITLE) != 0 {
+    let new_bw = if super::policy::motif_decorations_include_frame(decorations) {
         border_px
     } else {
         0
@@ -532,6 +535,38 @@ pub(crate) fn parse_atom_property(reply: GetPropertyReply) -> Vec<u32> {
         .value32()
         .map(|values| values.collect())
         .unwrap_or_default()
+}
+
+pub(crate) fn read_modal_hint(
+    x11: &X11BackendRef<'_>,
+    runtime: &X11RuntimeConfig,
+    win: WindowId,
+) -> bool {
+    let [state] = get_atom_props(x11.conn, win.into(), [runtime.netatom.wm_state]);
+    state.contains(&runtime.netatom.wm_modal)
+}
+
+/// Add or remove atoms from the window's `_NET_WM_STATE` list.
+pub(super) fn update_wm_state_atoms(
+    x11: &X11BackendRef<'_>,
+    runtime: &X11RuntimeConfig,
+    win: WindowId,
+    atoms: &[Atom],
+    present: bool,
+) {
+    let x11_win: Window = win.into();
+    let wm_state = runtime.netatom.wm_state;
+    let [mut state] = get_atom_props(x11.conn, x11_win, [wm_state]);
+    if present {
+        for &atom in atoms {
+            if !state.contains(&atom) {
+                state.push(atom);
+            }
+        }
+    } else {
+        state.retain(|atom| !atoms.contains(atom));
+    }
+    write_net_wm_state_atoms(x11.conn, x11_win, wm_state, &state);
 }
 
 pub fn write_net_wm_state_atoms(

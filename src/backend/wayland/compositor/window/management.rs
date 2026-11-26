@@ -73,8 +73,10 @@ impl WaylandNativeState {
                     .cloned()
             })
             .collect();
+        // Smithay's upwards implementation consumes bottom-to-top order:
+        // it places a misplaced window above the preceding sibling.
         if let Some(xwm) = self.xwm.as_mut()
-            && let Err(error) = xwm.update_stacking_order_downwards(x11_order.iter())
+            && let Err(error) = xwm.update_stacking_order_upwards(x11_order.iter())
         {
             log::warn!("failed to synchronize Xwayland stacking: {error}");
         }

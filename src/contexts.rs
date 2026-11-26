@@ -268,11 +268,49 @@ impl<'a> WmCtx<'a> {
 
     /// Refresh the backend-native visualization of a pending tree placement.
     pub fn update_layout_preview(&mut self, rect: Option<Rect>) {
-        self.update_interaction_outline(rect, crate::types::InteractionOutlineStyle::Layout, None);
+        self.update_layout_preview_with_animation(rect, false);
+    }
+
+    pub(crate) fn update_layout_preview_with_animation(
+        &mut self,
+        rect: Option<Rect>,
+        animate: bool,
+    ) {
+        if rect.is_none()
+            && self
+                .core()
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .is_none()
+        {
+            self.core_mut().state.interaction.pointer_placement_cache = None;
+        }
+        self.update_interaction_outline(
+            rect,
+            crate::types::InteractionOutlineStyle::Layout,
+            None,
+            animate,
+        );
+        // The debug overlay can change even when two destinations have the
+        // same preview rectangle, or when a drag is over its own slot.
+        if let WmCtx::Wayland(ctx) = self
+            && ctx
+                .wayland
+                .with_state_ref(|state| state.wm.core.state.config.layout.show_placement_hitboxes)
+        {
+            ctx.wayland.request_render();
+        }
     }
 
     pub fn update_close_preview(&mut self, target: Option<WindowId>, rect: Option<Rect>) {
-        self.update_interaction_outline(rect, crate::types::InteractionOutlineStyle::Close, target);
+        self.update_interaction_outline(
+            rect,
+            crate::types::InteractionOutlineStyle::Close,
+            target,
+            false,
+        );
     }
 
     fn update_interaction_outline(
@@ -280,14 +318,14 @@ impl<'a> WmCtx<'a> {
         rect: Option<Rect>,
         style: crate::types::InteractionOutlineStyle,
         target: Option<WindowId>,
+        animate: bool,
     ) {
         let state = &mut self.core_mut().state;
-        let Some(projection) = state.interaction.update_outline(
-            &state.config.animations,
-            &state.behavior.current_mode,
-            rect,
-            style,
-        ) else {
+        let Some(projection) =
+            state
+                .interaction
+                .update_outline(&state.config.animations, animate, rect, style)
+        else {
             return;
         };
         use crate::backend::LayoutInteractionOps;

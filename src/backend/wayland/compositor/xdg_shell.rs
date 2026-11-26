@@ -34,6 +34,7 @@ use smithay::{
         },
         shell::xdg::{
             PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
+            XdgToplevelSurfaceData,
             decoration::XdgDecorationHandler,
             dialog::{ToplevelDialogHint, XdgDialogHandler},
         },
@@ -59,6 +60,37 @@ impl WaylandState {
         });
     }
 
+    /// Provisional size for a pending toplevel that requested a
+    /// compositor-owned presentation before its first buffer.
+    ///
+    /// A maximize/fullscreen request means the compositor owns the geometry,
+    /// not the client, so sending the state without a size would be
+    /// misleading. The map transaction remains authoritative; this is the
+    /// best-known target until monitor assignment and initial rules run.
+    fn pending_presentation_size(
+        &self,
+        surface: &ToplevelSurface,
+        presentation: crate::client::mode::InitialPresentationIntent,
+    ) -> Option<smithay::utils::Size<i32, smithay::utils::Logical>> {
+        if !presentation.fullscreen && !presentation.maximized {
+            return None;
+        }
+
+        let model = &self.wm.core.state.model;
+        let monitor = surface
+            .parent()
+            .and_then(|parent| self.native.window_id_for_surface(&parent))
+            .and_then(|win| model.client_view(win))
+            .map(|view| view.monitor)
+            .or_else(|| model.selected_monitor())?;
+        let rect = if presentation.fullscreen {
+            monitor.monitor_rect
+        } else {
+            monitor.work_rect()
+        };
+        Some(smithay::utils::Size::from((rect.w.max(1), rect.h.max(1))))
+    }
+
     fn record_pending_toplevel_presentation(
         &self,
         surface: &ToplevelSurface,
@@ -76,6 +108,10 @@ impl WaylandState {
         // A client may wait for the requested state before drawing its first
         // buffer. Acknowledge the state now; authoritative geometry follows
         // once monitor assignment and initial rules run in the map transaction.
+        // If the client asked for maximize/fullscreen, that authoritative
+        // geometry is compositor-owned, so carry its provisional size in this
+        // configure instead of leaving the client to choose.
+        let size = self.pending_presentation_size(surface, presentation);
         surface.with_pending_state(|state| {
             if presentation.fullscreen {
                 state.states.set(ToplevelState::Fullscreen);
@@ -87,6 +123,7 @@ impl WaylandState {
             } else {
                 state.states.unset(ToplevelState::Maximized);
             }
+            state.size = size;
         });
         surface.send_pending_configure();
     }
@@ -241,8 +278,14 @@ impl XdgForeignHandler for WaylandState {
 }
 
 impl XdgDialogHandler for WaylandState {
-    fn dialog_hint_changed(&mut self, toplevel: ToplevelSurface, _hint: ToplevelDialogHint) {
-        self.native.apply_floating_policy(&toplevel);
+    fn dialog_hint_changed(&mut self, toplevel: ToplevelSurface, hint: ToplevelDialogHint) {
+        if let Some(win) = self.native.window_id_for_toplevel(&toplevel) {
+            self.native
+                .push_command(super::super::commands::WmCommand::SetModal {
+                    win,
+                    modal: hint == ToplevelDialogHint::Modal,
+                });
+        }
     }
 }
 
@@ -772,6 +815,15 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
 }
 
 impl WaylandNativeState {
+    pub(crate) fn toplevel_is_modal(surface: &ToplevelSurface) -> bool {
+        compositor::with_states(surface.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .is_some_and(|role| role.lock().unwrap().dialog_hint == ToplevelDialogHint::Modal)
+        })
+    }
+
     pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
         &self,
         surface: &ToplevelSurface,

@@ -119,7 +119,7 @@ pub struct UserConfig {
     pub tags: TagsConfig,
     /// Layout geometry configuration.
     pub layout: LayoutConfig,
-    /// Animation timing configuration.
+    /// Animation switches and timing.
     pub animations: AnimationConfig,
     /// Status bar visibility and geometry.
     pub bar: BarConfig,
@@ -279,21 +279,27 @@ impl<'de> Deserialize<'de> for AnimationSpeed {
     }
 }
 
-/// Animation timing configuration.
+/// Animation switches and timing.
 ///
 /// ```toml
 /// [animations]
 /// enabled = true
+/// keyboard_placement_preview = true
+/// tiled_drag_preview = true
 /// # 0.5 = half speed; 2.0 = twice as fast
 /// speed = 1.0
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Serialize)]
 #[serde(default)]
 pub struct AnimationConfig {
-    /// Master switch for window animations. `instantwmctl config toggle
+    /// Master switch for window and preview animations. `instantwmctl config toggle
     /// animations.enabled` flips this at runtime; `instantwmctl reload`
     /// restores the configured value.
     pub enabled: bool,
+    /// Animate the outline as keyboard placement moves between destinations.
+    pub keyboard_placement_preview: bool,
+    /// Animate the outline as a drag moves between tiled destinations.
+    pub tiled_drag_preview: bool,
     pub speed: AnimationSpeed,
 }
 
@@ -301,6 +307,8 @@ impl Default for AnimationConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            keyboard_placement_preview: true,
+            tiled_drag_preview: true,
             speed: AnimationSpeed::default(),
         }
     }
@@ -358,6 +366,7 @@ impl ColorTheme {
 /// keyboard_resize_step = 0.05
 /// minimum_weight = 0.15
 /// pointer_edge_fraction = 0.34
+/// show_placement_hitboxes = false
 /// new_window_placement = "auto-resize"
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, Serialize)]
@@ -377,6 +386,8 @@ pub struct LayoutConfig {
     pub minimum_weight: f64,
     /// Fraction of a target window occupied by pointer edge-placement bands.
     pub pointer_edge_fraction: f64,
+    /// Show tiled drag zones and keyboard placement targets on Wayland.
+    pub show_placement_hitboxes: bool,
     /// How newly tiled windows are inserted into the persistent layout tree.
     pub new_window_placement: NewWindowPlacement,
 }
@@ -391,6 +402,7 @@ impl Default for LayoutConfig {
             keyboard_resize_step: 0.05,
             minimum_weight: 0.15,
             pointer_edge_fraction: 0.34,
+            show_placement_hitboxes: false,
             new_window_placement: NewWindowPlacement::default(),
         }
     }
@@ -1596,6 +1608,17 @@ mod theme_tests {
             fast.scale_duration(base),
             std::time::Duration::from_millis(50)
         );
+    }
+
+    #[test]
+    fn placement_preview_animation_switches_are_independent() {
+        let keyboard_off = parse("[animations]\nkeyboard_placement_preview = false").animations;
+        let drag_off = parse("[animations]\ntiled_drag_preview = false").animations;
+
+        assert!(!keyboard_off.keyboard_placement_preview);
+        assert!(keyboard_off.tiled_drag_preview);
+        assert!(drag_off.keyboard_placement_preview);
+        assert!(!drag_off.tiled_drag_preview);
     }
 
     #[test]

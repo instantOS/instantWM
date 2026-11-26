@@ -480,6 +480,14 @@ impl CoreState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct KeyboardPlacementInputs {
+    pub tree: crate::layouts::tree::PlacementTreeGeometry,
+    pub work_rect: Rect,
+    pub minimums: HashMap<WindowId, Size>,
+    pub edge_fraction_bits: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyboardTreePlacement {
     pub source: WindowId,
     /// The tree is owned by this exact monitor/tag view. Capturing both keeps
@@ -489,6 +497,7 @@ pub struct KeyboardTreePlacement {
     pub tags: TagMask,
     targets: Vec<crate::layouts::tree::PlacementTarget>,
     selected: usize,
+    pub(crate) inputs: Option<Box<KeyboardPlacementInputs>>,
 }
 
 impl KeyboardTreePlacement {
@@ -506,6 +515,7 @@ impl KeyboardTreePlacement {
             tags,
             targets,
             selected,
+            inputs: None,
         })
     }
 
@@ -537,7 +547,8 @@ impl KeyboardTreePlacement {
             return false;
         }
         let monitor = model.expect_selected_monitor();
-        monitor.selected_tags() == self.tags
+        monitor.current_layout() == crate::layouts::PresentationMode::Tiled
+            && monitor.selected_tags() == self.tags
             && model.client_view(self.source).is_some_and(|view| {
                 view.monitor.id() == self.monitor_id
                     && view.client.mode().is_normal_tiling()

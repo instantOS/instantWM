@@ -3,7 +3,9 @@ use smithay::reexports::calloop::EventLoop;
 use std::sync::mpsc;
 use x11rb::{
     connection::Connection,
-    protocol::xproto::{ConnectionExt, CreateWindowAux, WindowClass},
+    properties::{WmSizeHints, WmSizeHintsSpecification},
+    protocol::xproto::{ConfigureWindowAux, ConnectionExt, CreateWindowAux, PropMode, WindowClass},
+    wrapper::ConnectionExt as _,
 };
 
 type Loop = EventLoop<'static, WaylandState>;
@@ -86,6 +88,116 @@ fn reserving_a_display_starts_no_server_and_drop_releases_the_address() {
     assert_eq!(state.native.xdisplay, Some(number));
     drop(state.native.xwayland_session.take());
     assert!(XWaylandDisplay::new(Some(number), true).is_ok());
+}
+
+#[test]
+#[ignore = "requires Xwayland; runs an isolated headless server"]
+fn floating_window_honors_client_position_and_decoration_requests() {
+    use crate::types::{ClientPlacement, Rect, Size};
+
+    let (mut event_loop, mut state) = crate::test_support::new_compositor();
+    state
+        .native
+        .create_output("TEST", Size::new(1920, 1080), None);
+    state.wm.core.state.model.monitors.push(
+        crate::test_support::MonitorBuilder::new()
+            .monitor_rect(Rect::new(0, 0, 1920, 1080))
+            .build(),
+    );
+    std::fs::create_dir_all("/tmp/.X11-unix").unwrap();
+    let display = XWaylandDisplay::new(None, true).unwrap();
+    let address = format!(":{}", display.display_number());
+    XWaylandSession::reserve(&mut state, display).unwrap();
+    let conn = connect(&mut event_loop, &mut state, &address);
+    let root = conn.setup().roots[0].root;
+    let window = conn.generate_id().unwrap();
+    let motif = conn
+        .intern_atom(false, b"_MOTIF_WM_HINTS")
+        .unwrap()
+        .reply()
+        .unwrap()
+        .atom;
+    conn.create_window(
+        0,
+        window,
+        root,
+        0,
+        33,
+        420,
+        160,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        0,
+        &CreateWindowAux::new(),
+    )
+    .unwrap();
+    WmSizeHints {
+        position: Some((WmSizeHintsSpecification::UserSpecified, 0, 33)),
+        min_size: Some((420, 160)),
+        max_size: Some((420, 160)),
+        ..WmSizeHints::new()
+    }
+    .set_normal_hints(&conn, window)
+    .unwrap();
+    let decoration_flag = crate::backend::x11::constants::MWM_HINTS_DECORATIONS;
+    conn.change_property32(
+        PropMode::REPLACE,
+        window,
+        motif,
+        motif,
+        &[decoration_flag, 0, 0, 0, 0],
+    )
+    .unwrap();
+    conn.map_window(window).unwrap();
+    conn.flush().unwrap();
+
+    drive_until(&mut event_loop, &mut state, Duration::from_secs(5), |s| {
+        s.native
+            .window_id_for_x11_window(window)
+            .is_some_and(|win| s.wm.core.state.model.client(win).is_some())
+    });
+    let win = state.native.window_id_for_x11_window(window).unwrap();
+    let client = state.wm.core.state.model.client(win).unwrap();
+    assert_eq!(client.placement(), ClientPlacement::Floating);
+    assert_eq!(client.border_width, 0);
+    assert_eq!(client.old_border_width, 0);
+
+    let target = Rect::new(1162, 92, 420, 160);
+    conn.configure_window(window, &ConfigureWindowAux::new().x(target.x).y(target.y))
+        .unwrap();
+    conn.flush().unwrap();
+    drive_until(&mut event_loop, &mut state, Duration::from_secs(5), |s| {
+        s.wm.core
+            .state
+            .model
+            .client(win)
+            .is_some_and(|client| client.geo == target)
+    });
+    let actual = conn
+        .translate_coordinates(window, root, 0, 0)
+        .unwrap()
+        .reply()
+        .unwrap();
+    assert_eq!(
+        (i32::from(actual.dst_x), i32::from(actual.dst_y)),
+        (target.x, target.y)
+    );
+
+    let decorations = crate::backend::x11::constants::MWM_DECOR_ALL;
+    conn.change_property32(
+        PropMode::REPLACE,
+        window,
+        motif,
+        motif,
+        &[decoration_flag, 0, decorations, 0, 0],
+    )
+    .unwrap();
+    conn.flush().unwrap();
+    drive_until(&mut event_loop, &mut state, Duration::from_secs(5), |s| {
+        s.wm.core.state.model.client(win).is_some_and(|client| {
+            client.border_width == s.wm.core.state.config.window.border_width_px
+        })
+    });
 }
 
 #[test]

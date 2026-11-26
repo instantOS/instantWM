@@ -7,7 +7,7 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<PlacementTarget> {
-        self.placement_candidates(source, layout_rect, edge_fraction)
+        self.placement_candidates(source, layout_rect, edge_fraction, &HashMap::new())
             .into_iter()
             .map(|(target, _)| target)
             .collect()
@@ -19,7 +19,7 @@ impl LayoutTree {
         target: PlacementTarget,
         layout_rect: Rect,
     ) -> Option<placement::PlacementTopology> {
-        self.placement_candidates(source, layout_rect, 0.34)
+        self.placement_candidates(source, layout_rect, 0.34, &HashMap::new())
             .into_iter()
             .find(|(candidate, _)| *candidate == target)?
             .1
@@ -658,21 +658,21 @@ fn aligned_seam_can_target_a_contiguous_virtual_scope() {
     assert!(apply_point_plan(
         &mut tree,
         WindowId(6),
-        Point::new(26, 51),
-        Rect::new(0, 0, 100, 100),
+        Point::new(104, 151),
+        Rect::new(0, 0, 400, 300),
         0.34,
     ));
-    let rects = tree.bounds(Rect::new(0, 0, 100, 100));
+    let rects = tree.bounds(Rect::new(0, 0, 400, 300));
     // Removing the former right-hand peer normalises the three surviving
     // outer items, so the full-height leaf keeps its ratio to both grid
     // columns (1:1:1) rather than its old absolute percentage.
-    assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 33, 100));
-    assert_eq!(rects[&WindowId(6)].x, 33);
-    assert_eq!(rects[&WindowId(6)].w, 67);
+    assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 133, 300));
+    assert_eq!(rects[&WindowId(6)].x, 133);
+    assert_eq!(rects[&WindowId(6)].w, 267);
     // The source occupies the seam itself; the two original rows remain
     // on either side instead of being compressed together below it.
-    assert_eq!(rects[&WindowId(6)].y, 33);
-    assert_eq!(rects[&WindowId(6)].h, 34);
+    assert_eq!(rects[&WindowId(6)].y, 100);
+    assert_eq!(rects[&WindowId(6)].h, 100);
 }
 
 #[test]
@@ -1047,7 +1047,7 @@ fn soft_constrained_normalization_preserves_every_distinct_viable_outcome() {
         tree.apply_preset(preset, &windows(20), 2);
 
         let viable = tree
-            .placement_candidates(WindowId(1), rect, 0.34)
+            .placement_candidates(WindowId(1), rect, 0.34, &minimums)
             .into_iter()
             .filter_map(|(target, candidate)| {
                 PlacementPlan::new(target, candidate, WindowId(1), rect, &minimums)
@@ -1113,6 +1113,49 @@ fn pointer_placement_preview_matches_release_and_does_not_mutate() {
 }
 
 #[test]
+fn pointer_can_split_one_row_in_a_six_window_stack() {
+    let area = Rect::new(0, 0, 1920, 1037);
+    let windows = windows(8);
+    let source = windows[7];
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::MasterStack, &windows[..7], 1);
+    let original = tree.bounds(area);
+    tree.reconcile_for_layout(
+        &windows,
+        NewWindowPlacement::default(),
+        area,
+        &HashMap::new(),
+    );
+
+    let before = tree.bounds(area);
+    for target in windows[1..7].iter().copied() {
+        let row = before[&target];
+        assert!(before[&source].right() <= row.x);
+        let point = Point::new(row.x + row.w / 4, row.center().y);
+        let expected = Rect::new(row.x, row.y, row.w / 2, row.h);
+        let mut session = placement_session(&tree, source, area, 0.34);
+        let outer_point = Point::new(row.x, row.center().y);
+        assert!(session.preview_point(outer_point).unwrap().h > row.h);
+        assert_eq!(
+            session.preview_point(point),
+            Some(expected),
+            "row {target:?}"
+        );
+        let applied = session.into_plan(point).unwrap().into_tree().bounds(area);
+        assert_eq!(applied[&source], expected);
+        assert_eq!(
+            applied[&target],
+            Rect::new(expected.right(), row.y, row.w - expected.w, row.h)
+        );
+        for (&window, &rect) in &original {
+            if window != target {
+                assert_eq!(applied[&window], rect);
+            }
+        }
+    }
+}
+
+#[test]
 fn placement_session_reuses_a_target_edge_without_changing_its_preview() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::Grid, &windows(20), 1);
@@ -1171,7 +1214,9 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
                         candidate,
                     )
                 });
-            let normalized = placement::normalized_plans(source, rect, &minimums, resolved);
+            let mut normalized =
+                placement::normalized_plans(source, rect, &minimums, resolved.rev());
+            normalized.reverse();
             (normalized.len() < raw_count).then_some((target, side, raw_count, normalized))
         })
         .expect("the 20-window grid should exercise weight-only topology duplicates");
@@ -1186,7 +1231,12 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
     let inset_x = (f64::from(target_rect.w) * 0.34).max(1.0);
     let inset_y = (f64::from(target_rect.h) * 0.34).max(1.0);
     for (index, expected) in normalized.iter().enumerate() {
-        let distance = (index as f64 + 0.5) / normalized.len() as f64;
+        let broader_count = normalized.len() - 1;
+        let distance = if index == broader_count {
+            0.75
+        } else {
+            (index as f64 + 0.5) / (2.0 * broader_count as f64)
+        };
         let point = match side {
             Side::Left => Point::new(
                 target_rect.x + (inset_x * distance).round() as i32,

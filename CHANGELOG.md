@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2](https://github.com/instantOS/instantWM/compare/v0.8.1...v0.8.2) - 2026-11-23
+
+### Changed
+
+- use rustix for syscall wrappers
+- share pointer motion policy across backends
+- own DRM session and output runtime state
+
+### Fixed
+
+- floating resize offer
+- preserve pointer behavior and IPC readiness ownership
+- honor foreign toplevel activation
+
+### Other
+
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- remove unused deps
+- shift + left click to move window on workspace indicator
+- fix single client floating drag
+- refactor shortcuts portal
+- remove old md plans
+- Fix Wayland work areas and cursor animation at fractional scales
+- Merge incoming dev changes
+- bump stuff
+
 ## [0.8.1](https://github.com/instantOS/instantWM/compare/v0.8.0...v0.8.1) - 2026-11-14
 
 ### Fixed

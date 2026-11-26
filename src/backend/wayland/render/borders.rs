@@ -383,7 +383,7 @@ pub fn append_layout_preview(
     }
 }
 
-fn push_solid(
+pub(super) fn push_solid(
     out: &mut Vec<SolidColorRenderElement>,
     rect: Rect,
     color: crate::types::color::Rgba,

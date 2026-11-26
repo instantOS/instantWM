@@ -19,17 +19,12 @@ pub fn sidebar_gesture_begin(
     target: SidebarTarget,
     start: Point,
 ) -> bool {
-    if ctx
-        .transition_pointer_interaction(|drag| {
-            drag.begin(crate::core_state::SidebarVolumeDrag::new(
-                btn, source, target, start.y,
-            ))
-        })
-        .is_err()
-    {
-        return false;
-    }
-    true
+    !ctx.transition_pointer_interaction(|drag| {
+        drag.begin(crate::core_state::SidebarVolumeDrag::new(
+            btn, source, target, start.y,
+        ))
+    })
+    .is_err()
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
@@ -101,22 +96,17 @@ pub fn bottom_bar_gesture_begin(
     press_time_msec: u32,
     actions: crate::core_state::BottomBarActions,
 ) -> bool {
-    if ctx
-        .transition_pointer_interaction(|drag| {
-            drag.begin(BottomBarDrag::new(
-                btn,
-                source,
-                target,
-                start,
-                press_time_msec,
-                actions,
-            ))
-        })
-        .is_err()
-    {
-        return false;
-    }
-    true
+    !ctx.transition_pointer_interaction(|drag| {
+        drag.begin(BottomBarDrag::new(
+            btn,
+            source,
+            target,
+            start,
+            press_time_msec,
+            actions,
+        ))
+    })
+    .is_err()
 }
 
 /// Minimum press duration (in milliseconds) for a no-swipe release to count as

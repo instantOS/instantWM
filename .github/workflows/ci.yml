@@ -51,6 +51,8 @@ jobs:
         run: |
           xvfb-run -a cargo test --locked backend::x11::draw::context::text::tests -- --ignored --test-threads=1
           python tests/x11_drag.py
+      - name: Run XWayland modal dialog integration test
+        run: xvfb-run -a python tests/xwayland_dialogs.py --host-x11 --check-pointer-buttons
       # Note: E2E tests require a running Wayland compositor and seatd session
       # They are best run locally or on a dedicated CI runner with display support
       # To run e2e tests locally: ./tests/e2e.sh

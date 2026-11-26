@@ -1,6 +1,6 @@
 //! Model transitions for the compositor's interaction outline.
 use crate::config::config_toml::AnimationConfig;
-use crate::core_state::{ActiveWmMode, InteractionState};
+use crate::core_state::InteractionState;
 use crate::types::{InteractionOutlineStyle, Rect};
 use std::time::Duration;
 
@@ -17,7 +17,7 @@ impl InteractionState {
     pub(crate) fn update_outline(
         &mut self,
         animations: &AnimationConfig,
-        mode: &ActiveWmMode,
+        animate_transition: bool,
         rect: Option<Rect>,
         style: InteractionOutlineStyle,
     ) -> Option<OutlineProjection> {
@@ -30,12 +30,11 @@ impl InteractionState {
         if previous == rect && (rect.is_none() || self.layout_preview_style == style) {
             return None;
         }
-        // Keyboard placement moves between discrete targets. Pointer-driven
-        // previews must follow physical motion without interpolation.
         let animate = previous.is_some()
             && rect.is_some()
             && animations.enabled
-            && mode.tree_placement().is_some();
+            && animate_transition
+            && self.layout_preview_style == style;
         self.layout_preview = rect;
         self.layout_preview_style = style;
         Some(OutlineProjection {
@@ -52,37 +51,15 @@ impl InteractionState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core_state::KeyboardTreePlacement;
-    use crate::layouts::tree::PlacementTarget;
-    use crate::types::{MonitorId, Point, TagMask, WindowId};
-
-    fn placement_mode() -> ActiveWmMode {
-        ActiveWmMode::TreePlacement(
-            KeyboardTreePlacement::new(
-                WindowId(1),
-                MonitorId::default(),
-                TagMask::single(1).unwrap(),
-                vec![PlacementTarget {
-                    target: WindowId(2),
-                    side: None,
-                    candidate_index: 0,
-                    position: Point::new(0, 0),
-                }],
-                0,
-            )
-            .unwrap(),
-        )
-    }
 
     #[test]
-    fn outline_animation_is_reserved_for_existing_keyboard_targets() {
+    fn outline_animation_requires_an_existing_outline_and_both_switches() {
         let target = Rect::new(100, 0, 50, 50);
-        for (mode, enabled, existing, expected) in [
-            (ActiveWmMode::Default, true, true, false),
-            (ActiveWmMode::Overview, true, true, false),
-            (placement_mode(), false, true, false),
-            (placement_mode(), true, false, false),
-            (placement_mode(), true, true, true),
+        for (animate, enabled, existing, expected) in [
+            (false, true, true, false),
+            (true, false, true, false),
+            (true, true, false, false),
+            (true, true, true, true),
         ] {
             let mut state = InteractionState {
                 layout_preview: existing.then_some(Rect::new(0, 0, 50, 50)),
@@ -91,11 +68,12 @@ mod tests {
             let config = AnimationConfig {
                 enabled,
                 speed: 0.5.try_into().unwrap(),
+                ..AnimationConfig::default()
             };
             let projection = state
                 .update_outline(
                     &config,
-                    &mode,
+                    animate,
                     Some(target),
                     InteractionOutlineStyle::Layout,
                 )
@@ -121,42 +99,22 @@ mod tests {
         let config = AnimationConfig::default();
         assert!(
             state
-                .update_outline(
-                    &config,
-                    &ActiveWmMode::Default,
-                    Some(rect),
-                    InteractionOutlineStyle::Close
-                )
+                .update_outline(&config, false, Some(rect), InteractionOutlineStyle::Close)
                 .is_some()
         );
         assert!(
             state
-                .update_outline(
-                    &config,
-                    &ActiveWmMode::Default,
-                    Some(rect),
-                    InteractionOutlineStyle::Close
-                )
+                .update_outline(&config, false, Some(rect), InteractionOutlineStyle::Close)
                 .is_none()
         );
         assert!(
             state
-                .update_outline(
-                    &config,
-                    &ActiveWmMode::Default,
-                    None,
-                    InteractionOutlineStyle::Layout
-                )
+                .update_outline(&config, false, None, InteractionOutlineStyle::Layout)
                 .is_some()
         );
         assert!(
             state
-                .update_outline(
-                    &config,
-                    &ActiveWmMode::Default,
-                    None,
-                    InteractionOutlineStyle::Close
-                )
+                .update_outline(&config, false, None, InteractionOutlineStyle::Close)
                 .is_none()
         );
     }

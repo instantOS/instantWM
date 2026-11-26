@@ -91,6 +91,8 @@ pub struct Client {
     /// This relationship is backend-neutral because stacking policy needs to
     /// keep dialogs above ordinary windows regardless of the active backend.
     pub transient_for: Option<WindowId>,
+    /// Whether the client asks to keep keyboard focus away from its transient parent.
+    pub is_modal: bool,
     /// Window ID.
     pub win: WindowId,
 }
