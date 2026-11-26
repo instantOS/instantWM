@@ -128,7 +128,8 @@ impl LayoutTree {
         candidate.swap_windows(first, second).then_some(candidate)
     }
 
-    /// Every tree placing `source` on `side` of `target`, deepest scope first.
+    /// Every tree placing `source` on `side` of `target`, with ancestor scopes
+    /// before the target's own scope.
     /// A plain split beside the target is the fallback when no scope applies.
     pub(super) fn edge_candidates(
         &self,

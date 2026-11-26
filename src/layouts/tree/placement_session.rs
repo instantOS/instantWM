@@ -87,7 +87,9 @@ impl TreePlacementSession {
             placement::normalized_plans(self.source, self.layout_rect, &self.minimums, candidates)
         });
         let last = plans.len().checked_sub(1)?;
-        let index = ((distance.max(0.0) * plans.len() as f64).floor() as usize).min(last);
+        // Keep the innermost band easy to hit even when a stack exposes many
+        // overlapping ranges. The broader scopes share the outer half.
+        let index = ((distance * 2.0 * last as f64) as usize).min(last);
         Some((key, index))
     }
 
