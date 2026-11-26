@@ -6,7 +6,7 @@
 
 use std::os::raw::{c_char, c_int, c_uint, c_ulong, c_void};
 
-use x11rb::protocol::xproto::{Drawable, Point, Window};
+use x11rb::protocol::xproto::{Drawable, Window};
 
 // ── C-layout types ────────────────────────────────────────────────────────────
 
@@ -15,6 +15,14 @@ pub type XlibGc = *mut libc::c_void;
 
 pub type FcBool = c_int;
 pub type XftResult = c_int;
+
+/// `XPoint` — Xlib point, layout-compatible with C `XPoint`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct XPoint {
+    pub x: i16,
+    pub y: i16,
+}
 
 /// `XRenderColor` — 16-bit premultiplied RGBA.
 #[repr(C)]
@@ -176,7 +184,7 @@ unsafe extern "C" {
         display: *mut libc::c_void,
         d: Drawable,
         gc: XlibGc,
-        points: *mut Point,
+        points: *mut XPoint,
         npoints: c_int,
         shape: c_int,
         mode: c_int,

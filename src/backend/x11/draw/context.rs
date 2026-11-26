@@ -22,7 +22,7 @@ use std::ffi::CString;
 use std::os::raw::{c_int, c_ulong};
 use std::ptr;
 
-use x11rb::protocol::xproto::{Drawable, Point, Window};
+use x11rb::protocol::xproto::{Drawable, Window};
 
 use std::collections::{HashMap, VecDeque};
 
@@ -35,7 +35,7 @@ use super::ffi::{
     XCreatePixmap, XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen,
     XDefaultVisual, XDestroyImage, XDrawArc, XDrawRectangle, XFillArc, XFillPolygon,
     XFillRectangle, XFlush, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XMapWindow,
-    XMoveResizeWindow, XOpenDisplay, XPutImage, XRenderColor, XRenderComposite,
+    XMoveResizeWindow, XOpenDisplay, XPoint, XPutImage, XRenderColor, XRenderComposite,
     XRenderCreatePicture, XRenderFindStandardFormat, XRenderFindVisualFormat, XRenderFreePicture,
     XSetForeground, XSetLineAttributes, XUnmapWindow, XftCharExists, XftColor, XftColorAllocName,
     XftColorAllocValue, XftColorFree, XftDraw, XftDrawCreate, XftDrawDestroy, XftDrawStringUtf8,
@@ -1058,12 +1058,12 @@ impl DrawContext {
         unsafe {
             XSetForeground(self.display, self.gc, scheme.background.pixel() as c_ulong);
             let mut pts = [
-                Point { x: origin_x, y },
-                Point {
+                XPoint { x: origin_x, y },
+                XPoint {
                     x: (origin_x as i32 + delta_x as i32) as i16,
                     y: y + tip_y,
                 },
-                Point {
+                XPoint {
                     x: origin_x,
                     y: y + height,
                 },
