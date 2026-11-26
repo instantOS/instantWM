@@ -501,7 +501,7 @@ impl WindowInfo {
     ) -> Self {
         Self {
             id: c.win,
-            title: c.name.clone(),
+            title: c.title.clone(),
             protocol,
             monitor_position,
             tags: c.tags & valid_tag_mask,

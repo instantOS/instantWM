@@ -23,8 +23,8 @@ use crate::types::{TagMask, WindowId};
 /// including geometry, tags, flags, and relationships to other clients.
 #[derive(Debug, Clone, Default)]
 pub struct Client {
-    /// Window title/name displayed in the bar.
-    pub name: String,
+    /// Window title displayed in the bar.
+    pub title: String,
     /// Minimum aspect ratio constraint from WM_NORMAL_HINTS.
     pub min_aspect: f32,
     /// Maximum aspect ratio constraint from WM_NORMAL_HINTS.

@@ -803,7 +803,7 @@ mod tests {
             monitor_id,
             Client {
                 win,
-                name: "original".to_string(),
+                title: "original".to_string(),
                 ..Client::default()
             },
         ));
@@ -812,12 +812,12 @@ mod tests {
             monitor_id,
             Client {
                 win,
-                name: "replacement".to_string(),
+                title: "replacement".to_string(),
                 ..Client::default()
             },
         ));
         assert_eq!(
-            model.client(win).map(|client| client.name.as_str()),
+            model.client(win).map(|client| client.title.as_str()),
             Some("original")
         );
     }

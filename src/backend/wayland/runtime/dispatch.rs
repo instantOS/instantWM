@@ -652,7 +652,7 @@ fn build_initial_wayland_client(
     ),
 ) -> Option<(crate::types::MonitorId, crate::types::Client)> {
     let mut client = crate::types::Client::new(win);
-    client.name = properties.title.clone();
+    client.title = properties.title.clone();
     client.transient_for = parent;
     if let Some(size_hints) = properties.size_hints {
         client.size_hints = size_hints;

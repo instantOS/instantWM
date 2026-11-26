@@ -138,7 +138,7 @@ fn apply_rules_impl(
 
     // Title and an already-established runtime role survive rule refreshes.
     if !props.title.is_empty() {
-        client.name = props.title.clone();
+        client.title = props.title.clone();
     }
 
     // Scratchpad state is a runtime role assigned after manage. On Wayland we
@@ -548,7 +548,7 @@ impl PropertyStateSnapshot {
     fn capture(c: &Client, monitor_id: MonitorId) -> Self {
         Self {
             rule: RuleStateSnapshot::capture(c, monitor_id),
-            title: c.name.clone(),
+            title: c.title.clone(),
             size_hints: c.size_hints,
             size_hints_valid: c.size_hints_valid,
         }
@@ -630,7 +630,7 @@ mod tests {
             monitor_id,
             Client {
                 win,
-                name: "before".to_string(),
+                title: "before".to_string(),
                 ..Default::default()
             },
         );
@@ -771,7 +771,7 @@ mod tests {
 
         let client = state.model.client(win).expect("client should still exist");
         assert_eq!(client.tags, TagMask::single(2).unwrap());
-        assert_eq!(client.name, "updated");
+        assert_eq!(client.title, "updated");
     }
 
     #[test]
@@ -829,7 +829,7 @@ mod tests {
             client.mode().placement(),
             crate::types::ClientPlacement::Floating
         );
-        assert_eq!(client.name, "YouTube — Full Screen");
+        assert_eq!(client.title, "YouTube — Full Screen");
     }
 
     #[test]

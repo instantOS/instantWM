@@ -87,7 +87,7 @@ pub(crate) fn open(ctx: &mut WmCtx<'_>, reverse: bool) -> Result<(), String> {
                 .expect("snapshot contains managed clients");
             // Titles are untrusted text: prevent newlines from injecting menu rows.
             let title: String = client
-                .name
+                .title
                 .chars()
                 .map(|c| if c.is_control() { ' ' } else { c })
                 .collect();
@@ -150,7 +150,7 @@ mod tests {
                     monitor,
                     Client {
                         win: WindowId(id),
-                        name: format!("Window {id}"),
+                        title: format!("Window {id}"),
                         tags: TagMask::single(offset + 1).unwrap(),
                         ..Client::default()
                     },

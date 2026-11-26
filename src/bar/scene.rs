@@ -137,7 +137,7 @@ pub(crate) struct TagCellSnapshot {
 #[derive(Clone, PartialEq)]
 pub(crate) struct TitleCellSnapshot {
     pub win: WindowId,
-    pub name: String,
+    pub title: String,
     pub scheme: ColorScheme,
     pub close_scheme: Option<ColorScheme>,
 }
@@ -298,7 +298,7 @@ fn collect_title_cells(
         };
         titles.push(TitleCellSnapshot {
             win: c.win,
-            name: c.name.clone(),
+            title: c.title.clone(),
             scheme,
             close_scheme,
         });
@@ -696,7 +696,7 @@ fn draw_titles_section(
 
     let total_width = title_width + 1;
     let mut title_x = x;
-    for (title, this_width) in snapshot
+    for (cell, this_width) in snapshot
         .titles
         .iter()
         .zip(crate::bar::model::distribute_cells(
@@ -704,8 +704,8 @@ fn draw_titles_section(
             snapshot.titles.len() as i32,
         ))
     {
-        let text_w = painter.text_width(&title.name);
-        painter.set_scheme(title.scheme);
+        let text_w = painter.text_width(&cell.title);
+        painter.set_scheme(cell.scheme);
         let roomy_text_margin = 64;
         let close_button_threshold = 32;
         let close_button_text_offset = 20;
@@ -722,11 +722,11 @@ fn draw_titles_section(
         painter.text(
             Rect::new(title_x, 0, this_width, bar_height),
             lpad,
-            &title.name,
+            &cell.title,
             SchemeColor::Foreground,
             TAG_DETAIL_BAR_HEIGHT_NORMAL,
         );
-        if let Some(close_scheme) = &title.close_scheme
+        if let Some(close_scheme) = &cell.close_scheme
             && this_width >= close_button_threshold
         {
             draw_close_button(
@@ -740,7 +740,7 @@ fn draw_titles_section(
         hit.title_ranges.push(crate::bar::TitleHitRange {
             start: title_x,
             end: title_x + this_width,
-            win: title.win,
+            win: cell.win,
         });
         title_x += this_width;
     }
