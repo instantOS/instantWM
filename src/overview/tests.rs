@@ -346,7 +346,7 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
         Point::new(900, 300),
     ));
     assert_eq!(
-        wm.core.state.interaction.drag.captured_source(),
+        wm.core.state.interaction.pointer.captured_source(),
         Some(crate::types::InteractionSource::Pointer)
     );
     // Press alone must neither leave overview nor focus the client.
@@ -368,7 +368,7 @@ fn overview_card_tap_selects_on_release_and_clears_capture() {
             .selected_tags(),
         tag2
     );
-    assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
+    assert_eq!(wm.core.state.interaction.pointer.captured_source(), None);
 }
 
 #[test]
@@ -397,7 +397,7 @@ fn non_upward_overview_drag_is_consumed_without_selecting() {
 
     assert!(wm.core.state.model.is_overview_active());
     assert_eq!(wm.core.state.model.selected_win(), Some(first));
-    assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
+    assert_eq!(wm.core.state.interaction.pointer.captured_source(), None);
 }
 
 #[test]

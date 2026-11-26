@@ -141,7 +141,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
                 // capture's completing release is only delivered when the
                 // press reports `CapturedInteraction`, so promote it here just
                 // like the BottomBar branch.
-                if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
+                if ctx.core().state.interaction.pointer.captured_source() == Some(input.source) {
                     return PressOutcome::CapturedInteraction { button: btn };
                 }
             }
@@ -163,7 +163,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
                     },
                     numlockmask,
                 );
-                if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
+                if ctx.core().state.interaction.pointer.captured_source() == Some(input.source) {
                     return PressOutcome::CapturedInteraction { button: btn };
                 }
             }
@@ -190,7 +190,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
         && let Some(btn) = input.button
         && crate::mouse::drag::hover_drag_begin(ctx, input.root, btn, input.source)
     {
-        if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
+        if ctx.core().state.interaction.pointer.captured_source() == Some(input.source) {
             return PressOutcome::CapturedInteraction { button: btn };
         } else {
             return PressOutcome::Consumed;
@@ -241,7 +241,7 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
             },
             numlockmask,
         );
-        if ctx.core().state.interaction.drag.captured_source() == Some(input.source) {
+        if ctx.core().state.interaction.pointer.captured_source() == Some(input.source) {
             return PressOutcome::CapturedInteraction { button: btn };
         }
     }
@@ -451,7 +451,7 @@ mod tests {
         );
 
         assert_eq!(outcome, PressOutcome::ReplayToClient { window: Some(win) });
-        assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
+        assert_eq!(wm.core.state.interaction.pointer.captured_source(), None);
 
         let (mut pointer_wm, pointer_win, _) = setup_wm();
         pointer_wm.core.state.config.bindings.buttons.clear();
@@ -517,7 +517,7 @@ mod tests {
 
         assert_eq!(outcome, PressOutcome::Consumed);
         assert_eq!(
-            wm.core.state.interaction.drag.hover_offer(),
+            wm.core.state.interaction.pointer.hover_offer(),
             crate::core_state::HoverOffer::None
         );
     }
@@ -586,7 +586,7 @@ mod tests {
             }
         );
         assert_eq!(
-            wm.core.state.interaction.drag.captured_button(),
+            wm.core.state.interaction.pointer.captured_button(),
             Some(MouseButton::Left)
         );
     }
@@ -612,7 +612,7 @@ mod tests {
             .core
             .state
             .interaction
-            .drag
+            .pointer
             .captured::<crate::core_state::TagDragState>()
             .expect("shift+click armed a tag capture");
         assert_eq!(drag.initial_tag, TagMask::single(1).unwrap());
@@ -637,7 +637,7 @@ mod tests {
             }
         );
         assert_eq!(
-            wm.core.state.interaction.drag.captured_button(),
+            wm.core.state.interaction.pointer.captured_button(),
             Some(MouseButton::Left)
         );
     }
@@ -655,7 +655,7 @@ mod tests {
         let outcome = dispatch_press_policy(&mut wm.test_ctx(), left_click_at(250));
 
         assert_eq!(outcome, PressOutcome::Consumed);
-        assert_eq!(wm.core.state.interaction.drag.captured_source(), None);
+        assert_eq!(wm.core.state.interaction.pointer.captured_source(), None);
     }
 
     /// Clicking the resize widget at the right edge of the title cell must keep
@@ -680,6 +680,6 @@ mod tests {
                 button: MouseButton::Left
             }
         );
-        assert!(wm.core.state.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.pointer.capture().is_some());
     }
 }

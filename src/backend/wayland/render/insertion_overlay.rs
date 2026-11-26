@@ -154,7 +154,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_move(
                 windows[0],
                 MouseButton::Left,

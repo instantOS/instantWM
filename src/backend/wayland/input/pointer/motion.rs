@@ -286,7 +286,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .hover_offer()
                 .is_sidebar()
         );
@@ -323,7 +323,7 @@ mod tests {
             .core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -744,7 +744,7 @@ fn retain_snapshot_during_active_drag(
     wm.core
         .state
         .interaction
-        .drag
+        .pointer
         .active_interaction()
         .is_some()
         .then_some(snapshot)
@@ -786,10 +786,10 @@ fn dispatch_pointer_motion(
     }
 
     let (capture_active, bar_hover_blocked, preserve_focus) = {
-        let drag = &state.wm.core.state.interaction.drag;
+        let pointer = &state.wm.core.state.interaction.pointer;
         (
-            drag.has_capture(),
-            drag.owns_bar_hover(),
+            pointer.has_capture(),
+            pointer.owns_bar_hover(),
             // An exclusive layer (for example a selector) owns keyboard
             // focus; pointer motion must not select/reorder managed windows.
             state.exclusive_layer_has_keyboard_focus(),
@@ -863,7 +863,7 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
             let bar_visible = mon.bar_visible();
             let in_bar = bar_visible && mon.y_in_bar(root.y);
             let in_guard = bar_visible
-                && !wm.core.state.interaction.drag.has_capture()
+                && !wm.core.state.interaction.pointer.has_capture()
                 && mon.y_in_guard_band(root.y);
             (in_bar, in_guard)
         })
@@ -1022,7 +1022,7 @@ fn handle_active_drag_motion(
             ctx.core()
                 .state
                 .interaction
-                .drag
+                .pointer
                 .active_interaction()
                 .is_some()
         }

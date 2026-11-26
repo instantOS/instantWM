@@ -85,7 +85,7 @@ pub fn drag_move_finish(
     free_geometry: Rect,
     modifiers: ModMask,
 ) {
-    debug_assert!(!ctx.core().state.interaction.drag.has_capture());
+    debug_assert!(!ctx.core().state.interaction.pointer.has_capture());
     clear_bar_hover(ctx);
     move_drop::complete_move_drop(ctx, win, grab_start_rect, root, free_geometry, modifiers);
 }
@@ -96,7 +96,7 @@ pub fn drag_move_finish(
 /// monitor switch, and re-raises the client. The caller must finish the
 /// interaction lifecycle before invoking this cleanup.
 pub fn drag_resize_finish(ctx: &mut WmCtx, win: WindowId) {
-    debug_assert!(!ctx.core().state.interaction.drag.has_capture());
+    debug_assert!(!ctx.core().state.interaction.pointer.has_capture());
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);
 }

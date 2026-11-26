@@ -55,14 +55,14 @@ pub fn update_resize_offer_at(
     trigger: HoverFocusTrigger,
 ) -> Option<WindowId> {
     let state = &ctx.core().state;
-    let drag = &state.interaction.drag;
-    if drag.has_capture() {
+    let pointer = &state.interaction.pointer;
+    if pointer.has_capture() {
         return None;
     }
 
     let physical_motion = trigger == HoverFocusTrigger::PointerMotion;
-    let origin = drag.resize_hover_origin();
-    let candidate = drag
+    let origin = pointer.resize_hover_origin();
+    let candidate = pointer
         .hover_offer()
         .resize_target()
         .map(|(win, _)| win)
@@ -98,9 +98,9 @@ pub fn update_resize_offer_at(
             (HoverOffer::None, None)
         };
 
-    let changed = ctx.transition_pointer_interaction(|drag| {
-        let changed = drag.set_hover_offer(offer);
-        drag.set_resize_hover_origin(next_origin);
+    let changed = ctx.transition_pointer_interaction(|pointer| {
+        let changed = pointer.set_hover_offer(offer);
+        pointer.set_resize_hover_origin(next_origin);
         changed
     });
     if !changed {
@@ -114,7 +114,7 @@ pub fn update_resize_offer_at(
 pub fn clear_hover_offer(ctx: &mut WmCtx) {
     // Reconciliation is intentionally unconditional so native state can heal
     // even after a redundant logical clear.
-    let changed = ctx.transition_pointer_interaction(|drag| drag.clear_hover_offer());
+    let changed = ctx.transition_pointer_interaction(|pointer| pointer.clear_hover_offer());
     if !changed {
         ctx.sync_interaction_projection();
     }
@@ -212,8 +212,8 @@ pub fn set_sidebar_offer(
     if let Some(target) = target {
         // Always reconcile. Gesture completion can leave the same logical
         // offer in place while ending a higher-priority captured interaction.
-        let changed = ctx.transition_pointer_interaction(|drag| {
-            drag.set_hover_offer(HoverOffer::Sidebar(target))
+        let changed = ctx.transition_pointer_interaction(|pointer| {
+            pointer.set_hover_offer(HoverOffer::Sidebar(target))
         });
         if !changed {
             ctx.sync_interaction_projection();
@@ -221,7 +221,14 @@ pub fn set_sidebar_offer(
         return SidebarOfferUpdate::Active;
     }
 
-    if ctx.core().state.interaction.drag.hover_offer().is_sidebar() {
+    if ctx
+        .core()
+        .state
+        .interaction
+        .pointer
+        .hover_offer()
+        .is_sidebar()
+    {
         clear_hover_offer(ctx);
         return SidebarOfferUpdate::Cleared;
     }
@@ -311,7 +318,10 @@ mod tests {
             } else {
                 AltCursor::Default
             };
-            assert_eq!(wm.core.state.interaction.drag.projection().cursor, cursor);
+            assert_eq!(
+                wm.core.state.interaction.pointer.projection().cursor,
+                cursor
+            );
         }
         assert_eq!(
             press(&mut wm),
@@ -326,7 +336,7 @@ mod tests {
             wm.core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .projection()
                 .active_resize_window,
             Some(floating)

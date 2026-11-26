@@ -669,7 +669,7 @@ fn floating_resize_cursor_follows_outward_motion_and_clears_beyond_the_band() {
             .core
             .state
             .interaction
-            .drag
+            .pointer
             .projection()
             .active_resize_window,
         Some(win)

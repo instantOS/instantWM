@@ -49,7 +49,7 @@ pub(crate) fn handle_pointer_axis(
     // updates here as well: scrolling mid-drag would race the gesture's
     // highlight state exactly like the motion path does.
     let scroll_delta = input.event.vertical.v120.or(input.event.vertical.amount);
-    let bar_pos = if state.wm.core.state.interaction.drag.owns_bar_hover() {
+    let bar_pos = if state.wm.core.state.interaction.pointer.owns_bar_hover() {
         None
     } else if state
         .wm
@@ -331,7 +331,7 @@ mod tests {
             .core
             .state
             .interaction
-            .drag
+            .pointer
             .begin(crate::core_state::TagDragState {
                 initial_tag: TagMask::single(1).unwrap(),
                 start: scroll_root,
@@ -375,7 +375,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .finish::<crate::core_state::TagDragState>(crate::types::MouseButton::Left)
                 .is_some()
         );

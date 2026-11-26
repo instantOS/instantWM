@@ -201,21 +201,23 @@ pub fn begin_card_gesture(
         return false;
     }
     let threshold = (monitor.monitor_rect.h / 30).max(1);
-    ctx.transition_pointer_interaction(|drag| {
-        drag.begin(crate::core_state::OverviewCardDrag::new(
-            window, button, source, root, threshold,
-        ))
-        .is_ok()
+    ctx.transition_pointer_interaction(|pointer| {
+        pointer
+            .begin(crate::core_state::OverviewCardDrag::new(
+                window, button, source, root, threshold,
+            ))
+            .is_ok()
     })
 }
 
 pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
-    let window = match ctx.core().state.interaction.drag.capture() {
+    let window = match ctx.core().state.interaction.pointer.capture() {
         Some(crate::core_state::CapturedInteraction::OverviewCard(drag)) => drag.window,
         _ => return false,
     };
-    let transition = ctx.transition_pointer_interaction(|drag| {
-        drag.captured_mut::<crate::core_state::OverviewCardDrag>()
+    let transition = ctx.transition_pointer_interaction(|pointer| {
+        pointer
+            .captured_mut::<crate::core_state::OverviewCardDrag>()
             .and_then(|drag| drag.update(root))
     });
     if let Some(close_armed) = transition {
@@ -237,8 +239,8 @@ pub(crate) fn update_card_gesture(ctx: &mut WmCtx<'_>, root: Point) -> bool {
 }
 
 pub(crate) fn finish_card_gesture(ctx: &mut WmCtx<'_>, button: crate::types::MouseButton) -> bool {
-    let Some(gesture) = ctx.transition_pointer_interaction(|drag| {
-        drag.finish::<crate::core_state::OverviewCardDrag>(button)
+    let Some(gesture) = ctx.transition_pointer_interaction(|pointer| {
+        pointer.finish::<crate::core_state::OverviewCardDrag>(button)
     }) else {
         return false;
     };
@@ -304,8 +306,9 @@ fn prepare_overview(model: &crate::model::WmModel) -> Option<OverviewState> {
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     // An external mode transition (keyboard, IPC, lock, etc.) invalidates any
     // card press that has not reached release yet.
-    if ctx.transition_pointer_interaction(|drag| {
-        drag.cancel::<crate::core_state::OverviewCardDrag>()
+    if ctx.transition_pointer_interaction(|pointer| {
+        pointer
+            .cancel::<crate::core_state::OverviewCardDrag>()
             .is_some()
     }) {
         ctx.update_close_preview(None, None);

@@ -286,11 +286,11 @@ mod tests {
                 BackendKind::Wayland => (MotionOutcome::Content, hovered, Some(hovered)),
                 BackendKind::X11 => (MotionOutcome::Sidebar, selected, None),
             };
-            let drag = &wm.core.state.interaction.drag;
-            assert!(!drag.hover_offer().is_sidebar());
+            let pointer = &wm.core.state.interaction.pointer;
+            assert!(!pointer.hover_offer().is_sidebar());
             assert_eq!(outcome, expected_outcome);
             assert_eq!(wm.core.state.model.selected_win(), Some(expected_focus));
-            assert_eq!(drag.resize_hover_origin(), expected_resize_origin);
+            assert_eq!(pointer.resize_hover_origin(), expected_resize_origin);
         }
     }
 
@@ -332,7 +332,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .arm_title_drag(crate::core_state::ArmedDragStart {
                 win,
                 button: crate::types::MouseButton::Left,
@@ -351,7 +351,7 @@ mod tests {
         let outcome = update_motion_policy(&mut wm.test_ctx(), policy);
 
         assert_ne!(outcome, MotionOutcome::Bar);
-        assert!(wm.core.state.interaction.drag.has_capture());
+        assert!(wm.core.state.interaction.pointer.has_capture());
     }
 
     #[test]
@@ -374,7 +374,7 @@ mod tests {
         let outcome = update_motion_policy(&mut wm.test_ctx(), policy);
 
         assert_eq!(outcome, MotionOutcome::Content);
-        assert!(!wm.core.state.interaction.drag.hover_offer().is_sidebar());
+        assert!(!wm.core.state.interaction.pointer.hover_offer().is_sidebar());
     }
 
     #[test]

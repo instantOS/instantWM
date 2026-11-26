@@ -158,7 +158,7 @@ impl<'a> WmCtx<'a> {
     /// previous native state.
     pub fn sync_interaction_projection(&mut self) {
         use crate::backend::InteractionProjectionOps;
-        let desired = self.core().state.interaction.drag.projection();
+        let desired = self.core().state.interaction.pointer.projection();
         match self {
             WmCtx::X11(ctx) => ctx.reconcile_interaction_projection(desired),
             WmCtx::Wayland(ctx) => ctx.reconcile_interaction_projection(desired),
@@ -176,9 +176,9 @@ impl<'a> WmCtx<'a> {
         &mut self,
         transition: impl FnOnce(&mut crate::core_state::PointerInteractionState) -> R,
     ) -> R {
-        let previous = self.core().state.interaction.drag.projection();
-        let result = transition(&mut self.core_mut().state.interaction.drag);
-        if self.core().state.interaction.drag.projection() != previous {
+        let previous = self.core().state.interaction.pointer.projection();
+        let result = transition(&mut self.core_mut().state.interaction.pointer);
+        if self.core().state.interaction.pointer.projection() != previous {
             self.sync_interaction_projection();
         }
         result
@@ -281,7 +281,7 @@ impl<'a> WmCtx<'a> {
                 .core()
                 .state
                 .interaction
-                .drag
+                .pointer
                 .active_interaction()
                 .is_none()
         {

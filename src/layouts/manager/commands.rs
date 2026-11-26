@@ -97,7 +97,7 @@ pub fn reset_layout_to(ctx: &mut WmCtx<'_>, layout: LayoutCommand) -> Result<(),
 
 fn activate_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset, reset: bool) {
     let core_state = &ctx.core().state;
-    if core_state.interaction.drag.is_tree_resize_dragging() {
+    if core_state.interaction.pointer.is_tree_resize_dragging() {
         return;
     }
 
@@ -576,7 +576,7 @@ pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
     // Applying the new count rebuilds the master-stack preset. Reject the
     // command before touching per-tag state when a pointer tree resize is
     // still replaying its origin snapshot.
-    if core_state.interaction.drag.is_tree_resize_dragging() {
+    if core_state.interaction.pointer.is_tree_resize_dragging() {
         return;
     }
     let window_count = core_state

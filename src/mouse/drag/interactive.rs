@@ -13,7 +13,7 @@ fn begin_active_resize(
     ctx: &mut WmCtx<'_>,
     params: crate::core_state::DirectResizeStart,
 ) -> Result<(), crate::core_state::InteractionAlreadyActive> {
-    ctx.transition_pointer_interaction(|drag| begin_resize(drag, params))
+    ctx.transition_pointer_interaction(|pointer| begin_resize(pointer, params))
 }
 
 /// Begin a directional resize from a compositor binding on any backend.
@@ -80,8 +80,8 @@ pub fn tree_resize_begin(
     resize: crate::layouts::manager::PointerTreeResizeStart,
 ) -> bool {
     if ctx
-        .transition_pointer_interaction(|drag| {
-            drag.begin_tree_resize(crate::core_state::TreeResizeStart {
+        .transition_pointer_interaction(|pointer| {
+            pointer.begin_tree_resize(crate::core_state::TreeResizeStart {
                 win,
                 button: btn,
                 source,
@@ -111,7 +111,7 @@ pub fn hover_drag_begin(
         .core()
         .state
         .interaction
-        .drag
+        .pointer
         .hover_offer()
         .tree_resize_target()
     {
@@ -133,7 +133,7 @@ pub fn hover_drag_begin(
         .core()
         .state
         .interaction
-        .drag
+        .pointer
         .hover_offer()
         .resize_target()
     else {
@@ -168,8 +168,8 @@ pub fn hover_drag_begin(
         Some(target.dir)
     };
     let started = match direction {
-        None => ctx.transition_pointer_interaction(|drag| {
-            drag.begin_move(target.win, btn, source, position, target.geo)
+        None => ctx.transition_pointer_interaction(|pointer| {
+            pointer.begin_move(target.win, btn, source, position, target.geo)
         }),
         Some(direction) => begin_active_resize(
             ctx,
@@ -208,13 +208,13 @@ pub fn apply_active_drag_motion(ctx: &mut WmCtx<'_>, root: Point) -> bool {
         .core()
         .state
         .interaction
-        .drag
+        .pointer
         .active_interaction()
         .cloned()
     else {
         return false;
     };
-    ctx.transition_pointer_interaction(|drag| drag.record_interactive_motion(root));
+    ctx.transition_pointer_interaction(|pointer| pointer.record_interactive_motion(root));
 
     match drag.operation() {
         crate::core_state::ActiveWindowOperation::Move => {
@@ -434,8 +434,9 @@ fn apply_resize_drag_motion(
 
 /// Finish the active window interaction and reconcile its derived projection.
 pub fn active_drag_finish(ctx: &mut WmCtx<'_>, btn: MouseButton, modifiers: ModMask) -> bool {
-    let finished =
-        ctx.transition_pointer_interaction(|drag| crate::mouse::drag::lifecycle::finish(drag, btn));
+    let finished = ctx.transition_pointer_interaction(|pointer| {
+        crate::mouse::drag::lifecycle::finish(pointer, btn)
+    });
     let Some(drag) = finished else {
         return false;
     };
@@ -556,7 +557,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -575,11 +576,11 @@ mod tests {
         let actual = wm.backend.conn.get_geometry(xid).unwrap().reply().unwrap();
         assert_eq!((actual.x, actual.y), (300, 250));
 
-        wm.core.state.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.pointer.cancel_capture().unwrap();
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_resize(
                 win,
                 MouseButton::Right,
@@ -597,7 +598,7 @@ mod tests {
         let actual = wm.backend.conn.get_geometry(xid).unwrap().reply().unwrap();
         assert_eq!(actual.width, 700);
 
-        wm.core.state.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.pointer.cancel_capture().unwrap();
         wm.x11_ctx().move_resize(
             win,
             original,
@@ -634,7 +635,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_resize(
                 win,
                 MouseButton::Right,
@@ -659,7 +660,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_tree_resize(crate::core_state::TreeResizeStart {
                 win,
                 button: MouseButton::Right,
@@ -699,7 +700,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -731,7 +732,7 @@ mod tests {
             ),
             crate::mouse::interaction::InteractionOutcome::Captured
         );
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
         assert_eq!(
             crate::mouse::interaction::handle(
                 &mut wm.test_ctx(),

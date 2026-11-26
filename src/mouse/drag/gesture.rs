@@ -19,8 +19,8 @@ pub fn sidebar_gesture_begin(
     target: SidebarTarget,
     start: Point,
 ) -> bool {
-    !ctx.transition_pointer_interaction(|drag| {
-        drag.begin(crate::core_state::SidebarVolumeDrag::new(
+    !ctx.transition_pointer_interaction(|pointer| {
+        pointer.begin(crate::core_state::SidebarVolumeDrag::new(
             btn, source, target, start.y,
         ))
     })
@@ -31,20 +31,21 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
     let core_state = &ctx.core().state;
     let Some(monitor_id) = core_state
         .interaction
-        .drag
+        .pointer
         .captured::<SidebarVolumeDrag>()
         .map(|drag| drag.monitor_id)
     else {
         return;
     };
     if core_state.model.monitor(monitor_id).is_none() {
-        ctx.transition_pointer_interaction(|drag| drag.cancel::<SidebarVolumeDrag>());
+        ctx.transition_pointer_interaction(|pointer| pointer.cancel::<SidebarVolumeDrag>());
         return;
     }
 
     let steps = ctx
-        .transition_pointer_interaction(|drag| {
-            drag.captured_mut::<SidebarVolumeDrag>()
+        .transition_pointer_interaction(|pointer| {
+            pointer
+                .captured_mut::<SidebarVolumeDrag>()
                 .map(|drag| drag.update(root_y))
         })
         .unwrap_or(0);
@@ -68,7 +69,7 @@ pub fn sidebar_gesture_finish(
     hover_target: Option<SidebarTarget>,
 ) -> bool {
     if ctx
-        .transition_pointer_interaction(|drag| drag.finish::<SidebarVolumeDrag>(btn))
+        .transition_pointer_interaction(|pointer| pointer.finish::<SidebarVolumeDrag>(btn))
         .is_none()
     {
         return false;
@@ -96,8 +97,8 @@ pub fn bottom_bar_gesture_begin(
     press_time_msec: u32,
     actions: crate::core_state::BottomBarActions,
 ) -> bool {
-    !ctx.transition_pointer_interaction(|drag| {
-        drag.begin(BottomBarDrag::new(
+    !ctx.transition_pointer_interaction(|pointer| {
+        pointer.begin(BottomBarDrag::new(
             btn,
             source,
             target,
@@ -117,18 +118,19 @@ pub fn update_bottom_bar_gesture(ctx: &mut WmCtx, root: Point) {
     let core_state = &ctx.core().state;
     let Some(monitor_id) = core_state
         .interaction
-        .drag
+        .pointer
         .captured::<BottomBarDrag>()
         .map(|drag| drag.monitor_id)
     else {
         return;
     };
     if core_state.model.monitor(monitor_id).is_none() {
-        ctx.transition_pointer_interaction(|drag| drag.cancel::<BottomBarDrag>());
+        ctx.transition_pointer_interaction(|pointer| pointer.cancel::<BottomBarDrag>());
         return;
     }
-    ctx.transition_pointer_interaction(|drag| {
-        drag.captured_mut::<BottomBarDrag>()
+    ctx.transition_pointer_interaction(|pointer| {
+        pointer
+            .captured_mut::<BottomBarDrag>()
             .and_then(|drag| drag.update(root))
     });
 }
@@ -139,7 +141,8 @@ pub fn bottom_bar_gesture_finish(
     root: Point,
     time_msec: u32,
 ) -> bool {
-    let Some(drag) = ctx.transition_pointer_interaction(|drag| drag.finish::<BottomBarDrag>(btn))
+    let Some(drag) =
+        ctx.transition_pointer_interaction(|pointer| pointer.finish::<BottomBarDrag>(btn))
     else {
         return false;
     };

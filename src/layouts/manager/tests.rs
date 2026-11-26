@@ -331,7 +331,7 @@ fn master_count_change_is_rejected_before_mutation_during_tree_resize() {
     wm.core
         .state
         .interaction
-        .drag
+        .pointer
         .begin_tree_resize(crate::core_state::TreeResizeStart {
             win: first,
             button: MouseButton::Right,
@@ -1489,7 +1489,7 @@ fn begin_tiled_move(wm: &mut crate::test_support::TestWm, win: WindowId) -> Rect
     wm.core
         .state
         .interaction
-        .drag
+        .pointer
         .begin_move(
             win,
             MouseButton::Left,

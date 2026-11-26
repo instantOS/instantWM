@@ -80,7 +80,7 @@ impl InteractionOutcome {
 
 pub fn handle(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
     if !matches!(event.phase, InteractionPhase::Cancel { .. })
-        && ctx.core().state.interaction.drag.captured_source() != Some(event.source)
+        && ctx.core().state.interaction.pointer.captured_source() != Some(event.source)
     {
         return InteractionOutcome::Ignored;
     }
@@ -112,7 +112,7 @@ fn window_capture_invalidation(
 ) -> Option<DragCancelReason> {
     let state = core_state
         .interaction
-        .drag
+        .pointer
         .capture()
         .and_then(|capture| match capture {
             CapturedInteraction::Window(state) => Some(state),
@@ -145,7 +145,7 @@ fn window_capture_invalidation(
 }
 
 fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
-    match ctx.core().state.interaction.drag.capture() {
+    match ctx.core().state.interaction.pointer.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::update_card_gesture(ctx, event.root);
         }
@@ -169,8 +169,9 @@ fn update(ctx: &mut WmCtx<'_>, event: InteractionEvent) -> InteractionOutcome {
             let _ = crate::mouse::drag::process_title_reorder_motion(ctx, event.root);
         }
         Some(CapturedInteraction::Tag(_)) => {
-            ctx.transition_pointer_interaction(|drag| {
-                drag.captured_mut::<crate::core_state::TagDragState>()
+            ctx.transition_pointer_interaction(|pointer| {
+                pointer
+                    .captured_mut::<crate::core_state::TagDragState>()
                     .expect("tag capture remained active")
                     .last_motion = Some((event.root, event.modifiers));
             });
@@ -198,10 +199,10 @@ fn finish(
     time_msec: u32,
 ) -> InteractionOutcome {
     let core_state = &ctx.core().state;
-    if core_state.interaction.drag.captured_button() != Some(button) {
+    if core_state.interaction.pointer.captured_button() != Some(button) {
         return InteractionOutcome::Ignored;
     }
-    match core_state.interaction.drag.capture() {
+    match core_state.interaction.pointer.capture() {
         Some(CapturedInteraction::OverviewCard(_)) => {
             let _ = crate::overview::finish_card_gesture(ctx, button);
         }
@@ -244,9 +245,10 @@ fn cancel(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> InteractionOutcome {
 
 /// Cancel the currently captured pointer or touch interaction for `reason`.
 fn cancel_capture(ctx: &mut WmCtx<'_>, reason: DragCancelReason) -> bool {
-    let (cancelled_interactive, cancelled_other) = ctx.transition_pointer_interaction(|drag| {
-        let cancelled_interactive = crate::mouse::drag::lifecycle::cancel(drag, reason).is_some();
-        let cancelled_other = drag.cancel_capture().is_some();
+    let (cancelled_interactive, cancelled_other) = ctx.transition_pointer_interaction(|pointer| {
+        let cancelled_interactive =
+            crate::mouse::drag::lifecycle::cancel(pointer, reason).is_some();
+        let cancelled_other = pointer.cancel_capture().is_some();
         (cancelled_interactive, cancelled_other)
     });
     if cancelled_interactive || cancelled_other {
@@ -286,7 +288,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_move(
                 win,
                 MouseButton::Left,
@@ -312,7 +314,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .arm_title_drag(crate::core_state::ArmedDragStart {
                 win,
                 button: MouseButton::Left,
@@ -334,7 +336,7 @@ mod tests {
             assert!(
                 crate::client::lifecycle::remove_managed_client(&mut wm.test_ctx(), win).is_some()
             );
-            assert!(wm.core.state.interaction.drag.capture().is_none());
+            assert!(wm.core.state.interaction.pointer.capture().is_none());
             assert!(wm.core.state.model.client(win).is_none());
             for phase in [
                 InteractionPhase::Update,
@@ -390,7 +392,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .active_interaction()
                 .unwrap()
                 .last_root_point(),
@@ -398,7 +400,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .active_interaction()
                 .unwrap()
                 .last_root_point()
@@ -511,7 +513,7 @@ mod tests {
             wm.core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_none()
         );
@@ -615,7 +617,7 @@ mod tests {
             wm.core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_none()
         );
@@ -627,7 +629,7 @@ mod tests {
             wm.core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_none()
         );
@@ -719,7 +721,7 @@ mod tests {
             wm.core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .active_interaction()
                 .is_some()
         );
@@ -741,7 +743,7 @@ mod tests {
                 handle(&mut wm.test_ctx(), update(source, Point::new(350, 275))),
                 InteractionOutcome::Captured
             );
-            assert!(wm.core.state.interaction.drag.capture().is_none());
+            assert!(wm.core.state.interaction.pointer.capture().is_none());
             assert_eq!(
                 wm.core.state.model.client(win).unwrap().geo,
                 Rect::new(100, 100, 500, 300)
@@ -767,7 +769,7 @@ mod tests {
             ),
             InteractionOutcome::Ignored
         );
-        assert!(wm.core.state.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.pointer.capture().is_some());
 
         assert_eq!(
             handle(
@@ -776,7 +778,7 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
     }
 
     #[test]
@@ -787,18 +789,26 @@ mod tests {
             reconcile_capture(&mut destroyed_wm.test_ctx()),
             Some(DragCancelReason::WindowDestroyed)
         );
-        assert!(destroyed_wm.core.state.interaction.drag.capture().is_none());
+        assert!(
+            destroyed_wm
+                .core
+                .state
+                .interaction
+                .pointer
+                .capture()
+                .is_none()
+        );
     }
 
     #[test]
     fn an_armed_hidden_title_remains_valid_only_on_its_original_workspace() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        wm.core.state.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.pointer.cancel_capture().unwrap();
         wm.core.state.model.client_mut(win).unwrap().is_hidden = true;
         arm_title_drag(&mut wm, win, true);
 
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
-        assert!(wm.core.state.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.pointer.capture().is_some());
 
         let monitor_id = wm.core.state.model.monitor_of_client(win).unwrap();
         wm.core
@@ -811,13 +821,13 @@ mod tests {
             reconcile_capture(&mut wm.test_ctx()),
             Some(DragCancelReason::WindowHidden)
         );
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
     }
 
     #[test]
     fn an_armed_visible_title_cancels_when_explicitly_hidden() {
         let (mut wm, win) = floating_drag_fixture(InteractionSource::Pointer);
-        wm.core.state.interaction.drag.cancel_capture().unwrap();
+        wm.core.state.interaction.pointer.cancel_capture().unwrap();
         arm_title_drag(&mut wm, win, false);
 
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
@@ -826,7 +836,7 @@ mod tests {
             reconcile_capture(&mut wm.test_ctx()),
             Some(DragCancelReason::WindowHidden)
         );
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
     }
 
     #[test]
@@ -845,7 +855,7 @@ mod tests {
             wm.core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_some()
         );
@@ -872,7 +882,7 @@ mod tests {
             InteractionOutcome::Captured
         );
         assert_eq!(reconcile_capture(&mut wm.test_ctx()), None);
-        assert!(wm.core.state.interaction.drag.capture().is_some());
+        assert!(wm.core.state.interaction.pointer.capture().is_some());
 
         assert_eq!(
             handle(
@@ -890,7 +900,7 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
     }
 
     #[test]
@@ -911,7 +921,7 @@ mod tests {
             ),
             InteractionOutcome::Captured
         );
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
         // Nothing is queued, so the next tick starts no tool.
         wm.with_ctx(crate::mouse::slop::drain_region_selection);
     }

@@ -199,8 +199,10 @@ pub fn arm_region_selection_press(
     if ctx.core().state.model.client(window).is_none() {
         return false;
     }
-    ctx.transition_pointer_interaction(|drag| drag.arm_region_selection(window, button, source))
-        .is_ok()
+    ctx.transition_pointer_interaction(|pointer| {
+        pointer.arm_region_selection(window, button, source)
+    })
+    .is_ok()
 }
 
 /// End an armed region selection and queue the tool for the next tick.
@@ -212,9 +214,9 @@ pub fn arm_region_selection_press(
 /// backends run [`drain_region_selection`] once per tick, after the release
 /// has been fully handled.
 pub fn finish_region_selection_press(ctx: &mut WmCtx, button: MouseButton) -> bool {
-    let Some(armed) =
-        ctx.transition_pointer_interaction(|drag| drag.finish::<DeferredRegionSelection>(button))
-    else {
+    let Some(armed) = ctx.transition_pointer_interaction(|pointer| {
+        pointer.finish::<DeferredRegionSelection>(button)
+    }) else {
         return false;
     };
     ctx.core_mut().work.queue_region_selection(armed.window);
@@ -686,7 +688,7 @@ mod tests {
         // The press owns the pointer but no tool exists yet, so the release
         // that is about to arrive cannot be mistaken for a cancellation.
         assert_eq!(
-            wm.core.state.interaction.drag.captured_button(),
+            wm.core.state.interaction.pointer.captured_button(),
             Some(MouseButton::Left)
         );
         assert!(!is_tool_running());
@@ -697,7 +699,7 @@ mod tests {
             MouseButton::Left
         ));
 
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
         assert_eq!(pending_region_selection(&wm), Some(win));
     }
 
@@ -736,7 +738,7 @@ mod tests {
             MouseButton::Left,
             InteractionSource::Pointer,
         ));
-        assert!(wm.core.state.interaction.drag.capture().is_none());
+        assert!(wm.core.state.interaction.pointer.capture().is_none());
         assert_eq!(pending_region_selection(&wm), None);
     }
 

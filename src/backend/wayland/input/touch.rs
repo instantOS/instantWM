@@ -782,7 +782,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_some()
         );
@@ -802,7 +802,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .unwrap()
                 .latched_direction(),
@@ -816,7 +816,7 @@ mod tests {
                 .core
                 .state
                 .interaction
-                .drag
+                .pointer
                 .captured::<crate::core_state::BottomBarDrag>()
                 .is_none()
         );

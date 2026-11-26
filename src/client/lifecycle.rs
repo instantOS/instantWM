@@ -24,17 +24,17 @@ pub(crate) fn remove_managed_client(
     // Cancel before removing the client so both backends reconcile the native
     // interaction projection while the target's metadata is still available.
     let cancelled_drag = ctx
-        .transition_pointer_interaction(|drag| {
-            if drag.resize_hover_origin() == Some(win)
-                || drag
+        .transition_pointer_interaction(|pointer| {
+            if pointer.resize_hover_origin() == Some(win)
+                || pointer
                     .hover_offer()
                     .resize_target()
                     .is_some_and(|(target, _)| target == win)
             {
-                drag.clear_hover_offer();
+                pointer.clear_hover_offer();
             }
             crate::mouse::drag::lifecycle::cancel_window(
-                drag,
+                pointer,
                 win,
                 crate::core_state::DragCancelReason::WindowDestroyed,
             )

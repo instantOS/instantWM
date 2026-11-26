@@ -47,7 +47,7 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
                             .core
                             .state
                             .interaction
-                            .drag
+                            .pointer
                             .active_interaction()
                             .is_some(),
                         next_is_pointer_motion,
@@ -271,7 +271,7 @@ fn handle_xwayland_configure(
     let current = client.geo;
     let being_dragged = core
         .interaction
-        .drag
+        .pointer
         .active_interaction()
         .is_some_and(|drag| drag.win() == win);
     if being_dragged
@@ -857,9 +857,9 @@ fn handle_begin_resize(
     let Some(geometry) = ctx.core().client_geo(win) else {
         return;
     };
-    let _ = ctx.transition_pointer_interaction(|drag| {
+    let _ = ctx.transition_pointer_interaction(|pointer| {
         crate::mouse::drag::lifecycle::begin_resize(
-            drag,
+            pointer,
             crate::core_state::DirectResizeStart {
                 win,
                 button: crate::types::MouseButton::Left,

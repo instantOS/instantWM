@@ -59,7 +59,7 @@ mod tests {
         wm.core
             .state
             .interaction
-            .drag
+            .pointer
             .begin_move(
                 source,
                 MouseButton::Left,

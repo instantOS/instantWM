@@ -447,7 +447,7 @@ pub(crate) fn pointer_insertion_hitboxes(
     use crate::core_state::ActiveWindowOperation;
     use crate::mouse::drag::move_drop::{MoveDropTarget, resolve_move_drop};
 
-    let drag = state.interaction.drag.active_interaction()?;
+    let drag = state.interaction.pointer.active_interaction()?;
     if !matches!(drag.operation(), ActiveWindowOperation::Move) {
         return None;
     }
