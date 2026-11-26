@@ -91,6 +91,23 @@ pub fn load_startup_config(backend: crate::backend::BackendKind) -> EffectiveCon
     })
 }
 
+/// Merge one keybind table, recording its diagnostics instead of failing
+/// immediately so `resolve_config` can report errors from every table at once.
+fn merge_configured_keybinds(
+    defaults: Vec<Key>,
+    specs: &[keybind_config::KeybindSpec],
+    context: &str,
+    errors: &mut Vec<String>,
+) -> Vec<Key> {
+    match keybind_config::merge_keybinds(defaults, specs, KeybindOrigin::User, context) {
+        Ok(keys) => keys,
+        Err(error) => {
+            errors.push(error);
+            Vec::new()
+        }
+    }
+}
+
 /// Resolve a parsed user configuration into the complete effective snapshot.
 /// This is the sole user-to-runtime conversion boundary.
 ///
@@ -103,21 +120,19 @@ pub fn resolve_config(
 ) -> Result<EffectiveConfig, String> {
     let layout = theme.layout.validated()?;
     theme.fonts = theme.fonts.validated()?;
-    let mut keybind_diagnostics = Vec::new();
-    let (keys, diagnostics) = keybind_config::merge_keybinds(
+    let mut keybind_errors = Vec::new();
+    let keys = merge_configured_keybinds(
         keybindings::default_keybinds(backend),
         &theme.keybinds,
-        KeybindOrigin::User,
         "keybinds",
+        &mut keybind_errors,
     );
-    keybind_diagnostics.extend(diagnostics);
-    let (desktop_keybinds, diagnostics) = keybind_config::merge_keybinds(
+    let desktop_keybinds = merge_configured_keybinds(
         keybindings::get_desktop_keybinds(),
         &theme.desktop_keybinds,
-        KeybindOrigin::User,
         "desktop_keybinds",
+        &mut keybind_errors,
     );
-    keybind_diagnostics.extend(diagnostics);
 
     let mut modes = HashMap::new();
 
@@ -127,16 +142,11 @@ pub fn resolve_config(
                       default_transient: bool,
                       default_keybinds: Vec<Key>,
                       context: &str,
-                      diagnostics: &mut Vec<String>|
+                      errors: &mut Vec<String>|
      -> ModeConfig {
         if let Some(spec) = spec {
-            let (keybinds, errors) = keybind_config::merge_keybinds(
-                default_keybinds,
-                &spec.keybinds,
-                KeybindOrigin::User,
-                context,
-            );
-            diagnostics.extend(errors);
+            let keybinds =
+                merge_configured_keybinds(default_keybinds, &spec.keybinds, context, errors);
             ModeConfig {
                 description: spec
                     .description
@@ -163,7 +173,7 @@ pub fn resolve_config(
             true,
             Vec::new(),
             "modes.prefix.keybinds",
-            &mut keybind_diagnostics,
+            &mut keybind_errors,
         ),
     );
 
@@ -175,7 +185,7 @@ pub fn resolve_config(
             false,
             Vec::new(),
             "modes.desktop.keybinds",
-            &mut keybind_diagnostics,
+            &mut keybind_errors,
         ),
     );
 
@@ -185,7 +195,7 @@ pub fn resolve_config(
         false,
         keybindings::get_tree_placement_keybinds(),
         "modes.placement.keybinds",
-        &mut keybind_diagnostics,
+        &mut keybind_errors,
     );
     // Placement has a transactional apply/cancel lifecycle; treating one
     // command as transient would discard that transaction mid-navigation.
@@ -203,13 +213,12 @@ pub fn resolve_config(
         {
             continue;
         }
-        let (keybinds, diagnostics) = keybind_config::merge_keybinds(
+        let keybinds = merge_configured_keybinds(
             Vec::new(),
             &spec.keybinds,
-            KeybindOrigin::User,
             &format!("modes.{name}.keybinds"),
+            &mut keybind_errors,
         );
-        keybind_diagnostics.extend(diagnostics);
         modes.insert(
             name.clone(),
             ModeConfig {
@@ -220,8 +229,8 @@ pub fn resolve_config(
         );
     }
 
-    if !keybind_diagnostics.is_empty() {
-        return Err(keybind_diagnostics.join("\n"));
+    if !keybind_errors.is_empty() {
+        return Err(keybind_errors.join("\n"));
     }
 
     let bar = theme.bar.validated()?;

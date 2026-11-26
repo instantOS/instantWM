@@ -159,20 +159,18 @@ fn compile_keybind(spec: &KeybindSpec) -> Result<((ModMask, Keysym), Option<KeyA
     Ok((combo, Some(compile_action(&spec.action)?)))
 }
 
-/// Overlay `specs` on `defaults`, returning the merged bindings and one
-/// diagnostic per invalid entry.
+/// Overlay `specs` on `defaults`.
 ///
-/// `context` names the table the entries came from (for example
-/// `modes.resize.keybinds`) so a diagnostic points at the exact entry instead
-/// of only naming the key. Callers that treat configuration errors as fatal
-/// turn a non-empty diagnostic list into a load error; see
-/// [`crate::config::resolve_config`].
+/// Invalid entries are collected, not skipped: the merge fails with one
+/// diagnostic per invalid entry. `context` names the table the entries came
+/// from (for example `modes.resize.keybinds`) so a diagnostic points at the
+/// exact entry instead of only naming the key.
 pub fn merge_keybinds(
     defaults: Vec<Key>,
     specs: &[KeybindSpec],
     origin: KeybindOrigin,
     context: &str,
-) -> (Vec<Key>, Vec<String>) {
+) -> Result<Vec<Key>, String> {
     let mut keys: Vec<Option<Key>> = defaults.into_iter().map(Some).collect();
     // A binding's identity is its chord, so the index is keyed on the typed
     // chord rather than a `(u32, u32)` pair that could be assembled backwards.
@@ -208,7 +206,11 @@ pub fn merge_keybinds(
         }
     }
 
-    (keys.into_iter().flatten().collect(), diagnostics)
+    if diagnostics.is_empty() {
+        Ok(keys.into_iter().flatten().collect())
+    } else {
+        Err(diagnostics.join("\n"))
+    }
 }
 
 #[cfg(test)]
@@ -236,12 +238,10 @@ mod tests {
         }
     }
 
-    /// Merge with no expected diagnostics, for tests about valid configs.
+    /// Merge a valid test config.
     fn merge(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
-        let (merged, diagnostics) =
-            merge_keybinds(defaults, specs, KeybindOrigin::User, "keybinds");
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        merged
+        merge_keybinds(defaults, specs, KeybindOrigin::User, "keybinds")
+            .expect("valid keybind config")
     }
 
     #[test]
@@ -320,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_entries_are_reported_without_touching_defaults() {
+    fn invalid_entries_are_reported_with_context() {
         let specs = [
             parse_keybind(
                 "[keybind]\nkey = \"p\"\nmodifiers = [\"alt\"]\naction = \"does_not_exist\"",
@@ -331,14 +331,14 @@ mod tests {
             parse_keybind("[keybind]\nkey = \"nokey\"\naction = \"zoom\""),
             parse_keybind("[keybind]\nkey = \"p\"\nmodifiers = [\"hyper\"]\naction = \"zoom\""),
         ];
-        let (merged, diagnostics) = merge_keybinds(
+        let error = merge_keybinds(
             vec![default_key(XK_P)],
             &specs,
             KeybindOrigin::User,
             "modes.resize.keybinds",
-        );
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].origin, KeybindOrigin::CompiledDefault);
+        )
+        .unwrap_err();
+        let diagnostics: Vec<_> = error.lines().collect();
         assert_eq!(diagnostics.len(), specs.len());
         assert!(
             diagnostics[0].contains("modes.resize.keybinds[0]")
@@ -395,10 +395,10 @@ mod tests {
             let spec = parse_keybind(&format!(
                 "[keybind]\nmodifiers = []\nkey = \"f\"\naction = {action}"
             ));
-            let (merged, diagnostics) =
-                merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User, "keybinds");
-            assert!(merged.is_empty(), "{action}");
-            assert_eq!(diagnostics.len(), 1, "{action}");
+            assert!(
+                merge_keybinds(Vec::new(), &[spec], KeybindOrigin::User, "keybinds").is_err(),
+                "{action}"
+            );
         }
     }
 
@@ -525,16 +525,16 @@ mod tests {
         // mean Alt. One spelling per modifier, or a config cannot be read back
         // as the form the tooling prints.
         for alias in ["mod", "mod4", "modkey", "mod1", "ctrl"] {
-            let (merged, diagnostics) = merge_keybinds(
+            let error = merge_keybinds(
                 Vec::new(),
                 &[parse_keybind(&format!(
                     "[keybind]\nmodifiers = [\"{alias}\"]\nkey = \"p\"\naction = \"zoom\""
                 ))],
                 KeybindOrigin::User,
                 "keybinds",
-            );
-            assert!(merged.is_empty(), "'{alias}' must be rejected");
-            assert_eq!(diagnostics.len(), 1, "'{alias}' must be reported");
+            )
+            .unwrap_err();
+            assert!(error.contains(alias), "'{alias}' must be reported: {error}");
         }
     }
 
