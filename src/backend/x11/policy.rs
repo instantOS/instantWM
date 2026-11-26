@@ -165,6 +165,19 @@ pub fn window_properties_from_x11_surface(surface: &X11Surface) -> WindowPropert
     }
 }
 
+pub(crate) fn motif_decorations_include_frame(decorations: u32) -> bool {
+    use super::constants::{MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE};
+
+    decorations & (MWM_DECOR_ALL | MWM_DECOR_BORDER | MWM_DECOR_TITLE) != 0
+}
+
+pub(crate) fn motif_decoration_preference(surface: &X11Surface) -> Option<bool> {
+    surface
+        .motif_hints()
+        .decorations
+        .map(|decorations| motif_decorations_include_frame(decorations.bits()))
+}
+
 pub fn apply_wm_hints_to_client(client: &mut Client, hints: Option<WmHints>) {
     let (never_focus, is_urgent) = hints
         .map(|hints| (!hints.input.unwrap_or(true), hints.urgent))

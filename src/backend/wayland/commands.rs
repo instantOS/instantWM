@@ -207,11 +207,18 @@ pub enum WmCommand {
         win: WindowId,
         update: crate::backend::x11::policy::XWaylandPolicyUpdate,
     },
-    /// An X11 client's request to resize a managed window. The WM decides at
-    /// dispatch time whether that client may change its logical geometry.
-    RequestX11WindowSize {
+    UpdateXWaylandDecorations {
         win: WindowId,
-        size: crate::types::Size,
+        decorated: bool,
+    },
+    /// The configure mask remains intact until the WM can resolve omitted
+    /// coordinates and dimensions against its current geometry.
+    ConfigureXWaylandWindow {
+        win: WindowId,
+        x: Option<i32>,
+        y: Option<i32>,
+        width: Option<u32>,
+        height: Option<u32>,
     },
     /// Observe a native Wayland surface's committed size and the configure it
     /// answered. This is never an X11 client resize request.

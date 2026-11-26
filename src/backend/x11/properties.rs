@@ -6,8 +6,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::{
-    BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
-    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD,
+    BROKEN, MWM_HINTS_DECORATIONS, MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD,
 };
 use crate::client::rules::WindowProperties;
 use crate::client::set_fullscreen;
@@ -479,7 +478,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     let decorations = motif[MWM_HINTS_DECORATIONS_FIELD];
-    let new_bw = if decorations & (MWM_DECOR_ALL | MWM_DECOR_BORDER | MWM_DECOR_TITLE) != 0 {
+    let new_bw = if super::policy::motif_decorations_include_frame(decorations) {
         border_px
     } else {
         0

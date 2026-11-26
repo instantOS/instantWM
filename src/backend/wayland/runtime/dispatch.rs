@@ -120,8 +120,17 @@ pub(crate) fn drain_command_queue(state: &mut WaylandState) {
             WmCommand::UpdateXWaylandPolicy { win, update } => {
                 handle_update_xwayland_policy(&mut state.ctx(), win, update);
             }
-            WmCommand::RequestX11WindowSize { win, size } => {
-                handle_x11_window_size_request(state, win, size);
+            WmCommand::UpdateXWaylandDecorations { win, decorated } => {
+                handle_xwayland_decorations(state, win, decorated);
+            }
+            WmCommand::ConfigureXWaylandWindow {
+                win,
+                x,
+                y,
+                width,
+                height,
+            } => {
+                handle_xwayland_configure(state, win, x, y, width, height);
             }
             WmCommand::ObserveCommittedSize {
                 win,
@@ -246,16 +255,29 @@ fn handle_update_transient_for(
     crate::layouts::sync_z_order(ctx);
 }
 
-fn handle_x11_window_size_request(
+fn handle_xwayland_configure(
     state: &mut WaylandState,
     win: crate::types::WindowId,
-    size: crate::types::Size,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: Option<u32>,
+    height: Option<u32>,
 ) {
-    let Some(client) = state.wm.core.state.model.client(win) else {
+    let core = &state.wm.core.state;
+    let Some(view) = core.model.client_view(win) else {
         return;
     };
+    let client = view.client;
     let current = client.geo;
-    if state.native.is_interactive_resize(win) || !client.client_size_is_authoritative() {
+    let being_dragged = core
+        .interaction
+        .drag
+        .active_interaction()
+        .is_some_and(|drag| drag.win() == win);
+    if being_dragged
+        || state.native.is_interactive_resize(win)
+        || !client.client_size_is_authoritative()
+    {
         // A denied request still needs a configure response with the WM's
         // current geometry. This also handles requests queued before a drag
         // began but consumed after the pointer took ownership.
@@ -265,11 +287,97 @@ fn handle_x11_window_size_request(
         return;
     }
 
-    state.ctx().move_resize(
-        win,
-        crate::types::Rect::new(current.x, current.y, size.w.max(1), size.h.max(1)),
-        crate::geometry::MoveResizeOptions::immediate(),
-    );
+    let mut target = current;
+    let monitor = view.monitor.monitor_rect;
+    if let Some(width) = width {
+        target.w = i32::try_from(width)
+            .unwrap_or(i32::MAX)
+            .clamp(1, monitor.w.max(1));
+    }
+    if let Some(height) = height {
+        target.h = i32::try_from(height)
+            .unwrap_or(i32::MAX)
+            .clamp(1, monitor.h.max(1));
+    }
+    if client.snap_status == crate::types::SnapPosition::None {
+        let work_area = view.monitor.work_rect();
+        let work_area = if work_area.is_valid() {
+            work_area
+        } else {
+            monitor
+        };
+        if let Some(x) = x {
+            target.x = crate::types::Rect::clamp_fully_contained_axis(
+                x,
+                target.total_width(client.border_width),
+                work_area.x,
+                work_area.w,
+            );
+        }
+        if let Some(y) = y {
+            target.y = crate::types::Rect::clamp_fully_contained_axis(
+                y,
+                target.total_height(client.border_width),
+                work_area.y,
+                work_area.h,
+            );
+        }
+    }
+    state
+        .ctx()
+        .move_resize(win, target, crate::geometry::MoveResizeOptions::immediate());
+}
+
+fn handle_xwayland_decorations(
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    decorated: bool,
+) {
+    let core = &mut state.wm.core;
+    if !core.state.config.window.decor_hints {
+        return;
+    }
+    let width = core.state.config.window.border_width_px;
+    let Some(monitor) = core.state.model.client_owner_mut(win) else {
+        return;
+    };
+    let monitor_id = monitor.id();
+    let client = monitor
+        .client_mut(win)
+        .expect("owner was resolved from client membership");
+    let previous_width = client.border_width;
+    if !apply_xwayland_decoration_preference(client, width, decorated) {
+        return;
+    }
+    let rect = client.geo;
+    let border_changed = previous_width != client.border_width;
+    core.queue_layout_for_monitor(monitor_id);
+    if border_changed {
+        state.native.resize_window(&state.wm.core.state, win, rect);
+    }
+}
+
+fn apply_xwayland_decoration_preference(
+    client: &mut crate::types::Client,
+    default_width: i32,
+    decorated: bool,
+) -> bool {
+    let width = if decorated && !client.is_borderless {
+        default_width
+    } else {
+        0
+    };
+    let previous_width = client.old_border_width;
+    if previous_width == width {
+        return false;
+    }
+    client.old_border_width = width;
+    // Layout and fullscreen can independently suppress the active border.
+    if width == 0 || (client.border_width == previous_width && !client.mode().is_true_fullscreen())
+    {
+        client.border_width = width;
+    }
+    true
 }
 
 fn handle_committed_size_observation(
@@ -432,6 +540,19 @@ fn handle_map_window(
     let position_is_explicit = rule_outcome
         .placement
         .position_is_explicit(initial_position_is_explicit);
+
+    if state.config.window.decor_hints
+        && let Some(decorated) = element
+            .x11_surface()
+            .and_then(crate::backend::x11::policy::motif_decoration_preference)
+        && let Some(client) = state.model.client_mut(win)
+    {
+        apply_xwayland_decoration_preference(
+            client,
+            state.config.window.border_width_px,
+            decorated,
+        );
+    }
 
     apply_wayland_surface_policy(state, &mut wl_state.native, Some(&element), win, parent);
     apply_initial_surface_presentation(state, Some(&element), win);
@@ -899,11 +1020,12 @@ mod tests {
     }
 
     #[test]
-    fn queued_x11_size_request_cannot_override_a_newer_interactive_resize() {
+    fn queued_xwayland_configure_respects_window_geometry_ownership() {
         let (_event_loop, mut state) = crate::test_support::new_compositor();
         state.wm = Wm::new(crate::backend::WaylandBackendData::default());
         let monitor_id = push_monitor_with(&mut state.wm.core.state.model, |monitor| {
             monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+            monitor.available_rect = monitor.monitor_rect;
         });
         let win = WindowId(90);
         let initial = Rect::new(100, 100, 800, 600);
@@ -918,10 +1040,15 @@ mod tests {
             },
         );
 
-        state.native.push_command(WmCommand::RequestX11WindowSize {
-            win,
-            size: crate::types::Size::new(900, 700),
-        });
+        state
+            .native
+            .push_command(WmCommand::ConfigureXWaylandWindow {
+                win,
+                x: Some(300),
+                y: None,
+                width: Some(900),
+                height: Some(700),
+            });
         state
             .native
             .reconcile_interactive_resize(&state.wm.core.state, Some(win));
@@ -931,14 +1058,19 @@ mod tests {
         state
             .native
             .reconcile_interactive_resize(&state.wm.core.state, None);
-        state.native.push_command(WmCommand::RequestX11WindowSize {
-            win,
-            size: crate::types::Size::new(900, 700),
-        });
+        state
+            .native
+            .push_command(WmCommand::ConfigureXWaylandWindow {
+                win,
+                x: Some(300),
+                y: None,
+                width: Some(900),
+                height: Some(700),
+            });
         drain_command_queue(&mut state);
         assert_eq!(
             state.wm.core.state.model.client(win).unwrap().geo,
-            Rect::new(100, 100, 900, 700)
+            Rect::new(300, 100, 900, 700)
         );
 
         state
@@ -949,14 +1081,19 @@ mod tests {
             .client_mut(win)
             .unwrap()
             .set_placement(ClientPlacement::Tiling);
-        state.native.push_command(WmCommand::RequestX11WindowSize {
-            win,
-            size: crate::types::Size::new(1000, 800),
-        });
+        state
+            .native
+            .push_command(WmCommand::ConfigureXWaylandWindow {
+                win,
+                x: Some(300),
+                y: None,
+                width: Some(1000),
+                height: Some(800),
+            });
         drain_command_queue(&mut state);
         assert_eq!(
             state.wm.core.state.model.client(win).unwrap().geo,
-            Rect::new(100, 100, 900, 700)
+            Rect::new(300, 100, 900, 700)
         );
     }
 

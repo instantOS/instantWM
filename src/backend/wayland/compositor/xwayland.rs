@@ -393,6 +393,17 @@ impl XwmHandler for WaylandState {
         h: Option<u32>,
         _reorder: Option<smithay::xwayland::xwm::Reorder>,
     ) {
+        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
+            self.native
+                .push_command(super::super::commands::WmCommand::ConfigureXWaylandWindow {
+                    win,
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                });
+            return;
+        }
         let mut geo = window.last_configure();
         if let Some(x) = x {
             geo.loc.x = x;
@@ -405,14 +416,6 @@ impl XwmHandler for WaylandState {
         }
         if let Some(h) = h {
             geo.size.h = h as i32;
-        }
-        if let Some(win) = self.native.window_id_for_x11_surface(&window) {
-            self.native
-                .push_command(super::super::commands::WmCommand::RequestX11WindowSize {
-                    win,
-                    size: crate::types::Size::new(geo.size.w, geo.size.h),
-                });
-            return;
         }
         let _ = window.configure(Some(geo));
     }
@@ -462,6 +465,18 @@ impl XwmHandler for WaylandState {
         };
 
         match property {
+            WmWindowProperty::MotifHints => {
+                if let Some(decorated) =
+                    crate::backend::x11::policy::motif_decoration_preference(&window)
+                {
+                    self.native.push_command(
+                        super::super::commands::WmCommand::UpdateXWaylandDecorations {
+                            win,
+                            decorated,
+                        },
+                    );
+                }
+            }
             WmWindowProperty::Title | WmWindowProperty::Class => {
                 sync_surface_metadata(self, win, &window);
                 apply_surface_policy(self, win, &window);
@@ -470,7 +485,6 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::NormalHints
             | WmWindowProperty::TransientFor
             | WmWindowProperty::WindowType
-            | WmWindowProperty::MotifHints
             | WmWindowProperty::StartupId
             | WmWindowProperty::Pid
             | WmWindowProperty::Protocols
