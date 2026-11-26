@@ -174,12 +174,13 @@ and contiguous virtual child ranges are valid; a leaf crossing the seam
 invalidates it.
 
 Dragging within the source window itself is not a dead zone. Its centre stays
-a no-op, while its edge bands reflow the source against its own enclosing
-splits. Along a split axis the source moves to that edge of the run; across the
-axis the containing group is re-split so the source takes that side. Outer
-bands act on progressively wider ancestors, so the same drag can be a local
-reflow or a move to the edge of the workspace. The source keeps its share of
-the edited area, so an edge drop moves or re-splits it without resizing it.
+a no-op, while its edge bands edit only its immediate parent split. Along the
+parent's axis the source swaps with one adjacent sibling slot; across the axis
+the parent is re-split so the source takes that side. Self-drops deliberately
+do not climb to ancestor scopes, so they cannot skip past multiple neighbours
+or pull the window out to the edge of the workspace while the pointer never
+left it. The source keeps its share of the edited area, so an edge drop moves
+or re-splits it without resizing it.
 
 While dragging, a thick hollow frame shows the source window's exact final
 outer rectangle for the target under the pointer. The frame disappears over

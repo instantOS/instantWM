@@ -177,15 +177,14 @@ impl TreePlacementSession {
                 let Some(side) = side else {
                     return Vec::new();
                 };
+                let Some(candidate) = self.tree.self_edge_candidate(self.source, side) else {
+                    return Vec::new();
+                };
                 return placement::normalized_plans(
                     self.source,
                     self.layout_rect,
                     &self.minimums,
-                    self.tree
-                        .self_edge_candidates(self.source, side)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(index, candidate)| (placement_target(index), candidate)),
+                    [(placement_target(0), candidate)],
                 );
             }
             let candidates = match side {

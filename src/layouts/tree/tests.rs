@@ -1113,7 +1113,61 @@ fn pointer_placement_preview_matches_release_and_does_not_mutate() {
 }
 
 #[test]
-fn same_window_edge_bands_offer_broad_and_local_reflows() {
+fn same_window_axis_edge_swaps_only_the_adjacent_sibling() {
+    let area = Rect::new(0, 0, 800, 600);
+    let windows = windows(3);
+    let source = windows[0];
+    let mut tree = LayoutTree::default();
+    tree.root = make_split(
+        tree.allocate(),
+        Axis::Horizontal,
+        windows
+            .iter()
+            .map(|window| WeightedNode {
+                node: Node::Window(*window),
+                weight: 1.0,
+            })
+            .collect(),
+    );
+    let before = tree.bounds(area);
+    assert_eq!(before[&source], Rect::new(0, 0, 800, 200));
+
+    let bottom = Point::new(before[&source].center().x, before[&source].bottom() - 1);
+    let preview = placement_session(&tree, source, area, 0.34)
+        .preview_point(bottom)
+        .unwrap();
+    assert_eq!(preview, before[&windows[1]]);
+    let applied = placement_session(&tree, source, area, 0.34)
+        .into_plan(bottom)
+        .unwrap()
+        .into_tree();
+    let applied_bounds = applied.bounds(area);
+    assert_eq!(applied_bounds[&source], before[&windows[1]]);
+    assert_eq!(applied_bounds[&windows[1]], before[&source]);
+    assert_eq!(applied_bounds[&windows[2]], before[&windows[2]]);
+    assert_ne!(
+        applied_bounds[&source], before[&windows[2]],
+        "a self-drop must not skip past the adjacent window"
+    );
+    assert_eq!(applied.leaves(), vec![windows[1], windows[0], windows[2]]);
+    assert_canonical(&applied);
+
+    // Already at the leading edge: there is no sibling to swap with.
+    let top = Point::new(before[&source].center().x, before[&source].y + 1);
+    assert!(
+        placement_session(&tree, source, area, 0.34)
+            .preview_point(top)
+            .is_none()
+    );
+    assert_eq!(
+        tree.bounds(area),
+        before,
+        "preview must not mutate the tree"
+    );
+}
+
+#[test]
+fn same_window_cross_axis_edge_resplits_only_the_immediate_parent() {
     let area = Rect::new(0, 0, 800, 600);
     let windows = windows(4);
     let source = windows[1];
@@ -1122,51 +1176,23 @@ fn same_window_edge_bands_offer_broad_and_local_reflows() {
     let before = tree.bounds(area);
     assert_eq!(before[&source], Rect::new(0, 300, 400, 300));
 
-    // Just inside the source's top edge: move it to the top of the whole
-    // layout, keeping its original quarter of the area.
-    let broad = Point::new(before[&source].center().x, before[&source].y + 1);
-    let broad_preview = placement_session(&tree, source, area, 0.34)
-        .preview_point(broad)
+    let left = Point::new(before[&source].x + 1, before[&source].center().y);
+    let preview = placement_session(&tree, source, area, 0.34)
+        .preview_point(left)
         .unwrap();
-    assert_eq!(broad_preview, Rect::new(0, 0, 800, 150));
-    let broad_tree = placement_session(&tree, source, area, 0.34)
-        .into_plan(broad)
+    assert_eq!(preview, Rect::new(0, 0, 200, 600));
+    let applied = placement_session(&tree, source, area, 0.34)
+        .into_plan(left)
         .unwrap()
         .into_tree();
-    let broad_bounds = broad_tree.bounds(area);
-    assert_eq!(broad_bounds[&source], broad_preview);
-    let rect_area = |rect: Rect| f64::from(rect.w) * f64::from(rect.h);
-    for window in [windows[0], windows[2], windows[3]] {
-        assert!(
-            (rect_area(broad_bounds[&window]) - rect_area(before[&window])).abs() < 500.0,
-            "unrelated window {window:?} must keep its area"
-        );
-    }
-    assert_canonical(&broad_tree);
+    let applied_bounds = applied.bounds(area);
+    assert_eq!(applied_bounds[&source], preview);
 
-    // Farther into the band: only reflow the source's immediate column.
-    let local = Point::new(before[&source].center().x, before[&source].y + 80);
-    let local_preview = placement_session(&tree, source, area, 0.34)
-        .preview_point(local)
-        .unwrap();
-    assert_eq!(local_preview, Rect::new(0, 0, 400, 300));
-    let local_tree = placement_session(&tree, source, area, 0.34)
-        .into_plan(local)
-        .unwrap()
-        .into_tree();
-    assert_eq!(local_tree.bounds(area)[&source], local_preview);
-    assert_eq!(
-        local_tree.bounds(area)[&windows[0]],
-        Rect::new(0, 300, 400, 300)
-    );
-    assert_eq!(local_tree.bounds(area)[&windows[2]], before[&windows[2]]);
-    assert_canonical(&local_tree);
-
-    assert_eq!(
-        tree.bounds(area),
-        before,
-        "preview must not mutate the tree"
-    );
+    // Only the source's column changes; the other column keeps its exact
+    // geometry instead of being pulled toward a broad ancestor scope.
+    assert_eq!(applied_bounds[&windows[2]], before[&windows[2]]);
+    assert_eq!(applied_bounds[&windows[3]], before[&windows[3]]);
+    assert_canonical(&applied);
 }
 
 #[test]
