@@ -2,11 +2,18 @@ use super::*;
 
 impl LayoutTree {
     pub fn bounds(&self, rect: Rect) -> HashMap<WindowId, Rect> {
+        self.frect_bounds(rect)
+            .into_iter()
+            .map(|(window, bounds)| (window, bounds.to_rect()))
+            .collect()
+    }
+
+    pub(super) fn frect_bounds(&self, rect: Rect) -> HashMap<WindowId, FRect> {
         let mut output = HashMap::new();
         if let Some(root) = &self.root {
             root.layout(FRect::from_rect(rect), &mut |node, rect| {
                 if let Node::Window(window) = node {
-                    output.insert(*window, rect.to_rect());
+                    output.insert(*window, rect);
                 }
             });
         }
@@ -23,6 +30,19 @@ impl LayoutTree {
         rect: Rect,
         minimums: &HashMap<WindowId, Size>,
     ) -> Option<HashMap<WindowId, Rect>> {
+        self.constrained_frect_bounds(rect, minimums).map(|output| {
+            output
+                .into_iter()
+                .map(|(window, bounds)| (window, bounds.to_rect()))
+                .collect()
+        })
+    }
+
+    pub(super) fn constrained_frect_bounds(
+        &self,
+        rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) -> Option<HashMap<WindowId, FRect>> {
         let root = self.root.as_ref()?;
         let required = required_size(root, minimums);
         if required.w > rect.w || required.h > rect.h {
@@ -30,12 +50,7 @@ impl LayoutTree {
         }
         let mut output = HashMap::new();
         constrained_node_bounds(root, FRect::from_rect(rect), minimums, &mut output)?;
-        Some(
-            output
-                .into_iter()
-                .map(|(window, bounds)| (window, bounds.to_rect()))
-                .collect(),
-        )
+        Some(output)
     }
 
     /// Resolve tiled slots, treating client minimum sizes as soft constraints.
