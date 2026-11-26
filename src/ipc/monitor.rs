@@ -188,7 +188,7 @@ fn set_monitor_config(ctx: &mut WmCtx<'_>, identifier: String, patch: MonitorCon
     }
     let (_, errors) = MirrorMap::build(&prospective);
     for error in errors {
-        if error.is_fatal() && error.declaration_key() == Some(resolved_id.as_str()) {
+        if error.is_fatal() && error.declaration_key() == resolved_id.as_str() {
             return Response::err(format!("{error}"));
         }
     }

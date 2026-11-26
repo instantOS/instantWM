@@ -224,8 +224,9 @@ pub fn dispatch_press_policy(ctx: &mut WmCtx<'_>, input: PressInput) -> PressOut
     // handled above (overview, sidebar, bar, and bottom bar). Root/client
     // button bindings are pointer chords and must not steal native touch.
     if input.source == InteractionSource::Pointer
-        && let (Some(target), Some(btn)) = (region.binding_target(), input.button)
+        && let Some(btn) = input.button
     {
+        let target = region.binding_target();
         let numlockmask = ctx.numlock_mask();
         binding_matched = crate::mouse::bindings::dispatch_button_binding(
             ctx,

@@ -454,7 +454,7 @@ fn set_monitor_field(
         let (_, errors) = crate::output_mirror::MirrorMap::build(&prospective);
         if let Some(error) = errors
             .into_iter()
-            .find(|error| error.is_fatal() && error.declaration_key() == Some(id))
+            .find(|error| error.is_fatal() && error.declaration_key() == id)
         {
             return Err(format!("{error}"));
         }

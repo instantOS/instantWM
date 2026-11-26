@@ -48,10 +48,10 @@ impl BackendKind {
     /// uses slurp's layer-shell overlay, which spans every output because
     /// the compositor implements wlr-layer-shell. Selection runs
     /// asynchronously — see [`crate::mouse::slop::spawn_region_selection`].
-    pub fn region_selection_command(self) -> Option<Command> {
+    pub fn region_selection_command(self) -> Command {
         match self {
-            Self::X11 => Some(Command::new("instantslop")),
-            Self::Wayland => Some(Command::new("slurp")),
+            Self::X11 => Command::new("instantslop"),
+            Self::Wayland => Command::new("slurp"),
         }
     }
 }

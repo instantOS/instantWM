@@ -17,8 +17,8 @@ pub enum PointerRegion {
         pos: BarPosition,
     },
     Client(WindowId),
-    /// Visible bottom gesture strip. Not a binding target: presses here are
-    /// swallowed so the strip neither acts like a bar nor falls through to
+    /// Visible bottom gesture strip. Bindable like any other screen region;
+    /// presses here are handled by the strip and do not fall through to
     /// desktop (root) bindings.
     BottomBar {
         monitor_id: MonitorId,
@@ -31,12 +31,12 @@ pub enum PointerRegion {
 impl PointerRegion {
     /// Return the config-binding target for regions owned by the binding system.
     ///
-    pub fn binding_target(self) -> Option<crate::types::ButtonTarget> {
+    pub fn binding_target(self) -> crate::types::ButtonTarget {
         match self {
-            PointerRegion::Bar { pos, .. } => Some(crate::types::ButtonTarget::Bar(pos)),
-            PointerRegion::Client(_) => Some(crate::types::ButtonTarget::ClientWin),
-            PointerRegion::BottomBar { .. } => Some(crate::types::ButtonTarget::BottomBar),
-            PointerRegion::Root { .. } => Some(crate::types::ButtonTarget::Root),
+            PointerRegion::Bar { pos, .. } => crate::types::ButtonTarget::Bar(pos),
+            PointerRegion::Client(_) => crate::types::ButtonTarget::ClientWin,
+            PointerRegion::BottomBar { .. } => crate::types::ButtonTarget::BottomBar,
+            PointerRegion::Root { .. } => crate::types::ButtonTarget::Root,
         }
     }
 }

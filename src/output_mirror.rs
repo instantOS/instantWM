@@ -83,15 +83,15 @@ impl MirrorConfigError {
 
     /// Config entry whose `mirror` value caused this error. [`Self::WildcardDeclaration`]
     /// is keyed by the wildcard entry `"*"`.
-    pub fn declaration_key(&self) -> Option<&str> {
+    pub fn declaration_key(&self) -> &str {
         match self {
             Self::EmptyTarget { output }
             | Self::SelfReference { output }
             | Self::TargetIsMirror { output, .. }
             | Self::WildcardSource { output }
             | Self::SourceNotConnected { output, .. }
-            | Self::ShadowedPresentation { output } => Some(output),
-            Self::WildcardDeclaration => Some("*"),
+            | Self::ShadowedPresentation { output } => output,
+            Self::WildcardDeclaration => "*",
         }
     }
 }
@@ -261,7 +261,7 @@ pub fn sanitize_mirror_configs(
         if !error.is_fatal() {
             continue;
         }
-        if let Some(config) = error.declaration_key().and_then(|key| configs.get_mut(key)) {
+        if let Some(config) = configs.get_mut(error.declaration_key()) {
             config.mirror = None;
         }
     }
@@ -649,14 +649,14 @@ mod tests {
 
         assert_eq!(
             MirrorConfigError::WildcardDeclaration.declaration_key(),
-            Some("*")
+            "*"
         );
         assert_eq!(
             MirrorConfigError::EmptyTarget {
                 output: "DP-1".into()
             }
             .declaration_key(),
-            Some("DP-1")
+            "DP-1"
         );
         assert_eq!(
             MirrorConfigError::SourceNotConnected {
@@ -664,7 +664,7 @@ mod tests {
                 source: "HDMI-1".into(),
             }
             .declaration_key(),
-            Some("DP-1")
+            "DP-1"
         );
         assert_eq!(
             MirrorConfigError::TargetIsMirror {
@@ -672,7 +672,7 @@ mod tests {
                 target: "HDMI-1".into(),
             }
             .declaration_key(),
-            Some("DP-1")
+            "DP-1"
         );
     }
 

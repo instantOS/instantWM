@@ -284,12 +284,10 @@ pub fn set_region_selection_ping(ping: calloop::ping::Ping) {
 /// outcome ([`SelectionOutcome`]) to [`drain_region_selection`], then fires
 /// the registered wake ping.
 ///
-/// Returns `false` when no tool is configured for this backend, the tool
-/// could not be started, or the watcher thread could not start.
+/// Returns `false` when the tool could not be started or the watcher thread
+/// could not start.
 pub fn spawn_region_selection(kind: crate::backend::BackendKind, window: WindowId) -> bool {
-    let Some(mut command) = kind.region_selection_command() else {
-        return false;
-    };
+    let mut command = kind.region_selection_command();
 
     command
         .args(["-f", REGION_SELECTION_FORMAT])
