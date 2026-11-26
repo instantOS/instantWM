@@ -1,5 +1,11 @@
 use super::*;
 
+/// Tags with at most this many leaves keep the exhaustive exact search when
+/// the base layout satisfies client minimums. Larger tags rank against one
+/// base solve and only materialize a bounded number of clamping candidates.
+const MAX_FULL_INSERTION_LEAVES: usize = 32;
+const MAX_MATERIALIZED_INSERTION_CANDIDATES: usize = 32;
+
 impl LayoutTree {
     /// Reconcile visible tiled windows using an explicit new-window policy.
     ///
@@ -104,14 +110,109 @@ impl LayoutTree {
         }
     }
 
-    /// Score every `(leaf, axis)` insertion by materializing a candidate split
-    /// and solving it.
+    fn insertion_score(
+        newcomer_slot: Rect,
+        target_slot: Rect,
+        fits_constraints: bool,
+        work_area: f64,
+    ) -> f64 {
+        let aspect = f64::from(newcomer_slot.w.max(1)) / f64::from(newcomer_slot.h.max(1));
+        let target_aspect = f64::from(target_slot.w.max(1)) / f64::from(target_slot.h.max(1));
+        let aspect_penalty = (aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
+        let target_aspect_penalty = (target_aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
+        let area_fraction = (f64::from(newcomer_slot.w.max(1)) * f64::from(newcomer_slot.h.max(1))
+            / work_area)
+            .clamp(EPSILON, 1.0);
+        let area_penalty = -area_fraction.ln() * 0.25;
+        let constraint_penalty = if fits_constraints { 0.0 } else { 1000.0 };
+        constraint_penalty + aspect_penalty + target_aspect_penalty + area_penalty
+    }
+
+    /// Materialize one split candidate and solve it, matching the exact
+    /// constrained geometry used by the final insertion.
+    fn materialized_insertion(
+        root: &Node,
+        window: WindowId,
+        target: WindowId,
+        axis: Axis,
+        work_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+        work_area: f64,
+    ) -> Option<AutomaticInsertion> {
+        let candidate = Self::split_leaf(root.clone(), target, window, axis, SplitId(0));
+        let tree = Self {
+            root: Some(candidate),
+            next_split_id: 1,
+            untouched_force_windows: Vec::new(),
+        };
+        let constrained = tree.constrained_bounds(work_rect, minimums);
+        let fits_constraints = constrained.is_some();
+        let slots = constrained.unwrap_or_else(|| tree.bounds(work_rect));
+        let slot = slots.get(&window).copied()?;
+        let target_slot = slots.get(&target).copied()?;
+        Some(AutomaticInsertion {
+            score: Self::insertion_score(slot, target_slot, fits_constraints, work_area),
+            target,
+            axis,
+            newcomer_slot: slot,
+            target_slot,
+            fits_constraints,
+        })
+    }
+
+    /// Split a slot into the leading newcomer half and the trailing target
+    /// half, exactly as `split_leaf` lays out its two equal-weight children.
+    fn split_frect(rect: FRect, axis: Axis) -> (FRect, FRect) {
+        match axis {
+            Axis::Vertical => {
+                let half = rect.w * 0.5;
+                (
+                    FRect {
+                        x: rect.x,
+                        y: rect.y,
+                        w: half,
+                        h: rect.h,
+                    },
+                    FRect {
+                        x: rect.x + half,
+                        y: rect.y,
+                        w: half,
+                        h: rect.h,
+                    },
+                )
+            }
+            Axis::Horizontal => {
+                let half = rect.h * 0.5;
+                (
+                    FRect {
+                        x: rect.x,
+                        y: rect.y,
+                        w: rect.w,
+                        h: half,
+                    },
+                    FRect {
+                        x: rect.x,
+                        y: rect.y + half,
+                        w: rect.w,
+                        h: half,
+                    },
+                )
+            }
+        }
+    }
+
+    fn slot_meets_minimum(rect: FRect, minimum: Size) -> bool {
+        rect.w + EPSILON >= f64::from(minimum.w) && rect.h + EPSILON >= f64::from(minimum.h)
+    }
+
+    /// Score every `(leaf, axis)` insertion.
     ///
-    /// This is quadratic in the leaf count — each candidate clones and re-solves
-    /// the whole tree — but the leaf count per tag stays small in practice, and
-    /// `make_split`'s same-axis canonicalization means a candidate's real slots
-    /// can only be obtained by rebuilding the tree, not by solving the existing
-    /// layout with a virtual split.
+    /// A candidate only changes the target leaf's slot: the new split bisects
+    /// it and every other slot keeps the base layout's geometry. Solving the
+    /// existing tree once therefore supplies a cheap, exact ranking for the
+    /// common case. Only candidates that could trigger minimum-size clamping
+    /// need materializing, and large tags cap how many of those are solved so
+    /// insertion stays bounded instead of cloning the whole tree per leaf.
     fn automatic_insertion(
         root: &Node,
         window: WindowId,
@@ -119,54 +220,128 @@ impl LayoutTree {
         minimums: &HashMap<WindowId, Size>,
     ) -> Option<AutomaticInsertion> {
         let work_area = f64::from(work_rect.w.max(1)) * f64::from(work_rect.h.max(1));
-        let mut best: Option<AutomaticInsertion> = None;
 
         let mut leaves = Vec::new();
         root.leaves(&mut leaves);
-        for target in leaves {
-            for axis in [Axis::Vertical, Axis::Horizontal] {
-                let candidate = Self::split_leaf(root.clone(), target, window, axis, SplitId(0));
-                let tree = Self {
-                    root: Some(candidate),
-                    next_split_id: 1,
-                    untouched_force_windows: Vec::new(),
-                };
-                let constrained = tree.constrained_bounds(work_rect, minimums);
-                let fits_constraints = constrained.is_some();
-                let slots = constrained.unwrap_or_else(|| tree.bounds(work_rect));
-                let Some(slot) = slots.get(&window).copied() else {
-                    continue;
-                };
-                let Some(target_slot) = slots.get(&target).copied() else {
-                    continue;
-                };
-                let aspect = f64::from(slot.w.max(1)) / f64::from(slot.h.max(1));
-                let target_aspect =
-                    f64::from(target_slot.w.max(1)) / f64::from(target_slot.h.max(1));
-                let aspect_penalty = (aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
-                let target_aspect_penalty = (target_aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
-                let area_fraction = (f64::from(slot.w.max(1)) * f64::from(slot.h.max(1))
-                    / work_area)
-                    .clamp(EPSILON, 1.0);
-                let area_penalty = -area_fraction.ln() * 0.25;
-                let constraint_penalty = if fits_constraints { 0.0 } else { 1000.0 };
-                let score =
-                    constraint_penalty + aspect_penalty + target_aspect_penalty + area_penalty;
+        if leaves.is_empty() {
+            return None;
+        }
+        let leaf_count = leaves.len();
 
-                let candidate = AutomaticInsertion {
-                    score,
-                    target,
-                    axis,
-                    newcomer_slot: slot,
-                    target_slot,
-                    fits_constraints,
+        let base_tree = Self {
+            root: Some(root.clone()),
+            next_split_id: 1,
+            untouched_force_windows: Vec::new(),
+        };
+        let constrained = base_tree.constrained_frect_bounds(work_rect, minimums);
+        let base_fits_constraints = constrained.is_some();
+        let base_slots = constrained.unwrap_or_else(|| base_tree.frect_bounds(work_rect));
+
+        let newcomer_minimum = minimums
+            .get(&window)
+            .copied()
+            .unwrap_or_else(|| Size::new(1, 1));
+        let mut seeds = Vec::with_capacity(leaf_count * 2);
+        for target in leaves {
+            let Some(&target_rect) = base_slots.get(&target) else {
+                continue;
+            };
+            let target_minimum = minimums
+                .get(&target)
+                .copied()
+                .unwrap_or_else(|| Size::new(1, 1));
+            for axis in [Axis::Vertical, Axis::Horizontal] {
+                let (newcomer_rect, target_rect) = Self::split_frect(target_rect, axis);
+                let newcomer_slot = newcomer_rect.to_rect();
+                let target_slot = target_rect.to_rect();
+                // With no clamping needed, the candidate's constrained solve
+                // is exactly the base layout with this one slot bisected.
+                let constraints_unchanged = base_fits_constraints
+                    && Self::slot_meets_minimum(newcomer_rect, newcomer_minimum)
+                    && Self::slot_meets_minimum(target_rect, target_minimum);
+                let fits_constraints = base_fits_constraints;
+                seeds.push((
+                    AutomaticInsertion {
+                        score: Self::insertion_score(
+                            newcomer_slot,
+                            target_slot,
+                            fits_constraints,
+                            work_area,
+                        ),
+                        target,
+                        axis,
+                        newcomer_slot,
+                        target_slot,
+                        fits_constraints,
+                    },
+                    constraints_unchanged,
+                ));
+            }
+        }
+
+        if !base_fits_constraints {
+            // Adding a leaf cannot make an over-constrained tree fit, so every
+            // candidate uses the same unconstrained bounds. The bisected base
+            // slot is exact and needs no materialization.
+            let mut best: Option<AutomaticInsertion> = None;
+            for (candidate, _) in seeds {
+                if best.is_none_or(|best| candidate.score < best.score) {
+                    best = Some(candidate);
+                }
+            }
+            return best;
+        }
+
+        if leaf_count <= MAX_FULL_INSERTION_LEAVES {
+            // Keep the historical exhaustive search for small tags so tie
+            // ordering and constrained choices stay bit-for-bit unchanged.
+            let mut best: Option<AutomaticInsertion> = None;
+            for (seed, _) in seeds {
+                let Some(candidate) = Self::materialized_insertion(
+                    root,
+                    window,
+                    seed.target,
+                    seed.axis,
+                    work_rect,
+                    minimums,
+                    work_area,
+                ) else {
+                    continue;
                 };
                 if best.is_none_or(|best| candidate.score < best.score) {
                     best = Some(candidate);
                 }
             }
+            return best;
         }
 
+        seeds.sort_by(|(left, _), (right, _)| left.score.total_cmp(&right.score));
+        let mut remaining_solves = MAX_MATERIALIZED_INSERTION_CANDIDATES;
+        let mut best: Option<AutomaticInsertion> = None;
+        for (seed, constraints_unchanged) in seeds {
+            let candidate = if constraints_unchanged {
+                seed
+            } else if remaining_solves > 0 {
+                remaining_solves -= 1;
+                let Some(candidate) = Self::materialized_insertion(
+                    root,
+                    window,
+                    seed.target,
+                    seed.axis,
+                    work_rect,
+                    minimums,
+                    work_area,
+                ) else {
+                    continue;
+                };
+                candidate
+            } else {
+                continue;
+            };
+            if best.is_none_or(|best| candidate.score < best.score) {
+                best = Some(candidate);
+            }
+        }
         best
     }
 
@@ -379,6 +554,75 @@ impl LayoutTree {
                 })?;
             self.swap_windows(window, next_primary)
                 .then_some(next_primary)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layouts::tree::Preset;
+
+    fn windows(count: u32) -> Vec<WindowId> {
+        (1..=count).map(WindowId).collect()
+    }
+
+    #[test]
+    fn optimized_large_insertion_matches_exhaustive_search() {
+        let area = Rect::new(0, 0, 1600, 900);
+        let cases = [
+            (Preset::Grid, 50usize, Size::new(120, 50)),
+            (Preset::Grid, 100, Size::new(120, 50)),
+            (Preset::MasterStack, 64, Size::new(90, 60)),
+            (Preset::MasterStack, 100, Size::new(40, 20)),
+            (Preset::Grid, 50, Size::new(250, 100)),
+        ];
+        for (preset, count, minimum) in cases {
+            let existing = windows(count as u32);
+            let mut tree = LayoutTree::default();
+            tree.apply_preset(preset, &existing, 1);
+            let window = WindowId(count as u32 + 1);
+            let minimums = existing
+                .iter()
+                .copied()
+                .chain([window])
+                .map(|window| (window, minimum))
+                .collect::<HashMap<_, _>>();
+            let work_area = f64::from(area.w) * f64::from(area.h);
+            let mut exhaustive = None;
+            for target in tree.leaves() {
+                for axis in [Axis::Vertical, Axis::Horizontal] {
+                    let candidate = LayoutTree::materialized_insertion(
+                        tree.root.as_ref().unwrap(),
+                        window,
+                        target,
+                        axis,
+                        area,
+                        &minimums,
+                        work_area,
+                    )
+                    .unwrap();
+                    if exhaustive
+                        .is_none_or(|best: AutomaticInsertion| candidate.score < best.score)
+                    {
+                        exhaustive = Some(candidate);
+                    }
+                }
+            }
+            let optimized = LayoutTree::automatic_insertion(
+                tree.root.as_ref().unwrap(),
+                window,
+                area,
+                &minimums,
+            )
+            .unwrap();
+            let exhaustive = exhaustive.unwrap();
+            assert!(
+                (optimized.score - exhaustive.score).abs() < EPSILON,
+                "{preset:?} {count} min={minimum:?}: optimized {:?} vs exhaustive {:?}",
+                (optimized.target, optimized.axis, optimized.score),
+                (exhaustive.target, exhaustive.axis, exhaustive.score),
+            );
         }
     }
 }
