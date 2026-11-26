@@ -61,7 +61,7 @@ pub fn set_client_tag_prop(
     );
 }
 
-/// Publish `_NET_CLIENT_INFO` (first tag plus monitor number) and a
+/// Publish `_NET_CLIENT_INFO` (tag mask plus monitor number) and a
 /// caller-computed `_NET_WM_DESKTOP` for `win`.
 ///
 /// Callers that have not resolved the client yet use [`set_client_tag_prop`],
@@ -77,17 +77,14 @@ pub fn write_client_tag_props(
 ) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    let mut data = [0u8; 8];
-    data[..4].copy_from_slice(&tags.bits().to_ne_bytes());
-    data[4..].copy_from_slice(&monitor_num.to_ne_bytes());
-    let _ = conn.change_property(
+    // `_NET_CLIENT_INFO` is a pair of CARDINAL values. The reader (and external
+    // tools) expect format 32, so encode both fields in that representation.
+    let _ = conn.change_property32(
         PropMode::REPLACE,
         x11_win,
         x11_runtime.netatom.client_info,
         AtomEnum::CARDINAL,
-        8u8,
-        data.len() as u32,
-        &data,
+        &[tags.bits(), monitor_num],
     );
     set_wm_desktop_prop(x11, x11_runtime, win, desktop);
     let _ = conn.flush();
