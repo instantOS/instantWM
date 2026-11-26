@@ -315,6 +315,38 @@ impl LayoutTree {
             return best;
         }
 
+        let limits = leaf_minimum_limits(root, work_rect.size(), minimums);
+        let fits = |candidate: &AutomaticInsertion| {
+            let target = minimums
+                .get(&candidate.target)
+                .copied()
+                .unwrap_or_else(|| Size::new(1, 1));
+            let required = split_required_size(candidate.axis, [target, newcomer_minimum]);
+            let limit = limits[&candidate.target];
+            required.w <= limit.w && required.h <= limit.h
+        };
+        if !seeds.iter().any(|(seed, _)| fits(seed)) {
+            // All candidates fall back to unconstrained geometry.
+            let slots = base_tree.frect_bounds(work_rect);
+            return seeds
+                .into_iter()
+                .map(|(mut seed, _)| {
+                    let (newcomer, target) = Self::split_frect(slots[&seed.target], seed.axis);
+                    seed.newcomer_slot = newcomer.to_rect();
+                    seed.target_slot = target.to_rect();
+                    seed.fits_constraints = false;
+                    seed.score = Self::insertion_score(
+                        seed.newcomer_slot,
+                        seed.target_slot,
+                        false,
+                        work_area,
+                    );
+                    seed
+                })
+                .min_by(|left, right| left.score.total_cmp(&right.score));
+        }
+        // Reserve the solve budget for splits that can satisfy all minimums.
+        seeds.retain(|(seed, _)| fits(seed));
         seeds.sort_by(|(left, _), (right, _)| left.score.total_cmp(&right.score));
         let mut remaining_solves = MAX_MATERIALIZED_INSERTION_CANDIDATES;
         let mut best: Option<AutomaticInsertion> = None;
@@ -565,6 +597,43 @@ mod tests {
 
     fn windows(count: u32) -> Vec<WindowId> {
         (1..=count).map(WindowId).collect()
+    }
+
+    #[test]
+    fn bounded_search_keeps_the_only_split_that_fits() {
+        let newcomer = WindowId(35);
+        let target = WindowId(34);
+        let area = Rect::new(0, 0, 3320, 100);
+        let existing = windows(34);
+        let root = make_split(
+            SplitId(1),
+            Axis::Vertical,
+            existing
+                .iter()
+                .map(|&win| WeightedNode {
+                    node: Node::Window(win),
+                    weight: if win == target { 20.0 } else { 100.0 },
+                })
+                .collect(),
+        )
+        .unwrap();
+        let minimums = existing
+            .iter()
+            .map(|&win| {
+                let minimum = if win == target {
+                    Size::new(20, 20)
+                } else {
+                    Size::new(100, 70)
+                };
+                (win, minimum)
+            })
+            .chain([(newcomer, Size::new(20, 60))])
+            .collect();
+
+        let chosen = LayoutTree::automatic_insertion(&root, newcomer, area, &minimums).unwrap();
+        assert!(chosen.fits_constraints);
+        assert_eq!((chosen.target, chosen.axis), (target, Axis::Horizontal));
+        assert_eq!(chosen.newcomer_slot.size(), Size::new(20, 60));
     }
 
     #[test]

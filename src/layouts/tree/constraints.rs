@@ -13,16 +13,80 @@ pub(super) fn required_size(node: &Node, minimums: &HashMap<WindowId, Size>) -> 
                 .children
                 .iter()
                 .map(|child| required_size(&child.node, minimums));
-            match split.axis {
-                Axis::Vertical => children.fold(Size::new(0, 1), |total, child| {
-                    Size::new(total.w.saturating_add(child.w), total.h.max(child.h))
-                }),
-                Axis::Horizontal => children.fold(Size::new(1, 0), |total, child| {
-                    Size::new(total.w.max(child.w), total.h.saturating_add(child.h))
-                }),
+            split_required_size(split.axis, children)
+        }
+    }
+}
+
+pub(super) fn split_required_size(axis: Axis, children: impl IntoIterator<Item = Size>) -> Size {
+    match axis {
+        Axis::Vertical => children.into_iter().fold(Size::new(0, 1), |total, child| {
+            Size::new(total.w.saturating_add(child.w), total.h.max(child.h))
+        }),
+        Axis::Horizontal => children.into_iter().fold(Size::new(1, 0), |total, child| {
+            Size::new(total.w.max(child.w), total.h.saturating_add(child.h))
+        }),
+    }
+}
+
+/// Find how large each leaf's minimum can grow while the whole tree still
+/// fits. Siblings consume their minimums on the split axis and share the
+/// full available span on the other axis.
+pub(super) fn leaf_minimum_limits(
+    root: &Node,
+    available: Size,
+    minimums: &HashMap<WindowId, Size>,
+) -> HashMap<WindowId, Size> {
+    fn collect_requirements(
+        node: &Node,
+        minimums: &HashMap<WindowId, Size>,
+        requirements: &mut HashMap<NodeKey, Size>,
+    ) -> Size {
+        let size = match node {
+            Node::Window(_) => required_size(node, minimums),
+            Node::Split(split) => split_required_size(
+                split.axis,
+                split
+                    .children
+                    .iter()
+                    .map(|child| collect_requirements(&child.node, minimums, requirements)),
+            ),
+        };
+        requirements.insert(node.key(), size);
+        size
+    }
+
+    fn collect_limits(
+        node: &Node,
+        available: Size,
+        requirements: &HashMap<NodeKey, Size>,
+        limits: &mut HashMap<WindowId, Size>,
+    ) {
+        match node {
+            Node::Window(window) => {
+                limits.insert(*window, available);
+            }
+            Node::Split(split) => {
+                let total = requirements[&node.key()];
+                for child in &split.children {
+                    let minimum = requirements[&child.node.key()];
+                    let child_available = match split.axis {
+                        Axis::Vertical => Size::new(available.w - total.w + minimum.w, available.h),
+                        Axis::Horizontal => {
+                            Size::new(available.w, available.h - total.h + minimum.h)
+                        }
+                    };
+                    collect_limits(&child.node, child_available, requirements, limits);
+                }
             }
         }
     }
+
+    let mut requirements = HashMap::new();
+    collect_requirements(root, minimums, &mut requirements);
+    let mut limits = HashMap::new();
+    collect_limits(root, available, &requirements, &mut limits);
+    limits
 }
 
 pub(super) fn constrained_node_bounds(
