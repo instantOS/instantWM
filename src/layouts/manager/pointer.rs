@@ -437,7 +437,6 @@ pub fn preview_tree_at_point(
 #[cfg(test)]
 mod outline_cache_tests {
     use super::*;
-    use crate::core_state::ActiveWmMode;
     use crate::layouts::tree::LayoutTree;
     use crate::types::InteractionOutlineStyle;
 
@@ -470,7 +469,7 @@ mod outline_cache_tests {
             core.interaction
                 .update_outline(
                     &core.config.animations,
-                    &ActiveWmMode::Default,
+                    false,
                     None,
                     InteractionOutlineStyle::Layout
                 )

@@ -116,7 +116,13 @@ fn refresh_preview(ctx: &mut WmCtx<'_>) {
         .current_mode
         .tree_placement()
         .and_then(|state| preview_rect(&ctx.core().state, state.source, state.selected_target()));
-    ctx.update_layout_preview(preview);
+    let animate = ctx
+        .core()
+        .state
+        .config
+        .animations
+        .keyboard_placement_preview;
+    ctx.update_layout_preview_with_animation(preview, animate);
 }
 
 /// The active placement session, or `None` after ending one whose

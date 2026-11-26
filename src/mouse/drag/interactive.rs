@@ -308,7 +308,14 @@ fn apply_move_drag_motion(
     if manual {
         let preview = match drop {
             Some(MoveDropTarget::Tree(_)) => {
-                crate::layouts::preview_tree_at_point(&mut ctx.core_mut().state, drag.win(), root)
+                let preview = crate::layouts::preview_tree_at_point(
+                    &mut ctx.core_mut().state,
+                    drag.win(),
+                    root,
+                );
+                let animate = ctx.core().state.config.animations.tiled_drag_preview;
+                ctx.update_layout_preview_with_animation(preview, animate);
+                return;
             }
             Some(MoveDropTarget::Free(id)) => {
                 let model = &ctx.core().state.model;
