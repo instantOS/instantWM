@@ -50,19 +50,15 @@ fn resolve_modal_focus(model: &WmModel, target: WindowId) -> WindowId {
     let mut target = target;
     let mut visited = std::collections::HashSet::new();
     while visited.insert(target) {
-        let child = monitor
-            .z_order()
-            .iter_bottom_to_top()
-            .filter(|&win| {
-                monitor.client(win).is_some_and(|client| {
-                    client.transient_for == Some(target)
-                        && client.is_visible(monitor.visible_tags())
-                        && !client.never_focus
-                        && !visited.contains(&win)
-                        && client.is_modal
-                })
+        let child = monitor.z_order().iter_bottom_to_top().rfind(|&win| {
+            monitor.client(win).is_some_and(|client| {
+                client.transient_for == Some(target)
+                    && client.is_visible(monitor.visible_tags())
+                    && !client.never_focus
+                    && !visited.contains(&win)
+                    && client.is_modal
             })
-            .next_back();
+        });
         let Some(child) = child else { break };
         target = child;
     }
