@@ -224,19 +224,14 @@ fn title_drag_start(ctx: &mut WmCtx, input: DragInput) -> bool {
         return false;
     };
 
-    if ctx
-        .transition_pointer_interaction(|drag| {
-            drag.activate_armed(
-                crate::core_state::ActiveWindowOperation::Move,
-                start,
-                current_geo,
-            )
-        })
-        .is_err()
-    {
-        return false;
-    }
-    true
+    !ctx.transition_pointer_interaction(|drag| {
+        drag.activate_armed(
+            crate::core_state::ActiveWindowOperation::Move,
+            start,
+            current_geo,
+        )
+    })
+    .is_err()
 }
 
 /// Process motion during an active title drag.

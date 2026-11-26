@@ -62,7 +62,7 @@ fn resolve_modal_focus(model: &WmModel, target: WindowId) -> WindowId {
                         && client.is_modal
                 })
             })
-            .last();
+            .next_back();
         let Some(child) = child else { break };
         target = child;
     }
