@@ -537,7 +537,8 @@ impl KeyboardTreePlacement {
             return false;
         }
         let monitor = model.expect_selected_monitor();
-        monitor.selected_tags() == self.tags
+        monitor.current_layout() == crate::layouts::PresentationMode::Tiled
+            && monitor.selected_tags() == self.tags
             && model.client_view(self.source).is_some_and(|view| {
                 view.monitor.id() == self.monitor_id
                     && view.client.mode().is_normal_tiling()

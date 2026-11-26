@@ -76,7 +76,8 @@ impl PlacementPlan {
             .soft_constrained_bounds(layout_rect, minimums)
             .0
             .get(&source)
-            .copied()?;
+            .copied()
+            .filter(|slot| layout_rect.contains_rect(slot))?;
         Some(Self {
             target,
             candidate,
@@ -99,7 +100,12 @@ impl LayoutTree {
             source,
             layout_rect,
             minimums,
-            self.placement_candidates(source, layout_rect, sane_edge_fraction(edge_fraction)),
+            self.placement_candidates(
+                source,
+                layout_rect,
+                sane_edge_fraction(edge_fraction),
+                minimums,
+            ),
         )
         .into_iter()
         .map(|plan| plan.target)
@@ -234,6 +240,7 @@ impl LayoutTree {
                     NodeKey::Window(_) => 0,
                     NodeKey::Split(id) => split_depth(id),
                 },
+                cross_span: cross_size(rects[&key], axis),
             })
             .collect::<Vec<_>>();
 
@@ -258,6 +265,7 @@ impl LayoutTree {
                         before,
                     },
                     scope_depth,
+                    cross_span: parent_cross_size,
                 });
             }
             // Every contiguous child range is contained by its parent. If the
@@ -299,6 +307,7 @@ impl LayoutTree {
                                         .collect(),
                                 },
                                 scope_depth,
+                                cross_span: cross_size(rect, axis),
                             });
                         }
                     }
@@ -320,12 +329,17 @@ impl LayoutTree {
                             before,
                         },
                         scope_depth,
+                        cross_span: cross_size(rect, axis),
                     });
                 }
             }
         }
 
-        candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.scope_depth));
+        candidates.sort_by(|a, b| {
+            b.scope_depth
+                .cmp(&a.scope_depth)
+                .then_with(|| b.cross_span.total_cmp(&a.cross_span))
+        });
         // Do not deduplicate by geometry here: different structures can
         // currently produce identical rectangles. Constraint filtering and
         // weight-independent topology normalization happen in the shared
@@ -341,12 +355,16 @@ impl LayoutTree {
         source: WindowId,
         layout_rect: Rect,
         edge_fraction: f64,
+        minimums: &HashMap<WindowId, Size>,
     ) -> Vec<(PlacementTarget, LayoutTree)> {
-        let bounds = self.bounds(layout_rect);
+        let (bounds, _) = self.soft_constrained_bounds(layout_rect, minimums);
         let unit_bounds = self.unit_bounds();
         let mut output = Vec::new();
         for target in self.leaves().into_iter().filter(|window| *window != source) {
-            let Some(rect) = bounds.get(&target).copied() else {
+            let Some(rect) = bounds
+                .get(&target)
+                .and_then(|rect| rect.intersection(&layout_rect))
+            else {
                 continue;
             };
             if let Some(candidate) = self.swapped(source, target) {
@@ -367,7 +385,7 @@ impl LayoutTree {
                 for (index, candidate) in candidates.into_iter().enumerate() {
                     let band_fraction =
                         edge_fraction * (index as f64 + 0.5) / candidate_count as f64;
-                    let position = match side {
+                    let mut position = match side {
                         Side::Left => Point::new(
                             rect.x + (f64::from(rect.w) * band_fraction).round() as i32,
                             rect.center().y,
@@ -385,6 +403,8 @@ impl LayoutTree {
                             rect.bottom() - (f64::from(rect.h) * band_fraction).round() as i32,
                         ),
                     };
+                    position.x = position.x.clamp(rect.x, rect.right() - 1);
+                    position.y = position.y.clamp(rect.y, rect.bottom() - 1);
                     output.push((
                         PlacementTarget {
                             target,

@@ -276,12 +276,32 @@ impl<'a> WmCtx<'a> {
         rect: Option<Rect>,
         animate: bool,
     ) {
+        if rect.is_none()
+            && self
+                .core()
+                .state
+                .interaction
+                .drag
+                .active_interaction()
+                .is_none()
+        {
+            self.core_mut().state.interaction.pointer_placement_cache = None;
+        }
         self.update_interaction_outline(
             rect,
             crate::types::InteractionOutlineStyle::Layout,
             None,
             animate,
         );
+        // The debug overlay can change even when two destinations have the
+        // same preview rectangle, or when a drag is over its own slot.
+        if let WmCtx::Wayland(ctx) = self
+            && ctx
+                .wayland
+                .with_state_ref(|state| state.wm.core.state.config.layout.show_placement_hitboxes)
+        {
+            ctx.wayland.request_render();
+        }
     }
 
     pub fn update_close_preview(&mut self, target: Option<WindowId>, rect: Option<Rect>) {

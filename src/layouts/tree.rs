@@ -29,6 +29,7 @@ mod resize_ops;
 mod types;
 use constraints::*;
 use placement_ops::*;
+pub(crate) use placement_session::PlacementHitboxes;
 #[cfg(test)]
 use presets::equal_run;
 use presets::{build_grid, build_master_stack};
@@ -223,6 +224,7 @@ enum PlacementScope {
 struct EdgeCandidate {
     scope: PlacementScope,
     scope_depth: usize,
+    cross_span: f64,
 }
 
 /// A fully materialized placement outcome. Preview reads `source_slot`; apply
@@ -470,11 +472,14 @@ pub struct LayoutTree {
 pub(crate) struct TreePlacementSession {
     tree: LayoutTree,
     source: WindowId,
+    source_in_tree: bool,
     layout_rect: Rect,
+    hover_rect: Rect,
     edge_fraction: f64,
     minimums: HashMap<WindowId, Size>,
-    bounds: Option<HashMap<WindowId, Rect>>,
+    bounds: Option<Vec<(WindowId, Rect)>>,
     plans: HashMap<(WindowId, Option<Side>), Vec<PlacementPlan>>,
+    hitboxes: Option<std::sync::Arc<PlacementHitboxes>>,
 }
 
 impl Default for LayoutTree {

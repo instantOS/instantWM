@@ -323,13 +323,18 @@ fn pointer_placement<'a>(
             config.window.resize_hints,
             incoming,
         );
-        let session = TreePlacementSession::new(
+        let mut session = TreePlacementSession::new(
             tree,
             client.win,
             tiling.work_rect(),
             config.layout.pointer_edge_fraction,
             tiling.minimums.clone(),
         );
+        if incoming.is_some() {
+            let current =
+                TilingContext::for_monitor(monitor, &config.layout, config.window.resize_hints);
+            session = session.with_hover_layout(current.work_rect(), &current.minimums);
+        }
         interaction.pointer_placement_cache = Some(PointerPlacementPreviewCache {
             monitor_id,
             tags,
@@ -432,6 +437,43 @@ pub fn preview_tree_at_point(
             .tiling
             .outer_rect(view.client, slot, state.config.window.resize_hints),
     )
+}
+
+/// Reuse the live drag's session so the overlay reads exactly the same zones
+/// as motion and release. Renderers call this only while the overlay is enabled.
+pub(crate) fn pointer_placement_hitboxes(
+    state: &mut crate::core_state::CoreState,
+) -> Option<std::sync::Arc<crate::layouts::tree::PlacementHitboxes>> {
+    use crate::core_state::ActiveWindowOperation;
+    use crate::mouse::drag::move_drop::{MoveDropTarget, resolve_move_drop};
+
+    let drag = state.interaction.drag.active_interaction()?;
+    if !matches!(drag.operation(), ActiveWindowOperation::Move) {
+        return None;
+    }
+    let point = drag.last_root_point();
+    let view = state.model.client_view(drag.win())?;
+    if !uses_manual_tree_pointer_interaction(view) {
+        return None;
+    }
+    let MoveDropTarget::Tree(monitor_id) = resolve_move_drop(&state.model, view.client, point)?
+    else {
+        return None;
+    };
+    let monitor = state.model.monitor(monitor_id)?;
+    let area = monitor.monitor_rect;
+    let bar = monitor
+        .bar_visible()
+        .then(|| Rect::new(area.x, monitor.bar_y(), area.w, monitor.bar_height.max(1)));
+    let cache = pointer_placement(
+        &state.model,
+        &state.config,
+        &mut state.interaction,
+        view.client,
+        view.monitor.id(),
+        point,
+    )?;
+    Some(cache.session.hitboxes(area, bar))
 }
 
 #[cfg(test)]

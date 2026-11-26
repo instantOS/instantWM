@@ -140,6 +140,26 @@ mod tests {
     }
 
     #[test]
+    fn placement_hitbox_overlay_is_opt_in_and_runtime_toggleable() {
+        let mut wm = test_wm();
+        let key = "layout.show_placement_hitboxes";
+        assert!(
+            matches!(wm.with_ctx(|ctx| do_get(ctx, key)), Response::ConfigValue(v) if v == "false")
+        );
+        assert!(
+            matches!(wm.with_ctx(|ctx| do_toggle(ctx, key)), Response::ConfigValue(v) if v == "true")
+        );
+        assert!(wm.core.state.config.layout.show_placement_hitboxes);
+        assert!(
+            matches!(wm.with_ctx(|ctx| do_toggle(ctx, key)), Response::ConfigValue(v) if v == "false")
+        );
+
+        let config: crate::config::config_toml::UserConfig =
+            toml::from_str("[layout]\nshow_placement_hitboxes = true").unwrap();
+        assert!(config.layout.show_placement_hitboxes);
+    }
+
+    #[test]
     fn toggle_flips_boolean_options_and_returns_the_new_value() {
         let mut wm = test_wm();
         // Defaults: decor_hints on, show_icons off.

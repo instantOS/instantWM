@@ -366,6 +366,7 @@ impl ColorTheme {
 /// keyboard_resize_step = 0.05
 /// minimum_weight = 0.15
 /// pointer_edge_fraction = 0.34
+/// show_placement_hitboxes = false
 /// new_window_placement = "auto-resize"
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, Serialize)]
@@ -385,6 +386,8 @@ pub struct LayoutConfig {
     pub minimum_weight: f64,
     /// Fraction of a target window occupied by pointer edge-placement bands.
     pub pointer_edge_fraction: f64,
+    /// Show tiled drag zones and keyboard placement targets on Wayland.
+    pub show_placement_hitboxes: bool,
     /// How newly tiled windows are inserted into the persistent layout tree.
     pub new_window_placement: NewWindowPlacement,
 }
@@ -399,6 +402,7 @@ impl Default for LayoutConfig {
             keyboard_resize_step: 0.05,
             minimum_weight: 0.15,
             pointer_edge_fraction: 0.34,
+            show_placement_hitboxes: false,
             new_window_placement: NewWindowPlacement::default(),
         }
     }

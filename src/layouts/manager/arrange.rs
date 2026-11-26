@@ -55,6 +55,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>, animation: Ar
         }
     }
 
+    crate::layouts::keyboard_placement::refresh_targets_after_arrange(ctx, monitor_id);
     ctx.core_mut()
         .bar
         .invalidate(crate::bar::BarChange::Presentation);

@@ -3,7 +3,7 @@
 use crate::contexts::WmCtx;
 use crate::core_state::{ActiveWmMode, KeyboardTreePlacement};
 use crate::layouts::tree::{LayoutTree, PlacementTarget, Side};
-use crate::types::{Point, Rect, WindowId};
+use crate::types::{MonitorId, Rect, WindowId};
 
 use super::manager::{finish_layout_change, selected_tiling};
 
@@ -23,7 +23,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         };
         // The selected window belongs to this monitor, so its own map answers
         // the eligibility check without a model-wide scan.
-        if !monitor.is_tiling_layout()
+        if monitor.current_layout() != super::PresentationMode::Tiled
             || !monitor
                 .client(source)
                 .is_some_and(|client| client.mode().is_normal_tiling())
@@ -33,11 +33,12 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         let Some(tree) = monitor.per_tag().map(|state| &state.layout_tree) else {
             return false;
         };
-        let work_rect = selected_tiling(&ctx.core().state).work_rect();
-        let source_center = tree
-            .bounds(work_rect)
+        let tiling = selected_tiling(&ctx.core().state);
+        let source_center = tiling
+            .slots(tree)
+            .0
             .get(&source)
-            .map_or_else(|| work_rect.center(), |rect| rect.center());
+            .map_or_else(|| tiling.work_rect().center(), |rect| rect.center());
         let Some(state) = KeyboardTreePlacement::new_nearest(
             source,
             monitor.id(),
@@ -188,7 +189,7 @@ fn edit_around_source(
     let Some(state) = current_placement(ctx) else {
         return true;
     };
-    let (source, cursor) = (state.source, state.selected_target().position);
+    let source = state.source;
     let tree = &mut ctx
         .core_mut()
         .state
@@ -198,30 +199,34 @@ fn edit_around_source(
         .layout_tree;
     if edit(tree, source) {
         finish_layout_change(ctx);
-        rebuild_targets(ctx, cursor);
     }
     true
 }
 
-fn rebuild_targets(ctx: &mut WmCtx<'_>, preferred: Point) {
-    let Some(source) = ctx
+pub(super) fn refresh_targets_after_arrange(ctx: &mut WmCtx<'_>, arranged: Option<MonitorId>) {
+    let Some(placement) = ctx
         .core()
         .state
         .behavior
         .current_mode
         .tree_placement()
-        .map(|state| state.source)
+        .filter(|placement| arranged.is_none_or(|id| id == placement.monitor_id))
     else {
         return;
     };
-    let targets = placement_targets(&ctx.core().state, source);
+    let preferred = placement.selected_target();
+    let targets = placement_targets(&ctx.core().state, placement.source);
+    let exact = targets.iter().position(|target| *target == preferred);
     let rebuilt = ctx
         .core_mut()
         .state
         .behavior
         .current_mode
         .tree_placement_mut()
-        .is_some_and(|state| state.replace_targets_near(targets, preferred));
+        .is_some_and(|state| match exact {
+            Some(index) => state.replace_targets(targets, index),
+            None => state.replace_targets_near(targets, preferred.position),
+        });
     if rebuilt {
         refresh_preview(ctx);
     } else {
@@ -351,6 +356,36 @@ mod tests {
             Side::Right
         ));
         assert_eq!(wm.core.state.model.selected_win(), Some(source));
+    }
+
+    #[test]
+    fn keyboard_anchors_follow_the_latest_arranged_geometry() {
+        let area = Rect::new(0, 0, 1200, 800);
+        let mut wm = tiled_wm(area, vec![client(1), client(2), client(3)]);
+        assert!(begin_tree_placement(&mut wm.test_ctx()));
+        let old_targets = wm
+            .core
+            .state
+            .behavior
+            .current_mode
+            .tree_placement()
+            .unwrap()
+            .targets()
+            .to_vec();
+        wm.core
+            .state
+            .model
+            .expect_selected_monitor_mut()
+            .available_rect = Rect::new(0, 0, 800, 600);
+        finish_layout_change(&mut wm.test_ctx());
+        let state = &wm.core.state;
+        let current = state.behavior.current_mode.tree_placement().unwrap();
+        assert_ne!(old_targets, current.targets());
+        assert_eq!(current.targets(), placement_targets(state, current.source));
+        assert_eq!(
+            state.interaction.layout_preview,
+            preview_rect(state, current.source, current.selected_target())
+        );
     }
 
     #[test]

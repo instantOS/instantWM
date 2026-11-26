@@ -1784,6 +1784,27 @@ fn drag_target_ignores_selection_and_never_hits_outputs_through_voids() {
 }
 
 #[test]
+fn drag_intent_uses_pre_drop_smart_gaps_on_the_destination() {
+    let mut wm = wayland_wm();
+    wm.core.state.config.layout.smart_gaps = true;
+    wm.core.state.config.layout.outer_gap = 80;
+    let source = WindowId(971);
+    let other = WindowId(972);
+    let a = add_tiled_monitor(&mut wm, &[source], Rect::new(0, 0, 800, 600));
+    let b = add_tiled_monitor(&mut wm, &[other], Rect::new(800, 0, 800, 600));
+    apply_preset(&mut wm, a, Preset::MasterStack, &[source]);
+    apply_preset(&mut wm, b, Preset::MasterStack, &[other]);
+    wm.core.state.model.monitors.set_selected(a);
+    super::arrange(&mut wm.test_ctx(), None, ArrangeAnimation::Configured);
+
+    // This is in the centre of the visible full-width destination tile. It
+    // would hit the left edge band if tested with the post-drop outer gaps.
+    let point = Point::new(1075, 300);
+    let preview = super::preview_tree_at_point(&mut wm.core.state, source, point).unwrap();
+    assert_eq!(preview.x, 1200);
+}
+
+#[test]
 fn incoming_lone_tile_preview_uses_destination_borders_gaps_and_minimums() {
     let mut wm = wayland_wm();
     wm.core.state.config.animations.enabled = false;

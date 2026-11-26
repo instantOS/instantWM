@@ -7,7 +7,7 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<PlacementTarget> {
-        self.placement_candidates(source, layout_rect, edge_fraction)
+        self.placement_candidates(source, layout_rect, edge_fraction, &HashMap::new())
             .into_iter()
             .map(|(target, _)| target)
             .collect()
@@ -19,7 +19,7 @@ impl LayoutTree {
         target: PlacementTarget,
         layout_rect: Rect,
     ) -> Option<placement::PlacementTopology> {
-        self.placement_candidates(source, layout_rect, 0.34)
+        self.placement_candidates(source, layout_rect, 0.34, &HashMap::new())
             .into_iter()
             .find(|(candidate, _)| *candidate == target)?
             .1
@@ -658,21 +658,21 @@ fn aligned_seam_can_target_a_contiguous_virtual_scope() {
     assert!(apply_point_plan(
         &mut tree,
         WindowId(6),
-        Point::new(26, 51),
-        Rect::new(0, 0, 100, 100),
+        Point::new(104, 151),
+        Rect::new(0, 0, 400, 300),
         0.34,
     ));
-    let rects = tree.bounds(Rect::new(0, 0, 100, 100));
+    let rects = tree.bounds(Rect::new(0, 0, 400, 300));
     // Removing the former right-hand peer normalises the three surviving
     // outer items, so the full-height leaf keeps its ratio to both grid
     // columns (1:1:1) rather than its old absolute percentage.
-    assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 33, 100));
-    assert_eq!(rects[&WindowId(6)].x, 33);
-    assert_eq!(rects[&WindowId(6)].w, 67);
+    assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 133, 300));
+    assert_eq!(rects[&WindowId(6)].x, 133);
+    assert_eq!(rects[&WindowId(6)].w, 267);
     // The source occupies the seam itself; the two original rows remain
     // on either side instead of being compressed together below it.
-    assert_eq!(rects[&WindowId(6)].y, 33);
-    assert_eq!(rects[&WindowId(6)].h, 34);
+    assert_eq!(rects[&WindowId(6)].y, 100);
+    assert_eq!(rects[&WindowId(6)].h, 100);
 }
 
 #[test]
@@ -1047,7 +1047,7 @@ fn soft_constrained_normalization_preserves_every_distinct_viable_outcome() {
         tree.apply_preset(preset, &windows(20), 2);
 
         let viable = tree
-            .placement_candidates(WindowId(1), rect, 0.34)
+            .placement_candidates(WindowId(1), rect, 0.34, &minimums)
             .into_iter()
             .filter_map(|(target, candidate)| {
                 PlacementPlan::new(target, candidate, WindowId(1), rect, &minimums)
@@ -1214,7 +1214,9 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
                         candidate,
                     )
                 });
-            let normalized = placement::normalized_plans(source, rect, &minimums, resolved);
+            let mut normalized =
+                placement::normalized_plans(source, rect, &minimums, resolved.rev());
+            normalized.reverse();
             (normalized.len() < raw_count).then_some((target, side, raw_count, normalized))
         })
         .expect("the 20-window grid should exercise weight-only topology duplicates");

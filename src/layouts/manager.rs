@@ -18,9 +18,9 @@ pub use commands::{
 #[cfg(test)]
 use pointer::available_tree_resize_direction;
 pub(crate) use pointer::{
-    PointerPlacementPreviewCache, PointerTreeResizeStart, pointer_tree_gap_resize_target,
-    pointer_tree_resize_start, selected_tiling, update_pointer_tree_resize,
-    uses_manual_tree_pointer_interaction,
+    PointerPlacementPreviewCache, PointerTreeResizeStart, pointer_placement_hitboxes,
+    pointer_tree_gap_resize_target, pointer_tree_resize_start, selected_tiling,
+    update_pointer_tree_resize, uses_manual_tree_pointer_interaction,
 };
 pub use pointer::{place_tree_at_point, preview_tree_at_point};
 #[cfg(test)]
