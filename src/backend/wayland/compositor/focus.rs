@@ -8,8 +8,8 @@ use smithay::{
         dnd::{DndFocus, OfferData, Source},
         keyboard::{KeysymHandle, ModifiersState},
     },
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{IsAlive, Serial},
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
+    utils::{IsAlive, Logical, Point, Serial},
     wayland::{seat::WaylandFocus, selection::data_device::WlOfferData},
     xwayland::xwm::XwmOfferData,
 };
@@ -547,6 +547,21 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
 
 // -- PointerTarget implementation --
 
+fn record_pointer_position(
+    data: &mut WaylandState,
+    surface: &WlSurface,
+    position: Point<f64, Logical>,
+) {
+    let last = &mut data.native.runtime.last_pointer_motion;
+    if let Some((last_surface, last_position)) = last
+        && last_surface == surface
+    {
+        *last_position = position;
+    } else {
+        *last = Some((surface.downgrade(), position));
+    }
+}
+
 impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget {
     fn enter(
         &self,
@@ -555,6 +570,7 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.with_surface(|surface| {
+            record_pointer_position(data, surface, event.location);
             smithay::input::pointer::PointerTarget::enter(surface, seat, data, event);
             crate::backend::wayland::input::pointer::activate_for_focus(
                 &data.native.pointer,
@@ -571,6 +587,7 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.with_surface(|surface| {
+            record_pointer_position(data, surface, event.location);
             smithay::input::pointer::PointerTarget::motion(surface, seat, data, event);
             crate::backend::wayland::input::pointer::activate_for_focus(
                 &data.native.pointer,
@@ -714,6 +731,7 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         serial: Serial,
         time: InputTime,
     ) {
+        data.native.runtime.last_pointer_motion = None;
         self.with_surface(|surface| {
             smithay::input::pointer::PointerTarget::leave(surface, seat, data, serial, time)
         });

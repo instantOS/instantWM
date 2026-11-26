@@ -675,12 +675,13 @@ fn build_initial_wayland_client(
         client.geo = geo;
         client.set_preferred_floating_size(geo.size());
     } else {
-        let monitor_rect = state.model.monitor(monitor_id)?.work_rect();
-        client.geo = crate::types::Rect::new(
-            monitor_rect.x,
-            monitor_rect.y,
-            monitor_rect.w.max(100),
-            monitor_rect.h.max(100),
+        let work_rect = state.model.monitor(monitor_id)?.work_rect();
+        client.geo = work_rect;
+        client.geo = crate::client::geometry::resolve_floating_transition(
+            &client,
+            work_rect,
+            crate::client::geometry::FloatingGeometryIntent::RestoreOrCenter,
+            client.border_width,
         );
     }
     Some((monitor_id, client))

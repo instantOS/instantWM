@@ -4,14 +4,13 @@ use crate::backend::wayland::stacking::SceneBand;
 use smithay::backend::input::InputTime;
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
-use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER};
 
 use crate::backend::BackendKind;
 use crate::backend::wayland::commands::PointerMotionCommand;
 use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::backend::wayland::compositor::window::hit_test::{PointerContents, SurfaceFocus};
-use crate::backend::wayland::compositor::{LastPointerMotion, PointerFocusTarget, WaylandState};
+use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::backend::wayland::input::modifiers_to_x11_mask;
 use crate::backend::wayland::input::pointer::constraints::ActivePointerConstraint;
 use crate::mouse::motion::{MotionBand, MotionOutcome, MotionPolicyInput, update_motion_policy};
@@ -912,7 +911,6 @@ fn send_pointer_motion(
         return;
     }
 
-    record_pointer_motion(state, &focus);
     let focus = focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
     let serial = SERIAL_COUNTER.next_serial();
     let motion = smithay::input::pointer::MotionEvent {
@@ -923,76 +921,30 @@ fn send_pointer_motion(
     pointer_handle.motion(state, focus, &motion);
 }
 
-/// Record the sample about to be delivered, without cloning its surface when
-/// only the pointer or surface origin moved.
-fn record_pointer_motion(state: &mut WaylandState, focus: &Option<SurfaceFocus>) {
-    let location = state.native.runtime.pointer_location;
-    if let Some(last) = state.native.runtime.last_pointer_motion.as_mut() {
-        let same_focus = match (&mut last.focus, focus) {
-            (None, None) => true,
-            (Some((last_surface, last_loc)), Some((surface, loc))) => {
-                last_surface == surface && {
-                    *last_loc = *loc;
-                    true
-                }
-            }
-            _ => false,
-        };
-        if same_focus {
-            last.location = location;
-            return;
-        }
-    }
-
-    state.native.runtime.last_pointer_motion = Some(LastPointerMotion {
-        location,
-        focus: focus
-            .as_ref()
-            .map(|(surface, loc)| (surface.downgrade(), *loc)),
-    });
-}
-
-/// Whether a motion sample carries no new surface-relative position.
-///
-/// Smithay forwards every `PointerHandle::motion` call as `wl_pointer.motion`,
-/// while wlroots suppresses duplicate coordinates. Synthetic refreshes run on
-/// every layer-surface commit, and clients such as fuzzel redraw on each
-/// keystroke; forwarding those no-op motions makes fuzzel treat typing as
-/// mouse movement and re-select the row under the cursor. If the target,
-/// surface origin and pointer location are all unchanged, there is nothing to
-/// send.
+/// Keep layer-surface commit refreshes from delivering duplicate motion.
 fn pointer_motion_is_redundant(
     state: &WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     focus: Option<&SurfaceFocus>,
 ) -> bool {
-    let Some(last) = state.native.runtime.last_pointer_motion.as_ref() else {
-        return false;
-    };
-    if last.location != state.native.runtime.pointer_location {
-        return false;
-    }
-    let same_focus = match (last.focus.as_ref(), focus) {
-        (None, None) => true,
-        (Some((last_surface, last_loc)), Some((surface, loc))) => {
-            last_surface == surface && last_loc == loc
-        }
-        _ => false,
-    };
-    if !same_focus {
+    let location = state.native.runtime.pointer_location;
+    // Grabs also use motion to track their own targets and update pending focus.
+    if pointer_handle.is_grabbed() || pointer_handle.current_location() != location {
         return false;
     }
 
-    // A grab change or a direct button/touch delivery may have moved the
-    // protocol focus without going through this path; only skip when Smithay
-    // still agrees with the sample we recorded.
     match (focus, pointer_handle.current_focus()) {
         (None, None) => true,
-        (Some((surface, _)), Some(target)) => {
-            matches!(
-                target,
-                PointerFocusTarget::WlSurface(current) if current == *surface
-            )
+        (Some((surface, origin)), Some(PointerFocusTarget::WlSurface(current))) => {
+            current == *surface
+                && state
+                    .native
+                    .runtime
+                    .last_pointer_motion
+                    .as_ref()
+                    .is_some_and(|(last_surface, last_position)| {
+                        last_surface == surface && *last_position == location - origin.to_f64()
+                    })
         }
         _ => false,
     }

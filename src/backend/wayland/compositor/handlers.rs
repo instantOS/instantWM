@@ -184,13 +184,27 @@ impl CompositorHandler for WaylandState {
                     .parent()
                     .and_then(|parent| self.native.window_id_for_surface(&parent));
                 let is_modal = super::WaylandNativeState::toplevel_is_modal(&toplevel);
+                let compositor_sized = toplevel.with_committed_state(|state| {
+                    use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State;
+                    state.is_some_and(|state| {
+                        state.size.is_some()
+                            && (state.states.contains(State::Maximized)
+                                || state.states.contains(State::Fullscreen))
+                    })
+                });
                 let window_id = self.setup_managed_window(toplevel);
 
                 let properties = self.native.window_properties(window_id);
-                let initial_geo = self.native.find_window(window_id).map(|w| {
-                    let g = w.geometry();
-                    crate::types::Rect::new(g.loc.x, g.loc.y, g.size.w, g.size.h)
-                });
+                // The first buffer can describe a compositor-owned
+                // presentation. Only a client-sized buffer seeds restore geometry.
+                let initial_geo = self
+                    .native
+                    .find_window(window_id)
+                    .filter(|_| !compositor_sized)
+                    .map(|w| {
+                        let g = w.geometry();
+                        crate::types::Rect::new(g.loc.x, g.loc.y, g.size.w, g.size.h)
+                    });
 
                 self.native
                     .push_command(crate::backend::wayland::commands::WmCommand::MapWindow(

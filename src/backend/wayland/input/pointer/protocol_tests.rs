@@ -40,6 +40,7 @@ type EventLoop = smithay::reexports::calloop::EventLoop<'static, WaylandState>;
 
 #[derive(Default)]
 struct ClientEvents {
+    configured_size: (i32, i32),
     globals: Vec<(u32, String)>,
     syncs: usize,
     enters: usize,
@@ -166,7 +167,20 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for ClientEvents {
         }
     }
 }
-delegate_noop!(ClientEvents: ignore xdg_toplevel::XdgToplevel);
+impl Dispatch<xdg_toplevel::XdgToplevel, ()> for ClientEvents {
+    fn event(
+        state: &mut Self,
+        _: &xdg_toplevel::XdgToplevel,
+        event: xdg_toplevel::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_toplevel::Event::Configure { width, height, .. } = event {
+            state.configured_size = (width, height);
+        }
+    }
+}
 delegate_noop!(ClientEvents: ignore xdg_positioner::XdgPositioner);
 delegate_noop!(ClientEvents: ignore xdg_popup::XdgPopup);
 delegate_noop!(ClientEvents: ignore xdg_wm_dialog_v1::XdgWmDialogV1);
@@ -1085,5 +1099,79 @@ fn relative_motion_keeps_bar_focus_exclusion_when_a_grab_restores_focus() {
     assert!(
         pointer.current_focus().is_none(),
         "relative motion must retain the resolved target, including compositor exclusions"
+    );
+}
+
+#[test]
+fn refresh_corrects_surface_origin_after_direct_motion() {
+    let mut f = Fixture::new(1);
+    let (win, _) = f.window();
+    f.move_pointer(80.0, 80.0);
+    let root = f
+        .state
+        .native
+        .find_window(win)
+        .unwrap()
+        .wl_surface()
+        .unwrap()
+        .into_owned();
+    let pointer = f.state.native.pointer.clone();
+    assert_eq!(
+        pointer
+            .current_focus()
+            .unwrap()
+            .wl_surface()
+            .unwrap()
+            .as_ref(),
+        &root
+    );
+
+    pointer.motion(
+        &mut f.state,
+        Some((
+            crate::backend::wayland::compositor::PointerFocusTarget::WlSurface(root),
+            Point::from((10.0, 10.0)),
+        )),
+        &smithay::input::pointer::MotionEvent {
+            location: Point::from((80.0, 80.0)),
+            serial: SERIAL_COUNTER.next_serial(),
+            time: InputTime::now(),
+        },
+    );
+    pointer.frame(&mut f.state);
+    f.pump();
+    let motions_before_refresh = f.events.motions;
+    f.refresh();
+    assert_eq!(f.events.motions, motions_before_refresh + 1);
+}
+
+#[test]
+fn initial_maximize_uses_normal_floating_geometry_on_restore() {
+    let mut f = Fixture::new(1);
+    let monitor = f.outputs[0].2;
+    let mon = f.state.wm.core.state.model.monitor_mut(monitor).unwrap();
+    mon.per_tag_state().presentation = crate::layouts::PresentationMode::Floating;
+    let work = mon.work_rect();
+    let qh = f.queue.handle();
+    let surface = f.compositor.create_surface(&qh, ());
+    let xdg = f.xdg.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg.get_toplevel(&qh, ());
+    toplevel.set_maximized();
+    surface.commit();
+    f.pump();
+    assert_eq!(f.events.configured_size, (work.w, work.h));
+    f.attach_sized(&surface, work.w, work.h);
+    drain_command_queue(&mut f.state);
+    drain_command_queue(&mut f.state);
+    let win = f.state.focused_window().unwrap();
+    toplevel.unset_maximized();
+    f.pump();
+    drain_command_queue(&mut f.state);
+    let client = f.state.wm.core.state.model.client(win).unwrap();
+    assert!(!client.mode().is_maximized());
+    assert!(
+        client.geo.w < work.w - 20 && client.geo.h < work.h - 20,
+        "restored to {:?}",
+        client.geo
     );
 }

@@ -278,17 +278,6 @@ pub struct PendingLaunchContextMarker {
 pub use super::output::WaylandOutputMetadata;
 pub use super::render::PendingRenderTargets;
 
-/// Last pointer sample delivered to clients.
-///
-/// Smithay forwards every `PointerHandle::motion` as `wl_pointer.motion`; this
-/// snapshot lets the compositor suppress samples that carry no new
-/// surface-relative position (notably layer-shell commit refreshes).
-#[derive(Clone)]
-pub(crate) struct LastPointerMotion {
-    pub(crate) location: Point<f64, Logical>,
-    pub(crate) focus: Option<(Weak<WlSurface>, Point<i32, Logical>)>,
-}
-
 pub struct WaylandRuntimeState {
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub pending_screencopies: Vec<PendingScreencopy>,
@@ -303,8 +292,8 @@ pub struct WaylandRuntimeState {
     pub(crate) pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
     pub(crate) active_systray_menu: Option<crate::systray::status_notifier::ActiveNativeMenu>,
     pub pointer_location: Point<f64, Logical>,
-    /// Last sample actually delivered through the pointer protocol.
-    pub(crate) last_pointer_motion: Option<LastPointerMotion>,
+    /// Last surface-local position delivered by the Smithay pointer callbacks.
+    pub(crate) last_pointer_motion: Option<(Weak<WlSurface>, Point<f64, Logical>)>,
     /// Touch slot currently captured by the compositor-rendered bar.
     ///
     /// The built-in bar is not a Wayland surface, so a touch sequence that
