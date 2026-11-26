@@ -139,33 +139,27 @@ impl TreePlacementSession {
         minimums: &HashMap<WindowId, Size>,
     ) -> Self {
         self.hover_rect = rect;
-        self.bounds = Some(Self::ordered_bounds(
-            &self.tree,
-            self.source,
-            rect,
-            minimums,
-        ));
+        self.bounds = Some(Self::ordered_bounds(&self.tree, rect, minimums));
         self
     }
 
     fn bounds(&mut self) -> &[(WindowId, Rect)] {
         self.bounds.get_or_insert_with(|| {
-            Self::ordered_bounds(&self.tree, self.source, self.hover_rect, &self.minimums)
+            Self::ordered_bounds(&self.tree, self.hover_rect, &self.minimums)
         })
     }
 
     fn ordered_bounds(
         tree: &LayoutTree,
-        source: WindowId,
         rect: Rect,
         minimums: &HashMap<WindowId, Size>,
     ) -> Vec<(WindowId, Rect)> {
         let (bounds, _) = tree.soft_constrained_bounds(rect, minimums);
         // Rounded slots can share a pixel in an extremely small area. Use
-        // tree order so the winner is stable across rebuilds.
+        // tree order so the winner is stable across rebuilds. The source stays
+        // included: its own edge bands are meaningful placement targets.
         tree.leaves()
             .into_iter()
-            .filter(|window| *window != source)
             .filter_map(|window| Some((window, bounds.get(&window)?.intersection(&rect)?)))
             .collect()
     }
@@ -179,6 +173,21 @@ impl TreePlacementSession {
                 candidate_index,
                 position: target_rect.center(),
             };
+            if target == self.source {
+                let Some(side) = side else {
+                    return Vec::new();
+                };
+                return placement::normalized_plans(
+                    self.source,
+                    self.layout_rect,
+                    &self.minimums,
+                    self.tree
+                        .self_edge_candidates(self.source, side)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, candidate)| (placement_target(index), candidate)),
+                );
+            }
             let candidates = match side {
                 None => self
                     .tree

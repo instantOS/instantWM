@@ -173,6 +173,14 @@ at the outside edge toward local scopes farther inward. Continuous grid seams
 and contiguous virtual child ranges are valid; a leaf crossing the seam
 invalidates it.
 
+Dragging within the source window itself is not a dead zone. Its centre stays
+a no-op, while its edge bands reflow the source against its own enclosing
+splits. Along a split axis the source moves to that edge of the run; across the
+axis the containing group is re-split so the source takes that side. Outer
+bands act on progressively wider ancestors, so the same drag can be a local
+reflow or a move to the edge of the workspace. The source keeps its share of
+the edited area, so an edge drop moves or re-splits it without resizing it.
+
 While dragging, a thick hollow frame shows the source window's exact final
 outer rectangle for the target under the pointer. The frame disappears over
 the tag bar and screen-edge drop zones, whose existing actions take precedence.
