@@ -1,6 +1,8 @@
 use crate::contexts::WmCtx;
 use crate::wm::X11Wm as Wm;
 use x11rb::connection::Connection;
+use x11rb::errors::ReplyError;
+use x11rb::protocol::ErrorKind;
 use x11rb::protocol::randr::{ConnectionExt as RandrConnectionExt, NotifyMask};
 use x11rb::protocol::xinput::{
     ConnectionExt as XInputConnectionExt, EventMask as XInputEventMask, XIEventMask,
@@ -13,11 +15,20 @@ pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
 
 pub fn check_other_wm(conn: &RustConnection, root: Window) {
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-    let result =
-        conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
+    let cookie = conn
+        .change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask))
+        .expect("instantwm: cannot send the root window subscription request");
 
-    if result.is_err() || conn.flush().is_err() {
-        panic!("instantwm: another window manager is already running");
+    // Selecting SubstructureRedirect is arbitrary access to another client's
+    // window, so the server reports a conflict as BadAccess. That error is
+    // delivered asynchronously and the request itself succeeds, so only a
+    // round trip can tell whether this process actually became the WM.
+    match cookie.check() {
+        Ok(()) => {}
+        Err(ReplyError::X11Error(error)) if error.error_kind == ErrorKind::Access => {
+            panic!("instantwm: another window manager is already running");
+        }
+        Err(error) => panic!("instantwm: cannot select root window events: {error}"),
     }
 }
 
