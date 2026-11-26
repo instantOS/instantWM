@@ -158,8 +158,11 @@ pub fn manage(
     let size_hints =
         crate::backend::x11::update_size_hints(&mut ctx.core.state.model, &ctx.x11, window);
     update_wm_hints(ctx, window);
-    read_client_info(&mut ctx.core.state.model, &ctx.x11, ctx.x11_runtime, window);
+    // The EWMH hint carries sticky state (`u32::MAX`) and client-requested
+    // desktops; `_NET_CLIENT_INFO` then refines that with instantWM's full tag
+    // mask and persisted monitor without clearing the sticky flag.
     read_wm_desktop_hint(&mut ctx.core.state.model, &ctx.x11, ctx.x11_runtime, window);
+    read_client_info(&mut ctx.core.state.model, &ctx.x11, ctx.x11_runtime, window);
     set_client_tag_prop(&ctx.core.state, &ctx.x11, ctx.x11_runtime, window);
     update_motif_hints(ctx, window);
     let position_is_explicit = rules
@@ -356,11 +359,14 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Read the `_NET_CLIENT_INFO` property and restore the window's tags and monitor.
+/// Read the `_NET_CLIENT_INFO` property and restore the window's tag mask and
+/// monitor.
 ///
 /// This is used to persist client state across WM restarts: when the WM starts
 /// up it re-manages all existing windows, and this call recovers the tag
-/// assignment and monitor that were set in the previous session.
+/// assignment and monitor that were set in the previous session. It must run
+/// after [`read_wm_desktop_hint`]: the EWMH mirror is lossy (one tag) but also
+/// carries the sticky flag, which this richer property does not encode.
 fn read_client_info(
     model: &mut crate::model::WmModel,
     x11: &X11BackendRef,
@@ -385,7 +391,11 @@ fn read_client_info(
         return;
     };
 
-    let tags = data.next().unwrap_or(0);
+    // Tags removed from the configuration since the last session are dropped.
+    // If none survive, keep the placement from `_NET_WM_DESKTOP`.
+    let Some(tags) = restored_tag_mask(data.next().unwrap_or(0), model.tags.count()) else {
+        return;
+    };
     let monitor_number = data.next().unwrap_or(0);
 
     let target_monitor = model
@@ -402,7 +412,7 @@ fn read_client_info(
     if client.is_scratchpad() {
         return;
     }
-    client.set_tag_mask(crate::types::TagMask::from_bits(tags));
+    client.set_tag_mask(tags);
 
     // Ownership moves as a model transaction, so it cannot share the mutable
     // client borrow above.
@@ -411,8 +421,19 @@ fn read_client_info(
     }
 }
 
+/// Keep only the persisted tag bits that still name a configured tag.
+///
+/// `TagMask::from_bits` only knows the global maximum, so a mask persisted
+/// under a larger tag count could otherwise leave a client on no visible tag.
+fn restored_tag_mask(bits: u32, tag_count: usize) -> Option<TagMask> {
+    let tags = TagMask::from_bits(bits) & TagMask::all(tag_count);
+    (!tags.is_empty()).then_some(tags)
+}
+
 /// Read the standard `_NET_WM_DESKTOP` hint and apply it to the
-/// just-managed client. This covers clients that request a desktop before map.
+/// just-managed client. This covers clients that request a desktop before map
+/// and restores sticky state from the previous session; [`read_client_info`]
+/// runs afterwards to refine the tag mask and monitor.
 fn read_wm_desktop_hint(
     model: &mut crate::model::WmModel,
     x11: &X11BackendRef,
@@ -545,10 +566,30 @@ pub fn cleanup(wm: &mut Wm) {
 
 #[cfg(test)]
 mod tests {
-    use super::initialize_floating_state;
+    use super::{initialize_floating_state, restored_tag_mask};
     use crate::model::WmModel;
     use crate::test_support::{add_client, push_monitor};
-    use crate::types::{Client, ClientMode, ClientPlacement, WindowId};
+    use crate::types::{Client, ClientMode, ClientPlacement, TagMask, WindowId};
+
+    #[test]
+    fn restored_tag_mask_keeps_multi_tag_assignments_and_drops_missing_tags() {
+        let persisted = TagMask::single(1).unwrap() | TagMask::single(3).unwrap();
+
+        assert_eq!(restored_tag_mask(persisted.bits(), 3), Some(persisted));
+        assert_eq!(
+            restored_tag_mask(persisted.bits(), 2),
+            Some(TagMask::single(1).unwrap())
+        );
+    }
+
+    #[test]
+    fn restored_tag_mask_rejects_masks_with_no_configured_tags() {
+        assert_eq!(
+            restored_tag_mask(TagMask::single(4).unwrap().bits(), 3),
+            None
+        );
+        assert_eq!(restored_tag_mask(0, 3), None);
+    }
 
     #[test]
     fn transient_policy_changes_fullscreen_restore_mode_without_exiting() {
