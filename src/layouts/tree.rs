@@ -46,7 +46,15 @@ struct WeightedNode {
     weight: f64,
 }
 
-#[derive(Debug, Clone)]
+impl PartialEq for WeightedNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.weight.to_bits() == other.weight.to_bits() && self.node == other.node
+    }
+}
+
+impl Eq for WeightedNode {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Split {
     id: SplitId,
     axis: Axis,
@@ -54,7 +62,7 @@ struct Split {
     children: Vec<WeightedNode>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Node {
     Window(WindowId),
     Split(Split),
@@ -463,6 +471,16 @@ pub struct LayoutTree {
     untouched_force_windows: Vec<WindowId>,
 }
 
+/// The weighted tree used to enumerate placement scopes and solve their slots.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PlacementTreeGeometry(Option<Node>);
+
+impl PlacementTreeGeometry {
+    pub(crate) fn matches(&self, tree: &LayoutTree) -> bool {
+        self.0 == tree.root
+    }
+}
+
 /// Pointer placement engine for one stable layout snapshot.
 ///
 /// Plans are materialized lazily per hovered target and edge, because pointer
@@ -493,6 +511,10 @@ impl Default for LayoutTree {
 }
 
 impl LayoutTree {
+    pub(crate) fn placement_geometry(&self) -> PlacementTreeGeometry {
+        PlacementTreeGeometry(self.root.clone())
+    }
+
     fn allocate(&mut self) -> SplitId {
         take_split_id(&mut self.next_split_id)
     }
