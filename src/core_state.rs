@@ -448,19 +448,17 @@ impl CoreState {
                 ));
             }
         }
-        let keyboard_layout = KeyboardLayoutState {
-            layouts: next.keyboard.layouts.clone(),
-            options: next.keyboard.options.clone(),
-            model: next.keyboard.model.clone(),
-            swap_escape: next.keyboard.swapescape,
-            current: 0,
-        };
         let show_bottom_bar = next.bar.show_bottom;
         let tag_template = next.tag_template.clone();
         let tag_colors = next.colors.tag.clone();
 
+        self.interaction.keyboard_layout.reconfigure(
+            next.keyboard.layouts.clone(),
+            next.keyboard.options.clone(),
+            next.keyboard.model.clone(),
+            next.keyboard.swapescape,
+        );
         self.config = next;
-        self.interaction.keyboard_layout = keyboard_layout;
         self.model.tags.colors = tag_colors;
         self.model.tags.num_tags = tag_template.len();
 
@@ -905,6 +903,74 @@ impl PendingWork {
     #[cfg(test)]
     pub fn region_selection(&self) -> Option<WindowId> {
         self.pending_region_selection
+    }
+}
+
+#[cfg(test)]
+mod keyboard_config_reload_tests {
+    use super::*;
+    use crate::backend::BackendKind;
+    use crate::config::{config_toml::UserConfig, resolve_config};
+    use crate::wm::WaylandWm as Wm;
+
+    fn config_with_layouts(layouts: Vec<KeyboardLayout>) -> EffectiveConfig {
+        let mut user = UserConfig::default();
+        user.keyboard.layouts = layouts;
+        resolve_config(user, BackendKind::Wayland).unwrap()
+    }
+
+    #[test]
+    fn applying_config_keeps_the_active_keyboard_layout() {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        wm.core
+            .state
+            .apply_config(config_with_layouts(vec![
+                KeyboardLayout::new("us"),
+                KeyboardLayout::with_variant("de", "nodeadkeys"),
+            ]))
+            .unwrap();
+        wm.core.state.interaction.keyboard_layout.current = 1;
+
+        // Reload inserts a layout before the active one. Identity, not the
+        // index, decides what stays active.
+        wm.core
+            .state
+            .apply_config(config_with_layouts(vec![
+                KeyboardLayout::new("fr"),
+                KeyboardLayout::new("us"),
+                KeyboardLayout::with_variant("de", "nodeadkeys"),
+            ]))
+            .unwrap();
+
+        let keyboard = &wm.core.state.interaction.keyboard_layout;
+        assert_eq!(keyboard.current, 2);
+        assert_eq!(keyboard.current_layout(), Some("de"));
+        assert_eq!(keyboard.current_variant(), "nodeadkeys");
+    }
+
+    #[test]
+    fn applying_config_falls_back_when_the_active_layout_was_removed() {
+        let mut wm = Wm::new(crate::backend::WaylandBackendData::default());
+        wm.core
+            .state
+            .apply_config(config_with_layouts(vec![
+                KeyboardLayout::new("us"),
+                KeyboardLayout::new("de"),
+            ]))
+            .unwrap();
+        wm.core.state.interaction.keyboard_layout.current = 1;
+
+        wm.core
+            .state
+            .apply_config(config_with_layouts(vec![
+                KeyboardLayout::new("us"),
+                KeyboardLayout::new("fr"),
+            ]))
+            .unwrap();
+
+        let keyboard = &wm.core.state.interaction.keyboard_layout;
+        assert_eq!(keyboard.current, 0);
+        assert_eq!(keyboard.current_layout(), Some("us"));
     }
 }
 

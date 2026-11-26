@@ -128,10 +128,15 @@ pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
     }
 }
 
-/// Apply the initially configured keyboard layout (called during startup).
+/// Apply the active keyboard layout (called during startup and reload).
+///
+/// Re-applying the active entry rather than index zero lets a reload pick up
+/// changed options, model or `swap_escape` without switching the user away
+/// from their current layout.
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
+    let current = ctx.core().state.interaction.keyboard_layout.current;
     if !ctx.core().state.interaction.keyboard_layout.is_empty() {
-        set_keyboard_layout(ctx, 0);
+        set_keyboard_layout(ctx, current);
     }
 }
 
@@ -270,5 +275,20 @@ mod tests {
             Some('z'),
             "German layout must replace the US keymap"
         );
+
+        // Reload re-applies the active layout instead of resetting to index 0.
+        init_keyboard_layout(&mut state.ctx());
+        assert_eq!(state.wm.core.state.interaction.keyboard_layout.current, 1);
+        let symbol = state
+            .native
+            .keyboard
+            .clone()
+            .with_xkb_state(&mut state, |context| {
+                let xkb = context.xkb().lock().unwrap();
+                xkb.raw_syms_for_key_in_layout(29u16.into(), xkb.active_layout())
+                    .first()
+                    .and_then(|symbol| symbol.key_char())
+            });
+        assert_eq!(symbol, Some('z'), "reload must keep the German keymap");
     }
 }
