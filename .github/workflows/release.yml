@@ -219,34 +219,44 @@ jobs:
   deb:
     name: Build Debian package
     runs-on: ubuntu-26.04
+    timeout-minutes: 360
     container:
-      image: ubuntu:26.04
+      # Build on the oldest supported Ubuntu release. dpkg-shlibdeps records
+      # version constraints from this environment, and a binary built against
+      # a newer glibc cannot run on older supported releases.
+      image: ubuntu:22.04
     needs:
       - metadata
-      - build
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
+    env:
+      CARGO_TERM_COLOR: always
+      DEBIAN_FRONTEND: noninteractive
     steps:
+      - name: Install checkout dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
       - name: Checkout
         uses: actions/checkout@v7
       - name: Install build dependencies
         run: |
           bash scripts/ci/install-deps-ubuntu.sh
           apt-get install -y --no-install-recommends dpkg-dev
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: deb-${{ hashFiles('Cargo.lock') }}
       - name: Extract version
         id: vars
         run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
-      - name: Download native build artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: instantwm-${{ steps.vars.outputs.version }}-x86_64-unknown-linux-gnu
-          path: dist
-      - name: Extract binary from tarball
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
-        run: |
-          tar -xzf "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}.tgz" -C dist
-          install -Dm0755 "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}/instantwm" target/release/instantwm
-          install -Dm0755 "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}/instantwmctl" target/release/instantwmctl
+      - name: Build release binaries
+        run: cargo build --release --locked
+      - name: Strip binaries
+        run: strip target/release/instantwm target/release/instantwmctl
       - name: Build .deb package
         env:
           VERSION: ${{ steps.vars.outputs.version }}
@@ -258,13 +268,46 @@ jobs:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p artifacts
-          mv "target/deb/instantwm_${VERSION}_amd64.deb" artifacts/
-          cd artifacts && sha256sum "instantwm_${VERSION}_amd64.deb" > "instantwm_${VERSION}_amd64.deb.sha256"
+          deb="$(find target/deb -maxdepth 1 -type f -name "instantwm_${VERSION}_*.deb" -print -quit)"
+          test -n "$deb"
+          name="${deb##*/}"
+          cp "$deb" artifacts/
+          ( cd artifacts && sha256sum "$name" > "$name.sha256" )
       - name: Upload deb package
         uses: actions/upload-artifact@v7
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-deb
           path: artifacts/
+  deb-smoke:
+    name: Smoke test .deb (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    needs:
+      - metadata
+      - deb
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - ubuntu:26.04
+          - ubuntu:26.10
+          - debian:12
+          - debian:13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Download .deb package
+        uses: actions/download-artifact@v8
+        with:
+          name: instantwm-${{ needs.metadata.outputs.version }}-deb
+          path: dist
+      - name: Install in clean container
+        run: |
+          deb="$(find dist -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$deb"
+          bash scripts/ci/smoke-test-deb.sh "$deb" "${{ matrix.image }}"
   apk:
     name: Build Alpine package (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -337,6 +380,7 @@ jobs:
       - cross-compile
       - pkgbuild
       - deb
+      - deb-smoke
       - apk
     permissions:
       contents: write
