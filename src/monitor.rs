@@ -589,6 +589,9 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     }
 
     notify_monitor_layout_changed(ctx, changed);
+    if changed {
+        ctx.update_desktop_topology();
+    }
 
     if ctx.core().state.model.selected_win() != previous_focus {
         refresh_focus_after_selection(ctx, previous_focus, None);
@@ -628,7 +631,7 @@ fn reconcile_monitor_model(
     for (i, output) in outputs.iter().enumerate() {
         match take_matching_monitor(&mut pool, i, output) {
             Some(mut m) => {
-                if output_geom_changed(&m, output, metrics) {
+                if m.num != i as i32 || output_geom_changed(&m, output, metrics) {
                     changed = true;
                 }
                 // Keep the reused monitor's stable id and workspace state.
@@ -714,6 +717,101 @@ pub fn resync_monitor_ui_metrics(core: &mut CoreState) -> bool {
 mod tests {
     use super::*;
     use crate::test_support::MonitorBuilder;
+
+    #[test]
+    #[ignore = "run with xvfb-run -a on a private X server"]
+    fn x11_output_reorder_updates_both_client_desktop_properties() {
+        use x11rb::connection::Connection;
+        use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, CreateWindowAux, WindowClass};
+        use x11rb::rust_connection::RustConnection;
+
+        let (conn, screen) = RustConnection::connect(None).unwrap();
+        let root = conn.setup().roots[screen].root;
+        let window = conn.generate_id().unwrap();
+        conn.create_window(
+            x11rb::COPY_DEPTH_FROM_PARENT,
+            window,
+            root,
+            0,
+            0,
+            100,
+            100,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &CreateWindowAux::new(),
+        )
+        .unwrap()
+        .check()
+        .unwrap();
+        let atom = |name: &[u8]| conn.intern_atom(false, name).unwrap().reply().unwrap().atom;
+        let client_info = atom(b"_NET_CLIENT_INFO");
+        let wm_desktop = atom(b"_NET_WM_DESKTOP");
+        let mut backend = crate::backend::X11BackendData::new(conn, screen);
+        backend.x11_runtime.root = root;
+        backend.x11_runtime.netatom.client_info = client_info;
+        backend.x11_runtime.netatom.wm_desktop = wm_desktop;
+        let mut wm = crate::wm::X11Wm::new(backend);
+        wm.core
+            .state
+            .apply_config(crate::config::default_config(
+                crate::backend::BackendKind::X11,
+            ))
+            .unwrap();
+
+        let output = |name: &str, x| BackendOutputInfo {
+            name: name.to_string(),
+            rect: Rect::new(x, 0, 400, 600),
+            scale: 1.0,
+            vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+            mirrors: Vec::new(),
+        };
+        let first = output("first", 0);
+        let second = output("second", 400);
+        assert!(sync_monitors_from_outputs(
+            &mut wm.x11_ctx(),
+            vec![first.clone(), second.clone()],
+        ));
+        let model = &mut wm.core.state.model;
+        let owner = model.monitors.id_at_position(1).unwrap();
+        let win = WindowId::from(window);
+        let tags = TagMask::single(1).unwrap() | TagMask::single(3).unwrap();
+        assert!(model.add_client(
+            owner,
+            Client {
+                win,
+                tags,
+                ..Client::default()
+            }
+        ));
+        wm.x11_ctx().sync_client_tag_props(win);
+        let read_words = |wm: &crate::wm::X11Wm, atom| {
+            wm.backend
+                .conn
+                .get_property(false, window, atom, AtomEnum::CARDINAL, 0, 2)
+                .unwrap()
+                .reply()
+                .unwrap()
+                .value32()
+                .unwrap()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(read_words(&wm, client_info), [tags.bits(), 1]);
+        assert_eq!(
+            read_words(&wm, wm_desktop),
+            [wm.core.state.model.tags.count() as u32]
+        );
+
+        assert!(sync_monitors_from_outputs(
+            &mut wm.x11_ctx(),
+            vec![second, first]
+        ));
+        assert_eq!(wm.core.state.model.monitor_of_client(win), Some(owner));
+        assert_eq!(read_words(&wm, client_info), [tags.bits(), 0]);
+        assert_eq!(read_words(&wm, wm_desktop), [0]);
+    }
 
     #[test]
     fn monitor_reconciliation_returns_cleanup_work_and_rehomes_clients() {

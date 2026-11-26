@@ -445,6 +445,16 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    pub(crate) fn update_desktop_topology(&self) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::properties::update_desktop_topology(
+                &ctx.core.state,
+                &ctx.x11,
+                ctx.x11_runtime,
+            );
+        }
+    }
+
     /// Persist a client's tag assignment in backend-native state after the
     /// model changed it.
     ///

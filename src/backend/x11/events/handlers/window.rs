@@ -63,8 +63,9 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.state.derived.display.width = e.width as i32;
     ctx.core.state.derived.display.height = e.height as i32;
 
-    crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx());
-    crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    if !crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx()) {
+        crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    }
     crate::focus::focus(&mut ctx.wm_ctx(), None);
     ctx.core.queue_layout_for_all_monitors_urgent();
 }

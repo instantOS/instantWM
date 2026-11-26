@@ -25,10 +25,9 @@ pub fn set_client_state(
     win: WindowId,
     state: i32,
 ) {
-    let conn = x11.conn;
     let x11_win: Window = win.into();
     let data: [u32; 2] = [state as u32, 0u32];
-    let _ = conn.change_property32(
+    let _ = x11.conn.change_property32(
         PropMode::REPLACE,
         x11_win,
         x11_runtime.wmatom.state,
@@ -74,19 +73,28 @@ pub fn write_client_tag_props(
     monitor_num: u32,
     desktop: u32,
 ) {
-    let conn = x11.conn;
+    write_client_info(x11, x11_runtime, win, tags, monitor_num);
+    set_wm_desktop_prop(x11, x11_runtime, win, desktop);
+    let _ = x11.conn.flush();
+}
+
+fn write_client_info(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+    tags: TagMask,
+    monitor_num: u32,
+) {
     let x11_win: Window = win.into();
     // `_NET_CLIENT_INFO` is a pair of CARDINAL values. The reader (and external
     // tools) expect format 32, so encode both fields in that representation.
-    let _ = conn.change_property32(
+    let _ = x11.conn.change_property32(
         PropMode::REPLACE,
         x11_win,
         x11_runtime.netatom.client_info,
         AtomEnum::CARDINAL,
         &[tags.bits(), monitor_num],
     );
-    set_wm_desktop_prop(x11, x11_runtime, win, desktop);
-    let _ = conn.flush();
 }
 
 /// EWMH desktop index of `client`'s first tag on `monitor`, or `u32::MAX` for
@@ -139,6 +147,26 @@ pub fn update_ewmh_desktop_props(
     state: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
+) {
+    publish_desktop_props(state, x11, x11_runtime, false);
+}
+
+pub(crate) fn update_desktop_topology(
+    state: &crate::core_state::CoreState,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
+    // Startup can apply monitor policy before the X11 atoms are initialized.
+    if x11_runtime.netatom.client_info != 0 {
+        publish_desktop_props(state, x11, x11_runtime, true);
+    }
+}
+
+fn publish_desktop_props(
+    state: &crate::core_state::CoreState,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    topology_changed: bool,
 ) {
     let conn = x11.conn;
     let netatom = x11_runtime.netatom;
@@ -201,6 +229,15 @@ pub fn update_ewmh_desktop_props(
     for monitor in state.model.monitors_iter_all() {
         for client in monitor.clients().values() {
             let desktop = ewmh_desktop(state, monitor, client);
+            if topology_changed {
+                write_client_info(
+                    x11,
+                    x11_runtime,
+                    client.win,
+                    client.tags,
+                    monitor.num as u32,
+                );
+            }
             set_wm_desktop_prop(x11, x11_runtime, client.win, desktop);
         }
     }

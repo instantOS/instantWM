@@ -23,7 +23,7 @@ fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
         ctx.x11_runtime,
         &ctx.core.state.derived.monitor_policy,
     );
-    crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx());
+    let topology_changed = crate::monitor::refresh_monitor_layout(&mut ctx.wm_ctx());
     if let Some(point) = ctx.x11.pointer_location() {
         let monitors = &ctx.core.state.model.monitors;
         if !monitors
@@ -43,7 +43,9 @@ fn refresh_randr_topology(ctx: &mut WmCtxX11<'_>, size: Option<(u16, u16)>) {
             );
         }
     }
-    crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    if !topology_changed {
+        crate::backend::x11::update_ewmh_desktop_props(&ctx.core.state, &ctx.x11, ctx.x11_runtime);
+    }
     crate::focus::focus(&mut ctx.wm_ctx(), None);
     ctx.core.queue_layout_for_all_monitors_urgent();
 }
