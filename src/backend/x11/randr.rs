@@ -134,19 +134,21 @@ impl RandrSnapshot {
     /// A connected output without a CRTC is a physical head, not a logical
     /// monitor: publishing it at an invented position would create a phantom
     /// monitor overlapping the real desktop.
+    ///
+    /// The CRTC's reported width and height already account for rotation,
+    /// transform and border, so they describe the framebuffer region directly.
+    /// The mode's dimensions are pre-rotation and would report a portrait CRTC
+    /// as landscape.
     fn active(&self) -> impl Iterator<Item = (&RandrOutput, Rect)> {
         self.connected().filter_map(|output| {
             let crtc = self.crtcs.get(&output.info.crtc)?;
-            let (w, h) = self
-                .mode(crtc.mode)
-                .map_or((crtc.width, crtc.height), |mode| (mode.width, mode.height));
             Some((
                 output,
                 Rect::new(
                     i32::from(crtc.x),
                     i32::from(crtc.y),
-                    i32::from(w),
-                    i32::from(h),
+                    i32::from(crtc.width),
+                    i32::from(crtc.height),
                 ),
             ))
         })
@@ -240,6 +242,11 @@ struct CrtcRequest {
     /// `None` keeps the output's current position, or places a newly
     /// enabled output right of the layout.
     position: Option<MonitorPosition>,
+    /// `None` preserves the CRTC's current rotation, so a user or session
+    /// `xrandr --rotate` survives policy passes. Mirrors pin `ROTATE0`
+    /// because their 1:1 scanout math assumes unrotated framebuffer
+    /// coordinates.
+    rotation: Option<randr::Rotation>,
 }
 
 impl CrtcRequest {
@@ -247,6 +254,7 @@ impl CrtcRequest {
         enable: false,
         mode: ModeRequest::Current,
         position: None,
+        rotation: None,
     };
 
     fn from_config(config: &MonitorConfig) -> Self {
@@ -263,6 +271,7 @@ impl CrtcRequest {
                     MonitorPosition::Absolute(Point::default())
                 })
             }),
+            rotation: None,
         }
     }
 
@@ -271,6 +280,7 @@ impl CrtcRequest {
             enable: true,
             mode: ModeRequest::Current,
             position: Some(MonitorPosition::Absolute(position)),
+            rotation: None,
         }
     }
 }
@@ -420,18 +430,25 @@ impl<'a> RandrConfigurator<'a> {
     }
 }
 
-/// Whether `current` already scans out `output` at this position and mode.
+/// Whether a RandR rotation swaps the framebuffer region's dimensions.
+fn rotation_swaps_dimensions(rotation: randr::Rotation) -> bool {
+    rotation.intersects(randr::Rotation::ROTATE90 | randr::Rotation::ROTATE270)
+}
+
+/// Whether `current` already scans out `output` at this position, mode and
+/// rotation.
 fn crtc_shows(
     current: &randr::GetCrtcInfoReply,
     x: i16,
     y: i16,
     mode: randr::Mode,
+    rotation: randr::Rotation,
     output: randr::Output,
 ) -> bool {
     current.x == x
         && current.y == y
         && current.mode == mode
-        && current.rotation == randr::Rotation::ROTATE0
+        && current.rotation == rotation
         && current.outputs.contains(&output)
 }
 
@@ -497,11 +514,20 @@ fn plan_crtc_change(
         request.mode,
         &snapshot.modes,
     )?;
+    let rotation = request
+        .rotation
+        .or_else(|| current.map(|current| current.rotation))
+        .unwrap_or(randr::Rotation::ROTATE0);
+    let (width, height) = if rotation_swaps_dimensions(rotation) {
+        (i32::from(mode.height), i32::from(mode.width))
+    } else {
+        (i32::from(mode.width), i32::from(mode.height))
+    };
     let known = snapshot.active_rects();
     let position = match &request.position {
         Some(position) => position
             .resolve(
-                Size::new(i32::from(mode.width), i32::from(mode.height)),
+                Size::new(width, height),
                 known.iter().map(|(name, rect)| (name.as_str(), *rect)),
             )
             .unwrap_or_default(),
@@ -517,7 +543,7 @@ fn plan_crtc_change(
     };
 
     if let Some(current) = current {
-        if crtc == output.info.crtc && crtc_shows(current, x, y, mode.id, output.id) {
+        if crtc == output.info.crtc && crtc_shows(current, x, y, mode.id, rotation, output.id) {
             return None;
         }
         if current.outputs.len() > 1 {
@@ -538,11 +564,11 @@ fn plan_crtc_change(
         x,
         y,
         mode: mode.id,
-        rotation: randr::Rotation::ROTATE0,
+        rotation,
         outputs: vec![output.id],
         extent: Some(Point::new(
-            position.x.saturating_add(i32::from(mode.width)),
-            position.y.saturating_add(i32::from(mode.height)),
+            position.x.saturating_add(width),
+            position.y.saturating_add(height),
         )),
     })
 }
@@ -999,6 +1025,8 @@ fn mirror_policy_for(
             width, height,
         ))),
         position: Some(MonitorPosition::Absolute(position)),
+        // The 1:1 crop math below assumes unrotated framebuffer coordinates.
+        rotation: Some(randr::Rotation::ROTATE0),
     };
 
     // Rung 1: an exact mode clones the source rectangle. The panel's scaler
@@ -1223,6 +1251,48 @@ mod refresh_tests {
             outputs,
             crtcs,
         }
+    }
+
+    /// The panel scans out a 1920x1080 mode rotated left at 40,20.
+    fn rotated_snapshot() -> super::RandrSnapshot {
+        let mut snapshot = lid_snapshot(true, false);
+        snapshot.outputs.retain(|output| output.name == "eDP-1");
+        let crtc = snapshot.crtcs.get_mut(&1).unwrap();
+        crtc.width = 1080;
+        crtc.height = 1920;
+        crtc.rotation = x11rb::protocol::randr::Rotation::ROTATE90;
+        snapshot
+    }
+
+    #[test]
+    fn active_rects_use_the_rotation_adjusted_crtc_size() {
+        let snapshot = rotated_snapshot();
+        assert_eq!(
+            snapshot.active_rects(),
+            vec![("eDP-1".to_string(), Rect::new(40, 20, 1080, 1920))]
+        );
+        assert_eq!(
+            snapshot.active_outputs()[0].rect,
+            Rect::new(40, 20, 1080, 1920)
+        );
+    }
+
+    #[test]
+    fn an_unconfigured_policy_pass_keeps_a_rotated_crtc_untouched() {
+        let snapshot = rotated_snapshot();
+        let request = CrtcRequest::from_config(&MonitorConfig::default());
+        assert!(super::plan_crtc_change(&snapshot, "eDP-1", &request).is_none());
+    }
+
+    #[test]
+    fn reconfiguring_a_rotated_output_preserves_rotation_and_uses_rotated_extent() {
+        let snapshot = rotated_snapshot();
+        let change =
+            super::plan_crtc_change(&snapshot, "eDP-1", &CrtcRequest::at(Point::new(2000, 0)))
+                .unwrap();
+        assert_eq!(change.rotation, x11rb::protocol::randr::Rotation::ROTATE90);
+        assert_eq!((change.x, change.y), (2000, 0));
+        assert_eq!(change.extent, Some(Point::new(2000 + 1080, 1920)));
     }
 
     #[test]
@@ -1567,10 +1637,23 @@ mod refresh_tests {
             possible: vec![9],
         };
 
-        assert!(crtc_shows(&current, 1920, 0, 7, 9));
-        assert!(!crtc_shows(&current, 0, 0, 7, 9));
-        assert!(!crtc_shows(&current, 1920, 0, 8, 9));
-        assert!(!crtc_shows(&current, 1920, 0, 7, 10));
+        let rotate0 = x11rb::protocol::randr::Rotation::ROTATE0;
+        assert!(crtc_shows(&current, 1920, 0, 7, rotate0, 9));
+        assert!(!crtc_shows(&current, 0, 0, 7, rotate0, 9));
+        assert!(!crtc_shows(&current, 1920, 0, 8, rotate0, 9));
+        assert!(!crtc_shows(&current, 1920, 0, 7, rotate0, 10));
+
+        let mut rotated = current.clone();
+        rotated.rotation = x11rb::protocol::randr::Rotation::ROTATE90;
+        assert!(crtc_shows(
+            &rotated,
+            1920,
+            0,
+            7,
+            x11rb::protocol::randr::Rotation::ROTATE90,
+            9
+        ));
+        assert!(!crtc_shows(&rotated, 1920, 0, 7, rotate0, 9));
     }
 
     #[test]
@@ -1648,6 +1731,7 @@ mod refresh_tests {
                 width, height,
             ))),
             position: Some(MonitorPosition::Absolute(Point::new(x, y))),
+            rotation: Some(x11rb::protocol::randr::Rotation::ROTATE0),
         }
     }
 
