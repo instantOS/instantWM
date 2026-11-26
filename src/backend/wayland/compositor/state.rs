@@ -2,6 +2,7 @@ use crate::contexts::WmCtx;
 use std::collections::{HashMap, HashSet};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
+use smithay::reexports::wayland_server::Weak;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::IsAlive;
 use smithay::{
@@ -277,6 +278,17 @@ pub struct PendingLaunchContextMarker {
 pub use super::output::WaylandOutputMetadata;
 pub use super::render::PendingRenderTargets;
 
+/// Last pointer sample delivered to clients.
+///
+/// Smithay forwards every `PointerHandle::motion` as `wl_pointer.motion`; this
+/// snapshot lets the compositor suppress samples that carry no new
+/// surface-relative position (notably layer-shell commit refreshes).
+#[derive(Clone)]
+pub(crate) struct LastPointerMotion {
+    pub(crate) location: Point<f64, Logical>,
+    pub(crate) focus: Option<(Weak<WlSurface>, Point<i32, Logical>)>,
+}
+
 pub struct WaylandRuntimeState {
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub pending_screencopies: Vec<PendingScreencopy>,
@@ -291,6 +303,8 @@ pub struct WaylandRuntimeState {
     pub(crate) pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
     pub(crate) active_systray_menu: Option<crate::systray::status_notifier::ActiveNativeMenu>,
     pub pointer_location: Point<f64, Logical>,
+    /// Last sample actually delivered through the pointer protocol.
+    pub(crate) last_pointer_motion: Option<LastPointerMotion>,
     /// Touch slot currently captured by the compositor-rendered bar.
     ///
     /// The built-in bar is not a Wayland surface, so a touch sequence that
@@ -357,6 +371,7 @@ impl Default for WaylandRuntimeState {
             pending_systray_menu: std::sync::Arc::new(std::sync::Mutex::new(None)),
             active_systray_menu: None,
             pointer_location: Point::from((0.0, 0.0)),
+            last_pointer_motion: None,
             wm_gesture_touch_slot: None,
             pointer_touch_slot: None,
             cursor_hidden_by_touch: false,

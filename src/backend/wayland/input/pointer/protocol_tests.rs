@@ -43,6 +43,7 @@ struct ClientEvents {
     globals: Vec<(u32, String)>,
     syncs: usize,
     enters: usize,
+    motions: usize,
     pointer_surface: Option<wl_surface::WlSurface>,
     presses: Vec<(u32, wl_surface::WlSurface)>,
     locks: usize,
@@ -100,6 +101,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for ClientEvents {
                 }
             }
             wl_pointer::Event::Leave { .. } => state.pointer_surface = None,
+            wl_pointer::Event::Motion { .. } => state.motions += 1,
             wl_pointer::Event::Button {
                 serial,
                 state: wayland_client::WEnum::Value(wl_pointer::ButtonState::Pressed),
@@ -465,6 +467,58 @@ impl Fixture {
         self.pump();
         lock
     }
+}
+
+#[test]
+fn stationary_pointer_refresh_does_not_echo_duplicate_motion() {
+    let mut f = Fixture::new(1);
+    f.window();
+    f.move_pointer(50.0, 50.0);
+    f.move_pointer(100.0, 100.0);
+    let motions = f.events.motions;
+    assert!(motions > 0, "real pointer movement must carry motion");
+
+    f.refresh();
+
+    assert_eq!(
+        f.events.motions, motions,
+        "a refresh without pointer or surface movement must not resend wl_pointer.motion"
+    );
+}
+
+#[test]
+fn stationary_pointer_refresh_still_enters_a_surface_that_appears_under_it() {
+    let mut f = Fixture::new(1);
+    f.state.native.runtime.pointer_location = Point::from((100.0, 100.0));
+    f.refresh();
+    assert_eq!(f.events.enters, 0);
+
+    f.window();
+    f.refresh();
+
+    assert_eq!(
+        f.events.enters, 1,
+        "a scene-change refresh must deliver enter to a new surface under the cursor"
+    );
+}
+
+#[test]
+fn stationary_pointer_refresh_after_surface_movement_still_sends_motion() {
+    let mut f = Fixture::new(1);
+    let (win, _) = f.window();
+    f.move_pointer(50.0, 50.0);
+    f.move_pointer(100.0, 100.0);
+    let motions = f.events.motions;
+
+    let window = f.state.native.find_window(win).unwrap().clone();
+    f.state.native.space.map_element(window, (40, 0), false);
+    f.refresh();
+
+    assert_eq!(
+        f.events.motions,
+        motions + 1,
+        "moving a surface under a stationary pointer must deliver new surface-local coordinates"
+    );
 }
 
 #[test]

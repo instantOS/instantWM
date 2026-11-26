@@ -53,7 +53,7 @@ mod buffer_tests;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use render::PendingRenderTargets;
-pub(crate) use state::TOUCH_POINTER_BUTTON_CODE;
+pub(crate) use state::{LastPointerMotion, TOUCH_POINTER_BUTTON_CODE};
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::delegate_dispatch2;
